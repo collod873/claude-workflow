@@ -36,6 +36,7 @@ fi
 
 git checkout --quiet -b "$branch" 2>>"$err" &&
   git add -- '*.test.ts' 2>>"$err" &&
+  { [[ ! -e src/scenarios.ts ]] || git add -- src/scenarios.ts 2>>"$err"; } &&
   git commit --quiet -m "Hold #$ticket to one failing test per criterion" 2>>"$err" ||
   red "the tests would not commit on $branch"
 

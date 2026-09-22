@@ -13,6 +13,7 @@ const COMMANDS_CAP = 200;
 const STATIC = "bin/check static";
 const UNIMPORTED = /Cannot find module '(\.[^']+)' imported from (.+?)\s*$/gm;
 const AUTHORED = ".test.ts";
+const FIXTURES = "src/scenarios.ts";
 const UNTRACKED = "??";
 
 function awaitsTheBuild(body: string, cwd: string, output: string): boolean {
@@ -45,7 +46,7 @@ function changed(cwd: string): Map<string, string> {
 function setAside(cwd: string, before: Map<string, string>, ticket: string): number {
   const logs = spawnSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd, encoding: "utf8" }).stdout.trim();
   const kept = join(logs, "machine-logs", `test-author-${ticket}-set-aside`);
-  const outside = [...changed(cwd)].filter(([path]) => !before.has(path) && !path.endsWith(AUTHORED));
+  const outside = [...changed(cwd)].filter(([path]) => !before.has(path) && !path.endsWith(AUTHORED) && path !== FIXTURES);
   if (outside.length === 0) return 0;
   rmSync(kept, { recursive: true, force: true });
   for (const [path, status] of outside) {
@@ -66,7 +67,7 @@ function stageArgv(commands: string[]): string[] {
     "--setting-sources",
     "",
     "--allowedTools",
-    [...WRITES, ...[...commands, STATIC].map((command) => `Bash(${command})`)].join(","),
+    [...WRITES, ...[...commands, STATIC, `./${STATIC}`].map((command) => `Bash(${command})`)].join(","),
     ...denyFlags(),
   ];
 }
