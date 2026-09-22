@@ -1,0 +1,46 @@
+#!/bin/bash
+set -uo pipefail
+
+usage="save: usage: save <ticket number>"
+
+ticket=${1:-}
+if [[ $# -ne 1 || ! $ticket =~ ^[0-9]+$ ]]; then
+  printf '%s\n' "$usage" >&2
+  exit 2
+fi
+
+top=$(git rev-parse --show-toplevel) || exit 1
+cd "$top" || exit 1
+branch="ticket/$ticket"
+log="$(git rev-parse --path-format=absolute --git-common-dir)/machine-logs/save-$ticket.log"
+mkdir -p "${log%/*}"
+rm -f "$log"
+[[ $log == "$top/"* ]] && shown="${log#"$top/"}" || shown="$log"
+err=$(mktemp)
+trap 'rm -f "$err"' EXIT
+
+call() {
+  if ! said=$("$@" 2>"$err"); then
+    { printf -- '--- %s ---\n%s\n' "$*" "$said"; cat "$err"; } >>"$log"
+    return 1
+  fi
+}
+
+call git push --no-verify --quiet origin "refs/heads/$branch:refs/heads/$branch" || {
+  printf 'save: #%s kept on %s here, the push failed, so no PR was opened; log %s\n' "$ticket" "$branch" "$shown" >&2
+  exit 1
+}
+head=$(git rev-parse "refs/heads/$branch")
+
+opened() {
+  call gh issue view "$ticket" --json title --jq .title || return 1
+  call gh pr create --base main --head "$branch" --title "$said" --body "Builds #$ticket" || return 1
+  url=$said
+  call gh pr merge "$branch" --auto --merge --match-head-commit "$head"
+}
+
+if ! opened; then
+  printf 'save: #%s pushed to %s, but its PR is not open with auto-merge on; log %s\n' "$ticket" "$branch" "$shown" >&2
+  exit 1
+fi
+printf 'save: #%s pushed to %s, %s merges once its checks pass\n' "$ticket" "$branch" "$url"

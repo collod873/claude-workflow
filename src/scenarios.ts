@@ -356,3 +356,42 @@ export function starting({ body = wellFormedTicket, checkRuns = MAIN_GREEN, npx 
     run: (ticket = "721") => execute(join(BIN, "start"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, [ticket]),
   };
 }
+
+export const SAVED_PR = "https://github.com/collod873/claude-workflow/pull/9726";
+
+export function saving({ remoteRefuses }: { remoteRefuses?: string } = {}) {
+  const root = scratch("save-");
+  const { remote, session } = cloned(root, "base");
+  const calls = join(root, "gh-calls");
+  const judged = join(root, "judged");
+  git(session, "checkout", "--quiet", "-b", "ticket/726");
+  plant(session, "src/ticket-shape.ts", "export const shaped = 2;\n");
+  git(session, "add", ".");
+  git(session, "commit", "--quiet", "-m", "Build #726 against its failing tests");
+  const built = git(session, "rev-parse", "HEAD");
+  script(join(session, ".git", "hooks", "pre-push"), `touch "${judged}"\nprintf 'the gate refuses a red build\\n' >&2\nexit 1\n`);
+  git(remote, "config", "user.email", "github@test");
+  git(remote, "config", "user.name", "github");
+  git(remote, "update-ref", "refs/heads/main", git(remote, "commit-tree", "main^{tree}", "-p", "main", "-m", "main moved on"));
+  if (remoteRefuses !== undefined) script(join(remote, "hooks", "pre-receive"), `cat >/dev/null\nprintf '%s\\n' '${remoteRefuses}' >&2\nexit 1\n`);
+  script(join(root, "bin", "npx"), `touch "${judged}"\nexit 1\n`);
+  script(
+    join(root, "bin", "gh"),
+    [
+      `printf '%s|%s\\n' "$*" "$(git --git-dir="${remote}" rev-parse --verify --quiet refs/heads/ticket/726)" >>"${calls}"`,
+      'case "$*" in',
+      "  *\"issue view\"*) printf 'Push the branch before anything can refuse it\\n' ;;",
+      `  *"pr create"*) printf '%s\\n' '${SAVED_PR}' ;;`,
+      "esac",
+      "",
+    ].join("\n"),
+  );
+  return {
+    session,
+    built,
+    pushed: () => git(remote, "for-each-ref", "--format=%(objectname)", "refs/heads/ticket/726"),
+    judged: () => existsSync(judged),
+    calls: () => (existsSync(calls) ? readFileSync(calls, "utf8").trimEnd().split("\n").map((line) => line.split("|")) : []),
+    run: (ticket = "726") => execute(join(BIN, "save"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, [ticket]),
+  };
+}
