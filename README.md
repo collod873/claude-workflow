@@ -1,7 +1,6 @@
 # claude-workflow
 
-The machine that takes what the owner wants done and ships it as merged code, plus the workstation
-the sessions run on. The domain here is the machinery itself, not any project it ships.
+The machine that takes what the owner wants done and ships it as merged code. The domain here is the machinery itself, not any project it ships.
 
 ## Start here
 
@@ -15,11 +14,8 @@ avoid, so an argument is about the substance rather than about the word.
 **[`docs/agents/layers/`](docs/agents/layers/one-ticket.md)**: the layer rulings. One ticket is the
 centre and the only one signed so far.
 
-**[`docs/agents/core-boundary.md`](docs/agents/core-boundary.md)**: which gate reads which file.
-The Core and the Workstation are judged by different checks and the answer is not obvious.
-
-**[`docs/adr/`](docs/adr/README.md)**: the decision records. Why things are the way they are. Most
-of the corpus rules on eras that have since been replaced; the index carries them all, newest last.
+**[`docs/agents/core-boundary.md`](docs/agents/core-boundary.md)**: which check reads which file,
+and what fires the gate.
 
 **[Seven Workflow Eras](https://claude.ai/code/artifact/ce83212b-8c33-44da-bab8-b2121307cda0)**: the
 prior art. Why each of the seven systems before this one ended, and what survived the switch.
@@ -29,11 +25,6 @@ prior art. Why each of the seven systems before this one ended, and what survive
 `core/` is the machine. It is whole: no file in it reaches outside it. `core/check` is its gate,
 run by `.husky/pre-push` and by `core-check.yml` on every pull request. Nothing runs it during a
 session, so run it by hand before believing core is sound.
-
-## The Workstation
-
-The Workstation is the room the sessions happen in, not a second machine. It is
-judged by `npm test`, `npm run lint` and `npm run typecheck`, which nothing fires automatically.
 
 No hook is wired here. Every hook on the workstation, session capture included, lives in
 `collod873/agent-hooks`.
@@ -50,9 +41,6 @@ pull request and merges it.
 ├── CLAUDE.md         # project instructions for Claude Code
 ├── CONTEXT.md        # the glossary: what the words mean here
 ├── core/             # the machine, and core/check, its gate
-├── bin/              # workstation scripts, linked into ~/bin
-├── .claude/skills/   # the session skills, linked into ~/.claude/skills
-├── docs/agents/      # the charter, the layer rulings, the boundary
-├── docs/adr/         # decision records
+├── docs/agents/      # the charter, the layer rulings, what judges what
 └── docs/research/    # the evidence behind them, archived as written
 ```

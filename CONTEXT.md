@@ -41,11 +41,6 @@ The machine, `core/`. There is one machine and this is it. It holds the Charter 
 commit, grows one Layer at a time, and is whole: nothing in it reaches outside.
 _Avoid_: new core, v2
 
-**Workstation**:
-The owner's computer and the session tooling on it, the `.claude/` settings and state. Where
-sessions happen, not a thing that builds: judged by `npm test`; work runs on runners.
-_Avoid_: old machine, legacy, second machine
-
 **Worker**:
 A part of the machine whose worth is the work it does: a step, a script, a stage.
 _Avoid_: job, component
