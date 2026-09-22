@@ -7,7 +7,7 @@
 - **Code carries no prose.** No comments, docstrings or headers, in any language, tests included
   (ADR-0151). The why goes in the commit message, or `CONTEXT.md` where it is the vocabulary; name
   things so the code says the rest. `core/prose.proc.test.ts` holds it at zero.
-- New code is a part in `core/parts.ts`, or reachable from a `bin/` script or a hook. `core/check`
+- New code is a part in `core/parts.ts`, or reachable from a hook. `core/check`
   runs knip with no baseline; a test importing a thing is not evidence anything runs it (ADR-0086).
   Wire it to a caller or delete it; unreachable by design takes an `@shell` or `@fixture` tag saying
   why, five lines at most.

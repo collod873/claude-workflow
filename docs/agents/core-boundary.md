@@ -4,8 +4,8 @@ There is one machine and it is `core/`. This page is not about a border between 
 about which gate reads which file, because the answer is not the same everywhere and getting it
 wrong wastes a morning.
 
-The Workstation is the owner's computer and the session tooling on it, the hooks under `.claude/`
-and the scripts under `bin/`. It is where sessions happen. It does not build anything, it is not a
+The Workstation is the owner's computer and the session tooling on it, the settings and state under
+`.claude/`. It is where sessions happen. It does not build anything, it is not a
 second machine, and nothing about it is older than the machine: it is the room, not a rival.
 
 [ADR-0200](../adr/0200-the-machine-is-rebuilt-as-a-small-core-in-its-own-folder.md) rules that the

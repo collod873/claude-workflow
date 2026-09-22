@@ -32,7 +32,7 @@ session, so run it by hand before believing core is sound.
 
 ## The Workstation
 
-`bin/` is the room the sessions happen in, not a second machine. It is
+The Workstation is the room the sessions happen in, not a second machine. It is
 judged by `npm test`, `npm run lint` and `npm run typecheck`, which nothing fires automatically.
 
 No hook is wired here. Every hook on the workstation, session capture included, lives in

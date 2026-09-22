@@ -42,7 +42,7 @@ commit, grows one Layer at a time, and is whole: nothing in it reaches outside.
 _Avoid_: new core, v2
 
 **Workstation**:
-The owner's computer and the session tooling on it: `.claude/` hooks and `bin/` scripts. Where
+The owner's computer and the session tooling on it, the `.claude/` settings and state. Where
 sessions happen, not a thing that builds: judged by `npm test`; work runs on runners.
 _Avoid_: old machine, legacy, second machine
 
