@@ -211,7 +211,7 @@ export function landSession({ gh, remoteRefuses, messages = ["change"] }: { gh: 
 }
 
 const MAIN_GREEN = '{"check_runs":[{"name":"Core check","conclusion":"success"}]}';
-const CHECK_RED = "printf '      Tests  1 failed (1)\\n'\nexit 1\n";
+const CHECK_RED = "printf ' FAIL  src/ticket-shape.test.ts > names the behaviour\\n      Tests  1 failed (1)\\n'\nexit 1\n";
 export const MAIN_RED = '{"check_runs":[{"name":"Core check","conclusion":"failure"}]}';
 
 type Tree = "fresh" | "behind" | "dirty" | "branch";
