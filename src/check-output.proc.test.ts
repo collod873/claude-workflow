@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { agedLogs, checkRepo, git, inRepo, stubTool } from "./scenarios.ts";
+import { agedLogs, checkRepo, git, inRepo, script, stubTool } from "./scenarios.ts";
 
 const TYPE_ERROR = "src/a.ts(3,5): error TS2322: Type 'string' is not assignable to type 'number'.\n".repeat(40).trim();
 const TEST_FAILURE = ` FAIL  a.test.ts > adds\n${"AssertionError: expected 1 to be 2\n".repeat(40)} ❯ a.test.ts:4:34`;
@@ -77,5 +77,23 @@ describe("bin/check deletes its logs older than 7 days whenever it runs (#693)",
     expect(result).toEqual({ status: 0, stdout: "bin/check: passed\n", stderr: "" });
     expect(existsSync(stale)).toBe(false);
     expect(existsSync(fresh)).toBe(true);
+  });
+});
+
+describe("bin/check static runs the gates a stage can meet while it works, never the whole suite (#783)", () => {
+  it("runs typecheck, lint, unused, clones and the style tests, and leaves the suite, prompts and links alone", () => {
+    const { repo, run } = checkRepo({ tsc: TYPE_ERROR, node: "src/prompt-bytes.ts: over its ceiling" });
+    script(join(repo, "node_modules", ".bin", "vitest"), '[ "$*" = "run --config vitest.config.ts prose em-dash" ] && exit 0\necho "the whole suite ran"\nexit 1\n');
+
+    const result = run(repo, ["static"]);
+
+    expect(result.status).toBe(1);
+    expect(saidOneLine(result.stdout).line).toMatch(/^bin\/check: FAILED typecheck src\/a\.ts:3; log /);
+  });
+
+  it("refuses any other argument before it runs a gate", () => {
+    const { run } = checkRepo({ tsc: TYPE_ERROR });
+
+    expect(run(undefined, ["everything"])).toEqual({ status: 2, stdout: "", stderr: "bin/check: usage: bin/check [static]\n" });
   });
 });

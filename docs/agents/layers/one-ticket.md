@@ -167,7 +167,7 @@ Build stages do not load the charter or this page. Each stage is handed what it 
 
 | Stage | Handed | Tools |
 |---|---|---|
-| Test author | The ticket body; claimed files with line numbers; the ports the claim imports; test conventions as a cache of their gates | Read, Edit, Write; Bash limited to the ticket's test command |
+| Test author | The ticket body; claimed files with line numbers; the ports the claim imports; test conventions as a cache of their gates | Read, Edit, Write; Bash limited to the ticket's test command and `bin/check static` |
 | Builder | `## Why`; the criteria; the author's tests once; claimed files with line numbers; ports consumed; the files the author read; one check command; style rules as a cache. A module `CONTEXT.md` only when one exists below the root | Read, Edit, Write; Bash under the shared deny list |
 | Repair | The resumed builder session plus the check's output tail, capped at 8 KB | As the builder |
 | Reviewer | `## Why`; the criteria; the diff, capped at 32 KB (over the cap, the claimed files' diff and the file list) | Read only, with a verdict schema |

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { type Shell } from "./check-runner.ts";
 import { DENIED } from "./deny-list.ts";
 import { authoring, heard, plant, scratch, wellFormedTicket } from "./scenarios.ts";
-import { uncovered } from "./test-author.ts";
+import { handedOn as prompted, uncovered } from "./test-author.ts";
 
 const ran = (stdout: string, status: number): Shell => () => ({ status, stdout, stderr: "" });
 const RED = ran("      Tests  1 failed (1)\n", 1);
@@ -109,6 +109,15 @@ describe("the test author writes one failing test per criterion, or ends red (#6
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("wrote no test");
     expect(committed()).toEqual([]);
+  });
+
+  it("lets the model run bin/check static, and names the gates it holds", () => {
+    const { run, handedOn } = authoring();
+
+    run();
+
+    expect(handedOn()).toContain("Bash(bin/check static)");
+    expect(prompted("", [])).toMatch(/`bin\/check static`.*comments.*em dash.*src\/scenarios\.ts/s);
   });
 
   it("spends no model on a ticket GitHub will not hand over", () => {

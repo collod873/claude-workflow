@@ -30,6 +30,7 @@ const LEFT = [
   "git status --short",
   "git diff origin/main",
   "node src/test-author.ts 723",
+  "bin/check static",
   "ls core",
 ];
 

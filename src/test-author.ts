@@ -10,6 +10,7 @@ const STAGE = "test author";
 const MODEL = "sonnet";
 const WRITES = ["Read", "Edit", "Write"];
 const COMMANDS_CAP = 200;
+const STATIC = "bin/check static";
 const UNIMPORTED = /Cannot find module '(\.[^']+)' imported from (.+?)\s*$/gm;
 const AUTHORED = ".test.ts";
 const UNTRACKED = "??";
@@ -65,7 +66,7 @@ function stageArgv(commands: string[]): string[] {
     "--setting-sources",
     "",
     "--allowedTools",
-    [...WRITES, ...commands.map((command) => `Bash(${command})`)].join(","),
+    [...WRITES, ...[...commands, STATIC].map((command) => `Bash(${command})`)].join(","),
     ...denyFlags(),
   ];
 }
@@ -76,6 +77,7 @@ export function handedOn(briefed: string, commands: string[]): string {
     "## What to write",
     `Write one failing test for each criterion above, and write nothing else. Your check commands are ${capped(commands.map((command) => `\`${command}\``).join(", "), COMMANDS_CAP)}.`,
     "Each ends red naming the behaviour its criterion asks for. A criterion with no failing test ends this stage red.",
+    `\`${STATIC}\` runs the gates your tests must pass: no comments, no em dash, and no copied code, so build on the helpers in \`src/scenarios.ts\`. Its typecheck and unused gates stay red on a claimed file not written yet; that red is the builder's.`,
     "",
   ].join("\n\n");
 }
