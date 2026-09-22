@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { relative } from "node:path";
 import { authoredTests, brief, capped, onDisk } from "./brief.ts";
 import { runCheck } from "./check-runner.ts";
 import { stageArgv, stageRefusals } from "./deny-list.ts";
@@ -39,13 +40,38 @@ function ended(spent: ReturnType<typeof spawnSync>): string {
   return `the ${STAGE} ended ${spent.status}: ${quoted(String(spent.stderr || spent.stdout).trim().split("\n")[0])}`;
 }
 
+function transcriptEvents(stdout: string): unknown[] {
+  return stdout
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    .flatMap((line) => {
+      try {
+        return [JSON.parse(line)];
+      } catch {
+        return [];
+      }
+    });
+}
+
 function sessionOf(stdout: string): string | undefined {
-  try {
-    const { session_id: session } = JSON.parse(stdout) as { session_id?: unknown };
-    return typeof session === "string" ? session : undefined;
-  } catch {
-    return undefined;
+  let session: string | undefined;
+  for (const event of transcriptEvents(stdout)) {
+    const id = (event as { session_id?: unknown })?.session_id;
+    if (typeof id === "string") session = id;
   }
+  return session;
+}
+
+function writtenOutsideRepo(cwd: string, stdout: string): string | undefined {
+  for (const event of transcriptEvents(stdout)) {
+    const content = (event as { message?: { content?: unknown[] } })?.message?.content;
+    for (const block of content ?? []) {
+      const { type, name, input } = (block ?? {}) as { type?: string; name?: string; input?: { file_path?: unknown } };
+      const path = input?.file_path;
+      if (type === "tool_use" && (name === "Write" || name === "Edit") && typeof path === "string" && relative(cwd, path).startsWith("..")) return path;
+    }
+  }
+  return undefined;
 }
 
 function build(ticket: string): { refusals: string[]; verdict: string } {
@@ -60,14 +86,19 @@ function build(ticket: string): { refusals: string[]; verdict: string } {
   const argv = stageArgv(commands, tests);
   const unfenced = stageRefusals(STAGE, argv);
   if (unfenced.length > 0) return { refusals: unfenced, verdict: "" };
-  const first = spawnSync("claude", [...argv, "--output-format", "json"], { input: handedOn(briefed.text, commands), encoding: "utf8" });
+  const cwd = process.cwd();
+  const first = spawnSync("claude", [...argv, "--output-format", "stream-json", "--verbose"], { input: handedOn(briefed.text, commands), encoding: "utf8" });
   if (first.status !== 0) return { refusals: [ended(first)], verdict: "" };
+  const strayFirst = writtenOutsideRepo(cwd, first.stdout);
+  if (strayFirst !== undefined) return { refusals: [`the ${STAGE} wrote outside the repo: ${strayFirst}`], verdict: "" };
   const session = sessionOf(first.stdout);
   if (session === undefined) return { refusals: [`the ${STAGE} named no session to resume`], verdict: "" };
   const red = redOutput(commands);
   if (red === "") return { refusals: [], verdict: "green after the build" };
-  const repair = spawnSync("claude", [...argv, "--resume", session], { input: repaired(red), encoding: "utf8" });
+  const repair = spawnSync("claude", [...argv, "--resume", session, "--output-format", "stream-json", "--verbose"], { input: repaired(red), encoding: "utf8" });
   if (repair.status !== 0) return { refusals: [ended(repair)], verdict: "" };
+  const strayRepair = writtenOutsideRepo(cwd, repair.stdout);
+  if (strayRepair !== undefined) return { refusals: [`the ${STAGE} wrote outside the repo: ${strayRepair}`], verdict: "" };
   if (redOutput(commands) !== "") return { refusals: ["the checks are still red after the repair round"], verdict: "" };
   return { refusals: [], verdict: "green after the repair round" };
 }

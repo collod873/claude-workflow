@@ -53,7 +53,18 @@ export function denyFlags(untouchable: string[] = []): string[] {
 
 export function stageArgv(commands: string[], untouchable: string[] = []): string[] {
   const runs = [...commands, STATIC, `./${STATIC}`].map((command) => `Bash(${command})`);
-  return ["--print", "--model", "sonnet", "--setting-sources", "", "--allowedTools", ["Read", "Edit", "Write", ...runs].join(","), ...denyFlags(untouchable)];
+  return [
+    "--print",
+    "--model",
+    "sonnet",
+    "--setting-sources",
+    "",
+    "--allowedTools",
+    ["Read", "Edit", "Write", ...runs].join(","),
+    "--permission-mode",
+    "bypassPermissions",
+    ...denyFlags(untouchable),
+  ];
 }
 
 export function stageRefusals(stage: string, argv: string[]): string[] {

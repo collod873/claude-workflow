@@ -14,6 +14,29 @@ const FIXTURES = "src/scenarios.ts";
 const UNTRACKED = "??";
 const RAN = /[\w./-]+\.test\.ts/g;
 
+function transcriptPaths(stdout: string): string[] {
+  const paths: string[] = [];
+  for (const line of stdout.split("\n")) {
+    if (line.trim() === "") continue;
+    let event: unknown;
+    try {
+      event = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const content = (event as { message?: { content?: unknown[] } })?.message?.content;
+    for (const block of content ?? []) {
+      const { type, name, input } = (block ?? {}) as { type?: string; name?: string; input?: { file_path?: unknown } };
+      if (type === "tool_use" && (name === "Write" || name === "Edit") && typeof input?.file_path === "string") paths.push(input.file_path);
+    }
+  }
+  return paths;
+}
+
+function writtenOutsideRepo(cwd: string, stdout: string): string | undefined {
+  return transcriptPaths(stdout).find((path) => relative(cwd, path).startsWith(".."));
+}
+
 function awaitsTheBuild(body: string, cwd: string, output: string): boolean {
   const missing = [...output.matchAll(UNIMPORTED)].map(([, module, importer]) => relative(cwd, resolve(cwd, dirname(importer), module)));
   const unwritten = new Set(claims(body).filter((path) => !existsSync(join(cwd, path))));
@@ -83,7 +106,7 @@ function authorRefusals(ticket: string): { refusals: string[]; setAside: number 
   const briefed = brief({ ticket, body, tests: [], read: onDisk });
   if (briefed.refusals.length > 0) return { refusals: briefed.refusals, setAside: 0 };
   const commands = checks(body).map(({ command }) => command);
-  const argv = [...stageArgv(commands), "--permission-mode", "bypassPermissions"];
+  const argv = [...stageArgv(commands), "--output-format", "stream-json", "--verbose"];
   const unfenced = stageRefusals(STAGE, argv);
   if (unfenced.length > 0) return { refusals: unfenced, setAside: 0 };
   const cwd = process.cwd();
@@ -91,6 +114,8 @@ function authorRefusals(ticket: string): { refusals: string[]; setAside: number 
   rmSync(kept, { recursive: true, force: true });
   const before = changed(cwd);
   const spent = spawnSync("claude", argv, { input: handedOn(briefed.text, commands), encoding: "utf8" });
+  const stray = writtenOutsideRepo(cwd, spent.stdout);
+  if (stray !== undefined) return { refusals: [`the ${STAGE} wrote outside the repo: ${stray}`], setAside: 0 };
   const wrote = () => [...changed(cwd)].filter(([path]) => !before.has(path));
   const outside = setAside(cwd, wrote().filter(([path]) => !path.endsWith(AUTHORED) && path !== FIXTURES), kept);
   if (spent.status !== 0) return { refusals: [`the ${STAGE} ended ${spent.status}: ${quoted((spent.stderr || spent.stdout).trim().split("\n")[0])}`], setAside: outside };
