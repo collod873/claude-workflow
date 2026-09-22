@@ -1,2 +1,0 @@
-#!/bin/bash
-exec "${BASH_SOURCE[0]%/*}/../../bin/app-token" "$@"
