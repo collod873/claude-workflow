@@ -1,3 +1,4 @@
+import { relative, resolve } from "node:path";
 import { quoted } from "./ticket-shape.ts";
 
 export const DENIED = [
@@ -65,6 +66,31 @@ export function stageArgv(commands: string[], untouchable: string[] = []): strin
     "bypassPermissions",
     ...denyFlags(untouchable),
   ];
+}
+
+export function transcriptEvents(stdout: string): unknown[] {
+  return stdout
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    .flatMap((line) => {
+      try {
+        return [JSON.parse(line)];
+      } catch {
+        return [];
+      }
+    });
+}
+
+export function writtenOutsideRepo(cwd: string, stdout: string): string | undefined {
+  for (const event of transcriptEvents(stdout)) {
+    const content = (event as { message?: { content?: unknown[] } })?.message?.content;
+    for (const block of content ?? []) {
+      const { type, name, input } = (block ?? {}) as { type?: string; name?: string; input?: { file_path?: unknown } };
+      const path = input?.file_path;
+      if (type === "tool_use" && (name === "Write" || name === "Edit") && typeof path === "string" && relative(cwd, resolve(cwd, path)).startsWith("..")) return path;
+    }
+  }
+  return undefined;
 }
 
 export function stageRefusals(stage: string, argv: string[]): string[] {

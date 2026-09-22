@@ -1,8 +1,7 @@
 import { spawnSync } from "node:child_process";
-import { relative } from "node:path";
 import { authoredTests, brief, capped, onDisk } from "./brief.ts";
 import { runCheck } from "./check-runner.ts";
-import { stageArgv, stageRefusals } from "./deny-list.ts";
+import { stageArgv, stageRefusals, transcriptEvents, writtenOutsideRepo } from "./deny-list.ts";
 import { checks, quoted } from "./ticket-shape.ts";
 
 const STAGE = "builder";
@@ -40,19 +39,6 @@ function ended(spent: ReturnType<typeof spawnSync>): string {
   return `the ${STAGE} ended ${spent.status}: ${quoted(String(spent.stderr || spent.stdout).trim().split("\n")[0])}`;
 }
 
-function transcriptEvents(stdout: string): unknown[] {
-  return stdout
-    .split("\n")
-    .filter((line) => line.trim() !== "")
-    .flatMap((line) => {
-      try {
-        return [JSON.parse(line)];
-      } catch {
-        return [];
-      }
-    });
-}
-
 function sessionOf(stdout: string): string | undefined {
   let session: string | undefined;
   for (const event of transcriptEvents(stdout)) {
@@ -60,18 +46,6 @@ function sessionOf(stdout: string): string | undefined {
     if (typeof id === "string") session = id;
   }
   return session;
-}
-
-function writtenOutsideRepo(cwd: string, stdout: string): string | undefined {
-  for (const event of transcriptEvents(stdout)) {
-    const content = (event as { message?: { content?: unknown[] } })?.message?.content;
-    for (const block of content ?? []) {
-      const { type, name, input } = (block ?? {}) as { type?: string; name?: string; input?: { file_path?: unknown } };
-      const path = input?.file_path;
-      if (type === "tool_use" && (name === "Write" || name === "Edit") && typeof path === "string" && relative(cwd, path).startsWith("..")) return path;
-    }
-  }
-  return undefined;
 }
 
 function build(ticket: string): { refusals: string[]; verdict: string } {
