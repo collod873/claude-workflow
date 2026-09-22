@@ -38,7 +38,3 @@ venv/
 .ruff_cache/
 # Agent worktrees are machine-local sessions, never part of the tree they branch from.
 .claude/worktrees
-
-# ~/bin/md-html's rendered page for the doc beside it, rebuilt from that .md on every edit
-# (the md-html-refresh hook). A build of a tracked file, never the source of one.
-docs/**/*.html

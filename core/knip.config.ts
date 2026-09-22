@@ -43,7 +43,6 @@ const calledTests = under("core").filter((file) => file.endsWith(".test.ts") && 
 export default {
   entry: [...roots, ...calledTests],
   project: ["core/**/*.{js,mjs,ts}"],
-  ignoreWorkspaces: ["lib/md-html"],
   includeEntryExports: true,
   vitest: false,
   eslint: { config: ["core/eslint.config.js"] },
