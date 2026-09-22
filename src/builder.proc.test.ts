@@ -1,6 +1,7 @@
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { DENIED } from "./deny-list.ts";
-import { building, heard, plant } from "./scenarios.ts";
+import { building, heard, plant, scratch, writesOutsideRepo } from "./scenarios.ts";
 
 const BUILDS = "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n";
 const GREEN_ONCE_BUILT = [
@@ -34,6 +35,24 @@ describe("the builder builds against the brief, with one resumed repair round (#
     expect(stdin(2)).toContain(tail);
     expect(stdin(2)).not.toContain(head);
     expect((stdin(2).match(/x/g) ?? []).length).toBeLessThan(50000);
+  });
+
+  it("hands the model a permission mode that lets it write a path under .claude/, so a ticket claiming one is built instead of refused", () => {
+    const { run, argv } = building();
+
+    run();
+
+    expect(argv(1)).toContain("--permission-mode\nbypassPermissions");
+  });
+
+  it("ends red naming the path when the model writes a file outside the repo", () => {
+    const outside = join(scratch("outside-"), "secret.txt");
+    const { run } = building({ claude: writesOutsideRepo(outside) });
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(outside);
   });
 
   it("refuses an edit to the author's test files, beside the shared deny list, and runs only its check commands", () => {

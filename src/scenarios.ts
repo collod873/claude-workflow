@@ -271,6 +271,11 @@ export function briefing({
 
 const WROTE_A_TEST = 'printf \'import { it } from "vitest";\\nit("names the behaviour the criterion asks for", () => {});\\n\' >src/ticket-shape.test.ts\n';
 
+export function writesOutsideRepo(path: string): string {
+  const event = { type: "assistant", message: { content: [{ type: "tool_use", name: "Write", input: { file_path: path } }] } };
+  return `printf '%s\\n' '${JSON.stringify(event)}'\n`;
+}
+
 export function authoring({ body = wellFormedTicket, claude = WROTE_A_TEST, npx = CHECK_RED, reads = true } = {}) {
   const root = scratch("test-author-");
   const session = join(root, "session");

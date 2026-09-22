@@ -3,7 +3,7 @@ import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { brief, capped, onDisk } from "./brief.ts";
 import { RAN_NO_TESTS, runCheck, type Shell } from "./check-runner.ts";
-import { STATIC, stageArgv, stageRefusals } from "./deny-list.ts";
+import { STATIC, stageArgv, stageRefusals, writtenOutsideRepo } from "./deny-list.ts";
 import { checks, claims, quoted } from "./ticket-shape.ts";
 
 const STAGE = "test author";
@@ -83,7 +83,7 @@ function authorRefusals(ticket: string): { refusals: string[]; setAside: number 
   const briefed = brief({ ticket, body, tests: [], read: onDisk });
   if (briefed.refusals.length > 0) return { refusals: briefed.refusals, setAside: 0 };
   const commands = checks(body).map(({ command }) => command);
-  const argv = [...stageArgv(commands), "--permission-mode", "bypassPermissions"];
+  const argv = [...stageArgv(commands), "--output-format", "stream-json", "--verbose"];
   const unfenced = stageRefusals(STAGE, argv);
   if (unfenced.length > 0) return { refusals: unfenced, setAside: 0 };
   const cwd = process.cwd();
@@ -93,6 +93,8 @@ function authorRefusals(ticket: string): { refusals: string[]; setAside: number 
   const spent = spawnSync("claude", argv, { input: handedOn(briefed.text, commands), encoding: "utf8" });
   const wrote = () => [...changed(cwd)].filter(([path]) => !before.has(path));
   const outside = setAside(cwd, wrote().filter(([path]) => !path.endsWith(AUTHORED) && path !== FIXTURES), kept);
+  const stray = writtenOutsideRepo(cwd, spent.stdout);
+  if (stray !== undefined) return { refusals: [`the ${STAGE} wrote outside the repo: ${stray}`], setAside: outside };
   if (spent.status !== 0) return { refusals: [`the ${STAGE} ended ${spent.status}: ${quoted((spent.stderr || spent.stdout).trim().split("\n")[0])}`], setAside: outside };
   if (!wrote().some(([path]) => path.endsWith(AUTHORED))) return { refusals: ["the author wrote nothing, so it wrote no test for any criterion"], setAside: outside };
   const { refusals, ran } = judged(body, cwd);

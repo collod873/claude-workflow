@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { type Shell } from "./check-runner.ts";
 import { DENIED } from "./deny-list.ts";
-import { authoring, heard, plant, scratch, wellFormedTicket } from "./scenarios.ts";
+import { authoring, heard, plant, scratch, wellFormedTicket, writesOutsideRepo } from "./scenarios.ts";
 import { handedOn as prompted, uncovered } from "./test-author.ts";
 
 const ran = (stdout: string, status: number): Shell => () => ({ status, stdout, stderr: "" });
@@ -94,6 +94,16 @@ describe("the test author writes one failing test per criterion, or ends red (#6
     run();
 
     expect(handedOn()).toContain("--permission-mode\nbypassPermissions");
+  });
+
+  it("ends red naming the path when the model writes a file outside the repo", () => {
+    const outside = join(scratch("outside-"), "secret.txt");
+    const { run } = authoring({ claude: writesOutsideRepo(outside) });
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(outside);
   });
 
   it("ends red naming the criterion whose check still passes, and writes nothing", () => {
