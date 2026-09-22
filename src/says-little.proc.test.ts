@@ -5,7 +5,7 @@ import { machinePage } from "./machine-page.ts";
 import { parts, type Part } from "./parts.ts";
 import { coveredByCheck } from "./check-covers.ts";
 import { LINE_LIMIT, MOST_LINES, linesAllowed as allowedFor, overLimit } from "./post.ts";
-import { MAIN_RED, authoring, briefing, building, checkRepo, checking, execute, filing, landSession, minting, misshapenTicket, scratch, script, starting, wellFormedNote, wellFormedTicket, type Run } from "./scenarios.ts";
+import { MAIN_RED, authoring, briefing, building, checkRepo, checking, execute, filing, landSession, minting, misshapenTicket, saving, scratch, script, starting, wellFormedNote, wellFormedTicket, type Run } from "./scenarios.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
 const NOISE = "a line a tool prints that nobody needed to read\n".repeat(40).trim();
@@ -60,6 +60,10 @@ const scenarios: Record<string, Scenario[]> = {
     { label: "building to the checks", run: () => building({ npx: GREEN }).run() },
     { label: "ending red after the repair round", run: () => building().run() },
     { label: "refusing a claim over the cap", run: () => building({ claimed: { "src/ticket-shape.ts": "export const filler = 1;\n".repeat(3000) } }).run() },
+  ],
+  "bin/save": [
+    { label: "saving a build", run: () => saving().run() },
+    { label: "with the push refused", run: () => saving({ remoteRefuses: NOISE }).run() },
   ],
   "bin/test-author": [
     { label: "writing a failing test for each criterion", run: () => authoring().run() },
