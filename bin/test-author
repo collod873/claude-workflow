@@ -26,7 +26,7 @@ red() {
   exit 1
 }
 
-node "$src/test-author.ts" "$ticket" 2>"$err" || red "$(head -1 "$err")"
+aside=$(node "$src/test-author.ts" "$ticket" 2>"$err") || red "$(head -1 "$err")"
 
 written=$(git status --porcelain -uall -- '*.test.ts' | grep -c '')
 if (( written == 0 )); then
@@ -39,4 +39,6 @@ git checkout --quiet -b "$branch" 2>>"$err" &&
   git commit --quiet -m "Hold #$ticket to one failing test per criterion" 2>>"$err" ||
   red "the tests would not commit on $branch"
 
-printf 'test-author: #%s has a failing test for each criterion, %s written on %s\n' "$ticket" "$written" "$branch"
+kept=""
+(( aside > 0 )) && kept="; set aside $aside files it wrote outside test files"
+printf 'test-author: #%s has a failing test for each criterion, %s written on %s%s\n' "$ticket" "$written" "$branch" "$kept"
