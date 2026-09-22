@@ -83,7 +83,7 @@ function authorRefusals(ticket: string): { refusals: string[]; setAside: number 
   const briefed = brief({ ticket, body, tests: [], read: onDisk });
   if (briefed.refusals.length > 0) return { refusals: briefed.refusals, setAside: 0 };
   const commands = checks(body).map(({ command }) => command);
-  const argv = stageArgv(commands);
+  const argv = [...stageArgv(commands), "--permission-mode", "bypassPermissions"];
   const unfenced = stageRefusals(STAGE, argv);
   if (unfenced.length > 0) return { refusals: unfenced, setAside: 0 };
   const cwd = process.cwd();
@@ -94,6 +94,7 @@ function authorRefusals(ticket: string): { refusals: string[]; setAside: number 
   const wrote = () => [...changed(cwd)].filter(([path]) => !before.has(path));
   const outside = setAside(cwd, wrote().filter(([path]) => !path.endsWith(AUTHORED) && path !== FIXTURES), kept);
   if (spent.status !== 0) return { refusals: [`the ${STAGE} ended ${spent.status}: ${quoted((spent.stderr || spent.stdout).trim().split("\n")[0])}`], setAside: outside };
+  if (!wrote().some(([path]) => path.endsWith(AUTHORED))) return { refusals: ["the author wrote nothing, so it wrote no test for any criterion"], setAside: outside };
   const { refusals, ran } = judged(body, cwd);
   const unrun = setAside(cwd, wrote().filter(([path]) => path.endsWith(AUTHORED) && !ran.has(path)), kept);
   return { refusals, setAside: outside + unrun };
