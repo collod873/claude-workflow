@@ -31,6 +31,10 @@ const PROTOTYPED = [
   "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts",
   "",
 ].join("\n");
+const WROTE_A_FIXTURE = [
+  'printf \'import { it } from "vitest";\\nit("names the behaviour the criterion asks for", () => {});\\n\' >src/ticket-shape.test.ts',
+  "printf 'export const fixture = 1;\\n' >src/scenarios.ts",
+].join("\n");
 const GREEN_WITH_PROTOTYPE = [
   "if [ -e src/prototype.ts ]; then printf '      Tests  1 passed (1)\\n'; exit 0; fi",
   "printf '      Tests  1 failed (1)\\n'",
@@ -118,6 +122,24 @@ describe("the test author writes one failing test per criterion, or ends red (#6
 
     expect(handedOn()).toContain("Bash(bin/check static)");
     expect(prompted("", [])).toMatch(/`bin\/check static`.*comments.*em dash.*src\/scenarios\.ts/s);
+  });
+
+  it("keeps the shared fixtures it adds and commits them with its tests", () => {
+    const { run, committed } = authoring({ claude: `${WROTE_A_FIXTURE}\n` });
+
+    const result = run();
+
+    expect(heard(result)).toEqual({ status: 0, stderr: "", lines: [expect.not.stringContaining("set aside")] });
+    expect(committed()).toEqual(["src/scenarios.ts", "src/ticket-shape.test.ts"]);
+  });
+
+  it("lets the model run the static gates under either spelling of the path", () => {
+    const { run, handedOn } = authoring();
+
+    run();
+
+    expect(handedOn()).toContain("Bash(bin/check static)");
+    expect(handedOn()).toContain("Bash(./bin/check static)");
   });
 
   it("spends no model on a ticket GitHub will not hand over", () => {
