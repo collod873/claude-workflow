@@ -13,6 +13,7 @@ fi
 
 src="$(cd "${BASH_SOURCE[0]%/*}/../src" && pwd)"
 top=$(git rev-parse --show-toplevel) || exit 1
+cd "$top" || exit 1
 log="$(git rev-parse --path-format=absolute --git-common-dir)/machine-logs/start-$ticket.log"
 mkdir -p "${log%/*}"
 [[ $log == "$top/"* ]] && shown="${log#"$top/"}" || shown="$log"
