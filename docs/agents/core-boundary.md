@@ -62,8 +62,6 @@ Hooks fire in every session, core sessions included. `~/.claude/settings.json` n
 `collod873/agent-hooks` at `~/.agents/hooks`, which owns every hook that fires in every repo on the
 workstation, session capture included. This checkout registers none.
 
-`bin/link-workstation --apply` links this repo's `bin/` tools into `~/bin` and does nothing else.
-
 Nothing else fires here. The gates that judged a core edit during a session judged it nowhere: they
 were path scoped to markdown and to the hooks directory itself, or contract scoped to a
 `.claude/contract.json` this repo never had. A core edit is judged when it is pushed, and the

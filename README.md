@@ -36,7 +36,7 @@ session, so run it by hand before believing core is sound.
 judged by `npm test`, `npm run lint` and `npm run typecheck`, which nothing fires automatically.
 
 No hook is wired here. Every hook on the workstation, session capture included, lives in
-`collod873/agent-hooks`. `bin/link-workstation` links `bin/` into `~/bin`.
+`collod873/agent-hooks`.
 
 ## Landing
 
