@@ -37,10 +37,10 @@ jobs:
         env:
           CORE_APP_CLIENT_ID: ${{ vars.CORE_APP_CLIENT_ID }}
           CORE_APP_PRIVATE_KEY: ${{ secrets.CORE_APP_PRIVATE_KEY }}
-        run: core/bin/app-token
+        run: bin/app-token
 
       - id: check
-        run: core/check
+        run: bin/check
 
       - if: failure() && steps.check.conclusion == 'failure'
-        run: tail -n 60 "$(git rev-parse --git-common-dir)"/core-logs/check-*.log
+        run: tail -n 60 "$(git rev-parse --git-common-dir)"/machine-logs/check-*.log

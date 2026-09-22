@@ -1,0 +1,46 @@
+#!/bin/bash
+set -uo pipefail
+
+repo="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
+PATH="$repo/node_modules/.bin:$PATH"
+cd "$repo" || exit 1
+
+limit=200
+log="$(git rev-parse --path-format=absolute --git-common-dir)/machine-logs/check-$(git rev-parse --short HEAD)-${repo##*/}.log"
+mkdir -p "${log%/*}"
+find "${log%/*}" -maxdepth 1 -type f -name '*.log' -mmin +10080 -delete 2>/dev/null
+rm -f "$log"
+[[ $log == "$repo/"* ]] && shown="${log#"$repo/"}" || shown="$log"
+
+names=""
+located=""
+run() {
+  local name=$1 output at
+  shift
+  if ! output=$("$@" 2>&1); then
+    printf -- '--- %s ---\n%s\n' "$name" "$output" >>"$log"
+    at=$(grep -oE '[A-Za-z0-9_./-]+\.(ts|js|json)(:[0-9]+|\([0-9]+)?' <<<"$output" | grep -m1 -E '[:(][0-9]+$' ||
+      grep -m1 -oE '[A-Za-z0-9_./-]+\.(ts|js|json)' <<<"$output")
+    at="${at#"$repo/"}"
+    at="${at/(/:}"
+    names="$names $name"
+    located="$located${located:+,} $name${at:+ $at}"
+  fi
+}
+
+run typecheck tsc --noEmit --pretty false -p tsconfig.json
+run lint eslint --config eslint.config.js
+run unused knip --config knip.config.ts --no-config-hints
+run clones jscpd src --threshold 0 --min-tokens 50 --min-lines 5 --format typescript,javascript --silent
+run test vitest run --config vitest.config.ts
+run prompts node src/prompt-bytes.ts
+run links node src/part-links.ts
+
+if [ -z "$names" ]; then
+  printf 'bin/check: passed\n'
+  exit 0
+fi
+message="bin/check: FAILED$located; log $shown"
+((${#message} > limit)) && message="bin/check: FAILED$names; log $shown"
+printf '%s\n' "$message"
+exit 1

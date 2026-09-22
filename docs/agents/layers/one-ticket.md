@@ -1,12 +1,12 @@
 # One ticket
 
-The Core's first layer: the owner and a session agree what is wanted, the session files a
+The machine's first layer: the owner and a session agree what is wanted, the session files a
 ticket, and the machine builds it to merged with proof it does what was meant. Signed by the owner
 in session on 2026-09-17 ([ruling ticket](https://github.com/collod873/claude-workflow/issues/665)),
 judged against the [charter](../charter.md). Only the owner changes it.
 
-Each rule below names the enforcer the Core ships for it. Which of them run is not kept here: the
-generated machine page shows it, worked out from the parts the Core registers. The Core is built by hand until it merges one ticket itself.
+Each rule below names the enforcer the machine ships for it. Which of them run is not kept here: the
+generated machine page shows it, worked out from the parts the machine registers. The machine is built by hand until it merges one ticket itself.
 
 **Where it runs.** This repo. Lumaria enrols later, by a stub, when the owner asks. app-starter is
 not enrolled.
@@ -15,7 +15,7 @@ not enrolled.
 and wave order go to Big jobs; a spec's children take this path unchanged. Counting over history
 (tickets closed unbuilt, the fixer's test rewrites, the reviewer's drift rate, tickets closed with
 no closing record) goes to Look-back. The session close gate's pass-through (rule census M5) left with
-the old session hooks; the Core never relies on it, because only its own
+the old session hooks; the machine never relies on it, because only its own
 after-merge step closes a built ticket.
 
 ## The path
@@ -32,7 +32,7 @@ after-merge step closes a built ticket.
 8. **Merge.** GitHub merges when the required checks pass on an up-to-date branch.
 9. **Close.** The merge fires the after-merge run on the stable machine. It runs the ticket's checks
    on the merge commit, posts the closing record and the speed report, and closes the ticket.
-10. **Promote.** If the merge changed the Core, the after-merge run builds a sample ticket on
+10. **Promote.** If the merge changed the machine, the after-merge run builds a sample ticket on
     the new copy. Clean moves the `stable` tag; red reverts the merge through a PR and files a
     ticket carrying the sample's log.
 
@@ -84,7 +84,7 @@ It does one of three things:
 | The machine acts as its GitHub App and never falls back to `GITHUB_TOKEN` where the App is needed | The token step in each stub | The token step fails red when the key is absent; probe fact 5 |
 | Work is never thrown away: the branch is pushed before anything can refuse it | The save step | A test that the save step pushes before the gate, the review and any branch update (13 finished builds were lost to a pre-push rebase) |
 | Done means the ticket's checks pass on the merge commit on main, run by the stable machine | The after-merge step | Not yet shipped. The closer runs on the merge SHA only, refuses `UNVERIFIED` criteria on a ticket, and records that each check was red at base. Until it lands nothing refuses a close, so a ticket closed by hand carries no proof that it was done |
-| The owner never fixes a stuck run and is never asked from this layer | The Runs table | A test that every stop the Core's code can reach appears in the Runs table with a clearer who is not the owner (one allowed exception: the App key) |
+| The owner never fixes a stuck run and is never asked from this layer | The Runs table | A test that every stop the machine's code can reach appears in the Runs table with a clearer who is not the owner (one allowed exception: the App key) |
 | The fixer gets one turn per ticket and never edits the owner's quoted words | The fixer stage | The fixer stage refuses to start when the ticket already carries a fixer marker; its ticket write refuses a body whose `## Why` quote is not byte-identical |
 | Every green build is read against `## Why` before it merges | The reviewer stage, a required check | The ruleset requires the reviewer's check; a drift verdict fails it and hands its gaps to the fixer, with no filter between them |
 | A machine change takes over only after a sample ticket builds clean on it | The after-merge step | The `stable` tag ruleset; the sample build |
@@ -112,7 +112,7 @@ The App is not a PAT: its key has no expiry and nothing needs renewing. A PAT's 
 pipeline on a day nobody chose, is what the deleted lanes refused them for. `anthropics/claude-code-action` is not used; it wraps the same CLI and stops no
 failure the flags above leave.
 
-**Lane parts that port in**, each rewritten into the Core as its audit verdict says:
+**Lane parts that port in**, each rewritten into the machine as its audit verdict says:
 
 - **Ticket shape and `file-issue` (T1).** Adds the 3-criteria cap, the stand-in refusal, `## Why`,
   and red-at-filing with no `--ack`. The claim-line cap goes; claims stay as brief input.
@@ -186,15 +186,15 @@ Build stages do not load the charter or this page. Each stage is handed what it 
 
 What keeps this ruling true with no hand audit:
 
-- **The growth-limit tests**, from the Core's first commit: one-screen length, a part
+- **The growth-limit tests**, from the machine's first commit: one-screen length, a part
   links a real failure, no timers, no drop in test count, and every charter rule naming an enforcer
   that exists.
 - **The enforcer test**, pointed at this page as well as the charter: every Rules row names an
-  enforcer registered in the Core or shows as NOT ENFORCED YET on the machine page, and every
+  enforcer registered in the machine or shows as NOT ENFORCED YET on the machine page, and every
   registered enforcer names a row that exists.
 - **The stops test**: every stop the code can reach is a Runs row with a clearer who is not the
   owner, bar the App key.
-- **The generated machine page**, length-tested, from which the stops test reads the Core's
+- **The generated machine page**, length-tested, from which the stops test reads the machine's
   stops.
 - **The probe**, run before the first build and again inside the sample build whenever a merge
   touches a stub, a ruleset or the token step. It proves five facts, and any failure reopens this

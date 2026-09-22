@@ -36,10 +36,10 @@ One of the four parts the machine is described in: **One ticket**, **Big jobs**,
 **Look-back**. Which of them is built, and what each covers, is the Charter's to say.
 _Avoid_: tier, level
 
-**Core**:
-The machine, `core/`. There is one machine and this is it. It holds the Charter from its first
-commit, grows one Layer at a time, and is whole: nothing in it reaches outside.
-_Avoid_: new core, v2
+**Machine**:
+This repo: `src/` and `bin/`. There is one machine and this is it. It holds the Charter from its
+first commit and grows one Layer at a time.
+_Avoid_: core, new core, v2
 
 **Worker**:
 A part of the machine whose worth is the work it does: a step, a script, a stage.
@@ -69,18 +69,18 @@ _Avoid_: precondition, validation, check
 
 **Stub**:
 What a second repo carries in place of a lane: one trigger and one `uses:` at `@stable`, the shape
-`core/stub-shape.test.ts` holds. Defined by what it lacks: a stub has no content, which is the whole
+`src/stub-shape.test.ts` holds. Defined by what it lacks: a stub has no content, which is the whole
 reason it cannot drift and the reason installing is a call rather than a copy.
 _Avoid_: shim, wrapper, vendored copy
 
 **Fixer**:
-The one fresh agent that clears a stuck ticket in the Core, reading why the ticket exists
+The one fresh agent that clears a stuck ticket in the machine, reading why the ticket exists
 before the failure. It fixes the code or the ticket itself, or closes the ticket unbuilt; it never
 hands back, and the owner is never asked.
 _Avoid_: mechanic, fresh eyes, repair agent
 
 **Stable machine**:
-The tagged copy of the Core every ticket runs on and every pull request is judged by. `main`
+The tagged copy of the machine every ticket runs on and every pull request is judged by. `main`
 is the candidate; a change to the machine becomes stable only after a sample ticket builds clean on
 it.
 _Avoid_: prod, release, pinned version

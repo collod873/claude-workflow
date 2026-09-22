@@ -1,0 +1,38 @@
+#!/bin/bash
+set -uo pipefail
+
+usage="start: usage: start <ticket number>"
+shown_refusals=4
+most_shown=5
+
+ticket=${1:-}
+if [[ $# -ne 1 || ! $ticket =~ ^[0-9]+$ ]]; then
+  printf '%s\n' "$usage" >&2
+  exit 2
+fi
+
+src="$(cd "${BASH_SOURCE[0]%/*}/../src" && pwd)"
+top=$(git rev-parse --show-toplevel) || exit 1
+log="$(git rev-parse --path-format=absolute --git-common-dir)/machine-logs/start-$ticket.log"
+mkdir -p "${log%/*}"
+[[ $log == "$top/"* ]] && shown="${log#"$top/"}" || shown="$log"
+
+git fetch --quiet origin main 2>/dev/null
+
+err=$(mktemp)
+trap 'rm -f "$err"' EXIT
+
+if node "$src/start.ts" "$ticket" 2>"$err"; then
+  printf 'start: #%s is ready to build from %s\n' "$ticket" "$(git rev-parse --short=7 HEAD)"
+  exit 0
+fi
+
+count=$(grep -c '' "$err")
+{ printf '%s refusals\n' "$count"; cat "$err"; } >"$log"
+if (( count > most_shown )); then
+  head -"$shown_refusals" "$err" >&2
+  printf 'start: #%s refused, %s refusals, %s shown; no model spent; log %s\n' "$ticket" "$count" "$shown_refusals" "$shown" >&2
+else
+  cat "$err" >&2
+fi
+exit 1

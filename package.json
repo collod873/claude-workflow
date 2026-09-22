@@ -16,23 +16,5 @@
     "typescript-eslint": "^8.67.0",
     "vitest": "^4.1.11",
     "yaml": "^2.9.0"
-  },
-  "jscpd": {
-    "threshold": 0,
-    "format": [
-      "typescript"
-    ],
-    "minTokens": 50,
-    "minLines": 5,
-    "gitignore": true,
-    "ignore": [
-      "**/node_modules/**",
-      ".claude/worktrees/**",
-      "core/**"
-    ],
-    "reporters": [
-      "consoleFull"
-    ],
-    "absolute": true
   }
 }
