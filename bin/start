@@ -13,6 +13,7 @@ fi
 
 src="$(cd "${BASH_SOURCE[0]%/*}/../src" && pwd)"
 top=$(git rev-parse --show-toplevel) || exit 1
+cd "$top" || exit 1
 log="$(git rev-parse --path-format=absolute --git-common-dir)/machine-logs/start-$ticket.log"
 mkdir -p "${log%/*}"
 [[ $log == "$top/"* ]] && shown="${log#"$top/"}" || shown="$log"
@@ -23,6 +24,7 @@ err=$(mktemp)
 trap 'rm -f "$err"' EXIT
 
 if node "$src/start.ts" "$ticket" 2>"$err"; then
+  cat "$err" >&2
   printf 'start: #%s is ready to build from %s\n' "$ticket" "$(git rev-parse --short=7 HEAD)"
   exit 0
 fi

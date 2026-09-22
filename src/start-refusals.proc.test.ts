@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { heard, MAIN_RED, misshapenTicket, starting } from "./scenarios.ts";
+import { DELETED_CLAIM_TICKET, heard, MAIN_RED, MISSING_CONFIG_TICKET, misshapenTicket, RENAMED_CLAIM_TICKET, renamedAndDeletedHistory, starting } from "./scenarios.ts";
 import { mainRefusals } from "./start.ts";
 
 const CHECK_PASSES = "printf '      Tests  1 passed (1)\\n'\nexit 0\n";
@@ -78,5 +78,39 @@ describe("bin/start refuses a build before any model runs (#662)", () => {
     const result = run();
 
     expect(heard(result)).toEqual({ status: 0, stderr: "", lines: [expect.stringContaining("#721")] });
+  });
+});
+
+describe("bin/start rewrites or refuses on paths git's history knows are stale (#794)", () => {
+  it("rewrites a claim git records as renamed to its new path, on the ticket itself, and says so in one line", () => {
+    const { run, edited } = starting({ body: RENAMED_CLAIM_TICKET, history: renamedAndDeletedHistory });
+
+    const result = run();
+
+    const rewriteLines = result.stderr.split("\n").filter((line) => line.includes("src/old-name.ts") && line.includes("src/new-name.ts"));
+    expect(rewriteLines).toHaveLength(1);
+    expect(result.status).toBe(0);
+    expect(edited()).toContain("src/new-name.ts");
+    expect(edited()).not.toContain("src/old-name.ts");
+  });
+
+  it("refuses a claim git records as deleted, naming it, and spends no model", () => {
+    const { run, spentModel } = starting({ body: DELETED_CLAIM_TICKET, history: renamedAndDeletedHistory });
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("src/soon-deleted.ts");
+    expect(spentModel()).toBe(false);
+  });
+
+  it("refuses a check naming a config that does not exist, naming it, and spends no model", () => {
+    const { run, spentModel } = starting({ body: MISSING_CONFIG_TICKET, history: renamedAndDeletedHistory });
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("missing.config.ts");
+    expect(spentModel()).toBe(false);
   });
 });
