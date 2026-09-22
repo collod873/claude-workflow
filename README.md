@@ -1,46 +1,16 @@
 # claude-workflow
 
-The machine that takes what the owner wants done and ships it as merged code. The domain here is the machinery itself, not any project it ships.
+The machine that takes what the owner wants done and ships it as merged code.
 
-## Start here
-
-**[`docs/agents/charter.md`](docs/agents/charter.md)**: what the machine is for, and the enforcer
-holding every rule. Signed by the owner, changed only by the owner. Read it before changing
-machinery, then run `core/bin/machine-page` for what has actually shipped.
-
-**[`CONTEXT.md`](CONTEXT.md)**: the glossary. What each term means here and which near-synonyms to
-avoid, so an argument is about the substance rather than about the word.
-
-**[`docs/agents/layers/`](docs/agents/layers/one-ticket.md)**: the layer rulings. One ticket is the
-centre and the only one signed so far.
-
-**[`docs/agents/core-boundary.md`](docs/agents/core-boundary.md)**: which check reads which file,
-and what fires the gate.
-
-**[Seven Workflow Eras](https://claude.ai/code/artifact/ce83212b-8c33-44da-bab8-b2121307cda0)**: the
-prior art. Why each of the seven systems before this one ended, and what survived the switch.
-
-## The Core
-
-`core/` is the machine. It is whole: no file in it reaches outside it. `core/check` is its gate,
-run by `.husky/pre-push` and by `core-check.yml` on every pull request. Nothing runs it during a
-session, so run it by hand before believing core is sound.
-
-No hook is wired here. Every hook on the workstation, session capture included, lives in
-`collod873/agent-hooks`.
-
-## Landing
-
-`main` takes no direct push, the owner's included. Commit locally, then `core/bin/land` opens a
-pull request and merges it.
-
-## Layout
+- [`CLAUDE.md`](CLAUDE.md): how to work here, landing and the gate included.
+- [`docs/agents/charter.md`](docs/agents/charter.md): what the machine is for, and the enforcer
+  holding every rule. Only the owner changes it.
+- [`docs/agents/layers/`](docs/agents/layers/one-ticket.md): the layer rulings.
+- [`CONTEXT.md`](CONTEXT.md): the glossary.
 
 ```
 .
-├── CLAUDE.md         # project instructions for Claude Code
-├── CONTEXT.md        # the glossary: what the words mean here
-├── core/             # the machine, and core/check, its gate
-├── docs/agents/      # the charter, the layer rulings, what judges what
-└── docs/research/    # the evidence behind them, archived as written
+├── bin/    # the commands: bin/check, bin/land, bin/file-issue, ...
+├── src/    # the code they run, and its tests
+└── docs/   # the charter and the layer rulings
 ```
