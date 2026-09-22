@@ -6,8 +6,7 @@ in session on 2026-09-17 ([ruling ticket](https://github.com/collod873/claude-wo
 judged against the [charter](../charter.md). Only the owner changes it.
 
 Each rule below names the enforcer the Core ships for it. Which of them run is not kept here: the
-generated machine page shows it, worked out from the parts the Core registers. The Core is built by hand until it merges one ticket itself
-([ADR-0200](../../adr/0200-the-machine-is-rebuilt-as-a-small-core-in-its-own-folder.md)).
+generated machine page shows it, worked out from the parts the Core registers. The Core is built by hand until it merges one ticket itself.
 
 **Where it runs.** This repo. Lumaria enrols later, by a stub, when the owner asks. app-starter is
 not enrolled.
@@ -15,8 +14,8 @@ not enrolled.
 **Out of this layer.** Queue order, collisions and claim holds go to Many at once. Slicing a spec
 and wave order go to Big jobs; a spec's children take this path unchanged. Counting over history
 (tickets closed unbuilt, the fixer's test rewrites, the reviewer's drift rate, tickets closed with
-no closing record) goes to Look-back. The session close gate's pass-through (rule census M5) is Old
-Workstation session code, frozen with it; the Core never relies on it, because only its own
+no closing record) goes to Look-back. The session close gate's pass-through (rule census M5) left with
+the old session hooks; the Core never relies on it, because only its own
 after-merge step closes a built ticket.
 
 ## The path
@@ -104,7 +103,7 @@ It does one of three things:
 | A ruleset on main with strict required checks and no bypass | Verify's PR verdict (T6), Integrate's merge decision (T7) | 69 tests deleted by direct push (#652); Verify judged trunk, not the PR |
 | GitHub auto-merge | Integrate's merge call | Integrate: 27 failed and 11 cancelled runs of 143 |
 | Server-side branch update by the App | The four rebase-and-land copies (C1, V24) | 13 green builds discarded on conflict |
-| A GitHub App installation token per job | The `GITHUB_TOKEN` dispatch chain (`run-ended`, `ratifier-merged`, `ci.yml` ring) | Token merges start no runs, so nothing checked main after a lane merge (ADR-0164); token PRs wait for a human approval click |
+| A GitHub App installation token per job | The `GITHUB_TOKEN` dispatch chain (`run-ended`, `ratifier-merged`, `ci.yml` ring) | Token merges start no runs, so nothing checked main after a lane merge; token PRs wait for a human approval click |
 | `concurrency` keyed per ticket with `queue: max` | Groups that cancel a waiting run and strike it (V3) | #516: five Integrate runs cancelled, PRs stranded |
 | `timeout-minutes` per job | The in-process lane budget (V4) | A runaway session with no wall |
 | Claude Code CLI flags: `--model`, `--tools`, `--setting-sources ""`, `--json-schema`, `--resume` | `stage.ts`'s wrappers and full tool surface (V20) | About 31k tokens paid before the prompt says anything |
@@ -187,7 +186,7 @@ Build stages do not load the charter or this page. Each stage is handed what it 
 
 What keeps this ruling true with no hand audit:
 
-- **ADR-0200's growth-limit tests**, from the Core's first commit: one-screen length, a part
+- **The growth-limit tests**, from the Core's first commit: one-screen length, a part
   links a real failure, no timers, no drop in test count, and every charter rule naming an enforcer
   that exists.
 - **The enforcer test**, pointed at this page as well as the charter: every Rules row names an
@@ -209,7 +208,7 @@ What keeps this ruling true with no hand audit:
 - **The 3-criteria trial's sizing measurement**: the clean-run rate and filing-to-merged time of
   the first 20 capped tickets, against #662's baseline. If they are no better, the cap goes.
 
-**Setup before the first build**, by hand in an owner session, per ADR-0200:
+**Setup before the first build**, by hand in an owner session:
 
 1. The owner creates the App from a checklist the session writes.
 2. The session turns on auto-merge and writes the two rulesets.

@@ -3,11 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "prepare": "husky && if [ -d .husky/_ ]; then git config core.hooksPath \"$(git rev-parse --path-format=absolute --git-common-dir)/../.husky/_\"; fi",
-    "test": "vitest run .claude bin",
-    "clones": "jscpd",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint . && knip"
+    "prepare": "husky && if [ -d .husky/_ ]; then git config core.hooksPath \"$(git rev-parse --path-format=absolute --git-common-dir)/../.husky/_\"; fi"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",

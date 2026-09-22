@@ -27,7 +27,7 @@ function unused(root: string): Run {
   return execute(UNUSED[0], root, { PATH: `${join(REPO, "node_modules", ".bin")}:${process.env.PATH ?? ""}` }, UNUSED.slice(1));
 }
 
-describe("knip counts its entries from the registered parts, not from the tests (ADR-0086, #710)", () => {
+describe("knip counts its entries from the registered parts, not from the tests (#710)", () => {
   it("fails an export that only a test imports, and passes one a registered part reaches", () => {
     const untouched = unused(planted(["core/knip.config.ts", "core/bin/reached"]));
 

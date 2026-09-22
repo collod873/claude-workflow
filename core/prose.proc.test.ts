@@ -144,7 +144,7 @@ function trackedCode(repo: string): string[] {
     .filter((file) => file !== "" && !file.startsWith(ARCHIVE) && existsSync(join(repo, file)));
 }
 
-describe("code this repo tracks carries no prose (ADR-0151)", () => {
+describe("code this repo tracks carries no prose", () => {
   const sources = trackedCode(REPO).map((path) => ({ path, source: readFileSync(join(REPO, path), "utf8") }));
 
   it("reads every tracked file but the archive, so an empty scan can never pass by accident", () => {
@@ -154,7 +154,6 @@ describe("code this repo tracks carries no prose (ADR-0151)", () => {
     expect(covered).toContain("core/check");
     expect(covered).toContain("core/eslint.config.js");
     expect(covered).toContain(".github/workflows/core-check.yml");
-    expect(covered).toContain("vitest.config.ts");
     expect(covered).not.toContain("docs/research/harness/hooks-per-event/drive.py");
   });
 
@@ -198,6 +197,6 @@ describe("code this repo tracks carries no prose (ADR-0151)", () => {
     const found = sources.flatMap((file) => proseIn(file.path, file.source));
     const report = found.map(({ path, line, text }) => `${path}:${line}  ${text}`).join("\n");
 
-    expect(found, `prose belongs in docs/adr/ or CONTEXT.md, never beside the code:\n${report}`).toHaveLength(0);
+    expect(found, `prose belongs in the commit message or CONTEXT.md, never beside the code:\n${report}`).toHaveLength(0);
   });
 });

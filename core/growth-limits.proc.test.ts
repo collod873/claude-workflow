@@ -121,7 +121,7 @@ function unknownEnforcements(repo: string, registry: Part[], rules: SignedRule[]
 
 const planted: Part = { name: "planted", file: "core/planted.ts", stops: "https://github.com/collod873/claude-workflow/issues/1" };
 
-describe("the Core holds the charter's growth limits (ADR-0200)", () => {
+describe("the Core holds the charter's growth limits", () => {
   it("1. the machine page lists every part and every signed rule and fits one screen", () => {
     const rules = signedRules(REPO);
     const page = machinePage(parts, rules);

@@ -32,7 +32,7 @@ function importsOutsideCore(repo: string): string[] {
     );
 }
 
-describe("the machine is all of core/ and nothing outside it (ADR-0200)", () => {
+describe("the machine is all of core/ and nothing outside it", () => {
   const copies: string[] = [];
 
   afterEach(() => {
