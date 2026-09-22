@@ -35,9 +35,13 @@ const WROTE_A_FIXTURE = [
   'printf \'import { it } from "vitest";\\nit("names the behaviour the criterion asks for", () => {});\\n\' >src/ticket-shape.test.ts',
   "printf 'export const fixture = 1;\\n' >src/scenarios.ts",
 ].join("\n");
+const WROTE_A_SANITY_TEST = [
+  'printf \'import { it } from "vitest";\\nit("names the behaviour the criterion asks for", () => {});\\n\' >src/ticket-shape.test.ts',
+  ": >src/_sanity.test.ts",
+].join("\n");
 const GREEN_WITH_PROTOTYPE = [
   "if [ -e src/prototype.ts ]; then printf '      Tests  1 passed (1)\\n'; exit 0; fi",
-  "printf '      Tests  1 failed (1)\\n'",
+  "printf ' FAIL  src/ticket-shape.test.ts > names the behaviour\\n      Tests  1 failed (1)\\n'",
   "exit 1",
   "",
 ].join("\n");
@@ -66,7 +70,7 @@ describe("the test author writes one failing test per criterion, or ends red (#6
 
     const result = run();
 
-    expect(heard(result)).toEqual({ status: 0, stderr: "", lines: [expect.stringContaining("set aside 2 files it wrote outside test files")] });
+    expect(heard(result)).toEqual({ status: 0, stderr: "", lines: [expect.stringContaining("set aside 2 files the checks did not judge")] });
     expect(committed()).toEqual(["src/ticket-shape.test.ts"]);
     expect(existsSync(join(session, "src", "prototype.ts"))).toBe(false);
     expect(readFileSync(join(session, "src", "ticket-shape.ts"), "utf8")).toBe("export const shaped = 1;\n");
@@ -131,6 +135,20 @@ describe("the test author writes one failing test per criterion, or ends red (#6
 
     expect(heard(result)).toEqual({ status: 0, stderr: "", lines: [expect.not.stringContaining("set aside")] });
     expect(committed()).toEqual(["src/scenarios.ts", "src/ticket-shape.test.ts"]);
+  });
+
+  it("sets aside a test file the checks did not run, and commits only the tests they judged", () => {
+    const { session, run, committed } = authoring({ claude: `${WROTE_A_SANITY_TEST}\n` });
+
+    const result = run();
+
+    expect(heard(result)).toEqual({ status: 0, stderr: "", lines: [expect.stringContaining("set aside 1 files")] });
+    expect(committed()).toEqual(["src/ticket-shape.test.ts"]);
+    expect(existsSync(join(session, "src", "_sanity.test.ts"))).toBe(false);
+  });
+
+  it("tells the model a prototype proves nothing and a claimed file not written yet already counts as red", () => {
+    expect(prompted("", [])).toMatch(/prototype proves nothing.*claimed file not written yet already counts as red/s);
   });
 
   it("lets the model run the static gates under either spelling of the path", () => {

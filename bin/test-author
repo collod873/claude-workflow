@@ -41,5 +41,5 @@ git checkout --quiet -b "$branch" 2>>"$err" &&
   red "the tests would not commit on $branch"
 
 kept=""
-(( aside > 0 )) && kept="; set aside $aside files it wrote outside test files"
+(( aside > 0 )) && kept="; set aside $aside files the checks did not judge"
 printf 'test-author: #%s has a failing test for each criterion, %s written on %s%s\n' "$ticket" "$written" "$branch" "$kept"

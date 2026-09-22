@@ -15,6 +15,7 @@ const UNIMPORTED = /Cannot find module '(\.[^']+)' imported from (.+?)\s*$/gm;
 const AUTHORED = ".test.ts";
 const FIXTURES = "src/scenarios.ts";
 const UNTRACKED = "??";
+const RAN = /[\w./-]+\.test\.ts/g;
 
 function awaitsTheBuild(body: string, cwd: string, output: string): boolean {
   const missing = [...output.matchAll(UNIMPORTED)].map(([, module, importer]) => relative(cwd, resolve(cwd, dirname(importer), module)));
@@ -22,13 +23,20 @@ function awaitsTheBuild(body: string, cwd: string, output: string): boolean {
   return missing.length > 0 && missing.every((path) => unwritten.has(path));
 }
 
-export function uncovered(body: string, cwd: string, run?: Shell): string[] {
-  return checks(body).flatMap(({ at, command }) => {
+function judged(body: string, cwd: string, run?: Shell): { refusals: string[]; ran: Set<string> } {
+  const ran = new Set<string>();
+  const refusals = checks(body).flatMap(({ at, command }) => {
     const { passed, why, output } = runCheck(command, cwd, run);
+    for (const [file] of output.matchAll(RAN)) ran.add(relative(cwd, resolve(cwd, file)));
     if (passed) return [`${at} has no failing test: \`${quoted(command)}\` already passes`];
     if (why !== RAN_NO_TESTS || awaitsTheBuild(body, cwd, output)) return [];
     return [`${at} has no failing test: \`${quoted(command)}\` ran no tests`];
   });
+  return { refusals, ran };
+}
+
+export function uncovered(body: string, cwd: string, run?: Shell): string[] {
+  return judged(body, cwd, run).refusals;
 }
 
 function changed(cwd: string): Map<string, string> {
@@ -43,12 +51,12 @@ function changed(cwd: string): Map<string, string> {
   return found;
 }
 
-function setAside(cwd: string, before: Map<string, string>, ticket: string): number {
+function keptFor(cwd: string, ticket: string): string {
   const logs = spawnSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd, encoding: "utf8" }).stdout.trim();
-  const kept = join(logs, "machine-logs", `test-author-${ticket}-set-aside`);
-  const outside = [...changed(cwd)].filter(([path]) => !before.has(path) && !path.endsWith(AUTHORED) && path !== FIXTURES);
-  if (outside.length === 0) return 0;
-  rmSync(kept, { recursive: true, force: true });
+  return join(logs, "machine-logs", `test-author-${ticket}-set-aside`);
+}
+
+function setAside(cwd: string, outside: [string, string][], kept: string): number {
   for (const [path, status] of outside) {
     const written = join(cwd, path);
     mkdirSync(dirname(join(kept, path)), { recursive: true });
@@ -78,6 +86,7 @@ export function handedOn(briefed: string, commands: string[]): string {
     "## What to write",
     `Write one failing test for each criterion above, and write nothing else. Your check commands are ${capped(commands.map((command) => `\`${command}\``).join(", "), COMMANDS_CAP)}.`,
     "Each ends red naming the behaviour its criterion asks for. A criterion with no failing test ends this stage red.",
+    `Anything you write outside test files and \`${FIXTURES}\`, and any test your check commands do not run, is removed before the checks judge, so a prototype proves nothing; a claimed file not written yet already counts as red.`,
     `\`${STATIC}\` runs the gates your tests must pass: no comments, no em dash, and no copied code, so build on the helpers in \`src/scenarios.ts\`. Its typecheck and unused gates stay red on a claimed file not written yet; that red is the builder's.`,
     "",
   ].join("\n\n");
@@ -94,11 +103,16 @@ function authorRefusals(ticket: string): { refusals: string[]; setAside: number 
   const unfenced = stageRefusals(STAGE, argv);
   if (unfenced.length > 0) return { refusals: unfenced, setAside: 0 };
   const cwd = process.cwd();
+  const kept = keptFor(cwd, ticket);
+  rmSync(kept, { recursive: true, force: true });
   const before = changed(cwd);
   const spent = spawnSync("claude", argv, { input: handedOn(briefed.text, commands), encoding: "utf8" });
-  const aside = setAside(cwd, before, ticket);
-  if (spent.status !== 0) return { refusals: [`the ${STAGE} ended ${spent.status}: ${quoted((spent.stderr || spent.stdout).trim().split("\n")[0])}`], setAside: aside };
-  return { refusals: uncovered(body, cwd), setAside: aside };
+  const wrote = () => [...changed(cwd)].filter(([path]) => !before.has(path));
+  const outside = setAside(cwd, wrote().filter(([path]) => !path.endsWith(AUTHORED) && path !== FIXTURES), kept);
+  if (spent.status !== 0) return { refusals: [`the ${STAGE} ended ${spent.status}: ${quoted((spent.stderr || spent.stdout).trim().split("\n")[0])}`], setAside: outside };
+  const { refusals, ran } = judged(body, cwd);
+  const unrun = setAside(cwd, wrote().filter(([path]) => path.endsWith(AUTHORED) && !ran.has(path)), kept);
+  return { refusals, setAside: outside + unrun };
 }
 
 if (import.meta.main) {

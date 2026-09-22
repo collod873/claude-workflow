@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { brief, CAP } from "./brief.ts";
 import { handedOn } from "./test-author.ts";
 
-export const CEILINGS: Record<string, number> = { "brief": 146, "test author": 631 };
+export const CEILINGS: Record<string, number> = { "brief": 146, "test author": 860 };
 
 const AUTHORED = "src/planted.test.ts";
 const HIRES = /(spawn|execFile)\w*\(\s*"claude"/;
