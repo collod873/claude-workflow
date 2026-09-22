@@ -57,7 +57,8 @@ const scenarios: Record<string, Scenario[]> = {
     { label: "refusing a claim over the cap", run: () => briefing({ claimed: { "src/ticket-shape.ts": "export const filler = 1;\n".repeat(3000) } }).run() },
   ],
   "bin/build": [
-    { label: "building to the checks", run: () => building().run() },
+    { label: "building to the checks", run: () => building({ npx: GREEN }).run() },
+    { label: "ending red after the repair round", run: () => building().run() },
     { label: "refusing a claim over the cap", run: () => building({ claimed: { "src/ticket-shape.ts": "export const filler = 1;\n".repeat(3000) } }).run() },
   ],
   "bin/test-author": [

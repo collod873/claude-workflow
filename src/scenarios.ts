@@ -306,6 +306,7 @@ export function building({
   tests = { "src/ticket-shape.test.ts": AUTHORED_TEST } as Record<string, string>,
   npx = CHECK_RED,
   sessionId = "sess-42",
+  claude = "",
 } = {}) {
   const root = scratch("builder-");
   const session = join(root, "session");
@@ -322,6 +323,7 @@ export function building({
       `n=$(( $(ls "${argvDir}" 2>/dev/null | wc -l) + 1 ))`,
       `printf '%s\\n' "$@" >"${argvDir}/$n"`,
       `cat >"${stdinDir}/$n"`,
+      claude,
       `printf '{"session_id":"${sessionId}"}\\n'`,
       "",
     ].join("\n"),
@@ -332,6 +334,8 @@ export function building({
     calls: () => readdirSync(argvDir).length,
     argv: (call: number) => readFileSync(join(argvDir, String(call)), "utf8"),
     stdin: (call: number) => (existsSync(join(stdinDir, String(call))) ? readFileSync(join(stdinDir, String(call)), "utf8") : ""),
+    committed: () => git(session, "show", "--name-only", "--format=%s", "HEAD").split("\n").filter((line) => line !== ""),
+    dirty: () => git(session, "status", "--porcelain"),
     run: (ticket = "724") => execute(join(BIN, "build"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, [ticket]),
   };
 }
