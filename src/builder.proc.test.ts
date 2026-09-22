@@ -20,7 +20,7 @@ describe("the builder builds against the brief, with one resumed repair round (#
 
     expect(heard(result).status).toBe(0);
     expect(calls()).toBe(2);
-    expect(argv(2)).toContain(`--resume ${sessionId}`);
+    expect(argv(2)).toContain(`--resume\n${sessionId}`);
     expect(stdin(2)).toContain(tail);
     expect(stdin(2)).not.toContain(head);
     expect((stdin(2).match(/x/g) ?? []).length).toBeLessThan(50000);

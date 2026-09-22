@@ -95,7 +95,7 @@ export function brief({ ticket, body, tests, read }: Asked): { text: string; ref
   };
 }
 
-function authoredTests(): string[] {
+export function authoredTests(): string[] {
   const changed = spawnSync("git", ["diff", "--name-only", "origin/main...HEAD"], { encoding: "utf8" });
   return changed.status === 0 ? changed.stdout.split("\n").filter((path) => AUTHORED.test(path)) : [];
 }
