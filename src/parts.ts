@@ -103,6 +103,10 @@ export const parts: Part[] = [
     name: "bin/build",
     file: "bin/build",
     stops: "https://github.com/collod873/claude-workflow/issues/652",
+    holds: [
+      "Tests exist before the build starts. The builder never edits them; fresh eyes may fix a wrong one, giving its reason on the PR; no push lowers the test count",
+      "Tests exist before the build. The builder never edits them. The fixer may fix a wrong one, giving its reason on the PR. No push lowers the test count",
+    ],
   },
   {
     name: "src/deny-list.test.ts",

@@ -3,14 +3,11 @@ import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { brief, capped, onDisk } from "./brief.ts";
 import { RAN_NO_TESTS, runCheck, type Shell } from "./check-runner.ts";
-import { denyFlags, stageRefusals } from "./deny-list.ts";
+import { STATIC, stageArgv, stageRefusals } from "./deny-list.ts";
 import { checks, claims, quoted } from "./ticket-shape.ts";
 
 const STAGE = "test author";
-const MODEL = "sonnet";
-const WRITES = ["Read", "Edit", "Write"];
 const COMMANDS_CAP = 200;
-const STATIC = "bin/check static";
 const UNIMPORTED = /Cannot find module '(\.[^']+)' imported from (.+?)\s*$/gm;
 const AUTHORED = ".test.ts";
 const FIXTURES = "src/scenarios.ts";
@@ -65,19 +62,6 @@ function setAside(cwd: string, outside: [string, string][], kept: string): numbe
     else spawnSync("git", ["checkout", "--quiet", "--", path], { cwd });
   }
   return outside.length;
-}
-
-function stageArgv(commands: string[]): string[] {
-  return [
-    "--print",
-    "--model",
-    MODEL,
-    "--setting-sources",
-    "",
-    "--allowedTools",
-    [...WRITES, ...[...commands, STATIC, `./${STATIC}`].map((command) => `Bash(${command})`)].join(","),
-    ...denyFlags(),
-  ];
 }
 
 export function handedOn(briefed: string, commands: string[]): string {

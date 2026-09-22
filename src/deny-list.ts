@@ -45,8 +45,15 @@ export function deniedBy(tool: string, command = ""): string | undefined {
   return DENIED.find((rule) => stops(rule, tool, command));
 }
 
-export function denyFlags(): string[] {
-  return ["--disallowedTools", DENIED.join(",")];
+export const STATIC = "bin/check static";
+
+export function denyFlags(untouchable: string[] = []): string[] {
+  return ["--disallowedTools", [...DENIED, ...untouchable.map((path) => `Edit(${path})`)].join(",")];
+}
+
+export function stageArgv(commands: string[], untouchable: string[] = []): string[] {
+  const runs = [...commands, STATIC, `./${STATIC}`].map((command) => `Bash(${command})`);
+  return ["--print", "--model", "sonnet", "--setting-sources", "", "--allowedTools", ["Read", "Edit", "Write", ...runs].join(","), ...denyFlags(untouchable)];
 }
 
 export function stageRefusals(stage: string, argv: string[]): string[] {
