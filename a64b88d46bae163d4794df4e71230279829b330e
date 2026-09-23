@@ -1,0 +1,55 @@
+{
+ "version": 1,
+ "date": "2026-09-23",
+ "table": {
+  ".github/": {
+   "product": 0,
+   "test": 0,
+   "machinery": 48,
+   "docs": 0
+  },
+  "(root)": {
+   "product": 0,
+   "test": 0,
+   "machinery": 0,
+   "docs": 107
+  },
+  "bin/": {
+   "product": 252,
+   "test": 0,
+   "machinery": 50,
+   "docs": 0
+  },
+  "docs/": {
+   "product": 0,
+   "test": 0,
+   "machinery": 0,
+   "docs": 231
+  },
+  "eslint.config.js": {
+   "product": 0,
+   "test": 0,
+   "machinery": 32,
+   "docs": 0
+  },
+  "knip.config.ts": {
+   "product": 0,
+   "test": 0,
+   "machinery": 42,
+   "docs": 0
+  },
+  "src/": {
+   "product": 1536,
+   "test": 1880,
+   "machinery": 34,
+   "docs": 0
+  },
+  "vitest.config.ts": {
+   "product": 0,
+   "test": 0,
+   "machinery": 11,
+   "docs": 0
+  }
+ },
+ "keep": "bin/brief | debugs a brief by hand | run 5 times 09-18..09-22 (field-record.md)\ninline Bash fence in src/fence.ts | only thing holding the stage shell | e545f27 probe: bypassPermissions ignores the allow-list\ncatch {} in src/fence.ts | fails closed: unreadable hook input exits 2 | src/builder.proc.test.ts \"refuses a shell command its fence cannot read\"\nrulesets.proc.test | reads live main ruleset, goes red when weakened | red runs 35305506176, 35305234410 (09-18)\ngrowth-limits test 4 (test count) | stops silent test deletion; a \"Test count drop:\" line in a commit is the stated-reason escape | #652, PRs 805/806 used it\ncheck-runner zero-test rule | vitest -t with no match exits 0 | verified 2026-09-17\nloaded-docs, says-little, prose tests | each goes red on the real repo | tests-audit.md\nbin/land | only road to main | 78 runs, no red since 09-19\nfile-issue + ticket shape | refused real malformed tickets | 34 runs (field-record.md)\nem-dash gate in bin/land + em-dash.proc | charter's named enforcer | #681\nissue templates bug.yml/idea.yml | file the owner's raw words | 12 lines"
+}
