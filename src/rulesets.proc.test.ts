@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 const HOME = "collod873/claude-workflow";
 const CHECK = "check";
+const REVIEW = "review";
 const ON_MAIN = ["pull_request", "non_fast_forward", "deletion", "required_status_checks"];
 
 interface Live {
@@ -19,7 +20,7 @@ interface Ruled {
 }
 
 const RULED: Record<string, Ruled> = {
-  "main lands only through a PR": { ref: "~DEFAULT_BRANCH", rules: ON_MAIN, checks: [CHECK] },
+  "main lands only through a PR": { ref: "~DEFAULT_BRANCH", rules: ON_MAIN, checks: [CHECK, REVIEW] },
 };
 
 function requiredIn(ruleset: Live): { contexts: string[]; strict: boolean } {
@@ -81,7 +82,7 @@ describe("GitHub holds main, and this reads the ruleset it holds it with (#652)"
       "main lands only through a PR holds no non_fast_forward rule",
     ]);
     expect(refusals([{ ...main, rules: main.rules.map((rule) => (rule.type === "required_status_checks" ? { ...rule, parameters: {} } : rule)) }], ON_MAIN)).toEqual([
-      `main lands only through a PR requires no check, not ${CHECK}`,
+      `main lands only through a PR requires no check, not ${CHECK},${REVIEW}`,
       "main lands only through a PR takes a branch behind main",
     ]);
     expect(refusals([main], ["pull_request", "deletion"])).toEqual([
