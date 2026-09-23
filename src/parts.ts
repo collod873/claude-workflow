@@ -71,7 +71,7 @@ export const parts: Part[] = [
     lines: 5,
     holds: [
       "A ticket has 1 to 3 criteria (a trial), each with one `check:`. At least one check runs tests. Every check is red at filing. `## Why` quotes the owner",
-      "A grep or file check may sit beside a test check, never alone. A document ticket is graded against its question",
+      "Checks test the behaviour meant, not a stand-in like a file or a text match",
     ],
   },
   {
@@ -81,7 +81,7 @@ export const parts: Part[] = [
     lines: 5,
     holds: [
       "A ticket has 1 to 3 criteria (a trial), each with one `check:`. At least one check runs tests. Every check is red at filing. `## Why` quotes the owner",
-      "A grep or file check may sit beside a test check, never alone. A document ticket is graded against its question",
+      "Checks test the behaviour meant, not a stand-in like a file or a text match",
       "A build starts only from fresh main, only when main is green, and not when the ticket's checks already pass there",
     ],
   },
@@ -103,7 +103,6 @@ export const parts: Part[] = [
     stops: "https://github.com/collod873/claude-workflow/issues/663",
     holds: [
       "Tests exist before the build starts. The builder never edits them; the fixer may fix a wrong one, giving its reason on the PR; no push lowers the test count",
-      "Tests exist before the build. The builder never edits them. The fixer may fix a wrong one, giving its reason on the PR. No push lowers the test count",
     ],
   },
   {
@@ -112,7 +111,6 @@ export const parts: Part[] = [
     stops: "https://github.com/collod873/claude-workflow/issues/652",
     holds: [
       "Tests exist before the build starts. The builder never edits them; the fixer may fix a wrong one, giving its reason on the PR; no push lowers the test count",
-      "Tests exist before the build. The builder never edits them. The fixer may fix a wrong one, giving its reason on the PR. No push lowers the test count",
     ],
   },
   {
@@ -126,10 +124,8 @@ export const parts: Part[] = [
     file: "bin/close",
     stops: "https://github.com/collod873/claude-workflow/issues/808",
     holds: [
-      "Done means the ticket's checks pass on main, run by something that did not build it",
-      "Done means the ticket's checks pass on the merge commit on main, run by the closer",
+      "Done means the ticket's checks pass on the merge commit on main, run by something that did not build it",
       "A ticket goes from filing to merged in under an hour, and its longest wait is named; speed is reported, never a gate",
-      "Filing to merged is reported on every merge, with its longest wait named; never a gate",
     ],
   },
   {
@@ -142,7 +138,7 @@ export const parts: Part[] = [
     file: "src/growth-limits.proc.test.ts",
     stops: "https://github.com/collod873/claude-workflow/issues/399",
     holds: [
-      "Every rule on this page names an enforcer that exists",
+      "A part is added, or kept at its layer ruling, only for a failure that happened",
       "The whole machine fits on one generated screen; adding means fitting",
       "A part is fired by a real event, never a timer",
     ],
