@@ -457,3 +457,59 @@ export function saving({ remoteRefuses }: { remoteRefuses?: string } = {}) {
     run: (ticket = "726") => execute(join(BIN, "save"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, [ticket]),
   };
 }
+
+const CLOSER_TICKET = [
+  "## Why",
+  "",
+  'The owner, in session: "a closer proves the ticket is done before closing it".',
+  "",
+  "## Acceptance criteria",
+  "",
+  "- [ ] The fix lands - check: `test -f built.txt`",
+  "",
+  "## Files claimed",
+  "",
+  "- src/built.ts",
+  "",
+].join("\n");
+
+export function closing({ ticket = "812", ticketBody = CLOSER_TICKET, fixes = true } = {}) {
+  const root = scratch("closer-");
+  const session = join(root, "session");
+  const callsDir = join(root, "gh-calls");
+  mkdirSync(callsDir, { recursive: true });
+  mkdirSync(session, { recursive: true });
+  git(session, "init", "--quiet", "--initial-branch=main");
+  git(session, "config", "user.email", "closer@test");
+  git(session, "config", "user.name", "closer");
+  plant(session, "src/built.ts", "export const built = 1;\n");
+  git(session, "add", ".");
+  git(session, "commit", "--quiet", "-m", "base");
+  git(session, "checkout", "--quiet", "-b", `ticket/${ticket}`);
+  if (fixes) plant(session, "built.txt", "done\n");
+  git(session, "add", "-A");
+  git(session, "commit", "--quiet", "--allow-empty", "-m", `Build #${ticket} against its failing tests`);
+  git(session, "checkout", "--quiet", "main");
+  git(session, "merge", "--quiet", "--no-ff", "-m", `Merge pull request #900 from collod873/ticket/${ticket}`, `ticket/${ticket}`);
+  script(
+    join(root, "bin", "gh"),
+    [
+      `n=$(( $(ls "${callsDir}" 2>/dev/null | wc -l) + 1 ))`,
+      `printf '%s\\n' "$@" >"${callsDir}/$n"`,
+      'case "$*" in',
+      "  *\"issue view\"*)",
+      "    cat <<'BODY'",
+      ticketBody,
+      "BODY",
+      "    ;;",
+      "  *) exit 0 ;;",
+      "esac",
+      "",
+    ].join("\n"),
+  );
+  return {
+    session,
+    calls: () => readdirSync(callsDir).sort((a, b) => Number(a) - Number(b)).map((file) => readFileSync(join(callsDir, file), "utf8")),
+    run: () => execute(join(BIN, "close"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}` }),
+  };
+}
