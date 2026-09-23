@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { text as read } from "node:stream/consumers";
 import { emDashLines } from "./em-dash.ts";
-import { noteRefusals, ticketRefusals } from "./ticket-shape.ts";
+import { noteRefusals, rewriteRefusals, ticketRefusals } from "./ticket-shape.ts";
 
 export interface Posting {
   kind: string;
@@ -32,10 +32,17 @@ const KINDS: Record<string, Kind> = {
   judgement: { refuses: judgementRefusals, on: "pr", args: (pr, text) => ["pr", "comment", pr, "--body", text] },
 };
 
-export function postClosing(ticket: string, text: string, gh: Gh): { refusals: string[]; said: string } {
-  const { status, stdout, stderr } = gh(["issue", "comment", ticket, "--body", text]);
-  if (status !== 0) return { refusals: [`gh issue comment failed: ${(stderr || stdout).trim().split("\n")[0]}`], said: "" };
+function written(gh: Gh, args: string[]): { refusals: string[]; said: string } {
+  const { status, stdout, stderr } = gh(args);
+  if (status !== 0) return { refusals: [`gh ${args[0]} ${args[1]} failed: ${(stderr || stdout).trim().split("\n")[0]}`], said: "" };
   return { refusals: [], said: stdout.trim() };
+}
+
+export const commentOnTicket = (ticket: string, text: string, gh: Gh) => written(gh, ["issue", "comment", ticket, "--body", text]);
+
+export function rewriteTicket(ticket: string, read: string, rewrite: string, gh: Gh): { refusals: string[]; said: string } {
+  const refused = rewriteRefusals(read, rewrite);
+  return refused.length > 0 ? { refusals: refused, said: "" } : written(gh, ["issue", "edit", ticket, "--body", rewrite]);
 }
 
 export function post(posting: Posting, gh: Gh): { refusals: string[]; said: string } {
@@ -46,10 +53,7 @@ export function post(posting: Posting, gh: Gh): { refusals: string[]; said: stri
   if (on === undefined) return { refusals: [`a ${kind} carries no ${shape.on}`], said: "" };
   const refused = shape.refuses(text);
   if (refused.length > 0) return { refusals: refused, said: "" };
-  const args = shape.args(on, text);
-  const { status, stdout, stderr } = gh(args);
-  if (status !== 0) return { refusals: [`gh ${args[0]} ${args[1]} failed: ${(stderr || stdout).trim().split("\n")[0]}`], said: "" };
-  return { refusals: [], said: stdout.trim() };
+  return written(gh, shape.args(on, text));
 }
 
 if (import.meta.main) {

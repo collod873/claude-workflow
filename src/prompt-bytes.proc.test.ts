@@ -58,11 +58,11 @@ describe("every prompt holds a byte ceiling that only ever shrinks (#663)", () =
     mkdirSync(join(copy, "src"));
     writeFileSync(join(copy, "src", "judge.ts"), 'spawnSync("claude", argv);\n');
     writeFileSync(join(copy, "src", "quiet.ts"), 'spawnSync("gh", argv);\n');
-    writeFileSync(join(copy, "src", "fixer.ts"), 'import { runStage } from "./stage.ts";\n');
+    writeFileSync(join(copy, "src", "look-back.ts"), 'import { runStage } from "./stage.ts";\n');
     writeFileSync(join(copy, "src", "stage.ts"), 'spawnSync("claude", argv);\n');
     expect(unmeasured(copy, PROMPTS)).toEqual([
-      "src/fixer.ts hires a model and no prompt of that name is measured",
       "src/judge.ts hires a model and no prompt of that name is measured",
+      "src/look-back.ts hires a model and no prompt of that name is measured",
     ]);
   });
 });

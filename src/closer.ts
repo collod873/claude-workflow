@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runCheck } from "./check-runner.ts";
-import { postClosing } from "./post.ts";
+import { commentOnTicket } from "./post.ts";
 import { totalOutside } from "./reads-outside-brief.ts";
 import { checks, quoted } from "./ticket-shape.ts";
 
@@ -157,7 +157,7 @@ function close(): number {
   const pr = prNumber(subject);
   const prBody = pr === undefined ? undefined : ghText(["pr", "view", pr, "--json", "body", "--jq", ".body"]);
   const speed = speedReport(marksFor(ticket, pr), prBody === undefined ? undefined : totalOutside(prBody));
-  const posted = postClosing(ticket, record(ticket, gathered, speed), gh);
+  const posted = commentOnTicket(ticket, record(ticket, gathered, speed), gh);
   if (posted.refusals.length > 0) {
     console.error(`close: #${ticket} got no closing record: ${quoted(posted.refusals[0])}`);
     return 1;

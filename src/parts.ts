@@ -135,6 +135,12 @@ export const parts: Part[] = [
     holds: ["Every green build is read against `## Why` before it merges"],
   },
   {
+    name: "bin/fix",
+    file: "bin/fix",
+    stops: "https://github.com/collod873/claude-workflow/issues/663",
+    holds: ["The fixer gets one turn per ticket and never edits the owner's quoted words"],
+  },
+  {
     name: "bin/machine-page",
     file: "bin/machine-page",
     stops: "https://github.com/collod873/claude-workflow/issues/710",

@@ -15,8 +15,9 @@ export interface Opened {
   commands: string[];
   briefed: string;
   aside: string[];
+  logs: string;
   wrote: () => string[];
-  spend: (input: string, resume?: string) => { refusal?: string; session?: string };
+  spend: (input: string, resume?: string) => { refusal?: string; session?: string; answer?: unknown };
   setAside: (paths: string[]) => void;
 }
 
@@ -31,7 +32,8 @@ export interface Stage {
   bin: string;
   undone: string;
   clean?: boolean;
-  tests?: { found: () => string[]; missing: string };
+  answers?: object;
+  tests?: { found: () => string[]; missing?: string };
   keeps: (path: string, opened: Opened) => boolean;
   work: (opened: Opened) => Outcome;
 }
@@ -75,6 +77,15 @@ function writtenOutsideRepo(cwd: string, stdout: string): string | undefined {
   return undefined;
 }
 
+function answerIn(stdout: string): unknown {
+  let answer: unknown;
+  for (const event of events(stdout)) {
+    const { type, structured_output } = (event ?? {}) as { type?: unknown; structured_output?: unknown };
+    if (type === "result" && structured_output !== undefined) answer = structured_output;
+  }
+  return answer;
+}
+
 function sessionOf(stdout: string): string | undefined {
   let session: string | undefined;
   for (const event of events(stdout)) {
@@ -89,12 +100,12 @@ function open(stage: Stage, ticket: string, cwd: string, logs: string): Opened |
   if (asked.status !== 0) return [`ticket ${ticket} could not be read, so ${stage.undone}`];
   const body = asked.stdout;
   const tests = stage.tests?.found() ?? [];
-  if (stage.tests !== undefined && tests.length === 0) return [stage.tests.missing];
+  if (stage.tests?.missing !== undefined && tests.length === 0) return [stage.tests.missing];
   const briefed = brief({ ticket, body, tests, read: onDisk });
   if (briefed.refusals.length > 0) return briefed.refusals;
   writeFileSync(join(logs, `brief-${ticket}.md`), briefed.text);
   const commands = checks(body).map(({ command }) => command);
-  const argv = stageArgv(commands);
+  const argv = [...stageArgv(commands), ...(stage.answers === undefined ? [] : ["--json-schema", JSON.stringify(stage.answers)])];
   const kept = join(logs, `${stage.bin}-${ticket}-set-aside`);
   const transcript = join(logs, `${stage.bin}-${ticket}.jsonl`);
   rmSync(kept, { recursive: true, force: true });
@@ -118,6 +129,7 @@ function open(stage: Stage, ticket: string, cwd: string, logs: string): Opened |
     commands,
     briefed: briefed.text,
     aside,
+    logs,
     wrote: () => fresh().map(([path]) => path),
     setAside,
     spend: (input, resume) => {
@@ -128,7 +140,7 @@ function open(stage: Stage, ticket: string, cwd: string, logs: string): Opened |
       const stray = writtenOutsideRepo(cwd, stdout);
       if (stray !== undefined) return { refusal: `the ${stage.name} wrote outside the repo: ${stray}` };
       if (spent.status !== 0) return { refusal: `the ${stage.name} ended ${spent.status}: ${quoted(String(spent.stderr || stdout).trim().split("\n")[0])}` };
-      return { session: sessionOf(stdout) };
+      return { session: sessionOf(stdout), answer: answerIn(stdout) };
     },
   };
   return opened;
