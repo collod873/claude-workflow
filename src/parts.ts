@@ -120,6 +120,12 @@ export const parts: Part[] = [
     holds: ["Work is never thrown away: the branch is pushed before anything can refuse it"],
   },
   {
+    name: "build.yml",
+    file: ".github/workflows/build.yml",
+    stops: "https://github.com/collod873/claude-workflow/issues/826",
+    holds: ["Work is never thrown away: the branch is pushed before anything can refuse it"],
+  },
+  {
     name: "bin/close",
     file: "bin/close",
     stops: "https://github.com/collod873/claude-workflow/issues/808",

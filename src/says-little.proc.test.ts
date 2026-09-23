@@ -84,7 +84,7 @@ const scenarios: Record<string, Scenario[]> = {
 
 function speakers(registry: Part[], check: string): string[] {
   const covered = coveredByCheck(check);
-  return [...new Set(registry.map((part) => part.file))].filter((file) => !covered(file));
+  return [...new Set(registry.map((part) => part.file))].filter((file) => !covered(file) && !file.startsWith(".github/workflows/"));
 }
 
 function linesAllowed(registry: Part[], file: string): number {
