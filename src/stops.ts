@@ -4,7 +4,7 @@ export const STOPS = {
   alreadyPasses: "Start: the ticket's checks already pass on main",
   unfreshTree: "Start: the tree is not clean, fresh main",
   unread: "The ticket or its PR cannot be read",
-  overCap: "A brief is over its 64 KB cap",
+  overCap: "A brief is over its 200 KB cap",
   dirtyTree: "A stage finds uncommitted work in the tree",
   noTest: "The test author writes no test, or cannot write a failing test for a criterion",
   modelRun: "A stage writes outside the repo, or its model run exits non-zero",

@@ -37,7 +37,7 @@ Every stop names who clears it.
 | Start: main is red | No model spent; the ticket waits | The next green merge to main fires it again |
 | Start: the tree is not clean, fresh main | No model spent | The run that started it, from a fresh checkout |
 | The ticket or its PR cannot be read | No model spent; nothing judged | The fixer |
-| A brief is over its 64 KB cap | No model spent | The fixer, which narrows the ticket's claims |
+| A brief is over its 200 KB cap | No model spent | The fixer, which narrows the ticket's claims |
 | A stage finds uncommitted work in the tree | No model spent | The run that started the stage, from a clean checkout |
 | A job cannot fetch the owner's hooks after 3 tries | No model spent; ticket marked failed, PR and branch kept | Nobody; Look-back counts it |
 | The test author writes no test, or cannot write a failing test for a criterion | Stage ends red | The fixer, which fixes the ticket |
