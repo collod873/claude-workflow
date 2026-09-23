@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { runCheck } from "./check-runner.ts";
 import { commentOnTicket } from "./post.ts";
 import { totalOutside } from "./reads-outside-brief.ts";
+import { exitFor, stoppedAt, type Stop } from "./stops.ts";
 import { checks, quoted } from "./ticket-shape.ts";
 
 const MERGED = /^Merge pull request #(\d+) from \S+?(?:\/ticket\/(\d+))?$/;
@@ -143,37 +144,28 @@ function record(ticket: string, gathered: Verdict[], speed: string): string {
 
 const recorded = (said: string) => (said === "" ? "" : `; record ${said}`);
 
-function close(): number {
+function close(): Stop | undefined {
   const top = process.cwd();
   const subject = git(["log", "-1", "--format=%s", "HEAD"]).stdout.trim();
   const ticket = ticketBuilt(subject);
-  if (ticket === undefined) return 0;
+  if (ticket === undefined) return undefined;
   const asked = gh(["issue", "view", ticket, "--json", "body", "--jq", ".body"]);
-  if (asked.status !== 0) {
-    console.error(`close: ticket ${ticket} could not be read, so nothing judged it`);
-    return 1;
-  }
+  if (asked.status !== 0) return stoppedAt("unread", `close: ticket ${ticket} could not be read, so nothing judged it`);
   const gathered = verdicts(checks(asked.stdout).map(({ command }) => command), top);
   const pr = prNumber(subject);
   const prBody = pr === undefined ? undefined : ghText(["pr", "view", pr, "--json", "body", "--jq", ".body"]);
   const speed = speedReport(marksFor(ticket, pr), prBody === undefined ? undefined : totalOutside(prBody));
   const posted = commentOnTicket(ticket, record(ticket, gathered, speed), gh);
-  if (posted.refusals.length > 0) {
-    console.error(`close: #${ticket} got no closing record: ${quoted(posted.refusals[0])}`);
-    return 1;
-  }
+  if (posted.refusals.length > 0) return stoppedAt("unrecorded", `close: #${ticket} got no closing record: ${quoted(posted.refusals[0])}`);
   const done = gathered.length > 0 && gathered.every((verdict) => verdict.merge);
   if (done) {
-    if (gh(["issue", "close", ticket]).status !== 0) {
-      console.error(`close: #${ticket} is done but could not be closed${recorded(posted.said)}`);
-      return 1;
-    }
+    if (gh(["issue", "close", ticket]).status !== 0) return stoppedAt("unrecorded", `close: #${ticket} is done but could not be closed${recorded(posted.said)}`);
     console.log(`close: #${ticket} closed, every check green on the merge commit${recorded(posted.said)}`);
-    return 0;
+    return undefined;
   }
   if (gh(["issue", "view", ticket, "--json", "state", "--jq", ".state"]).stdout.trim() === "CLOSED") gh(["issue", "reopen", ticket]);
   console.log(`close: #${ticket} left open, a check is red on the merge commit${recorded(posted.said)}`);
-  return 0;
+  return undefined;
 }
 
-if (import.meta.main) process.exit(close());
+if (import.meta.main) process.exit(exitFor(close()));

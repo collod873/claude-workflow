@@ -3,6 +3,7 @@ import { appendFileSync, cpSync, existsSync, mkdirSync, rmSync, writeFileSync } 
 import { dirname, join, relative, resolve } from "node:path";
 import { brief, onDisk } from "./brief.ts";
 import { stageArgv } from "./fence.ts";
+import { STOPS, type Stop, type Stopped } from "./stops.ts";
 import { checks, quoted } from "./ticket-shape.ts";
 
 const UNTRACKED = "??";
@@ -21,17 +22,14 @@ export interface Opened {
   setAside: (paths: string[]) => void;
 }
 
-export interface Outcome {
-  refusals: string[];
-  verdict?: string;
-  commit?: { message: string; branch?: string };
-}
+export type Outcome = (Stopped | { stop?: undefined; verdict: string }) & { commit?: { message: string; branch?: string } };
 
 export interface Stage {
   name: string;
   bin: string;
   undone: string;
   clean?: boolean;
+  endsAt?: Stop;
   answers?: object;
   tests?: { found: () => string[]; missing?: string };
   keeps: (path: string, opened: Opened) => boolean;
@@ -95,14 +93,14 @@ function sessionOf(stdout: string): string | undefined {
   return session;
 }
 
-function open(stage: Stage, ticket: string, cwd: string, logs: string): Opened | string[] {
+function open(stage: Stage, ticket: string, cwd: string, logs: string): Opened | Stopped {
   const asked = spawnSync("gh", ["issue", "view", ticket, "--json", "body", "--jq", ".body"], { encoding: "utf8" });
-  if (asked.status !== 0) return [`ticket ${ticket} could not be read, so ${stage.undone}`];
+  if (asked.status !== 0) return { stop: "unread", refusals: [`ticket ${ticket} could not be read, so ${stage.undone}`] };
   const body = asked.stdout;
   const tests = stage.tests?.found() ?? [];
-  if (stage.tests?.missing !== undefined && tests.length === 0) return [stage.tests.missing];
+  if (stage.tests?.missing !== undefined && tests.length === 0) return { stop: "noTest", refusals: [stage.tests.missing] };
   const briefed = brief({ ticket, body, tests, read: onDisk });
-  if (briefed.refusals.length > 0) return briefed.refusals;
+  if (briefed.refusals.length > 0) return { stop: "overCap", refusals: briefed.refusals };
   writeFileSync(join(logs, `brief-${ticket}.md`), briefed.text);
   const commands = checks(body).map(({ command }) => command);
   const argv = [...stageArgv(commands), ...(stage.answers === undefined ? [] : ["--json-schema", JSON.stringify(stage.answers)])];
@@ -158,27 +156,31 @@ function commit(cwd: string, paths: string[], { message, branch }: { message: st
 export function runStage(stage: Stage, ticket: string): number {
   const cwd = process.cwd();
   const said = `${stage.bin}: #${ticket}`;
-  if (stage.clean === true && changed(cwd).size > 0) {
-    console.error(`${said} refused, the tree holds uncommitted work, so no model was spent`);
-    return 1;
-  }
   const logs = join(git(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]).stdout.trim(), "machine-logs");
   mkdirSync(logs, { recursive: true });
   const log = join(logs, `${stage.bin}-${ticket}.log`);
   rmSync(log, { force: true });
   const shown = relative(cwd, log).startsWith("..") ? log : relative(cwd, log);
+  const ended = ({ stop, refusals }: Stopped, line: string) => {
+    writeFileSync(log, `${refusals.length} refusals, stopped at: ${STOPS[stage.endsAt ?? stop]}\n${refusals.join("\n")}\n`);
+    console.error(`${line}; log ${shown}`);
+    return 1;
+  };
+  if (stage.clean === true && changed(cwd).size > 0) {
+    return ended({ stop: "dirtyTree", refusals: ["the tree holds uncommitted work"] }, `${said} refused, the tree holds uncommitted work, so no model was spent`);
+  }
   const opened = open(stage, ticket, cwd, logs);
-  const outcome: Outcome = Array.isArray(opened) ? { refusals: opened } : stage.work(opened);
-  const written = Array.isArray(opened) ? [] : opened.wrote();
+  const outcome: Outcome = "stop" in opened ? opened : stage.work(opened);
+  const written = "stop" in opened ? [] : opened.wrote();
   const saving = written.length > 0 ? outcome.commit : undefined;
   const failed = saving === undefined ? undefined : commit(cwd, written, saving);
-  const refusals = failed === undefined ? outcome.refusals : [`the work would not commit${saving?.branch === undefined ? "" : ` on ${saving.branch}`}`, ...outcome.refusals, failed];
-  if (refusals.length === 0) {
-    console.log(`${said} ${outcome.verdict ?? "done"}`);
+  const refused = outcome.stop === undefined ? [] : outcome.refusals;
+  const unsaved: Stopped | undefined = failed === undefined ? undefined : { stop: "uncommitted", refusals: [`the work would not commit${saving?.branch === undefined ? "" : ` on ${saving.branch}`}`, ...refused, failed] };
+  const stopped = unsaved ?? outcome;
+  if (stopped.stop === undefined) {
+    console.log(`${said} ${stopped.verdict}`);
     return 0;
   }
-  writeFileSync(log, `${refusals.length} refusals\n${refusals.join("\n")}\n`);
   const kept = saving !== undefined && failed === undefined;
-  console.error(`${said} ended red, ${refusals[0]}; ${kept ? "" : "nothing written; "}log ${shown}`);
-  return 1;
+  return ended(stopped, `${said} ended red, ${stopped.refusals[0]}${kept ? "" : "; nothing written"}`);
 }

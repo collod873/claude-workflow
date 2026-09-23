@@ -21,14 +21,14 @@ mkdir -p "${log%/*}"
 err=$(mktemp)
 trap 'rm -f "$err"' EXIT
 
-if node "$src/start.ts" "$ticket" 2>"$err"; then
+if stop=$(node "$src/start.ts" "$ticket" 2>"$err"); then
   cat "$err" >&2
   printf 'start: #%s is ready to build from %s\n' "$ticket" "$(git rev-parse --short=7 HEAD)"
   exit 0
 fi
 
 count=$(grep -c '' "$err")
-{ printf '%s refusals\n' "$count"; cat "$err"; } >"$log"
+{ printf '%s refusals, stopped at: %s\n' "$count" "$stop"; cat "$err"; } >"$log"
 if (( count > most_shown )); then
   head -"$shown_refusals" "$err" >&2
   printf 'start: #%s refused, %s refusals, %s shown; no model spent; log %s\n' "$ticket" "$count" "$shown_refusals" "$shown" >&2

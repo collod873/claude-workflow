@@ -14,13 +14,17 @@ export interface SignedRule {
   text: string;
 }
 
-function rulesOn(page: string, markdown: string): SignedRule[] {
-  const section = markdown.split(/^## /m).find((heading) => heading.startsWith("Rules")) ?? "";
+export function rowsUnder(markdown: string, heading: string): string[][] {
+  const section = markdown.split(/^## /m).find((found) => found.startsWith(heading)) ?? "";
   return section
     .split("\n")
     .filter((line) => line.startsWith("|"))
     .slice(2)
-    .map((row) => ({ page, text: row.split("|")[1].trim() }));
+    .map((row) => row.split("|").slice(1, -1).map((cell) => cell.trim()));
+}
+
+function rulesOn(page: string, markdown: string): SignedRule[] {
+  return rowsUnder(markdown, "Rules").map(([text]) => ({ page, text }));
 }
 
 export function signedRules(repo: string): SignedRule[] {

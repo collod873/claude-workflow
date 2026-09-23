@@ -174,6 +174,12 @@ export const parts: Part[] = [
     holds: ["Nobody pushes to main, the owner included. Everything lands through a PR whose required checks passed on an up-to-date branch"],
   },
   {
+    name: "src/stops.proc.test.ts",
+    file: "src/stops.proc.test.ts",
+    stops: "https://github.com/collod873/claude-workflow/issues/663",
+    holds: ["The owner is never the one who fixes a stuck run"],
+  },
+  {
     name: "src/em-dash.proc.test.ts",
     file: "src/em-dash.proc.test.ts",
     stops: "https://github.com/collod873/claude-workflow/issues/681",
