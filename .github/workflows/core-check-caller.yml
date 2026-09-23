@@ -1,9 +1,0 @@
-name: Core check
-
-"on":
-  pull_request_target:
-
-jobs:
-  core-check:
-    uses: collod873/claude-workflow/.github/workflows/core-check.yml@stable
-    secrets: inherit

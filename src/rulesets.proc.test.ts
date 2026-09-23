@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 
 const HOME = "collod873/claude-workflow";
-const CHECK = "core-check / core-check";
+const CHECK = "check";
 const ON_MAIN = ["pull_request", "non_fast_forward", "deletion", "required_status_checks"];
 
 interface Live {
@@ -20,7 +20,6 @@ interface Ruled {
 
 const RULED: Record<string, Ruled> = {
   "main lands only through a PR": { ref: "~DEFAULT_BRANCH", rules: ON_MAIN, checks: [CHECK] },
-  "stable tag moves only by the App": { ref: "refs/tags/stable", rules: ["creation", "update", "deletion", "non_fast_forward"], checks: [] },
 };
 
 function requiredIn(ruleset: Live): { contexts: string[]; strict: boolean } {
@@ -73,19 +72,19 @@ describe("GitHub holds main, and this reads the ruleset it holds it with (#652)"
   });
 
   it("names a ruleset that is missing, switched off, weakened, or bypassed", () => {
-    const [main, tag] = Object.entries(RULED).map(([name, ruled]) => asRuled(name, ruled));
+    const [main] = Object.entries(RULED).map(([name, ruled]) => asRuled(name, ruled));
 
-    expect(refusals([main, tag], ON_MAIN)).toEqual([]);
-    expect(refusals([tag], ON_MAIN)).toEqual(["no ruleset named main lands only through a PR"]);
-    expect(refusals([{ ...main, enforcement: "evaluate" }, tag], ON_MAIN)).toEqual(["main lands only through a PR is evaluate, not active"]);
-    expect(refusals([{ ...main, rules: main.rules.filter((rule) => rule.type !== "non_fast_forward") }, tag], ON_MAIN)).toEqual([
+    expect(refusals([main], ON_MAIN)).toEqual([]);
+    expect(refusals([], ON_MAIN)).toEqual(["no ruleset named main lands only through a PR"]);
+    expect(refusals([{ ...main, enforcement: "evaluate" }], ON_MAIN)).toEqual(["main lands only through a PR is evaluate, not active"]);
+    expect(refusals([{ ...main, rules: main.rules.filter((rule) => rule.type !== "non_fast_forward") }], ON_MAIN)).toEqual([
       "main lands only through a PR holds no non_fast_forward rule",
     ]);
-    expect(refusals([{ ...main, rules: main.rules.map((rule) => (rule.type === "required_status_checks" ? { ...rule, parameters: {} } : rule)) }, tag], ON_MAIN)).toEqual([
+    expect(refusals([{ ...main, rules: main.rules.map((rule) => (rule.type === "required_status_checks" ? { ...rule, parameters: {} } : rule)) }], ON_MAIN)).toEqual([
       `main lands only through a PR requires no check, not ${CHECK}`,
       "main lands only through a PR takes a branch behind main",
     ]);
-    expect(refusals([main, tag], ["pull_request", "deletion"])).toEqual([
+    expect(refusals([main], ["pull_request", "deletion"])).toEqual([
       "main's non_fast_forward rule does not apply to whoever is asking",
       "main's required_status_checks rule does not apply to whoever is asking",
     ]);

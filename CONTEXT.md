@@ -54,8 +54,8 @@ free when it fires, so it can be cheap and unapologetic where a late gate cannot
 _Avoid_: precondition, validation, check
 
 **Stub**:
-What a second repo carries in place of a lane: one trigger and one `uses:` at `@stable`, the shape
-`src/stub-shape.test.ts` holds. Defined by what it lacks: a stub has no content, which is the whole
+What a second repo carries in place of a lane: one trigger and one `uses:` at `@stable`. Defined
+by what it lacks: a stub has no content, which is the whole
 reason it cannot drift and the reason installing is a call rather than a copy.
 _Avoid_: shim, wrapper, vendored copy
 
