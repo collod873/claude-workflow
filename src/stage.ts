@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { appendFileSync, cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { brief, onDisk } from "./brief.ts";
 import { stageArgv } from "./fence.ts";
@@ -8,6 +8,8 @@ import { checks, quoted } from "./ticket-shape.ts";
 
 const UNTRACKED = "??";
 const STREAM = ["--output-format", "stream-json", "--verbose"];
+const TIMED_OUT = 124;
+const GRACE_SECONDS = "30";
 
 export interface Opened {
   ticket: string;
@@ -93,7 +95,15 @@ function sessionOf(stdout: string): string | undefined {
   return session;
 }
 
+function capped(argv: string[], minutes: number, deadline: number): string[] {
+  if (!(minutes > 0)) return ["claude", ...argv];
+  const left = Math.max(1, Math.ceil((deadline - Date.now()) / 1000));
+  return ["timeout", `--kill-after=${GRACE_SECONDS}`, String(left), "claude", ...argv];
+}
+
 function open(stage: Stage, ticket: string, cwd: string, logs: string): Opened | Stopped {
+  const minutes = Number(process.env.STAGE_MINUTES);
+  const deadline = Date.now() + minutes * 60_000;
   const asked = spawnSync("gh", ["issue", "view", ticket, "--json", "body", "--jq", ".body"], { encoding: "utf8" });
   if (asked.status !== 0) return { stop: "unread", refusals: [`ticket ${ticket} could not be read, so ${stage.undone}`] };
   const body = asked.stdout;
@@ -131,12 +141,16 @@ function open(stage: Stage, ticket: string, cwd: string, logs: string): Opened |
     wrote: () => fresh().map(([path]) => path),
     setAside,
     spend: (input, resume) => {
-      const spent = spawnSync("claude", [...argv, ...(resume === undefined ? [] : ["--resume", resume]), ...STREAM], { input, encoding: "utf8", maxBuffer: Infinity });
-      const stdout = spent.stdout ?? "";
-      appendFileSync(transcript, stdout);
+      const from = existsSync(transcript) ? statSync(transcript).size : 0;
+      const streamed = openSync(transcript, "a");
+      const [command, ...args] = capped([...argv, ...(resume === undefined ? [] : ["--resume", resume]), ...STREAM], minutes, deadline);
+      const spent = spawnSync(command, args, { input, stdio: ["pipe", streamed, "pipe"], encoding: "utf8", maxBuffer: Infinity });
+      closeSync(streamed);
+      const stdout = readFileSync(transcript).subarray(from).toString("utf8");
       setAside(opened.wrote().filter((path) => !stage.keeps(path, opened)));
       const stray = writtenOutsideRepo(cwd, stdout);
       if (stray !== undefined) return { refusal: `the ${stage.name} wrote outside the repo: ${stray}` };
+      if (spent.status === TIMED_OUT && minutes > 0) return { refusal: `the ${stage.name} ran past its ${minutes} minute cap` };
       if (spent.status !== 0) return { refusal: `the ${stage.name} ended ${spent.status}: ${quoted(String(spent.stderr || stdout).trim().split("\n")[0])}` };
       return { session: sessionOf(stdout), answer: answerIn(stdout) };
     },

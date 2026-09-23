@@ -7,6 +7,15 @@ name: Build
 permissions:
   contents: read
 
+env:
+  FEED: >-
+    fromjson? | if .type == "assistant" then .message.content[]? |
+    if .type == "text" then "said: \(.text | split("\n")[0] | .[0:200])"
+    elif .type == "tool_use" then "\(.name): \(.input | tostring | .[0:200])"
+    else empty end
+    elif .type == "result" then "ended \(.subtype) after \(.num_turns) turns, \(.duration_ms / 60000 | floor) min, $\(.total_cost_usd)"
+    else empty end
+
 jobs:
   build:
     if: ${{ github.event.action == 'opened' && !contains(github.event.issue.labels.*.name, 'note') }}
@@ -47,14 +56,20 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-        run: bin/test-author ${{ github.event.issue.number }}
+          STAGE_MINUTES: 17
+        run: |
+          tail --pid=$$ -n +1 -F .git/machine-logs/test-author-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered "$FEED" &
+          bin/test-author ${{ github.event.issue.number }}
 
       - id: build
         timeout-minutes: 30
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-        run: bin/build ${{ github.event.issue.number }}
+          STAGE_MINUTES: 27
+        run: |
+          tail --pid=$$ -n +1 -F .git/machine-logs/build-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered "$FEED" &
+          bin/build ${{ github.event.issue.number }}
 
       - if: always() && (steps.test-author.outcome != 'skipped' || steps.build.outcome != 'skipped')
         timeout-minutes: 10
@@ -67,7 +82,17 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-        run: node src/hand-off.ts ${{ github.event.issue.number }}
+          STAGE_MINUTES: 25
+        run: |
+          tail --pid=$$ -n +1 -F .git/machine-logs/fix-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered "$FEED" &
+          node src/hand-off.ts ${{ github.event.issue.number }}
+
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: machine-logs
+          path: .git/machine-logs
+          include-hidden-files: true
 
   fix:
     if: ${{ github.event.action == 'reopened' && github.event.sender.type == 'Bot' && !contains(github.event.issue.labels.*.name, 'note') }}
@@ -102,4 +127,14 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-        run: node src/hand-off.ts ${{ github.event.issue.number }} 'Red on main after merge'
+          STAGE_MINUTES: 25
+        run: |
+          tail --pid=$$ -n +1 -F .git/machine-logs/fix-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered "$FEED" &
+          node src/hand-off.ts ${{ github.event.issue.number }} 'Red on main after merge'
+
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: machine-logs
+          path: .git/machine-logs
+          include-hidden-files: true
