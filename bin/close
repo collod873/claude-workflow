@@ -1,0 +1,7 @@
+#!/bin/bash
+set -uo pipefail
+
+src="$(cd "${BASH_SOURCE[0]%/*}/../src" && pwd)"
+top=$(git rev-parse --show-toplevel) || exit 1
+cd "$top" || exit 1
+exec node "$src/closer.ts"

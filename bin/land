@@ -28,6 +28,8 @@ if [[ -z $(git rev-list origin/main..HEAD) ]]; then
   exit 0
 fi
 
+closing_keyword='\b(close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)\b:?[ \t]+#[0-9]+'
+
 src="$(cd "${BASH_SOURCE[0]%/*}/../src" && pwd)"
 for commit in $(git rev-list origin/main..HEAD); do
   git log -1 --format=%B "$commit" | node "$src/em-dash.ts"
@@ -42,6 +44,12 @@ for commit in $(git rev-list origin/main..HEAD); do
       exit 1
       ;;
   esac
+
+  matched=$(git log -1 --format=%B "$commit" | grep -ioE "$closing_keyword" | head -1)
+  if [[ -n $matched ]]; then
+    printf 'land: commit %s carries a closing keyword before #%s, so nothing landed; reword it\n' "$(git rev-parse --short=7 "$commit")" "${matched##*#}" >&2
+    exit 1
+  fi
 done
 
 branch="land/${head:0:12}"

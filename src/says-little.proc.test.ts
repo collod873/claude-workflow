@@ -3,7 +3,7 @@ import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { machinePage } from "./machine-page.ts";
 import { parts, type Part } from "./parts.ts";
-import { LINE_LIMIT, MOST_LINES, authoring, briefing, building, checkRepo, checking, coveredByCheck, execute, filing, landSession, misshapenTicket, overLimit, saving, scratch, script, starting, wellFormedNote, wellFormedTicket, type Run } from "./scenarios.ts";
+import { LINE_LIMIT, MOST_LINES, authoring, briefing, building, checkRepo, checking, closing, coveredByCheck, execute, filing, landSession, misshapenTicket, overLimit, saving, scratch, script, starting, wellFormedNote, wellFormedTicket, type Run } from "./scenarios.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
 const NOISE = "a line a tool prints that nobody needed to read\n".repeat(40).trim();
@@ -58,6 +58,10 @@ const scenarios: Record<string, Scenario[]> = {
   "bin/save": [
     { label: "saving a build", run: () => saving().run() },
     { label: "with the push refused", run: () => saving({ remoteRefuses: NOISE }).run() },
+  ],
+  "bin/close": [
+    { label: "closing a ticket whose checks pass on the merge commit", run: () => closing({ ticket: "814", fixes: true }).run() },
+    { label: "outside a repo to read", run: () => execute(join(REPO, "bin", "close"), scratch("close-")) },
   ],
   "bin/test-author": [
     { label: "writing a failing test for each criterion", run: () => authoring().run() },

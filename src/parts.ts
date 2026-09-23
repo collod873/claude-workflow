@@ -115,6 +115,15 @@ export const parts: Part[] = [
     holds: ["Work is never thrown away: the branch is pushed before anything can refuse it"],
   },
   {
+    name: "bin/close",
+    file: "bin/close",
+    stops: "https://github.com/collod873/claude-workflow/issues/808",
+    holds: [
+      "Done means the ticket's checks pass on main, run by something that did not build it",
+      "Done means the ticket's checks pass on the merge commit on main, run by the stable machine",
+    ],
+  },
+  {
     name: "bin/machine-page",
     file: "bin/machine-page",
     stops: "https://github.com/collod873/claude-workflow/issues/710",
