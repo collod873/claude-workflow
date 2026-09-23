@@ -60,6 +60,36 @@ function spendsWithinACap(step: Step): void {
   expect(Object.keys(step.env ?? {})).toEqual(expect.arrayContaining(["GH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"]));
 }
 
+interface StepOutcome {
+  outcome: string;
+  conclusion: string;
+}
+
+function holds(condition: string, outcomes: Record<string, StepOutcome>, failed: boolean): boolean {
+  const source = condition
+    .replace(/^\s*\$\{\{|\}\}\s*$/g, "")
+    .replace(/steps\.([\w-]+)\.(outcome|conclusion)/g, 'steps["$1"].$2');
+  const evaluate = new Function("steps", "success", "failure", "always", "cancelled", `return Boolean(${source});`) as (
+    ...scope: unknown[]
+  ) => boolean;
+  return evaluate(outcomes, () => !failed, () => failed, () => true, () => false);
+}
+
+function stepsThatRun(job: Job, failing: Step): Step[] {
+  const outcomes: Record<string, StepOutcome> = {};
+  for (const step of job.steps) if (step.id !== undefined) outcomes[step.id] = { outcome: "skipped", conclusion: "skipped" };
+  const ran: Step[] = [];
+  let failed = false;
+  for (const step of job.steps) {
+    if (!holds(step.if ?? "success()", outcomes, failed)) continue;
+    ran.push(step);
+    const broke = step === failing;
+    if (step.id !== undefined) outcomes[step.id] = { outcome: broke ? "failure" : "success", conclusion: broke ? "failure" : "success" };
+    failed = failed || broke;
+  }
+  return ran;
+}
+
 const clearedBy =(stop: Stop, clearer: string) => (page: string) =>
   page
     .split("\n")
@@ -212,5 +242,25 @@ describe("a ticket reopened for a red on main reaches the fixer (#827)", () => {
     expect(branched).toBeGreaterThan(-1);
     expect(branched).toBeLessThan(job.steps.indexOf(handing));
     actsAsTheApp(job, handing);
+  });
+});
+
+describe("hand-off calls the fixer only for the reviewer's own failure (#849)", () => {
+  it("a review job that fails before the reviewer runs calls no fixer and marks the ticket failed", () => {
+    const job = jobRunning("check", "bin/review");
+    const stage = job.steps.find((step) => step.uses === "./.github/actions/stage") as Step;
+    const review = job.steps.find((step) => runs(step, "bin/review")) as Step;
+    const handing = handingStep(job, "bin/review");
+    const marksFailed = job.steps.find((step) => runs(step, "bin/mark") && (step.run ?? "").includes(" failed")) as Step;
+
+    expect(stage, "a step that fetches the owner's hooks").toBeDefined();
+    expect(marksFailed, "a step that marks the ticket failed").toBeDefined();
+
+    const beforeReviewer = stepsThatRun(job, stage);
+    expect(beforeReviewer).not.toContain(handing);
+    expect(beforeReviewer).toContain(marksFailed);
+
+    const afterReviewer = stepsThatRun(job, review);
+    expect(afterReviewer).toContain(handing);
   });
 });
