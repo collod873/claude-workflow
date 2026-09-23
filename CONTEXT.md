@@ -54,9 +54,8 @@ free when it fires, so it can be cheap and unapologetic where a late gate cannot
 _Avoid_: precondition, validation, check
 
 **Stub**:
-What a second repo carries in place of a lane: one trigger and one `uses:` at `@stable`. Defined
-by what it lacks: a stub has no content, which is the whole
-reason it cannot drift and the reason installing is a call rather than a copy.
+What a second repo will carry in place of a lane: one trigger and one `uses:` at `@stable`. None
+exists until a second repo enrols ([#674](https://github.com/collod873/claude-workflow/issues/674)).
 _Avoid_: shim, wrapper, vendored copy
 
 **Fixer**:
@@ -66,9 +65,8 @@ hands back, and the owner is never asked.
 _Avoid_: mechanic, fresh eyes, repair agent
 
 **Stable machine**:
-The tagged copy of the machine every ticket runs on and every pull request is judged by. `main`
-is the candidate; a change to the machine becomes stable only after a sample ticket builds clean on
-it.
+The tagged copy of the machine tickets will run on once a second repo enrols; until then `main`
+is the only copy ([#674](https://github.com/collod873/claude-workflow/issues/674)).
 _Avoid_: prod, release, pinned version
 
 ### The work
