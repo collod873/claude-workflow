@@ -10,6 +10,7 @@ import { checks, quoted } from "./ticket-shape.ts";
 
 const MERGED = /^Merge pull request #(\d+) from \S+?(?:\/ticket\/(\d+))?$/;
 const BUILDS = /^Builds #(\d+)[ \t]*$/m;
+const STAGE_LABELS = "1-defining,2-building,3-checking,4-reviewing,5-merging,fixing,failed";
 
 const run = (command: string, args: string[]) => spawnSync(command, args, { encoding: "utf8", maxBuffer: Infinity });
 const gh = (args: string[]) => run("gh", args);
@@ -159,8 +160,10 @@ function close(): Stop | undefined {
   if (posted.refusals.length > 0) return stoppedAt("unrecorded", `close: #${ticket} got no closing record: ${quoted(posted.refusals[0])}`);
   const done = gathered.length > 0 && gathered.every((verdict) => verdict.merge);
   if (done) {
-    if (gh(["issue", "close", ticket]).status !== 0) return stoppedAt("unrecorded", `close: #${ticket} is done but could not be closed${recorded(posted.said)}`);
-    console.log(`close: #${ticket} closed, every check green on the merge commit${recorded(posted.said)}`);
+    if (gh(["issue", "view", ticket, "--json", "state", "--jq", ".state"]).stdout.trim() === "CLOSED") gh(["issue", "reopen", ticket]);
+    gh(["issue", "edit", ticket, "--remove-label", STAGE_LABELS]);
+    if (gh(["issue", "close", ticket, "--reason", "completed"]).status !== 0) return stoppedAt("unrecorded", `close: #${ticket} is done but could not be closed${recorded(posted.said)}`);
+    console.log(`close: #${ticket} closed as completed, every check green on the merge commit${recorded(posted.said)}`);
     return undefined;
   }
   if (gh(["issue", "view", ticket, "--json", "state", "--jq", ".state"]).stdout.trim() === "CLOSED") gh(["issue", "reopen", ticket]);

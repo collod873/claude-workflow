@@ -2,12 +2,14 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { rowsUnder } from "./machine-page.ts";
+import { commentOnTicket, type Gh } from "./post.ts";
 
 const PAGE = "docs/agents/layers/one-ticket.md";
 const STOPPED_AT = /^\d+ refusals, stopped at: (.+)$/;
 const FIXER = /^The fixer\b/;
 
 const git = (args: string[]) => spawnSync("git", args, { encoding: "utf8" }).stdout.trim();
+const gh: Gh = (args) => spawnSync("gh", args, { encoding: "utf8" });
 
 function stoppedAt(ticket: string, logs: string): string | undefined {
   if (!existsSync(logs)) return undefined;
@@ -27,6 +29,19 @@ function mark(top: string, ticket: string, label: string): void {
   spawnSync(join(top, "bin", "mark"), [ticket, label], { stdio: "ignore" });
 }
 
+function openPr(ticket: string): string | undefined {
+  const got = gh(["pr", "view", `ticket/${ticket}`, "--json", "state,url", "--jq", 'select(.state == "OPEN") | .url']);
+  const url = got.status === 0 ? got.stdout.trim() : "";
+  return url === "" ? undefined : url;
+}
+
+function leftAlone(top: string, ticket: string, row: string): void {
+  const pr = openPr(ticket);
+  const note = `hand-off: #${ticket} was left alone, stopped at: ${row}${pr === undefined ? "" : `; its open PR: ${pr}`}`;
+  commentOnTicket(ticket, note, gh);
+  mark(top, ticket, "failed");
+}
+
 function handOff(ticket: string, named: string | undefined): number {
   const said = `hand-off: #${ticket}`;
   const top = git(["rev-parse", "--show-toplevel"]);
@@ -42,7 +57,7 @@ function handOff(ticket: string, named: string | undefined): number {
   }
   const clearer = clearedBy(readFileSync(join(top, PAGE), "utf8"), row);
   if (clearer === undefined || !FIXER.test(clearer)) {
-    mark(top, ticket, "failed");
+    leftAlone(top, ticket, row);
     console.log(`${said} stopped at a row the fixer does not clear, so it was left alone`);
     return 0;
   }

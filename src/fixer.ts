@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { authoredTests, capped, yourChecks } from "./brief.ts";
 import { redOutput, TAIL_CAP, tailOf } from "./builder.ts";
@@ -11,6 +11,7 @@ import { claims, quoted } from "./ticket-shape.ts";
 const TOOK_ITS_TURN = "The fixer took its one turn on this ticket";
 const COMMENTS = ["--json", "comments", "--jq", "[.comments[].body]"];
 const JOB_LINK = /\/runs\/(\d+)\/job\/(\d+)/;
+const STOPPED_AT = /^\d+ refusals, stopped at: (.+)$/;
 
 const ANSWER = {
   type: "object",
@@ -79,6 +80,13 @@ function failure({ ticket, logs, commands }: Opened, branch: string): string {
   return [...logged, redOutput(commands), ...failedChecks(branch)].filter((text) => text !== "").join("\n\n");
 }
 
+function rowStopped(ticket: string, logs: string): string | undefined {
+  return readdirSync(logs)
+    .filter((name) => name.endsWith(`-${ticket}.log`))
+    .sort((a, b) => statSync(join(logs, b)).mtimeMs - statSync(join(logs, a)).mtimeMs)
+    .flatMap((name) => STOPPED_AT.exec(readFileSync(join(logs, name), "utf8").split("\n")[0])?.slice(1) ?? [])[0];
+}
+
 export function handedOn({ briefed, body, failed, diff, gaps, commands }: Handed): string {
   return [
     briefed,
@@ -117,19 +125,21 @@ function turn(opened: Opened, answer: Answer | undefined, explain: (text: string
   return { verdict: `fixed the code: ${quoted(answer.reason)}` };
 }
 
-function closedUnbuilt(ticket: string, reason: string): string | undefined {
-  const said = commentOnTicket(ticket, `The fixer closed #${ticket} unbuilt and kept its branch: ${reason}`, gh);
+function closedUnbuilt(ticket: string, reason: string, row: string | undefined, pr: string | undefined): string | undefined {
+  const note = `The fixer closed #${ticket} unbuilt and kept its branch: ${reason}${row === undefined ? "" : `, stopped at: ${row}`}${pr === undefined ? "" : `; its open PR: ${pr}`}`;
+  const said = commentOnTicket(ticket, note, gh);
   if (said.refusals.length > 0) return `its closing reason was refused: ${quoted(said.refusals[0])}`;
   return gh(["issue", "close", ticket, "--reason", "not planned"]).status === 0 ? undefined : `#${ticket} could not be closed`;
 }
 
-function prOpen(branch: string): boolean {
-  const got = gh(["pr", "view", branch, "--json", "state", "--jq", ".state"]);
-  return got.status === 0 && got.stdout.trim() === "OPEN";
+function openPr(branch: string): string | undefined {
+  const got = gh(["pr", "view", branch, "--json", "state,url", "--jq", 'select(.state == "OPEN") | .url']);
+  const url = got.status === 0 ? got.stdout.trim() : "";
+  return url === "" ? undefined : url;
 }
 
 function fix(opened: Opened): Outcome {
-  const { ticket, body } = opened;
+  const { ticket, body, logs } = opened;
   const branch = `ticket/${ticket}`;
   const turns = comments(["issue", "view", ticket]);
   if (turns === undefined) return { stop: "fixerEnds", refusals: [`the comments on #${ticket} could not be read, so no model was spent`] };
@@ -150,15 +160,17 @@ function fix(opened: Opened): Outcome {
   );
   const commit = { message: `Fix #${ticket} in the fixer's one turn`, branch: git(["branch", "--show-current"]).stdout.trim() === branch ? undefined : branch };
   const done = spent.refusal === undefined ? turn(opened, spent.answer as Answer | undefined, explain) : { refusal: spent.refusal };
+  const row = rowStopped(ticket, logs);
   if ("refusal" in done) {
-    if (prOpen(branch)) {
-      const said = commentOnTicket(ticket, `The fixer's turn on #${ticket} ended red, its PR stays open: ${done.refusal}`, gh);
+    const pr = openPr(branch);
+    if (pr !== undefined) {
+      const said = commentOnTicket(ticket, `The fixer's turn on #${ticket} ended red, stopped at: ${row ?? "an unlogged row"}; its PR stays open: ${pr}; ${done.refusal}`, gh);
       return { stop: "fixerEnds", refusals: [`${done.refusal}, so #${ticket} stays open with its PR`, ...(said.refusals.length > 0 ? [`its comment was refused: ${quoted(said.refusals[0])}`] : [])], commit };
     }
-    const unclosed = closedUnbuilt(ticket, done.refusal);
+    const unclosed = closedUnbuilt(ticket, done.refusal, row, undefined);
     return { stop: "fixerEnds", refusals: [`${done.refusal}, so #${ticket} ${unclosed === undefined ? "was closed unbuilt" : "stays open"}`, ...(unclosed === undefined ? [] : [unclosed])], commit };
   }
-  const unclosed = done.closing === undefined ? undefined : closedUnbuilt(ticket, done.closing);
+  const unclosed = done.closing === undefined ? undefined : closedUnbuilt(ticket, done.closing, row, openPr(branch));
   return unclosed === undefined ? { verdict: done.verdict, commit } : { stop: "fixerEnds", refusals: [unclosed], commit };
 }
 

@@ -430,6 +430,14 @@ function readEvent(path: string): string {
   return JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", name: "Read", input: { file_path: path } }] } });
 }
 
+function ghArgv(dir: string): { setup: string; calls: () => string[][] } {
+  mkdirSync(dir, { recursive: true });
+  return {
+    setup: `n=$(( $(ls "${dir}" 2>/dev/null | wc -l) + 1 ))\nprintf '%s\\0' "$@" >"${dir}/$n"`,
+    calls: () => readdirSync(dir).map((_, index) => readFileSync(join(dir, String(index + 1)), "utf8").split("\0").filter((part) => part !== "")),
+  };
+}
+
 export function saving({
   remoteRefuses,
   brief,
@@ -448,7 +456,7 @@ export function saving({
   const calls = join(root, "gh-calls");
   const argvDir = join(root, "gh-argv");
   const judged = join(root, "judged");
-  mkdirSync(argvDir, { recursive: true });
+  const { setup, calls: argvCalls } = ghArgv(argvDir);
   git(session, "checkout", "--quiet", "-b", "ticket/726");
   plant(session, "src/ticket-shape.ts", "export const shaped = 2;\n");
   git(session, "add", ".");
@@ -469,8 +477,7 @@ export function saving({
     join(root, "bin", "gh"),
     [
       `printf '%s|%s\\n' "$(printf '%s' "$*" | tr '\\n' ' ')" "$(git --git-dir="${remote}" rev-parse --verify --quiet refs/heads/ticket/726)" >>"${calls}"`,
-      `n=$(( $(ls "${argvDir}" 2>/dev/null | wc -l) + 1 ))`,
-      `printf '%s\\0' "$@" >"${argvDir}/$n"`,
+      setup,
       'case "$*" in',
       "  *\"issue view\"*) printf 'Push the branch before anything can refuse it\\n' ;;",
       alreadyOpen ? "  *\"pr create\"*) exit 1 ;;" : `  *"pr create"*) printf '%s\\n' '${SAVED_PR}' ;;`,
@@ -480,8 +487,6 @@ export function saving({
       "",
     ].join("\n"),
   );
-  const argv = (call: number): string[] => readFileSync(join(argvDir, String(call)), "utf8").split("\0").filter((part) => part !== "");
-  const argvCalls = (): string[][] => readdirSync(argvDir).map((_, index) => argv(index + 1));
   return {
     session,
     built,
@@ -527,12 +532,14 @@ export function closing({
   fixes = true,
   readable = true,
   timing = FAST_TIMING,
+  closedAsNotPlanned = false,
 }: {
   ticket?: string;
   ticketBody?: string;
   fixes?: boolean;
   readable?: boolean;
   timing?: { filed: string; firstCommit: string; rebased?: string; prOpened: string; checksGreen: string; merged: string };
+  closedAsNotPlanned?: boolean;
 } = {}) {
   const root = scratch("closer-");
   const session = join(root, "session");
@@ -558,6 +565,7 @@ export function closing({
       `printf '%s\\n' "$@" >"${callsDir}/$n"`,
       'case "$*" in',
       `  *"issue view"*"createdAt"*) printf '%s\\n' '${timing.filed}' ;;`,
+      `  *"issue view"*"state"*) printf '%s\\n' '${closedAsNotPlanned ? "CLOSED" : "OPEN"}' ;;`,
       "  *\"issue view\"*)",
       ...(readable ? [] : ["    printf 'GraphQL: Could not resolve to an issue\\n' >&2", "    exit 1"]),
       "    cat <<'BODY'",
@@ -608,15 +616,14 @@ export function reviewing({
   const argvDir = join(root, "gh-argv");
   const handed = join(root, "claude-stdin");
   const hired = join(root, "claude-argv");
-  mkdirSync(argvDir, { recursive: true });
+  const { setup, calls } = ghArgv(argvDir);
   git(root, "init", "--quiet");
   plant(root, "pr.diff", diff);
   plant(root, "answer.json", `${JSON.stringify({ type: "result", subtype: "success", is_error: false, structured_output: verdict })}\n`);
   script(
     join(root, "bin", "gh"),
     [
-      `n=$(( $(ls "${argvDir}" 2>/dev/null | wc -l) + 1 ))`,
-      `printf '%s\\0' "$@" >"${argvDir}/$n"`,
+      setup,
       'case "$*" in',
       `  *"pr view"*) printf '%s\\n' '${branch}' ;;`,
       "  *\"issue view\"*)",
@@ -632,7 +639,6 @@ export function reviewing({
     ].join("\n"),
   );
   script(join(root, "bin", "claude"), `printf '%s\\0' "$@" >"${hired}"\ncat >"${handed}"\ncat "${join(root, "answer.json")}"\n`);
-  const calls = (): string[][] => readdirSync(argvDir).map((_, index) => readFileSync(join(argvDir, String(index + 1)), "utf8").split("\0").filter((part) => part !== ""));
   return {
     root,
     hired: () => (existsSync(hired) ? readFileSync(hired, "utf8").split("\0") : []),
@@ -675,7 +681,7 @@ export function fixing({
   const order = join(root, "order");
   const handed = join(root, "claude-stdin");
   const argvDir = join(root, "gh-argv");
-  mkdirSync(argvDir, { recursive: true });
+  const { setup, calls } = ghArgv(argvDir);
   claimedSession(session, "fixer", { "src/ticket-shape.ts": "export const shaped = 1;\n" }, { "src/ticket-shape.test.ts": AUTHORED_TEST }, "ticket/811");
   git(session, "commit", "--quiet", "--allow-empty", "-m", "Build #811 against its failing tests");
   for (const [name, text] of Object.entries(logged)) plant(session, `.git/machine-logs/${name}`, text);
@@ -689,13 +695,12 @@ export function fixing({
   script(
     join(root, "bin", "gh"),
     [
-      `n=$(( $(ls "${argvDir}" 2>/dev/null | wc -l) + 1 ))`,
-      `printf '%s\\0' "$@" >"${argvDir}/$n"`,
+      setup,
       `printf 'gh %s %s\\n' "$1" "$2" >>"${order}"`,
       'case "$*" in',
       `  *"issue view"*"comments"*) cat "${join(root, "turns.json")}" ;;`,
       `  *"issue view"*) cat "${join(root, "ticket.md")}" ;;`,
-      `  *"pr view"*"state"*) printf '%s\\n' '${prOpen ? "OPEN" : "CLOSED"}' ;;`,
+      `  *"pr view"*"state"*) ${prOpen ? `printf '%s\\n' '${HANDED_OFF_PR}'` : "printf '\\n'"} ;;`,
       `  *"pr view"*) ${onPr === undefined ? "exit 1" : `cat "${join(root, "on-pr.json")}"`} ;;`,
       ...(failedCheck === undefined
         ? []
@@ -709,7 +714,6 @@ export function fixing({
     ].join("\n"),
   );
   script(join(root, "bin", "claude"), `printf 'claude\\n' >>"${order}"\ncat >"${handed}"\n${claude}\ncat "${join(root, "answer.jsonl")}"\n`);
-  const calls = (): string[][] => readdirSync(argvDir).map((_, index) => readFileSync(join(argvDir, String(index + 1)), "utf8").split("\0").filter((part) => part !== ""));
   const bodyOf = (args: string[]) => args[args.indexOf("--body") + 1];
   return {
     body,
@@ -729,12 +733,21 @@ export function fixing({
 
 const RUNS_PAGE = join(SRC, "..", "docs", "agents", "layers", "one-ticket.md");
 
-export function handingOff({ stoppedAt, table = (page: string) => page, commits = false }: { stoppedAt?: string; table?: (page: string) => string; commits?: boolean } = {}) {
+export const HANDED_OFF_PR = "https://github.com/collod873/claude-workflow/pull/900";
+
+export function handingOff({
+  stoppedAt,
+  table = (page: string) => page,
+  commits = false,
+  pr = HANDED_OFF_PR as string | undefined,
+}: { stoppedAt?: string; table?: (page: string) => string; commits?: boolean; pr?: string | undefined } = {}) {
   const root = scratch("hand-off-");
   const session = join(root, "session");
   const fixed = join(root, "fix-calls");
   const saved = join(root, "save-calls");
   const marks = join(root, "mark-calls");
+  const argvDir = join(root, "gh-argv");
+  const { setup, calls } = ghArgv(argvDir);
   mkdirSync(session, { recursive: true });
   git(session, "init", "--quiet", "--initial-branch=main");
   git(session, "config", "user.email", "hand-off@test");
@@ -746,12 +759,23 @@ export function handingOff({ stoppedAt, table = (page: string) => page, commits 
   git(session, "add", ".");
   git(session, "commit", "--quiet", "-m", "what the Runs table stands on");
   if (stoppedAt !== undefined) plant(session, ".git/machine-logs/build-811.log", `1 refusals, stopped at: ${stoppedAt}\nthe build stayed red\n`);
-  script(join(root, "bin", "gh"), "exit 22\n");
+  script(
+    join(root, "bin", "gh"),
+    [
+      setup,
+      'case "$*" in',
+      `  *"pr view ticket/811"*) ${pr === undefined ? "exit 1" : `printf '%s\\n' '${pr}'`} ;;`,
+      "  *) exit 0 ;;",
+      "esac",
+      "",
+    ].join("\n"),
+  );
   return {
     session,
     fixed: () => (existsSync(fixed) ? readFileSync(fixed, "utf8").trimEnd().split("\n") : []),
     saved: () => (existsSync(saved) ? readFileSync(saved, "utf8").trimEnd().split("\n") : []),
     marked: () => (existsSync(marks) ? readFileSync(marks, "utf8").trimEnd().split("\n") : []),
+    comments: () => calls().filter((args) => args[0] === "issue" && args[1] === "comment").map((args) => args[args.indexOf("--body") + 1]),
     run: (row?: string) =>
       execute(process.execPath, session, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, [join(SRC, "hand-off.ts"), "811", ...(row === undefined ? [] : [row])]),
   };

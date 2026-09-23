@@ -74,3 +74,22 @@ describe("bin/close names how long filing took to reach merged, and never gates 
     expect(commented).not.toMatch(/: -\d/);
   });
 });
+
+describe("bin/close ends a done ticket closed as completed with no stage label (#851)", () => {
+  it("re-closes as completed and strips the stage label, even when the merge finds the ticket already closed as not planned", () => {
+    const { calls, run } = closing({ ticket: "817", fixes: true, closedAsNotPlanned: true });
+
+    const result = run();
+
+    expect(result.status).toBe(0);
+    const reopened = calls().findIndex((call) => call.startsWith("issue\nreopen\n817"));
+    const closed = calls().findIndex((call) => call.startsWith("issue\nclose\n817"));
+    expect(reopened, "reopens the ticket before closing it as completed").toBeGreaterThanOrEqual(0);
+    expect(closed).toBeGreaterThan(reopened);
+    expect(calls()[closed]).toContain("completed");
+    const stripped = calls().find((call) => call.includes("--remove-label"));
+    expect(stripped, "strips its stage label").toBeDefined();
+    const args = (stripped ?? "").split("\n");
+    expect(args[args.indexOf("--remove-label") + 1]).not.toBe("");
+  });
+});
