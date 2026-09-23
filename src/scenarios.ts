@@ -473,7 +473,7 @@ const CLOSER_TICKET = [
   "",
 ].join("\n");
 
-export function closing({ ticket = "812", ticketBody = CLOSER_TICKET, fixes = true } = {}) {
+export function closing({ ticket = "812", ticketBody = CLOSER_TICKET, fixes = true, readable = true } = {}) {
   const root = scratch("closer-");
   const session = join(root, "session");
   const callsDir = join(root, "gh-calls");
@@ -498,6 +498,7 @@ export function closing({ ticket = "812", ticketBody = CLOSER_TICKET, fixes = tr
       `printf '%s\\n' "$@" >"${callsDir}/$n"`,
       'case "$*" in',
       "  *\"issue view\"*)",
+      ...(readable ? [] : ["    printf 'GraphQL: Could not resolve to an issue\\n' >&2", "    exit 1"]),
       "    cat <<'BODY'",
       ticketBody,
       "BODY",

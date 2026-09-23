@@ -61,7 +61,7 @@ const scenarios: Record<string, Scenario[]> = {
   ],
   "bin/close": [
     { label: "closing a ticket whose checks pass on the merge commit", run: () => closing({ ticket: "814", fixes: true }).run() },
-    { label: "outside a repo to read", run: () => execute(join(REPO, "bin", "close"), scratch("close-")) },
+    { label: "with the ticket unreadable", run: () => closing({ ticket: "815", readable: false }).run() },
   ],
   "bin/test-author": [
     { label: "writing a failing test for each criterion", run: () => authoring().run() },

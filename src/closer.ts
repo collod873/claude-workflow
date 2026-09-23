@@ -1,80 +1,92 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runCheck } from "./check-runner.ts";
 import { postClosing } from "./post.ts";
-import { checks } from "./ticket-shape.ts";
+import { checks, quoted } from "./ticket-shape.ts";
 
-const HEAD_BRANCH = /\bticket\/(\d+)\b/;
-const PR_NUMBER = /#(\d+)/;
-const BUILDS = /\bBuilds #(\d+)\b/;
+const MERGED = /^Merge pull request #(\d+) from \S+?(?:\/ticket\/(\d+))?$/;
+const BUILDS = /^Builds #(\d+)[ \t]*$/m;
 
-const run = (cmd: string, args: string[]) => spawnSync(cmd, args, { encoding: "utf8", maxBuffer: Infinity });
+const run = (command: string, args: string[]) => spawnSync(command, args, { encoding: "utf8", maxBuffer: Infinity });
 const gh = (args: string[]) => run("gh", args);
 const git = (args: string[]) => run("git", args);
-
-function ticketBuilt(message: string): string | undefined {
-  const branch = HEAD_BRANCH.exec(message)?.[1];
-  if (branch !== undefined) return branch;
-  const pr = PR_NUMBER.exec(message)?.[1];
-  if (pr === undefined) return undefined;
-  const body = gh(["pr", "view", pr, "--json", "body", "--jq", ".body"]);
-  return body.status === 0 ? BUILDS.exec(body.stdout)?.[1] : undefined;
-}
 
 interface Verdict {
   command: string;
   base: boolean;
   merge: boolean;
+  why: string;
 }
 
-function worktreeAt(rev: string): string {
+function ticketBuilt(subject: string): string | undefined {
+  const [, pr, branch] = MERGED.exec(subject) ?? [];
+  if (branch !== undefined || pr === undefined) return branch;
+  const asked = gh(["pr", "view", pr, "--json", "body", "--jq", ".body"]);
+  return asked.status === 0 ? BUILDS.exec(asked.stdout)?.[1] : undefined;
+}
+
+function atBase(top: string): string {
   const dir = mkdtempSync(join(tmpdir(), "close-base-"));
   rmSync(dir, { recursive: true, force: true });
-  git(["worktree", "add", "--quiet", "--detach", dir, rev]);
+  git(["worktree", "add", "--quiet", "--detach", dir, "HEAD^1"]);
+  if (existsSync(join(top, "node_modules")) && existsSync(dir)) symlinkSync(join(top, "node_modules"), join(dir, "node_modules"));
   return dir;
 }
 
-function removeWorktree(dir: string): void {
-  git(["worktree", "remove", "--force", dir]);
-}
-
-function verdicts(commands: string[]): Verdict[] {
-  const base = worktreeAt("HEAD^1");
-  const gathered = commands.map((command) => ({ command, base: runCheck(command, base).passed, merge: runCheck(command, process.cwd()).passed }));
-  removeWorktree(base);
+function verdicts(commands: string[], top: string): Verdict[] {
+  const base = atBase(top);
+  const gathered = commands.map((command) => {
+    const merged = runCheck(command, top);
+    return { command, base: runCheck(command, base).passed, merge: merged.passed, why: merged.why };
+  });
+  git(["worktree", "remove", "--force", base]);
   return gathered;
 }
 
 function record(ticket: string, gathered: Verdict[]): string {
+  if (gathered.length === 0) return `#${ticket} carries no check, so nothing proves it done on the merge commit; left open`;
   const red = gathered.filter((verdict) => !verdict.merge);
   if (red.length > 0) {
-    return [`#${ticket}'s checks are not all green on the merge commit:`, ...red.map(({ command }) => `- \`${command}\` is red on the merge commit`)].join("\n");
+    return [`#${ticket} is not done: a check is red on the merge commit`, "", ...red.map(({ command, why }) => `- \`${command}\` ${why} on the merge commit`)].join("\n");
   }
   return [
-    `#${ticket}'s checks all pass on the merge commit:`,
-    ...gathered.map(({ command, base }) => `- \`${command}\` was ${base ? "green" : "red"} at base, green at merge`),
+    `#${ticket} is done: every check is green on the merge commit`,
+    "",
+    ...gathered.map(({ command, base }) => `- \`${command}\` was ${base ? "already green" : "red"} at base, green at merge`),
   ].join("\n");
 }
 
-function closeIfDone(): number {
-  const message = git(["log", "-1", "--format=%B", "HEAD"]).stdout;
-  const ticket = ticketBuilt(message);
-  if (ticket === undefined) return 0;
+const recorded = (said: string) => (said === "" ? "" : `; record ${said}`);
 
+function close(): number {
+  const top = process.cwd();
+  const ticket = ticketBuilt(git(["log", "-1", "--format=%s", "HEAD"]).stdout.trim());
+  if (ticket === undefined) return 0;
   const asked = gh(["issue", "view", ticket, "--json", "body", "--jq", ".body"]);
   if (asked.status !== 0) {
-    console.error(`ticket ${ticket} could not be read, so nothing closed it`);
+    console.error(`close: ticket ${ticket} could not be read, so nothing judged it`);
+    return 1;
+  }
+  const gathered = verdicts(checks(asked.stdout).map(({ command }) => command), top);
+  const posted = postClosing(ticket, record(ticket, gathered), gh);
+  if (posted.refusals.length > 0) {
+    console.error(`close: #${ticket} got no closing record: ${quoted(posted.refusals[0])}`);
+    return 1;
+  }
+  const done = gathered.length > 0 && gathered.every((verdict) => verdict.merge);
+  if (done) {
+    if (gh(["issue", "close", ticket]).status !== 0) {
+      console.error(`close: #${ticket} is done but could not be closed${recorded(posted.said)}`);
+      return 1;
+    }
+    console.log(`close: #${ticket} closed, every check green on the merge commit${recorded(posted.said)}`);
     return 0;
   }
-
-  const gathered = verdicts(checks(asked.stdout).map(({ command }) => command));
-  const { refusals } = postClosing(ticket, record(ticket, gathered), gh);
-  for (const refusal of refusals) console.error(refusal);
-
-  if (gathered.every((verdict) => verdict.merge)) gh(["issue", "close", ticket]);
+  if (gh(["issue", "view", ticket, "--json", "state", "--jq", ".state"]).stdout.trim() === "CLOSED") gh(["issue", "reopen", ticket]);
+  console.log(`close: #${ticket} left open, a check is red on the merge commit${recorded(posted.said)}`);
   return 0;
 }
 
-if (import.meta.main) process.exit(closeIfDone());
+if (import.meta.main) process.exit(close());
