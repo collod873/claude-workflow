@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { CAP, brief } from "./brief.ts";
+import { ticketRefusals } from "./ticket-shape.ts";
 
 const TICKET = "722";
 const CHECK = "npx vitest run --config vitest.config.ts brief";
 const FILLER = "export const filler = 1;\n";
 
-function ticketBody(claimed: string[]): string {
+function ticketBody(claimed: string[], toRead: string[] = []): string {
   return [
     "## Why",
     "",
@@ -19,6 +20,7 @@ function ticketBody(claimed: string[]): string {
     "",
     ...claimed.map((path) => `- ${path}`),
     "",
+    ...(toRead.length === 0 ? [] : ["## Files to read", "", ...toRead.map((path) => `- ${path}`), ""]),
   ].join("\n");
 }
 
@@ -77,6 +79,37 @@ describe("the brief hands a stage what it needs, so it does not explore (#539)",
     const { text } = brief({ ticket: TICKET, body: ticketBody(["bin/planted"]), tests: [], read: reading({}) });
 
     expect(text).toContain("### bin/planted\n\n(not written yet)");
+  });
+
+  it("every brief carries src/scenarios.ts and vitest.config.ts, once each", () => {
+    const { text } = brief({
+      ticket: TICKET,
+      body: ticketBody(["src/planted.ts"]),
+      tests: [],
+      read: reading({
+        "src/planted.ts": "export const one = 1;\n",
+        "src/scenarios.ts": "export const scratch = 1;\n",
+        "vitest.config.ts": "export default {};\n",
+      }),
+    });
+
+    expect(timesIn(text, "### src/scenarios.ts")).toBe(1);
+    expect(timesIn(text, "### vitest.config.ts")).toBe(1);
+  });
+
+  it("inlines a ticket's '## Files to read' with line numbers, and refuses a glob there at filing", () => {
+    const { text } = brief({
+      ticket: TICKET,
+      body: ticketBody(["src/planted.ts"], ["src/other.ts"]),
+      tests: [],
+      read: reading({
+        "src/planted.ts": "export const one = 1;\n",
+        "src/other.ts": "export const other = 1;\nexport const two = 2;\n",
+      }),
+    });
+
+    expect(text).toContain("### src/other.ts\n\n1  export const other = 1;\n2  export const two = 2;");
+    expect(ticketRefusals(ticketBody(["src/planted.ts"], ["src/*.ts"]))).toEqual(["'## Files to read' names `src/*.ts`, a glob rather than one file"]);
   });
 
   it("refuses a brief over the cap, biggest file first", () => {
