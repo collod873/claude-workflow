@@ -52,7 +52,7 @@ describe("src/post.ts is the one way the machine writes text to GitHub (#662)", 
   it("refuses a kind the table does not carry", () => {
     const { gh, calls } = github();
 
-    expect(post(posting({ kind: "judgement" }), gh).refusals).toEqual(["judgement is not a kind src/post.ts writes: ticket, note"]);
+    expect(post(posting({ kind: "spec" }), gh).refusals).toEqual(["spec is not a kind src/post.ts writes: ticket, note, judgement"]);
     expect(calls).toEqual([]);
   });
 
@@ -78,6 +78,18 @@ describe("src/post.ts is the one way the machine writes text to GitHub (#662)", 
       "the body carries no '## Acceptance criteria'",
       "the body carries no '## Files claimed'",
     ]);
+  });
+
+  it("posts a judgement on the PR it judged, and refuses one with no PR or an em dash", () => {
+    const { gh, calls } = github();
+    const text = "The reviewer found drift.\n\n- the Why asks for more than was built\n";
+    const judgement = (fields: Partial<Posting>) => post(posting({ kind: "judgement", text, title: undefined, pr: "901", ...fields }), gh);
+
+    expect(judgement({})).toEqual({ refusals: [], said: URL });
+    expect(calls).toEqual([["pr", "comment", "901", "--body", text]]);
+    expect(judgement({ pr: undefined }).refusals).toEqual(["a judgement carries no pr"]);
+    expect(judgement({ text: `${text}- one gap ${String.fromCodePoint(0x2014)} dashed\n` }).refusals).toEqual(["line 4 carries an em dash"]);
+    expect(calls).toHaveLength(1);
   });
 
   it("hands back what gh said when the write itself fails", () => {

@@ -565,3 +565,64 @@ export function closing({
     run: () => execute(join(BIN, "close"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}` }),
   };
 }
+
+const REVIEWED_TICKET = [
+  "## Why",
+  "",
+  'The owner, in session: "a green build is read against what was meant before it merges".',
+  "",
+  "## Acceptance criteria",
+  "",
+  "- [ ] A drift verdict posts every gap - check: `npx vitest run --config vitest.config.ts reviewer`",
+  "",
+  "## Files claimed",
+  "",
+  "- src/reviewer.ts",
+  "",
+].join("\n");
+
+export const JUDGEMENT = "https://github.com/collod873/claude-workflow/pull/9810#issuecomment-1";
+
+export function fileDiff(path: string, added: string): string {
+  return `diff --git a/${path} b/${path}\nindex 0000000..1111111 100644\n--- a/${path}\n+++ b/${path}\n@@ -0,0 +1 @@\n+${added}\n`;
+}
+
+export function reviewing({
+  branch = "ticket/810",
+  verdict = { verdict: "match", gaps: [] as string[] },
+  diff = fileDiff("src/reviewer.ts", "export const reviewed = 1;"),
+}: { branch?: string; verdict?: { verdict: string; gaps: string[] }; diff?: string } = {}) {
+  const root = scratch("review-");
+  const argvDir = join(root, "gh-argv");
+  const handed = join(root, "claude-stdin");
+  mkdirSync(argvDir, { recursive: true });
+  plant(root, "pr.diff", diff);
+  plant(root, "answer.json", `${JSON.stringify({ type: "result", subtype: "success", is_error: false, structured_output: verdict })}\n`);
+  script(
+    join(root, "bin", "gh"),
+    [
+      `n=$(( $(ls "${argvDir}" 2>/dev/null | wc -l) + 1 ))`,
+      `printf '%s\\0' "$@" >"${argvDir}/$n"`,
+      'case "$*" in',
+      `  *"pr view"*) printf '%s\\n' '${branch}' ;;`,
+      "  *\"issue view\"*)",
+      "    cat <<'TICKET'",
+      REVIEWED_TICKET,
+      "TICKET",
+      "    ;;",
+      `  *"pr diff"*) cat "${join(root, "pr.diff")}" ;;`,
+      `  *"pr comment"*) printf '%s\\n' '${JUDGEMENT}' ;;`,
+      "  *) exit 22 ;;",
+      "esac",
+      "",
+    ].join("\n"),
+  );
+  script(join(root, "bin", "claude"), `cat >"${handed}"\ncat "${join(root, "answer.json")}"\n`);
+  const calls = (): string[][] => readdirSync(argvDir).map((_, index) => readFileSync(join(argvDir, String(index + 1)), "utf8").split("\0").filter((part) => part !== ""));
+  return {
+    spent: () => existsSync(handed),
+    handed: () => (existsSync(handed) ? readFileSync(handed, "utf8") : ""),
+    comments: () => calls().filter((args) => args[0] === "pr" && args[1] === "comment").map((args) => args[args.indexOf("--body") + 1]),
+    run: (pr = "9810") => execute(join(BIN, "review"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, [pr]),
+  };
+}

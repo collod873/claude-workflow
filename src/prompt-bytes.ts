@@ -2,9 +2,10 @@ import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { brief, CAP } from "./brief.ts";
 import { handedOn as builderHandedOn, repaired, TAIL_CAP } from "./builder.ts";
+import { DIFF_CAP, handedOn as reviewerHandedOn, LIST_CAP, TICKET_CAP } from "./reviewer.ts";
 import { handedOn } from "./test-author.ts";
 
-export const CEILINGS: Record<string, number> = { "brief": 136, "test author": 850, "builder": 378, "repair": 84 };
+export const CEILINGS: Record<string, number> = { "brief": 136, "test author": 850, "builder": 378, "repair": 84, "reviewer": 379 };
 
 const AUTHORED = "src/planted.test.ts";
 const HIRES = /(spawn|execFile)\w*\(\s*"claude"/;
@@ -51,6 +52,13 @@ export const PROMPTS: Prompt[] = [
     cap: TAIL_CAP + HANDED_ON,
     slots: ["output"],
     build: (filled) => repaired(filled.output ?? ""),
+  },
+  {
+    name: "reviewer",
+    file: "src/reviewer.ts",
+    cap: 2 * TICKET_CAP + DIFF_CAP + LIST_CAP + HANDED_ON,
+    slots: ["body", "diff"],
+    build: (filled) => reviewerHandedOn(filled.body ?? "", filled.diff ?? ""),
   },
 ];
 

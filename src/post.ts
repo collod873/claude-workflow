@@ -1,18 +1,35 @@
 import { spawnSync } from "node:child_process";
 import { text as read } from "node:stream/consumers";
+import { emDashLines } from "./em-dash.ts";
 import { noteRefusals, ticketRefusals } from "./ticket-shape.ts";
 
 export interface Posting {
   kind: string;
   text: string;
   title?: string;
+  pr?: string;
 }
 
 export type Gh = (args: string[]) => { status: number | null; stdout: string; stderr: string };
 
-const KINDS: Record<string, { refuses: (text: string) => string[]; label: string[] }> = {
-  ticket: { refuses: ticketRefusals, label: [] },
-  note: { refuses: noteRefusals, label: ["--label", "note"] },
+interface Kind {
+  refuses: (text: string) => string[];
+  on: "title" | "pr";
+  args: (on: string, text: string) => string[];
+}
+
+const filed = (refuses: (text: string) => string[], label: string[]): Kind => ({
+  refuses,
+  on: "title",
+  args: (title, text) => ["issue", "create", "--title", title, ...label, "--body", text],
+});
+
+const judgementRefusals = (text: string): string[] => emDashLines(text).map((line) => `line ${line} carries an em dash`);
+
+const KINDS: Record<string, Kind> = {
+  ticket: filed(ticketRefusals, []),
+  note: filed(noteRefusals, ["--label", "note"]),
+  judgement: { refuses: judgementRefusals, on: "pr", args: (pr, text) => ["pr", "comment", pr, "--body", text] },
 };
 
 export function postClosing(ticket: string, text: string, gh: Gh): { refusals: string[]; said: string } {
@@ -21,13 +38,15 @@ export function postClosing(ticket: string, text: string, gh: Gh): { refusals: s
   return { refusals: [], said: stdout.trim() };
 }
 
-export function post({ kind, text, title }: Posting, gh: Gh): { refusals: string[]; said: string } {
+export function post(posting: Posting, gh: Gh): { refusals: string[]; said: string } {
+  const { kind, text } = posting;
   const shape = KINDS[kind];
   if (shape === undefined) return { refusals: [`${kind} is not a kind src/post.ts writes: ${Object.keys(KINDS).join(", ")}`], said: "" };
-  if (title === undefined) return { refusals: [`a ${kind} carries no title`], said: "" };
+  const on = posting[shape.on];
+  if (on === undefined) return { refusals: [`a ${kind} carries no ${shape.on}`], said: "" };
   const refused = shape.refuses(text);
   if (refused.length > 0) return { refusals: refused, said: "" };
-  const args = ["issue", "create", "--title", title, ...shape.label, "--body", text];
+  const args = shape.args(on, text);
   const { status, stdout, stderr } = gh(args);
   if (status !== 0) return { refusals: [`gh ${args[0]} ${args[1]} failed: ${(stderr || stdout).trim().split("\n")[0]}`], said: "" };
   return { refusals: [], said: stdout.trim() };

@@ -129,6 +129,12 @@ export const parts: Part[] = [
     ],
   },
   {
+    name: "bin/review",
+    file: "bin/review",
+    stops: "https://github.com/collod873/claude-workflow/issues/661",
+    holds: ["Every green build is read against `## Why` before it merges"],
+  },
+  {
     name: "bin/machine-page",
     file: "bin/machine-page",
     stops: "https://github.com/collod873/claude-workflow/issues/710",
