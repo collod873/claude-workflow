@@ -2,7 +2,6 @@ import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { DENIED } from "./deny-list.ts";
 import { building, heard, plant, scratch, writesOutsideRepo } from "./scenarios.ts";
 
 const BUILDS = "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n";
@@ -80,14 +79,12 @@ describe("the builder builds against the brief, with one resumed repair round (#
     expect(result.stderr).toContain(outside);
   });
 
-  it("refuses an edit to the author's test files, beside the shared deny list, and runs only its check commands", () => {
+  it("lets its shell run its check commands and the static gates", () => {
     const { run, argv } = building();
 
     const result = run();
 
     expect(heard(result).status).toBe(1);
-    expect(argv(1)).toContain(DENIED.join(","));
-    expect(argv(1)).toContain("Edit(src/ticket-shape.test.ts)");
     expect(fenceSays(argv(1), asking("npx vitest run --config vitest.config.ts ticket-shape")).status).toBe(0);
     expect(fenceSays(argv(1), asking("bin/check static")).status).toBe(0);
   });

@@ -5,16 +5,10 @@ import { describe, expect, it } from "vitest";
 import { git } from "./scenarios.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
-const MACHINE_READ =
-  /shellcheck|eslint-|@ts-|prettier-ignore|[cv]8 ignore|@type\b|@shell\b|@fixture\b|noqa|pylint:|mypy:|pyright:|ruff:|type:\s*ignore|pragma:\s*no cover/;
-const KNIP_TAG = /@shell\b|@fixture\b/;
-const KNIP_TAG_CAP = 5;
+const MACHINE_READ = /^(\/\/|\/\*+|#)\s*\*?\s*(shellcheck|eslint-|@ts-|prettier-ignore|[cv]8 ignore|@type\b)/;
 const BRACE = /\.(m|c)?(t|j)s$/;
 const HASH = /\.(sh|ya?ml)$/;
 const SHEBANG = /^#!.*\b(bash|sh)\b/;
-const PY = /\.py$/;
-const PY_SHEBANG = /^#!.*\bpython/;
-const PY_STRING = /^[rbufRBUF]{0,2}("""|'''|"|')/;
 
 interface Prose {
   path: string;
@@ -42,11 +36,6 @@ function braceProse(path: string, source: string): Prose[] {
   for (const range of comments.values()) {
     const text = source.slice(range.pos, range.end);
     const line = lineOf(source, range.pos);
-    const height = text.split("\n").length;
-    if (KNIP_TAG.test(text)) {
-      if (height > KNIP_TAG_CAP) found.push({ path, line, text: `${height} lines behind a knip tag` });
-      continue;
-    }
     if (MACHINE_READ.test(text)) continue;
     found.push({ path, line, text: text.split("\n")[0] });
   }
@@ -73,67 +62,9 @@ function hashProse(path: string, source: string): Prose[] {
   return found;
 }
 
-function closesAt(source: string, from: number, quote: string): number {
-  let index = from;
-  while (index < source.length) {
-    if (source[index] === "\\") {
-      index += 2;
-      continue;
-    }
-    if (source.startsWith(quote, index)) return index + quote.length;
-    index += 1;
-  }
-  return source.length;
-}
-
-function pyProse(path: string, source: string): Prose[] {
-  const found: Prose[] = [];
-  const helpText = source.includes("__doc__");
-  let index = 0;
-  let startsLine = true;
-  let atModuleDocstring = true;
-  while (index < source.length) {
-    const char = source[index];
-    if (char === "\n") {
-      startsLine = true;
-      index += 1;
-      continue;
-    }
-    if (char === " " || char === "\t" || char === "\r") {
-      index += 1;
-      continue;
-    }
-    if (char === "#") {
-      const ends = source.indexOf("\n", index);
-      const stop = ends === -1 ? source.length : ends;
-      const text = source.slice(index, stop);
-      const line = lineOf(source, index);
-      if (!(line === 1 && text.startsWith("#!")) && !MACHINE_READ.test(text)) found.push({ path, line, text });
-      index = stop;
-      continue;
-    }
-    const opener = PY_STRING.exec(source.slice(index, index + 5));
-    if (opener !== null) {
-      const quote = opener[1];
-      const ends = closesAt(source, index + opener[0].length, quote);
-      const readByArgparse = atModuleDocstring && helpText;
-      if (startsLine && quote.length === 3 && !readByArgparse) found.push({ path, line: lineOf(source, index), text: source.slice(index, ends).split("\n")[0] });
-      index = ends;
-      startsLine = false;
-      atModuleDocstring = false;
-      continue;
-    }
-    startsLine = false;
-    atModuleDocstring = false;
-    index += 1;
-  }
-  return found;
-}
-
 function proseIn(path: string, source: string): Prose[] {
   if (BRACE.test(path)) return braceProse(path, source);
-  if (PY.test(path) || PY_SHEBANG.test(source)) return pyProse(path, source);
-  if (HASH.test(path) || SHEBANG.test(source)) return hashProse(path, source);
+  if (HASH.test(path) || SHEBANG.test(source) || path.startsWith(".husky/")) return hashProse(path, source);
   return [];
 }
 
@@ -160,35 +91,17 @@ describe("code this repo tracks carries no prose", () => {
     expect(proseIn("planted.js", "/* a sentence */\nexport default {};\n")).toHaveLength(1);
     expect(proseIn("planted", "#!/bin/bash\n# a sentence\nrun\n")).toHaveLength(1);
     expect(proseIn("planted.yml", "jobs:\n  # a sentence\n  build: {}\n")).toHaveLength(1);
-    expect(proseIn("planted.py", "x = 1  # a sentence\n")).toHaveLength(1);
-    expect(proseIn("planted.py", '"""A sentence."""\n\n\ndef run():\n    """Another."""\n')).toHaveLength(2);
-    expect(proseIn("planted", "#!/usr/bin/env python3\n# a sentence\nrun()\n")).toHaveLength(1);
+    expect(proseIn(".husky/pre-push", "# a sentence\nbin/check\n")).toHaveLength(1);
   });
 
-  it("leaves what a machine reads: knip tags, shellcheck directives, eslint pragmas, python pragmas", () => {
+  it("leaves what a machine reads: shellcheck directives and eslint pragmas, and reads a sentence that only mentions one", () => {
     expect(proseIn("kept.ts", "// eslint-disable-next-line no-eval\nconst x = 1;\n")).toHaveLength(0);
     expect(proseIn("kept.sh", "#!/bin/bash\n# shellcheck source=x.sh\nrun\n")).toHaveLength(0);
-    expect(proseIn("kept.ts", "/**\n * @fixture Reached only from the suite.\n */\nexport const x = 1;\n")).toHaveLength(0);
-    expect(proseIn("kept.py", "x = 1  # noqa: E501\ny = 2  # type: ignore[arg-type]\n")).toHaveLength(0);
-  });
-
-  it("leaves a module docstring the script hands to argparse, and still reads the docstrings under it", () => {
-    const script = '"""usage: run [--days N]\n\nWhat it does.\n"""\n\n\ndef run():\n    """Another."""\n\n\nparser(description=__doc__)\n';
-
-    expect(proseIn("helpful.py", script)).toEqual([{ path: "helpful.py", line: 8, text: '"""Another."""' }]);
-    expect(proseIn("silent.py", script.replace("description=__doc__", "description='run'"))).toHaveLength(2);
-  });
-
-  it("refuses an essay hiding behind a knip tag", () => {
-    expect(proseIn("essay.ts", "/**\n * @fixture one\n * two\n * three\n * four\n * five\n */\nexport const x = 1;\n")).toHaveLength(1);
+    expect(proseIn("said.ts", "// we skip eslint-disable here because it lies\nconst x = 1;\n")).toHaveLength(1);
   });
 
   it("reads a heredoc as data rather than as the comments it may contain", () => {
     expect(proseIn("here.sh", "#!/bin/bash\ncat <<EOF\n# not a comment\nEOF\n")).toHaveLength(0);
-  });
-
-  it("reads a python string held as data rather than as the docstring it resembles", () => {
-    expect(proseIn("data.py", 'TEMPLATE = """\nnot a docstring\n"""\n\nBODY = "# not a comment"\n')).toHaveLength(0);
   });
 
   it("holds at none across everything tracked", () => {

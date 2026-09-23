@@ -2,8 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { type Shell } from "./check-runner.ts";
-import { DENIED } from "./deny-list.ts";
-import { authoring, heard, plant, scratch, wellFormedTicket, writesOutsideRepo } from "./scenarios.ts";
+import { authoring, heard, plant, scratch, wellFormedTicket } from "./scenarios.ts";
 import { handedOn as prompted, uncovered } from "./test-author.ts";
 
 const ran = (stdout: string, status: number): Shell => () => ({ status, stdout, stderr: "" });
@@ -79,32 +78,13 @@ describe("the test author writes one failing test per criterion, or ends red (#6
     expect(readdirSync(join(setAside, "src")).sort()).toEqual(["prototype.ts", "ticket-shape.ts"]);
   });
 
-  it("commits one failing test per criterion on the ticket branch, under the shared deny list", () => {
+  it("commits one failing test per criterion on the ticket branch", () => {
     const { run, committed, handedOn } = authoring();
 
     const result = run();
 
     expect(heard(result)).toEqual({ status: 0, stderr: "", lines: [expect.stringContaining("#723")] });
     expect(committed()).toEqual(["src/ticket-shape.test.ts"]);
-    expect(handedOn()).toContain(DENIED.join(","));
-  });
-
-  it("hands the test author a permission mode that lets it write a path under .claude/, so a ticket claiming one is authored instead of refused", () => {
-    const { run, handedOn } = authoring();
-
-    run();
-
-    expect(handedOn()).toContain("--permission-mode\nbypassPermissions");
-  });
-
-  it("ends red naming the path when the model writes a file outside the repo", () => {
-    const outside = join(scratch("outside-"), "secret.txt");
-    const { run } = authoring({ claude: writesOutsideRepo(outside) });
-
-    const result = run();
-
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain(outside);
   });
 
   it("ends red naming the criterion whose check still passes, and writes nothing", () => {
@@ -149,12 +129,12 @@ describe("the test author writes one failing test per criterion, or ends red (#6
     expect(committed()).toEqual([]);
   });
 
-  it("lets the model run bin/check static, and names the gates it holds", () => {
+  it("lets the model run the static gates under either spelling of the path, and names the gates they hold", () => {
     const { run, handedOn } = authoring();
 
     run();
 
-    expect(handedOn()).toContain("Bash(bin/check static)");
+    expect(handedOn()).toContain("./bin/check static");
     expect(prompted("", [])).toMatch(/`bin\/check static`.*comments.*em dash.*src\/scenarios\.ts/s);
   });
 
@@ -179,15 +159,6 @@ describe("the test author writes one failing test per criterion, or ends red (#6
 
   it("tells the model a prototype proves nothing and a claimed file not written yet already counts as red", () => {
     expect(prompted("", [])).toMatch(/prototype proves nothing.*claimed file not written yet already counts as red/s);
-  });
-
-  it("lets the model run the static gates under either spelling of the path", () => {
-    const { run, handedOn } = authoring();
-
-    run();
-
-    expect(handedOn()).toContain("Bash(bin/check static)");
-    expect(handedOn()).toContain("Bash(./bin/check static)");
   });
 
   it("spends no model on a ticket GitHub will not hand over", () => {

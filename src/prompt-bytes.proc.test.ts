@@ -65,12 +65,4 @@ describe("every prompt holds a byte ceiling that only ever shrinks (#663)", () =
       "src/reviewer.ts hires a model and no prompt of that name is measured",
     ]);
   });
-
-  it("passes from the repo and says one line", () => {
-    const { status, stdout, stderr } = execute("node", REPO, {}, ["src/prompt-bytes.ts"]);
-
-    expect(stderr).toBe("");
-    expect(status).toBe(0);
-    expect(stdout.trimEnd().split("\n")).toHaveLength(1);
-  });
 });

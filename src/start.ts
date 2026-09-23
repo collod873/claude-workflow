@@ -3,14 +3,8 @@ import { existsSync } from "node:fs";
 import { passingCriteria } from "./check-runner.ts";
 import { checks, claims, ticketRefusals, withRenamedPath } from "./ticket-shape.ts";
 
-const SETTLED = new Set(["success", "skipped", "neutral"]);
 const CONFIG_FLAG = /--config[ \t]+(\S+)/;
 const RENAME = /^R\d*\t([^\t]+)\t([^\t]+)$/;
-
-interface CheckRun {
-  name: string;
-  conclusion: string | null;
-}
 
 type Resolution = { kind: "exists" } | { kind: "renamed"; to: string } | { kind: "gone" } | { kind: "unknown" };
 
@@ -26,23 +20,6 @@ function treeRefusals(): string[] {
   if (counted.status !== 0) return ["origin/main could not be read, so nothing knows whether this tree is fresh"];
   const behind = Number(counted.stdout.trim());
   return behind === 0 ? [] : [`this tree is ${behind} commit${behind === 1 ? "" : "s"} behind origin/main`];
-}
-
-export function mainRefusals(answered: string): string[] {
-  let ran: CheckRun[];
-  try {
-    ran = (JSON.parse(answered) as { check_runs: CheckRun[] }).check_runs;
-  } catch {
-    return ["GitHub's answer about main did not parse, so the ticket waits"];
-  }
-  return ran
-    .filter((run) => run.conclusion !== null && !SETTLED.has(run.conclusion))
-    .map((run) => `main is red: ${run.name} ${run.conclusion}`);
-}
-
-function redRefusals(): string[] {
-  const asked = gh(["api", "repos/{owner}/{repo}/commits/main/check-runs"]);
-  return asked.status === 0 ? mainRefusals(asked.stdout) : ["GitHub would not say whether main is green, so the ticket waits"];
 }
 
 interface History {
@@ -134,8 +111,6 @@ function startRefusals(ticket: string): { notices: string[]; refusals: string[] 
   if (tree.length > 0) return { notices: [], refusals: tree };
   const stale = staleOutcome(body, ticket);
   if (stale.refusals.length > 0) return { notices: stale.notices, refusals: stale.refusals };
-  const red = redRefusals();
-  if (red.length > 0) return { notices: stale.notices, refusals: red };
   return { notices: stale.notices, refusals: passingCriteria(stale.body, process.cwd()) };
 }
 

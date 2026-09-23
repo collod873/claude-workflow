@@ -115,11 +115,6 @@ export const parts: Part[] = [
     holds: ["Work is never thrown away: the branch is pushed before anything can refuse it"],
   },
   {
-    name: "src/deny-list.test.ts",
-    file: "src/deny-list.test.ts",
-    stops: "https://github.com/collod873/claude-workflow/issues/663",
-  },
-  {
     name: "bin/app-token",
     file: "bin/app-token",
     stops: "https://github.com/collod873/claude-workflow/issues/652",

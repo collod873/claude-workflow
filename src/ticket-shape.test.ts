@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { LINE_LIMIT } from "./scenarios.ts";
 import { noteRefusals, ticketRefusals } from "./ticket-shape.ts";
 
 const DASH = "\u2014";
-const LINE = 200;
 const TEST_CHECK = "npx vitest run --config vitest.config.ts ticket-shape";
 const GREP_CHECK = "grep -q ticketRefusals src/post.ts";
 const QUOTED = 'The owner, in session: "file a ticket the machine can build".';
@@ -91,7 +91,7 @@ describe("src/ticket-shape refuses a ticket body that hides what was meant (#662
   it("clips the criterion it quotes, so no refusal outgrows a line the caller can print", () => {
     const [refusal] = ticketRefusals(body({ criteria: [`- [ ] ${"a criterion nobody could read ".repeat(8)}`] }));
 
-    expect(refusal.length).toBeLessThanOrEqual(LINE);
+    expect(refusal.length).toBeLessThanOrEqual(LINE_LIMIT);
     expect(refusal).toMatch(/…$/);
   });
 
