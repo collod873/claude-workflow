@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { building, heard, plant, scratch, writesOutsideRepo } from "./scenarios.ts";
@@ -127,6 +127,15 @@ describe("the builder builds against the brief, with one resumed repair round (#
 
     const transcript = readFileSync(join(session, ".git", "machine-logs", "build-724.jsonl"), "utf8");
     expect(transcript.split(sessionId)).toHaveLength(3);
+  });
+
+  it("writes the transcript while the model is still running, so a run killed mid-stage still leaves what the model did", () => {
+    const { run, session } = building({ claude: `printf '{"session_id":"live-%s"}\\n' $$\ngrep -q "live-$$" .git/machine-logs/build-724.jsonl || touch ../buffered` });
+
+    run();
+
+    expect(readFileSync(join(session, ".git", "machine-logs", "build-724.jsonl"), "utf8")).toContain("live-");
+    expect(existsSync(join(session, "..", "buffered"))).toBe(false);
   });
 
   it("commits a build still red after the repair round, so the save step has it to push", () => {

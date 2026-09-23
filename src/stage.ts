@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { appendFileSync, cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { brief, onDisk } from "./brief.ts";
 import { stageArgv } from "./fence.ts";
@@ -131,9 +131,11 @@ function open(stage: Stage, ticket: string, cwd: string, logs: string): Opened |
     wrote: () => fresh().map(([path]) => path),
     setAside,
     spend: (input, resume) => {
-      const spent = spawnSync("claude", [...argv, ...(resume === undefined ? [] : ["--resume", resume]), ...STREAM], { input, encoding: "utf8", maxBuffer: Infinity });
-      const stdout = spent.stdout ?? "";
-      appendFileSync(transcript, stdout);
+      const from = existsSync(transcript) ? statSync(transcript).size : 0;
+      const streamed = openSync(transcript, "a");
+      const spent = spawnSync("claude", [...argv, ...(resume === undefined ? [] : ["--resume", resume]), ...STREAM], { input, stdio: ["pipe", streamed, "pipe"], encoding: "utf8", maxBuffer: Infinity });
+      closeSync(streamed);
+      const stdout = readFileSync(transcript).subarray(from).toString("utf8");
       setAside(opened.wrote().filter((path) => !stage.keeps(path, opened)));
       const stray = writtenOutsideRepo(cwd, stdout);
       if (stray !== undefined) return { refusal: `the ${stage.name} wrote outside the repo: ${stray}` };
