@@ -29,10 +29,10 @@ run() {
   shift
   [[ $mode == static && $static_gates != *" $name "* ]] && return 0
   if ! output=$("$@" 2>&1); then
+    output=${output//"$repo/"/}
     printf -- '--- %s ---\n%s\n' "$name" "$output" >>"$log"
     at=$(grep -oE '[A-Za-z0-9_./-]+\.(ts|js|json)(:[0-9]+|\([0-9]+)?' <<<"$output" | grep -m1 -E '[:(][0-9]+$' ||
       grep -m1 -oE '[A-Za-z0-9_./-]+\.(ts|js|json)' <<<"$output")
-    at="${at#"$repo/"}"
     at="${at/(/:}"
     names="$names $name"
     located="$located${located:+,} $name${at:+ $at}"
@@ -42,7 +42,7 @@ run() {
 run typecheck tsc --noEmit --pretty false -p tsconfig.json
 run lint eslint --config eslint.config.js
 run unused knip --config knip.config.ts --no-config-hints
-run clones jscpd src --threshold 0 --min-tokens 50 --min-lines 5 --format typescript,javascript --silent
+run clones jscpd src --exitCode 1 --reporters console --min-tokens 50 --min-lines 5 --format typescript,javascript
 run test vitest run --config vitest.config.ts $style
 run prompts node src/prompt-bytes.ts
 run links node src/part-links.ts

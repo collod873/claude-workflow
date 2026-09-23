@@ -122,7 +122,7 @@ function open(stage: Stage, ticket: string, cwd: string, logs: string): Opened |
     wrote: () => fresh().map(([path]) => path),
     setAside,
     spend: (input, resume) => {
-      const spent = spawnSync("claude", [...argv, ...(resume === undefined ? [] : ["--resume", resume]), ...STREAM], { input, encoding: "utf8" });
+      const spent = spawnSync("claude", [...argv, ...(resume === undefined ? [] : ["--resume", resume]), ...STREAM], { input, encoding: "utf8", maxBuffer: Infinity });
       const stdout = spent.stdout ?? "";
       appendFileSync(transcript, stdout);
       setAside(opened.wrote().filter((path) => !stage.keeps(path, opened)));
