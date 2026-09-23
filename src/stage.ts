@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { closeSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { brief, onDisk } from "./brief.ts";
-import { stageArgv } from "./fence.ts";
+import { ownerHooks, stageArgv, type Registration } from "./fence.ts";
 import { STOPS, type Stop, type Stopped } from "./stops.ts";
 import { checks, quoted } from "./ticket-shape.ts";
 
@@ -101,6 +101,16 @@ function capped(argv: string[], minutes: number, deadline: number): string[] {
   return ["timeout", `--kill-after=${GRACE_SECONDS}`, String(left), "claude", ...argv];
 }
 
+function registered(): Registration | string {
+  const path = process.env.AGENT_HOOKS_SETTINGS;
+  if (path === undefined || path === "") return {};
+  try {
+    return (JSON.parse(readFileSync(path, "utf8")) as { hooks?: Registration }).hooks ?? {};
+  } catch {
+    return path;
+  }
+}
+
 function open(stage: Stage, ticket: string, cwd: string, logs: string): Opened | Stopped {
   const minutes = Number(process.env.STAGE_MINUTES);
   const deadline = Date.now() + minutes * 60_000;
@@ -113,7 +123,9 @@ function open(stage: Stage, ticket: string, cwd: string, logs: string): Opened |
   if (briefed.refusals.length > 0) return { stop: "overCap", refusals: briefed.refusals };
   writeFileSync(join(logs, `brief-${ticket}.md`), briefed.text);
   const commands = checks(body).map(({ command }) => command);
-  const argv = [...stageArgv(commands), ...(stage.answers === undefined ? [] : ["--json-schema", JSON.stringify(stage.answers)])];
+  const hooks = registered();
+  if (typeof hooks === "string") return { stop: "modelRun", refusals: [`the owner's hooks could not be read from ${hooks}, so ${stage.undone}`] };
+  const argv = [...stageArgv(commands, ownerHooks(hooks)), ...(stage.answers === undefined ? [] : ["--json-schema", JSON.stringify(stage.answers)])];
   const kept = join(logs, `${stage.bin}-${ticket}-set-aside`);
   const transcript = join(logs, `${stage.bin}-${ticket}.jsonl`);
   rmSync(kept, { recursive: true, force: true });

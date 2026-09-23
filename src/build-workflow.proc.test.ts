@@ -146,6 +146,17 @@ describe("a build run is watched as it goes, read after it ends, and stopped at 
     }
   });
 
+  it("every job hands its stages the owner's hooks, read with a token that can only read agent-hooks", () => {
+    for (const { steps } of Object.values(parsed().jobs).filter(({ steps }) => steps.some(spendsModel))) {
+      const minted = steps.findIndex((step) => step.with?.repositories === "agent-hooks");
+      const handed = steps.findIndex((step) => /AGENT_HOOKS_SETTINGS=.*GITHUB_ENV/.test(step.run ?? ""));
+      expect(steps[minted]?.with).toMatchObject({ owner: "collod873", "permission-contents": "read" });
+      expect(minted).toBeGreaterThanOrEqual(0);
+      expect(handed).toBeGreaterThan(minted);
+      expect(handed).toBeLessThan(steps.findIndex(spendsModel));
+    }
+  });
+
   it("every job keeps its machine logs as a run artifact, whatever ended it", () => {
     for (const { steps } of Object.values(parsed().jobs)) {
       const last = steps[steps.length - 1];

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { building, heard, plant, scratch, writesOutsideRepo } from "./scenarios.ts";
@@ -139,7 +139,7 @@ describe("the builder builds against the brief, with one resumed repair round (#
   });
 
   it("stops the model and everything it started at the stage's cap, which GitHub's own step cap never reached (#835)", () => {
-    const { run, session } = building({ minutes: "0.03", claude: "sleep 300 &\nprintf '%s' $! >../child\nwait" });
+    const { run, session } = building({ extra: { STAGE_MINUTES: "0.03" }, claude: "sleep 300 &\nprintf '%s' $! >../child\nwait" });
     const started = Date.now();
 
     const result = run();
@@ -149,6 +149,32 @@ describe("the builder builds against the brief, with one resumed repair round (#
     const child = readFileSync(join(session, "..", "child"), "utf8");
     const state = existsSync(`/proc/${child}/stat`) ? readFileSync(`/proc/${child}/stat`, "utf8").split(") ")[1][0] : "gone";
     expect(["gone", "Z"]).toContain(state);
+  });
+
+  it("runs the owner's edit-time hooks beside its fence, and none that would hold the model from stopping", () => {
+    const registered = (name: string, matcher?: string) => ({ ...(matcher === undefined ? {} : { matcher }), hooks: [{ type: "command", command: `python3 "/agent-hooks/hooks/${name}.py"` }] });
+    const settings = join(scratch("agent-hooks-"), "settings.json");
+    writeFileSync(settings, JSON.stringify({ hooks: { PreToolUse: [registered("no-prose", "Write|Edit"), registered("background-launch", "Bash")], Stop: [registered("check-gate")], PostToolUse: [registered("post-edit-validate", "Edit")] } }));
+    const { run, argv } = building({ extra: { AGENT_HOOKS_SETTINGS: settings } });
+
+    run();
+
+    const handed = after(argv(1), "--settings");
+    expect(handed).toContain("hooks/no-prose.py");
+    expect(handed).toContain("hooks/post-edit-validate.py");
+    expect(handed).not.toContain("check-gate");
+    expect(handed).not.toContain("background-launch");
+    expect(fenceSays(argv(1), asking("touch unlisted-marker")).status).toBe(2);
+  });
+
+  it("ends red rather than run without the owner's hooks when their registration cannot be read", () => {
+    const { run, calls } = building({ extra: { AGENT_HOOKS_SETTINGS: join(scratch("agent-hooks-"), "missing.json") } });
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("missing.json");
+    expect(calls()).toBe(0);
   });
 
   it("commits a build still red after the repair round, so the save step has it to push", () => {

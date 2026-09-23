@@ -13,12 +13,35 @@ const FENCE = [
 
 const shellQuoted = (text: string) => `'${text.replaceAll("'", "'\\''")}'`;
 
-function fenced(runs: string[]): string {
-  const command = ["node", "-e", FENCE, JSON.stringify(runs)].map(shellQuoted).join(" ");
-  return JSON.stringify({ hooks: { PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command }] }] } });
+const OWNER_HOOKS = [
+  "credential-scan",
+  "em-dash",
+  "module-depth",
+  "no-prose",
+  "test-weaken",
+  "context-lint",
+  "post-edit-validate",
+  "stale-ref",
+  "dead-path",
+  "log-stop-failure",
+];
+
+export type Registration = Record<string, { matcher?: string; hooks: { command: string }[] }[]>;
+
+const isOwnerHook = (command: string) => OWNER_HOOKS.some((name) => command.includes(`/hooks/${name}.py`));
+
+export function ownerHooks(registered: Registration): Registration {
+  const kept = Object.entries(registered).map(([event, entries]) => [event, entries.filter(({ hooks }) => hooks.every(({ command }) => isOwnerHook(command)))] as const);
+  return Object.fromEntries(kept.filter(([, entries]) => entries.length > 0));
 }
 
-export function stageArgv(commands: string[]): string[] {
+function fenced(runs: string[], owned: Registration): string {
+  const command = ["node", "-e", FENCE, JSON.stringify(runs)].map(shellQuoted).join(" ");
+  const fence = { matcher: "Bash", hooks: [{ type: "command", command }] };
+  return JSON.stringify({ hooks: { ...owned, PreToolUse: [fence, ...(owned.PreToolUse ?? [])] } });
+}
+
+export function stageArgv(commands: string[], owned: Registration = {}): string[] {
   const runs = [...commands, STATIC, `./${STATIC}`];
   return [
     "--print",
@@ -27,7 +50,7 @@ export function stageArgv(commands: string[]): string[] {
     "--setting-sources",
     "",
     "--settings",
-    fenced(runs),
+    fenced(runs, owned),
     "--tools",
     TOOLS.join(","),
     "--permission-mode",
