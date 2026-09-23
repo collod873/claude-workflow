@@ -11,6 +11,7 @@ amended 2026-09-23; only the owner changes it. What is still to build, and in wh
    quoted verbatim, the session's one-paragraph summary, and the session link),
    `## Acceptance criteria`, `## Files claimed`, and optionally `## Files to read`.
 2. **Start.** Filing, or the owner reopening a ticket, fires the start step. No label, no dispatch.
+   Reopening a ticket whose PR is open re-runs that PR's failed checks instead.
 3. **Tests.** The test author writes one failing test per behavioural criterion on `ticket/<n>`.
 4. **Build.** The builder builds against the brief, with one resumed repair round.
 5. **Save.** The branch is pushed and the PR opened with auto-merge on, red or green.
@@ -18,7 +19,7 @@ amended 2026-09-23; only the owner changes it. What is still to build, and in wh
 7. **Review.** Once green, the reviewer reads `## Why` against the diff.
 8. **Merge.** GitHub merges when the required checks pass on an up-to-date branch.
 9. **Close.** The merge fires the closer. It runs the ticket's checks on the merge commit, posts the
-   closing record and the speed report, and closes the ticket.
+   closing record and the speed report, and closes the ticket as completed, clearing its stage labels.
 
 Every agent is a fresh context. What keeps them apart is the clean slate and the gate between them,
 not a bigger model.
@@ -38,6 +39,7 @@ Every stop names who clears it.
 | The ticket or its PR cannot be read | No model spent; nothing judged | The fixer |
 | A brief is over its 64 KB cap | No model spent | The fixer, which narrows the ticket's claims |
 | A stage finds uncommitted work in the tree | No model spent | The run that started the stage, from a clean checkout |
+| A job cannot fetch the owner's hooks after 3 tries | No model spent; ticket marked failed, PR and branch kept | Nobody; Look-back counts it |
 | The test author writes no test, or cannot write a failing test for a criterion | Stage ends red | The fixer, which fixes the ticket |
 | A stage writes outside the repo, or its model run exits non-zero | Stage ends red, branch saved | The fixer |
 | A stage's work will not commit | Stage ends red, work left in the tree | The fixer |
@@ -47,7 +49,7 @@ Every stop names who clears it.
 | Green on the ticket's checks, red on the PR's required check | PR stays open | The fixer |
 | The reviewer finds drift from `## Why` | PR stays open, gaps posted | The fixer |
 | The branch conflicts with main | Update refused, PR open | The fixer |
-| The fixer ends red, or rules the ticket should not exist as written | Closed unbuilt; branch kept; reason on the ticket | Nobody; Look-back counts it |
+| The fixer ends red, or rules the ticket should not exist as written | Closed unbuilt, branch kept, reason on the ticket; left open and marked failed when its PR is open | Nobody; Look-back counts it |
 | Red on main after merge | Ticket reopened | The fixer, on a new PR |
 | Close: the ticket carries no check | Left open, the closing record says nothing proves it | The fixer |
 | Close: the closing record is refused, or the ticket will not close | Run fails red; the ticket left as it was | The fixer |
