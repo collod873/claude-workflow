@@ -39,6 +39,12 @@ describe("src/check-runner.ts passes a check only when it ran and measured somet
     expect(runCheck(VITEST, ".", says("      Tests  1 failed | 2 passed (3)\n", 1))).toMatchObject({ passed: false, why: "exited 1" });
   });
 
+  it("counts the tests of a run coloured the way CI colours it", () => {
+    const coloured = "\x1b[2m      Tests \x1b[22m \x1b[1m\x1b[32m1 passed\x1b[39m\x1b[22m\x1b[90m (1)\x1b[39m\n";
+
+    expect(runCheck(VITEST, ".", says(coloured, 0))).toMatchObject({ passed: true, why: "" });
+  });
+
   it("hands back what the check said on either stream", () => {
     expect(runCheck(GREP, ".", () => ({ status: 2, stdout: "said\n", stderr: "wrote\n" })).output).toBe("said\nwrote\n");
   });
