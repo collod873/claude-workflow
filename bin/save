@@ -28,7 +28,14 @@ call() {
   fi
 }
 
+stopped() {
+  tmp=$(mktemp)
+  { printf '1 refusals, stopped at: %s\n' "$1"; cat "$log" 2>/dev/null; } >"$tmp"
+  mv "$tmp" "$log"
+}
+
 call git push --no-verify --quiet origin "refs/heads/$branch:refs/heads/$branch" || {
+  stopped "Save: the push is refused"
   printf 'save: #%s kept on %s here, the push failed, so no PR was opened; log %s\n' "$ticket" "$branch" "$shown" >&2
   exit 1
 }
@@ -47,6 +54,7 @@ opened() {
 }
 
 if ! opened; then
+  stopped "Save: the PR is not open with auto-merge on"
   printf 'save: #%s pushed to %s, but its PR is not open with auto-merge on; log %s\n' "$ticket" "$branch" "$shown" >&2
   exit 1
 fi
