@@ -3,6 +3,11 @@ set -uo pipefail
 
 usage="review: usage: review <pr number>"
 
+if [[ ${1:-} == "--help" ]]; then
+  printf '%s\n' "$usage"
+  exit 0
+fi
+
 pr=${1:-}
 if [[ $# -ne 1 || ! $pr =~ ^[0-9]+$ ]]; then
   printf '%s\n' "$usage" >&2
