@@ -109,6 +109,37 @@ jobs:
           tail --pid=$$ -n +1 -F .git/machine-logs/fix-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered "$FEED" &
           node src/hand-off.ts ${{ github.event.issue.number }}
 
+      - id: kb-app
+        if: always()
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          owner: collod873
+          repositories: Knowledge-Base
+          permission-contents: write
+
+      - if: always()
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          KB_TOKEN: ${{ steps.kb-app.outputs.token }}
+        run: |
+          timeout 120 bash -c 'while pgrep -f "[c]apture[.]py" >/dev/null; do sleep 1; done' || true
+          captured="$HOME/Claude Projects/Knowledge-Base/raw"
+          [ -d "$captured" ] || exit 0
+          kb="$RUNNER_TEMP/knowledge-base"
+          git clone --quiet --depth 1 "https://x-access-token:$KB_TOKEN@github.com/collod873/Knowledge-Base" "$kb"
+          git -C "$kb" config user.name "collod873-machine[bot]"
+          git -C "$kb" config user.email "collod873-machine[bot]@users.noreply.github.com"
+          cp -r "$captured/." "$kb/raw/"
+          git -C "$kb" add raw
+          git -C "$kb" commit --quiet -m "flush: stage captures from $GITHUB_REPOSITORY run $GITHUB_RUN_ID" || exit 0
+          for attempt in 1 2 3; do
+            git -C "$kb" pull --quiet --rebase origin main && git -C "$kb" push --quiet origin HEAD:main && exit 0
+          done
+          exit 1
+
       - if: always()
         uses: actions/upload-artifact@v7
         with:
@@ -175,6 +206,37 @@ jobs:
         run: |
           tail --pid=$$ -n +1 -F .git/machine-logs/fix-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered "$FEED" &
           node src/hand-off.ts ${{ github.event.issue.number }} 'Red on main after merge'
+
+      - id: kb-app
+        if: always()
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          owner: collod873
+          repositories: Knowledge-Base
+          permission-contents: write
+
+      - if: always()
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          KB_TOKEN: ${{ steps.kb-app.outputs.token }}
+        run: |
+          timeout 120 bash -c 'while pgrep -f "[c]apture[.]py" >/dev/null; do sleep 1; done' || true
+          captured="$HOME/Claude Projects/Knowledge-Base/raw"
+          [ -d "$captured" ] || exit 0
+          kb="$RUNNER_TEMP/knowledge-base"
+          git clone --quiet --depth 1 "https://x-access-token:$KB_TOKEN@github.com/collod873/Knowledge-Base" "$kb"
+          git -C "$kb" config user.name "collod873-machine[bot]"
+          git -C "$kb" config user.email "collod873-machine[bot]@users.noreply.github.com"
+          cp -r "$captured/." "$kb/raw/"
+          git -C "$kb" add raw
+          git -C "$kb" commit --quiet -m "flush: stage captures from $GITHUB_REPOSITORY run $GITHUB_RUN_ID" || exit 0
+          for attempt in 1 2 3; do
+            git -C "$kb" pull --quiet --rebase origin main && git -C "$kb" push --quiet origin HEAD:main && exit 0
+          done
+          exit 1
 
       - if: always()
         uses: actions/upload-artifact@v7

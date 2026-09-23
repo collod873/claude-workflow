@@ -157,6 +157,19 @@ describe("a build run is watched as it goes, read after it ends, and stopped at 
     }
   });
 
+  it("every job files its stages' captures into the knowledge base whatever ended it, with a write token minted only after the model is done", () => {
+    for (const { steps } of Object.values(parsed().jobs).filter(({ steps }) => steps.some(spendsModel))) {
+      const minted = steps.findIndex((step) => step.with?.repositories === "Knowledge-Base");
+      const filed = steps.findIndex((step) => /Knowledge-Base\/raw/.test(step.run ?? ""));
+      const lastModel = steps.length - 1 - [...steps].reverse().findIndex(spendsModel);
+      expect(steps[minted]?.with).toMatchObject({ owner: "collod873", "permission-contents": "write" });
+      expect(minted).toBeGreaterThan(lastModel);
+      expect(filed).toBeGreaterThan(minted);
+      expect(steps[minted].if).toBe("always()");
+      expect(steps[filed].if).toBe("always()");
+    }
+  });
+
   it("every job keeps its machine logs as a run artifact, whatever ended it", () => {
     for (const { steps } of Object.values(parsed().jobs)) {
       const last = steps[steps.length - 1];

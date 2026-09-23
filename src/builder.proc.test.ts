@@ -154,7 +154,7 @@ describe("the builder builds against the brief, with one resumed repair round (#
   it("runs the owner's edit-time hooks beside its fence, and none that would hold the model from stopping", () => {
     const registered = (name: string, matcher?: string) => ({ ...(matcher === undefined ? {} : { matcher }), hooks: [{ type: "command", command: `python3 "/agent-hooks/hooks/${name}.py"` }] });
     const settings = join(scratch("agent-hooks-"), "settings.json");
-    writeFileSync(settings, JSON.stringify({ hooks: { PreToolUse: [registered("no-prose", "Write|Edit"), registered("background-launch", "Bash")], Stop: [registered("check-gate")], PostToolUse: [registered("post-edit-validate", "Edit")] } }));
+    writeFileSync(settings, JSON.stringify({ hooks: { PreToolUse: [registered("no-prose", "Write|Edit"), registered("background-launch", "Bash")], Stop: [registered("check-gate")], SessionEnd: [registered("session-capture")], PostToolUse: [registered("post-edit-validate", "Edit")] } }));
     const { run, argv } = building({ extra: { AGENT_HOOKS_SETTINGS: settings } });
 
     run();
@@ -162,6 +162,7 @@ describe("the builder builds against the brief, with one resumed repair round (#
     const handed = after(argv(1), "--settings");
     expect(handed).toContain("hooks/no-prose.py");
     expect(handed).toContain("hooks/post-edit-validate.py");
+    expect(handed).toContain("hooks/session-capture.py");
     expect(handed).not.toContain("check-gate");
     expect(handed).not.toContain("background-launch");
     expect(fenceSays(argv(1), asking("touch unlisted-marker")).status).toBe(2);

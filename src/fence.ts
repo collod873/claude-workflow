@@ -24,6 +24,7 @@ const OWNER_HOOKS = [
   "stale-ref",
   "dead-path",
   "log-stop-failure",
+  "session-capture",
 ];
 
 export type Registration = Record<string, { matcher?: string; hooks: { command: string }[] }[]>;
