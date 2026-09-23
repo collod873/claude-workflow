@@ -630,6 +630,7 @@ export function reviewing({
     spent: () => existsSync(handed),
     handed: () => (existsSync(handed) ? readFileSync(handed, "utf8") : ""),
     comments: () => calls().filter((args) => args[0] === "pr" && args[1] === "comment").map((args) => args[args.indexOf("--body") + 1]),
+    read: () => calls().some((args) => args[0] === "pr" && args[1] === "view"),
     run: (pr = "9810", extra: Record<string, string> = {}) => execute(join(BIN, "review"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}`, ...extra }, [pr]),
   };
 }

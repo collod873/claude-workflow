@@ -70,3 +70,17 @@ describe("bin/review reads a green ticket PR against its Why before it merges (#
     expect(comments()).toEqual([]);
   });
 });
+
+describe("bin/review --help prints its usage and exits clean, reading no PR and hiring no model (#842)", () => {
+  it("prints its usage line to stdout and exits 0, reading no PR and hiring no model", () => {
+    const { run, read, hired, spent } = reviewing();
+
+    const result = run("--help");
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("review: usage: review <pr number>");
+    expect(read()).toBe(false);
+    expect(spent()).toBe(false);
+    expect(hired()).toEqual([]);
+  });
+});
