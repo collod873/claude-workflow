@@ -23,7 +23,7 @@ after-merge step closes a built ticket.
 
 1. **File.** The session runs `file-issue ticket`. The body carries `## Why` (the owner's words
    quoted verbatim, the session's one-paragraph summary, and the session link),
-   `## Acceptance criteria` and `## Files claimed`.
+   `## Acceptance criteria`, `## Files claimed`, and optionally `## Files to read`.
 2. **Start.** The owner's `issues: opened` event fires the stub. No label, no dispatch.
 3. **Tests.** The test author writes one failing test per behavioural criterion on `ticket/<n>`.
 4. **Build.** The builder builds against the brief, with one resumed repair round.

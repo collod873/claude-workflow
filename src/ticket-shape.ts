@@ -38,18 +38,19 @@ function claimOn(line: string): string {
   return trimmed.startsWith("-") ? trimmed.slice(1).replaceAll("`", "").trim() : "";
 }
 
-export function claims(body: string): string[] {
-  return section(body, CLAIMED)
+function listed(body: string, heading: RegExp): string[] {
+  return section(body, heading)
     .split("\n")
     .map(claimOn)
     .filter((entry) => entry !== "");
 }
 
-export function filesToRead(body: string): string[] {
-  return section(body, TO_READ)
-    .split("\n")
-    .map(claimOn)
-    .filter((entry) => entry !== "");
+export const claims = (body: string): string[] => listed(body, CLAIMED);
+
+export const filesToRead = (body: string): string[] => listed(body, TO_READ);
+
+function globRefusals(heading: string, entries: string[]): string[] {
+  return entries.filter((entry) => GLOB.test(entry)).map((entry) => `'## ${heading}' names \`${quoted(entry)}\`, a glob rather than one file`);
 }
 
 export function withRenamedPath(body: string, from: string, to: string): string {
@@ -116,7 +117,7 @@ export function ticketRefusals(body: string): string[] {
     refusals.push(...checkRefusals(items));
   }
   if (!CLAIMED.test(text)) refusals.push("the body carries no '## Files claimed'");
-  else refusals.push(...claims(text).filter((entry) => GLOB.test(entry)).map((entry) => `'## Files claimed' names \`${quoted(entry)}\`, a glob rather than one file`));
-  if (TO_READ.test(text)) refusals.push(...filesToRead(text).filter((entry) => GLOB.test(entry)).map((entry) => `'## Files to read' names \`${quoted(entry)}\`, a glob rather than one file`));
+  else refusals.push(...globRefusals("Files claimed", claims(text)));
+  refusals.push(...globRefusals("Files to read", filesToRead(text)));
   return [...refusals, ...emDashLines(text).map((line) => `line ${line} carries an em dash`)];
 }

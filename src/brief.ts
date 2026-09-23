@@ -85,18 +85,16 @@ export function brief({ ticket, body, tests, read }: Asked): { text: string; ref
   const carried = firstSight(ALWAYS, seen).filter((path) => read(path) !== undefined);
   const text = [
     `# Brief for ticket ${ticket}`,
-    "## The ticket",
+    "## Ticket",
     body.trim(),
-    "## The acceptance test",
+    "## Acceptance test",
     inlined(authored, read),
-    "## Files claimed, as they stand",
+    "## Claimed files",
     inlined(claimed, read),
-    "## Files to read, as they stand",
-    inlined(toRead, read),
-    "## What the claim imports",
+    "## Claim imports",
     inlined(widened, read),
-    "## What every brief carries",
-    inlined(carried, read),
+    "## Also read",
+    inlined([...toRead, ...carried], read),
     "",
   ].join("\n\n");
   const bytes = Buffer.byteLength(text);
