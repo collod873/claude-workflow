@@ -54,4 +54,23 @@ describe("bin/close names how long filing took to reach merged, and never gates 
     expect(commented).toMatch(/\d+\s*(m|min|h|hour)/i);
     expect(calls().some((call) => call.startsWith("issue\nclose\n814"))).toBe(true);
   });
+
+  it("dates the first commit by when it was written, so a rebase after the PR opened gives no negative wait", () => {
+    const { calls, run } = closing({
+      ticket: "816",
+      timing: {
+        filed: "2026-01-01T00:00:00Z",
+        firstCommit: "2026-01-01T00:10:00Z",
+        rebased: "2026-01-01T01:45:00Z",
+        prOpened: "2026-01-01T01:40:00Z",
+        checksGreen: "2026-01-01T01:50:00Z",
+        merged: "2026-01-01T01:52:00Z",
+      },
+    });
+
+    expect(run().status).toBe(0);
+    const commented = calls().find((call) => call.startsWith("issue\ncomment\n816\n"));
+    expect(commented).toContain("first commit to PR opened: 1h 30m");
+    expect(commented).not.toMatch(/: -\d/);
+  });
 });

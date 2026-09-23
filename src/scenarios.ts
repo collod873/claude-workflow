@@ -44,8 +44,8 @@ export function git(cwd: string, ...args: string[]): string {
   return execFileSync("git", args, { cwd, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 }
 
-function commitAt(cwd: string, date: string, args: string[]): string {
-  return execFileSync("git", args, { cwd, env: { ...env, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date }, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+function commitAt(cwd: string, date: string, args: string[], committed = date): string {
+  return execFileSync("git", args, { cwd, env: { ...env, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: committed }, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 }
 
 export function script(path: string, body: string): void {
@@ -520,7 +520,7 @@ export function closing({
   ticketBody?: string;
   fixes?: boolean;
   readable?: boolean;
-  timing?: { filed: string; firstCommit: string; prOpened: string; checksGreen: string; merged: string };
+  timing?: { filed: string; firstCommit: string; rebased?: string; prOpened: string; checksGreen: string; merged: string };
 } = {}) {
   const root = scratch("closer-");
   const session = join(root, "session");
@@ -536,7 +536,7 @@ export function closing({
   git(session, "checkout", "--quiet", "-b", `ticket/${ticket}`);
   if (fixes) plant(session, "built.txt", "done\n");
   git(session, "add", "-A");
-  commitAt(session, timing.firstCommit, ["commit", "--quiet", "--allow-empty", "-m", `Build #${ticket} against its failing tests`]);
+  commitAt(session, timing.firstCommit, ["commit", "--quiet", "--allow-empty", "-m", `Build #${ticket} against its failing tests`], timing.rebased);
   git(session, "checkout", "--quiet", "main");
   commitAt(session, timing.merged, ["merge", "--quiet", "--no-ff", "-m", `Merge pull request #900 from collod873/ticket/${ticket}`, `ticket/${ticket}`]);
   script(
