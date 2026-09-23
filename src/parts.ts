@@ -147,6 +147,12 @@ export const parts: Part[] = [
     holds: ["The fixer gets one turn per ticket and never edits the owner's quoted words"],
   },
   {
+    name: "src/hand-off.ts",
+    file: "src/hand-off.ts",
+    stops: "https://github.com/collod873/claude-workflow/issues/827",
+    holds: ["The owner is never the one who fixes a stuck run"],
+  },
+  {
     name: "bin/machine-page",
     file: "bin/machine-page",
     stops: "https://github.com/collod873/claude-workflow/issues/710",

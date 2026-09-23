@@ -1,21 +1,27 @@
 import { describe, expect, it } from "vitest";
 import { SAVED_PR, git, heard, saving } from "./scenarios.ts";
 
+function savedWithAutoMerge<Saved extends ReturnType<typeof saving>>(saved: Saved, opening: RegExp[]): Saved {
+  expect(heard(saved.run())).toEqual({ status: 0, stderr: "", lines: [expect.stringContaining(SAVED_PR)] });
+  expect(saved.pushed()).toBe(saved.built);
+  expect(saved.calls()).toEqual([
+    [expect.stringMatching(/^issue view 726\b/), saved.built],
+    ...opening.map((call) => [expect.stringMatching(call), saved.built]),
+    [expect.stringMatching(/^pr merge ticket\/726 --auto .*--match-head-commit [0-9a-f]{40}$/), saved.built],
+  ]);
+  return saved;
+}
+
 describe("the save step pushes the branch before anything can refuse it, and opens the PR red or green (#726)", () => {
   it("pushes the build as it stands past a gate that refuses it and a main that moved on, then opens the PR with auto-merge on", () => {
-    const { run, built, pushed, judged, calls, session } = saving();
+    const { session, built, judged } = savedWithAutoMerge(saving(), [/^pr create .*--base main --head ticket\/726\b/]);
 
-    const result = run();
-
-    expect(heard(result)).toEqual({ status: 0, stderr: "", lines: [expect.stringContaining(SAVED_PR)] });
-    expect(pushed()).toBe(built);
     expect(git(session, "rev-parse", "HEAD")).toBe(built);
     expect(judged()).toBe(false);
-    expect(calls()).toEqual([
-      [expect.stringMatching(/^issue view 726\b/), built],
-      [expect.stringMatching(/^pr create .*--base main --head ticket\/726\b/), built],
-      [expect.stringMatching(/^pr merge ticket\/726 --auto .*--match-head-commit [0-9a-f]{40}$/), built],
-    ]);
+  });
+
+  it("keeps the PR already open for the branch, with auto-merge on at the new head", () => {
+    savedWithAutoMerge(saving({ alreadyOpen: true }), [/^pr create .*--head ticket\/726\b/, /^pr view ticket\/726\b/]);
   });
 
   it("says one line naming the branch it kept, and opens nothing, when the push fails", () => {

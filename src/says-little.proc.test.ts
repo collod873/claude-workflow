@@ -3,7 +3,7 @@ import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { machinePage } from "./machine-page.ts";
 import { parts, type Part } from "./parts.ts";
-import { LINE_LIMIT, MOST_LINES, authoring, briefing, building, checkRepo, checking, closing, coveredByCheck, execute, filing, fixing, landSession, misshapenTicket, overLimit, reviewing, saving, scratch, script, starting, wellFormedNote, wellFormedTicket, type Run } from "./scenarios.ts";
+import { LINE_LIMIT, MOST_LINES, authoring, briefing, building, checkRepo, checking, closing, coveredByCheck, execute, filing, fixing, handingOff, landSession, misshapenTicket, overLimit, reviewing, saving, scratch, script, starting, wellFormedNote, wellFormedTicket, type Run } from "./scenarios.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
 const NOISE = "a line a tool prints that nobody needed to read\n".repeat(40).trim();
@@ -74,6 +74,10 @@ const scenarios: Record<string, Scenario[]> = {
   "bin/test-author": [
     { label: "writing a failing test for each criterion", run: () => authoring().run() },
     { label: "refusing a criterion whose check already passes", run: () => authoring({ npx: GREEN }).run() },
+  ],
+  "src/hand-off.ts": [
+    { label: "handing a build red ticket to the fixer", run: () => handingOff({ stoppedAt: "Build red after the repair round" }).run() },
+    { label: "outside a repo to read", run: () => execute(process.execPath, scratch("hand-off-"), {}, [join(REPO, "src", "hand-off.ts"), "811"]) },
   ],
   "bin/start": [
     { label: "starting a build", run: () => starting().run() },

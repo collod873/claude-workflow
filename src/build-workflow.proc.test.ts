@@ -36,9 +36,9 @@ interface Outcome {
 
 function workflow(): { on: Workflow["on"]; job: Job } {
   const { on, jobs } = parse(readFileSync(WORKFLOW, "utf8")) as Workflow;
-  const all = Object.values(jobs);
-  expect(all).toHaveLength(1);
-  return { on, job: all[0] };
+  const building = Object.values(jobs).filter(({ steps }) => steps.some((step) => /(^|\s|\/)bin\/start(\s|$)/.test(step.run ?? "")));
+  expect(building).toHaveLength(1);
+  return { on, job: building[0] };
 }
 
 function stageStep(job: Job, stage: Stage): Step {
@@ -50,6 +50,7 @@ function stageStep(job: Job, stage: Stage): Step {
 function holds(condition: string, labels: string[], outcomes: Record<string, Outcome>, failed: boolean): boolean {
   const source = condition
     .replace(/^\s*\$\{\{|\}\}\s*$/g, "")
+    .replace(/github\.event\.action/g, "'opened'")
     .replace(/contains\(\s*github\.event\.issue\.labels\.\*\.name\s*,\s*('[^']*')\s*\)/g, "labels.includes($1)")
     .replace(/steps\.([\w-]+)\.(outcome|conclusion)/g, 'steps["$1"].$2');
   const evaluate = new Function("labels", "steps", "success", "failure", "always", "cancelled", `return Boolean(${source});`) as (
