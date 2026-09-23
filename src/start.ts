@@ -15,7 +15,7 @@ interface CheckRun {
 type Resolution = { kind: "exists" } | { kind: "renamed"; to: string } | { kind: "gone" } | { kind: "unknown" };
 
 const gh = (args: string[]) => spawnSync("gh", args, { encoding: "utf8" });
-const git = (args: string[]) => spawnSync("git", args, { encoding: "utf8" });
+const git = (args: string[]) => spawnSync("git", args, { encoding: "utf8", maxBuffer: Infinity });
 
 function treeRefusals(): string[] {
   const branch = git(["rev-parse", "--abbrev-ref", "HEAD"]).stdout.trim();
