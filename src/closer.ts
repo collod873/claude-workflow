@@ -64,7 +64,7 @@ function gitText(args: string[]): string | undefined {
 function marksFor(ticket: string, pr: string | undefined): Marks {
   return {
     filed: ghText(["issue", "view", ticket, "--json", "createdAt", "--jq", ".createdAt"]),
-    firstCommit: gitText(["log", "--format=%cI", "--reverse", "HEAD^1..HEAD^2"])?.split("\n").find((line) => line !== ""),
+    firstCommit: gitText(["log", "--format=%aI", "--reverse", "HEAD^1..HEAD^2"])?.split("\n").find((line) => line !== ""),
     prOpened: pr === undefined ? undefined : ghText(["pr", "view", pr, "--json", "createdAt", "--jq", ".createdAt"]),
     checksGreen: pr === undefined ? undefined : ghText(["pr", "checks", pr, "--json", "completedAt", "--jq", "[.[].completedAt] | sort | last"]),
     merged: gitText(["log", "-1", "--format=%cI", "HEAD"]),
