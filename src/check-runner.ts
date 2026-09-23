@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { text as read } from "node:stream/consumers";
+import { stripVTControlCharacters } from "node:util";
 import { checks, quoted } from "./ticket-shape.ts";
 
 export type Shell = (command: string, cwd: string) => { status: number | null; stdout: string; stderr: string };
@@ -19,7 +20,7 @@ const COUNTED = /(\d+)[ \t]+(?:passed|failed)/g;
 const bash: Shell = (command, cwd) => spawnSync("bash", ["-c", command], { cwd, encoding: "utf8" });
 
 function testsRan(output: string): number {
-  const summary = SUMMARY.exec(output)?.[1] ?? "";
+  const summary = SUMMARY.exec(stripVTControlCharacters(output))?.[1] ?? "";
   return [...summary.matchAll(COUNTED)].reduce((total, [, counted]) => total + Number(counted), 0);
 }
 
