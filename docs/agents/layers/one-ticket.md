@@ -124,8 +124,8 @@ Build stages do not load the charter or this page. Each stage is handed what it 
 | Reviewer | `## Why`; the criteria; the diff, capped at 32 KB (over the cap, the claimed files' diff and the file list) | Read only, with a verdict schema |
 | Fixer | `## Why`; the session capture or parent spec, capped; the failure tail; the diff; the reviewer's gaps | As the builder, and a ticket write limited to criteria and tests |
 
-- **The brief is capped at 64 KB whole.** The Old median was 78 KB, of which the root `CONTEXT.md`
-  (16.5 KB) and a second copy of the acceptance test (6.8 KB) are gone here.
+- **The brief is capped at 128 KB whole.** 64 KB refused #809, a small change, since the always
+  carried `src/scenarios.ts` grows each ticket; inlining costs less than a stage reading it anyway.
 - **Every prompt file has a byte ceiling** in a ratchet test. A prompt may shrink; growth fails the
   check.
 - **Reads outside the brief are metered** from the stream and reported with the speed report.

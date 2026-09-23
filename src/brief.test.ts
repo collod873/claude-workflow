@@ -117,13 +117,13 @@ describe("the brief hands a stage what it needs, so it does not explore (#539)",
       ticket: TICKET,
       body: ticketBody(["src/big.ts", "src/small.ts"]),
       tests: [],
-      read: reading({ "src/big.ts": FILLER.repeat(3000), "src/small.ts": "export const small = 1;\n" }),
+      read: reading({ "src/big.ts": FILLER.repeat(6000), "src/small.ts": "export const small = 1;\n" }),
     });
 
     expect(text).toBe("");
     expect(refusals).toEqual([
       expect.stringMatching(new RegExp(`^the brief for ticket ${TICKET} is \\d{5,} bytes, over ${CAP}$`)),
-      "src/big.ts inlines 75000 bytes",
+      "src/big.ts inlines 150000 bytes",
       "src/small.ts inlines 24 bytes",
     ]);
   });

@@ -22,14 +22,14 @@ describe("bin/brief writes the brief a stage is handed (#539)", () => {
   });
 
   it("refuses a claim over the cap and leaves the refusal where its line says", () => {
-    const { run, written } = briefing({ claimed: { "src/ticket-shape.ts": "export const filler = 1;\n".repeat(3000) } });
+    const { run, written } = briefing({ claimed: { "src/ticket-shape.ts": "export const filler = 1;\n".repeat(6000) } });
 
     const result = run();
 
     expect(result.status).toBe(1);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toContain("over 65536");
-    expect(written()).toContain("bytes, over 65536");
+    expect(result.stderr).toContain("over 131072");
+    expect(written()).toContain("bytes, over 131072");
   });
 
   it("refuses a ticket GitHub will not hand over", () => {

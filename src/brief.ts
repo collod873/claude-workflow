@@ -4,7 +4,7 @@ import { dirname, join, normalize } from "node:path";
 import ts from "typescript";
 import { claims, filesToRead } from "./ticket-shape.ts";
 
-export const CAP = 64 * 1024;
+export const CAP = 128 * 1024;
 const COMMANDS_CAP = 200;
 const ALWAYS = ["src/scenarios.ts", "vitest.config.ts"];
 
