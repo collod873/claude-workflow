@@ -92,6 +92,12 @@ export const parts: Part[] = [
     holds: ["An agent is handed what it needs, so it does not explore"],
   },
   {
+    name: "src/reads-outside-brief.ts",
+    file: "src/reads-outside-brief.ts",
+    stops: "https://github.com/collod873/claude-workflow/issues/809",
+    holds: ["An agent is handed what it needs, so it does not explore"],
+  },
+  {
     name: "bin/test-author",
     file: "bin/test-author",
     stops: "https://github.com/collod873/claude-workflow/issues/663",
@@ -122,6 +128,7 @@ export const parts: Part[] = [
     holds: [
       "Done means the ticket's checks pass on main, run by something that did not build it",
       "Done means the ticket's checks pass on the merge commit on main, run by the closer",
+      "A ticket goes from filing to merged in under an hour, and its longest wait is named; speed is reported, never a gate",
     ],
   },
   {
