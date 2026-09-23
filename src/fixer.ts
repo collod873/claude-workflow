@@ -123,6 +123,11 @@ function closedUnbuilt(ticket: string, reason: string): string | undefined {
   return gh(["issue", "close", ticket, "--reason", "not planned"]).status === 0 ? undefined : `#${ticket} could not be closed`;
 }
 
+function prOpen(branch: string): boolean {
+  const got = gh(["pr", "view", branch, "--json", "state", "--jq", ".state"]);
+  return got.status === 0 && got.stdout.trim() === "OPEN";
+}
+
 function fix(opened: Opened): Outcome {
   const { ticket, body } = opened;
   const branch = `ticket/${ticket}`;
@@ -146,6 +151,10 @@ function fix(opened: Opened): Outcome {
   const commit = { message: `Fix #${ticket} in the fixer's one turn`, branch: git(["branch", "--show-current"]).stdout.trim() === branch ? undefined : branch };
   const done = spent.refusal === undefined ? turn(opened, spent.answer as Answer | undefined, explain) : { refusal: spent.refusal };
   if ("refusal" in done) {
+    if (prOpen(branch)) {
+      const said = commentOnTicket(ticket, `The fixer's turn on #${ticket} ended red, its PR stays open: ${done.refusal}`, gh);
+      return { stop: "fixerEnds", refusals: [`${done.refusal}, so #${ticket} stays open with its PR`, ...(said.refusals.length > 0 ? [`its comment was refused: ${quoted(said.refusals[0])}`] : [])], commit };
+    }
     const unclosed = closedUnbuilt(ticket, done.refusal);
     return { stop: "fixerEnds", refusals: [`${done.refusal}, so #${ticket} ${unclosed === undefined ? "was closed unbuilt" : "stays open"}`, ...(unclosed === undefined ? [] : [unclosed])], commit };
   }

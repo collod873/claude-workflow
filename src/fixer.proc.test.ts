@@ -56,6 +56,15 @@ describe("bin/fix clears a stuck ticket with one fixer turn (#811)", () => {
     expect(red.branches()).toContain("ticket/811");
   });
 
+  it("a fixer turn that ends red on a ticket whose PR is open leaves the ticket open and marked failed, not closed unbuilt", () => {
+    const { run, closes, ticketComments, branches } = fixing({ answer: { outcome: "code", reason: "fixed it" }, prOpen: true });
+
+    expect(run().status).toBe(1);
+    expect(closes()).toEqual([]);
+    expect(ticketComments().at(-1)).toContain("changed nothing");
+    expect(branches()).toContain("ticket/811");
+  });
+
   it("hands the model the Why, the failure, the diff and the reviewer's gaps, and commits a code fix on the ticket branch", () => {
     const { run, handed, committed, closes } = fixing({
       answer: { outcome: "code", reason: "the export was never renamed" },

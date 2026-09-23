@@ -668,6 +668,7 @@ export function fixing({
   claude = "",
   npx = CHECK_RED,
   failedCheck = undefined as string | undefined,
+  prOpen = false,
 } = {}) {
   const root = scratch("fixer-");
   const session = join(root, "session");
@@ -694,6 +695,7 @@ export function fixing({
       'case "$*" in',
       `  *"issue view"*"comments"*) cat "${join(root, "turns.json")}" ;;`,
       `  *"issue view"*) cat "${join(root, "ticket.md")}" ;;`,
+      `  *"pr view"*"state"*) printf '%s\\n' '${prOpen ? "OPEN" : "CLOSED"}' ;;`,
       `  *"pr view"*) ${onPr === undefined ? "exit 1" : `cat "${join(root, "on-pr.json")}"`} ;;`,
       ...(failedCheck === undefined
         ? []
