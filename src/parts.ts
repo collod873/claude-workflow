@@ -26,6 +26,7 @@ export const parts: Part[] = [
     name: "bin/check unused",
     file: "knip.config.ts",
     stops: "https://github.com/collod873/claude-workflow/issues/183",
+    holds: ["A port ships in the same ticket as its first caller"],
   },
   {
     name: "bin/check clones",
@@ -95,7 +96,7 @@ export const parts: Part[] = [
     file: "bin/test-author",
     stops: "https://github.com/collod873/claude-workflow/issues/663",
     holds: [
-      "Tests exist before the build starts. The builder never edits them; fresh eyes may fix a wrong one, giving its reason on the PR; no push lowers the test count",
+      "Tests exist before the build starts. The builder never edits them; the fixer may fix a wrong one, giving its reason on the PR; no push lowers the test count",
       "Tests exist before the build. The builder never edits them. The fixer may fix a wrong one, giving its reason on the PR. No push lowers the test count",
     ],
   },
@@ -104,7 +105,7 @@ export const parts: Part[] = [
     file: "bin/build",
     stops: "https://github.com/collod873/claude-workflow/issues/652",
     holds: [
-      "Tests exist before the build starts. The builder never edits them; fresh eyes may fix a wrong one, giving its reason on the PR; no push lowers the test count",
+      "Tests exist before the build starts. The builder never edits them; the fixer may fix a wrong one, giving its reason on the PR; no push lowers the test count",
       "Tests exist before the build. The builder never edits them. The fixer may fix a wrong one, giving its reason on the PR. No push lowers the test count",
     ],
   },
@@ -120,7 +121,7 @@ export const parts: Part[] = [
     stops: "https://github.com/collod873/claude-workflow/issues/808",
     holds: [
       "Done means the ticket's checks pass on main, run by something that did not build it",
-      "Done means the ticket's checks pass on the merge commit on main, run by the stable machine",
+      "Done means the ticket's checks pass on the merge commit on main, run by the closer",
     ],
   },
   {
