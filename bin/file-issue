@@ -5,6 +5,11 @@ usage="file-issue: usage: file-issue ticket|note --title <title> --body-file <pa
 shown_refusals=4
 most_shown=5
 
+if [[ ${1:-} == --help ]]; then
+  printf '%s\n' "$usage"
+  exit 0
+fi
+
 kind=${1:-}
 shift 2>/dev/null
 title=""
