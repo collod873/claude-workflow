@@ -3,7 +3,7 @@ import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { machinePage } from "./machine-page.ts";
 import { parts, type Part } from "./parts.ts";
-import { LINE_LIMIT, MOST_LINES, authoring, briefing, building, checkRepo, checking, coveredByCheck, execute, filing, landSession, minting, misshapenTicket, overLimit, saving, scratch, script, starting, wellFormedNote, wellFormedTicket, type Run } from "./scenarios.ts";
+import { LINE_LIMIT, MOST_LINES, authoring, briefing, building, checkRepo, checking, coveredByCheck, execute, filing, landSession, misshapenTicket, overLimit, saving, scratch, script, starting, wellFormedNote, wellFormedTicket, type Run } from "./scenarios.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
 const NOISE = "a line a tool prints that nobody needed to read\n".repeat(40).trim();
@@ -32,10 +32,6 @@ const scenarios: Record<string, Scenario[]> = {
   "src/check-runner.ts": [
     { label: "on a ticket whose check is red", run: () => checking("exit 1\n").run() },
     { label: "on a ticket whose check already passes", run: () => checking(GREEN).run() },
-  ],
-  "bin/app-token": [
-    { label: "minting the App's token", run: () => minting().run() },
-    { label: "with no key set", run: () => minting({ key: "" }).run() },
   ],
   "bin/machine-page": [
     { label: "rendering the page", run: () => execute(join(REPO, "bin", "machine-page"), REPO) },

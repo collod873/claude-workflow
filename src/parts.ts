@@ -115,12 +115,6 @@ export const parts: Part[] = [
     holds: ["Work is never thrown away: the branch is pushed before anything can refuse it"],
   },
   {
-    name: "bin/app-token",
-    file: "bin/app-token",
-    stops: "https://github.com/collod873/claude-workflow/issues/652",
-    holds: ["The machine acts as its GitHub App and never falls back to `GITHUB_TOKEN` where the App is needed"],
-  },
-  {
     name: "bin/machine-page",
     file: "bin/machine-page",
     stops: "https://github.com/collod873/claude-workflow/issues/710",
@@ -152,18 +146,6 @@ export const parts: Part[] = [
     file: "src/rulesets.proc.test.ts",
     stops: "https://github.com/collod873/claude-workflow/issues/652",
     holds: ["Nobody pushes to main, the owner included. Everything lands through a PR whose required checks passed on an up-to-date branch"],
-  },
-  {
-    name: "src/stub-shape.test.ts",
-    file: "src/stub-shape.test.ts",
-    stops: "https://github.com/collod873/claude-workflow/issues/652",
-    holds: ["A stub has one fixed shape: a trigger and a `uses:` at `@stable`"],
-  },
-  {
-    name: "src/judged-sha.proc.test.ts",
-    file: "src/judged-sha.proc.test.ts",
-    stops: "https://github.com/collod873/claude-workflow/issues/652",
-    holds: ["The checks that judge a PR come from the stable machine, never from the PR"],
   },
   {
     name: "src/em-dash.proc.test.ts",

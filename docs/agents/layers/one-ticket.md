@@ -9,7 +9,8 @@ Each rule below names the enforcer the machine ships for it. Which of them run i
 generated machine page shows it, worked out from the parts the machine registers. The machine is built by hand until it merges one ticket itself.
 
 **Where it runs.** This repo. Lumaria enrols later, by a stub, when the owner asks. app-starter is
-not enrolled.
+not enrolled. Until Lumaria enrols, a plain `pull_request` check runs this repo's own `bin/check`;
+the stub, the `stable` tag, the App token step and the sample build return with it.
 
 **Out of this layer.** Queue order, collisions and claim holds go to Many at once. Slicing a spec
 and wave order go to Big jobs; a spec's children take this path unchanged. Counting over history

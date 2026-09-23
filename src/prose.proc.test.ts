@@ -83,7 +83,7 @@ describe("code this repo tracks carries no prose", () => {
     expect(covered).toContain("src/prose.proc.test.ts");
     expect(covered).toContain("bin/check");
     expect(covered).toContain("eslint.config.js");
-    expect(covered).toContain(".github/workflows/core-check.yml");
+    expect(covered).toContain(".github/workflows/check.yml");
   });
 
   it("finds a planted sentence in each language it claims to read", () => {
