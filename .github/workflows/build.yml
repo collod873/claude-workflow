@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   build:
-    if: ${{ github.event.action == 'opened' && !contains(github.event.issue.labels.*.name, 'note') }}
+    if: ${{ (github.event.action == 'opened' || (github.event.action == 'reopened' && github.event.sender.type != 'Bot')) && !contains(github.event.issue.labels.*.name, 'note') }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:

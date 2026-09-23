@@ -10,7 +10,7 @@ amended 2026-09-23; only the owner changes it. What is still to build, and in wh
 1. **File.** The session runs `bin/file-issue ticket`. The body carries `## Why` (the owner's words
    quoted verbatim, the session's one-paragraph summary, and the session link),
    `## Acceptance criteria`, `## Files claimed`, and optionally `## Files to read`.
-2. **Start.** Filing fires the start step. No label, no dispatch.
+2. **Start.** Filing, or the owner reopening a ticket, fires the start step. No label, no dispatch.
 3. **Tests.** The test author writes one failing test per behavioural criterion on `ticket/<n>`.
 4. **Build.** The builder builds against the brief, with one resumed repair round.
 5. **Save.** The branch is pushed and the PR opened with auto-merge on, red or green.

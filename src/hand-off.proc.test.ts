@@ -180,11 +180,13 @@ describe("a ticket reopened for a red on main reaches the fixer (#827)", () => {
     expect(job.steps.indexOf(minted as Step)).toBeLessThan(job.steps.indexOf(closing));
   });
 
-  it("build.yml builds a ticket only when it is opened, so one reopened for a red on main is not built", () => {
+  it("build.yml builds a ticket when it is opened or the owner reopens it, never when the App reopens it for a red on main", () => {
     const job = jobRunning("build", "bin/start");
     const start = job.steps.find((step) => runs(step, "bin/start")) as Step;
+    const gate = `${job.if ?? ""} ${start.if ?? ""}`;
 
-    expect(`${job.if ?? ""} ${start.if ?? ""}`).toMatch(/github\.event\.action\s*==\s*'opened'/);
+    expect(gate).toMatch(/github\.event\.action\s*==\s*'opened'/);
+    expect(gate).toMatch(/github\.event\.action\s*==\s*'reopened'\s*&&\s*github\.event\.sender\.type\s*!=\s*'Bot'/);
   });
 
   it("build.yml hands a ticket reopened for a red on main to the fixer", () => {
