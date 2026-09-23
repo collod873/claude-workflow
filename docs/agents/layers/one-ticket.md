@@ -42,6 +42,8 @@ Every stop names who clears it.
 | A stage writes outside the repo, or its model run exits non-zero | Stage ends red, branch saved | The fixer |
 | A stage's work will not commit | Stage ends red, work left in the tree | The fixer |
 | Build red after the repair round | Branch saved, PR open | The fixer |
+| Save: the push is refused | Work kept on the run's branch, no PR | The fixer |
+| Save: the PR is not open with auto-merge on | Branch pushed, nothing merging | The fixer |
 | Green on the ticket's checks, red on the PR's required check | PR stays open | The fixer |
 | The reviewer finds drift from `## Why` | PR stays open, gaps posted | The fixer |
 | The branch conflicts with main | Update refused, PR open | The fixer |
