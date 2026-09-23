@@ -433,7 +433,8 @@ export function saving({
   remoteRefuses,
   brief,
   streams = {} as Partial<Record<string, string[]>>,
-}: { remoteRefuses?: string; brief?: string; streams?: Partial<Record<string, string[]>> } = {}) {
+  alreadyOpen = false,
+}: { remoteRefuses?: string; brief?: string; streams?: Partial<Record<string, string[]>>; alreadyOpen?: boolean } = {}) {
   const root = scratch("save-");
   const { remote, session } = cloned(root, "base");
   const calls = join(root, "gh-calls");
@@ -464,7 +465,8 @@ export function saving({
       `printf '%s\\0' "$@" >"${argvDir}/$n"`,
       'case "$*" in',
       "  *\"issue view\"*) printf 'Push the branch before anything can refuse it\\n' ;;",
-      `  *"pr create"*) printf '%s\\n' '${SAVED_PR}' ;;`,
+      alreadyOpen ? "  *\"pr create\"*) exit 1 ;;" : `  *"pr create"*) printf '%s\\n' '${SAVED_PR}' ;;`,
+      `  *"pr view"*) printf '%s\\n' '${SAVED_PR}' ;;`,
       "esac",
       "",
     ].join("\n"),
@@ -710,16 +712,18 @@ export function fixing({
 
 const RUNS_PAGE = join(SRC, "..", "docs", "agents", "layers", "one-ticket.md");
 
-export function handingOff({ stoppedAt, table = (page: string) => page }: { stoppedAt?: string; table?: (page: string) => string } = {}) {
+export function handingOff({ stoppedAt, table = (page: string) => page, commits = false }: { stoppedAt?: string; table?: (page: string) => string; commits?: boolean } = {}) {
   const root = scratch("hand-off-");
   const session = join(root, "session");
   const fixed = join(root, "fix-calls");
+  const saved = join(root, "save-calls");
   mkdirSync(session, { recursive: true });
   git(session, "init", "--quiet", "--initial-branch=main");
   git(session, "config", "user.email", "hand-off@test");
   git(session, "config", "user.name", "hand-off");
   plant(session, "docs/agents/layers/one-ticket.md", table(readFileSync(RUNS_PAGE, "utf8")));
-  script(join(session, "bin", "fix"), `printf '%s\\n' "$*" >>"${fixed}"\n`);
+  script(join(session, "bin", "fix"), `printf '%s\\n' "$*" >>"${fixed}"\n${commits ? 'git commit --quiet --allow-empty -m "Fix #811 in the fixer\'s one turn"\n' : ""}`);
+  script(join(session, "bin", "save"), `printf '%s\\n' "$*" >>"${saved}"\n`);
   git(session, "add", ".");
   git(session, "commit", "--quiet", "-m", "what the Runs table stands on");
   if (stoppedAt !== undefined) plant(session, ".git/machine-logs/build-811.log", `1 refusals, stopped at: ${stoppedAt}\nthe build stayed red\n`);
@@ -727,6 +731,7 @@ export function handingOff({ stoppedAt, table = (page: string) => page }: { stop
   return {
     session,
     fixed: () => (existsSync(fixed) ? readFileSync(fixed, "utf8").trimEnd().split("\n") : []),
+    saved: () => (existsSync(saved) ? readFileSync(saved, "utf8").trimEnd().split("\n") : []),
     run: (row?: string) =>
       execute(process.execPath, session, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, [join(SRC, "hand-off.ts"), "811", ...(row === undefined ? [] : [row])]),
   };

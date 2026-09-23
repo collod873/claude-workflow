@@ -16,6 +16,7 @@ interface Step {
   uses?: string;
   env?: Record<string, unknown>;
   "timeout-minutes"?: number;
+  with?: Record<string, unknown>;
 }
 
 interface Job {
@@ -43,6 +44,15 @@ function handingStep(job: Job, after: string): Step {
   const step = job.steps.slice(at + 1).find(handsOff);
   expect(step, `a hand-off step after ${after}`).toBeDefined();
   return step as Step;
+}
+
+function actsAsTheApp(job: Job, step: Step): void {
+  const minted = job.steps.find((candidate) => candidate.uses?.startsWith("actions/create-github-app-token@") === true);
+  const token = new RegExp(`steps\\.${minted?.id}\\.outputs\\.token`);
+
+  expect(minted?.id, "an App token step with an id").toBeDefined();
+  expect(String(step.env?.GH_TOKEN)).toMatch(token);
+  for (const checkout of job.steps.filter((candidate) => candidate.uses?.startsWith("actions/checkout@") === true)) expect(String(checkout.with?.token)).toMatch(token);
 }
 
 function spendsWithinACap(step: Step): void {
@@ -94,6 +104,15 @@ describe("hand-off passes a stuck ticket to the fixer (#827)", () => {
     spendsWithinACap(step);
   });
 
+  it("pushes the fixer's work once it commits, and saves nothing when it wrote nothing", () => {
+    const committed = handingOff({ stoppedAt: STOPS.buildRed, commits: true });
+    const untouched = handingOff({ stoppedAt: STOPS.buildRed });
+
+    expect(committed.run().status).toBe(0);
+    expect(committed.saved()).toEqual(["811"]);
+    expect(untouched.run().status).toBe(0);
+    expect(untouched.saved()).toEqual([]);
+  });
 });
 
 describe("a reviewer drift reaches the fixer (#827)", () => {
@@ -112,6 +131,12 @@ describe("a reviewer drift reaches the fixer (#827)", () => {
     expect(step.run).toContain(STOPS.drift);
     expect(step.run).toMatch(/head_ref|HEAD_REF|head\.ref/);
     spendsWithinACap(step);
+  });
+
+  it("the drift hand-off acts as the App, so the fixer's push lands and fires the checks", () => {
+    const job = jobRunning("check", "bin/review");
+
+    actsAsTheApp(job, handingStep(job, "bin/review"));
   });
 });
 
@@ -151,5 +176,18 @@ describe("a ticket reopened for a red on main reaches the fixer (#827)", () => {
     expect(`${job.if ?? ""} ${step.if ?? ""}`).toMatch(/github\.event\.action\s*==\s*'reopened'/);
     expect(step.run).toContain("github.event.issue.number");
     spendsWithinACap(step);
+  });
+
+  it("only the App's reopen hands a ticket to the fixer, on a ticket branch made fresh from main", () => {
+    const { jobs } = workflow("build");
+    const job = Object.values(jobs).find(({ steps }) => steps.some((step) => (step.run ?? "").includes(RED_ON_MAIN))) as Job;
+    const handing = job.steps.find((step) => (step.run ?? "").includes(RED_ON_MAIN)) as Step;
+    const branched = job.steps.findIndex((step) => /git checkout -B "?ticket\/\$\{\{ github\.event\.issue\.number \}\}/.test(step.run ?? ""));
+
+    expect(job.if).toMatch(/github\.event\.sender\.type\s*==\s*'Bot'/);
+    expect(job.steps.some((step) => String(step.with?.ref ?? "").startsWith("ticket/"))).toBe(false);
+    expect(branched).toBeGreaterThan(-1);
+    expect(branched).toBeLessThan(job.steps.indexOf(handing));
+    actsAsTheApp(job, handing);
   });
 });

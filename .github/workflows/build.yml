@@ -70,7 +70,7 @@ jobs:
         run: node src/hand-off.ts ${{ github.event.issue.number }}
 
   fix:
-    if: ${{ github.event.action == 'reopened' && !contains(github.event.issue.labels.*.name, 'note') }}
+    if: ${{ github.event.action == 'reopened' && github.event.sender.type == 'Bot' && !contains(github.event.issue.labels.*.name, 'note') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -83,7 +83,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ticket/${{ github.event.issue.number }}
           token: ${{ steps.app.outputs.token }}
 
       - uses: actions/setup-node@v4
@@ -97,6 +96,7 @@ jobs:
       - run: |
           git config user.name "core-app[bot]"
           git config user.email "core-app[bot]@users.noreply.github.com"
+          git checkout -B "ticket/${{ github.event.issue.number }}"
 
       - timeout-minutes: 30
         env:

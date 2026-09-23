@@ -41,7 +41,11 @@ function handOff(ticket: string, named: string | undefined): number {
     return 0;
   }
   console.log(`${said} stopped at a row the fixer clears, so it goes to the fixer`);
-  return spawnSync(join(top, "bin", "fix"), [ticket], { stdio: "inherit" }).status ?? 1;
+  const before = git(["rev-parse", "HEAD"]);
+  const fixed = spawnSync(join(top, "bin", "fix"), [ticket], { stdio: "inherit" }).status ?? 1;
+  if (git(["rev-parse", "HEAD"]) === before) return fixed;
+  const saved = spawnSync(join(top, "bin", "save"), [ticket], { stdio: "inherit" }).status ?? 1;
+  return fixed === 0 ? saved : fixed;
 }
 
 if (import.meta.main) {
