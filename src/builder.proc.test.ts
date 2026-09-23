@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -12,7 +13,15 @@ const GREEN_ONCE_BUILT = [
   "",
 ].join("\n");
 
-const allowed = (argv: string) => argv.split("\n")[argv.split("\n").indexOf("--allowedTools") + 1].split(",");
+const after = (argv: string, flag: string) => argv.split("\n")[argv.split("\n").indexOf(flag) + 1];
+
+function fenceSays(argv: string, input: string) {
+  const { hooks } = JSON.parse(after(argv, "--settings")) as { hooks: { PreToolUse: { matcher: string; hooks: { command: string }[] }[] } };
+  const [bash] = hooks.PreToolUse.filter(({ matcher }) => matcher === "Bash");
+  return spawnSync("bash", ["-c", bash.hooks[0].command], { input, encoding: "utf8" });
+}
+
+const asking = (command: unknown) => JSON.stringify({ tool_name: "Bash", tool_input: { command } });
 
 const WRITES_UNCLAIMED_FILE = [
   "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts",
@@ -79,8 +88,28 @@ describe("the builder builds against the brief, with one resumed repair round (#
     expect(heard(result).status).toBe(1);
     expect(argv(1)).toContain(DENIED.join(","));
     expect(argv(1)).toContain("Edit(src/ticket-shape.test.ts)");
-    expect(allowed(argv(1))).toEqual(expect.arrayContaining(["Bash(npx vitest run --config vitest.config.ts ticket-shape)", "Bash(bin/check static)"]));
-    expect(allowed(argv(1))).not.toContain("Bash");
+    expect(fenceSays(argv(1), asking("npx vitest run --config vitest.config.ts ticket-shape")).status).toBe(0);
+    expect(fenceSays(argv(1), asking("bin/check static")).status).toBe(0);
+  });
+
+  it("fences its shell to its own commands, which the permission mode alone would not, and says which ones it may run", () => {
+    const { run, argv } = building();
+
+    run();
+
+    const refused = fenceSays(argv(1), asking("touch unlisted-marker"));
+    expect(refused.status).toBe(2);
+    expect(refused.stderr).toContain("bin/check static");
+    expect(after(argv(1), "--tools")).toBe("Read,Edit,Write,Grep,Glob,Bash");
+  });
+
+  it("refuses a shell command its fence cannot read, rather than let it through", () => {
+    const { run, argv } = building();
+
+    run();
+
+    expect(fenceSays(argv(1), asking(42)).status).toBe(2);
+    expect(fenceSays(argv(1), "what a broken hook call looks like").status).toBe(2);
   });
 
   it("commits what it built on the ticket branch and ends green on one call when the checks pass", () => {
