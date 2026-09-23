@@ -435,7 +435,14 @@ export function saving({
   brief,
   streams = {} as Partial<Record<string, string[]>>,
   alreadyOpen = false,
-}: { remoteRefuses?: string; brief?: string; streams?: Partial<Record<string, string[]>>; alreadyOpen?: boolean } = {}) {
+  autoMergeRefused = false,
+}: {
+  remoteRefuses?: string;
+  brief?: string;
+  streams?: Partial<Record<string, string[]>>;
+  alreadyOpen?: boolean;
+  autoMergeRefused?: boolean;
+} = {}) {
   const root = scratch("save-");
   const { remote, session } = cloned(root, "base");
   const calls = join(root, "gh-calls");
@@ -468,6 +475,7 @@ export function saving({
       "  *\"issue view\"*) printf 'Push the branch before anything can refuse it\\n' ;;",
       alreadyOpen ? "  *\"pr create\"*) exit 1 ;;" : `  *"pr create"*) printf '%s\\n' '${SAVED_PR}' ;;`,
       `  *"pr view"*) printf '%s\\n' '${SAVED_PR}' ;;`,
+      autoMergeRefused ? "  *\"pr merge\"*) printf 'auto-merge is not enabled for this repository\\n' >&2; exit 1 ;;" : "",
       "esac",
       "",
     ].join("\n"),
@@ -479,6 +487,7 @@ export function saving({
     built,
     pushed: () => git(remote, "for-each-ref", "--format=%(objectname)", "refs/heads/ticket/726"),
     judged: () => existsSync(judged),
+    log: () => (existsSync(join(session, ".git", "machine-logs", "save-726.log")) ? readFileSync(join(session, ".git", "machine-logs", "save-726.log"), "utf8") : ""),
     calls: () => (existsSync(calls) ? readFileSync(calls, "utf8").trimEnd().split("\n").map((line) => line.split("|")) : []),
     prBody: () => {
       const call = argvCalls().find((args) => args[0] === "pr" && args[1] === "create");
