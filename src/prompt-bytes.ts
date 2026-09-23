@@ -8,6 +8,8 @@ export const CEILINGS: Record<string, number> = { "brief": 146, "test author": 8
 
 const AUTHORED = "src/planted.test.ts";
 const HIRES = /(spawn|execFile)\w*\(\s*"claude"/;
+const STAGED = /from "\.\/stage\.ts"/;
+const STAGE_MODULE = "src/stage.ts";
 const HANDED_ON = 1024;
 
 export interface Prompt {
@@ -88,7 +90,10 @@ export function unmeasured(repo: string, prompts: Prompt[]): string[] {
   return readdirSync(join(repo, "src"))
     .filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts"))
     .map((name) => `src/${name}`)
-    .filter((file) => !measured.has(file) && HIRES.test(readFileSync(join(repo, file), "utf8")))
+    .filter((file) => {
+      const text = readFileSync(join(repo, file), "utf8");
+      return !measured.has(file) && (STAGED.test(text) || (file !== STAGE_MODULE && HIRES.test(text)));
+    })
     .sort()
     .map((file) => `${file} hires a model and no prompt of that name is measured`);
 }

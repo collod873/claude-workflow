@@ -1,9 +1,9 @@
-import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
-import { brief, capped, onDisk } from "./brief.ts";
+import { capped } from "./brief.ts";
 import { RAN_NO_TESTS, runCheck, type Shell } from "./check-runner.ts";
-import { STATIC, stageArgv, stageRefusals, writtenOutsideRepo } from "./deny-list.ts";
+import { STATIC } from "./deny-list.ts";
+import { runStage, type Opened, type Outcome, type Stage } from "./stage.ts";
 import { checks, claims, quoted } from "./ticket-shape.ts";
 
 const STAGE = "test author";
@@ -11,7 +11,6 @@ const COMMANDS_CAP = 200;
 const UNIMPORTED = /Cannot find module '(\.[^']+)' imported from (.+?)\s*$/gm;
 const AUTHORED = ".test.ts";
 const FIXTURES = "src/scenarios.ts";
-const UNTRACKED = "??";
 const RAN = /[\w./-]+\.test\.ts/g;
 
 function awaitsTheBuild(body: string, cwd: string, output: string): boolean {
@@ -36,34 +35,6 @@ export function uncovered(body: string, cwd: string, run?: Shell): string[] {
   return judged(body, cwd, run).refusals;
 }
 
-export function changed(cwd: string): Map<string, string> {
-  const entries = spawnSync("git", ["status", "--porcelain", "-z", "-uall"], { cwd, encoding: "utf8" }).stdout.split("\0");
-  const found = new Map<string, string>();
-  for (let at = 0; at < entries.length; at++) {
-    const entry = entries[at];
-    if (entry.length < 4) continue;
-    found.set(entry.slice(3), entry.slice(0, 2));
-    if (/^[RC]/.test(entry)) at++;
-  }
-  return found;
-}
-
-export function keptFor(cwd: string, stage: string, ticket: string): string {
-  const logs = spawnSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd, encoding: "utf8" }).stdout.trim();
-  return join(logs, "machine-logs", `${stage}-${ticket}-set-aside`);
-}
-
-export function setAside(cwd: string, outside: [string, string][], kept: string): string[] {
-  for (const [path, status] of outside) {
-    const written = join(cwd, path);
-    mkdirSync(dirname(join(kept, path)), { recursive: true });
-    if (existsSync(written)) cpSync(written, join(kept, path));
-    if (status === UNTRACKED) rmSync(written, { force: true });
-    else spawnSync("git", ["checkout", "--quiet", "--", path], { cwd });
-  }
-  return outside.map(([path]) => path);
-}
-
 export function handedOn(briefed: string, commands: string[]): string {
   return [
     briefed,
@@ -76,35 +47,29 @@ export function handedOn(briefed: string, commands: string[]): string {
   ].join("\n\n");
 }
 
-function authorRefusals(ticket: string): { refusals: string[]; setAside: number } {
-  const asked = spawnSync("gh", ["issue", "view", ticket, "--json", "body", "--jq", ".body"], { encoding: "utf8" });
-  if (asked.status !== 0) return { refusals: [`ticket ${ticket} could not be read, so no test was authored`], setAside: 0 };
-  const body = asked.stdout;
-  const briefed = brief({ ticket, body, tests: [], read: onDisk });
-  if (briefed.refusals.length > 0) return { refusals: briefed.refusals, setAside: 0 };
-  const commands = checks(body).map(({ command }) => command);
-  const argv = [...stageArgv(commands), "--output-format", "stream-json", "--verbose"];
-  const unfenced = stageRefusals(STAGE, argv);
-  if (unfenced.length > 0) return { refusals: unfenced, setAside: 0 };
-  const cwd = process.cwd();
-  const kept = keptFor(cwd, "test-author", ticket);
-  rmSync(kept, { recursive: true, force: true });
-  const before = changed(cwd);
-  const spent = spawnSync("claude", argv, { input: handedOn(briefed.text, commands), encoding: "utf8" });
-  const wrote = () => [...changed(cwd)].filter(([path]) => !before.has(path));
-  const outside = setAside(cwd, wrote().filter(([path]) => !path.endsWith(AUTHORED) && path !== FIXTURES), kept).length;
-  const stray = writtenOutsideRepo(cwd, spent.stdout);
-  if (stray !== undefined) return { refusals: [`the ${STAGE} wrote outside the repo: ${stray}`], setAside: outside };
-  if (spent.status !== 0) return { refusals: [`the ${STAGE} ended ${spent.status}: ${quoted((spent.stderr || spent.stdout).trim().split("\n")[0])}`], setAside: outside };
-  if (!wrote().some(([path]) => path.endsWith(AUTHORED))) return { refusals: ["the author wrote nothing, so it wrote no test for any criterion"], setAside: outside };
-  const { refusals, ran } = judged(body, cwd);
-  const unrun = setAside(cwd, wrote().filter(([path]) => path.endsWith(AUTHORED) && !ran.has(path)), kept).length;
-  return { refusals, setAside: outside + unrun };
+function author(opened: Opened): Outcome {
+  const spent = opened.spend(handedOn(opened.briefed, opened.commands));
+  if (spent.refusal !== undefined) return { refusals: [spent.refusal] };
+  const tests = () => opened.wrote().filter((path) => path.endsWith(AUTHORED));
+  if (tests().length === 0) return { refusals: ["the author wrote nothing, so it wrote no test for any criterion"] };
+  const { refusals, ran } = judged(opened.body, process.cwd());
+  opened.setAside(tests().filter((path) => !ran.has(path)));
+  if (refusals.length > 0) return { refusals };
+  const branch = `ticket/${opened.ticket}`;
+  const aside = opened.aside.length === 0 ? "" : `; set aside ${opened.aside.length} files the checks did not judge`;
+  return {
+    refusals: [],
+    verdict: `has a failing test for each criterion, ${tests().length} written on ${branch}${aside}`,
+    commit: { message: `Hold #${opened.ticket} to one failing test per criterion`, branch },
+  };
 }
 
-if (import.meta.main) {
-  const { refusals, setAside: aside } = authorRefusals(process.argv[2]);
-  for (const refusal of refusals) console.error(refusal);
-  console.log(aside);
-  process.exit(refusals.length > 0 ? 1 : 0);
-}
+const AUTHOR: Stage = {
+  name: STAGE,
+  bin: "test-author",
+  undone: "no test was authored",
+  keeps: (path) => path.endsWith(AUTHORED) || path === FIXTURES,
+  work: author,
+};
+
+if (import.meta.main) process.exit(runStage(AUTHOR, process.argv[2]));

@@ -12,34 +12,4 @@ fi
 src="$(cd "${BASH_SOURCE[0]%/*}/../src" && pwd)"
 top=$(git rev-parse --show-toplevel) || exit 1
 cd "$top" || exit 1
-branch="ticket/$ticket"
-log="$(git rev-parse --path-format=absolute --git-common-dir)/machine-logs/test-author-$ticket.log"
-mkdir -p "${log%/*}"
-[[ $log == "$top/"* ]] && shown="${log#"$top/"}" || shown="$log"
-
-err=$(mktemp)
-trap 'rm -f "$err"' EXIT
-
-red() {
-  { printf '%s refusals\n' "$(grep -c '' "$err")"; cat "$err"; } >"$log"
-  printf 'test-author: #%s ended red, %s; nothing written; log %s\n' "$ticket" "$1" "$shown" >&2
-  exit 1
-}
-
-aside=$(node "$src/test-author.ts" "$ticket" 2>"$err") || red "$(head -1 "$err")"
-
-written=$(git status --porcelain -uall -- '*.test.ts' | grep -c '')
-if (( written == 0 )); then
-  printf 'every criterion is red, yet the test author wrote no test\n' >>"$err"
-  red "it wrote no test"
-fi
-
-git checkout --quiet -b "$branch" 2>>"$err" &&
-  git add -- '*.test.ts' 2>>"$err" &&
-  { [[ ! -e src/scenarios.ts ]] || git add -- src/scenarios.ts 2>>"$err"; } &&
-  git commit --quiet -m "Hold #$ticket to one failing test per criterion" 2>>"$err" ||
-  red "the tests would not commit on $branch"
-
-kept=""
-(( aside > 0 )) && kept="; set aside $aside files the checks did not judge"
-printf 'test-author: #%s has a failing test for each criterion, %s written on %s%s\n' "$ticket" "$written" "$branch" "$kept"
+exec node "$src/test-author.ts" "$ticket"

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { DENIED } from "./deny-list.ts";
@@ -91,6 +92,15 @@ describe("the builder builds against the brief, with one resumed repair round (#
     expect(calls()).toBe(1);
     expect(committed()).toEqual([expect.stringContaining("#724"), "src/ticket-shape.ts"]);
     expect(dirty()).toBe("");
+  });
+
+  it("keeps every round's transcript in the machine logs, so whoever clears a red build can read what the model did", () => {
+    const { run, session, sessionId } = building();
+
+    run();
+
+    const transcript = readFileSync(join(session, ".git", "machine-logs", "build-724.jsonl"), "utf8");
+    expect(transcript.split(sessionId)).toHaveLength(3);
   });
 
   it("commits a build still red after the repair round, so the save step has it to push", () => {

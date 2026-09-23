@@ -12,26 +12,4 @@ fi
 src="$(cd "${BASH_SOURCE[0]%/*}/../src" && pwd)"
 top=$(git rev-parse --show-toplevel) || exit 1
 cd "$top" || exit 1
-log="$(git rev-parse --path-format=absolute --git-common-dir)/machine-logs/build-$ticket.log"
-mkdir -p "${log%/*}"
-[[ $log == "$top/"* ]] && shown="${log#"$top/"}" || shown="$log"
-
-if [[ -n $(git status --porcelain) ]]; then
-  printf 'build: #%s refused, the tree holds uncommitted work, so no model was spent\n' "$ticket" >&2
-  exit 1
-fi
-
-verdict=$(node "$src/builder.ts" "$ticket" 2>"$log")
-ended=$?
-if [[ -n $(git status --porcelain) ]]; then
-  { git add -A && git commit --quiet -m "Build #$ticket against its failing tests"; } 2>>"$log" || {
-    printf 'build: #%s built, but the build would not commit; log %s\n' "$ticket" "$shown" >&2
-    exit 1
-  }
-fi
-if (( ended == 0 )); then
-  printf 'build: #%s %s\n' "$ticket" "$verdict"
-  exit 0
-fi
-printf 'build: #%s ended red, %s; log %s\n' "$ticket" "$(head -1 "$log")" "$shown" >&2
-exit 1
+exec node "$src/builder.ts" "$ticket"

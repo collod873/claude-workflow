@@ -63,9 +63,10 @@ describe("the test author writes one failing test per criterion, or ends red (#6
     expect(uncovered(claimingBuilder, written, unimported(written, "builder.ts"))).toEqual([expect.stringContaining("ran no tests")]);
   });
 
-  it("sets aside what the model wrote outside test files before any check runs, and commits only its tests", () => {
+  it("sets aside what the model wrote outside test files before any check runs, and commits only the tests it wrote", () => {
     const { session, run, committed } = authoring({ claude: PROTOTYPED, npx: GREEN_WITH_PROTOTYPE });
     plant(session, "notes.txt", "the owner's own work in progress\n");
+    plant(session, "src/unfinished.test.ts", "the owner's own test in progress\n");
     const setAside = join(session, ".git", "machine-logs", "test-author-723-set-aside");
 
     const result = run();
