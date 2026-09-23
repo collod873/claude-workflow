@@ -129,6 +129,7 @@ export const parts: Part[] = [
       "Done means the ticket's checks pass on main, run by something that did not build it",
       "Done means the ticket's checks pass on the merge commit on main, run by the closer",
       "A ticket goes from filing to merged in under an hour, and its longest wait is named; speed is reported, never a gate",
+      "Filing to merged is reported on every merge, with its longest wait named; never a gate",
     ],
   },
   {
