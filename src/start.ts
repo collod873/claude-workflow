@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { passingCriteria } from "./check-runner.ts";
-import { checks, claims, ticketRefusals } from "./ticket-shape.ts";
+import { checks, claims, ticketRefusals, withRenamedPath } from "./ticket-shape.ts";
 
 const SETTLED = new Set(["success", "skipped", "neutral"]);
 const CONFIG_FLAG = /--config[ \t]+(\S+)/;
@@ -21,6 +21,7 @@ function treeRefusals(): string[] {
   const branch = git(["rev-parse", "--abbrev-ref", "HEAD"]).stdout.trim();
   if (branch !== "main") return [`a build starts from main, and this tree is on ${branch}`];
   if (git(["status", "--porcelain"]).stdout.trim() !== "") return ["this tree carries uncommitted work, so a build would not start from main as it stands"];
+  if (git(["fetch", "--quiet", "origin", "main"]).status !== 0) return ["origin/main could not be fetched, so nothing knows whether this tree is fresh"];
   const counted = git(["rev-list", "--count", "HEAD..origin/main"]);
   if (counted.status !== 0) return ["origin/main could not be read, so nothing knows whether this tree is fresh"];
   const behind = Number(counted.stdout.trim());
@@ -100,7 +101,7 @@ function staleOutcome(body: string, ticket: string): StaleOutcome {
   for (const claim of claims(body)) {
     const resolved = resolvePath(claim, history);
     if (resolved.kind === "renamed") {
-      rewritten = rewritten.split(claim).join(resolved.to);
+      rewritten = withRenamedPath(rewritten, claim, resolved.to);
       notices.push(`'## Files claimed' names \`${claim}\`, which git records as renamed to \`${resolved.to}\`: rewritten`);
     } else if (resolved.kind === "gone") {
       refusals.push(`'## Files claimed' names \`${claim}\`, which git records as deleted`);
@@ -112,7 +113,7 @@ function staleOutcome(body: string, ticket: string): StaleOutcome {
     if (config === undefined) continue;
     const resolved = resolvePath(config, history);
     if (resolved.kind === "renamed") {
-      rewritten = rewritten.split(config).join(resolved.to);
+      rewritten = withRenamedPath(rewritten, config, resolved.to);
       notices.push(`${at}'s check names \`--config ${config}\`, which git records as renamed to \`${resolved.to}\`: rewritten`);
     } else if (resolved.kind === "gone" || (resolved.kind === "unknown" && built)) {
       refusals.push(`${at}'s check names \`--config ${config}\`, which does not exist and git records no rename for`);

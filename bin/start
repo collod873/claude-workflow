@@ -18,8 +18,6 @@ log="$(git rev-parse --path-format=absolute --git-common-dir)/machine-logs/start
 mkdir -p "${log%/*}"
 [[ $log == "$top/"* ]] && shown="${log#"$top/"}" || shown="$log"
 
-git fetch --quiet origin main 2>/dev/null
-
 err=$(mktemp)
 trap 'rm -f "$err"' EXIT
 
