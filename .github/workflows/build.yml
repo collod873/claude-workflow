@@ -41,6 +41,28 @@ jobs:
 
       - run: npm install --global @anthropic-ai/claude-code
 
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+
+      - id: hooks-app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          owner: collod873
+          repositories: agent-hooks
+          permission-contents: read
+
+      - env:
+          HOOKS_TOKEN: ${{ steps.hooks-app.outputs.token }}
+        run: |
+          hooks="$RUNNER_TEMP/agent-hooks"
+          git clone --quiet --depth 1 "https://x-access-token:$HOOKS_TOKEN@github.com/collod873/agent-hooks" "$hooks"
+          rm -rf "$hooks/.git"
+          python3 "$hooks/hookcheck.py" --root "$hooks" --settings "$RUNNER_TEMP/unregistered.json" --emit-settings >"$RUNNER_TEMP/agent-hooks.json"
+          printf 'AGENT_HOOKS_SETTINGS=%s\n' "$RUNNER_TEMP/agent-hooks.json" >>"$GITHUB_ENV"
+
       - run: |
           git config user.name "core-app[bot]"
           git config user.email "core-app[bot]@users.noreply.github.com"
@@ -117,6 +139,28 @@ jobs:
       - run: npm ci
 
       - run: npm install --global @anthropic-ai/claude-code
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+
+      - id: hooks-app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          owner: collod873
+          repositories: agent-hooks
+          permission-contents: read
+
+      - env:
+          HOOKS_TOKEN: ${{ steps.hooks-app.outputs.token }}
+        run: |
+          hooks="$RUNNER_TEMP/agent-hooks"
+          git clone --quiet --depth 1 "https://x-access-token:$HOOKS_TOKEN@github.com/collod873/agent-hooks" "$hooks"
+          rm -rf "$hooks/.git"
+          python3 "$hooks/hookcheck.py" --root "$hooks" --settings "$RUNNER_TEMP/unregistered.json" --emit-settings >"$RUNNER_TEMP/agent-hooks.json"
+          printf 'AGENT_HOOKS_SETTINGS=%s\n' "$RUNNER_TEMP/agent-hooks.json" >>"$GITHUB_ENV"
 
       - run: |
           git config user.name "core-app[bot]"
