@@ -19,11 +19,9 @@ const OWNER_HOOKS = [
   "module-depth",
   "no-prose",
   "test-weaken",
-  "circuit-breaker-reset",
   "context-lint",
   "post-edit-validate",
   "stale-ref",
-  "circuit-breaker",
   "dead-path",
   "log-stop-failure",
 ];
