@@ -10,6 +10,7 @@ import { claims, quoted } from "./ticket-shape.ts";
 
 const TOOK_ITS_TURN = "The fixer took its one turn on this ticket";
 const COMMENTS = ["--json", "comments", "--jq", "[.comments[].body]"];
+const JOB_LINK = /\/runs\/(\d+)\/job\/(\d+)/;
 
 const ANSWER = {
   type: "object",
@@ -53,12 +54,29 @@ function comments(on: string[]): string[] | undefined {
   }
 }
 
-function failure({ ticket, logs, commands }: Opened): string {
+function failedChecks(branch: string): string[] {
+  const listed = gh(["pr", "checks", branch, "--required", "--json", "name,bucket,link"]);
+  let checks: unknown;
+  try {
+    checks = JSON.parse(listed.stdout);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(checks)) return [];
+  return checks.flatMap((check: { name?: unknown; bucket?: unknown; link?: unknown }) => {
+    const job = typeof check.link === "string" ? JOB_LINK.exec(check.link) : null;
+    if (check.bucket !== "fail" || job === null) return [];
+    const log = gh(["run", "view", job[1], "--job", job[2], "--log-failed"]);
+    return log.status === 0 && log.stdout.trim() !== "" ? [`### failed required check: ${String(check.name)}\n\n${log.stdout.trim()}`] : [];
+  });
+}
+
+function failure({ ticket, logs, commands }: Opened, branch: string): string {
   const logged = readdirSync(logs)
     .filter((name) => name.endsWith(`-${ticket}.log`))
     .sort()
     .map((name) => `### ${name}\n\n${readFileSync(join(logs, name), "utf8").trim()}`);
-  return [...logged, redOutput(commands)].filter((text) => text !== "").join("\n\n");
+  return [...logged, redOutput(commands), ...failedChecks(branch)].filter((text) => text !== "").join("\n\n");
 }
 
 export function handedOn({ briefed, body, failed, diff, gaps, commands }: Handed): string {
@@ -119,7 +137,7 @@ function fix(opened: Opened): Outcome {
     handedOn({
       briefed: opened.briefed,
       body,
-      failed: failure(opened),
+      failed: failure(opened, branch),
       diff: git(["diff", "origin/main...HEAD"]).stdout ?? "",
       gaps: (onPr ?? []).filter((said) => said.startsWith(foundDrift(ticket))).join("\n\n"),
       commands: opened.commands,
