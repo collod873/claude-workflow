@@ -1,7 +1,9 @@
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
+import { scratch } from "./scenarios.ts";
 
 const WORKFLOW = join(import.meta.dirname, "..", ".github", "workflows", "build.yml");
 const STAGES = ["start", "test-author", "build", "save"] as const;
@@ -26,6 +28,7 @@ interface Job {
 
 interface Workflow {
   on: { issues?: { types?: string[] } };
+  env: Record<string, string>;
   jobs: Record<string, Job>;
 }
 
@@ -123,6 +126,48 @@ describe("build.yml builds a ticket the moment it is filed (#826)", () => {
     }
     for (const checkout of job.steps.filter((step) => step.uses?.startsWith("actions/checkout@") === true)) {
       expect(String(checkout.with?.token)).toMatch(token);
+    }
+  });
+});
+
+const parsed = () => parse(readFileSync(WORKFLOW, "utf8")) as Workflow;
+const spendsModel = (step: Step) => step.env?.CLAUDE_CODE_OAUTH_TOKEN !== undefined;
+const transcriptOf = (run: string) => (/(^|\s|\/)bin\/([\w-]+)/.exec(run.split("\n").slice(1).join("\n"))?.[2] ?? "fix");
+const SAID = { type: "assistant", message: { content: [{ type: "text", text: "reading the brief" }] } };
+
+describe("a build run is watched as it goes, read after it ends, and stopped at its cap (#835)", () => {
+  it("every step that spends a model stops it before the step's own cap, which kills only the step's shell", () => {
+    const steps = Object.values(parsed().jobs).flatMap(({ steps }) => steps.filter(spendsModel));
+
+    expect(steps.length).toBeGreaterThan(0);
+    for (const step of steps) {
+      expect(Number(step.env?.STAGE_MINUTES)).toBeGreaterThan(0);
+      expect(Number(step.env?.STAGE_MINUTES)).toBeLessThan(step["timeout-minutes"] ?? 0);
+    }
+  });
+
+  it("every job keeps its machine logs as a run artifact, whatever ended it", () => {
+    for (const { steps } of Object.values(parsed().jobs)) {
+      const last = steps[steps.length - 1];
+      expect(last.uses).toMatch(/^actions\/upload-artifact@/);
+      expect(last.if).toBe("always()");
+      expect(last.with).toMatchObject({ path: ".git/machine-logs", "include-hidden-files": true });
+    }
+  });
+
+  it("every step that spends a model shows what its stage's model does in the log as it happens, and ends with the stage's own status", () => {
+    const { env, jobs } = parsed();
+    for (const step of Object.values(jobs).flatMap(({ steps }) => steps.filter(spendsModel))) {
+      const run = (step.run ?? "").replaceAll("${{ github.event.issue.number }}", "9");
+      const transcript = `.git/machine-logs/${transcriptOf(run)}-9.jsonl`;
+      const cwd = scratch("feed-");
+      mkdirSync(join(cwd, ".git", "machine-logs"), { recursive: true });
+      const stage = [`printf '%s\\n' '${JSON.stringify(SAID)}' >>${transcript}`, "sleep 1.5", "exit 3"].join("\n");
+
+      const watched = spawnSync("bash", ["-e", "-c", `${run.split("\n")[0]}\n${stage}`], { cwd, env: { ...process.env, FEED: env.FEED }, encoding: "utf8", timeout: 10000 });
+
+      expect(watched.stdout).toContain("said: reading the brief");
+      expect(watched.status).toBe(3);
     }
   });
 });
