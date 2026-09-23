@@ -5,7 +5,7 @@ import { claims } from "./ticket-shape.ts";
 
 export const TAIL_CAP = 8 * 1024;
 
-function tailOf(text: string, limit: number): string {
+export function tailOf(text: string, limit: number): string {
   const bytes = Buffer.from(text);
   return bytes.length <= limit ? text : bytes.subarray(bytes.length - limit).toString("utf8").replace(/^�+/, "");
 }
@@ -24,7 +24,7 @@ export function repaired(output: string): string {
   return ["Your checks are still red. The end of their output:", tailOf(output, TAIL_CAP), "Fix the build so they pass.", ""].join("\n\n");
 }
 
-function redOutput(commands: string[]): string {
+export function redOutput(commands: string[]): string {
   return commands
     .map((command) => runCheck(command, process.cwd()))
     .filter(({ passed }) => !passed)

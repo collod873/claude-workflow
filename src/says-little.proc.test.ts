@@ -3,7 +3,7 @@ import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { machinePage } from "./machine-page.ts";
 import { parts, type Part } from "./parts.ts";
-import { LINE_LIMIT, MOST_LINES, authoring, briefing, building, checkRepo, checking, closing, coveredByCheck, execute, filing, landSession, misshapenTicket, overLimit, reviewing, saving, scratch, script, starting, wellFormedNote, wellFormedTicket, type Run } from "./scenarios.ts";
+import { LINE_LIMIT, MOST_LINES, authoring, briefing, building, checkRepo, checking, closing, coveredByCheck, execute, filing, fixing, landSession, misshapenTicket, overLimit, reviewing, saving, scratch, script, starting, wellFormedNote, wellFormedTicket, type Run } from "./scenarios.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
 const NOISE = "a line a tool prints that nobody needed to read\n".repeat(40).trim();
@@ -66,6 +66,10 @@ const scenarios: Record<string, Scenario[]> = {
   "bin/review": [
     { label: "passing a match", run: () => reviewing().run() },
     { label: "posting a drift", run: () => reviewing({ verdict: { verdict: "drift", gaps: ["the Why asks for more than was built"] } }).run() },
+  ],
+  "bin/fix": [
+    { label: "closing a ticket unbuilt", run: () => fixing().run() },
+    { label: "refusing a second turn", run: () => fixing({ turns: ["The fixer took its one turn on this ticket."] }).run() },
   ],
   "bin/test-author": [
     { label: "writing a failing test for each criterion", run: () => authoring().run() },

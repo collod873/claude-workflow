@@ -2,10 +2,11 @@ import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { brief, CAP } from "./brief.ts";
 import { handedOn as builderHandedOn, repaired, TAIL_CAP } from "./builder.ts";
+import { handedOn as fixerHandedOn } from "./fixer.ts";
 import { DIFF_CAP, handedOn as reviewerHandedOn, LIST_CAP, TICKET_CAP } from "./reviewer.ts";
 import { handedOn } from "./test-author.ts";
 
-export const CEILINGS: Record<string, number> = { "brief": 136, "test author": 850, "builder": 378, "repair": 84, "reviewer": 379 };
+export const CEILINGS: Record<string, number> = { "brief": 136, "test author": 850, "builder": 378, "repair": 84, "reviewer": 379, "fixer": 741 };
 
 const AUTHORED = "src/planted.test.ts";
 const HIRES = /(spawn|execFile)\w*\(\s*"claude"/;
@@ -59,6 +60,21 @@ export const PROMPTS: Prompt[] = [
     cap: 2 * TICKET_CAP + DIFF_CAP + LIST_CAP + HANDED_ON,
     slots: ["body", "diff"],
     build: (filled) => reviewerHandedOn(filled.body ?? "", filled.diff ?? ""),
+  },
+  {
+    name: "fixer",
+    file: "src/fixer.ts",
+    cap: CAP + TAIL_CAP + DIFF_CAP + 2 * LIST_CAP + HANDED_ON,
+    slots: ["ticket", "body", "tests", "failed", "diff", "gaps", "commands"],
+    build: (filled) =>
+      fixerHandedOn({
+        briefed: briefText(filled),
+        body: filled.body ?? "",
+        failed: filled.failed ?? "",
+        diff: filled.diff ?? "",
+        gaps: filled.gaps ?? "",
+        commands: filled.commands === undefined ? [] : [filled.commands],
+      }),
   },
 ];
 

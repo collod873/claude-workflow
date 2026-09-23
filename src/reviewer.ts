@@ -11,7 +11,7 @@ const TICKET_BRANCH = /^ticket\/(\d+)$/;
 const FILE_START = /^(?=diff --git )/m;
 const CHANGED_PATH = /^diff --git a\/.+? b\/(.+)$/m;
 const TOOLS = "Read,Grep,Glob";
-const NO_EM_DASH = "^[^\\u2014]*$";
+export const NO_EM_DASH = "^[^\\u2014]*$";
 
 const VERDICT = {
   type: "object",
@@ -39,7 +39,7 @@ function changedFiles(diff: string): { path: string; text: string }[] {
   });
 }
 
-function handedDiff(diff: string, claimed: string[]): string {
+export function handedDiff(diff: string, claimed: string[]): string {
   const bytes = Buffer.byteLength(diff);
   if (bytes <= DIFF_CAP) return diff;
   const changed = changedFiles(diff);
@@ -82,9 +82,11 @@ function judged(prompt: string): Verdict | string {
   return verdictIn(spent.stdout) ?? `the reviewer gave no verdict: ${firstLine(spent.stdout)}`;
 }
 
+export const foundDrift = (ticket: string) => `The reviewer read this PR against the Why of #${ticket} and found drift.`;
+
 function judgement(ticket: string, gaps: string[]): string {
   const named = gaps.length === 0 ? ["- the reviewer ruled drift and named no gap"] : gaps.map((gap) => `- ${gap}`);
-  return [`The reviewer read this PR against the Why of #${ticket} and found drift.`, "", ...named, ""].join("\n");
+  return [foundDrift(ticket), "", ...named, ""].join("\n");
 }
 
 function review(pr: string): number {

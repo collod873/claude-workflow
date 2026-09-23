@@ -626,3 +626,76 @@ export function reviewing({
     run: (pr = "9810") => execute(join(BIN, "review"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, [pr]),
   };
 }
+
+const FIXED_TICKET = [
+  "## Why",
+  "",
+  'The owner, in session: "a stuck ticket gets one turn from a fresh fixer, never the owner".',
+  "",
+  "## Acceptance criteria",
+  "",
+  "- [ ] The fixer clears a stuck ticket - check: `npx vitest run --config vitest.config.ts ticket-shape`",
+  "",
+  "## Files claimed",
+  "",
+  "- src/ticket-shape.ts",
+  "",
+].join("\n");
+
+export function fixing({
+  body = FIXED_TICKET,
+  answer = { outcome: "close", reason: "the ticket asks for a stage the ruling has since dropped" } as { outcome: string; reason: string; body?: string },
+  turns = [] as string[],
+  onPr = [] as string[] | undefined,
+  logged = {} as Record<string, string>,
+  claude = "",
+  npx = CHECK_RED,
+} = {}) {
+  const root = scratch("fixer-");
+  const session = join(root, "session");
+  const order = join(root, "order");
+  const handed = join(root, "claude-stdin");
+  const argvDir = join(root, "gh-argv");
+  mkdirSync(argvDir, { recursive: true });
+  claimedSession(session, "fixer", { "src/ticket-shape.ts": "export const shaped = 1;\n" }, { "src/ticket-shape.test.ts": AUTHORED_TEST }, "ticket/811");
+  git(session, "commit", "--quiet", "--allow-empty", "-m", "Build #811 against its failing tests");
+  for (const [name, text] of Object.entries(logged)) plant(session, `.git/machine-logs/${name}`, text);
+  plant(root, "ticket.md", body);
+  plant(root, "turns.json", JSON.stringify(turns));
+  plant(root, "on-pr.json", JSON.stringify(onPr ?? []));
+  const result = { type: "result", subtype: "success", is_error: false, session_id: "sess-fix", structured_output: answer };
+  plant(root, "answer.jsonl", `${JSON.stringify({ type: "system", session_id: "sess-fix" })}\n${JSON.stringify(result)}\n`);
+  script(join(root, "bin", "npx"), npx);
+  script(
+    join(root, "bin", "gh"),
+    [
+      `n=$(( $(ls "${argvDir}" 2>/dev/null | wc -l) + 1 ))`,
+      `printf '%s\\0' "$@" >"${argvDir}/$n"`,
+      `printf 'gh %s %s\\n' "$1" "$2" >>"${order}"`,
+      'case "$*" in',
+      `  *"issue view"*"comments"*) cat "${join(root, "turns.json")}" ;;`,
+      `  *"issue view"*) cat "${join(root, "ticket.md")}" ;;`,
+      `  *"pr view"*) ${onPr === undefined ? "exit 1" : `cat "${join(root, "on-pr.json")}"`} ;;`,
+      "  *) printf 'https://github.com/collod873/claude-workflow/issues/811#issuecomment-1\\n' ;;",
+      "esac",
+      "",
+    ].join("\n"),
+  );
+  script(join(root, "bin", "claude"), `printf 'claude\\n' >>"${order}"\ncat >"${handed}"\n${claude}\ncat "${join(root, "answer.jsonl")}"\n`);
+  const calls = (): string[][] => readdirSync(argvDir).map((_, index) => readFileSync(join(argvDir, String(index + 1)), "utf8").split("\0").filter((part) => part !== ""));
+  const bodyOf = (args: string[]) => args[args.indexOf("--body") + 1];
+  return {
+    body,
+    spent: () => existsSync(handed),
+    handed: () => (existsSync(handed) ? readFileSync(handed, "utf8") : ""),
+    order: () => (existsSync(order) ? readFileSync(order, "utf8").trimEnd().split("\n") : []),
+    calls,
+    ticketComments: () => calls().filter((args) => args[0] === "issue" && args[1] === "comment").map(bodyOf),
+    prComments: () => calls().filter((args) => args[0] === "pr" && args[1] === "comment").map(bodyOf),
+    edits: () => calls().filter((args) => args[0] === "issue" && args[1] === "edit").map(bodyOf),
+    closes: () => calls().filter((args) => args[0] === "issue" && args[1] === "close"),
+    branches: () => git(session, "branch", "--format=%(refname:short)").split("\n"),
+    committed: () => git(session, "show", "--name-only", "--format=%s", "HEAD").split("\n").filter((line) => line !== ""),
+    run: (ticket = "811") => execute(join(BIN, "fix"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, [ticket]),
+  };
+}
