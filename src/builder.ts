@@ -1,8 +1,10 @@
 import { spawnSync } from "node:child_process";
+import { rmSync } from "node:fs";
 import { authoredTests, brief, capped, onDisk } from "./brief.ts";
 import { runCheck } from "./check-runner.ts";
 import { stageArgv, stageRefusals, transcriptEvents, writtenOutsideRepo } from "./deny-list.ts";
-import { checks, quoted } from "./ticket-shape.ts";
+import { changed, keptFor, setAside } from "./test-author.ts";
+import { checks, claims, quoted } from "./ticket-shape.ts";
 
 const STAGE = "builder";
 const COMMANDS_CAP = 200;
@@ -39,6 +41,10 @@ function ended(spent: ReturnType<typeof spawnSync>): string {
   return `the ${STAGE} ended ${spent.status}: ${quoted(String(spent.stderr || spent.stdout).trim().split("\n")[0])}`;
 }
 
+function withAside(verdict: string, aside: string[]): string {
+  return aside.length === 0 ? verdict : `${verdict}, having set aside ${aside.join(", ")}`;
+}
+
 function sessionOf(stdout: string): string | undefined {
   let session: string | undefined;
   for (const event of transcriptEvents(stdout)) {
@@ -61,20 +67,28 @@ function build(ticket: string): { refusals: string[]; verdict: string } {
   const unfenced = stageRefusals(STAGE, argv);
   if (unfenced.length > 0) return { refusals: unfenced, verdict: "" };
   const cwd = process.cwd();
-  const first = spawnSync("claude", [...argv, "--output-format", "stream-json", "--verbose"], { input: handedOn(briefed.text, commands), encoding: "utf8" });
-  if (first.status !== 0) return { refusals: [ended(first)], verdict: "" };
-  const strayFirst = writtenOutsideRepo(cwd, first.stdout);
-  if (strayFirst !== undefined) return { refusals: [`the ${STAGE} wrote outside the repo: ${strayFirst}`], verdict: "" };
-  const session = sessionOf(first.stdout);
-  if (session === undefined) return { refusals: [`the ${STAGE} named no session to resume`], verdict: "" };
+  const claimed = new Set([...tests, ...claims(body)]);
+  const kept = keptFor(cwd, STAGE, ticket);
+  rmSync(kept, { recursive: true, force: true });
+  const before = changed(cwd);
+  const aside: string[] = [];
+  const spend = (extra: string[], input: string) => {
+    const spent = spawnSync("claude", [...argv, ...extra, "--output-format", "stream-json", "--verbose"], { input, encoding: "utf8" });
+    for (const path of setAside(cwd, [...changed(cwd)].filter(([written]) => !before.has(written) && !claimed.has(written)), kept)) if (!aside.includes(path)) aside.push(path);
+    if (spent.status !== 0) return { spent, refusal: withAside(ended(spent), aside) };
+    const stray = writtenOutsideRepo(cwd, spent.stdout);
+    return { spent, refusal: stray === undefined ? undefined : withAside(`the ${STAGE} wrote outside the repo: ${stray}`, aside) };
+  };
+  const first = spend([], handedOn(briefed.text, commands));
+  if (first.refusal !== undefined) return { refusals: [first.refusal], verdict: "" };
+  const session = sessionOf(first.spent.stdout);
+  if (session === undefined) return { refusals: [withAside(`the ${STAGE} named no session to resume`, aside)], verdict: "" };
   const red = redOutput(commands);
-  if (red === "") return { refusals: [], verdict: "green after the build" };
-  const repair = spawnSync("claude", [...argv, "--resume", session, "--output-format", "stream-json", "--verbose"], { input: repaired(red), encoding: "utf8" });
-  if (repair.status !== 0) return { refusals: [ended(repair)], verdict: "" };
-  const strayRepair = writtenOutsideRepo(cwd, repair.stdout);
-  if (strayRepair !== undefined) return { refusals: [`the ${STAGE} wrote outside the repo: ${strayRepair}`], verdict: "" };
-  if (redOutput(commands) !== "") return { refusals: ["the checks are still red after the repair round"], verdict: "" };
-  return { refusals: [], verdict: "green after the repair round" };
+  if (red === "") return { refusals: [], verdict: withAside("green after the build", aside) };
+  const repair = spend(["--resume", session], repaired(red));
+  if (repair.refusal !== undefined) return { refusals: [repair.refusal], verdict: "" };
+  if (redOutput(commands) !== "") return { refusals: [withAside("the checks are still red after the repair round", aside)], verdict: "" };
+  return { refusals: [], verdict: withAside("green after the repair round", aside) };
 }
 
 if (import.meta.main) {

@@ -36,7 +36,7 @@ export function uncovered(body: string, cwd: string, run?: Shell): string[] {
   return judged(body, cwd, run).refusals;
 }
 
-function changed(cwd: string): Map<string, string> {
+export function changed(cwd: string): Map<string, string> {
   const entries = spawnSync("git", ["status", "--porcelain", "-z", "-uall"], { cwd, encoding: "utf8" }).stdout.split("\0");
   const found = new Map<string, string>();
   for (let at = 0; at < entries.length; at++) {
@@ -48,12 +48,12 @@ function changed(cwd: string): Map<string, string> {
   return found;
 }
 
-function keptFor(cwd: string, ticket: string): string {
+export function keptFor(cwd: string, stage: string, ticket: string): string {
   const logs = spawnSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd, encoding: "utf8" }).stdout.trim();
-  return join(logs, "machine-logs", `test-author-${ticket}-set-aside`);
+  return join(logs, "machine-logs", `${stage}-${ticket}-set-aside`);
 }
 
-function setAside(cwd: string, outside: [string, string][], kept: string): number {
+export function setAside(cwd: string, outside: [string, string][], kept: string): string[] {
   for (const [path, status] of outside) {
     const written = join(cwd, path);
     mkdirSync(dirname(join(kept, path)), { recursive: true });
@@ -61,7 +61,7 @@ function setAside(cwd: string, outside: [string, string][], kept: string): numbe
     if (status === UNTRACKED) rmSync(written, { force: true });
     else spawnSync("git", ["checkout", "--quiet", "--", path], { cwd });
   }
-  return outside.length;
+  return outside.map(([path]) => path);
 }
 
 export function handedOn(briefed: string, commands: string[]): string {
@@ -87,18 +87,18 @@ function authorRefusals(ticket: string): { refusals: string[]; setAside: number 
   const unfenced = stageRefusals(STAGE, argv);
   if (unfenced.length > 0) return { refusals: unfenced, setAside: 0 };
   const cwd = process.cwd();
-  const kept = keptFor(cwd, ticket);
+  const kept = keptFor(cwd, "test-author", ticket);
   rmSync(kept, { recursive: true, force: true });
   const before = changed(cwd);
   const spent = spawnSync("claude", argv, { input: handedOn(briefed.text, commands), encoding: "utf8" });
   const wrote = () => [...changed(cwd)].filter(([path]) => !before.has(path));
-  const outside = setAside(cwd, wrote().filter(([path]) => !path.endsWith(AUTHORED) && path !== FIXTURES), kept);
+  const outside = setAside(cwd, wrote().filter(([path]) => !path.endsWith(AUTHORED) && path !== FIXTURES), kept).length;
   const stray = writtenOutsideRepo(cwd, spent.stdout);
   if (stray !== undefined) return { refusals: [`the ${STAGE} wrote outside the repo: ${stray}`], setAside: outside };
   if (spent.status !== 0) return { refusals: [`the ${STAGE} ended ${spent.status}: ${quoted((spent.stderr || spent.stdout).trim().split("\n")[0])}`], setAside: outside };
   if (!wrote().some(([path]) => path.endsWith(AUTHORED))) return { refusals: ["the author wrote nothing, so it wrote no test for any criterion"], setAside: outside };
   const { refusals, ran } = judged(body, cwd);
-  const unrun = setAside(cwd, wrote().filter(([path]) => path.endsWith(AUTHORED) && !ran.has(path)), kept);
+  const unrun = setAside(cwd, wrote().filter(([path]) => path.endsWith(AUTHORED) && !ran.has(path)), kept).length;
   return { refusals, setAside: outside + unrun };
 }
 
