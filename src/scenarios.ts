@@ -650,6 +650,7 @@ export function fixing({
   logged = {} as Record<string, string>,
   claude = "",
   npx = CHECK_RED,
+  failedCheck = undefined as string | undefined,
 } = {}) {
   const root = scratch("fixer-");
   const session = join(root, "session");
@@ -663,6 +664,7 @@ export function fixing({
   plant(root, "ticket.md", body);
   plant(root, "turns.json", JSON.stringify(turns));
   plant(root, "on-pr.json", JSON.stringify(onPr ?? []));
+  plant(root, "failed-check.log", failedCheck ?? "");
   const result = { type: "result", subtype: "success", is_error: false, session_id: "sess-fix", structured_output: answer };
   plant(root, "answer.jsonl", `${JSON.stringify({ type: "system", session_id: "sess-fix" })}\n${JSON.stringify(result)}\n`);
   script(join(root, "bin", "npx"), npx);
@@ -676,6 +678,12 @@ export function fixing({
       `  *"issue view"*"comments"*) cat "${join(root, "turns.json")}" ;;`,
       `  *"issue view"*) cat "${join(root, "ticket.md")}" ;;`,
       `  *"pr view"*) ${onPr === undefined ? "exit 1" : `cat "${join(root, "on-pr.json")}"`} ;;`,
+      ...(failedCheck === undefined
+        ? []
+        : [
+            `  *"pr checks"*) printf '%s\\n' '${JSON.stringify([{ name: "check", bucket: "fail", link: "https://github.com/collod873/claude-workflow/actions/runs/555/job/777" }])}' ;;`,
+            `  *"run view"*) cat "${join(root, "failed-check.log")}" ;;`,
+          ]),
       "  *) printf 'https://github.com/collod873/claude-workflow/issues/811#issuecomment-1\\n' ;;",
       "esac",
       "",

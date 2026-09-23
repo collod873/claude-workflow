@@ -74,4 +74,19 @@ describe("bin/fix clears a stuck ticket with one fixer turn (#811)", () => {
     expect(committed()).toEqual([expect.stringContaining("#811"), "src/ticket-shape.ts"]);
     expect(closes()).toEqual([]);
   });
+
+  it("hands the model the log of a failed required check under How it failed, when the ticket's own checks passed", () => {
+    const { run, handed } = fixing({
+      answer: { outcome: "code", reason: "the growth limit was never met" },
+      npx: "exit 0\n",
+      failedCheck: "growth-limits: src/builder.ts grew to 210 lines, over 200\nsays-little: bin/check said 9 lines, over 5\n",
+      claude: "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n",
+    });
+
+    expect(run().status).toBe(0);
+    const failure = handed().split("## How it failed")[1].split("## Diff from main")[0];
+    expect(failure).toContain("growth-limits: src/builder.ts grew to 210 lines, over 200");
+    expect(failure).toContain("says-little: bin/check said 9 lines, over 5");
+    expect(failure).not.toContain("(nothing logged)");
+  });
 });
