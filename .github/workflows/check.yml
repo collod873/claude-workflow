@@ -10,6 +10,9 @@ jobs:
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -28,6 +31,13 @@ jobs:
 
       - if: failure() && steps.check.conclusion == 'failure'
         run: tail -n 60 "$(git rev-parse --git-common-dir)"/machine-logs/check-*.log
+
+      - if: failure() && startsWith(github.head_ref, 'ticket/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          gh issue view "${HEAD_REF#ticket/}" --json labels --jq '.labels[].name' | grep -qx fixing || bin/mark "${HEAD_REF#ticket/}" failed
 
   review:
     needs: check
@@ -66,16 +76,24 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: bin/mark "${HEAD_REF#ticket/}" 4-reviewing || true
+
       - timeout-minutes: 12
         env:
           GH_TOKEN: ${{ github.token }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           STAGE_MINUTES: 10
+          HEAD_REF: ${{ github.head_ref }}
         run: |
           tail --pid=$$ -n +1 -F .git/machine-logs/review-${{ github.event.pull_request.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered "$FEED" &
           bin/review ${{ github.event.pull_request.number }}
+          bin/mark "${HEAD_REF#ticket/}" 5-merging || true
 
-      - if: failure()
+      - id: hand-off
+        if: failure()
         timeout-minutes: 30
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
@@ -85,6 +103,12 @@ jobs:
         run: |
           tail --pid=$$ -n +1 -F ".git/machine-logs/fix-${HEAD_REF#ticket/}.jsonl" 2>/dev/null | jq -Rr --unbuffered "$FEED" &
           node src/hand-off.ts "${HEAD_REF#ticket/}" 'The reviewer finds drift from `## Why`'
+
+      - if: cancelled() || steps.hand-off.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: bin/mark "${HEAD_REF#ticket/}" failed
 
       - if: always()
         timeout-minutes: 6

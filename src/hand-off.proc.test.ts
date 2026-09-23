@@ -115,6 +115,27 @@ describe("hand-off passes a stuck ticket to the fixer (#827)", () => {
   });
 });
 
+describe("hand-off labels the ticket with where its red run went (#835)", () => {
+  it("labels a ticket fixing while the fixer works, then back to checking once the fix is pushed", () => {
+    const committed = handingOff({ stoppedAt: STOPS.buildRed, commits: true });
+    const untouched = handingOff({ stoppedAt: STOPS.buildRed });
+
+    committed.run();
+    untouched.run();
+
+    expect(committed.marked()).toEqual(["811 fixing", "811 3-checking"]);
+    expect(untouched.marked()).toEqual(["811 fixing"]);
+  });
+
+  it("labels a ticket failed when no fixer is coming for it", () => {
+    const { run, marked } = handingOff({ stoppedAt: STOPS.dirtyTree });
+
+    run();
+
+    expect(marked()).toEqual(["811 failed"]);
+  });
+});
+
 describe("a reviewer drift reaches the fixer (#827)", () => {
   it("a reviewer drift hands its ticket to the fixer", () => {
     const { run, fixed } = handingOff();
