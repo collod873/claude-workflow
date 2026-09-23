@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { capped } from "./brief.ts";
 import { post, type Gh } from "./post.ts";
+import { exitFor, stoppedAt, type Stop } from "./stops.ts";
 import { acceptance, claims, quoted, why } from "./ticket-shape.ts";
 
 export const DIFF_CAP = 32 * 1024;
@@ -89,44 +90,33 @@ function judgement(ticket: string, gaps: string[]): string {
   return [foundDrift(ticket), "", ...named, ""].join("\n");
 }
 
-function review(pr: string): number {
+function review(pr: string): Stop | undefined {
   const said = `review: #${pr}`;
   const asked = (args: string[]) => {
     const got = gh(args);
     return got.status === 0 ? got.stdout : undefined;
   };
   const branch = asked(["pr", "view", pr, "--json", "headRefName", "--jq", ".headRefName"]);
-  if (branch === undefined) {
-    console.error(`${said} could not be read, so nothing reviewed it`);
-    return 1;
-  }
+  if (branch === undefined) return stoppedAt("unread", `${said} could not be read, so nothing reviewed it`);
   const ticket = TICKET_BRANCH.exec(branch.trim())?.[1];
   if (ticket === undefined) {
     console.log(`${said} is not a ticket PR, so there is no Why to read it against`);
-    return 0;
+    return undefined;
   }
   const body = asked(["issue", "view", ticket, "--json", "body", "--jq", ".body"]);
   const diff = asked(["pr", "diff", pr]);
   if (body === undefined || diff === undefined) {
-    console.error(`${said} ended red, ${body === undefined ? `ticket #${ticket}` : "its diff"} could not be read, so no model was spent`);
-    return 1;
+    return stoppedAt("unread", `${said} ended red, ${body === undefined ? `ticket #${ticket}` : "its diff"} could not be read, so no model was spent`);
   }
   const verdict = judged(handedOn(body, diff));
-  if (typeof verdict === "string") {
-    console.error(`${said} ended red, ${verdict}`);
-    return 1;
-  }
+  if (typeof verdict === "string") return stoppedAt("modelRun", `${said} ended red, ${verdict}`);
   if (verdict.verdict === "match") {
     console.log(`${said} matches the Why of #${ticket}`);
-    return 0;
+    return undefined;
   }
   const posted = post({ kind: "judgement", pr, text: judgement(ticket, verdict.gaps) }, gh);
-  if (posted.refusals.length > 0) {
-    console.error(`${said} drifts from the Why of #${ticket}, and its judgement was refused: ${quoted(posted.refusals[0])}`);
-    return 1;
-  }
-  console.error(`${said} drifts from the Why of #${ticket}, ${verdict.gaps.length} gaps posted: ${posted.said}`);
-  return 1;
+  if (posted.refusals.length > 0) return stoppedAt("drift", `${said} drifts from the Why of #${ticket}, and its judgement was refused: ${quoted(posted.refusals[0])}`);
+  return stoppedAt("drift", `${said} drifts from the Why of #${ticket}, ${verdict.gaps.length} gaps posted: ${posted.said}`);
 }
 
-if (import.meta.main) process.exit(review(process.argv[2]));
+if (import.meta.main) process.exit(exitFor(review(process.argv[2])));

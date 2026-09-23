@@ -109,10 +109,10 @@ function fix(opened: Opened): Outcome {
   const { ticket, body } = opened;
   const branch = `ticket/${ticket}`;
   const turns = comments(["issue", "view", ticket]);
-  if (turns === undefined) return { refusals: [`the comments on #${ticket} could not be read, so no model was spent`] };
-  if (turns.some((said) => said.startsWith(TOOK_ITS_TURN))) return { refusals: [`the fixer already took its one turn on #${ticket}, so no model was spent`] };
+  if (turns === undefined) return { stop: "fixerEnds", refusals: [`the comments on #${ticket} could not be read, so no model was spent`] };
+  if (turns.some((said) => said.startsWith(TOOK_ITS_TURN))) return { stop: "fixerEnds", refusals: [`the fixer already took its one turn on #${ticket}, so no model was spent`] };
   const marked = commentOnTicket(ticket, `${TOOK_ITS_TURN}.`, gh);
-  if (marked.refusals.length > 0) return { refusals: [`its marker was refused, so no model was spent: ${quoted(marked.refusals[0])}`] };
+  if (marked.refusals.length > 0) return { stop: "fixerEnds", refusals: [`its marker was refused, so no model was spent: ${quoted(marked.refusals[0])}`] };
   const onPr = comments(["pr", "view", branch]);
   const explain = (text: string) => (onPr === undefined ? commentOnTicket(ticket, text, gh) : post({ kind: "judgement", pr: branch, text }, gh));
   const spent = opened.spend(
@@ -129,10 +129,10 @@ function fix(opened: Opened): Outcome {
   const done = spent.refusal === undefined ? turn(opened, spent.answer as Answer | undefined, explain) : { refusal: spent.refusal };
   if ("refusal" in done) {
     const unclosed = closedUnbuilt(ticket, done.refusal);
-    return { refusals: [`${done.refusal}, so #${ticket} ${unclosed === undefined ? "was closed unbuilt" : "stays open"}`, ...(unclosed === undefined ? [] : [unclosed])], commit };
+    return { stop: "fixerEnds", refusals: [`${done.refusal}, so #${ticket} ${unclosed === undefined ? "was closed unbuilt" : "stays open"}`, ...(unclosed === undefined ? [] : [unclosed])], commit };
   }
   const unclosed = done.closing === undefined ? undefined : closedUnbuilt(ticket, done.closing);
-  return unclosed === undefined ? { refusals: [], verdict: done.verdict, commit } : { refusals: [unclosed], commit };
+  return unclosed === undefined ? { verdict: done.verdict, commit } : { stop: "fixerEnds", refusals: [unclosed], commit };
 }
 
 const FIXER: Stage = {
@@ -140,6 +140,7 @@ const FIXER: Stage = {
   bin: "fix",
   undone: "nothing was fixed",
   clean: true,
+  endsAt: "fixerEnds",
   answers: ANSWER,
   tests: { found: authoredTests },
   keeps: () => true,

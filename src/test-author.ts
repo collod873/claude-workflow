@@ -48,16 +48,15 @@ export function handedOn(briefed: string, commands: string[]): string {
 
 function author(opened: Opened): Outcome {
   const spent = opened.spend(handedOn(opened.briefed, opened.commands));
-  if (spent.refusal !== undefined) return { refusals: [spent.refusal] };
+  if (spent.refusal !== undefined) return { stop: "modelRun", refusals: [spent.refusal] };
   const tests = () => opened.wrote().filter((path) => path.endsWith(AUTHORED));
-  if (tests().length === 0) return { refusals: ["the author wrote nothing, so it wrote no test for any criterion"] };
+  if (tests().length === 0) return { stop: "noTest", refusals: ["the author wrote nothing, so it wrote no test for any criterion"] };
   const { refusals, ran } = judged(opened.body, process.cwd());
   opened.setAside(tests().filter((path) => !ran.has(path)));
-  if (refusals.length > 0) return { refusals };
+  if (refusals.length > 0) return { stop: "noTest", refusals };
   const branch = `ticket/${opened.ticket}`;
   const aside = opened.aside.length === 0 ? "" : `; set aside ${opened.aside.length} files the checks did not judge`;
   return {
-    refusals: [],
     verdict: `has a failing test for each criterion, ${tests().length} written on ${branch}${aside}`,
     commit: { message: `Hold #${opened.ticket} to one failing test per criterion`, branch },
   };

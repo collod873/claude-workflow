@@ -1,6 +1,7 @@
 import { authoredTests, yourChecks } from "./brief.ts";
 import { runCheck } from "./check-runner.ts";
 import { runStage, type Opened, type Outcome, type Stage } from "./stage.ts";
+import type { Stop } from "./stops.ts";
 import { claims } from "./ticket-shape.ts";
 
 export const TAIL_CAP = 8 * 1024;
@@ -39,16 +40,16 @@ function withAside(verdict: string, aside: string[]): string {
 function build(opened: Opened): Outcome {
   const { ticket, briefed, commands, aside } = opened;
   const commit = { message: `Build #${ticket} against its failing tests` };
-  const red = (refusal: string): Outcome => ({ refusals: [withAside(refusal, aside)], commit });
-  const green = (verdict: string): Outcome => ({ refusals: [], verdict: withAside(verdict, aside), commit });
+  const red = (stop: Stop, refusal: string): Outcome => ({ stop, refusals: [withAside(refusal, aside)], commit });
+  const green = (verdict: string): Outcome => ({ verdict: withAside(verdict, aside), commit });
   const first = opened.spend(handedOn(briefed, commands));
-  if (first.refusal !== undefined) return red(first.refusal);
-  if (first.session === undefined) return red("the builder named no session to resume");
+  if (first.refusal !== undefined) return red("modelRun", first.refusal);
+  if (first.session === undefined) return red("modelRun", "the builder named no session to resume");
   const output = redOutput(commands);
   if (output === "") return green("green after the build");
   const repair = opened.spend(repaired(output), first.session);
-  if (repair.refusal !== undefined) return red(repair.refusal);
-  return redOutput(commands) === "" ? green("green after the repair round") : red("the checks are still red after the repair round");
+  if (repair.refusal !== undefined) return red("modelRun", repair.refusal);
+  return redOutput(commands) === "" ? green("green after the repair round") : red("buildRed", "the checks are still red after the repair round");
 }
 
 const BUILDER: Stage = {

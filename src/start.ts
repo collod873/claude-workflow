@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { passingCriteria } from "./check-runner.ts";
+import { STOPS, type Stopped } from "./stops.ts";
 import { checks, claims, ticketRefusals, withRenamedPath } from "./ticket-shape.ts";
 
 const CONFIG_FLAG = /--config[ \t]+(\S+)/;
@@ -101,22 +102,24 @@ function staleOutcome(body: string, ticket: string): StaleOutcome {
   return { body: rewritten, notices, refusals };
 }
 
-function startRefusals(ticket: string): { notices: string[]; refusals: string[] } {
+function startRefusals(ticket: string): { notices: string[]; stopped?: Stopped } {
   const asked = gh(["issue", "view", ticket, "--json", "body", "--jq", ".body"]);
-  if (asked.status !== 0) return { notices: [], refusals: [`ticket ${ticket} could not be read, so nothing judged it`] };
+  if (asked.status !== 0) return { notices: [], stopped: { stop: "unread", refusals: [`ticket ${ticket} could not be read, so nothing judged it`] } };
   const body = asked.stdout;
   const shape = ticketRefusals(body);
-  if (shape.length > 0) return { notices: [], refusals: shape };
+  if (shape.length > 0) return { notices: [], stopped: { stop: "shape", refusals: shape } };
   const tree = treeRefusals();
-  if (tree.length > 0) return { notices: [], refusals: tree };
+  if (tree.length > 0) return { notices: [], stopped: { stop: "unfreshTree", refusals: tree } };
   const stale = staleOutcome(body, ticket);
-  if (stale.refusals.length > 0) return { notices: stale.notices, refusals: stale.refusals };
-  return { notices: stale.notices, refusals: passingCriteria(stale.body, process.cwd()) };
+  if (stale.refusals.length > 0) return { notices: stale.notices, stopped: { stop: "stale", refusals: stale.refusals } };
+  const passing = passingCriteria(stale.body, process.cwd());
+  return { notices: stale.notices, stopped: passing.length > 0 ? { stop: "alreadyPasses", refusals: passing } : undefined };
 }
 
 if (import.meta.main) {
-  const { notices, refusals } = startRefusals(process.argv[2]);
+  const { notices, stopped } = startRefusals(process.argv[2]);
   for (const notice of notices) console.error(notice);
-  for (const refusal of refusals) console.error(refusal);
-  process.exit(refusals.length > 0 ? 1 : 0);
+  for (const refusal of stopped?.refusals ?? []) console.error(refusal);
+  if (stopped !== undefined) console.log(STOPS[stopped.stop]);
+  process.exit(stopped === undefined ? 0 : 1);
 }

@@ -34,17 +34,20 @@ Every stop names who clears it.
 | Start refused: a claimed file is deleted, or a check names a `--config` that does not exist | No model spent | The fixer, which rewrites the ticket |
 | Start: the ticket's checks already pass on main | Closed as already done, with a closing record | Nobody needed |
 | Start: main is red | No model spent; the ticket waits | The next green merge to main fires it again |
-| The ticket cannot be read at start or close | No model spent; nothing judged | The fixer |
+| Start: the tree is not clean, fresh main | No model spent | The run that started it, from a fresh checkout |
+| The ticket or its PR cannot be read | No model spent; nothing judged | The fixer |
+| A brief is over its 64 KB cap | No model spent | The fixer, which narrows the ticket's claims |
 | A stage finds uncommitted work in the tree | No model spent | The run that started the stage, from a clean checkout |
 | The test author writes no test, or cannot write a failing test for a criterion | Stage ends red | The fixer, which fixes the ticket |
 | A stage writes outside the repo, or its model run exits non-zero | Stage ends red, branch saved | The fixer |
+| A stage's work will not commit | Stage ends red, work left in the tree | The fixer |
 | Build red after the repair round | Branch saved, PR open | The fixer |
 | The reviewer finds drift from `## Why` | PR stays open, gaps posted | The fixer |
 | The branch conflicts with main | Update refused, PR open | The fixer |
 | The fixer ends red, or rules the ticket should not exist as written | Closed unbuilt; branch kept; reason on the ticket | Nobody; Look-back counts it |
 | Red on main after merge | Ticket reopened | The fixer, on a new PR |
 | Close: the ticket carries no check | Left open, the closing record says nothing proves it | The fixer |
-| Close: the closing record is refused | Run fails red; the ticket left as it was | The fixer |
+| Close: the closing record is refused, or the ticket will not close | Run fails red; the ticket left as it was | The fixer |
 
 ## Rules
 
