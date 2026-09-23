@@ -109,17 +109,25 @@ export function uncapped(prompts: Prompt[]): string[] {
   );
 }
 
-export function unmeasured(repo: string, prompts: Prompt[]): string[] {
-  const measured = new Set(prompts.map((prompt) => prompt.file));
-  return readdirSync(join(repo, "src"))
+const modules = (repo: string) =>
+  readdirSync(join(repo, "src"))
     .filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts"))
     .map((name) => `src/${name}`)
-    .filter((file) => {
-      const text = readFileSync(join(repo, file), "utf8");
-      return !measured.has(file) && (STAGED.test(text) || (file !== STAGE_MODULE && HIRES.test(text)));
-    })
-    .sort()
+    .sort();
+
+export function unmeasured(repo: string, prompts: Prompt[]): string[] {
+  const measured = new Set(prompts.map((prompt) => prompt.file));
+  return modules(repo)
+    .filter((file) => !measured.has(file) && (STAGED.test(readFileSync(join(repo, file), "utf8")) || hiresItself(repo, file)))
     .map((file) => `${file} hires a model and no prompt of that name is measured`);
+}
+
+const hiresItself = (repo: string, file: string) => file !== STAGE_MODULE && HIRES.test(readFileSync(join(repo, file), "utf8"));
+
+export function unlaunched(repo: string): string[] {
+  return modules(repo)
+    .filter((file) => hiresItself(repo, file))
+    .map((file) => `${file} starts claude itself; hire through ${STAGE_MODULE} so it gets the owner's hooks, a transcript and a time cap`);
 }
 
 export function record(file: string, ceilings: Record<string, number>): void {
@@ -130,7 +138,7 @@ export function record(file: string, ceilings: Record<string, number>): void {
 
 if (import.meta.main) {
   const repo = join(import.meta.dirname, "..");
-  const refusals = [...grown(PROMPTS, CEILINGS), ...uncapped(PROMPTS), ...unmeasured(repo, PROMPTS)];
+  const refusals = [...grown(PROMPTS, CEILINGS), ...uncapped(PROMPTS), ...unmeasured(repo, PROMPTS), ...unlaunched(repo)];
   for (const refusal of refusals) console.error(refusal);
   if (refusals.length === 0) {
     const paid = shrunk(PROMPTS, CEILINGS);

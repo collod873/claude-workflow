@@ -598,7 +598,9 @@ export function reviewing({
   const root = scratch("review-");
   const argvDir = join(root, "gh-argv");
   const handed = join(root, "claude-stdin");
+  const hired = join(root, "claude-argv");
   mkdirSync(argvDir, { recursive: true });
+  git(root, "init", "--quiet");
   plant(root, "pr.diff", diff);
   plant(root, "answer.json", `${JSON.stringify({ type: "result", subtype: "success", is_error: false, structured_output: verdict })}\n`);
   script(
@@ -620,13 +622,15 @@ export function reviewing({
       "",
     ].join("\n"),
   );
-  script(join(root, "bin", "claude"), `cat >"${handed}"\ncat "${join(root, "answer.json")}"\n`);
+  script(join(root, "bin", "claude"), `printf '%s\\0' "$@" >"${hired}"\ncat >"${handed}"\ncat "${join(root, "answer.json")}"\n`);
   const calls = (): string[][] => readdirSync(argvDir).map((_, index) => readFileSync(join(argvDir, String(index + 1)), "utf8").split("\0").filter((part) => part !== ""));
   return {
+    root,
+    hired: () => (existsSync(hired) ? readFileSync(hired, "utf8").split("\0") : []),
     spent: () => existsSync(handed),
     handed: () => (existsSync(handed) ? readFileSync(handed, "utf8") : ""),
     comments: () => calls().filter((args) => args[0] === "pr" && args[1] === "comment").map((args) => args[args.indexOf("--body") + 1]),
-    run: (pr = "9810") => execute(join(BIN, "review"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, [pr]),
+    run: (pr = "9810", extra: Record<string, string> = {}) => execute(join(BIN, "review"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}`, ...extra }, [pr]),
   };
 }
 

@@ -1,6 +1,9 @@
 import { spawnSync } from "node:child_process";
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
 import { capped } from "./brief.ts";
 import { post, type Gh } from "./post.ts";
+import { hired, machineLogs } from "./stage.ts";
 import { exitFor, stoppedAt, type Stop } from "./stops.ts";
 import { acceptance, claims, quoted, why } from "./ticket-shape.ts";
 
@@ -11,7 +14,7 @@ export const LIST_CAP = 4 * 1024;
 const TICKET_BRANCH = /^ticket\/(\d+)$/;
 const FILE_START = /^(?=diff --git )/m;
 const CHANGED_PATH = /^diff --git a\/.+? b\/(.+)$/m;
-const TOOLS = "Read,Grep,Glob";
+const TOOLS = ["Read", "Grep", "Glob"];
 export const NO_EM_DASH = "^[^\\u2014]*$";
 
 const VERDICT = {
@@ -67,20 +70,19 @@ export function handedOn(body: string, diff: string): string {
   ].join("\n\n");
 }
 
-function verdictIn(stdout: string): Verdict | undefined {
-  try {
-    const verdict = (JSON.parse(stdout) as { structured_output?: Verdict }).structured_output;
-    return verdict?.verdict === "match" || verdict?.verdict === "drift" ? verdict : undefined;
-  } catch {
-    return undefined;
-  }
+function isVerdict(answer: unknown): answer is Verdict {
+  const verdict = (answer as Partial<Verdict> | undefined)?.verdict;
+  return verdict === "match" || verdict === "drift";
 }
 
-function judged(prompt: string): Verdict | string {
-  const argv = ["--print", "--model", "sonnet", "--setting-sources", "", "--tools", TOOLS, "--allowedTools", TOOLS, "--output-format", "json", "--json-schema", JSON.stringify(VERDICT)];
-  const spent = spawnSync("claude", argv, { input: prompt, encoding: "utf8", maxBuffer: Infinity });
-  if (spent.status !== 0) return `the reviewer ended ${spent.status}: ${firstLine(spent.stderr || spent.stdout)}`;
-  return verdictIn(spent.stdout) ?? `the reviewer gave no verdict: ${firstLine(spent.stdout)}`;
+function judged(prompt: string, pr: string): Verdict | string {
+  const logs = machineLogs(process.cwd());
+  mkdirSync(logs, { recursive: true });
+  const spend = hired({ name: "reviewer", transcript: join(logs, `review-${pr}.jsonl`), tools: TOOLS, answers: VERDICT });
+  if (typeof spend === "string") return `the owner's hooks could not be read from ${spend}`;
+  const spent = spend(prompt);
+  if (spent.refusal !== undefined) return spent.refusal;
+  return isVerdict(spent.answer) ? spent.answer : `the reviewer gave no verdict: ${firstLine(spent.stdout)}`;
 }
 
 export const foundDrift = (ticket: string) => `The reviewer read this PR against the Why of #${ticket} and found drift.`;
@@ -108,7 +110,7 @@ function review(pr: string): Stop | undefined {
   if (body === undefined || diff === undefined) {
     return stoppedAt("unread", `${said} ended red, ${body === undefined ? `ticket #${ticket}` : "its diff"} could not be read, so no model was spent`);
   }
-  const verdict = judged(handedOn(body, diff));
+  const verdict = judged(handedOn(body, diff), pr);
   if (typeof verdict === "string") return stoppedAt("modelRun", `${said} ended red, ${verdict}`);
   if (verdict.verdict === "match") {
     console.log(`${said} matches the Why of #${ticket}`);

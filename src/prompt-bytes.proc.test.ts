@@ -2,7 +2,7 @@ import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { capped } from "./brief.ts";
-import { CEILINGS, PROMPTS, grown, record, shrunk, uncapped, unmeasured, type Prompt } from "./prompt-bytes.ts";
+import { CEILINGS, PROMPTS, grown, record, shrunk, uncapped, unlaunched, unmeasured, type Prompt } from "./prompt-bytes.ts";
 import { execute, scratch } from "./scenarios.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
@@ -63,6 +63,19 @@ describe("every prompt holds a byte ceiling that only ever shrinks (#663)", () =
     expect(unmeasured(copy, PROMPTS)).toEqual([
       "src/judge.ts hires a model and no prompt of that name is measured",
       "src/look-back.ts hires a model and no prompt of that name is measured",
+    ]);
+  });
+
+  it("refuses a model started anywhere but the stage launcher, the way the reviewer ran without hooks or a transcript on #840", () => {
+    expect(unlaunched(REPO)).toEqual([]);
+
+    const copy = scratch("prompt-launch-");
+    mkdirSync(join(copy, "src"));
+    writeFileSync(join(copy, "src", "judge.ts"), 'spawnSync("claude", argv);\n');
+    writeFileSync(join(copy, "src", "look-back.ts"), 'import { hired } from "./stage.ts";\n');
+    writeFileSync(join(copy, "src", "stage.ts"), 'spawnSync("claude", argv);\n');
+    expect(unlaunched(copy)).toEqual([
+      "src/judge.ts starts claude itself; hire through src/stage.ts so it gets the owner's hooks, a transcript and a time cap",
     ]);
   });
 });

@@ -42,7 +42,7 @@ function fenced(runs: string[], owned: Registration): string {
   return JSON.stringify({ hooks: { ...owned, PreToolUse: [fence, ...(owned.PreToolUse ?? [])] } });
 }
 
-export function stageArgv(commands: string[], owned: Registration = {}): string[] {
+export function stageArgv(commands: string[], owned: Registration = {}, tools: string[] = TOOLS): string[] {
   const runs = [...commands, STATIC, `./${STATIC}`];
   return [
     "--print",
@@ -53,7 +53,7 @@ export function stageArgv(commands: string[], owned: Registration = {}): string[
     "--settings",
     fenced(runs, owned),
     "--tools",
-    TOOLS.join(","),
+    tools.join(","),
     "--permission-mode",
     "bypassPermissions",
   ];

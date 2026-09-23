@@ -33,7 +33,7 @@ jobs:
     needs: check
     if: startsWith(github.head_ref, 'ticket/')
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     permissions:
       contents: read
       issues: write
@@ -57,16 +57,23 @@ jobs:
 
       - run: npm ci
 
-      - run: npm install --global @anthropic-ai/claude-code
+      - uses: ./.github/actions/stage
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
 
       - run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - env:
+      - timeout-minutes: 12
+        env:
           GH_TOKEN: ${{ github.token }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-        run: bin/review ${{ github.event.pull_request.number }}
+          STAGE_MINUTES: 10
+        run: |
+          tail --pid=$$ -n +1 -F .git/machine-logs/review-${{ github.event.pull_request.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered "$FEED" &
+          bin/review ${{ github.event.pull_request.number }}
 
       - if: failure()
         timeout-minutes: 30
@@ -74,4 +81,14 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           HEAD_REF: ${{ github.head_ref }}
-        run: node src/hand-off.ts "${HEAD_REF#ticket/}" 'The reviewer finds drift from `## Why`'
+          STAGE_MINUTES: 25
+        run: |
+          tail --pid=$$ -n +1 -F ".git/machine-logs/fix-${HEAD_REF#ticket/}.jsonl" 2>/dev/null | jq -Rr --unbuffered "$FEED" &
+          node src/hand-off.ts "${HEAD_REF#ticket/}" 'The reviewer finds drift from `## Why`'
+
+      - if: always()
+        timeout-minutes: 6
+        uses: ./.github/actions/stage-logs
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}

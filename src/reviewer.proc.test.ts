@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
@@ -45,12 +45,24 @@ describe("bin/review reads a green ticket PR against its Why before it merges (#
     for (const path of ["src/bulk.ts", "src/reviewer.ts", "docs/notes.md"]) expect(handed()).toContain(path);
   });
 
+  it("hires its model through the stage launcher, so it runs under the owner's hooks and leaves its transcript in the machine logs", () => {
+    const { root, run, hired } = reviewing();
+    const capture = "python3 /runner/agent-hooks/hooks/session-capture.py";
+    const settings = join(root, "agent-hooks.json");
+    writeFileSync(settings, JSON.stringify({ hooks: { SessionEnd: [{ hooks: [{ command: capture }] }] } }));
+
+    expect(run("9810", { AGENT_HOOKS_SETTINGS: settings }).status).toBe(0);
+    expect(hired().join(" ")).toContain(capture);
+    expect(hired()).toContain("stream-json");
+    expect(readFileSync(join(root, ".git", "machine-logs", "review-9810.jsonl"), "utf8")).toContain('"verdict":"match"');
+  });
+
   it("runs after the check and only on a ticket branch", () => {
     const review = (parse(readFileSync(WORKFLOW, "utf8")) as { jobs: Record<string, { needs?: string; if?: string; steps?: { run?: string }[] }> }).jobs.review;
 
     expect(review.needs).toBe("check");
     expect(review.if).toBe("startsWith(github.head_ref, 'ticket/')");
-    expect(review.steps?.some((step) => step.run?.startsWith("bin/review ") === true)).toBe(true);
+    expect(review.steps?.some((step) => /^bin\/review /m.test(step.run ?? ""))).toBe(true);
 
     const { run, spent, comments } = reviewing({ branch: "land/session" });
     expect(run().status).toBe(0);
