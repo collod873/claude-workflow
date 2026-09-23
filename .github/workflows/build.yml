@@ -44,7 +44,6 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
         run: |
-          bin/mark ${{ github.event.issue.number }} 1-defining || true
           branch="ticket/${{ github.event.issue.number }}"
           if [[ '${{ github.event.action }}' == reopened ]] && state=$(gh pr view "$branch" --json state --jq .state 2>/dev/null) && [[ $state == OPEN ]]; then
             gh pr checks "$branch" --json name,bucket,link \
@@ -53,6 +52,7 @@ jobs:
               | sort -u \
               | while read -r run; do gh run rerun "$run" --failed; done
           else
+            bin/mark ${{ github.event.issue.number }} 1-defining || true
             bin/start ${{ github.event.issue.number }}
           fi
 

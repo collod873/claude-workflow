@@ -700,7 +700,7 @@ export function fixing({
       'case "$*" in',
       `  *"issue view"*"comments"*) cat "${join(root, "turns.json")}" ;;`,
       `  *"issue view"*) cat "${join(root, "ticket.md")}" ;;`,
-      `  *"pr view"*"state"*) printf '%s\\n' '${prOpen ? "OPEN" : "CLOSED"}' ;;`,
+      `  *"pr view"*"state"*) ${prOpen ? `printf '%s\\n' '${HANDED_OFF_PR}'` : "printf '\\n'"} ;;`,
       `  *"pr view"*) ${onPr === undefined ? "exit 1" : `cat "${join(root, "on-pr.json")}"`} ;;`,
       ...(failedCheck === undefined
         ? []
