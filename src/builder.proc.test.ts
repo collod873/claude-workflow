@@ -135,6 +135,17 @@ describe("the builder builds against the brief, with one resumed repair round (#
     expect(calls()).toBe(0);
   });
 
+  it("undoes any change to the author's tests, whatever tool made it, and names the test it restored", () => {
+    const { run, session, committed } = building({ claude: `${BUILDS}printf 'it.skip("gone", () => {});\\n' >src/ticket-shape.test.ts\n`, npx: GREEN_ONCE_BUILT });
+
+    const result = run();
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("src/ticket-shape.test.ts");
+    expect(readFileSync(join(session, "src", "ticket-shape.test.ts"), "utf8")).not.toContain("it.skip");
+    expect(committed()).toEqual([expect.stringContaining("#724"), "src/ticket-shape.ts"]);
+  });
+
   it("sets aside a file the ticket does not claim", () => {
     const { run, committed } = building({ claude: WRITES_UNCLAIMED_FILE, npx: GREEN_ONCE_BUILT });
 

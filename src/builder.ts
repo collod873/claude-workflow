@@ -58,7 +58,7 @@ const BUILDER: Stage = {
   undone: "nothing was built",
   clean: true,
   tests: { found: authoredTests, missing: "the branch carries no failing test from the author, so there is nothing to build against" },
-  keeps: (path, { tests, body }) => tests.includes(path) || claims(body).includes(path),
+  keeps: (path, { tests, body }) => !tests.includes(path) && claims(body).includes(path),
   work: build,
 };
 
