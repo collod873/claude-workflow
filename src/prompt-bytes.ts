@@ -4,7 +4,7 @@ import { brief, CAP } from "./brief.ts";
 import { handedOn as builderHandedOn, repaired, TAIL_CAP } from "./builder.ts";
 import { handedOn } from "./test-author.ts";
 
-export const CEILINGS: Record<string, number> = { "brief": 146, "test author": 860, "builder": 388, "repair": 84 };
+export const CEILINGS: Record<string, number> = { "brief": 136, "test author": 850, "builder": 378, "repair": 84 };
 
 const AUTHORED = "src/planted.test.ts";
 const HIRES = /(spawn|execFile)\w*\(\s*"claude"/;
