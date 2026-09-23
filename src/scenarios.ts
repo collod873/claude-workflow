@@ -707,3 +707,27 @@ export function fixing({
     run: (ticket = "811") => execute(join(BIN, "fix"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, [ticket]),
   };
 }
+
+const RUNS_PAGE = join(SRC, "..", "docs", "agents", "layers", "one-ticket.md");
+
+export function handingOff({ stoppedAt, table = (page: string) => page }: { stoppedAt?: string; table?: (page: string) => string } = {}) {
+  const root = scratch("hand-off-");
+  const session = join(root, "session");
+  const fixed = join(root, "fix-calls");
+  mkdirSync(session, { recursive: true });
+  git(session, "init", "--quiet", "--initial-branch=main");
+  git(session, "config", "user.email", "hand-off@test");
+  git(session, "config", "user.name", "hand-off");
+  plant(session, "docs/agents/layers/one-ticket.md", table(readFileSync(RUNS_PAGE, "utf8")));
+  script(join(session, "bin", "fix"), `printf '%s\\n' "$*" >>"${fixed}"\n`);
+  git(session, "add", ".");
+  git(session, "commit", "--quiet", "-m", "what the Runs table stands on");
+  if (stoppedAt !== undefined) plant(session, ".git/machine-logs/build-811.log", `1 refusals, stopped at: ${stoppedAt}\nthe build stayed red\n`);
+  script(join(root, "bin", "gh"), "exit 22\n");
+  return {
+    session,
+    fixed: () => (existsSync(fixed) ? readFileSync(fixed, "utf8").trimEnd().split("\n") : []),
+    run: (row?: string) =>
+      execute(process.execPath, session, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, [join(SRC, "hand-off.ts"), "811", ...(row === undefined ? [] : [row])]),
+  };
+}
