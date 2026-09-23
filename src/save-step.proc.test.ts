@@ -38,6 +38,26 @@ describe("the save step pushes the branch before anything can refuse it, and ope
   });
 });
 
+describe("bin/save's red exits name the Runs row the hand-off reads to call the fixer (#835)", () => {
+  it("a push is refused leaves a save log whose first line names the push is refused row", () => {
+    const { run, log } = saving({ remoteRefuses: "the remote refuses every push" });
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(log().split("\n")[0]).toBe("1 refusals, stopped at: Save: the push is refused");
+  });
+
+  it("a PR that is not open with auto-merge on leaves a save log whose first line names that row", () => {
+    const { run, log } = saving({ autoMergeRefused: true });
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(log().split("\n")[0]).toBe("1 refusals, stopped at: Save: the PR is not open with auto-merge on");
+  });
+});
+
 describe("bin/save meters what each stage read outside its brief, from the stage's own stream (#809)", () => {
   it("reads outside the brief are counted and named per stage, from the stage's stream", () => {
     const { run, prBody } = saving({

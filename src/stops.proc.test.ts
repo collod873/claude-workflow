@@ -3,7 +3,10 @@ import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { rowsUnder } from "./machine-page.ts";
 import { parts } from "./parts.ts";
+import { saving } from "./scenarios.ts";
 import { STOPS } from "./stops.ts";
+
+const STOPPED_AT = /^\d+ refusals, stopped at: (.+)$/;
 
 const REPO = resolve(import.meta.dirname, "..");
 const RULING = "docs/agents/layers/one-ticket.md";
@@ -52,5 +55,22 @@ describe("every red exit names a Runs row whose clearer is not the owner (#812)"
     ].join("\n");
 
     expect(stopRefusals({}, runsRows(page))).toEqual(["A run is stuck is cleared by the owner"]);
+  });
+});
+
+describe("bin/save names only Runs rows the fixer clears (#835)", () => {
+  it("finds every row bin/save can name in the ruling's Runs table, each cleared by the fixer", () => {
+    const pushRefused = saving({ remoteRefuses: "the remote refuses every push" });
+    pushRefused.run();
+    const autoMergeRefused = saving({ autoMergeRefused: true });
+    autoMergeRefused.run();
+
+    const named = {
+      pushRefused: STOPPED_AT.exec(pushRefused.log().split("\n")[0])?.[1] ?? "",
+      autoMergeRefused: STOPPED_AT.exec(autoMergeRefused.log().split("\n")[0])?.[1] ?? "",
+    };
+
+    expect(Object.values(named).every((row) => row !== "")).toBe(true);
+    expect(stopRefusals(named, ruled())).toEqual([]);
   });
 });
