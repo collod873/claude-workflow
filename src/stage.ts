@@ -92,6 +92,7 @@ function open(stage: Stage, ticket: string, cwd: string, logs: string): Opened |
   if (stage.tests !== undefined && tests.length === 0) return [stage.tests.missing];
   const briefed = brief({ ticket, body, tests, read: onDisk });
   if (briefed.refusals.length > 0) return briefed.refusals;
+  writeFileSync(join(logs, `brief-${ticket}.md`), briefed.text);
   const commands = checks(body).map(({ command }) => command);
   const argv = stageArgv(commands);
   const kept = join(logs, `${stage.bin}-${ticket}-set-aside`);
