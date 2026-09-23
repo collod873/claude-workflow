@@ -3,7 +3,7 @@ import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { machinePage } from "./machine-page.ts";
 import { parts, type Part } from "./parts.ts";
-import { LINE_LIMIT, MOST_LINES, authoring, briefing, building, checkRepo, checking, closing, coveredByCheck, execute, filing, fixing, handingOff, landSession, misshapenTicket, overLimit, reviewing, saving, scratch, script, starting, wellFormedNote, wellFormedTicket, type Run } from "./scenarios.ts";
+import { LINE_LIMIT, MOST_LINES, authoring, briefing, building, checkRepo, checking, closing, coveredByCheck, execute, filing, fixing, handingOff, landSession, marking, misshapenTicket, overLimit, reviewing, saving, scratch, script, starting, wellFormedNote, wellFormedTicket, type Run } from "./scenarios.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
 const NOISE = "a line a tool prints that nobody needed to read\n".repeat(40).trim();
@@ -58,6 +58,10 @@ const scenarios: Record<string, Scenario[]> = {
   "bin/save": [
     { label: "saving a build", run: () => saving().run() },
     { label: "with the push refused", run: () => saving({ remoteRefuses: NOISE }).run() },
+  ],
+  "bin/mark": [
+    { label: "moving a ticket to a stage", run: () => marking().run("811", "2-building") },
+    { label: "with GitHub refusing the label", run: () => marking({ gh: `cat >&2 <<'NOISE'\n${NOISE}\nNOISE\nexit 1\n` }).run("811", "failed") },
   ],
   "bin/close": [
     { label: "closing a ticket whose checks pass on the merge commit", run: () => closing({ ticket: "814", fixes: true }).run() },

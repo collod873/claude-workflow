@@ -723,6 +723,7 @@ export function handingOff({ stoppedAt, table = (page: string) => page, commits 
   const session = join(root, "session");
   const fixed = join(root, "fix-calls");
   const saved = join(root, "save-calls");
+  const marks = join(root, "mark-calls");
   mkdirSync(session, { recursive: true });
   git(session, "init", "--quiet", "--initial-branch=main");
   git(session, "config", "user.email", "hand-off@test");
@@ -730,6 +731,7 @@ export function handingOff({ stoppedAt, table = (page: string) => page, commits 
   plant(session, "docs/agents/layers/one-ticket.md", table(readFileSync(RUNS_PAGE, "utf8")));
   script(join(session, "bin", "fix"), `printf '%s\\n' "$*" >>"${fixed}"\n${commits ? 'git commit --quiet --allow-empty -m "Fix #811 in the fixer\'s one turn"\n' : ""}`);
   script(join(session, "bin", "save"), `printf '%s\\n' "$*" >>"${saved}"\n`);
+  script(join(session, "bin", "mark"), `printf '%s\\n' "$*" >>"${marks}"\n`);
   git(session, "add", ".");
   git(session, "commit", "--quiet", "-m", "what the Runs table stands on");
   if (stoppedAt !== undefined) plant(session, ".git/machine-logs/build-811.log", `1 refusals, stopped at: ${stoppedAt}\nthe build stayed red\n`);
@@ -738,7 +740,18 @@ export function handingOff({ stoppedAt, table = (page: string) => page, commits 
     session,
     fixed: () => (existsSync(fixed) ? readFileSync(fixed, "utf8").trimEnd().split("\n") : []),
     saved: () => (existsSync(saved) ? readFileSync(saved, "utf8").trimEnd().split("\n") : []),
+    marked: () => (existsSync(marks) ? readFileSync(marks, "utf8").trimEnd().split("\n") : []),
     run: (row?: string) =>
       execute(process.execPath, session, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, [join(SRC, "hand-off.ts"), "811", ...(row === undefined ? [] : [row])]),
+  };
+}
+
+export function marking({ gh = "exit 0\n" }: { gh?: string } = {}) {
+  const root = scratch("mark-");
+  const calls = join(root, "gh-calls");
+  script(join(root, "bin", "gh"), `printf '%s\\n' "$*" >>"${calls}"\n${gh}`);
+  return {
+    calls: () => (existsSync(calls) ? readFileSync(calls, "utf8").trimEnd().split("\n") : []),
+    run: (...args: string[]) => execute(join(BIN, "mark"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, args),
   };
 }

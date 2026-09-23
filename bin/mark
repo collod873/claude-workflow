@@ -1,0 +1,32 @@
+#!/bin/bash
+set -uo pipefail
+
+usage="mark: usage: mark <ticket number> <1-defining|2-building|3-checking|4-reviewing|5-merging|fixing|failed>"
+stages=(1-defining 2-building 3-checking 4-reviewing 5-merging fixing)
+
+ticket=${1:-}
+label=${2:-}
+if [[ $# -ne 2 || ! $ticket =~ ^[0-9]+$ ]]; then
+  printf '%s\n' "$usage" >&2
+  exit 2
+fi
+
+if [[ $label == failed ]]; then
+  cleared=()
+elif [[ " ${stages[*]} " == *" $label "* ]]; then
+  cleared=(failed)
+  for stage in "${stages[@]}"; do
+    [[ $stage == "$label" ]] || cleared+=("$stage")
+  done
+else
+  printf '%s\n' "$usage" >&2
+  exit 2
+fi
+
+removing=()
+((${#cleared[@]})) && removing=(--remove-label "$(IFS=,; printf '%s' "${cleared[*]}")")
+if ! said=$(gh issue edit "$ticket" --add-label "$label" "${removing[@]}" 2>&1); then
+  printf 'mark: #%s not labelled %s: %s\n' "$ticket" "$label" "$(printf '%s' "$said" | head -n 1 | cut -c 1-120)" >&2
+  exit 1
+fi
+printf 'mark: #%s is at %s\n' "$ticket" "$label"
