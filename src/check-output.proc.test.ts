@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { agedLogs, checkRepo, git, inRepo, script, stubTool } from "./scenarios.ts";
+import { LINE_LIMIT, agedLogs, checkRepo, git, inRepo, script, stubTool } from "./scenarios.ts";
 
 const TYPE_ERROR = "src/a.ts(3,5): error TS2322: Type 'string' is not assignable to type 'number'.\n".repeat(40).trim();
 const TEST_FAILURE = ` FAIL  a.test.ts > adds\n${"AssertionError: expected 1 to be 2\n".repeat(40)} ❯ a.test.ts:4:34`;
@@ -37,7 +37,7 @@ describe("bin/check says one line and keeps each failing tool's full output in a
 
     const { line } = saidOneLine(run().stdout);
 
-    expect(line.length).toBeLessThanOrEqual(200);
+    expect(line.length).toBeLessThanOrEqual(LINE_LIMIT);
     expect(line).toMatch(/^bin\/check: FAILED typecheck lint unused clones test; log /);
   });
 

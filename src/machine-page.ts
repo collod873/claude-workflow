@@ -1,12 +1,10 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readdirSync, readFileSync } from "node:fs";
+import { basename, join } from "node:path";
 import { FAILURE_LINK } from "./part-links.ts";
 import { parts, type Part } from "./parts.ts";
 
-const SIGNED_PAGES: Record<string, string> = {
-  "docs/agents/charter.md": "charter",
-  "docs/agents/layers/one-ticket.md": "one ticket",
-};
+const CHARTER = "docs/agents/charter.md";
+const LAYERS = "docs/agents/layers";
 const HEADLINE_WIDTH = 72;
 const COLUMNS = 2;
 const HOME = "collod873/claude-workflow";
@@ -26,13 +24,14 @@ function rulesOn(page: string, markdown: string): SignedRule[] {
 }
 
 export function signedRules(repo: string): SignedRule[] {
-  return Object.keys(SIGNED_PAGES).flatMap((page) => rulesOn(page, readFileSync(join(repo, page), "utf8")));
+  const pages = [CHARTER, ...readdirSync(join(repo, LAYERS)).sort().map((name) => `${LAYERS}/${name}`)];
+  return pages.flatMap((page) => rulesOn(page, readFileSync(join(repo, page), "utf8")));
 }
 
 function headline(rule: SignedRule): string {
   const first = rule.text.split(/\. |; /)[0];
   const clipped = first.length > HEADLINE_WIDTH ? `${first.slice(0, HEADLINE_WIDTH - 1)}…` : first;
-  return `${SIGNED_PAGES[rule.page].padEnd(10)} ${clipped}`;
+  return `${basename(rule.page, ".md").replaceAll("-", " ").padEnd(10)} ${clipped}`;
 }
 
 function stops(part: Part): string {

@@ -5,6 +5,7 @@ import ts from "typescript";
 import { claims } from "./ticket-shape.ts";
 
 export const CAP = 64 * 1024;
+const COMMANDS_CAP = 200;
 
 export const onDisk = (path: string): string | undefined => (existsSync(path) ? readFileSync(path, "utf8") : undefined);
 
@@ -27,6 +28,10 @@ interface Asked {
   body: string;
   tests: string[];
   read: Read;
+}
+
+export function yourChecks(commands: string[]): string {
+  return `Your check commands are ${capped(commands.map((command) => `\`${command}\``).join(", "), COMMANDS_CAP)}.`;
 }
 
 function importedBy(path: string, text: string): string[] {

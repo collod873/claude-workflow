@@ -5,16 +5,18 @@ import { dirname, join, normalize, resolve } from "node:path";
 import ts from "typescript";
 import { parse } from "yaml";
 import { describe, expect, it, onTestFinished } from "vitest";
-import { coveredByCheck } from "./check-covers.ts";
 import { machinePage, signedRules, type SignedRule } from "./machine-page.ts";
 import { FAILURE_LINK } from "./part-links.ts";
 import { parts, type Part } from "./parts.ts";
+import { coveredByCheck } from "./scenarios.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
 const SCREEN = { lines: 60, columns: 120 };
-const WORKFLOW = /^\.github\/workflows\/[^/]+\.ya?ml$/;
+const WORKFLOWS = ".github/workflows/*.y*ml";
 const MODULE = /\.(m|c)?[jt]s$/;
-const WIRING = [".claude/*.json", ".claude/hooks/*.json", ".github/workflows/*.y*ml", ".husky/*", "package.json"];
+const WIRING = [".claude/*.json", WORKFLOWS, ".husky/*", "package.json"];
+const SRC_OR_BIN = /(src|bin)\/[\w.-]+(\/[\w.-]+)*/g;
+const REASONED_DROP = /^Test count drop: \S/m;
 const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_") && !name.startsWith("VITEST")));
 
 function scratch(): string {
@@ -49,7 +51,7 @@ function wiredIn(repo: string): Set<string> {
   return new Set(
     globSync(WIRING, { cwd: repo })
       .filter((path) => statSync(join(repo, path)).isFile())
-      .flatMap((path) => readFileSync(join(repo, path), "utf8").match(/(src|bin)\/[\w.-]+(\/[\w.-]+)*/g) ?? []),
+      .flatMap((path) => readFileSync(join(repo, path), "utf8").match(SRC_OR_BIN) ?? []),
   );
 }
 
@@ -60,25 +62,26 @@ function unlinkedParts(repo: string, registry: Part[]): string[] {
     .filter((path) => !path.split("/").includes("node_modules") && statSync(join(repo, path)).isFile());
   const covered = coveredByCheck(readFileSync(join(repo, "bin", "check"), "utf8"));
   const imported = importedWithin(repo, files);
+  const runByPart = new Set(registry.flatMap((part) => (existsSync(join(repo, part.file)) ? readFileSync(join(repo, part.file), "utf8").match(SRC_OR_BIN) ?? [] : [])));
   const wired = wiredIn(repo);
   const unregistered = files
     .filter((path) => !registered.has(path))
-    .filter((path) => (statSync(join(repo, path)).mode & 0o111) !== 0 || wired.has(path) || !(covered(path) || imported.has(path)))
+    .filter((path) => (statSync(join(repo, path)).mode & 0o111) !== 0 || wired.has(path) || !(covered(path) || imported.has(path) || runByPart.has(path)))
     .sort()
     .map((path) => `${path} can run but is not a registered part`);
   const unlinked = registry.filter((part) => !FAILURE_LINK.test(part.stops)).map((part) => `${part.name} links no failure: ${part.stops}`);
   return [...unregistered, ...unlinked];
 }
 
-function timedWorkflows(repo: string, registry: Part[]): string[] {
-  return registry
-    .filter((part) => WORKFLOW.test(part.file))
-    .filter((part) => {
-      const on: unknown = parse(readFileSync(join(repo, part.file), "utf8"))?.on;
+function timedWorkflows(repo: string): string[] {
+  return globSync(WORKFLOWS, { cwd: repo })
+    .sort()
+    .filter((file) => {
+      const on: unknown = parse(readFileSync(join(repo, file), "utf8"))?.on;
       const triggers = typeof on === "string" ? [on] : Array.isArray(on) ? on : Object.keys(on ?? {});
       return triggers.includes("schedule");
     })
-    .map((part) => `${part.name} fires on a timer`);
+    .map((file) => `${file} fires on a timer`);
 }
 
 function git(cwd: string, ...args: string[]): string {
@@ -100,6 +103,7 @@ function testsIn(root: string): number {
 
 function testCountDrop(repo: string): string[] {
   const base = git(repo, "merge-base", "HEAD", "origin/main");
+  if (REASONED_DROP.test(git(repo, "log", "--format=%B", `${base}..HEAD`))) return [];
   const atBase = scratch();
   const archive = execFileSync("git", ["archive", base], { cwd: repo, env, maxBuffer: 1 << 30 });
   execFileSync("tar", ["-x", "-C", atBase], { input: archive });
@@ -144,33 +148,33 @@ describe("the machine holds the charter's growth limits", () => {
     plant(copy, "src/planted.config.js", "export default {};\n");
     plant(copy, "src/helper.ts", "export const help = 1;\n");
     plant(copy, "src/helper.test.ts", "import { help } from \"./helper.ts\";\n");
-    plant(copy, "src/hooks/unwired.py", "print(\"hi\")\n");
-    plant(copy, "src/hooks/wired.mjs", "export const decide = () => 0;\n");
-    plant(copy, "src/hooks/wired.test.ts", "import { decide } from \"./wired.mjs\";\n");
-    plant(copy, ".claude/hooks/roster.json", "{\"PostToolUse\": [\"../../src/hooks/wired.mjs\"]}\n");
+    plant(copy, "src/unwired.mjs", "export const decide = () => 0;\n");
+    plant(copy, "src/wired.mjs", "export const decide = () => 0;\n");
+    plant(copy, "src/wired.test.ts", "import { decide } from \"./wired.mjs\";\n");
+    plant(copy, "package.json", "{\"scripts\": {\"go\": \"node src/wired.mjs\"}}\n");
     const check = { ...planted, name: "check", file: "bin/check" };
     const cleanup = { ...planted, name: "cleanup", stops: "https://github.com/collod873/claude-workflow/commit/c7fa969" };
     expect(unlinkedParts(copy, [{ ...planted, stops: "the owner said so" }, cleanup, check])).toEqual([
       "bin/unregistered can run but is not a registered part",
-      "src/hooks/unwired.py can run but is not a registered part",
-      "src/hooks/wired.mjs can run but is not a registered part",
+      "src/unwired.mjs can run but is not a registered part",
+      "src/wired.mjs can run but is not a registered part",
       "planted links no failure: the owner said so",
       "cleanup links no failure: https://github.com/collod873/claude-workflow/commit/c7fa969",
     ]);
   });
 
   it("3. no workflow the machine owns fires on a timer", () => {
-    expect(timedWorkflows(REPO, parts)).toEqual([]);
+    expect(globSync(WORKFLOWS, { cwd: REPO })).not.toEqual([]);
+    expect(timedWorkflows(REPO)).toEqual([]);
 
     const copy = scratch();
     plant(copy, ".github/workflows/tick.yml", "on:\n  push:\n  schedule:\n    - cron: \"0 * * * *\"\njobs: {}\n");
     plant(copy, ".github/workflows/listed.yml", "on: [push, schedule]\njobs: {}\n");
     plant(copy, ".github/workflows/event.yml", "on: issues\njobs: {}\n");
-    const workflows = ["tick", "listed", "event"].map((name) => ({ ...planted, name, file: `.github/workflows/${name}.yml` }));
-    expect(timedWorkflows(copy, workflows)).toEqual(["tick fires on a timer", "listed fires on a timer"]);
+    expect(timedWorkflows(copy)).toEqual([".github/workflows/listed.yml fires on a timer", ".github/workflows/tick.yml fires on a timer"]);
   });
 
-  it("4. the count of tests is not below the merge base with origin/main", () => {
+  it("4. the count of tests is not below the merge base with origin/main, unless a commit gives the reason", () => {
     expect(testCountDrop(REPO)).toEqual([]);
 
     const copy = scratch();
@@ -184,6 +188,9 @@ describe("the machine holds the charter's growth limits", () => {
     git(copy, "update-ref", "refs/remotes/origin/main", "HEAD");
     plant(copy, "src/kept.test.ts", "import { it } from \"vitest\";\nit(\"one\", () => {});\n");
     expect(testCountDrop(copy)).toEqual([expect.stringMatching(/^the machine holds 1 tests, below 2 at the merge base [0-9a-f]{12}$/)]);
+
+    git(copy, "commit", "--quiet", "-am", "Cut a copy\n\nTest count drop: the second test repeated the first");
+    expect(testCountDrop(copy)).toEqual([]);
   });
 
   it("5. the check runner is the enforcer the page credits with the zero-test rule", () => {

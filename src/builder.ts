@@ -1,9 +1,8 @@
-import { authoredTests, capped } from "./brief.ts";
+import { authoredTests, yourChecks } from "./brief.ts";
 import { runCheck } from "./check-runner.ts";
 import { runStage, type Opened, type Outcome, type Stage } from "./stage.ts";
 import { claims } from "./ticket-shape.ts";
 
-const COMMANDS_CAP = 200;
 export const TAIL_CAP = 8 * 1024;
 
 function tailOf(text: string, limit: number): string {
@@ -15,7 +14,7 @@ export function handedOn(briefed: string, commands: string[]): string {
   return [
     briefed,
     "## What to build",
-    `Build what the ticket asks for until the acceptance test passes. Your check commands are ${capped(commands.map((command) => `\`${command}\``).join(", "), COMMANDS_CAP)}.`,
+    `Build what the ticket asks for until the acceptance test passes. ${yourChecks(commands)}`,
     "`bin/check static` runs the gates your code must pass: no comments, no em dash, no copied code, and every export used by a part.",
     "",
   ].join("\n\n");

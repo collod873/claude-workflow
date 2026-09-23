@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { appendFileSync, cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { brief, onDisk } from "./brief.ts";
-import { stageArgv, stageRefusals } from "./deny-list.ts";
+import { stageArgv } from "./fence.ts";
 import { checks, quoted } from "./ticket-shape.ts";
 
 const UNTRACKED = "??";
@@ -93,9 +93,7 @@ function open(stage: Stage, ticket: string, cwd: string, logs: string): Opened |
   const briefed = brief({ ticket, body, tests, read: onDisk });
   if (briefed.refusals.length > 0) return briefed.refusals;
   const commands = checks(body).map(({ command }) => command);
-  const argv = stageArgv(commands, tests);
-  const unfenced = stageRefusals(stage.name, argv);
-  if (unfenced.length > 0) return unfenced;
+  const argv = stageArgv(commands);
   const kept = join(logs, `${stage.bin}-${ticket}-set-aside`);
   const transcript = join(logs, `${stage.bin}-${ticket}.jsonl`);
   rmSync(kept, { recursive: true, force: true });

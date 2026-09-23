@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { passingCriteria, runCheck, type Shell } from "./check-runner.ts";
-import { LINE_LIMIT } from "./post.ts";
+import { LINE_LIMIT } from "./scenarios.ts";
 
 const VITEST = "npx vitest run --config vitest.config.ts check-runner";
 const GREP = "grep -q runCheck bin/file-issue";

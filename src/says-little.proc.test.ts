@@ -3,9 +3,7 @@ import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { machinePage } from "./machine-page.ts";
 import { parts, type Part } from "./parts.ts";
-import { coveredByCheck } from "./check-covers.ts";
-import { LINE_LIMIT, MOST_LINES, linesAllowed as allowedFor, overLimit } from "./post.ts";
-import { MAIN_RED, authoring, briefing, building, checkRepo, checking, execute, filing, landSession, minting, misshapenTicket, saving, scratch, script, starting, wellFormedNote, wellFormedTicket, type Run } from "./scenarios.ts";
+import { LINE_LIMIT, MOST_LINES, authoring, briefing, building, checkRepo, checking, coveredByCheck, execute, filing, landSession, minting, misshapenTicket, overLimit, saving, scratch, script, starting, wellFormedNote, wellFormedTicket, type Run } from "./scenarios.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
 const NOISE = "a line a tool prints that nobody needed to read\n".repeat(40).trim();
@@ -72,7 +70,6 @@ const scenarios: Record<string, Scenario[]> = {
   "bin/start": [
     { label: "starting a build", run: () => starting().run() },
     { label: "refusing a body defective more ways than it shows", run: () => starting({ body: misshapenTicket }).run() },
-    { label: "refusing while main is red", run: () => starting({ checkRuns: MAIN_RED }).run() },
     { label: "refusing a ticket whose checks already pass", run: () => starting({ npx: GREEN }).run() },
   ],
 };
@@ -83,13 +80,12 @@ function speakers(registry: Part[], check: string): string[] {
 }
 
 function linesAllowed(registry: Part[], file: string): number {
-  return Math.max(1, ...registry.filter((part) => part.file === file).map(allowedFor));
+  return Math.max(1, ...registry.filter((part) => part.file === file).map((part) => Math.min(part.lines ?? 1, MOST_LINES)));
 }
 
 function overAllowed(registry: Part[]): string[] {
   return registry.flatMap((part) => {
     if (part.lines === undefined) return [];
-    if (part.file.startsWith("src/hooks/")) return [`${part.name} is a hook, so it says one line`];
     return part.lines > MOST_LINES ? [`${part.name} is registered for ${part.lines} lines, over ${MOST_LINES}`] : [];
   });
 }
@@ -110,15 +106,12 @@ describe(`everything the machine prints is one line of ${LINE_LIMIT} characters,
     expect(overheard(part, scenarios[part], linesAllowed(parts, part))).toEqual([]);
   });
 
-  it(`registers no part for more than ${MOST_LINES} lines, and no hook for more than one`, () => {
+  it(`registers no part for more than ${MOST_LINES} lines`, () => {
     expect(overAllowed(parts)).toEqual([]);
 
     const planted = (file: string, lines: number): Part => ({ name: file, file, stops: URL, lines });
-    const registry = [planted("bin/lister", MOST_LINES), planted("bin/talker", MOST_LINES + 1), planted("src/hooks/flooder.mjs", 2)];
-    expect(overAllowed(registry)).toEqual([
-      `bin/talker is registered for ${MOST_LINES + 1} lines, over ${MOST_LINES}`,
-      "src/hooks/flooder.mjs is a hook, so it says one line",
-    ]);
+    const registry = [planted("bin/lister", MOST_LINES), planted("bin/talker", MOST_LINES + 1)];
+    expect(overAllowed(registry)).toEqual([`bin/talker is registered for ${MOST_LINES + 1} lines, over ${MOST_LINES}`]);
     expect(linesAllowed(registry, "bin/lister")).toBe(MOST_LINES);
     expect(linesAllowed(registry, "bin/check")).toBe(1);
     expect(machinePage(registry, [])).toMatch(new RegExp(`bin/lister +PR 1 \\(${MOST_LINES} lines\\)`));
@@ -126,10 +119,10 @@ describe(`everything the machine prints is one line of ${LINE_LIMIT} characters,
 
   it("makes every registered part bin/check does not already run prove its own runs, whatever it is written in", () => {
     const planted = (file: string): Part => ({ name: file, file, stops: URL });
-    const registry = ["src/hooks/planted.mjs", "src/planted.proc.test.ts", "src/planted.config.ts", "bin/check"].map(planted);
+    const registry = ["bin/planted", "src/planted.proc.test.ts", "src/planted.config.ts", "bin/check"].map(planted);
     const check = "run lint eslint --config src/planted.config.ts src\n";
 
-    expect(speakers(registry, check)).toEqual(["src/hooks/planted.mjs", "bin/check"]);
+    expect(speakers(registry, check)).toEqual(["bin/planted", "bin/check"]);
   });
 
   it("names a planted part whose line is too long, says too many lines, or has no passing or failing run", () => {

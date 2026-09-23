@@ -1,9 +1,25 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, isAbsolute, join } from "node:path";
+import { dirname, isAbsolute, join, matchesGlob } from "node:path";
 import { parse } from "yaml";
 import { onTestFinished } from "vitest";
+import vitest from "../vitest.config.ts";
+
+export const LINE_LIMIT = 200;
+export const MOST_LINES = 5;
+
+export function overLimit(said: string, allowed: number): string[] {
+  const spoken = said.replace(/\n$/, "").split("\n");
+  const long = spoken.filter((line) => line.length > LINE_LIMIT).map((line) => `said a line of ${line.length} characters, over ${LINE_LIMIT}`);
+  return spoken.length > allowed ? [...long, `said ${spoken.length} lines, over ${allowed}`] : long;
+}
+
+export function coveredByCheck(check: string): (file: string) => boolean {
+  const fedToTools = new Set([...check.matchAll(/^run .*$/gm)].flatMap(([line]) => line.match(/[\w./-]+\.(json|m?js|ts)\b/g) ?? []));
+  const collects = vitest.test?.include ?? [];
+  return (file) => fedToTools.has(file) || collects.some((glob) => matchesGlob(file, glob));
+}
 
 const TOOLS = ["tsc", "eslint", "knip", "jscpd", "vitest", "node"] as const;
 type Tool = (typeof TOOLS)[number];
@@ -210,13 +226,11 @@ export function landSession({ gh, remoteRefuses, messages = ["change"] }: { gh: 
   };
 }
 
-const MAIN_GREEN = '{"check_runs":[{"name":"Core check","conclusion":"success"}]}';
 const CHECK_RED = "printf ' FAIL  src/ticket-shape.test.ts > names the behaviour\\n      Tests  1 failed (1)\\n'\nexit 1\n";
-export const MAIN_RED = '{"check_runs":[{"name":"Core check","conclusion":"failure"}]}';
 
 type Tree = "fresh" | "behind" | "dirty" | "branch" | "unfetchable";
 
-function ghAnswers(body: string, checkRuns: string, edited?: string): string {
+function ghAnswers(body: string, edited?: string): string {
   return [
     'case "$*" in',
     '  *"issue view"*)',
@@ -224,7 +238,6 @@ function ghAnswers(body: string, checkRuns: string, edited?: string): string {
     body,
     "TICKET",
     "    ;;",
-    `  *check-runs*) printf '%s\\n' '${checkRuns}' ;;`,
     ...(edited === undefined ? [] : [`  *"issue edit"*) printf '%s\\n' "$*" >>"${edited}" ;;`]),
     "  *) exit 22 ;;",
     "esac",
@@ -262,7 +275,7 @@ export function briefing({
   const root = scratch("brief-");
   const session = join(root, "session");
   claimedSession(session, "brief", claimed, tests, "ticket/722");
-  script(join(root, "bin", "gh"), reads ? ghAnswers(body, MAIN_GREEN) : "exit 22\n");
+  script(join(root, "bin", "gh"), reads ? ghAnswers(body) : "exit 22\n");
   return {
     written: () => readFileSync(join(session, ".git", "machine-logs", "brief-722.md"), "utf8"),
     run: (ticket = "722") => execute(join(BIN, "brief"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, [ticket]),
@@ -287,7 +300,7 @@ export function authoring({ body = wellFormedTicket, claude = WROTE_A_TEST, npx 
   plant(session, "src/ticket-shape.ts", "export const shaped = 1;\n");
   git(session, "add", ".");
   git(session, "commit", "--quiet", "-m", "what the claim stands on");
-  script(join(root, "bin", "gh"), reads ? ghAnswers(body, MAIN_GREEN) : "exit 22\n");
+  script(join(root, "bin", "gh"), reads ? ghAnswers(body) : "exit 22\n");
   script(join(root, "bin", "npx"), npx);
   script(join(root, "bin", "claude"), `printf '%s\\n' "$@" >"${argv}"\ncat >/dev/null\n${claude}`);
   return {
@@ -321,7 +334,7 @@ export function building({
   mkdirSync(argvDir, { recursive: true });
   mkdirSync(stdinDir, { recursive: true });
   claimedSession(session, "builder", claimed, tests, "ticket/724");
-  script(join(root, "bin", "gh"), ghAnswers(body, MAIN_GREEN));
+  script(join(root, "bin", "gh"), ghAnswers(body));
   script(join(root, "bin", "npx"), npx);
   script(
     join(root, "bin", "claude"),
@@ -425,7 +438,6 @@ export const MISSING_CONFIG_TICKET = [
 
 export function starting({
   body = wellFormedTicket,
-  checkRuns = MAIN_GREEN,
   npx = CHECK_RED,
   tree = "fresh" as Tree,
   history = (_session: string) => {},
@@ -439,7 +451,7 @@ export function starting({
   if (tree === "branch") git(session, "checkout", "--quiet", "-b", "ticket/721");
   if (tree === "dirty") writeFileSync(join(session, "left-behind.txt"), "work nobody committed\n");
   if (tree === "unfetchable") git(session, "remote", "set-url", "origin", join(root, "gone.git"));
-  script(join(root, "bin", "gh"), ghAnswers(body, checkRuns, edited));
+  script(join(root, "bin", "gh"), ghAnswers(body, edited));
   script(join(root, "bin", "npx"), npx);
   script(join(root, "bin", "claude"), `touch "${spent}"\n`);
   return {

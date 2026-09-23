@@ -1,13 +1,12 @@
 import { existsSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
-import { capped } from "./brief.ts";
+import { yourChecks } from "./brief.ts";
 import { RAN_NO_TESTS, runCheck, type Shell } from "./check-runner.ts";
-import { STATIC } from "./deny-list.ts";
+import { STATIC } from "./fence.ts";
 import { runStage, type Opened, type Outcome, type Stage } from "./stage.ts";
 import { checks, claims, quoted } from "./ticket-shape.ts";
 
 const STAGE = "test author";
-const COMMANDS_CAP = 200;
 const UNIMPORTED = /Cannot find module '(\.[^']+)' imported from (.+?)\s*$/gm;
 const AUTHORED = ".test.ts";
 const FIXTURES = "src/scenarios.ts";
@@ -39,7 +38,7 @@ export function handedOn(briefed: string, commands: string[]): string {
   return [
     briefed,
     "## What to write",
-    `Write one failing test for each criterion above, and write nothing else. Your check commands are ${capped(commands.map((command) => `\`${command}\``).join(", "), COMMANDS_CAP)}.`,
+    `Write one failing test for each criterion above, and write nothing else. ${yourChecks(commands)}`,
     "Each ends red naming the behaviour its criterion asks for. A criterion with no failing test ends this stage red.",
     `Anything you write outside test files and \`${FIXTURES}\`, and any test your check commands do not run, is removed before the checks judge, so a prototype proves nothing; a claimed file not written yet already counts as red.`,
     `\`${STATIC}\` runs the gates your tests must pass: no comments, no em dash, and no copied code, so build on the helpers in \`src/scenarios.ts\`. Its typecheck and unused gates stay red on a claimed file not written yet; that red is the builder's.`,

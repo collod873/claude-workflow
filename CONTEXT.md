@@ -1,22 +1,13 @@
 # Workflow
 
-How Claude Code work gets filed, built, judged and closed, studied across the systems that have
-tried to do it, and designed toward the one that finally does. The domain here is *the machinery
+How Claude Code work gets filed, built, judged and closed. The domain here is *the machinery
 itself*, not any project it ships.
 
 ## Language
 
-### The record
-
-**Era**:
-A complete workflow system that was, for a period, the primary way work got done. Ends when it is
-replaced, not when it stops being edited.
-_Avoid_: generation, version, phase, iteration
-
 **Failure**:
-A way a system broke that has now been observed in more than one era. A single occurrence is an
-incident, not a failure.
-_Avoid_: problem, issue, antipattern
+A way the machine broke, linked as an issue, PR or failed run. Every part names the one it stops.
+_Avoid_: problem, antipattern
 
 ### The charter
 
@@ -56,11 +47,6 @@ _Avoid_: rail, safety net, guardrail
 Something that refuses an action at the moment it is attempted. Distinct from anything that reports
 afterward, because a gate needs no reader, only a trigger.
 _Avoid_: check, validator, guardrail, lint
-
-**Fail-open**:
-The property of a gate that lets the action through when the gate itself errors. In an unattended
-system this is not a degraded gate; it is not a gate.
-_Avoid_: soft fail, non-blocking, best-effort
 
 **Refusal**:
 A gate that fires before a run spends model time. The distinction from Gate is cost: a refusal is

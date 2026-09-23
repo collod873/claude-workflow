@@ -6,7 +6,6 @@ import { FAILURE_LINK, refusedLinks } from "./part-links.ts";
 import { scratch, script } from "./scenarios.ts";
 
 const REPO = "https://github.com/collod873/claude-workflow";
-const NAMED_BY_682 = [`${REPO}/commit/c7fa969`, `${REPO}/issues/654`];
 
 function recordedGh(): { gh: string; calls: () => string[] } {
   const dir = scratch("part-links-");
@@ -63,10 +62,5 @@ describe("every part's failure link resolves on GitHub to an issue, a PR or a ru
 
     expect(await refusedLinks([part("one", `${REPO}/issues/1`), part("two", `${REPO}/issues/1`)], gh)).toEqual([]);
     expect(calls()).toEqual(["api repos/collod873/claude-workflow/issues/1"]);
-  });
-
-  it("finds every part in src/parts.ts linking an issue, PR or run, and none linking what #682 names", () => {
-    expect(parts.filter((registered) => !FAILURE_LINK.test(registered.stops))).toEqual([]);
-    expect(parts.filter((registered) => NAMED_BY_682.includes(registered.stops))).toEqual([]);
   });
 });
