@@ -92,8 +92,8 @@ export const parts: Part[] = [
     holds: ["An agent is handed what it needs, so it does not explore"],
   },
   {
-    name: "src/reads-outside-brief.ts",
-    file: "src/reads-outside-brief.ts",
+    name: "bin/save reads outside the brief",
+    file: "bin/save",
     stops: "https://github.com/collod873/claude-workflow/issues/809",
     holds: ["An agent is handed what it needs, so it does not explore"],
   },
