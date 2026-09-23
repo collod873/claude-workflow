@@ -31,3 +31,25 @@ describe("the save step pushes the branch before anything can refuse it, and ope
     expect(calls()).toEqual([]);
   });
 });
+
+describe("bin/save meters what each stage read outside its brief, from the stage's own stream (#809)", () => {
+  it("reads outside the brief are counted and named per stage, from the stage's stream", () => {
+    const { run, prBody } = saving({
+      brief: ["# Brief for ticket 726", "", "## Claimed files", "", "### src/ticket-shape.ts", "", "1  export const shaped = 2;", ""].join("\n"),
+      streams: {
+        "test-author": ["src/ticket-shape.ts", "src/post.ts"],
+        build: ["src/ticket-shape.ts"],
+      },
+    });
+
+    const result = run();
+
+    expect(result.status).toBe(0);
+    const body = prBody();
+    expect(body).toContain("Builds #726");
+    expect(body).toMatch(/test-author read 1\b[^\n]*outside its brief/);
+    expect(body).toContain("src/post.ts");
+    expect(body).toMatch(/build read 0\b[^\n]*outside its brief/);
+    expect(body).not.toContain("ticket-shape");
+  });
+});

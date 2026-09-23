@@ -29,3 +29,29 @@ describe("bin/close closes a ticket only once its own checks prove it done on ma
     expect(calls().some((call) => call.startsWith("issue\nreopen\n813"))).toBe(false);
   });
 });
+
+describe("bin/close names how long filing took to reach merged, and never gates on it (#809)", () => {
+  it("carries a speed report from filing to merged, naming the longest wait, and still closes a ticket over an hour late", () => {
+    const { calls, run } = closing({
+      ticket: "814",
+      fixes: true,
+      timing: {
+        filed: "2026-01-01T00:00:00Z",
+        firstCommit: "2026-01-01T00:10:00Z",
+        prOpened: "2026-01-01T01:40:00Z",
+        checksGreen: "2026-01-01T01:45:00Z",
+        merged: "2026-01-01T01:48:00Z",
+      },
+    });
+
+    const result = run();
+
+    expect(result.status).toBe(0);
+    const commented = calls().find((call) => call.startsWith("issue\ncomment\n814\n"));
+    expect(commented).toBeDefined();
+    expect(commented).toMatch(/speed report/i);
+    expect(commented).toMatch(/longest[^\n]*PR opened/i);
+    expect(commented).toMatch(/\d+\s*(m|min|h|hour)/i);
+    expect(calls().some((call) => call.startsWith("issue\nclose\n814"))).toBe(true);
+  });
+});

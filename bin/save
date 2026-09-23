@@ -9,10 +9,12 @@ if [[ $# -ne 1 || ! $ticket =~ ^[0-9]+$ ]]; then
   exit 2
 fi
 
+src="$(cd "${BASH_SOURCE[0]%/*}/../src" && pwd)"
 top=$(git rev-parse --show-toplevel) || exit 1
 cd "$top" || exit 1
 branch="ticket/$ticket"
-log="$(git rev-parse --path-format=absolute --git-common-dir)/machine-logs/save-$ticket.log"
+logs="$(git rev-parse --path-format=absolute --git-common-dir)/machine-logs"
+log="$logs/save-$ticket.log"
 mkdir -p "${log%/*}"
 rm -f "$log"
 [[ $log == "$top/"* ]] && shown="${log#"$top/"}" || shown="$log"
@@ -34,7 +36,9 @@ head=$(git rev-parse "refs/heads/$branch")
 
 opened() {
   call gh issue view "$ticket" --json title --jq .title || return 1
-  call gh pr create --base main --head "$branch" --title "$said" --body "Builds #$ticket" || return 1
+  meter=$(node "$src/reads-outside-brief.ts" "$logs" "$top" "$ticket")
+  body=$(printf 'Builds #%s\n\n%s\n' "$ticket" "$meter")
+  call gh pr create --base main --head "$branch" --title "$said" --body "$body" || return 1
   url=$said
   call gh pr merge "$branch" --auto --merge --match-head-commit "$head"
 }

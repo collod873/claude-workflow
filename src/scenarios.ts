@@ -44,6 +44,10 @@ export function git(cwd: string, ...args: string[]): string {
   return execFileSync("git", args, { cwd, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 }
 
+function commitAt(cwd: string, date: string, args: string[]): string {
+  return execFileSync("git", args, { cwd, env: { ...env, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date }, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+}
+
 export function script(path: string, body: string): void {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `#!/bin/bash\n${body}`);
@@ -421,16 +425,31 @@ export function starting({
 
 export const SAVED_PR = "https://github.com/collod873/claude-workflow/pull/9726";
 
-export function saving({ remoteRefuses }: { remoteRefuses?: string } = {}) {
+function readEvent(path: string): string {
+  return JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", name: "Read", input: { file_path: path } }] } });
+}
+
+export function saving({
+  remoteRefuses,
+  brief,
+  streams = {} as Partial<Record<string, string[]>>,
+}: { remoteRefuses?: string; brief?: string; streams?: Partial<Record<string, string[]>> } = {}) {
   const root = scratch("save-");
   const { remote, session } = cloned(root, "base");
   const calls = join(root, "gh-calls");
+  const argvDir = join(root, "gh-argv");
   const judged = join(root, "judged");
+  mkdirSync(argvDir, { recursive: true });
   git(session, "checkout", "--quiet", "-b", "ticket/726");
   plant(session, "src/ticket-shape.ts", "export const shaped = 2;\n");
   git(session, "add", ".");
   git(session, "commit", "--quiet", "-m", "Build #726 against its failing tests");
   const built = git(session, "rev-parse", "HEAD");
+  if (brief !== undefined) plant(session, ".git/machine-logs/brief-726.md", brief);
+  for (const [stage, paths] of Object.entries(streams)) {
+    const lines = (paths ?? []).map((path) => readEvent(join(session, path))).join("\n");
+    plant(session, `.git/machine-logs/${stage}-726.jsonl`, lines === "" ? "" : `${lines}\n`);
+  }
   script(join(session, ".git", "hooks", "pre-push"), `touch "${judged}"\nprintf 'the gate refuses a red build\\n' >&2\nexit 1\n`);
   git(remote, "config", "user.email", "github@test");
   git(remote, "config", "user.name", "github");
@@ -440,7 +459,9 @@ export function saving({ remoteRefuses }: { remoteRefuses?: string } = {}) {
   script(
     join(root, "bin", "gh"),
     [
-      `printf '%s|%s\\n' "$*" "$(git --git-dir="${remote}" rev-parse --verify --quiet refs/heads/ticket/726)" >>"${calls}"`,
+      `printf '%s|%s\\n' "$(printf '%s' "$*" | tr '\\n' ' ')" "$(git --git-dir="${remote}" rev-parse --verify --quiet refs/heads/ticket/726)" >>"${calls}"`,
+      `n=$(( $(ls "${argvDir}" 2>/dev/null | wc -l) + 1 ))`,
+      `printf '%s\\0' "$@" >"${argvDir}/$n"`,
       'case "$*" in',
       "  *\"issue view\"*) printf 'Push the branch before anything can refuse it\\n' ;;",
       `  *"pr create"*) printf '%s\\n' '${SAVED_PR}' ;;`,
@@ -448,12 +469,19 @@ export function saving({ remoteRefuses }: { remoteRefuses?: string } = {}) {
       "",
     ].join("\n"),
   );
+  const argv = (call: number): string[] => readFileSync(join(argvDir, String(call)), "utf8").split("\0").filter((part) => part !== "");
+  const argvCalls = (): string[][] => readdirSync(argvDir).map((_, index) => argv(index + 1));
   return {
     session,
     built,
     pushed: () => git(remote, "for-each-ref", "--format=%(objectname)", "refs/heads/ticket/726"),
     judged: () => existsSync(judged),
     calls: () => (existsSync(calls) ? readFileSync(calls, "utf8").trimEnd().split("\n").map((line) => line.split("|")) : []),
+    prBody: () => {
+      const call = argvCalls().find((args) => args[0] === "pr" && args[1] === "create");
+      const at = call?.indexOf("--body") ?? -1;
+      return at === -1 ? undefined : call?.[at + 1];
+    },
     run: (ticket = "726") => execute(join(BIN, "save"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, [ticket]),
   };
 }
@@ -473,7 +501,27 @@ const CLOSER_TICKET = [
   "",
 ].join("\n");
 
-export function closing({ ticket = "812", ticketBody = CLOSER_TICKET, fixes = true, readable = true } = {}) {
+const FAST_TIMING = {
+  filed: "2026-01-01T00:00:00Z",
+  firstCommit: "2026-01-01T00:00:01Z",
+  prOpened: "2026-01-01T00:00:02Z",
+  checksGreen: "2026-01-01T00:00:03Z",
+  merged: "2026-01-01T00:00:04Z",
+};
+
+export function closing({
+  ticket = "812",
+  ticketBody = CLOSER_TICKET,
+  fixes = true,
+  readable = true,
+  timing = FAST_TIMING,
+}: {
+  ticket?: string;
+  ticketBody?: string;
+  fixes?: boolean;
+  readable?: boolean;
+  timing?: { filed: string; firstCommit: string; prOpened: string; checksGreen: string; merged: string };
+} = {}) {
   const root = scratch("closer-");
   const session = join(root, "session");
   const callsDir = join(root, "gh-calls");
@@ -488,21 +536,24 @@ export function closing({ ticket = "812", ticketBody = CLOSER_TICKET, fixes = tr
   git(session, "checkout", "--quiet", "-b", `ticket/${ticket}`);
   if (fixes) plant(session, "built.txt", "done\n");
   git(session, "add", "-A");
-  git(session, "commit", "--quiet", "--allow-empty", "-m", `Build #${ticket} against its failing tests`);
+  commitAt(session, timing.firstCommit, ["commit", "--quiet", "--allow-empty", "-m", `Build #${ticket} against its failing tests`]);
   git(session, "checkout", "--quiet", "main");
-  git(session, "merge", "--quiet", "--no-ff", "-m", `Merge pull request #900 from collod873/ticket/${ticket}`, `ticket/${ticket}`);
+  commitAt(session, timing.merged, ["merge", "--quiet", "--no-ff", "-m", `Merge pull request #900 from collod873/ticket/${ticket}`, `ticket/${ticket}`]);
   script(
     join(root, "bin", "gh"),
     [
       `n=$(( $(ls "${callsDir}" 2>/dev/null | wc -l) + 1 ))`,
       `printf '%s\\n' "$@" >"${callsDir}/$n"`,
       'case "$*" in',
+      `  *"issue view"*"createdAt"*) printf '%s\\n' '${timing.filed}' ;;`,
       "  *\"issue view\"*)",
       ...(readable ? [] : ["    printf 'GraphQL: Could not resolve to an issue\\n' >&2", "    exit 1"]),
       "    cat <<'BODY'",
       ticketBody,
       "BODY",
       "    ;;",
+      `  *"pr view"*) printf '%s\\n' '${timing.prOpened}' ;;`,
+      `  *"pr checks"*) printf '%s\\n' '${timing.checksGreen}' ;;`,
       "  *) exit 0 ;;",
       "esac",
       "",
