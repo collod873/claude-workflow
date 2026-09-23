@@ -287,6 +287,7 @@ export function building({
   npx = CHECK_RED,
   sessionId = "sess-42",
   claude = "",
+  minutes = "",
 } = {}) {
   const root = scratch("builder-");
   const session = join(root, "session");
@@ -316,7 +317,7 @@ export function building({
     stdin: (call: number) => (existsSync(join(stdinDir, String(call))) ? readFileSync(join(stdinDir, String(call)), "utf8") : ""),
     committed: () => git(session, "show", "--name-only", "--format=%s", "HEAD").split("\n").filter((line) => line !== ""),
     dirty: () => git(session, "status", "--porcelain"),
-    run: (ticket = "724") => execute(join(BIN, "build"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, [ticket]),
+    run: (ticket = "724") => execute(join(BIN, "build"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}`, ...(minutes === "" ? {} : { STAGE_MINUTES: minutes }) }, [ticket]),
   };
 }
 

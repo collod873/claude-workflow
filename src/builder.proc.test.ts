@@ -130,12 +130,25 @@ describe("the builder builds against the brief, with one resumed repair round (#
   });
 
   it("writes the transcript while the model is still running, so a run killed mid-stage still leaves what the model did", () => {
-    const { run, session } = building({ claude: `printf '{"session_id":"live-%s"}\\n' $$\ngrep -q "live-$$" .git/machine-logs/build-724.jsonl || touch ../buffered` });
+    const { run, session } = building({ claude: "printf '{\"session_id\":\"live-%s\"}\\n' $$\ngrep -q \"live-$$\" .git/machine-logs/build-724.jsonl || touch ../buffered" });
 
     run();
 
     expect(readFileSync(join(session, ".git", "machine-logs", "build-724.jsonl"), "utf8")).toContain("live-");
     expect(existsSync(join(session, "..", "buffered"))).toBe(false);
+  });
+
+  it("stops the model and everything it started at the stage's cap, which GitHub's own step cap never reached (#835)", () => {
+    const { run, session } = building({ minutes: "0.03", claude: "sleep 300 &\nprintf '%s' $! >../child\nwait" });
+    const started = Date.now();
+
+    const result = run();
+
+    expect(Date.now() - started).toBeLessThan(15000);
+    expect(result.stderr).toContain("ran past its 0.03 minute cap");
+    const child = readFileSync(join(session, "..", "child"), "utf8");
+    const state = existsSync(`/proc/${child}/stat`) ? readFileSync(`/proc/${child}/stat`, "utf8").split(") ")[1][0] : "gone";
+    expect(["gone", "Z"]).toContain(state);
   });
 
   it("commits a build still red after the repair round, so the save step has it to push", () => {
