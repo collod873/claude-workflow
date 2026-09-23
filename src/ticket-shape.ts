@@ -49,6 +49,10 @@ export const claims = (body: string): string[] => listed(body, CLAIMED);
 
 export const filesToRead = (body: string): string[] => listed(body, TO_READ);
 
+export const why = (body: string): string => section(body.replaceAll(/\r\n?/g, "\n"), WHY).trim();
+
+export const acceptance = (body: string): string => section(body.replaceAll(/\r\n?/g, "\n"), CRITERIA).trim();
+
 function globRefusals(heading: string, entries: string[]): string[] {
   return entries.filter((entry) => GLOB.test(entry)).map((entry) => `'## ${heading}' names \`${quoted(entry)}\`, a glob rather than one file`);
 }

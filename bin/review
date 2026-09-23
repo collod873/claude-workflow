@@ -1,0 +1,13 @@
+#!/bin/bash
+set -uo pipefail
+
+usage="review: usage: review <pr number>"
+
+pr=${1:-}
+if [[ $# -ne 1 || ! $pr =~ ^[0-9]+$ ]]; then
+  printf '%s\n' "$usage" >&2
+  exit 2
+fi
+
+src="$(cd "${BASH_SOURCE[0]%/*}/../src" && pwd)"
+exec node "$src/reviewer.ts" "$pr"
