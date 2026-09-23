@@ -15,6 +15,12 @@ const KINDS: Record<string, { refuses: (text: string) => string[]; label: string
   note: { refuses: noteRefusals, label: ["--label", "note"] },
 };
 
+export function postClosing(ticket: string, text: string, gh: Gh): { refusals: string[]; said: string } {
+  const { status, stdout, stderr } = gh(["issue", "comment", ticket, "--body", text]);
+  if (status !== 0) return { refusals: [`gh issue comment failed: ${(stderr || stdout).trim().split("\n")[0]}`], said: "" };
+  return { refusals: [], said: stdout.trim() };
+}
+
 export function post({ kind, text, title }: Posting, gh: Gh): { refusals: string[]; said: string } {
   const shape = KINDS[kind];
   if (shape === undefined) return { refusals: [`${kind} is not a kind src/post.ts writes: ${Object.keys(KINDS).join(", ")}`], said: "" };
