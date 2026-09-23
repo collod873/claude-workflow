@@ -214,7 +214,7 @@ const MAIN_GREEN = '{"check_runs":[{"name":"Core check","conclusion":"success"}]
 const CHECK_RED = "printf ' FAIL  src/ticket-shape.test.ts > names the behaviour\\n      Tests  1 failed (1)\\n'\nexit 1\n";
 export const MAIN_RED = '{"check_runs":[{"name":"Core check","conclusion":"failure"}]}';
 
-type Tree = "fresh" | "behind" | "dirty" | "branch";
+type Tree = "fresh" | "behind" | "dirty" | "branch" | "unfetchable";
 
 function ghAnswers(body: string, checkRuns: string, edited?: string): string {
   return [
@@ -350,9 +350,11 @@ export function renamedAndDeletedHistory(session: string): void {
   plant(session, "vitest.config.ts", "export default {};\n");
   plant(session, "src/old-name.ts", "export const shaped = 1;\n");
   plant(session, "src/soon-deleted.ts", "export const goingAway = 1;\n");
+  plant(session, "old.config.ts", "export default {};\n");
   git(session, "add", ".");
   git(session, "commit", "--quiet", "-m", "plant the paths a stale ticket will still claim");
   git(session, "mv", "src/old-name.ts", "src/new-name.ts");
+  git(session, "mv", "old.config.ts", "new.config.ts");
   git(session, "rm", "--quiet", "src/soon-deleted.ts");
   git(session, "commit", "--quiet", "-m", "rename one claimed path and delete another");
   git(session, "push", "--quiet", "origin", "main");
@@ -372,6 +374,22 @@ export const RENAMED_CLAIM_TICKET = [
   "## Files claimed",
   "",
   "- src/old-name.ts",
+  "",
+].join("\n");
+
+export const RENAMED_BESIDE_WORDS_TICKET = [
+  "## Why",
+  "",
+  'The owner, in session: "leave src/old-name.ts alone where I said it".',
+  "",
+  "## Acceptance criteria",
+  "",
+  "- [ ] The renamed config still runs - check: `npx vitest run --config old.config.ts old-name`",
+  "",
+  "## Files claimed",
+  "",
+  "- src/old-name.ts",
+  "- src/old-name.tsx",
   "",
 ].join("\n");
 
@@ -420,6 +438,7 @@ export function starting({
   if (tree === "behind") git(session, "reset", "--quiet", "--hard", "HEAD~1");
   if (tree === "branch") git(session, "checkout", "--quiet", "-b", "ticket/721");
   if (tree === "dirty") writeFileSync(join(session, "left-behind.txt"), "work nobody committed\n");
+  if (tree === "unfetchable") git(session, "remote", "set-url", "origin", join(root, "gone.git"));
   script(join(root, "bin", "gh"), ghAnswers(body, checkRuns, edited));
   script(join(root, "bin", "npx"), npx);
   script(join(root, "bin", "claude"), `touch "${spent}"\n`);

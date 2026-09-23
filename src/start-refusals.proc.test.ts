@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DELETED_CLAIM_TICKET, heard, MAIN_RED, MISSING_CONFIG_TICKET, misshapenTicket, RENAMED_CLAIM_TICKET, renamedAndDeletedHistory, starting } from "./scenarios.ts";
+import { DELETED_CLAIM_TICKET, heard, MAIN_RED, MISSING_CONFIG_TICKET, misshapenTicket, RENAMED_BESIDE_WORDS_TICKET, RENAMED_CLAIM_TICKET, renamedAndDeletedHistory, starting } from "./scenarios.ts";
 import { mainRefusals } from "./start.ts";
 
 const CHECK_PASSES = "printf '      Tests  1 passed (1)\\n'\nexit 0\n";
@@ -23,6 +23,16 @@ describe("bin/start refuses a build before any model runs (#662)", () => {
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("1 commit behind origin/main");
+    expect(spentModel()).toBe(false);
+  });
+
+  it("refuses when origin/main cannot be fetched, rather than judge freshness against a stale copy, and spends no model", () => {
+    const { run, spentModel } = starting({ tree: "unfetchable" });
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("origin/main could not be fetched");
     expect(spentModel()).toBe(false);
   });
 
@@ -92,6 +102,17 @@ describe("bin/start rewrites or refuses on paths git's history knows are stale (
     expect(result.status).toBe(0);
     expect(edited()).toContain("src/new-name.ts");
     expect(edited()).not.toContain("src/old-name.ts");
+  });
+
+  it("rewrites a renamed path only where the ticket claims it or its check names it, leaving the owner's words and a longer path alone", () => {
+    const { run, edited } = starting({ body: RENAMED_BESIDE_WORDS_TICKET, history: renamedAndDeletedHistory });
+
+    const result = run();
+
+    expect(result.status).toBe(0);
+    expect(edited()).toContain('"leave src/old-name.ts alone where I said it"');
+    expect(edited()).toContain("- src/new-name.ts\n- src/old-name.tsx\n");
+    expect(edited()).toContain("--config new.config.ts old-name`");
   });
 
   it("refuses a claim git records as deleted, naming it, and spends no model", () => {

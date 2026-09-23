@@ -10,6 +10,7 @@ const ATTEMPT = /check:/gi;
 const RUNS_TESTS = /(?<![A-Za-z])(vitest|pytest|jest|node --test)(?![A-Za-z])/;
 const OWNER_WORDS = /"[^"\n]{4,}"|^>[ \t]*\S/m;
 const GLOB = /[*?[\]]/;
+const CONFIG_FLAGS = /--config[ \t]+(\S+)/g;
 const FEWEST = 1;
 const MOST = 3;
 const QUOTE = 80;
@@ -31,13 +32,31 @@ function criteria(body: string): string[] {
   return items;
 }
 
+function claimOn(line: string): string {
+  const trimmed = line.trim();
+  return trimmed.startsWith("-") ? trimmed.slice(1).replaceAll("`", "").trim() : "";
+}
+
 export function claims(body: string): string[] {
   return section(body, CLAIMED)
     .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.startsWith("-"))
-    .map((line) => line.slice(1).replaceAll("`", "").trim())
+    .map(claimOn)
     .filter((entry) => entry !== "");
+}
+
+export function withRenamedPath(body: string, from: string, to: string): string {
+  let heading = "";
+  return body
+    .replaceAll(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => {
+      if (NEXT_HEADING.test(line)) heading = line;
+      if (CLAIMED.test(heading)) return claimOn(line) === from ? line.replace(from, to) : line;
+      if (!CRITERIA.test(heading)) return line;
+      return line.replace(MARKER, (marker, command: string) =>
+        marker.replace(`\`${command}\``, `\`${command.replace(CONFIG_FLAGS, (flag, path: string) => (path === from ? `${flag.slice(0, -path.length)}${to}` : flag))}\``));
+    })
+    .join("\n");
 }
 
 export function quoted(text: string): string {
