@@ -2,10 +2,11 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, normalize } from "node:path";
 import ts from "typescript";
-import { claims } from "./ticket-shape.ts";
+import { claims, filesToRead } from "./ticket-shape.ts";
 
 export const CAP = 64 * 1024;
 const COMMANDS_CAP = 200;
+const ALWAYS = ["src/scenarios.ts", "vitest.config.ts"];
 
 export const onDisk = (path: string): string | undefined => (existsSync(path) ? readFileSync(path, "utf8") : undefined);
 
@@ -76,10 +77,12 @@ export function brief({ ticket, body, tests, read }: Asked): { text: string; ref
   const seen = new Set<string>();
   const authored = firstSight(tests, seen);
   const claimed = firstSight(claims(body), seen);
+  const toRead = firstSight(filesToRead(body), seen);
   const widened = firstSight(
     [...authored, ...claimed].flatMap((path) => importedBy(path, read(path) ?? "")).filter((path) => read(path) !== undefined),
     seen,
   );
+  const carried = firstSight(ALWAYS, seen).filter((path) => read(path) !== undefined);
   const text = [
     `# Brief for ticket ${ticket}`,
     "## The ticket",
@@ -88,15 +91,19 @@ export function brief({ ticket, body, tests, read }: Asked): { text: string; ref
     inlined(authored, read),
     "## Files claimed, as they stand",
     inlined(claimed, read),
+    "## Files to read, as they stand",
+    inlined(toRead, read),
     "## What the claim imports",
     inlined(widened, read),
+    "## What every brief carries",
+    inlined(carried, read),
     "",
   ].join("\n\n");
   const bytes = Buffer.byteLength(text);
   if (bytes <= CAP) return { text, refusals: [] };
   return {
     text: "",
-    refusals: [`the brief for ticket ${ticket} is ${bytes} bytes, over ${CAP}`, ...filled([...authored, ...claimed, ...widened], read)],
+    refusals: [`the brief for ticket ${ticket} is ${bytes} bytes, over ${CAP}`, ...filled([...authored, ...claimed, ...toRead, ...widened, ...carried], read)],
   };
 }
 

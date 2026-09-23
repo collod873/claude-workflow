@@ -3,6 +3,7 @@ import { emDashLines } from "./em-dash.ts";
 const WHY = /^##[ \t]+Why[ \t]*$/m;
 const CRITERIA = /^##[ \t]+Acceptance criteria[ \t]*$/m;
 const CLAIMED = /^##[ \t]+Files claimed[ \t]*$/m;
+const TO_READ = /^##[ \t]+Files to read[ \t]*$/m;
 const NEXT_HEADING = /^##[ \t]/m;
 const ITEM = /^[ \t]*-[ \t]*\[[ xX]\][ \t]*/;
 const MARKER = /(?:–|(?<=[ \t])-{1,2}(?=[ \t]))[ \t]*check:[ \t]*`([^`\n]+)`[ \t]*$/;
@@ -39,6 +40,13 @@ function claimOn(line: string): string {
 
 export function claims(body: string): string[] {
   return section(body, CLAIMED)
+    .split("\n")
+    .map(claimOn)
+    .filter((entry) => entry !== "");
+}
+
+export function filesToRead(body: string): string[] {
+  return section(body, TO_READ)
     .split("\n")
     .map(claimOn)
     .filter((entry) => entry !== "");
@@ -109,5 +117,6 @@ export function ticketRefusals(body: string): string[] {
   }
   if (!CLAIMED.test(text)) refusals.push("the body carries no '## Files claimed'");
   else refusals.push(...claims(text).filter((entry) => GLOB.test(entry)).map((entry) => `'## Files claimed' names \`${quoted(entry)}\`, a glob rather than one file`));
+  if (TO_READ.test(text)) refusals.push(...filesToRead(text).filter((entry) => GLOB.test(entry)).map((entry) => `'## Files to read' names \`${quoted(entry)}\`, a glob rather than one file`));
   return [...refusals, ...emDashLines(text).map((line) => `line ${line} carries an em dash`)];
 }
