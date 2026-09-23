@@ -20,7 +20,7 @@ export interface Opened {
   aside: string[];
   logs: string;
   wrote: () => string[];
-  spend: (input: string, resume?: string) => { refusal?: string; session?: string; answer?: unknown };
+  spend: (input: string, resume?: string) => Spent;
   setAside: (paths: string[]) => void;
 }
 
@@ -111,9 +111,44 @@ function registered(): Registration | string {
   }
 }
 
-function open(stage: Stage, ticket: string, cwd: string, logs: string): Opened | Stopped {
+export interface Hire {
+  name: string;
+  transcript: string;
+  commands?: string[];
+  tools?: string[];
+  answers?: object;
+}
+
+export interface Spent {
+  stdout: string;
+  refusal?: string;
+  session?: string;
+  answer?: unknown;
+}
+
+export function hired(hire: Hire): ((input: string, resume?: string) => Spent) | string {
   const minutes = Number(process.env.STAGE_MINUTES);
   const deadline = Date.now() + minutes * 60_000;
+  const hooks = registered();
+  if (typeof hooks === "string") return hooks;
+  const argv = [...stageArgv(hire.commands ?? [], ownerHooks(hooks), hire.tools), ...(hire.answers === undefined ? [] : ["--json-schema", JSON.stringify(hire.answers)])];
+  rmSync(hire.transcript, { force: true });
+  return (input, resume) => {
+    const from = existsSync(hire.transcript) ? statSync(hire.transcript).size : 0;
+    const streamed = openSync(hire.transcript, "a");
+    const [command, ...args] = capped([...argv, ...(resume === undefined ? [] : ["--resume", resume]), ...STREAM], minutes, deadline);
+    const spent = spawnSync(command, args, { input, stdio: ["pipe", streamed, "pipe"], encoding: "utf8", maxBuffer: Infinity });
+    closeSync(streamed);
+    const stdout = readFileSync(hire.transcript).subarray(from).toString("utf8");
+    if (spent.status === TIMED_OUT && minutes > 0) return { stdout, refusal: `the ${hire.name} ran past its ${minutes} minute cap` };
+    if (spent.status !== 0) return { stdout, refusal: `the ${hire.name} ended ${spent.status}: ${quoted(String(spent.stderr || stdout).trim().split("\n")[0])}` };
+    return { stdout, session: sessionOf(stdout), answer: answerIn(stdout) };
+  };
+}
+
+export const machineLogs = (cwd: string) => join(git(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]).stdout.trim(), "machine-logs");
+
+function open(stage: Stage, ticket: string, cwd: string, logs: string): Opened | Stopped {
   const asked = spawnSync("gh", ["issue", "view", ticket, "--json", "body", "--jq", ".body"], { encoding: "utf8" });
   if (asked.status !== 0) return { stop: "unread", refusals: [`ticket ${ticket} could not be read, so ${stage.undone}`] };
   const body = asked.stdout;
@@ -123,13 +158,10 @@ function open(stage: Stage, ticket: string, cwd: string, logs: string): Opened |
   if (briefed.refusals.length > 0) return { stop: "overCap", refusals: briefed.refusals };
   writeFileSync(join(logs, `brief-${ticket}.md`), briefed.text);
   const commands = checks(body).map(({ command }) => command);
-  const hooks = registered();
-  if (typeof hooks === "string") return { stop: "modelRun", refusals: [`the owner's hooks could not be read from ${hooks}, so ${stage.undone}`] };
-  const argv = [...stageArgv(commands, ownerHooks(hooks)), ...(stage.answers === undefined ? [] : ["--json-schema", JSON.stringify(stage.answers)])];
+  const spend = hired({ name: stage.name, transcript: join(logs, `${stage.bin}-${ticket}.jsonl`), commands, answers: stage.answers });
+  if (typeof spend === "string") return { stop: "modelRun", refusals: [`the owner's hooks could not be read from ${spend}, so ${stage.undone}`] };
   const kept = join(logs, `${stage.bin}-${ticket}-set-aside`);
-  const transcript = join(logs, `${stage.bin}-${ticket}.jsonl`);
   rmSync(kept, { recursive: true, force: true });
-  rmSync(transcript, { force: true });
   const before = changed(cwd);
   const fresh = () => [...changed(cwd)].filter(([path]) => !before.has(path));
   const aside: string[] = [];
@@ -153,18 +185,10 @@ function open(stage: Stage, ticket: string, cwd: string, logs: string): Opened |
     wrote: () => fresh().map(([path]) => path),
     setAside,
     spend: (input, resume) => {
-      const from = existsSync(transcript) ? statSync(transcript).size : 0;
-      const streamed = openSync(transcript, "a");
-      const [command, ...args] = capped([...argv, ...(resume === undefined ? [] : ["--resume", resume]), ...STREAM], minutes, deadline);
-      const spent = spawnSync(command, args, { input, stdio: ["pipe", streamed, "pipe"], encoding: "utf8", maxBuffer: Infinity });
-      closeSync(streamed);
-      const stdout = readFileSync(transcript).subarray(from).toString("utf8");
+      const spent = spend(input, resume);
       setAside(opened.wrote().filter((path) => !stage.keeps(path, opened)));
-      const stray = writtenOutsideRepo(cwd, stdout);
-      if (stray !== undefined) return { refusal: `the ${stage.name} wrote outside the repo: ${stray}` };
-      if (spent.status === TIMED_OUT && minutes > 0) return { refusal: `the ${stage.name} ran past its ${minutes} minute cap` };
-      if (spent.status !== 0) return { refusal: `the ${stage.name} ended ${spent.status}: ${quoted(String(spent.stderr || stdout).trim().split("\n")[0])}` };
-      return { session: sessionOf(stdout), answer: answerIn(stdout) };
+      const stray = writtenOutsideRepo(cwd, spent.stdout);
+      return stray === undefined ? spent : { stdout: spent.stdout, refusal: `the ${stage.name} wrote outside the repo: ${stray}` };
     },
   };
   return opened;
@@ -182,7 +206,7 @@ function commit(cwd: string, paths: string[], { message, branch }: { message: st
 export function runStage(stage: Stage, ticket: string): number {
   const cwd = process.cwd();
   const said = `${stage.bin}: #${ticket}`;
-  const logs = join(git(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]).stdout.trim(), "machine-logs");
+  const logs = machineLogs(cwd);
   mkdirSync(logs, { recursive: true });
   const log = join(logs, `${stage.bin}-${ticket}.log`);
   rmSync(log, { force: true });

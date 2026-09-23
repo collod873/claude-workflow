@@ -1,11 +1,14 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { scratch } from "./scenarios.ts";
 
-const WORKFLOW = join(import.meta.dirname, "..", ".github", "workflows", "build.yml");
+const REPO = join(import.meta.dirname, "..");
+const WORKFLOWS = join(REPO, ".github", "workflows");
+const WORKFLOW = join(WORKFLOWS, "build.yml");
+const FEED = join(REPO, ".github", "actions", "stage", "feed.jq");
 const STAGES = ["start", "test-author", "build", "save"] as const;
 type Stage = (typeof STAGES)[number];
 
@@ -28,7 +31,6 @@ interface Job {
 
 interface Workflow {
   on: { issues?: { types?: string[] } };
-  env: Record<string, string>;
   jobs: Record<string, Job>;
 }
 
@@ -130,16 +132,30 @@ describe("build.yml builds a ticket the moment it is filed (#826)", () => {
   });
 });
 
-const parsed = () => parse(readFileSync(WORKFLOW, "utf8")) as Workflow;
+function expanded(steps: Step[]): Step[] {
+  return steps.flatMap((step) => {
+    if (step.uses?.startsWith("./") !== true) return [step];
+    const action = parse(readFileSync(join(REPO, step.uses, "action.yml"), "utf8")) as { runs: { steps: Step[] } };
+    return action.runs.steps.map((inner) => ({ ...inner, if: inner.if ?? step.if }));
+  });
+}
+
+const everyJob = (): Job[] =>
+  readdirSync(WORKFLOWS)
+    .filter((file) => /\.ya?ml$/.test(file))
+    .flatMap((file) => Object.values((parse(readFileSync(join(WORKFLOWS, file), "utf8")) as Workflow).jobs))
+    .map((job) => ({ ...job, steps: expanded(job.steps) }));
 const spendsModel = (step: Step) => step.env?.CLAUDE_CODE_OAUTH_TOKEN !== undefined;
 const transcriptOf = (run: string) => (/(^|\s|\/)bin\/([\w-]+)/.exec(run.split("\n").slice(1).join("\n"))?.[2] ?? "fix");
 const SAID = { type: "assistant", message: { content: [{ type: "text", text: "reading the brief" }] } };
 
-describe("a build run is watched as it goes, read after it ends, and stopped at its cap (#835)", () => {
-  it("every step that spends a model stops it before the step's own cap, which kills only the step's shell", () => {
-    const steps = Object.values(parsed().jobs).flatMap(({ steps }) => steps.filter(spendsModel));
+const modelJobs = () => everyJob().filter(({ steps }) => steps.some(spendsModel));
 
-    expect(steps.length).toBeGreaterThan(0);
+describe("every job that spends a model is watched as it goes, read after it ends, and stopped at its cap, in every workflow (#835, #840)", () => {
+  it("every step that spends a model stops it before the step's own cap, which kills only the step's shell", () => {
+    const steps = modelJobs().flatMap(({ steps }) => steps.filter(spendsModel));
+
+    expect(steps.some((step) => /bin\/review /.test(step.run ?? ""))).toBe(true);
     for (const step of steps) {
       expect(Number(step.env?.STAGE_MINUTES)).toBeGreaterThan(0);
       expect(Number(step.env?.STAGE_MINUTES)).toBeLessThan(step["timeout-minutes"] ?? 0);
@@ -147,7 +163,7 @@ describe("a build run is watched as it goes, read after it ends, and stopped at 
   });
 
   it("every job hands its stages the owner's hooks, read with a token that can only read agent-hooks", () => {
-    for (const { steps } of Object.values(parsed().jobs).filter(({ steps }) => steps.some(spendsModel))) {
+    for (const { steps } of modelJobs()) {
       const minted = steps.findIndex((step) => step.with?.repositories === "agent-hooks");
       const handed = steps.findIndex((step) => /AGENT_HOOKS_SETTINGS=.*GITHUB_ENV/.test(step.run ?? ""));
       expect(steps[minted]?.with).toMatchObject({ owner: "collod873", "permission-contents": "read" });
@@ -158,7 +174,7 @@ describe("a build run is watched as it goes, read after it ends, and stopped at 
   });
 
   it("every job files its stages' captures into the knowledge base whatever ended it, with a write token minted only after the model is done", () => {
-    for (const { steps } of Object.values(parsed().jobs).filter(({ steps }) => steps.some(spendsModel))) {
+    for (const { steps } of modelJobs()) {
       const minted = steps.findIndex((step) => step.with?.repositories === "Knowledge-Base");
       const filed = steps.findIndex((step) => /Knowledge-Base\/raw/.test(step.run ?? ""));
       const lastModel = steps.length - 1 - [...steps].reverse().findIndex(spendsModel);
@@ -171,7 +187,7 @@ describe("a build run is watched as it goes, read after it ends, and stopped at 
   });
 
   it("every job keeps its machine logs as a run artifact, whatever ended it", () => {
-    for (const { steps } of Object.values(parsed().jobs)) {
+    for (const { steps } of modelJobs()) {
       const last = steps[steps.length - 1];
       expect(last.uses).toMatch(/^actions\/upload-artifact@/);
       expect(last.if).toBe("always()");
@@ -180,15 +196,15 @@ describe("a build run is watched as it goes, read after it ends, and stopped at 
   });
 
   it("every step that spends a model shows what its stage's model does in the log as it happens, and ends with the stage's own status", () => {
-    const { env, jobs } = parsed();
-    for (const step of Object.values(jobs).flatMap(({ steps }) => steps.filter(spendsModel))) {
-      const run = (step.run ?? "").replaceAll("${{ github.event.issue.number }}", "9");
+    const feed = readFileSync(FEED, "utf8");
+    for (const step of modelJobs().flatMap(({ steps }) => steps.filter(spendsModel))) {
+      const run = (step.run ?? "").replaceAll(/\$\{\{ github\.event\.(issue|pull_request)\.number \}\}/g, "9");
       const transcript = `.git/machine-logs/${transcriptOf(run)}-9.jsonl`;
       const cwd = scratch("feed-");
       mkdirSync(join(cwd, ".git", "machine-logs"), { recursive: true });
       const stage = [`printf '%s\\n' '${JSON.stringify(SAID)}' >>${transcript}`, "sleep 1.5", "exit 3"].join("\n");
 
-      const watched = spawnSync("bash", ["-e", "-c", `${run.split("\n")[0]}\n${stage}`], { cwd, env: { ...process.env, FEED: env.FEED }, encoding: "utf8", timeout: 10000 });
+      const watched = spawnSync("bash", ["-e", "-c", `${run.split("\n")[0]}\n${stage}`], { cwd, env: { ...process.env, FEED: feed, HEAD_REF: "ticket/9" }, encoding: "utf8", timeout: 10000 });
 
       expect(watched.stdout).toContain("said: reading the brief");
       expect(watched.status).toBe(3);

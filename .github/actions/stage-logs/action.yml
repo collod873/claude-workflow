@@ -1,0 +1,48 @@
+name: Stage logs
+description: Files a job's stage captures into the knowledge base and keeps its machine logs as a run artifact
+
+inputs:
+  client-id:
+    required: true
+  private-key:
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - id: kb-app
+      uses: actions/create-github-app-token@v3
+      with:
+        client-id: ${{ inputs.client-id }}
+        private-key: ${{ inputs.private-key }}
+        owner: collod873
+        repositories: Knowledge-Base
+        permission-contents: write
+
+    - if: always()
+      continue-on-error: true
+      shell: bash
+      env:
+        KB_TOKEN: ${{ steps.kb-app.outputs.token }}
+      run: |
+        timeout 120 bash -c 'while pgrep -f "[c]apture[.]py" >/dev/null; do sleep 1; done' || true
+        captured="$HOME/Claude Projects/Knowledge-Base/raw"
+        [ -d "$captured" ] || exit 0
+        kb="$RUNNER_TEMP/knowledge-base"
+        git clone --quiet --depth 1 "https://x-access-token:$KB_TOKEN@github.com/collod873/Knowledge-Base" "$kb"
+        git -C "$kb" config user.name "collod873-machine[bot]"
+        git -C "$kb" config user.email "collod873-machine[bot]@users.noreply.github.com"
+        cp -r "$captured/." "$kb/raw/"
+        git -C "$kb" add raw
+        git -C "$kb" commit --quiet -m "flush: stage captures from $GITHUB_REPOSITORY run $GITHUB_RUN_ID" || exit 0
+        for attempt in 1 2 3; do
+          git -C "$kb" pull --quiet --rebase origin main && git -C "$kb" push --quiet origin HEAD:main && exit 0
+        done
+        exit 1
+
+    - if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: machine-logs
+        path: .git/machine-logs
+        include-hidden-files: true
