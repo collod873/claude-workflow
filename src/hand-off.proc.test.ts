@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { handingOff } from "./scenarios.ts";
+import { HANDED_OFF_PR, handingOff } from "./scenarios.ts";
 import { STOPS, type Stop } from "./stops.ts";
 
 const RED_ON_MAIN = "Red on main after merge";
@@ -163,6 +163,17 @@ describe("hand-off labels the ticket with where its red run went (#835)", () => 
     run();
 
     expect(marked()).toEqual(["811 failed"]);
+  });
+
+  it("names the row it stopped at and links the ticket's open PR when it marks a ticket failed (#851)", () => {
+    const { run, comments } = handingOff({ stoppedAt: STOPS.dirtyTree });
+
+    run();
+
+    const said = comments()[0];
+    expect(said, "a comment on the ticket").toBeDefined();
+    expect(said).toContain(STOPS.dirtyTree);
+    expect(said).toContain(HANDED_OFF_PR);
   });
 });
 

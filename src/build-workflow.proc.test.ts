@@ -3,7 +3,7 @@ import { mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { scratch } from "./scenarios.ts";
+import { scratch, script } from "./scenarios.ts";
 
 const REPO = join(import.meta.dirname, "..");
 const WORKFLOWS = join(REPO, ".github", "workflows");
@@ -209,5 +209,62 @@ describe("every job that spends a model is watched as it goes, read after it end
       expect(watched.stdout).toContain("said: reading the brief");
       expect(watched.status).toBe(3);
     }
+  });
+});
+
+function runOf(step: Step, ticket: string, action: string): string {
+  return (step.run ?? "").replaceAll(/\$\{\{ github\.event\.issue\.number \}\}/g, ticket).replaceAll(/\$\{\{ github\.event\.action \}\}/g, action);
+}
+
+describe("build.yml re-runs an open PR's failed checks instead of building, when the owner reopens a ticket whose PR is open (#851)", () => {
+  it("builds nothing and re-runs the failed checks when the owner reopens a ticket whose PR is open, but still builds when it has none", () => {
+    const { job } = workflow();
+    const start = stageStep(job, "start");
+
+    const withOpenPr = scratch("reopen-open-");
+    const openCalls = join(withOpenPr, "calls");
+    script(join(withOpenPr, "bin", "mark"), "exit 0\n");
+    script(join(withOpenPr, "bin", "start"), `printf 'start called\\n' >>"${openCalls}"\n`);
+    script(
+      join(withOpenPr, "bin", "gh"),
+      [
+        `printf '%s\\n' "$*" >>"${openCalls}"`,
+        'case "$*" in',
+        '  *"pr view ticket/9"*) printf \'OPEN\\n\' ;;',
+        `  *"pr checks ticket/9"*) printf '%s\\n' '${JSON.stringify([{ name: "check", bucket: "fail", link: "https://github.com/collod873/claude-workflow/actions/runs/555/job/777" }])}' ;;`,
+        "  *) exit 0 ;;",
+        "esac",
+        "",
+      ].join("\n"),
+    );
+    const opened = spawnSync("bash", ["-e", "-c", runOf(start, "9", "reopened")], {
+      cwd: withOpenPr,
+      env: { ...process.env, PATH: `${join(withOpenPr, "bin")}:${process.env.PATH}` },
+      encoding: "utf8",
+    });
+
+    expect(opened.status, opened.stderr).toBe(0);
+    const openLog = readFileSync(openCalls, "utf8");
+    expect(openLog).not.toContain("start called");
+    expect(openLog).toMatch(/rerun/i);
+
+    const withNoPr = scratch("reopen-none-");
+    const noCalls = join(withNoPr, "calls");
+    script(join(withNoPr, "bin", "mark"), "exit 0\n");
+    script(join(withNoPr, "bin", "start"), `printf 'start called\\n' >>"${noCalls}"\n`);
+    script(
+      join(withNoPr, "bin", "gh"),
+      [`printf '%s\\n' "$*" >>"${noCalls}"`, 'case "$*" in', '  *"pr view ticket/9"*) exit 1 ;;', '  *"pr checks ticket/9"*) exit 1 ;;', "  *) exit 0 ;;", "esac", ""].join(
+        "\n",
+      ),
+    );
+    const none = spawnSync("bash", ["-e", "-c", runOf(start, "9", "reopened")], {
+      cwd: withNoPr,
+      env: { ...process.env, PATH: `${join(withNoPr, "bin")}:${process.env.PATH}` },
+      encoding: "utf8",
+    });
+
+    expect(none.status, none.stderr).toBe(0);
+    expect(readFileSync(noCalls, "utf8")).toContain("start called");
   });
 });
