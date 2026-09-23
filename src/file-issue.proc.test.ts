@@ -85,4 +85,17 @@ describe("bin/file-issue files a ticket, or refuses it and files nothing (#662)"
     expect(run(NOTE_CALL)).toMatchObject({ status: 1, stderr: "the body carries no '## Why', so nothing says why this was worth keeping\n" });
     expect(ghSaw(repo)).toEqual([]);
   });
+
+  it("prints its usage line to stdout and exits 0 for help, filing nothing", () => {
+    const { repo, run } = filing({ gh: RECORDS, body: wellFormedTicket });
+
+    const result = run(["--help"]);
+
+    expect(result).toMatchObject({
+      status: 0,
+      stdout: "file-issue: usage: file-issue ticket|note --title <title> --body-file <path>\n",
+      stderr: "",
+    });
+    expect(ghSaw(repo)).toEqual([]);
+  });
 });
