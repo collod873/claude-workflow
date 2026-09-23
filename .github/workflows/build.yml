@@ -2,14 +2,14 @@ name: Build
 
 "on":
   issues:
-    types: [opened]
+    types: [opened, reopened]
 
 permissions:
   contents: read
 
 jobs:
   build:
-    if: ${{ !contains(github.event.issue.labels.*.name, 'note') }}
+    if: ${{ github.event.action == 'opened' && !contains(github.event.issue.labels.*.name, 'note') }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
@@ -61,3 +61,45 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
         run: bin/save ${{ github.event.issue.number }}
+
+      - if: failure()
+        timeout-minutes: 30
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: node src/hand-off.ts ${{ github.event.issue.number }}
+
+  fix:
+    if: ${{ github.event.action == 'reopened' && !contains(github.event.issue.labels.*.name, 'note') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ticket/${{ github.event.issue.number }}
+          token: ${{ steps.app.outputs.token }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - run: npm ci
+
+      - run: npm install --global @anthropic-ai/claude-code
+
+      - run: |
+          git config user.name "core-app[bot]"
+          git config user.email "core-app[bot]@users.noreply.github.com"
+
+      - timeout-minutes: 30
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: node src/hand-off.ts ${{ github.event.issue.number }} 'Red on main after merge'
