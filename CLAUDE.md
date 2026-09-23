@@ -10,7 +10,7 @@
 - New code is a part in `src/parts.ts`, or reachable from a `bin/` script. `bin/check`
   runs knip with no baseline; a test importing a thing is not evidence anything runs it.
   Wire it to a caller or delete it.
-- `bin/check` is the only gate, run by `.husky/pre-push` and every PR. Nothing runs it mid-session:
-  run it by hand.
+- `bin/check` is the full gate: pre-push and every PR. Mid-session, run `~/bin/check`;
+  check-gate waits on it.
 - This repo holds no session hooks: every hook that fires in a session lives in
   `collod873/agent-hooks`.
