@@ -40,12 +40,17 @@ function written(gh: Gh, args: string[]): { refusals: string[]; said: string } {
 
 export const commentOnTicket = (ticket: string, text: string, gh: Gh) => written(gh, ["issue", "comment", ticket, "--body", text]);
 
+const TRUSTED = new Set(["collod873", "collod873-machine"]);
+
+const trusted = (said: unknown): said is { author: string; body: string } =>
+  typeof said === "object" && said !== null && "author" in said && "body" in said && typeof said.body === "string" && TRUSTED.has(said.author as string);
+
 export function commentsOn(on: string[], gh: Gh): string[] | undefined {
-  const got = gh([...on, "--json", "comments", "--jq", "[.comments[].body]"]);
+  const got = gh([...on, "--json", "comments", "--jq", "[.comments[] | {author: .author.login, body}]"]);
   if (got.status !== 0) return undefined;
   try {
     const parsed: unknown = JSON.parse(got.stdout);
-    return Array.isArray(parsed) ? parsed.filter((said): said is string => typeof said === "string") : undefined;
+    return Array.isArray(parsed) ? parsed.filter(trusted).map((said) => said.body) : undefined;
   } catch {
     return undefined;
   }
