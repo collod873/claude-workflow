@@ -54,17 +54,6 @@ _Avoid_: prod, release, pinned version
 
 ### The work
 
-**Idea**:
-The owner's own words about work that might be worth doing, filed as an issue and never edited
-afterward. It is the only thing in the system a human originates, and it is recorded rather than
-improved: the raw wording is what every later interpretation is checked against.
-_Avoid_: request, feature, suggestion, ask
-
-**Bug**:
-A report of something that already broke. The distinction from an Idea is not size but tense: an
-idea is an opinion about what would be better, a bug is a thing that happened.
-_Avoid_: defect, issue, problem, regression
-
 **Spec**:
 The whole statement of a piece of work, published as a `PRD:` issue. One spec, one issue; a spec
 that lives in a file or a conversation has not been published yet.
@@ -74,6 +63,11 @@ _Avoid_: PRD document, requirements doc, brief
 The unit the machine builds: an issue carrying `## Why`, acceptance criteria and file claims.
 Filing one starts its build; a note never starts one.
 _Avoid_: issue, sub-issue, card, item
+
+**Note**:
+An issue labelled `note`: filed to be kept, never built. It carries a `## Why` saying why it was
+worth keeping, and the build skips it. Every other issue the owner opens is built as a ticket.
+_Avoid_: idea, bug, backlog item, memo
 
 **Stage**:
 One agent process in a pipeline run, with no memory of the ones before it. Named separately from
