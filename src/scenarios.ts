@@ -34,6 +34,10 @@ const SRC = import.meta.dirname;
 const BIN = join(SRC, "..", "bin");
 const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_") && !name.startsWith("VITEST")));
 const OWNER = "collod873";
+const MACHINE = "collod873-machine";
+
+export type Said = string | { author: string; body: string };
+const authored = (comments: Said[]) => JSON.stringify(comments.map((said) => (typeof said === "string" ? { author: MACHINE, body: said } : said)));
 
 export interface StepOutcome {
   outcome: string;
@@ -679,11 +683,11 @@ export function reviewing({
   branch = "ticket/810",
   verdict = { verdict: "match", gaps: [] } as { verdict: string; gaps: string[]; later?: unknown[] },
   diff = fileDiff("src/reviewer.ts", "export const reviewed = 1;"),
-  turns = [] as string[],
-  onPr = [] as string[],
+  turns = [] as Said[],
+  onPr = [] as Said[],
   repair = undefined as string | undefined,
   body = REVIEWED_TICKET,
-}: { branch?: string; verdict?: { verdict: string; gaps: string[]; later?: unknown[] }; diff?: string; turns?: string[]; onPr?: string[]; repair?: string; body?: string } = {}) {
+}: { branch?: string; verdict?: { verdict: string; gaps: string[]; later?: unknown[] }; diff?: string; turns?: Said[]; onPr?: Said[]; repair?: string; body?: string } = {}) {
   const root = scratch("review-");
   const argvDir = join(root, "gh-argv");
   const handed = join(root, "claude-stdin");
@@ -701,8 +705,8 @@ export function reviewing({
   }
   plant(root, "pr.diff", diff);
   plant(root, "ticket.md", body);
-  plant(root, "turns.json", JSON.stringify(turns));
-  plant(root, "on-pr.json", JSON.stringify(onPr));
+  plant(root, "turns.json", authored(turns));
+  plant(root, "on-pr.json", authored(onPr));
   plant(root, "answer.json", `${JSON.stringify({ type: "result", subtype: "success", is_error: false, structured_output: verdict })}\n`);
   script(
     join(root, "bin", "gh"),
@@ -756,8 +760,8 @@ const FIXED_TICKET = [
 export function fixing({
   body = FIXED_TICKET,
   answer = { outcome: "close", reason: "the ticket asks for a stage the ruling has since dropped" } as { outcome: string; reason: string; body?: string },
-  turns = [] as string[],
-  onPr = [] as string[] | undefined,
+  turns = [] as Said[],
+  onPr = [] as Said[] | undefined,
   logged = {} as Record<string, string>,
   claude = "",
   npx = CHECK_RED,
@@ -774,8 +778,8 @@ export function fixing({
   git(session, "commit", "--quiet", "--allow-empty", "-m", "Build #811 against its failing tests");
   for (const [name, text] of Object.entries(logged)) plant(session, `.git/machine-logs/${name}`, text);
   plant(root, "ticket.md", body);
-  plant(root, "turns.json", JSON.stringify(turns));
-  plant(root, "on-pr.json", JSON.stringify(onPr ?? []));
+  plant(root, "turns.json", authored(turns));
+  plant(root, "on-pr.json", authored(onPr ?? []));
   plant(root, "failed-check.log", failedCheck ?? "");
   const result = { type: "result", subtype: "success", is_error: false, session_id: "sess-fix", structured_output: answer };
   plant(root, "answer.jsonl", `${JSON.stringify({ type: "system", session_id: "sess-fix" })}\n${JSON.stringify(result)}\n`);
