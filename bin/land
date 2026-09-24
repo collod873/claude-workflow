@@ -23,6 +23,21 @@ call() {
 
 call "git fetch" git fetch --quiet origin main
 
+if [[ -d $(git rev-parse --git-path rebase-merge) || -d $(git rev-parse --git-path rebase-apply) ]]; then
+  printf 'land: a rebase is already in progress here, so nothing landed; finish it or abort it first\n' >&2
+  exit 1
+fi
+
+if [[ -n $(git rev-list origin/main..HEAD) ]] && ! git merge-base --is-ancestor origin/main HEAD; then
+  if ! git rebase --quiet --autostash origin/main >/dev/null 2>"$err"; then
+    { printf -- '--- git rebase origin/main ---\n'; cat "$err"; } >>"$log"
+    git rebase --abort >/dev/null 2>&1
+    printf 'land: HEAD does not rebase cleanly onto origin/main, so nothing landed; run git rebase origin/main, resolve it, and land again\n' >&2
+    exit 1
+  fi
+  head=$(git rev-parse HEAD)
+fi
+
 if [[ -z $(git rev-list origin/main..HEAD) ]]; then
   printf 'Nothing to land: HEAD is already on origin/main.\n'
   exit 0
@@ -62,14 +77,34 @@ url=$said
 gh pr merge "$branch" --auto --merge --match-head-commit "$head" >/dev/null 2>&1 ||
   call "gh pr merge" gh pr merge "$branch" --merge --match-head-commit "$head"
 
-for (( waited = 0; ; waited += 2 )); do
+verdict='if .state == "CLOSED" then "closed" elif .mergeStateStatus == "DIRTY" then "conflicts" else (first(.statusCheckRollup[]? | select((.conclusion // .state) | IN("FAILURE", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE", "ERROR")) | .name // .context) | "failed \(.)") end'
+
+for (( waited = 0; ; waited += pause )); do
   call "git fetch" git fetch --quiet origin main
   git merge-base --is-ancestor "$head" origin/main && break
-  if (( waited >= ${LAND_WAIT_SECONDS:-20} )); then
+  read -r state check < <(gh pr view "$branch" --json state,mergeStateStatus,statusCheckRollup --jq "$verdict" 2>/dev/null)
+  case ${state:-} in
+    closed)
+      printf 'land: %s was closed without merging\n' "$url" >&2
+      exit 1
+      ;;
+    conflicts)
+      gh pr close "$branch" --delete-branch >/dev/null 2>&1
+      printf 'land: %s conflicts with main; closed it, so land again to rebase\n' "$url" >&2
+      exit 1
+      ;;
+    failed)
+      gh pr close "$branch" --delete-branch >/dev/null 2>&1
+      printf 'land: %s failed on %s; closed it, so fix it and land again\n' "$check" "$url" >&2
+      exit 1
+      ;;
+  esac
+  if (( waited >= ${LAND_WAIT_SECONDS:-1800} )); then
     printf 'Merges when its checks pass: %s\n' "$url"
     exit 0
   fi
-  sleep 2
+  pause=$(( waited < 60 ? 2 : 15 ))
+  sleep "$pause"
 done
 
 if [[ $(git rev-parse HEAD) == "$head" ]] && git merge --quiet --ff-only origin/main >/dev/null 2>&1; then

@@ -1,0 +1,63 @@
+#!/bin/bash
+set -uo pipefail
+
+common=$(git rev-parse --path-format=absolute --git-common-dir) || exit 1
+main=${common%/.git}
+cd "$main" || exit 1
+
+stuck='.[] | select((.headRefName | startswith("land/")) and (.mergeStateStatus == "DIRTY" or any(.statusCheckRollup[]?; (.conclusion // .state) | IN("FAILURE", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE", "ERROR")))) | "#\(.number)"'
+prs=$(mktemp)
+gh pr list --state open --json number,headRefName,mergeStateStatus,statusCheckRollup --jq "$stuck" >"$prs" 2>/dev/null &
+
+idle=()
+live=0
+at=""
+held=""
+while read -r key value; do
+  case $key in
+    worktree) at=$value held="" ;;
+    locked) held=$value ;;
+    "")
+      if [[ $at == "$main/.claude/worktrees/"* ]]; then
+        if [[ $held =~ pid\ ([0-9]+) ]] && kill -0 "${BASH_REMATCH[1]}" 2>/dev/null; then
+          live=$(( live + 1 ))
+        else
+          idle+=("$at")
+        fi
+      fi
+      at=""
+      ;;
+  esac
+done < <(git worktree list --porcelain; printf '\n')
+
+was=$(git rev-parse HEAD)
+if ! git pull --ff-only --quiet origin main >/dev/null 2>&1; then
+  printf 'session: the main checkout could not fast-forward to origin/main; git -C "%s" status shows why\n' "$main"
+elif ! git diff --quiet "$was" HEAD -- package-lock.json; then
+  if (( live > 0 )); then
+    printf 'session: package-lock.json moved while another session is open, so node_modules was not reinstalled; run npm ci in the main checkout once none is\n'
+  elif ! npm ci --prefer-offline --no-audit --no-fund >/dev/null 2>&1; then
+    printf 'session: npm ci failed in the main checkout, so every worktree shares stale node_modules\n'
+  fi
+fi
+
+left=()
+for at in "${idle[@]}"; do
+  [[ -n $(git -C "$at" status --porcelain 2>/dev/null) || -n $(git -C "$at" rev-list origin/main..HEAD 2>/dev/null) ]] && left+=("${at##*/}")
+done
+
+if (( ${#left[@]} > 0 )); then
+  printf -v named '%s, ' "${left[@]:0:5}"
+  (( ${#left[@]} > 5 )) && named="${named}and $(( ${#left[@]} - 5 )) more, "
+  printf 'session: unlanded work left in %s; claude -w <name> picks one up\n' "${named%, }"
+fi
+
+wait
+mapfile -t failing <"$prs"
+rm -f "$prs"
+if (( ${#failing[@]} > 0 )); then
+  printf -v named '%s, ' "${failing[@]:0:8}"
+  printf 'session: land PRs %s failed a check or conflict with main; ask Claude to look\n' "${named%, }"
+fi
+
+exec claude "$@" --worktree

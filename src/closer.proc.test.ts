@@ -140,3 +140,34 @@ describe("bin/close brings ticket PRs left behind by a merge up to date, so auto
     expect(commented).toContain("merge conflicts");
   });
 });
+
+describe("bin/close brings land PRs left behind by a merge up to date too, since the ruleset holds them the same way (#869)", () => {
+  it("brings an open land PR up to date, as the App", () => {
+    const { calls, tokens, run } = closing({ ticket: "819", behindPrs: [{ number: "904", ticket: "", branch: "land/0123456789ab" }] });
+
+    expect(run().status).toBe(0);
+    const updated = calls().findIndex((call) => call.startsWith("pr\nupdate-branch\n904"));
+    expect(updated, "the land PR left behind by the merge is brought up to date").toBeGreaterThanOrEqual(0);
+    expect(tokens()[updated]).toBe("app");
+  });
+
+  it("names on the land PR itself the reason it could not be brought up to date, since it has no ticket", () => {
+    const { calls, run } = closing({
+      ticket: "819",
+      behindPrs: [{ number: "905", ticket: "", branch: "land/ba9876543210", refused: "GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts." }],
+    });
+
+    expect(run().status).toBe(0);
+    const commented = calls().find((call) => call.startsWith("pr\ncomment\n905\n"));
+    expect(commented, "the land PR is told why").toBeDefined();
+    expect(commented).toContain("merge conflicts");
+    expect(calls().some((call) => call.startsWith("issue\ncomment\n\n"))).toBe(false);
+  });
+
+  it("leaves alone a PR from a branch the machine did not open", () => {
+    const { calls, run } = closing({ ticket: "819", behindPrs: [{ number: "906", ticket: "", branch: "dependabot/npm_and_yarn/vitest-5.0.0" }] });
+
+    expect(run().status).toBe(0);
+    expect(calls().some((call) => call.includes("\n906"))).toBe(false);
+  });
+});

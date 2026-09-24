@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runCheck } from "./check-runner.ts";
-import { commentOnTicket } from "./post.ts";
+import { commentOnPr, commentOnTicket } from "./post.ts";
 import { totalOutside } from "./reads-outside-brief.ts";
 import { exitFor, stoppedAt, type Stop } from "./stops.ts";
 import { checks, quoted } from "./ticket-shape.ts";
@@ -12,6 +12,7 @@ const MERGED = /^Merge pull request #(\d+) from \S+?(?:\/ticket\/(\d+))?$/;
 const BUILDS = /^Builds #(\d+)[ \t]*$/m;
 const STAGE_LABELS = "1-defining,2-building,3-checking,4-reviewing,5-merging,fixing,failed";
 const TICKET_BRANCH = /^ticket\/(\d+)$/;
+const MACHINE_BRANCH = /^(ticket|land)\//;
 
 const run = (command: string, args: string[]) => spawnSync(command, args, { encoding: "utf8", maxBuffer: Infinity });
 const gh = (args: string[]) => run("gh", args);
@@ -153,7 +154,7 @@ function behindPrs(): { number: string; headRefName: string }[] {
   if (listed.status !== 0) return [];
   try {
     return (JSON.parse(listed.stdout) as { number: number; headRefName: string; mergeStateStatus: string }[])
-      .filter((pr) => pr.mergeStateStatus === "BEHIND" || pr.mergeStateStatus === "DIRTY")
+      .filter((pr) => MACHINE_BRANCH.test(pr.headRefName) && (pr.mergeStateStatus === "BEHIND" || pr.mergeStateStatus === "DIRTY"))
       .map((pr) => ({ number: String(pr.number), headRefName: pr.headRefName }));
   } catch {
     return [];
@@ -162,13 +163,12 @@ function behindPrs(): { number: string; headRefName: string }[] {
 
 function bringUpToDate(): void {
   for (const { number, headRefName } of behindPrs()) {
-    const ticket = TICKET_BRANCH.exec(headRefName)?.[1];
-    if (ticket === undefined) continue;
     const updated = gh(["pr", "update-branch", number]);
-    if (updated.status !== 0) {
-      const reason = (updated.stderr || updated.stdout).trim().split("\n")[0];
-      commentOnTicket(ticket, `#${ticket}'s PR #${number} could not be brought up to date with main: ${reason}`, gh);
-    }
+    if (updated.status === 0) continue;
+    const reason = (updated.stderr || updated.stdout).trim().split("\n")[0];
+    const ticket = TICKET_BRANCH.exec(headRefName)?.[1];
+    if (ticket === undefined) commentOnPr(number, `PR #${number} could not be brought up to date with main: ${reason}`, gh);
+    else commentOnTicket(ticket, `#${ticket}'s PR #${number} could not be brought up to date with main: ${reason}`, gh);
   }
 }
 
