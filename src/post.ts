@@ -40,6 +40,8 @@ function written(gh: Gh, args: string[]): { refusals: string[]; said: string } {
 
 export const commentOnTicket = (ticket: string, text: string, gh: Gh) => written(gh, ["issue", "comment", ticket, "--body", text]);
 
+export const commentOnPr = (pr: string, text: string, gh: Gh) => written(gh, ["pr", "comment", pr, "--body", text]);
+
 export function openPr(ticket: string, gh: Gh): string | undefined {
   const got = gh(["pr", "view", `ticket/${ticket}`, "--json", "state,url", "--jq", 'select(.state == "OPEN") | .url']);
   const url = got.status === 0 ? got.stdout.trim() : "";

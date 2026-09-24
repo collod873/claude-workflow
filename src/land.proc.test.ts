@@ -29,12 +29,24 @@ function git(cwd: string, ...args: string[]): string {
   return execFileSync("git", args, { cwd, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 }
 
-function recordingGh(root: string) {
+const PR = "https://github.com/collod873/claude-workflow/pull/1";
+
+function recordingGh(root: string, prSays: string) {
   const dir = join(root, "gh");
   mkdirSync(dir);
   const path = join(dir, "gh");
   const log = join(dir, "argv.jsonl");
-  writeFileSync(path, `#!/bin/bash\npython3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "$@" >> ${JSON.stringify(log)}\n`);
+  writeFileSync(
+    path,
+    [
+      "#!/bin/bash",
+      `python3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "$@" >> ${JSON.stringify(log)}`,
+      `[[ "$1 $2" == "pr create" ]] && echo ${PR}`,
+      `[[ "$1 $2" == "pr view" ]] && printf '%s\\n' ${JSON.stringify(prSays)}`,
+      "exit 0",
+      "",
+    ].join("\n"),
+  );
   chmodSync(path, 0o755);
   const calls = (): string[][] => {
     try {
@@ -48,7 +60,7 @@ function recordingGh(root: string) {
 
 function sessionAheadOfMain(
   commits: number,
-  { githubMerges, prIsAlreadyClean = false }: { githubMerges: "at once" | "after a moment" | "never"; prIsAlreadyClean?: boolean },
+  { githubMerges, prIsAlreadyClean = false, prSays = "" }: { githubMerges: "at once" | "after a moment" | "never"; prIsAlreadyClean?: boolean; prSays?: string },
 ) {
   const root = mkdtempSync(join(tmpdir(), "land-"));
   onTestFinished(() => rmSync(root, { recursive: true, force: true }));
@@ -63,7 +75,7 @@ function sessionAheadOfMain(
     writeFileSync(join(remote, "hooks", "post-receive"), hook);
     chmodSync(join(remote, "hooks", "post-receive"), 0o755);
   }
-  const gh = recordingGh(root);
+  const gh = recordingGh(root, prSays);
   const githubRefusingAutoMerge = join(root, "refuses-auto-merge");
   execFileSync("mkdir", [githubRefusingAutoMerge]);
   writeFileSync(
@@ -79,7 +91,19 @@ function sessionAheadOfMain(
       env: { ...env, PATH: `${ghDir}:${process.env.PATH}`, LAND_WAIT_SECONDS: "2" },
     });
   const head = git(session, "rev-parse", "HEAD");
-  return { remote, session, head, branch: `land/${head.slice(0, 12)}`, run, calls: gh.calls };
+  return { root, remote, session, head, branch: `land/${head.slice(0, 12)}`, run, calls: gh.calls };
+}
+
+function landedElsewhere(root: string, remote: string, file: string, content: string): string {
+  const other = join(root, "other");
+  git(root, "clone", "--quiet", remote, other);
+  git(other, "config", "user.email", "other@test");
+  git(other, "config", "user.name", "other");
+  writeFileSync(join(other, file), content);
+  git(other, "add", file);
+  git(other, "commit", "--quiet", "-m", "another session's change");
+  git(other, "push", "--quiet", "origin", "main");
+  return git(other, "rev-parse", "HEAD");
 }
 
 describe("bin/land turns a session's commits into a PR that merges itself", () => {
@@ -124,6 +148,68 @@ describe("bin/land turns a session's commits into a PR that merges itself", () =
     expect(result.status, result.stderr).toBe(0);
     expect(git(session, "rev-parse", "HEAD")).toBe(head);
     expect(result.stdout).toContain("Merges when its checks pass");
+  });
+
+  it("rebases the session's commits onto a main that moved since the session started, and lands them (#869)", () => {
+    const { root, remote, session, run, calls } = sessionAheadOfMain(1, { githubMerges: "at once" });
+    const moved = landedElsewhere(root, remote, "theirs.txt", "theirs\n");
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    const rebased = git(remote, "rev-parse", "main^2");
+    expect(git(remote, "rev-parse", "main^2^")).toBe(moved);
+    expect(calls()).toContainEqual(["pr", "merge", `land/${rebased.slice(0, 12)}`, "--auto", "--merge", "--match-head-commit", rebased]);
+    expect(git(session, "rev-parse", "HEAD")).toBe(git(remote, "rev-parse", "main"));
+  });
+
+  it("lands nothing and says to rebase by hand when the session's commits conflict with a main that moved (#869)", () => {
+    const { root, remote, session, run, calls } = sessionAheadOfMain(0, { githubMerges: "at once" });
+    writeFileSync(join(session, "shared.txt"), "mine\n");
+    git(session, "add", "shared.txt");
+    git(session, "commit", "--quiet", "-m", "this session's change");
+    const head = git(session, "rev-parse", "HEAD");
+    landedElsewhere(root, remote, "shared.txt", "theirs\n");
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toMatch(/^land: [^\n]*git rebase origin\/main[^\n]*\n$/);
+    expect(git(session, "rev-parse", "HEAD")).toBe(head);
+    expect(git(session, "status", "--porcelain")).toBe("");
+    expect(existsSync(join(session, ".git", "rebase-merge"))).toBe(false);
+    expect(git(remote, "for-each-ref", "--format=%(refname)")).toBe("refs/heads/main");
+    expect(calls()).toEqual([]);
+  });
+
+  it("lands nothing, and leaves it be, while the session is partway through a rebase of its own (#869)", () => {
+    const { root, remote, session, run, calls } = sessionAheadOfMain(1, { githubMerges: "at once" });
+    landedElsewhere(root, remote, "theirs.txt", "theirs\n");
+    mkdirSync(join(session, ".git", "rebase-merge"));
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toBe("land: a rebase is already in progress here, so nothing landed; finish it or abort it first\n");
+    expect(existsSync(join(session, ".git", "rebase-merge"))).toBe(true);
+    expect(calls()).toEqual([]);
+  });
+
+  it.each([
+    ["a required check failed", "failed check", /^land: check failed on \S+; closed it, so fix it and land again\n$/],
+    ["main moved under it with a conflict", "conflicts", /^land: \S+ conflicts with main; closed it, so land again to rebase\n$/],
+    ["someone closed it", "closed", /^land: \S+ was closed without merging\n$/],
+  ])("waits no further, says why and exits non-zero when %s (#869)", (_, prSays, said) => {
+    const { session, head, branch, run, calls } = sessionAheadOfMain(1, { githubMerges: "never", prSays });
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toMatch(said);
+    expect(git(session, "rev-parse", "HEAD")).toBe(head);
+    expect(calls().some((call) => call[0] === "pr" && call[1] === "close" && call[2] === branch)).toBe(prSays !== "closed");
   });
 
   it("keeps a failing call's own output in a log and says one line naming it", () => {

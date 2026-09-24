@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parts, type Part } from "./parts.ts";
-import { LINE_LIMIT, MOST_LINES, authoring, briefing, building, checkRepo, checking, closing, coveredByCheck, execute, filing, fixing, handingOff, landSession, marking, misshapenTicket, overLimit, reviewing, saving, scratch, script, starting, wellFormedNote, wellFormedTicket, type Run } from "./scenarios.ts";
+import { LINE_LIMIT, MOST_LINES, authoring, briefing, building, checkRepo, checking, closing, coveredByCheck, execute, filing, fixing, handingOff, landSession, launching, marking, misshapenTicket, overLimit, reviewing, saving, scratch, script, starting, wellFormedNote, wellFormedTicket, type Run } from "./scenarios.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
 const NOISE = "a line a tool prints that nobody needed to read\n".repeat(40).trim();
@@ -27,6 +27,10 @@ const scenarios: Record<string, Scenario[]> = {
     { label: "with gh pr create failing", run: () => landSession({ gh: `[[ $2 == create ]] || exit 0\ncat >&2 <<'NOISE'\n${NOISE}\nNOISE\nexit 1\n` }).run() },
     { label: "with the push refused", run: () => landSession({ gh: "exit 0\n", remoteRefuses: NOISE }).run() },
     { label: "refusing an em dash in a commit message", run: () => landSession({ gh: "exit 0\n", messages: ["change \u2014 dashed"] }).run() },
+  ],
+  "bin/session": [
+    { label: "with every reminder due", run: () => launching({ diverged: true, left: { "bright-fox": "unlanded" }, gh: `printf '#${"1".repeat(6)}\\n%.0s' {1..40}\nexit 0\n` }).run() },
+    { label: "with claude refusing to start", run: () => launching({ claude: "printf 'claude refused to start\\n' >&2\nexit 1\n" }).run() },
   ],
   "src/check-runner.ts": [
     { label: "on a ticket whose check is red", run: () => checking("exit 1\n").run() },

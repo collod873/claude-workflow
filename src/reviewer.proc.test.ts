@@ -99,6 +99,7 @@ interface CheckWorkflow {
 const checkWorkflow = () => parse(readFileSync(WORKFLOW, "utf8")) as CheckWorkflow;
 const stepRunning = (steps: CheckStep[], command: string) => steps.find((step) => (step.run ?? "").includes(command)) as CheckStep;
 const JUDGED = ["vitest.config.ts", "src/growth-limits.proc.test.ts", "bin/review"];
+const outsideAnyRepo = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_")));
 
 describe("check.yml judges a PR with main's reviewer and main's test count, whatever the PR changed (#652)", () => {
   it("runs from main's copy of itself and refuses a fork before any of its code runs", () => {
@@ -126,7 +127,7 @@ describe("check.yml judges a PR with main's reviewer and main's test count, what
     for (const path of JUDGED) plant(session, path, "the PR's copy\n");
     git(session, "commit", "--quiet", "-am", "the PR");
     const runnerTemp = scratch("runner-");
-    const run = (step: CheckStep) => spawnSync("bash", ["-e", "-c", step.run ?? ""], { cwd: session, env: { ...process.env, RUNNER_TEMP: runnerTemp }, encoding: "utf8" });
+    const run = (step: CheckStep) => spawnSync("bash", ["-e", "-c", step.run ?? ""], { cwd: session, env: { ...outsideAnyRepo, RUNNER_TEMP: runnerTemp }, encoding: "utf8" });
 
     expect(run(stepRunning(jobs.check.steps, "git checkout origin/main --")).status).toBe(0);
     expect(run(stepRunning(jobs.review.steps, "git worktree add")).status).toBe(0);
