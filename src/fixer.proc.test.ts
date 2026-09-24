@@ -65,6 +65,17 @@ describe("bin/fix clears a stuck ticket with one fixer turn (#811)", () => {
     expect(branches()).toContain("ticket/811");
   });
 
+  it("never closes the ticket unbuilt when the fixer's own model call failed, keeping it open with a comment naming the error (#862)", () => {
+    const { run, closes, ticketComments, branches } = fixing({ claude: "printf 'the model overloaded\\n' >&2\nexit 1\n" });
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(closes()).toEqual([]);
+    expect(ticketComments().at(-1)).toContain("the model overloaded");
+    expect(branches()).toContain("ticket/811");
+  });
+
   it("hands the model the Why, the failure, the diff and the reviewer's gaps, and commits a code fix on the ticket branch", () => {
     const { run, handed, committed, closes } = fixing({
       answer: { outcome: "code", reason: "the export was never renamed" },
