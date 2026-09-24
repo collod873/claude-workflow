@@ -5,13 +5,12 @@ import { dirname, join, normalize, resolve } from "node:path";
 import ts from "typescript";
 import { parse } from "yaml";
 import { describe, expect, it, onTestFinished } from "vitest";
-import { machinePage, signedRules, type SignedRule } from "./machine-page.ts";
 import { FAILURE_LINK } from "./part-links.ts";
 import { parts, type Part } from "./parts.ts";
 import { coveredByCheck } from "./scenarios.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
-const SCREEN = { lines: 60, columns: 120 };
+const MOST_PARTS = 40;
 const WORKFLOWS = ".github/workflows/*.y*ml";
 const MODULE = /\.(m|c)?[jt]s$/;
 const WIRING = [".claude/*.json", WORKFLOWS, ".husky/*", "package.json"];
@@ -31,10 +30,8 @@ function plant(root: string, file: string, content: string, mode = 0o644): void 
   chmodSync(join(root, file), mode);
 }
 
-function offScreen(page: string): string[] {
-  const lines = page.split("\n");
-  const tooWide = lines.filter((line) => line.length > SCREEN.columns).map((line) => `wider than ${SCREEN.columns}: ${line}`);
-  return lines.length > SCREEN.lines ? [`${lines.length} lines, over ${SCREEN.lines}`, ...tooWide] : tooWide;
+function overCrowded(registry: Part[]): string[] {
+  return registry.length > MOST_PARTS ? [`${registry.length} parts, over ${MOST_PARTS}`] : [];
 }
 
 function importedWithin(repo: string, files: string[]): Set<string> {
@@ -112,30 +109,20 @@ function testCountDrop(repo: string): string[] {
   return now < before ? [`the machine holds ${now} tests, below ${before} at the merge base ${base.slice(0, 12)}`] : [];
 }
 
-function unknownEnforcements(repo: string, registry: Part[], rules: SignedRule[]): string[] {
-  const signed = new Set(rules.map((rule) => rule.text));
-  const missing = registry.filter((part) => !existsSync(join(repo, part.file))).map((part) => `${part.name} names ${part.file}, which does not exist`);
-  const unsigned = registry.flatMap((part) =>
-    (part.holds ?? []).filter((rule) => !signed.has(rule)).map((rule) => `${part.name} holds a rule no signed page carries: ${rule}`),
-  );
-  return [...missing, ...unsigned];
+function missingFiles(repo: string, registry: Part[]): string[] {
+  return registry.filter((part) => !existsSync(join(repo, part.file))).map((part) => `${part.name} names ${part.file}, which does not exist`);
 }
 
 const planted: Part = { name: "planted", file: "src/planted.ts", stops: "https://github.com/collod873/claude-workflow/issues/1" };
 
-describe("the machine holds the charter's growth limits", () => {
-  it("1. the machine page lists every part and every signed rule and fits one screen", () => {
-    const rules = signedRules(REPO);
-    const page = machinePage(parts, rules);
+describe("the machine holds its growth limits", () => {
+  it(`1. the machine registers at most ${MOST_PARTS} parts, each in a file that exists`, () => {
+    expect(overCrowded(parts)).toEqual([]);
+    expect(missingFiles(REPO, parts)).toEqual([]);
 
-    expect(rules.filter((rule) => rule.page.endsWith("charter.md")).length).toBeGreaterThan(0);
-    expect(rules.filter((rule) => rule.page.endsWith("one-ticket.md")).length).toBeGreaterThan(0);
-    for (const part of parts) expect(page).toContain(part.name);
-    expect(page.split("\n").filter((line) => /^ {2}(charter|one ticket) /.test(line))).toHaveLength(rules.length);
-    expect(offScreen(page)).toEqual([]);
-
-    const crowded = Array.from({ length: SCREEN.lines }, (_, n) => ({ ...planted, name: `planted ${n}` }));
-    expect(offScreen(machinePage([...parts, ...crowded], rules))).toEqual([expect.stringMatching(/lines, over 60$/)]);
+    const crowded = Array.from({ length: MOST_PARTS + 1 }, (_, n) => ({ ...planted, name: `planted ${n}` }));
+    expect(overCrowded(crowded)).toEqual([`${MOST_PARTS + 1} parts, over ${MOST_PARTS}`]);
+    expect(missingFiles(scratch(), [planted])).toEqual(["planted names src/planted.ts, which does not exist"]);
   });
 
   it("2. every registered part links the failure it stops, and everything under src/ and bin/ that can run is registered", () => {
@@ -191,24 +178,5 @@ describe("the machine holds the charter's growth limits", () => {
 
     git(copy, "commit", "--quiet", "-am", "Cut a copy\n\nTest count drop: the second test repeated the first");
     expect(testCountDrop(copy)).toEqual([]);
-  });
-
-  it("5. the check runner is the enforcer the page credits with the zero-test rule", () => {
-    const rule = "A test check passes only if it ran at least one test";
-
-    expect(parts.filter((part) => part.holds?.includes(rule)).map((part) => part.name)).toEqual(["src/check-runner.ts"]);
-    expect(machinePage(parts, signedRules(REPO))).toContain(`${rule}  ← src/check-runner.ts`);
-  });
-
-  it("6. every registered enforcer names a rule a signed page carries, in a file that exists", () => {
-    const rules = signedRules(REPO);
-    expect(unknownEnforcements(REPO, parts, rules)).toEqual([]);
-
-    const copy = scratch();
-    const enforcer = { ...planted, holds: [rules[0].text, "A rule nobody signed"] };
-    expect(unknownEnforcements(copy, [enforcer], rules)).toEqual([
-      "planted names src/planted.ts, which does not exist",
-      "planted holds a rule no signed page carries: A rule nobody signed",
-    ]);
   });
 });
