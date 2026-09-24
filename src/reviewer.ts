@@ -194,8 +194,8 @@ function review(pr: string): Stop | undefined {
   if (body === undefined || diff === undefined) {
     return stoppedAt("unread", `${said} ended red, ${body === undefined ? `ticket #${ticket}` : "its diff"} could not be read, so no model was spent`);
   }
-  const turns = commentsOn(["issue", "view", ticket], gh);
-  const onPr = commentsOn(["pr", "view", pr], gh);
+  const turns = commentsOn(ticket, gh);
+  const onPr = commentsOn(pr, gh);
   if (turns === undefined || onPr === undefined) return stoppedAt("unread", `${said} ended red, the comments on #${ticket} or its PR could not be read, so no model was spent`);
   const earlier = onPr.filter((comment) => comment.startsWith(foundDrift(ticket)));
   const after = earlier.length > 0 && turns.some((comment) => comment.startsWith(TOOK_ITS_TURN)) ? { earlier: earlier.join("\n\n"), fix: fixDiff(ticket) } : undefined;

@@ -40,20 +40,30 @@ function written(gh: Gh, args: string[]): { refusals: string[]; said: string } {
 
 export const commentOnTicket = (ticket: string, text: string, gh: Gh) => written(gh, ["issue", "comment", ticket, "--body", text]);
 
-const TRUSTED = new Set(["collod873", "collod873-machine"]);
+const TRUSTED = new Set(["User collod873", "Bot collod873-machine[bot]"]);
 
-const trusted = (said: unknown): said is { author: string; body: string } =>
-  typeof said === "object" && said !== null && "author" in said && "body" in said && typeof said.body === "string" && TRUSTED.has(said.author as string);
+const trusted = (said: unknown): said is { body: string } =>
+  typeof said === "object" && said !== null && "author" in said && "type" in said && "body" in said && typeof said.body === "string" && TRUSTED.has(`${said.type} ${said.author}`);
 
-export function commentsOn(on: string[], gh: Gh): string[] | undefined {
-  const got = gh([...on, "--json", "comments", "--jq", "[.comments[] | {author: .author.login, body}]"]);
+export function commentsOn(number: string, gh: Gh): string[] | undefined {
+  const got = gh(["api", "--paginate", `repos/{owner}/{repo}/issues/${number}/comments`, "--jq", ".[] | {author: .user.login, type: .user.type, body}"]);
   if (got.status !== 0) return undefined;
   try {
-    const parsed: unknown = JSON.parse(got.stdout);
-    return Array.isArray(parsed) ? parsed.filter(trusted).map((said) => said.body) : undefined;
+    return got.stdout
+      .split("\n")
+      .filter((line) => line.trim() !== "")
+      .map((line): unknown => JSON.parse(line))
+      .filter(trusted)
+      .map((said) => said.body);
   } catch {
     return undefined;
   }
+}
+
+export function prNumber(branch: string, gh: Gh): string | undefined {
+  const got = gh(["pr", "view", branch, "--json", "number", "--jq", ".number"]);
+  const number = got.status === 0 ? got.stdout.trim() : "";
+  return number === "" ? undefined : number;
 }
 
 export const commentOnPr = (pr: string, text: string, gh: Gh) => written(gh, ["pr", "comment", pr, "--body", text]);
