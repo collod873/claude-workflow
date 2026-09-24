@@ -14,18 +14,15 @@ interface Line {
 
 interface LoadedDoc {
   file: string;
-  signed: boolean;
   lines: Line[];
 }
 
-const SIGNED = /^docs\/agents\/(charter\.md$|layers\/)/;
 const DESCRIBED_BY = ["name", "description"];
 const LINK = /\]\(([^)\s]+)\)/g;
 const QUOTED = /`([^`]+)`/g;
 const PATH = /^[\w.-]+(\/[\w.-]+)*\/?$/;
 const SCHEME = /^[a-z][\w+.-]*:/i;
 const ANOTHER_REPO = /^[\w.-]+\/[\w-]+$/;
-const ENFORCER_HEADER = /\|\s*Enforcer\s*\|\s*$/;
 
 export function onDisk(repo: string): Tree {
   const at = (path: string) => join(repo, path);
@@ -41,7 +38,7 @@ function numbered(text: string, first = 1): Line[] {
 
 function whole(tree: Tree, file: string): LoadedDoc[] {
   const text = tree.read(file);
-  return text === undefined ? [] : [{ file, signed: SIGNED.test(file), lines: numbered(text) }];
+  return text === undefined ? [] : [{ file, lines: numbered(text) }];
 }
 
 function described(tree: Tree, file: string): LoadedDoc[] {
@@ -57,32 +54,22 @@ function described(tree: Tree, file: string): LoadedDoc[] {
     const end = isNode(value) && value.range ? lineOf(Math.max(key.range[0], value.range[1] - 1)) : start;
     return lines.slice(start, end + 1);
   });
-  return [{ file, signed: false, lines: kept }];
+  return [{ file, lines: kept }];
 }
 
 export function loadedDocs(tree: Tree): LoadedDoc[] {
   const inDir = (dir: string) => tree.entries(dir).sort().map((entry) => `${dir}/${entry}`);
   return [
-    ...["CLAUDE.md", "CONTEXT.md", "docs/agents/charter.md", ...inDir("docs/agents/layers")].flatMap((file) => whole(tree, file)),
+    ...["CLAUDE.md", "CONTEXT.md"].flatMap((file) => whole(tree, file)),
     ...inDir(".claude/skills").flatMap((dir) => described(tree, `${dir}/SKILL.md`)),
     ...inDir(".claude/agents").filter((file) => file.endsWith(".md")).flatMap((file) => described(tree, file)),
   ];
 }
 
-export function bytesOutsideSignedPages(docs: LoadedDoc[]): number {
+export function loadedBytes(docs: LoadedDoc[]): number {
   return docs
-    .filter((doc) => !doc.signed)
     .flatMap((doc) => doc.lines)
     .reduce((total, line) => total + Buffer.byteLength(line.text) + 1, 0);
-}
-
-function withoutUnbuiltEnforcers(doc: LoadedDoc): Line[] {
-  if (!doc.signed) return doc.lines;
-  let inEnforcerTable = false;
-  return doc.lines.map((line) => {
-    inEnforcerTable = line.text.startsWith("|") && (inEnforcerTable || ENFORCER_HEADER.test(line.text));
-    return inEnforcerTable ? { ...line, text: line.text.split("|").slice(0, -2).join("|") } : line;
-  });
 }
 
 function namedIn(file: string, text: string): string[] {
@@ -97,7 +84,7 @@ function namedIn(file: string, text: string): string[] {
 
 export function pathsToNothing(repo: string, docs: LoadedDoc[]): string[] {
   return docs.flatMap((doc) =>
-    withoutUnbuiltEnforcers(doc).flatMap((line) =>
+    doc.lines.flatMap((line) =>
       namedIn(doc.file, line.text)
         .filter((path) => !(ANOTHER_REPO.test(path) && !existsSync(join(repo, path.split("/")[0]))))
         .filter((path) => !existsSync(join(repo, path)))

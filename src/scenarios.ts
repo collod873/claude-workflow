@@ -779,16 +779,13 @@ export function fixing({
   };
 }
 
-const RUNS_PAGE = join(SRC, "..", "docs", "agents", "layers", "one-ticket.md");
-
 export const HANDED_OFF_PR = "https://github.com/collod873/claude-workflow/pull/900";
 
 export function handingOff({
   stoppedAt,
-  table = (page: string) => page,
   commits = false,
   pr = HANDED_OFF_PR as string | undefined,
-}: { stoppedAt?: string; table?: (page: string) => string; commits?: boolean; pr?: string | undefined } = {}) {
+}: { stoppedAt?: string; commits?: boolean; pr?: string | undefined } = {}) {
   const root = scratch("hand-off-");
   const session = join(root, "session");
   const fixed = join(root, "fix-calls");
@@ -800,12 +797,11 @@ export function handingOff({
   git(session, "init", "--quiet", "--initial-branch=main");
   git(session, "config", "user.email", "hand-off@test");
   git(session, "config", "user.name", "hand-off");
-  plant(session, "docs/agents/layers/one-ticket.md", table(readFileSync(RUNS_PAGE, "utf8")));
   script(join(session, "bin", "fix"), `printf '%s\\n' "$*" >>"${fixed}"\n${commits ? 'git commit --quiet --allow-empty -m "Repair #811 in the fixer\'s one turn"\n' : ""}`);
   script(join(session, "bin", "save"), `printf '%s\\n' "$*" >>"${saved}"\n`);
   script(join(session, "bin", "mark"), `printf '%s\\n' "$*" >>"${marks}"\n`);
   git(session, "add", ".");
-  git(session, "commit", "--quiet", "-m", "what the Runs table stands on");
+  git(session, "commit", "--quiet", "-m", "what the hand-off stands on");
   if (stoppedAt !== undefined) plant(session, ".git/machine-logs/build-811.log", `1 refusals, stopped at: ${stoppedAt}\nthe build stayed red\n`);
   script(
     join(root, "bin", "gh"),

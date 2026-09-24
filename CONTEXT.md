@@ -9,27 +9,10 @@ itself*, not any project it ships.
 A way the machine broke, linked as an issue, PR or failed run. Every part names the one it stops.
 _Avoid_: problem, antipattern
 
-### The charter
-
-**Charter**:
-The one-screen page, `docs/agents/charter.md`, that every part of the machine earns its place
-against. Signed by the owner and changed only by the owner. Its rules are a table, each naming its
-Enforcer.
-_Avoid_: goal, vision, constraints, principles
-
-**Enforcer**:
-The gate, test or separate judge a Charter rule names as holding it. An instruction is never an
-enforcer.
-_Avoid_: rail, guardrail, reminder, policy
-
-**Layer**:
-One of the four parts the machine is described in: **One ticket**, **Big jobs**, **Many at once**,
-**Look-back**. Which of them is built, and what each covers, is the Charter's to say.
-_Avoid_: tier, level
+### The machine
 
 **Machine**:
-This repo: `src/` and `bin/`. There is one machine and this is it. It holds the Charter from its
-first commit and grows one Layer at a time.
+This repo: `src/` and `bin/`. There is one machine and this is it.
 _Avoid_: core, new core, v2
 
 **Worker**:

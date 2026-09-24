@@ -1,5 +1,3 @@
-- Changing the machine: read [the charter](docs/agents/charter.md) and run `bin/machine-page`;
-  the layer rulings sit in `docs/agents/layers/`.
 - Commit messages: **why**, not what. No em dash (`bin/land` refuses one).
 - `main` takes no direct push, the owner's included. Commit locally, then `bin/land` opens a PR
   and merges it, or leaves auto-merge on while checks run.

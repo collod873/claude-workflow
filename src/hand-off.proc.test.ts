@@ -75,12 +75,6 @@ function stepsThatRun(job: Job, failing: Step | undefined, checked = "success"):
   return ran;
 }
 
-const clearedBy =(stop: Stop, clearer: string) => (page: string) =>
-  page
-    .split("\n")
-    .map((line) => (line.startsWith(`| ${STOPS[stop]} |`) ? `${line.slice(0, line.lastIndexOf("|", line.length - 2))}| ${clearer} |` : line))
-    .join("\n");
-
 describe("hand-off passes a stuck ticket to the fixer (#827)", () => {
   it("a run stopped at a row the fixer clears hands its ticket to the fixer, once", () => {
     for (const stop of FIXER_CLEARS) {
@@ -98,16 +92,6 @@ describe("hand-off passes a stuck ticket to the fixer (#827)", () => {
       expect(run().status, stop).toBe(0);
       expect(fixed(), stop).toEqual([]);
     }
-  });
-
-  it("reads the clearer from the Runs table, so its row decides whether a run hands its ticket to the fixer", () => {
-    const given = handingOff({ stoppedAt: STOPS.buildRed, table: clearedBy("buildRed", "Nobody needed") });
-    const taken = handingOff({ stoppedAt: STOPS.dirtyTree, table: clearedBy("dirtyTree", "The fixer") });
-
-    expect(given.run().status).toBe(0);
-    expect(given.fixed()).toEqual([]);
-    expect(taken.run().status).toBe(0);
-    expect(taken.fixed()).toEqual(["811"]);
   });
 
   it("build.yml hands its ticket to the fixer after a red stage, once the branch is saved", () => {

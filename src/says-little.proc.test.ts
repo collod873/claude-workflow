@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { machinePage } from "./machine-page.ts";
 import { parts, type Part } from "./parts.ts";
 import { LINE_LIMIT, MOST_LINES, authoring, briefing, building, checkRepo, checking, closing, coveredByCheck, execute, filing, fixing, handingOff, landSession, marking, misshapenTicket, overLimit, reviewing, saving, scratch, script, starting, wellFormedNote, wellFormedTicket, type Run } from "./scenarios.ts";
 
@@ -32,10 +31,6 @@ const scenarios: Record<string, Scenario[]> = {
   "src/check-runner.ts": [
     { label: "on a ticket whose check is red", run: () => checking("exit 1\n").run() },
     { label: "on a ticket whose check already passes", run: () => checking(GREEN).run() },
-  ],
-  "bin/machine-page": [
-    { label: "rendering the page", run: () => execute(join(REPO, "bin", "machine-page"), REPO) },
-    { label: "outside a repo to read", run: () => execute(join(REPO, "bin", "machine-page"), scratch("machine-page-")) },
   ],
   "bin/file-issue": [
     { label: "filing a ticket", run: () => filing({ gh: FILED, body: wellFormedTicket }).run() },
@@ -130,7 +125,6 @@ describe(`everything the machine prints is one line of ${LINE_LIMIT} characters,
     expect(overAllowed(registry)).toEqual([`bin/talker is registered for ${MOST_LINES + 1} lines, over ${MOST_LINES}`]);
     expect(linesAllowed(registry, "bin/lister")).toBe(MOST_LINES);
     expect(linesAllowed(registry, "bin/check")).toBe(1);
-    expect(machinePage(registry, [])).toMatch(new RegExp(`bin/lister +PR 1 \\(${MOST_LINES} lines\\)`));
   });
 
   it("makes every registered part bin/check does not already run prove its own runs, whatever it is written in", () => {
