@@ -160,6 +160,17 @@ describe("hand-off labels the ticket with where its red run went (#835)", () => 
     expect(said).toContain(STOPS.dirtyTree);
     expect(said).toContain(HANDED_OFF_PR);
   });
+
+  it("comments when no row in the logs says where it stopped, instead of labelling it alone (#864)", () => {
+    const { run, marked, comments } = handingOff({});
+
+    run();
+
+    expect(marked()).toEqual(["811 failed"]);
+    const said = comments()[0];
+    expect(said, "a comment on the ticket").toBeDefined();
+    expect(said).toContain("811");
+  });
 });
 
 describe("a reviewer drift reaches the fixer (#827)", () => {

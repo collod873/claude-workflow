@@ -206,6 +206,40 @@ describe("every job that spends a model is watched as it goes, read after it end
   });
 });
 
+const CHECK_WORKFLOW = join(WORKFLOWS, "check.yml");
+
+function reviewJob(): Job {
+  const { jobs } = parse(readFileSync(CHECK_WORKFLOW, "utf8")) as { jobs: Record<string, Job> };
+  return jobs.review;
+}
+
+function holdsAlone(condition: string, scope: { failed?: boolean; cancelled?: boolean }): boolean {
+  try {
+    return holds(condition, { ...scope, steps: {} });
+  } catch {
+    return false;
+  }
+}
+
+describe("build.yml, and check.yml's review job, comment on the ticket whatever ends them (#864)", () => {
+  it("comments on its ticket whenever it fails, naming the step it failed at and linking the run, even when it failed before its checkout", () => {
+    const { jobs: buildJobs } = parse(readFileSync(WORKFLOW, "utf8")) as { jobs: Record<string, Job> };
+    const jobs: [string, Job][] = [...Object.entries(buildJobs), ["review", reviewJob()]];
+
+    for (const [name, job] of jobs) {
+      const notifying = expanded(job.steps).find(
+        (step) => holdsAlone(step.if ?? "success()", { failed: true }) && holdsAlone(step.if ?? "success()", { cancelled: true }) && /comment/i.test(step.run ?? ""),
+      );
+
+      expect(notifying, `${name}: a step that comments on the ticket whatever ends the job, even before its checkout`).toBeDefined();
+      expect(notifying?.run, name).toMatch(/run_id/i);
+      expect(notifying?.run, name).toMatch(/step/i);
+      expect(notifying?.run, name).toMatch(name === "review" ? /HEAD_REF/ : /github\.event\.issue\.number/);
+      expect(String(notifying?.env?.GH_TOKEN ?? ""), name).not.toMatch(/steps\.\w+\.outputs\.token/);
+    }
+  });
+});
+
 function parseOutput(file: string): Record<string, string> {
   if (!existsSync(file)) return {};
   return Object.fromEntries(

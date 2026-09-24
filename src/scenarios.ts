@@ -48,8 +48,9 @@ export function holds(
     steps = {},
     needs = {},
     failed = false,
+    cancelled = false,
     sender = OWNER,
-  }: { labels?: string[]; steps?: Record<string, StepOutcome>; needs?: Record<string, { result: string }>; failed?: boolean; sender?: string },
+  }: { labels?: string[]; steps?: Record<string, StepOutcome>; needs?: Record<string, { result: string }>; failed?: boolean; cancelled?: boolean; sender?: string },
 ): boolean {
   const bare = condition.replace(/^\s*\$\{\{|\}\}\s*$/g, "");
   const source = (/\b(success|failure|always|cancelled)\(\)/.test(bare) ? bare : `success() && (${bare})`)
@@ -65,10 +66,10 @@ export function holds(
     labels,
     steps,
     needs,
-    () => !failed,
-    () => failed,
+    () => !failed && !cancelled,
+    () => failed && !cancelled,
     () => true,
-    () => false,
+    () => cancelled,
   );
 }
 
