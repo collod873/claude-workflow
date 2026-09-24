@@ -34,6 +34,35 @@ const SRC = import.meta.dirname;
 const BIN = join(SRC, "..", "bin");
 const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_") && !name.startsWith("VITEST")));
 
+export interface StepOutcome {
+  outcome: string;
+  conclusion: string;
+  outputs?: Record<string, string>;
+}
+
+export function holds(
+  condition: string,
+  { labels = [], steps = {}, needs = {}, failed = false }: { labels?: string[]; steps?: Record<string, StepOutcome>; needs?: Record<string, { result: string }>; failed?: boolean },
+): boolean {
+  const bare = condition.replace(/^\s*\$\{\{|\}\}\s*$/g, "");
+  const source = (/\b(success|failure|always|cancelled)\(\)/.test(bare) ? bare : `success() && (${bare})`)
+    .replace(/github\.event\.action/g, "'opened'")
+    .replace(/contains\(\s*github\.event\.issue\.labels\.\*\.name\s*,\s*('[^']*')\s*\)/g, "labels.includes($1)")
+    .replace(/steps\.([\w-]+)\.(outcome|conclusion)/g, 'steps["$1"].$2')
+    .replace(/steps\.([\w-]+)\.outputs\.([\w-]+)/g, '(steps["$1"].outputs ?? {})["$2"]')
+    .replace(/needs\.([\w-]+)\.result/g, 'needs["$1"].result');
+  const evaluate = new Function("labels", "steps", "needs", "success", "failure", "always", "cancelled", `return Boolean(${source});`) as (...scope: unknown[]) => boolean;
+  return evaluate(
+    labels,
+    steps,
+    needs,
+    () => !failed,
+    () => failed,
+    () => true,
+    () => false,
+  );
+}
+
 export function scratch(prefix: string): string {
   const dir = mkdtempSync(join(tmpdir(), prefix));
   onTestFinished(() => rmSync(dir, { recursive: true, force: true }));

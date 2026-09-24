@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { scratch, script } from "./scenarios.ts";
+import { holds, scratch, script, type StepOutcome } from "./scenarios.ts";
 
 const REPO = join(import.meta.dirname, "..");
 const WORKFLOWS = join(REPO, ".github", "workflows");
@@ -34,12 +34,6 @@ interface Workflow {
   jobs: Record<string, Job>;
 }
 
-interface Outcome {
-  outcome: string;
-  conclusion: string;
-  outputs: Record<string, string>;
-}
-
 function workflow(): { on: Workflow["on"]; job: Job } {
   const { on, jobs } = parse(readFileSync(WORKFLOW, "utf8")) as Workflow;
   const building = Object.values(jobs).filter(({ steps }) => steps.some((step) => /(^|\s|\/)bin\/start(\s|$)/.test(step.run ?? "")));
@@ -53,35 +47,14 @@ function stageStep(job: Job, stage: Stage): Step {
   return step as Step;
 }
 
-function holds(condition: string, labels: string[], outcomes: Record<string, Outcome>, failed: boolean): boolean {
-  const guarded = /\b(success|failure|always|cancelled)\(\)/.test(condition) ? condition : `success() && (${condition.replace(/^\s*\$\{\{|\}\}\s*$/g, "")})`;
-  const source = guarded
-    .replace(/^\s*\$\{\{|\}\}\s*$/g, "")
-    .replace(/github\.event\.action/g, "'opened'")
-    .replace(/contains\(\s*github\.event\.issue\.labels\.\*\.name\s*,\s*('[^']*')\s*\)/g, "labels.includes($1)")
-    .replace(/steps\.([\w-]+)\.(outcome|conclusion)/g, 'steps["$1"].$2')
-    .replace(/steps\.([\w-]+)\.outputs\.([\w-]+)/g, 'steps["$1"].outputs["$2"]');
-  const evaluate = new Function("labels", "steps", "success", "failure", "always", "cancelled", `return Boolean(${source});`) as (
-    ...scope: unknown[]
-  ) => boolean;
-  return evaluate(
-    labels,
-    outcomes,
-    () => !failed,
-    () => failed,
-    () => true,
-    () => false,
-  );
-}
-
 function stagesRun(job: Job, failing: Stage | undefined, outputs: Record<string, Record<string, string>> = {}): Stage[] {
-  const outcomes: Record<string, Outcome> = {};
+  const outcomes: Record<string, StepOutcome> = {};
   for (const step of job.steps) if (step.id !== undefined) outcomes[step.id] = { outcome: "skipped", conclusion: "skipped", outputs: {} };
   const red = failing === undefined ? undefined : stageStep(job, failing);
   const ran: Step[] = [];
   let failed = false;
   for (const step of job.steps) {
-    if (!holds(step.if ?? "success()", [], outcomes, failed)) continue;
+    if (!holds(step.if ?? "success()", { steps: outcomes, failed })) continue;
     ran.push(step);
     const broke = step === red;
     const stops = broke && step["continue-on-error"] !== true;
@@ -94,7 +67,7 @@ function stagesRun(job: Job, failing: Stage | undefined, outputs: Record<string,
 describe("build.yml builds a ticket the moment it is filed (#826)", () => {
   it("an issue labelled note starts no build", () => {
     const { on, job } = workflow();
-    const starts = (labels: string[]) => holds(job.if ?? "true", labels, {}, false);
+    const starts = (labels: string[]) => holds(job.if ?? "true", { labels });
 
     expect(on.issues?.types).toContain("opened");
     expect(starts([])).toBe(true);
