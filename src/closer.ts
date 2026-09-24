@@ -11,6 +11,7 @@ import { checks, quoted } from "./ticket-shape.ts";
 const MERGED = /^Merge pull request #(\d+) from \S+?(?:\/ticket\/(\d+))?$/;
 const BUILDS = /^Builds #(\d+)[ \t]*$/m;
 const STAGE_LABELS = "1-defining,2-building,3-checking,4-reviewing,5-merging,fixing,failed";
+const TICKET_BRANCH = /^ticket\/(\d+)$/;
 
 const run = (command: string, args: string[]) => spawnSync(command, args, { encoding: "utf8", maxBuffer: Infinity });
 const gh = (args: string[]) => run("gh", args);
@@ -147,8 +148,33 @@ function record(ticket: string, gathered: Verdict[], speed: string): string {
 
 const recorded = (said: string) => (said === "" ? "" : `; record ${said}`);
 
+function behindPrs(): { number: string; headRefName: string }[] {
+  const listed = gh(["pr", "list", "--state", "open", "--json", "number,headRefName,mergeStateStatus"]);
+  if (listed.status !== 0) return [];
+  try {
+    return (JSON.parse(listed.stdout) as { number: number; headRefName: string; mergeStateStatus: string }[])
+      .filter((pr) => pr.mergeStateStatus === "BEHIND" || pr.mergeStateStatus === "DIRTY")
+      .map((pr) => ({ number: String(pr.number), headRefName: pr.headRefName }));
+  } catch {
+    return [];
+  }
+}
+
+function bringUpToDate(): void {
+  for (const { number, headRefName } of behindPrs()) {
+    const ticket = TICKET_BRANCH.exec(headRefName)?.[1];
+    if (ticket === undefined) continue;
+    const updated = gh(["pr", "update-branch", number]);
+    if (updated.status !== 0) {
+      const reason = (updated.stderr || updated.stdout).trim().split("\n")[0];
+      commentOnTicket(ticket, `#${ticket}'s PR #${number} could not be brought up to date with main: ${reason}`, gh);
+    }
+  }
+}
+
 function close(): Stop | undefined {
   const top = process.cwd();
+  bringUpToDate();
   const subject = git(["log", "-1", "--format=%s", "HEAD"]).stdout.trim();
   const ticket = ticketBuilt(subject);
   if (ticket === undefined) return undefined;
