@@ -27,13 +27,17 @@ _Avoid_: rail, safety net, guardrail
 ### Mechanisms
 
 **Gate**:
-Something that refuses an action at the moment it is attempted. Distinct from anything that reports
-afterward, because a gate needs no reader, only a trigger.
+Something that refuses an action at the moment it is attempted. Unlike a meter, it needs no
+reader, only a trigger.
 _Avoid_: check, validator, guardrail, lint
 
+**Meter**:
+A rule that reports in the PR body what it would have refused, and refuses nothing. Every new rule
+enters as one; after ten PRs of reports it becomes a gate or is deleted.
+_Avoid_: soft gate, warning, advisory check
+
 **Refusal**:
-A gate that fires before a run spends model time. The distinction from Gate is cost: a refusal is
-free when it fires, so it can be cheap and unapologetic where a late gate cannot.
+A gate that fires before a run spends model time, so it is free when it fires.
 _Avoid_: precondition, validation, check
 
 **Stub**:
@@ -66,10 +70,10 @@ _Avoid_: issue, sub-issue, card, item
 
 **Note**:
 An issue labelled `note`: filed to be kept, never built. It carries a `## Why` saying why it was
-worth keeping, and the build skips it. Every other issue the owner opens is built as a ticket.
+worth keeping, and the build skips it.
 _Avoid_: idea, bug, backlog item, memo
 
 **Stage**:
-One agent process in a pipeline run, with no memory of the ones before it. Named separately from
-Actions' own words because a stage is a context boundary, and a job or a step is not.
+One agent process in a pipeline run, with no memory of the ones before it. Not an Actions job or
+step: a stage is a context boundary and they are not.
 _Avoid_: phase, pass, step, job
