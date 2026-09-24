@@ -77,7 +77,7 @@ describe("bin/close names how long filing took to reach merged, and never gates 
 
 describe("bin/close ends a done ticket closed as completed with no stage label (#851)", () => {
   it("re-closes as completed and strips the stage label, even when the merge finds the ticket already closed as not planned", () => {
-    const { calls, run } = closing({ ticket: "817", fixes: true, closedAsNotPlanned: true });
+    const { calls, tokens, run } = closing({ ticket: "817", fixes: true, closedAs: "NOT_PLANNED" });
 
     const result = run();
 
@@ -87,9 +87,19 @@ describe("bin/close ends a done ticket closed as completed with no stage label (
     expect(reopened, "reopens the ticket before closing it as completed").toBeGreaterThanOrEqual(0);
     expect(closed).toBeGreaterThan(reopened);
     expect(calls()[closed]).toContain("completed");
+    expect(tokens()[reopened], "reopens with the token that fires no workflow, so the fixer never hears of it").toBe("quiet");
+    expect(tokens()[closed]).toBe("quiet");
     const stripped = calls().find((call) => call.includes("--remove-label"));
     expect(stripped, "strips its stage label").toBeDefined();
     const args = (stripped ?? "").split("\n");
     expect(args[args.indexOf("--remove-label") + 1]).not.toBe("");
+  });
+
+  it("leaves closed as completed a done ticket the merge already closed, reopening nothing", () => {
+    const { calls, run } = closing({ ticket: "818", fixes: true, closedAs: "COMPLETED" });
+
+    expect(run().status).toBe(0);
+    expect(calls().some((call) => call.startsWith("issue\nreopen\n818"))).toBe(false);
+    expect(calls().some((call) => call.includes("--remove-label"))).toBe(true);
   });
 });

@@ -158,7 +158,7 @@ function fix(opened: Opened): Outcome {
       commands: opened.commands,
     }),
   );
-  const commit = { message: `Fix #${ticket} in the fixer's one turn`, branch: git(["branch", "--show-current"]).stdout.trim() === branch ? undefined : branch };
+  const commit = { message: `Repair #${ticket} in the fixer's one turn`, branch: git(["branch", "--show-current"]).stdout.trim() === branch ? undefined : branch };
   const done = spent.refusal === undefined ? turn(opened, spent.answer as Answer | undefined, explain) : { refusal: spent.refusal };
   const row = rowStopped(ticket, logs);
   if ("refusal" in done) {

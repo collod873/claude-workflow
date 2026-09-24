@@ -532,19 +532,21 @@ export function closing({
   fixes = true,
   readable = true,
   timing = FAST_TIMING,
-  closedAsNotPlanned = false,
+  closedAs,
 }: {
   ticket?: string;
   ticketBody?: string;
   fixes?: boolean;
   readable?: boolean;
   timing?: { filed: string; firstCommit: string; rebased?: string; prOpened: string; checksGreen: string; merged: string };
-  closedAsNotPlanned?: boolean;
+  closedAs?: "COMPLETED" | "NOT_PLANNED";
 } = {}) {
   const root = scratch("closer-");
   const session = join(root, "session");
   const callsDir = join(root, "gh-calls");
+  const tokensDir = join(root, "gh-tokens");
   mkdirSync(callsDir, { recursive: true });
+  mkdirSync(tokensDir, { recursive: true });
   mkdirSync(session, { recursive: true });
   git(session, "init", "--quiet", "--initial-branch=main");
   git(session, "config", "user.email", "closer@test");
@@ -563,9 +565,10 @@ export function closing({
     [
       `n=$(( $(ls "${callsDir}" 2>/dev/null | wc -l) + 1 ))`,
       `printf '%s\\n' "$@" >"${callsDir}/$n"`,
+      `printf '%s' "$GH_TOKEN" >"${tokensDir}/$n"`,
       'case "$*" in',
       `  *"issue view"*"createdAt"*) printf '%s\\n' '${timing.filed}' ;;`,
-      `  *"issue view"*"state"*) printf '%s\\n' '${closedAsNotPlanned ? "CLOSED" : "OPEN"}' ;;`,
+      `  *"issue view"*"state"*) printf '%s\\n' '${closedAs === undefined ? "OPEN REOPENED" : `CLOSED ${closedAs}`}' ;;`,
       "  *\"issue view\"*)",
       ...(readable ? [] : ["    printf 'GraphQL: Could not resolve to an issue\\n' >&2", "    exit 1"]),
       "    cat <<'BODY'",
@@ -582,7 +585,8 @@ export function closing({
   return {
     session,
     calls: () => readdirSync(callsDir).sort((a, b) => Number(a) - Number(b)).map((file) => readFileSync(join(callsDir, file), "utf8")),
-    run: () => execute(join(BIN, "close"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}` }),
+    tokens: () => readdirSync(tokensDir).sort((a, b) => Number(a) - Number(b)).map((file) => readFileSync(join(tokensDir, file), "utf8")),
+    run: () => execute(join(BIN, "close"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}`, GH_TOKEN: "app", QUIET_GH_TOKEN: "quiet" }),
   };
 }
 
@@ -753,7 +757,7 @@ export function handingOff({
   git(session, "config", "user.email", "hand-off@test");
   git(session, "config", "user.name", "hand-off");
   plant(session, "docs/agents/layers/one-ticket.md", table(readFileSync(RUNS_PAGE, "utf8")));
-  script(join(session, "bin", "fix"), `printf '%s\\n' "$*" >>"${fixed}"\n${commits ? 'git commit --quiet --allow-empty -m "Fix #811 in the fixer\'s one turn"\n' : ""}`);
+  script(join(session, "bin", "fix"), `printf '%s\\n' "$*" >>"${fixed}"\n${commits ? 'git commit --quiet --allow-empty -m "Repair #811 in the fixer\'s one turn"\n' : ""}`);
   script(join(session, "bin", "save"), `printf '%s\\n' "$*" >>"${saved}"\n`);
   script(join(session, "bin", "mark"), `printf '%s\\n' "$*" >>"${marks}"\n`);
   git(session, "add", ".");
