@@ -117,6 +117,16 @@ describe("build.yml builds a ticket the moment it is filed (#826)", () => {
   });
 });
 
+describe("build.yml checks out main as it is when the job runs, not the SHA of the issue event (#860)", () => {
+  it("every checkout in build.yml pins a ref, so a rerun after a merge starts from fresh main as it is when the job runs, not the stale SHA the issue event carried", () => {
+    const { jobs } = parse(readFileSync(WORKFLOW, "utf8")) as { jobs: Record<string, Job> };
+    const checkouts = Object.values(jobs).flatMap((job) => job.steps.filter((step) => step.uses?.startsWith("actions/checkout@") === true));
+
+    expect(checkouts.length).toBeGreaterThan(0);
+    for (const checkout of checkouts) expect(checkout.with?.ref, JSON.stringify(checkout)).toBe("main");
+  });
+});
+
 function expanded(steps: Step[]): Step[] {
   return steps.flatMap((step) => {
     if (step.uses?.startsWith("./") !== true) return [step];
