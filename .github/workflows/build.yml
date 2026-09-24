@@ -115,7 +115,7 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
         run: bin/mark ${{ github.event.issue.number }} failed
 
-      - if: failure() || cancelled()
+      - if: (failure() || cancelled()) && steps.hand-off.outcome != 'success'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -188,7 +188,7 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
         run: bin/mark ${{ github.event.issue.number }} failed
 
-      - if: failure() || cancelled()
+      - if: (failure() || cancelled()) && steps.hand-off.outcome != 'success'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
