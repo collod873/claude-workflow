@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { HANDED_OFF_PR, handingOff, holds, type StepOutcome } from "./scenarios.ts";
+import { HANDED_OFF_PR, handingOff, holds, stepsRun } from "./scenarios.ts";
 import { STOPS, type Stop } from "./stops.ts";
 
 const RED_ON_MAIN = "Red on main after merge";
@@ -61,18 +61,7 @@ function spendsWithinACap(step: Step): void {
 }
 
 function stepsThatRun(job: Job, failing: Step | undefined, checked = "success"): Step[] {
-  const outcomes: Record<string, StepOutcome> = {};
-  for (const step of job.steps) if (step.id !== undefined) outcomes[step.id] = { outcome: "skipped", conclusion: "skipped" };
-  const ran: Step[] = [];
-  let failed = false;
-  for (const step of job.steps) {
-    if (!holds(step.if ?? "success()", { steps: outcomes, needs: { check: { result: checked } }, failed })) continue;
-    ran.push(step);
-    const broke = step === failing;
-    if (step.id !== undefined) outcomes[step.id] = { outcome: broke ? "failure" : "success", conclusion: broke ? "failure" : "success" };
-    failed = failed || broke;
-  }
-  return ran;
+  return stepsRun(job.steps, failing, { checked });
 }
 
 describe("hand-off passes a stuck ticket to the fixer (#827)", () => {
@@ -143,6 +132,20 @@ describe("hand-off labels the ticket with where its red run went (#835)", () => 
     expect(said, "a comment on the ticket").toBeDefined();
     expect(said).toContain(STOPS.dirtyTree);
     expect(said).toContain(HANDED_OFF_PR);
+  });
+
+  it("tells a ticket with an open PR how to resume it when it marks it failed (#865)", () => {
+    const withPr = handingOff({ stoppedAt: STOPS.dirtyTree });
+    const noRow = handingOff({});
+    const noPr = handingOff({ stoppedAt: STOPS.dirtyTree, pr: "" });
+
+    withPr.run();
+    noRow.run();
+    noPr.run();
+
+    expect(withPr.comments()[0]).toContain("remove its `failed` label");
+    expect(noRow.comments()[0]).toContain("remove its `failed` label");
+    expect(noPr.comments()[0]).not.toContain("remove its `failed` label");
   });
 
   it("comments when no row in the logs says where it stopped, instead of labelling it alone (#864)", () => {

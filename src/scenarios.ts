@@ -73,6 +73,21 @@ export function holds(
   );
 }
 
+export function stepsRun<S extends { id?: string; if?: string }>(steps: S[], failing: S | undefined, { checked = "success", outputs = {} }: { checked?: string; outputs?: Record<string, string> } = {}): S[] {
+  const outcomes: Record<string, StepOutcome> = {};
+  for (const step of steps) if (step.id !== undefined) outcomes[step.id] = { outcome: "skipped", conclusion: "skipped", outputs: {} };
+  const ran: S[] = [];
+  let failed = false;
+  for (const step of steps) {
+    if (!holds(step.if ?? "success()", { steps: outcomes, needs: { check: { result: checked } }, failed })) continue;
+    ran.push(step);
+    const broke = step === failing;
+    if (step.id !== undefined) outcomes[step.id] = { outcome: broke ? "failure" : "success", conclusion: broke ? "failure" : "success", outputs: broke ? outputs : {} };
+    failed = failed || broke;
+  }
+  return ran;
+}
+
 export function scratch(prefix: string): string {
   const dir = mkdtempSync(join(tmpdir(), prefix));
   onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
