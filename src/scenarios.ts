@@ -34,10 +34,10 @@ const SRC = import.meta.dirname;
 const BIN = join(SRC, "..", "bin");
 const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_") && !name.startsWith("VITEST")));
 const OWNER = "collod873";
-const MACHINE = "collod873-machine";
+const MACHINE = "collod873-machine[bot]";
 
-export type Said = string | { author: string; body: string };
-const authored = (comments: Said[]) => JSON.stringify(comments.map((said) => (typeof said === "string" ? { author: MACHINE, body: said } : said)));
+export type Said = string | { author: string; type: string; body: string };
+const authored = (comments: Said[]) => comments.map((said) => `${JSON.stringify(typeof said === "string" ? { author: MACHINE, type: "Bot", body: said } : said)}\n`).join("");
 
 export interface StepOutcome {
   outcome: string;
@@ -713,9 +713,9 @@ export function reviewing({
     [
       setup,
       'case "$*" in',
-      `  *"pr view"*"comments"*) cat "${join(root, "on-pr.json")}" ;;`,
+      `  *"api"*"issues/810/comments"*) cat "${join(root, "turns.json")}" ;;`,
+      `  *"api"*"/comments"*) cat "${join(root, "on-pr.json")}" ;;`,
       `  *"pr view"*) printf '%s\\n' '${branch}' ;;`,
-      `  *"issue view"*"comments"*) cat "${join(root, "turns.json")}" ;;`,
       `  *"issue view"*) cat "${join(root, "ticket.md")}" ;;`,
       `  *"pr diff"*) cat "${join(root, "pr.diff")}" ;;`,
       `  *"pr comment"*) printf '%s\\n' '${JUDGEMENT}' ;;`,
@@ -790,10 +790,12 @@ export function fixing({
       setup,
       `printf 'gh %s %s\\n' "$1" "$2" >>"${order}"`,
       'case "$*" in',
-      `  *"issue view"*"comments"*) cat "${join(root, "turns.json")}" ;;`,
+      `  *"api"*"issues/811/comments"*) cat "${join(root, "turns.json")}" ;;`,
+      `  *"api"*"/comments"*) cat "${join(root, "on-pr.json")}" ;;`,
       `  *"issue view"*) cat "${join(root, "ticket.md")}" ;;`,
+      `  *"pr view"*"number"*) ${onPr === undefined ? "exit 1" : "printf '9811\\n'"} ;;`,
       `  *"pr view"*"state"*) ${prOpen ? `printf '%s\\n' '${HANDED_OFF_PR}'` : "printf '\\n'"} ;;`,
-      `  *"pr view"*) ${onPr === undefined ? "exit 1" : `cat "${join(root, "on-pr.json")}"`} ;;`,
+      "  *\"pr view\"*) exit 22 ;;",
       ...(failedCheck === undefined
         ? []
         : [

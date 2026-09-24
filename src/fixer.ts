@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { authoredTests, capped, yourChecks } from "./brief.ts";
 import { redOutput, TAIL_CAP, tailOf } from "./builder.ts";
-import { commentOnTicket, commentsOn, openPr, post, rewriteTicket } from "./post.ts";
+import { commentOnTicket, commentsOn, openPr, post, prNumber, rewriteTicket } from "./post.ts";
 import { foundDrift, gh, git, handedDiff, LIST_CAP, NO_EM_DASH, repairOf, TOOK_ITS_TURN } from "./reviewer.ts";
 import { runStage, type Opened, type Outcome, type Stage } from "./stage.ts";
 import { rowStopped } from "./stops.ts";
@@ -111,12 +111,13 @@ function closedUnbuilt(ticket: string, reason: string, row: string | undefined, 
 function fix(opened: Opened): Outcome {
   const { ticket, body, logs } = opened;
   const branch = `ticket/${ticket}`;
-  const turns = commentsOn(["issue", "view", ticket], gh);
+  const turns = commentsOn(ticket, gh);
   if (turns === undefined) return { stop: "fixerEnds", refusals: [`the comments on #${ticket} could not be read, so no model was spent`] };
   if (turns.some((said) => said.startsWith(TOOK_ITS_TURN))) return { stop: "fixerEnds", refusals: [`the fixer already took its one turn on #${ticket}, so no model was spent`] };
   const marked = commentOnTicket(ticket, `${TOOK_ITS_TURN}.`, gh);
   if (marked.refusals.length > 0) return { stop: "fixerEnds", refusals: [`its marker was refused, so no model was spent: ${quoted(marked.refusals[0])}`] };
-  const onPr = commentsOn(["pr", "view", branch], gh);
+  const onBranch = prNumber(branch, gh);
+  const onPr = onBranch === undefined ? undefined : commentsOn(onBranch, gh);
   const explain = (text: string) => (onPr === undefined ? commentOnTicket(ticket, text, gh) : post({ kind: "judgement", pr: branch, text }, gh));
   const spent = opened.spend(
     handedOn({

@@ -107,11 +107,14 @@ describe("bin/review names every gap in one pass, and after the fixer's turn onl
     expect(bounded).toMatch(/later/);
   });
 
-  it("reads a stranger's marker and gaps as no turn taken", () => {
-    const { run, handed } = reviewing({ turns: [{ author: "stranger", body: TURN_TAKEN }], onPr: [{ author: "stranger", body: EARLIER }], repair: REPAIRED });
+  it("reads a marker from a person named like the machine, and a stranger's gaps, as no turn taken", () => {
+    const squatted = reviewing({ turns: [{ author: "collod873-machine", type: "User", body: TURN_TAKEN }], onPr: [EARLIER], repair: REPAIRED });
+    const forged = reviewing({ turns: [TURN_TAKEN], onPr: [{ author: "stranger", type: "User", body: EARLIER }], repair: REPAIRED });
 
-    expect(run().status).toBe(0);
-    expect(handed()).not.toContain("## The fixer's turn");
+    expect(squatted.run().status).toBe(0);
+    expect(squatted.handed()).not.toContain("## The fixer's turn");
+    expect(forged.run().status).toBe(0);
+    expect(forged.handed()).not.toContain("## The fixer's turn");
   });
 
   it("merges past a later find, posting it once on the ticket, and ends red only on a blocking gap", () => {
