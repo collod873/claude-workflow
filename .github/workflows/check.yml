@@ -58,32 +58,39 @@ jobs:
           client-id: ${{ vars.CORE_APP_CLIENT_ID }}
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
 
-      - uses: actions/checkout@v4
+      - id: checkout
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: ${{ github.head_ref }}
           token: ${{ steps.app.outputs.token }}
 
-      - uses: actions/setup-node@v4
+      - id: setup-node
+        uses: actions/setup-node@v4
         with:
           node-version: 24
 
-      - run: npm ci
+      - id: npm-ci
+        run: npm ci
 
-      - run: |
+      - id: worktree
+        run: |
           git worktree add --detach "$RUNNER_TEMP/main" origin/main
           ln -s "$PWD/node_modules" "$RUNNER_TEMP/main/node_modules"
 
-      - uses: ./.github/actions/stage
+      - id: stage
+        uses: ./.github/actions/stage
         with:
           client-id: ${{ vars.CORE_APP_CLIENT_ID }}
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
 
-      - run: |
+      - id: git-config
+        run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - if: needs.check.result == 'success'
+      - id: mark-reviewing
+        if: needs.check.result == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
           HEAD_REF: ${{ github.head_ref }}
@@ -102,7 +109,8 @@ jobs:
           $RUNNER_TEMP/main/bin/review ${{ github.event.pull_request.number }}
           bin/mark "${HEAD_REF#ticket/}" 5-merging || true
 
-      - if: failure() && steps.review.outcome != 'failure'
+      - id: mark-review-failed
+        if: failure() && steps.review.outcome != 'failure'
         env:
           GH_TOKEN: ${{ github.token }}
           HEAD_REF: ${{ github.head_ref }}
@@ -124,11 +132,21 @@ jobs:
           [[ $CHECKED == success ]] || row="Green on the ticket's checks, red on the PR's required check"
           node src/hand-off.ts "${HEAD_REF#ticket/}" "$row"
 
-      - if: cancelled() || steps.hand-off.outcome == 'failure'
+      - id: mark-hand-off-failed
+        if: cancelled() || steps.hand-off.outcome == 'failure'
         env:
           GH_TOKEN: ${{ github.token }}
           HEAD_REF: ${{ github.head_ref }}
         run: bin/mark "${HEAD_REF#ticket/}" failed
+
+      - if: failure() || cancelled()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ github.head_ref }}
+          STEPS_JSON: ${{ toJSON(steps) }}
+        run: |
+          step=$(printf '%s' "$STEPS_JSON" | jq -r '[to_entries[] | select(.value.outcome == "failure")] | .[-1].key // "cancelled before any step finished"')
+          gh issue comment "${HEAD_REF#ticket/}" --body "review: failed at step \`$step\`, see the run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
       - if: always()
         timeout-minutes: 6
