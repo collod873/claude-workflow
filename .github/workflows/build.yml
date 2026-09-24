@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   build:
-    if: ${{ github.event.sender.login == github.repository_owner && !contains(github.event.issue.labels.*.name, 'note') }}
+    if: "${{ (github.event.sender.login == github.repository_owner || (github.event.sender.login == 'collod873-machine[bot]' && contains(github.event.issue.body, 'Follow-up of #'))) && !contains(github.event.issue.labels.*.name, 'note') }}"
     runs-on: ubuntu-latest
     timeout-minutes: 90
     permissions:

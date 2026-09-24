@@ -6,7 +6,7 @@ import { handedOn as fixerHandedOn } from "./fixer.ts";
 import { DIFF_CAP, handedOn as reviewerHandedOn, LIST_CAP, TICKET_CAP } from "./reviewer.ts";
 import { handedOn } from "./test-author.ts";
 
-export const CEILINGS: Record<string, number> = { "brief": 136, "test author": 850, "builder": 378, "repair": 84, "reviewer": 432, "reviewer after the fixer's turn": 784, "fixer": 741 };
+export const CEILINGS: Record<string, number> = { "brief": 136, "test author": 850, "builder": 378, "repair": 84, "reviewer": 432, "reviewer after the fixer's turn": 996, "fixer": 741 };
 
 const AUTHORED = "src/planted.test.ts";
 const HIRES = /(spawn|execFile)\w*\(\s*"claude"/;

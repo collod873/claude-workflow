@@ -50,12 +50,14 @@ export function holds(
     failed = false,
     cancelled = false,
     sender = OWNER,
-  }: { labels?: string[]; steps?: Record<string, StepOutcome>; needs?: Record<string, { result: string }>; failed?: boolean; cancelled?: boolean; sender?: string },
+    body = "",
+  }: { labels?: string[]; steps?: Record<string, StepOutcome>; needs?: Record<string, { result: string }>; failed?: boolean; cancelled?: boolean; sender?: string; body?: string },
 ): boolean {
   const bare = condition.replace(/^\s*\$\{\{|\}\}\s*$/g, "");
   const source = (/\b(success|failure|always|cancelled)\(\)/.test(bare) ? bare : `success() && (${bare})`)
     .replace(/github\.event\.action/g, "'opened'")
     .replace(/github\.event\.sender\.login/g, JSON.stringify(sender))
+    .replace(/contains\(\s*github\.event\.issue\.body\s*,\s*('[^']*')\s*\)/g, `${JSON.stringify(body)}.includes($1)`)
     .replace(/github\.repository_owner/g, JSON.stringify(OWNER))
     .replace(/contains\(\s*github\.event\.issue\.labels\.\*\.name\s*,\s*('[^']*')\s*\)/g, "labels.includes($1)")
     .replace(/steps\.([\w-]+)\.(outcome|conclusion)/g, 'steps["$1"].$2')
@@ -666,6 +668,7 @@ const REVIEWED_TICKET = [
 ].join("\n");
 
 export const JUDGEMENT = "https://github.com/collod873/claude-workflow/pull/9810#issuecomment-1";
+const FOLLOW_UP_FILED = "https://github.com/collod873/claude-workflow/issues/9811";
 const LATER_POSTED = "https://github.com/collod873/claude-workflow/issues/810#issuecomment-2";
 
 export function fileDiff(path: string, added: string): string {
@@ -679,7 +682,8 @@ export function reviewing({
   turns = [] as string[],
   onPr = [] as string[],
   repair = undefined as string | undefined,
-}: { branch?: string; verdict?: { verdict: string; gaps: string[]; later?: unknown[] }; diff?: string; turns?: string[]; onPr?: string[]; repair?: string } = {}) {
+  body = REVIEWED_TICKET,
+}: { branch?: string; verdict?: { verdict: string; gaps: string[]; later?: unknown[] }; diff?: string; turns?: string[]; onPr?: string[]; repair?: string; body?: string } = {}) {
   const root = scratch("review-");
   const argvDir = join(root, "gh-argv");
   const handed = join(root, "claude-stdin");
@@ -696,6 +700,7 @@ export function reviewing({
     git(root, "commit", "--quiet", "--allow-empty", "-m", "Merge branch 'main' into ticket/810");
   }
   plant(root, "pr.diff", diff);
+  plant(root, "ticket.md", body);
   plant(root, "turns.json", JSON.stringify(turns));
   plant(root, "on-pr.json", JSON.stringify(onPr));
   plant(root, "answer.json", `${JSON.stringify({ type: "result", subtype: "success", is_error: false, structured_output: verdict })}\n`);
@@ -707,14 +712,11 @@ export function reviewing({
       `  *"pr view"*"comments"*) cat "${join(root, "on-pr.json")}" ;;`,
       `  *"pr view"*) printf '%s\\n' '${branch}' ;;`,
       `  *"issue view"*"comments"*) cat "${join(root, "turns.json")}" ;;`,
-      "  *\"issue view\"*)",
-      "    cat <<'TICKET'",
-      REVIEWED_TICKET,
-      "TICKET",
-      "    ;;",
+      `  *"issue view"*) cat "${join(root, "ticket.md")}" ;;`,
       `  *"pr diff"*) cat "${join(root, "pr.diff")}" ;;`,
       `  *"pr comment"*) printf '%s\\n' '${JUDGEMENT}' ;;`,
       `  *"issue comment"*) printf '%s\\n' '${LATER_POSTED}' ;;`,
+      `  *"issue create"*) printf '%s\\n' '${FOLLOW_UP_FILED}' ;;`,
       "  *) exit 22 ;;",
       "esac",
       "",
@@ -728,6 +730,8 @@ export function reviewing({
     spent: () => existsSync(handed),
     handed: () => (existsSync(handed) ? readFileSync(handed, "utf8") : ""),
     ticketComments: () => calls().filter((args) => args[0] === "issue" && args[1] === "comment").map(bodyOf),
+    filed: () => calls().filter((args) => args[0] === "issue" && args[1] === "create").map((args) => ({ title: args[args.indexOf("--title") + 1], body: bodyOf(args) })),
+    order: () => calls().map((args) => `${args[0]} ${args[1]}`),
     comments: () => calls().filter((args) => args[0] === "pr" && args[1] === "comment").map(bodyOf),
     read: () => calls().some((args) => args[0] === "pr" && args[1] === "view"),
     run: (pr = "9810", extra: Record<string, string> = {}) => execute(join(BIN, "review"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}`, ...extra }, [pr]),

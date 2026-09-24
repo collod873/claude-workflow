@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { cloned, fileDiff, git, JUDGEMENT, plant, reviewing, scratch } from "./scenarios.ts";
+import { claims, ticketRefusals } from "./ticket-shape.ts";
 
 const WORKFLOW = join(import.meta.dirname, "..", ".github", "workflows", "check.yml");
 
@@ -76,6 +77,15 @@ const TURN_TAKEN = "The fixer took its one turn on this ticket.";
 const EARLIER = "The reviewer read this PR against the Why of #810 and found drift.\n\n- the `steps` context lists only steps that carry an id\n";
 const STILL_OPEN = "the `steps` context still lists only steps that carry an id";
 const LATE = "the comment step runs gh with no GH_REPO, so it fails before any checkout";
+const LATER = {
+  gap: LATE,
+  title: "Name the repo on every step that runs gh",
+  criteria: ['Every step that runs gh names its repo - check: `npx vitest run --config vitest.config.ts build-workflow -t "names its repo on every gh step"`'],
+  claimed: [".github/workflows/check.yml", "src/build-workflow.proc.test.ts"],
+};
+const REPAIRED = "export const repaired = 1;\n";
+const afterTurn = (verdict: { verdict: string; gaps: string[]; later?: unknown[] }, extra: { turns?: string[]; body?: string } = {}) =>
+  reviewing({ turns: [TURN_TAKEN, ...(extra.turns ?? [])], onPr: [EARLIER], repair: REPAIRED, verdict, body: extra.body });
 
 describe("bin/review names every gap in one pass, and after the fixer's turn only the earlier gaps or the fix's own lines block (#865)", () => {
   it("asks for every gap it finds in one pass, not the first one", () => {
@@ -98,30 +108,92 @@ describe("bin/review names every gap in one pass, and after the fixer's turn onl
   });
 
   it("merges past a later find, posting it once on the ticket, and ends red only on a blocking gap", () => {
-    const later = reviewing({ turns: [TURN_TAKEN], onPr: [EARLIER], repair: "export const repaired = 1;\n", verdict: { verdict: "match", gaps: [], later: [LATE] } });
+    const later = afterTurn({ verdict: "match", gaps: [], later: [LATER] });
 
     const merged = later.run();
     expect(merged.status).toBe(0);
     expect(later.comments()).toEqual([]);
     expect(later.ticketComments()).toEqual([expect.stringContaining(LATE)]);
 
-    const posted = later.ticketComments()[0];
-    const again = reviewing({ turns: [TURN_TAKEN, posted], onPr: [EARLIER], repair: "export const repaired = 1;\n", verdict: { verdict: "match", gaps: [], later: [LATE] } });
+    const again = afterTurn({ verdict: "match", gaps: [], later: [LATER] }, { turns: [later.ticketComments()[0]] });
     expect(again.run().status).toBe(0);
     expect(again.ticketComments()).toEqual([]);
+    expect(again.filed()).toEqual([]);
 
-    const blocked = reviewing({ turns: [TURN_TAKEN], onPr: [EARLIER], repair: "export const repaired = 1;\n", verdict: { verdict: "drift", gaps: [STILL_OPEN], later: [LATE] } });
+    const blocked = afterTurn({ verdict: "drift", gaps: [STILL_OPEN], later: [LATER] });
     expect(blocked.run().status).toBe(1);
     expect(blocked.comments()).toEqual([expect.stringContaining(STILL_OPEN)]);
     expect(blocked.comments()[0]).not.toContain(LATE);
   });
 
   it("blocks on every gap it names before the fixer's turn, later ones included", () => {
-    const { run, comments } = reviewing({ onPr: [EARLIER], verdict: { verdict: "drift", gaps: [STILL_OPEN], later: [LATE] } });
+    const { run, comments, filed } = reviewing({ onPr: [EARLIER], verdict: { verdict: "drift", gaps: [STILL_OPEN], later: [LATER] } });
 
     expect(run().status).toBe(1);
     expect(comments()[0]).toContain(STILL_OPEN);
     expect(comments()[0]).toContain(LATE);
+    expect(filed()).toEqual([]);
+  });
+});
+
+const FOLLOW_UP_TICKET = [
+  "## Why",
+  "",
+  "Follow-up of #700: its review found this after the fixer's one turn.",
+  "",
+  "> the closer never names the ticket it closed",
+  "",
+  "## Acceptance criteria",
+  "",
+  "- [ ] The closer names its ticket - check: `npx vitest run --config vitest.config.ts closer`",
+  "",
+  "## Files claimed",
+  "",
+  "- src/closer.ts",
+  "",
+].join("\n");
+
+describe("a later find becomes a follow-up ticket that builds itself, one generation deep (#865)", () => {
+  it("files each later find as a ticket the machine builds, after claiming the finds on the ticket so a rerun files nothing", () => {
+    const { run, filed, order, ticketComments } = afterTurn({ verdict: "match", gaps: [], later: [LATER] });
+
+    expect(run().status).toBe(0);
+    expect(filed()).toHaveLength(1);
+    const [{ title, body }] = filed();
+    expect(title).toBe(LATER.title);
+    expect(ticketRefusals(body)).toEqual([]);
+    expect(body).toContain("Follow-up of #810");
+    expect(body).toContain(LATE);
+    expect(claims(body)).toEqual(LATER.claimed);
+    expect(order().indexOf("issue comment")).toBeLessThan(order().indexOf("issue create"));
+    expect(ticketComments()[0]).toContain(LATE);
+  });
+
+  it("never files a follow-up of a follow-up; its later finds stay a comment on it", () => {
+    const { run, filed, ticketComments } = afterTurn({ verdict: "match", gaps: [], later: [LATER] }, { body: FOLLOW_UP_TICKET });
+
+    expect(run().status).toBe(0);
+    expect(filed()).toEqual([]);
+    expect(ticketComments()).toEqual([expect.stringContaining(LATE)]);
+    expect(ticketComments()[0]).toMatch(/not filed/i);
+  });
+
+  it("leaves a finding it cannot shape into a ticket as a comment naming why", () => {
+    const { run, filed, ticketComments } = afterTurn({ verdict: "match", gaps: [], later: [{ ...LATER, criteria: [] }] });
+
+    expect(run().status).toBe(0);
+    expect(filed()).toEqual([]);
+    expect(ticketComments().join("\n")).toContain(LATE);
+    expect(ticketComments().join("\n")).toMatch(/refused/);
+  });
+
+  it("files as the App, since a ticket filed with the job's own token starts no build", () => {
+    const { jobs } = parse(readFileSync(WORKFLOW, "utf8")) as { jobs: Record<string, { steps: { id?: string; uses?: string; run?: string; env?: Record<string, string> }[] }> };
+    const steps = jobs.review.steps;
+    const minted = steps.find((step) => step.uses?.startsWith("actions/create-github-app-token@") === true);
+    const reviewer = steps.find((step) => /bin\/review /.test(step.run ?? ""));
+
+    expect(reviewer?.env?.GH_TOKEN).toContain(`steps.${minted?.id}.outputs.token`);
   });
 });
 
