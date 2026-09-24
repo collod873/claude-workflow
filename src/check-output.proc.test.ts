@@ -97,3 +97,14 @@ describe("bin/check static runs the gates a stage can meet while it works, never
     expect(run(undefined, ["everything"])).toEqual({ status: 2, stdout: "", stderr: "bin/check: usage: bin/check [static]\n" });
   });
 });
+
+describe("the check a session runs mid-work holds the gates a push refuses on, so bin/land never first learns of them (#874)", () => {
+  it("the contract's stop slot runs bin/check static, which runs the clone and unused gates", () => {
+    const REPO = join(import.meta.dirname, "..");
+    const contract = JSON.parse(readFileSync(join(REPO, ".claude", "contract.json"), "utf8")) as { stop?: string };
+    const staticGates = /^static_gates="([^"]*)"$/m.exec(readFileSync(join(REPO, "bin", "check"), "utf8"))?.[1] ?? "";
+
+    expect(contract.stop).toBe("bin/check static");
+    expect(staticGates.split(" ")).toEqual(expect.arrayContaining(["typecheck", "lint", "unused", "clones", "test"]));
+  });
+});

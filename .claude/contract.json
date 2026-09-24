@@ -1,4 +1,3 @@
 {
-  "lint_one": "node_modules/.bin/eslint --config eslint.config.js",
-  "test_related": "node_modules/.bin/vitest related --run --passWithNoTests --exclude 'src/**/*.proc.test.ts'"
+  "stop": "bin/check static"
 }
