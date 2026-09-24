@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
@@ -37,6 +37,7 @@ interface Workflow {
 interface Outcome {
   outcome: string;
   conclusion: string;
+  outputs: Record<string, string>;
 }
 
 function workflow(): { on: Workflow["on"]; job: Job } {
@@ -53,11 +54,13 @@ function stageStep(job: Job, stage: Stage): Step {
 }
 
 function holds(condition: string, labels: string[], outcomes: Record<string, Outcome>, failed: boolean): boolean {
-  const source = condition
+  const guarded = /\b(success|failure|always|cancelled)\(\)/.test(condition) ? condition : `success() && (${condition.replace(/^\s*\$\{\{|\}\}\s*$/g, "")})`;
+  const source = guarded
     .replace(/^\s*\$\{\{|\}\}\s*$/g, "")
     .replace(/github\.event\.action/g, "'opened'")
     .replace(/contains\(\s*github\.event\.issue\.labels\.\*\.name\s*,\s*('[^']*')\s*\)/g, "labels.includes($1)")
-    .replace(/steps\.([\w-]+)\.(outcome|conclusion)/g, 'steps["$1"].$2');
+    .replace(/steps\.([\w-]+)\.(outcome|conclusion)/g, 'steps["$1"].$2')
+    .replace(/steps\.([\w-]+)\.outputs\.([\w-]+)/g, 'steps["$1"].outputs["$2"]');
   const evaluate = new Function("labels", "steps", "success", "failure", "always", "cancelled", `return Boolean(${source});`) as (
     ...scope: unknown[]
   ) => boolean;
@@ -71,9 +74,9 @@ function holds(condition: string, labels: string[], outcomes: Record<string, Out
   );
 }
 
-function stagesRun(job: Job, failing: Stage | undefined): Stage[] {
+function stagesRun(job: Job, failing: Stage | undefined, outputs: Record<string, Record<string, string>> = {}): Stage[] {
   const outcomes: Record<string, Outcome> = {};
-  for (const step of job.steps) if (step.id !== undefined) outcomes[step.id] = { outcome: "skipped", conclusion: "skipped" };
+  for (const step of job.steps) if (step.id !== undefined) outcomes[step.id] = { outcome: "skipped", conclusion: "skipped", outputs: {} };
   const red = failing === undefined ? undefined : stageStep(job, failing);
   const ran: Step[] = [];
   let failed = false;
@@ -82,7 +85,7 @@ function stagesRun(job: Job, failing: Stage | undefined): Stage[] {
     ran.push(step);
     const broke = step === red;
     const stops = broke && step["continue-on-error"] !== true;
-    if (step.id !== undefined) outcomes[step.id] = { outcome: broke ? "failure" : "success", conclusion: stops ? "failure" : "success" };
+    if (step.id !== undefined) outcomes[step.id] = { outcome: broke ? "failure" : "success", conclusion: stops ? "failure" : "success", outputs: outputs[step.id] ?? {} };
     failed = failed || stops;
   }
   return STAGES.filter((stage) => ran.includes(stageStep(job, stage)));
@@ -212,6 +215,16 @@ describe("every job that spends a model is watched as it goes, read after it end
   });
 });
 
+function parseOutput(file: string): Record<string, string> {
+  if (!existsSync(file)) return {};
+  return Object.fromEntries(
+    readFileSync(file, "utf8")
+      .split("\n")
+      .filter((line) => line.includes("="))
+      .map((line) => [line.slice(0, line.indexOf("=")), line.slice(line.indexOf("=") + 1)]),
+  );
+}
+
 function runOf(step: Step, ticket: string, action: string): string {
   return (step.run ?? "").replaceAll(/\$\{\{ github\.event\.issue\.number \}\}/g, ticket).replaceAll(/\$\{\{ github\.event\.action \}\}/g, action);
 }
@@ -223,6 +236,7 @@ describe("build.yml re-runs an open PR's failed checks instead of building, when
 
     const withOpenPr = scratch("reopen-open-");
     const openCalls = join(withOpenPr, "calls");
+    const openOutput = join(withOpenPr, "output");
     script(join(withOpenPr, "bin", "mark"), "exit 0\n");
     script(join(withOpenPr, "bin", "start"), `printf 'start called\\n' >>"${openCalls}"\n`);
     script(
@@ -239,7 +253,7 @@ describe("build.yml re-runs an open PR's failed checks instead of building, when
     );
     const opened = spawnSync("bash", ["-e", "-c", runOf(start, "9", "reopened")], {
       cwd: withOpenPr,
-      env: { ...process.env, PATH: `${join(withOpenPr, "bin")}:${process.env.PATH}` },
+      env: { ...process.env, PATH: `${join(withOpenPr, "bin")}:${process.env.PATH}`, GITHUB_OUTPUT: openOutput },
       encoding: "utf8",
     });
 
@@ -247,9 +261,11 @@ describe("build.yml re-runs an open PR's failed checks instead of building, when
     const openLog = readFileSync(openCalls, "utf8");
     expect(openLog).not.toContain("start called");
     expect(openLog).toMatch(/rerun/i);
+    expect(stagesRun(job, undefined, { start: parseOutput(openOutput) })).toEqual(["start"]);
 
     const withNoPr = scratch("reopen-none-");
     const noCalls = join(withNoPr, "calls");
+    const noOutput = join(withNoPr, "output");
     script(join(withNoPr, "bin", "mark"), "exit 0\n");
     script(join(withNoPr, "bin", "start"), `printf 'start called\\n' >>"${noCalls}"\n`);
     script(
@@ -260,11 +276,12 @@ describe("build.yml re-runs an open PR's failed checks instead of building, when
     );
     const none = spawnSync("bash", ["-e", "-c", runOf(start, "9", "reopened")], {
       cwd: withNoPr,
-      env: { ...process.env, PATH: `${join(withNoPr, "bin")}:${process.env.PATH}` },
+      env: { ...process.env, PATH: `${join(withNoPr, "bin")}:${process.env.PATH}`, GITHUB_OUTPUT: noOutput },
       encoding: "utf8",
     });
 
     expect(none.status, none.stderr).toBe(0);
     expect(readFileSync(noCalls, "utf8")).toContain("start called");
+    expect(stagesRun(job, undefined, { start: parseOutput(noOutput) })).toEqual(["start", "test-author", "build", "save"]);
   });
 });

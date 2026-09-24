@@ -51,12 +51,14 @@ jobs:
               | sed -E 's#.*/runs/([0-9]+)/.*#\1#' \
               | sort -u \
               | while read -r run; do gh run rerun "$run" --failed; done
+            echo rerun=true >>"$GITHUB_OUTPUT"
           else
             bin/mark ${{ github.event.issue.number }} 1-defining || true
             bin/start ${{ github.event.issue.number }}
           fi
 
       - id: test-author
+        if: steps.start.outputs.rerun != 'true'
         timeout-minutes: 20
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
@@ -68,6 +70,7 @@ jobs:
           bin/mark ${{ github.event.issue.number }} 2-building || true
 
       - id: build
+        if: steps.start.outputs.rerun != 'true'
         timeout-minutes: 30
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
