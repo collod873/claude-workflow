@@ -139,9 +139,10 @@ jobs:
           HEAD_REF: ${{ github.head_ref }}
         run: bin/mark "${HEAD_REF#ticket/}" failed
 
-      - if: failure() || cancelled()
+      - if: (failure() || cancelled()) && steps.hand-off.outcome != 'success'
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           HEAD_REF: ${{ github.head_ref }}
           STEPS_JSON: ${{ toJSON(steps) }}
         run: |

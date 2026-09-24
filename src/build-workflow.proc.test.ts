@@ -25,6 +25,7 @@ interface Step {
 
 interface Job {
   if?: string;
+  needs?: string | string[];
   env?: Record<string, unknown>;
   steps: Step[];
 }
@@ -213,9 +214,12 @@ function reviewJob(): Job {
   return jobs.review;
 }
 
-function holdsAlone(condition: string, scope: { failed?: boolean; cancelled?: boolean }): boolean {
+const outcome = (value: string): StepOutcome => ({ outcome: value, conclusion: value, outputs: {} });
+const allSkipped = (steps: Step[]): Record<string, StepOutcome> => Object.fromEntries(steps.flatMap((step) => (step.id === undefined ? [] : [[step.id, outcome("skipped")]])));
+
+function holdsAlone(condition: string, steps: Step[], scope: { failed?: boolean; cancelled?: boolean }): boolean {
   try {
-    return holds(condition, { ...scope, steps: {} });
+    return holds(condition, { ...scope, steps: allSkipped(steps) });
   } catch {
     return false;
   }
@@ -227,8 +231,9 @@ describe("build.yml, and check.yml's review job, comment on the ticket whatever 
     const jobs: [string, Job][] = [...Object.entries(buildJobs), ["review", reviewJob()]];
 
     for (const [name, job] of jobs) {
-      const notifying = expanded(job.steps).find(
-        (step) => holdsAlone(step.if ?? "success()", { failed: true }) && holdsAlone(step.if ?? "success()", { cancelled: true }) && /comment/i.test(step.run ?? ""),
+      const steps = expanded(job.steps);
+      const notifying = steps.find(
+        (step) => holdsAlone(step.if ?? "success()", steps, { failed: true }) && holdsAlone(step.if ?? "success()", steps, { cancelled: true }) && /comment/i.test(step.run ?? ""),
       );
 
       expect(notifying, `${name}: a step that comments on the ticket whatever ends the job, even before its checkout`).toBeDefined();
@@ -236,6 +241,42 @@ describe("build.yml, and check.yml's review job, comment on the ticket whatever 
       expect(notifying?.run, name).toMatch(/step/i);
       expect(notifying?.run, name).toMatch(name === "review" ? /HEAD_REF/ : /github\.event\.issue\.number/);
       expect(String(notifying?.env?.GH_TOKEN ?? ""), name).not.toMatch(/steps\.\w+\.outputs\.token/);
+    }
+  });
+
+  it("check.yml's review job leaves the ticket be when its hand-off repaired the drift", () => {
+    const job = reviewJob();
+    const notifying = job.steps.find((step) => /gh issue comment/.test(step.run ?? ""));
+    const after = (handOff: string) =>
+      holds(notifying?.if ?? "success()", { steps: { ...allSkipped(job.steps), review: outcome("failure"), "hand-off": outcome(handOff) }, needs: { check: { result: "success" } }, failed: true });
+
+    expect(after("success")).toBe(false);
+    expect(after("failure")).toBe(true);
+  });
+});
+
+describe("every step that runs gh names its repo, since gh otherwise reads it from a checkout that may never have run (#864)", () => {
+  it("every step that runs gh sets GH_REPO or runs only once a checkout succeeded", () => {
+    const runsGh = (step: Step) => /(^|[\s|;&(])gh\s/.test(step.run ?? "");
+    const calls = everyJob().flatMap((job) => job.steps.filter(runsGh).map((step) => ({ job, step })));
+
+    expect(calls.length).toBeGreaterThan(0);
+    for (const { job, step } of calls) {
+      const repo = { ...job.env, ...step.env }.GH_REPO;
+      if (repo !== undefined) {
+        expect(String(repo), step.run).toContain("github.repository");
+        continue;
+      }
+      const checkout = job.steps.findIndex((candidate) => candidate.uses?.startsWith("actions/checkout@") === true);
+      expect(checkout, step.run).toBeGreaterThanOrEqual(0);
+      expect(job.steps.indexOf(step), step.run).toBeGreaterThan(checkout);
+      const checkoutId = job.steps[checkout].id;
+      const steps = { ...allSkipped(job.steps), ...(checkoutId === undefined ? {} : { [checkoutId]: outcome("failure") }) };
+      for (const result of ["success", "failure"]) {
+        const needs = Object.fromEntries([job.needs ?? []].flat().map((name) => [name, { result }]));
+        expect(holds(step.if ?? "success()", { steps, needs, failed: true }), step.run).toBe(false);
+        expect(holds(step.if ?? "success()", { steps, needs, cancelled: true }), step.run).toBe(false);
+      }
     }
   });
 });
