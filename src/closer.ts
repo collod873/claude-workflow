@@ -14,6 +14,8 @@ const STAGE_LABELS = "1-defining,2-building,3-checking,4-reviewing,5-merging,fix
 
 const run = (command: string, args: string[]) => spawnSync(command, args, { encoding: "utf8", maxBuffer: Infinity });
 const gh = (args: string[]) => run("gh", args);
+const quietGh = (args: string[]) => spawnSync("gh", args, { encoding: "utf8", env: { ...process.env, GH_TOKEN: process.env.QUIET_GH_TOKEN } });
+const ticketState = (ticket: string) => gh(["issue", "view", ticket, "--json", "state,stateReason", "--jq", '.state + " " + .stateReason']).stdout.trim();
 const git = (args: string[]) => run("git", args);
 
 interface Verdict {
@@ -160,13 +162,16 @@ function close(): Stop | undefined {
   if (posted.refusals.length > 0) return stoppedAt("unrecorded", `close: #${ticket} got no closing record: ${quoted(posted.refusals[0])}`);
   const done = gathered.length > 0 && gathered.every((verdict) => verdict.merge);
   if (done) {
-    if (gh(["issue", "view", ticket, "--json", "state", "--jq", ".state"]).stdout.trim() === "CLOSED") gh(["issue", "reopen", ticket]);
+    const state = ticketState(ticket);
     gh(["issue", "edit", ticket, "--remove-label", STAGE_LABELS]);
-    if (gh(["issue", "close", ticket, "--reason", "completed"]).status !== 0) return stoppedAt("unrecorded", `close: #${ticket} is done but could not be closed${recorded(posted.said)}`);
+    if (state !== "CLOSED COMPLETED") {
+      if (state.startsWith("CLOSED")) quietGh(["issue", "reopen", ticket]);
+      if (quietGh(["issue", "close", ticket, "--reason", "completed"]).status !== 0) return stoppedAt("unrecorded", `close: #${ticket} is done but could not be closed${recorded(posted.said)}`);
+    }
     console.log(`close: #${ticket} closed as completed, every check green on the merge commit${recorded(posted.said)}`);
     return undefined;
   }
-  if (gh(["issue", "view", ticket, "--json", "state", "--jq", ".state"]).stdout.trim() === "CLOSED") gh(["issue", "reopen", ticket]);
+  if (ticketState(ticket).startsWith("CLOSED")) gh(["issue", "reopen", ticket]);
   console.log(`close: #${ticket} left open, a check is red on the merge commit${recorded(posted.said)}`);
   return undefined;
 }

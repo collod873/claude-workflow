@@ -31,4 +31,5 @@ jobs:
 
       - env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
+          QUIET_GH_TOKEN: ${{ github.token }}
         run: bin/close

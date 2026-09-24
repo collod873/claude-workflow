@@ -81,6 +81,7 @@ describe("bin/fix clears a stuck ticket with one fixer turn (#811)", () => {
     expect(handed()).not.toContain("a comment nobody needs");
     expect(handed()).toContain('+it("names the behaviour the criterion asks for"');
     expect(committed()).toEqual([expect.stringContaining("#811"), "src/ticket-shape.ts"]);
+    expect(committed()[0]).not.toMatch(/\b(close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)\b:?[ \t]+#[0-9]+/i);
     expect(closes()).toEqual([]);
   });
 
