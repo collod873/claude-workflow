@@ -2,6 +2,7 @@ name: Check
 
 "on":
   pull_request:
+  pull_request_target:
 
 permissions:
   contents: read
@@ -14,9 +15,19 @@ jobs:
       contents: read
       issues: write
     steps:
+      - env:
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        run: |
+          [ "$HEAD_REPO" = "$GITHUB_REPOSITORY" ] && exit 0
+          printf 'check: a PR from %s is never judged here\n' "${HEAD_REPO:-a deleted fork}"
+          exit 1
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - run: git checkout origin/main -- vitest.config.ts src/growth-limits.proc.test.ts
 
       - uses: actions/setup-node@v4
         with:
@@ -34,7 +45,7 @@ jobs:
 
   review:
     needs: check
-    if: ${{ !cancelled() && startsWith(github.head_ref, 'ticket/') }}
+    if: ${{ !cancelled() && startsWith(github.head_ref, 'ticket/') && github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -59,6 +70,10 @@ jobs:
           node-version: 24
 
       - run: npm ci
+
+      - run: |
+          git worktree add --detach "$RUNNER_TEMP/main" origin/main
+          ln -s "$PWD/node_modules" "$RUNNER_TEMP/main/node_modules"
 
       - uses: ./.github/actions/stage
         with:
@@ -85,7 +100,7 @@ jobs:
           HEAD_REF: ${{ github.head_ref }}
         run: |
           tail --pid=$$ -n +1 -F .git/machine-logs/review-${{ github.event.pull_request.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
-          bin/review ${{ github.event.pull_request.number }}
+          $RUNNER_TEMP/main/bin/review ${{ github.event.pull_request.number }}
           bin/mark "${HEAD_REF#ticket/}" 5-merging || true
 
       - if: failure() && steps.review.outcome != 'failure'

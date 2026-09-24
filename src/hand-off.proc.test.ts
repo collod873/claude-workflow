@@ -209,10 +209,10 @@ describe("a ticket reopened for a red on main reaches the fixer (#827)", () => {
   it("build.yml builds a ticket when it is opened or the owner reopens it, never when the App reopens it for a red on main", () => {
     const job = jobRunning("build", "bin/start");
     const start = job.steps.find((step) => runs(step, "bin/start")) as Step;
-    const gate = `${job.if ?? ""} ${start.if ?? ""}`;
 
-    expect(gate).toMatch(/github\.event\.action\s*==\s*'opened'/);
-    expect(gate).toMatch(/github\.event\.action\s*==\s*'reopened'\s*&&\s*github\.event\.sender\.type\s*!=\s*'Bot'/);
+    expect(start.if).toBeUndefined();
+    expect(holds(job.if ?? "true", { sender: "collod873" })).toBe(true);
+    expect(holds(job.if ?? "true", { sender: "collod873-machine[bot]" })).toBe(false);
   });
 
   it("build.yml hands a ticket reopened for a red on main to the fixer", () => {

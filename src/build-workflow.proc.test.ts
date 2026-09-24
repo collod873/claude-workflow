@@ -76,6 +76,15 @@ describe("build.yml builds a ticket the moment it is filed (#826)", () => {
     expect(starts(["ticket", "note"])).toBe(false);
   });
 
+  it("an issue anyone but the owner files or reopens starts no build, since its checks run as shell with the App's token", () => {
+    const { job } = workflow();
+    const starts = (sender: string) => holds(job.if ?? "true", { sender });
+
+    expect(starts("collod873")).toBe(true);
+    expect(starts("stranger")).toBe(false);
+    expect(starts("collod873-machine[bot]")).toBe(false);
+  });
+
   it("the branch is saved when the build ends red and nothing runs after a start refusal", () => {
     const { job } = workflow();
 

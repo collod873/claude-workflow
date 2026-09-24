@@ -1,8 +1,9 @@
+import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { fileDiff, JUDGEMENT, reviewing } from "./scenarios.ts";
+import { cloned, fileDiff, git, JUDGEMENT, plant, reviewing, scratch } from "./scenarios.ts";
 
 const WORKFLOW = join(import.meta.dirname, "..", ".github", "workflows", "check.yml");
 
@@ -62,7 +63,7 @@ describe("bin/review reads a green ticket PR against its Why before it merges (#
 
     expect(review.needs).toBe("check");
     expect(review.if).toContain("startsWith(github.head_ref, 'ticket/')");
-    expect(review.steps?.some((step) => /^bin\/review /m.test(step.run ?? ""))).toBe(true);
+    expect(review.steps?.some((step) => /(^|\/)bin\/review /m.test(step.run ?? ""))).toBe(true);
 
     const { run, spent, comments } = reviewing({ branch: "land/session" });
     expect(run().status).toBe(0);
@@ -82,5 +83,58 @@ describe("bin/review --help prints its usage and exits clean, reading no PR and 
     expect(read()).toBe(false);
     expect(spent()).toBe(false);
     expect(hired()).toEqual([]);
+  });
+});
+
+interface CheckStep {
+  run?: string;
+  env?: Record<string, string>;
+}
+
+interface CheckWorkflow {
+  on: Record<string, unknown>;
+  jobs: Record<string, { if?: string; steps: CheckStep[] }>;
+}
+
+const checkWorkflow = () => parse(readFileSync(WORKFLOW, "utf8")) as CheckWorkflow;
+const stepRunning = (steps: CheckStep[], command: string) => steps.find((step) => (step.run ?? "").includes(command)) as CheckStep;
+const JUDGED = ["vitest.config.ts", "src/growth-limits.proc.test.ts", "bin/review"];
+
+describe("check.yml judges a PR with main's reviewer and main's test count, whatever the PR changed (#652)", () => {
+  it("runs from main's copy of itself and refuses a fork before any of its code runs", () => {
+    const { on, jobs } = checkWorkflow();
+    const guard = jobs.check.steps[0];
+    const judged = (headRepo: string) =>
+      spawnSync("bash", ["-e", "-c", guard.run ?? ""], { env: { ...process.env, HEAD_REPO: headRepo, GITHUB_REPOSITORY: "collod873/claude-workflow" }, encoding: "utf8" }).status;
+
+    expect(Object.keys(on)).toContain("pull_request_target");
+    expect(judged("collod873/claude-workflow")).toBe(0);
+    expect(judged("stranger/claude-workflow")).toBe(1);
+    expect(judged("")).toBe(1);
+    expect(jobs.review.if).toContain("github.event.pull_request.head.repo.full_name == github.repository");
+  });
+
+  it("puts main's test runner and test count back, and reviews with main's reviewer, when the PR changed all three", () => {
+    const { jobs } = checkWorkflow();
+    const root = scratch("judged-");
+    const { session } = cloned(root, "start");
+    for (const path of JUDGED) plant(session, path, "main's copy\n");
+    git(session, "add", ".");
+    git(session, "commit", "--quiet", "-m", "main");
+    git(session, "push", "--quiet", "origin", "main");
+    git(session, "checkout", "--quiet", "-b", "ticket/9");
+    for (const path of JUDGED) plant(session, path, "the PR's copy\n");
+    git(session, "commit", "--quiet", "-am", "the PR");
+    const runnerTemp = scratch("runner-");
+    const run = (step: CheckStep) => spawnSync("bash", ["-e", "-c", step.run ?? ""], { cwd: session, env: { ...process.env, RUNNER_TEMP: runnerTemp }, encoding: "utf8" });
+
+    expect(run(stepRunning(jobs.check.steps, "git checkout origin/main --")).status).toBe(0);
+    expect(run(stepRunning(jobs.review.steps, "git worktree add")).status).toBe(0);
+
+    expect(readFileSync(join(session, "vitest.config.ts"), "utf8")).toBe("main's copy\n");
+    expect(readFileSync(join(session, "src/growth-limits.proc.test.ts"), "utf8")).toBe("main's copy\n");
+    expect(readFileSync(join(session, "bin/review"), "utf8")).toBe("the PR's copy\n");
+    expect(readFileSync(join(runnerTemp, "main", "bin/review"), "utf8")).toBe("main's copy\n");
+    expect(stepRunning(jobs.review.steps, "bin/review ").run).toContain("$RUNNER_TEMP/main/bin/review ");
   });
 });
