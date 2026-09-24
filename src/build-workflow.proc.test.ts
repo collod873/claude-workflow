@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { holds, scratch, script, type StepOutcome } from "./scenarios.ts";
+import { holds, scratch, script, stepsRun, type StepOutcome } from "./scenarios.ts";
 
 const REPO = join(import.meta.dirname, "..");
 const WORKFLOWS = join(REPO, ".github", "workflows");
@@ -257,6 +257,92 @@ describe("build.yml, and check.yml's review job, comment on the ticket whatever 
       expect(after("success"), name).toBe(false);
       expect(after("failure"), name).toBe(true);
     }
+  });
+});
+
+const RESUME = "remove its `failed` label";
+const runsAny = (step: Step, commands: RegExp[]) => commands.some((command) => command.test(step.run ?? ""));
+const WRITES = [/(^|\s|\/)bin\/(mark|review)\s/, /hand-off/, /gh issue comment/];
+
+function heldStep(job: Job): Step {
+  const reviewing = job.steps.findIndex((step) => /bin\/mark .*4-reviewing/.test(step.run ?? ""));
+  const held = job.steps.slice(0, reviewing).find((step) => (step.run ?? "").includes("--json labels"));
+  expect(held, "a step that reads the ticket's labels before it is marked reviewing").toBeDefined();
+  return held as Step;
+}
+
+function heldRun(step: Step, labels: string[]): { status: number | null; output: Record<string, string>; calls: string } {
+  const root = scratch("held-");
+  const calls = join(root, "calls");
+  const output = join(root, "output");
+  script(join(root, "bin", "gh"), `printf '%s\\n' "$*" >>"${calls}"\nprintf '%s\\n' ${labels.map((label) => `'${label}'`).join(" ")}\n`);
+  const ran = spawnSync("bash", ["-e", "-c", step.run ?? ""], { cwd: root, env: { ...process.env, PATH: `${join(root, "bin")}:${process.env.PATH}`, HEAD_REF: "ticket/9", GITHUB_OUTPUT: output }, encoding: "utf8" });
+  return { status: ran.status, output: parseOutput(output), calls: existsSync(calls) ? readFileSync(calls, "utf8") : "" };
+}
+
+function reviewStepsAfter(job: Job, failing: Step, outputs: Record<string, string>, checked: string): Step[] {
+  const ran = stepsRun(job.steps, failing, { checked, outputs });
+  return ran.slice(ran.indexOf(failing) + 1);
+}
+
+describe("a failed ticket stays failed until its label is removed, however often main moves (#865)", () => {
+  it("check.yml's review job ends red on a failed ticket before any model, mark or comment, whether its check passed or not", () => {
+    const job = reviewJob();
+    const held = heldStep(job);
+    const checkout = job.steps.findIndex((step) => step.uses?.startsWith("actions/checkout@") === true);
+
+    expect(job.steps.indexOf(held)).toBeGreaterThan(checkout);
+    expect(job.steps.slice(0, job.steps.indexOf(held)).some((step) => spendsModel(step) || runsAny(step, WRITES))).toBe(false);
+
+    const failedTicket = heldRun(held, ["failed", "4-reviewing"]);
+    expect(failedTicket.status).toBe(1);
+    expect(failedTicket.calls).toMatch(/^issue view 9 /);
+    for (const checked of ["success", "failure"]) {
+      const after = reviewStepsAfter(job, held, failedTicket.output, checked);
+      expect(after.filter((step) => spendsModel(step) || runsAny(step, WRITES)).map((step) => step.id ?? step.run), checked).toEqual([]);
+    }
+
+    const liveTicket = heldRun(held, ["3-checking"]);
+    expect(liveTicket.status).toBe(0);
+    expect(liveTicket.output).toEqual({});
+  });
+
+  it("the ticket is told once, when it first goes failed, how to resume it", () => {
+    const job = reviewJob();
+    const notifying = job.steps.find((step) => /gh issue comment/.test(step.run ?? ""));
+
+    expect(notifying?.run?.replaceAll("\\`", "`")).toContain(RESUME);
+  });
+
+  it("the owner's reopen of a ticket whose PR is open lifts its failed label before re-running the PR's failed checks", () => {
+    const { job } = workflow();
+    const root = scratch("reopen-failed-");
+    const calls = join(root, "calls");
+    script(join(root, "bin", "mark"), "exit 0\n");
+    script(join(root, "bin", "start"), "exit 0\n");
+    script(
+      join(root, "bin", "gh"),
+      [
+        `printf '%s\\n' "$*" >>"${calls}"`,
+        'case "$*" in',
+        '  *"pr view ticket/9"*) printf \'OPEN\\n\' ;;',
+        `  *"pr checks ticket/9"*) printf '%s\\n' '${JSON.stringify([{ name: "review", bucket: "fail", link: "https://github.com/collod873/claude-workflow/actions/runs/555/job/777" }])}' ;;`,
+        "  *) exit 0 ;;",
+        "esac",
+        "",
+      ].join("\n"),
+    );
+    const reopened = spawnSync("bash", ["-e", "-c", runOf(stageStep(job, "start"), "9", "reopened")], {
+      cwd: root,
+      env: { ...process.env, PATH: `${join(root, "bin")}:${process.env.PATH}`, GITHUB_OUTPUT: join(root, "output") },
+      encoding: "utf8",
+    });
+
+    expect(reopened.status, reopened.stderr).toBe(0);
+    const said = readFileSync(calls, "utf8").trimEnd().split("\n");
+    const lifted = said.findIndex((call) => /^issue edit 9 .*--remove-label failed/.test(call));
+    expect(lifted).toBeGreaterThanOrEqual(0);
+    expect(lifted).toBeLessThan(said.findIndex((call) => call.startsWith("run rerun")));
   });
 });
 

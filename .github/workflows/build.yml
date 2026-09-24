@@ -55,6 +55,7 @@ jobs:
         run: |
           branch="ticket/${{ github.event.issue.number }}"
           if [[ '${{ github.event.action }}' == reopened ]] && state=$(gh pr view "$branch" --json state --jq .state 2>/dev/null) && [[ $state == OPEN ]]; then
+            gh issue edit ${{ github.event.issue.number }} --remove-label failed
             gh pr checks "$branch" --json name,bucket,link \
               | jq -r '.[] | select(.bucket == "fail") | .link' \
               | sed -E 's#.*/runs/([0-9]+)/.*#\1#' \

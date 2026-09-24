@@ -10,9 +10,10 @@ function mark(top: string, ticket: string, label: string): void {
   spawnSync(join(top, "bin", "mark"), [ticket, label], { stdio: "ignore" });
 }
 
+const withPr = (pr: string | undefined) => (pr === undefined ? "" : `; its open PR: ${pr}. To resume it, remove its \`failed\` label, and the next update from main re-runs its review.`);
+
 function leftAlone(top: string, ticket: string, row: string): void {
-  const pr = openPr(ticket, gh);
-  const note = `hand-off: #${ticket} was left alone, stopped at: ${row}${pr === undefined ? "" : `; its open PR: ${pr}`}`;
+  const note = `hand-off: #${ticket} was left alone, stopped at: ${row}${withPr(openPr(ticket, gh))}`;
   commentOnTicket(ticket, note, gh);
   mark(top, ticket, "failed");
 }
@@ -26,8 +27,7 @@ function handOff(ticket: string, named: string | undefined): number {
   }
   const row = named ?? rowStopped(ticket, join(git(["rev-parse", "--path-format=absolute", "--git-common-dir"]), "machine-logs"));
   if (row === undefined) {
-    const pr = openPr(ticket, gh);
-    const note = `hand-off: #${ticket} stopped at no row its logs name${pr === undefined ? "" : `; its open PR: ${pr}`}`;
+    const note = `hand-off: #${ticket} stopped at no row its logs name${withPr(openPr(ticket, gh))}`;
     commentOnTicket(ticket, note, gh);
     mark(top, ticket, "failed");
     console.log(`${said} stopped at no row its logs name, so the fixer was not called`);
