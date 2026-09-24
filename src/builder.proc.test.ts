@@ -12,6 +12,17 @@ const GREEN_ONCE_BUILT = [
   "",
 ].join("\n");
 
+const RETRIES_ONCE_THEN_BUILDS = [
+  "if [ -f ../retried ]; then",
+  BUILDS.trimEnd(),
+  "else",
+  "touch ../retried",
+  "printf 'the model overloaded\\n' >&2",
+  "exit 1",
+  "fi",
+  "",
+].join("\n");
+
 const after = (argv: string, flag: string) => argv.split("\n")[argv.split("\n").indexOf(flag) + 1];
 
 function fenceSays(argv: string, input: string) {
@@ -118,6 +129,17 @@ describe("the builder builds against the brief, with one resumed repair round (#
     expect(calls()).toBe(1);
     expect(committed()).toEqual([expect.stringContaining("#724"), "src/ticket-shape.ts"]);
     expect(dirty()).toBe("");
+  });
+
+  it("calls its model once more when its process itself exits non-zero, not a session it must resume (#862)", () => {
+    const { run, calls, argv } = building({ claude: RETRIES_ONCE_THEN_BUILDS, npx: GREEN_ONCE_BUILT });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("#724 green");
+    expect(calls()).toBe(2);
+    expect(argv(2)).not.toContain("--resume");
   });
 
   it("keeps every round's transcript in the machine logs, so whoever clears a red build can read what the model did", () => {

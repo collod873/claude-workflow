@@ -146,13 +146,16 @@ function fix(opened: Opened): Outcome {
     }),
   );
   const commit = { message: `Repair #${ticket} in the fixer's one turn`, branch: git(["branch", "--show-current"]).stdout.trim() === branch ? undefined : branch };
-  const done = spent.refusal === undefined ? turn(opened, spent.answer as Answer | undefined, explain) : { refusal: spent.refusal };
+  const ownCallFailed = spent.refusal !== undefined;
+  const done = ownCallFailed ? { refusal: spent.refusal as string } : turn(opened, spent.answer as Answer | undefined, explain);
   const row = rowStopped(ticket, logs);
   if ("refusal" in done) {
     const pr = openPr(ticket, gh);
-    if (pr !== undefined) {
-      const said = commentOnTicket(ticket, `The fixer's turn on #${ticket} ended red, stopped at: ${row ?? "an unlogged row"}; its PR stays open: ${pr}; ${done.refusal}`, gh);
-      return { stop: "fixerEnds", refusals: [`${done.refusal}, so #${ticket} stays open with its PR`, ...(said.refusals.length > 0 ? [`its comment was refused: ${quoted(said.refusals[0])}`] : [])], commit };
+    if (pr !== undefined || ownCallFailed) {
+      const because = pr === undefined ? "its own model call failed" : `its PR stays open: ${pr}`;
+      const said = commentOnTicket(ticket, `The fixer's turn on #${ticket} ended red, stopped at: ${row ?? "an unlogged row"}; ${because}; ${done.refusal}`, gh);
+      const stays = pr === undefined ? "stays open, its own model call failed" : "stays open with its PR";
+      return { stop: "fixerEnds", refusals: [`${done.refusal}, so #${ticket} ${stays}`, ...(said.refusals.length > 0 ? [`its comment was refused: ${quoted(said.refusals[0])}`] : [])], commit };
     }
     const unclosed = closedUnbuilt(ticket, done.refusal, row, undefined);
     return { stop: "fixerEnds", refusals: [`${done.refusal}, so #${ticket} ${unclosed === undefined ? "was closed unbuilt" : "stays open"}`, ...(unclosed === undefined ? [] : [unclosed])], commit };
