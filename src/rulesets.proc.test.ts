@@ -68,7 +68,7 @@ const asRuled = (name: string, ruled: Ruled): Live => ({
 });
 
 describe("GitHub holds main, and this reads the ruleset it holds it with (#652)", () => {
-  it("finds every rule the One ticket ruling names, and none of them bypassed for whoever runs this", () => {
+  it("finds every rule main needs, and none of them bypassed for whoever runs this", () => {
     expect(refusals(live(), appliesToMe())).toEqual([]);
   });
 
