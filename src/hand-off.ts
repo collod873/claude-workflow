@@ -1,24 +1,15 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { rowsUnder } from "./machine-page.ts";
-import { commentOnTicket, type Gh } from "./post.ts";
+import { commentOnTicket, openPr, type Gh } from "./post.ts";
+import { rowStopped } from "./stops.ts";
 
 const PAGE = "docs/agents/layers/one-ticket.md";
-const STOPPED_AT = /^\d+ refusals, stopped at: (.+)$/;
 const FIXER = /^The fixer\b/;
 
 const git = (args: string[]) => spawnSync("git", args, { encoding: "utf8" }).stdout.trim();
 const gh: Gh = (args) => spawnSync("gh", args, { encoding: "utf8" });
-
-function stoppedAt(ticket: string, logs: string): string | undefined {
-  if (!existsSync(logs)) return undefined;
-  return readdirSync(logs)
-    .filter((name) => name.endsWith(`-${ticket}.log`))
-    .map((name) => join(logs, name))
-    .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)
-    .flatMap((log) => STOPPED_AT.exec(readFileSync(log, "utf8").split("\n")[0])?.slice(1) ?? [])[0];
-}
 
 function clearedBy(page: string, row: string): string | undefined {
   const cells = rowsUnder(page, "Runs").find(([stop]) => stop === row);
@@ -29,14 +20,8 @@ function mark(top: string, ticket: string, label: string): void {
   spawnSync(join(top, "bin", "mark"), [ticket, label], { stdio: "ignore" });
 }
 
-function openPr(ticket: string): string | undefined {
-  const got = gh(["pr", "view", `ticket/${ticket}`, "--json", "state,url", "--jq", 'select(.state == "OPEN") | .url']);
-  const url = got.status === 0 ? got.stdout.trim() : "";
-  return url === "" ? undefined : url;
-}
-
 function leftAlone(top: string, ticket: string, row: string): void {
-  const pr = openPr(ticket);
+  const pr = openPr(ticket, gh);
   const note = `hand-off: #${ticket} was left alone, stopped at: ${row}${pr === undefined ? "" : `; its open PR: ${pr}`}`;
   commentOnTicket(ticket, note, gh);
   mark(top, ticket, "failed");
@@ -49,7 +34,7 @@ function handOff(ticket: string, named: string | undefined): number {
     console.error(`${said} is not in a repo, so nothing was handed on`);
     return 1;
   }
-  const row = named ?? stoppedAt(ticket, join(git(["rev-parse", "--path-format=absolute", "--git-common-dir"]), "machine-logs"));
+  const row = named ?? rowStopped(ticket, join(git(["rev-parse", "--path-format=absolute", "--git-common-dir"]), "machine-logs"));
   if (row === undefined) {
     mark(top, ticket, "failed");
     console.log(`${said} stopped at no row its logs name, so the fixer was not called`);

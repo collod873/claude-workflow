@@ -5,9 +5,8 @@ import { describe, expect, it } from "vitest";
 import { rowsUnder } from "./machine-page.ts";
 import { parts } from "./parts.ts";
 import { saving } from "./scenarios.ts";
-import { STOPS } from "./stops.ts";
+import { STOPPED_AT, STOPS } from "./stops.ts";
 
-const STOPPED_AT = /^\d+ refusals, stopped at: (.+)$/;
 
 const REPO = resolve(import.meta.dirname, "..");
 const RULING = "docs/agents/layers/one-ticket.md";
