@@ -22,24 +22,29 @@ jobs:
           client-id: ${{ vars.CORE_APP_CLIENT_ID }}
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
 
-      - uses: actions/checkout@v4
+      - id: checkout
+        uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
           token: ${{ steps.app.outputs.token }}
 
-      - uses: actions/setup-node@v4
+      - id: setup-node
+        uses: actions/setup-node@v4
         with:
           node-version: 24
 
-      - run: npm ci
+      - id: npm-ci
+        run: npm ci
 
-      - uses: ./.github/actions/stage
+      - id: stage
+        uses: ./.github/actions/stage
         with:
           client-id: ${{ vars.CORE_APP_CLIENT_ID }}
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
 
-      - run: |
+      - id: git-config
+        run: |
           git config user.name "core-app[bot]"
           git config user.email "core-app[bot]@users.noreply.github.com"
 
@@ -84,7 +89,8 @@ jobs:
           tail --pid=$$ -n +1 -F .git/machine-logs/build-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
           bin/build ${{ github.event.issue.number }}
 
-      - if: always() && (steps.test-author.outcome != 'skipped' || steps.build.outcome != 'skipped')
+      - id: save
+        if: always() && (steps.test-author.outcome != 'skipped' || steps.build.outcome != 'skipped')
         timeout-minutes: 10
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
@@ -103,7 +109,8 @@ jobs:
           tail --pid=$$ -n +1 -F .git/machine-logs/fix-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
           node src/hand-off.ts ${{ github.event.issue.number }}
 
-      - if: cancelled() || steps.hand-off.outcome == 'failure'
+      - id: mark-failed
+        if: cancelled() || steps.hand-off.outcome == 'failure'
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
         run: bin/mark ${{ github.event.issue.number }} failed
@@ -137,24 +144,29 @@ jobs:
           client-id: ${{ vars.CORE_APP_CLIENT_ID }}
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
 
-      - uses: actions/checkout@v4
+      - id: checkout
+        uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
           token: ${{ steps.app.outputs.token }}
 
-      - uses: actions/setup-node@v4
+      - id: setup-node
+        uses: actions/setup-node@v4
         with:
           node-version: 24
 
-      - run: npm ci
+      - id: npm-ci
+        run: npm ci
 
-      - uses: ./.github/actions/stage
+      - id: stage
+        uses: ./.github/actions/stage
         with:
           client-id: ${{ vars.CORE_APP_CLIENT_ID }}
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
 
-      - run: |
+      - id: git-config
+        run: |
           git config user.name "core-app[bot]"
           git config user.email "core-app[bot]@users.noreply.github.com"
           git checkout -B "ticket/${{ github.event.issue.number }}"
@@ -169,7 +181,8 @@ jobs:
           tail --pid=$$ -n +1 -F .git/machine-logs/fix-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
           node src/hand-off.ts ${{ github.event.issue.number }} 'Red on main after merge'
 
-      - if: cancelled() || steps.hand-off.outcome == 'failure'
+      - id: mark-failed
+        if: cancelled() || steps.hand-off.outcome == 'failure'
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
         run: bin/mark ${{ github.event.issue.number }} failed
