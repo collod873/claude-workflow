@@ -82,7 +82,7 @@ export const parts: Part[] = [
     holds: [
       "A ticket has 1 to 3 criteria (a trial), each with one `check:`. At least one check runs tests. Every check is red at filing. `## Why` quotes the owner",
       "Checks test the behaviour meant, not a stand-in like a file or a text match",
-      "A build starts only from fresh main, only when main is green, and not when the ticket's checks already pass there",
+      "A build starts only from fresh main, and not when the ticket's checks already pass there",
     ],
   },
   {

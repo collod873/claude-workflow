@@ -2,7 +2,7 @@
 
 The machine's first layer, judged against the [charter](../charter.md). Signed by the owner in
 session on 2026-09-17 ([ruling ticket](https://github.com/collod873/claude-workflow/issues/665)),
-amended 2026-09-23; only the owner changes it. What is still to build, and in what order, is
+amended 2026-09-24; only the owner changes it. What is still to build, and in what order, is
 [#674](https://github.com/collod873/claude-workflow/issues/674).
 
 ## The path
@@ -34,7 +34,6 @@ Every stop names who clears it.
 | Start refused: shape (a raw filing that skipped `file-issue`) | No model spent | The fixer, which rewrites the ticket |
 | Start refused: a claimed file is deleted, or a check names a `--config` that does not exist | No model spent | The fixer, which rewrites the ticket |
 | Start: the ticket's checks already pass on main | Closed as already done, with a closing record | Nobody needed |
-| Start: main is red | No model spent; the ticket waits | The next green merge to main fires it again |
 | Start: the tree is not clean, fresh main | No model spent | The run that started it, from a fresh checkout |
 | The ticket or its PR cannot be read | No model spent; nothing judged | The fixer |
 | A brief is over its 200 KB cap | No model spent | The fixer, which narrows the ticket's claims |
@@ -48,10 +47,8 @@ Every stop names who clears it.
 | Save: the PR is not open with auto-merge on | Branch pushed, nothing merging | The fixer |
 | Green on the ticket's checks, red on the PR's required check | PR stays open | The fixer |
 | The reviewer finds drift from `## Why` | PR stays open, gaps posted | The fixer |
-| The branch conflicts with main | Update refused, PR open | The fixer |
 | The fixer ends red, or rules the ticket should not exist as written | Closed unbuilt, branch kept, reason on the ticket; left open and marked failed when its PR is open | Nobody; Look-back counts it |
 | Red on main after merge | Ticket reopened | The fixer, on a new PR |
-| Close: the ticket carries no check | Left open, the closing record says nothing proves it | The fixer |
 | Close: the closing record is refused, or the ticket will not close | Run fails red; the ticket left as it was | The fixer |
 
 ## Rules
@@ -60,7 +57,7 @@ Every stop names who clears it.
 |---|---|
 | A ticket has 1 to 3 criteria (a trial), each with one `check:`. At least one check runs tests. Every check is red at filing. `## Why` quotes the owner | Filing refuses; the start step re-runs the same shape check before any model |
 | A test check passes only if it ran at least one test | The check runner fails a run that counted zero tests |
-| A build starts only from fresh main, only when main is green, and not when the ticket's checks already pass there | Start refusals that run before any model |
+| A build starts only from fresh main, and not when the ticket's checks already pass there | Start refusals that run before any model |
 | Nobody pushes to main, the owner included. Everything lands through a PR whose required checks passed on an up-to-date branch | A ruleset on main, read live by a test |
 | Work is never thrown away: the branch is pushed before anything can refuse it | A test that the save step pushes before any gate |
 | Every green build is read against `## Why` before it merges | A reviewer check the main ruleset requires |
