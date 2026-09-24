@@ -244,14 +244,19 @@ describe("build.yml, and check.yml's review job, comment on the ticket whatever 
     }
   });
 
-  it("check.yml's review job leaves the ticket be when its hand-off repaired the drift", () => {
-    const job = reviewJob();
-    const notifying = job.steps.find((step) => /gh issue comment/.test(step.run ?? ""));
-    const after = (handOff: string) =>
-      holds(notifying?.if ?? "success()", { steps: { ...allSkipped(job.steps), review: outcome("failure"), "hand-off": outcome(handOff) }, needs: { check: { result: "success" } }, failed: true });
+  it("build.yml's build and fix jobs, and check.yml's review job, leave the ticket be when their hand-off repaired it", () => {
+    const { jobs: buildJobs } = parse(readFileSync(WORKFLOW, "utf8")) as { jobs: Record<string, Job> };
+    const jobs: [string, Job][] = [["build", buildJobs.build], ["fix", buildJobs.fix], ["review", reviewJob()]];
 
-    expect(after("success")).toBe(false);
-    expect(after("failure")).toBe(true);
+    for (const [name, job] of jobs) {
+      const notifying = job.steps.find((step) => /gh issue comment/.test(step.run ?? ""));
+      const after = (handOff: string) =>
+        holds(notifying?.if ?? "success()", { steps: { ...allSkipped(job.steps), "hand-off": outcome(handOff) }, needs: { check: { result: "success" } }, failed: true });
+
+      expect(notifying, name).toBeDefined();
+      expect(after("success"), name).toBe(false);
+      expect(after("failure"), name).toBe(true);
+    }
   });
 });
 
