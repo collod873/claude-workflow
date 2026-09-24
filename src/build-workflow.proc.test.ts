@@ -86,6 +86,17 @@ describe("build.yml builds a ticket the moment it is filed (#826)", () => {
     expect(starts("collod873-machine[bot]")).toBe(false);
   });
 
+  it("the App's follow-up ticket builds itself, and nothing else the App or a stranger files does (#865)", () => {
+    const { job } = workflow();
+    const starts = (sender: string, body: string) => holds(job.if ?? "true", { sender, body });
+    const followUp = "## Why\n\nFollow-up of #865: its review found this after the fixer's one turn.\n";
+
+    expect(starts("collod873-machine[bot]", followUp)).toBe(true);
+    expect(starts("collod873-machine[bot]", "## Why\n\nA ticket the App wrote on its own.\n")).toBe(false);
+    expect(starts("stranger", followUp)).toBe(false);
+    expect(holds(job.if ?? "true", { sender: "collod873-machine[bot]", body: followUp, labels: ["note"] })).toBe(false);
+  });
+
   it("the branch is saved when the build ends red and nothing runs after a start refusal", () => {
     const { job } = workflow();
 

@@ -22,16 +22,36 @@ const VERDICT = {
   properties: {
     verdict: { enum: ["match", "drift"] },
     gaps: { type: "array", items: { type: "string", pattern: NO_EM_DASH } },
-    later: { type: "array", items: { type: "string", pattern: NO_EM_DASH } },
+    later: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          gap: { type: "string", pattern: NO_EM_DASH },
+          title: { type: "string", pattern: NO_EM_DASH },
+          criteria: { type: "array", items: { type: "string", pattern: NO_EM_DASH } },
+          claimed: { type: "array", items: { type: "string", pattern: NO_EM_DASH } },
+        },
+        required: ["gap", "title", "criteria", "claimed"],
+        additionalProperties: false,
+      },
+    },
   },
   required: ["verdict", "gaps"],
   additionalProperties: false,
 };
 
+interface Later {
+  gap: string;
+  title: string;
+  criteria: string[];
+  claimed: string[];
+}
+
 interface Verdict {
   verdict: "match" | "drift";
   gaps: string[];
-  later?: string[];
+  later?: Later[];
 }
 
 interface AfterTurn {
@@ -42,6 +62,7 @@ interface AfterTurn {
 export const TOOK_ITS_TURN = "The fixer took its one turn on this ticket";
 export const repairOf = (ticket: string) => `Repair #${ticket} in the fixer's one turn`;
 const laterFinds = (ticket: string) => `The reviewer found these on #${ticket} after the fixer's turn, outside the earlier gaps and the fix's own lines, so they do not block its merge:`;
+const FOLLOW_UP_OF = "Follow-up of #";
 
 export const gh: Gh = (args) => spawnSync("gh", args, { encoding: "utf8", maxBuffer: Infinity });
 export const git = (args: string[]) => spawnSync("git", args, { encoding: "utf8", maxBuffer: Infinity });
@@ -75,7 +96,10 @@ export function handedOn(body: string, diff: string, after?: AfterTurn): string 
   const sorted =
     after === undefined
       ? []
-      : ["`gaps` holds only an earlier gap still open or a gap in the fix's own lines; these block, and the verdict is `drift` while any remain. Put every other gap in `later`: it never blocks."];
+      : [
+          "`gaps` holds only an earlier gap still open or a gap in the fix's own lines; these block, and the verdict is `drift` while any remain. Put every other gap in `later`: it never blocks.",
+          "Each `later` item becomes its own ticket: the `gap` in one sentence, a `title`, 1 to 3 `criteria` each ending ` - check: `<command>`` with one a vitest run of a test not yet written, and the files it `claimed`.",
+        ];
   return [
     "Review a pull request built for a ticket against the owner's `## Why` and the acceptance criteria. Change nothing; read the repo only where the diff leaves a question.",
     "## Why",
@@ -119,11 +143,37 @@ function fixDiff(ticket: string): string {
   return repair === "" ? "" : (git(["show", "--format=", repair]).stdout ?? "");
 }
 
-function recordedLater(ticket: string, later: string[], turns: string[]): string {
+function followUp(ticket: string, { gap, criteria, claimed }: Later): string {
+  return [
+    "## Why",
+    "",
+    `${FOLLOW_UP_OF}${ticket}: its review found this after the fixer's one turn, outside the earlier gaps and the fix's own lines.`,
+    "",
+    `> ${gap}`,
+    "",
+    "## Acceptance criteria",
+    "",
+    ...criteria.map((criterion) => `- [ ] ${criterion}`),
+    "",
+    "## Files claimed",
+    "",
+    ...claimed.map((path) => `- ${path}`),
+    "",
+  ].join("\n");
+}
+
+function recordedLater(ticket: string, body: string, later: Later[], turns: string[]): string {
   if (later.length === 0) return "";
   if (turns.some((said) => said.startsWith(laterFinds(ticket)))) return `, its later finds already on #${ticket}`;
-  const posted = commentOnTicket(ticket, [laterFinds(ticket), "", ...later.map((gap) => `- ${gap}`), ""].join("\n"), gh);
-  return posted.refusals.length > 0 ? `, its later finds refused: ${quoted(posted.refusals[0])}` : `, ${later.length} later finds posted: ${posted.said}`;
+  const deep = body.includes(FOLLOW_UP_OF);
+  const fate = deep ? `Not filed, since #${ticket} is itself a follow-up.` : "Each is filed as a follow-up ticket that builds itself.";
+  const posted = commentOnTicket(ticket, [laterFinds(ticket), "", ...later.map(({ gap }) => `- ${gap}`), "", fate, ""].join("\n"), gh);
+  if (posted.refusals.length > 0) return `, its later finds refused: ${quoted(posted.refusals[0])}`;
+  if (deep) return `, ${later.length} later finds posted, not filed: ${posted.said}`;
+  const filed = later.map((find) => ({ find, ...post({ kind: "ticket", title: find.title, text: followUp(ticket, find) }, gh) }));
+  const refused = filed.flatMap(({ find, refusals }) => (refusals.length > 0 ? [`- ${find.gap}: ${quoted(refusals[0])}`] : []));
+  if (refused.length > 0) commentOnTicket(ticket, [`These later finds on #${ticket} were not filed, their follow-up tickets were refused:`, "", ...refused, ""].join("\n"), gh);
+  return `, ${later.length} later finds posted: ${posted.said}; follow-ups filed: ${filed.map(({ said }) => said).filter((said) => said !== "").join(" ") || "none"}`;
 }
 
 function review(pr: string): Stop | undefined {
@@ -151,8 +201,8 @@ function review(pr: string): Stop | undefined {
   const after = earlier.length > 0 && turns.some((comment) => comment.startsWith(TOOK_ITS_TURN)) ? { earlier: earlier.join("\n\n"), fix: fixDiff(ticket) } : undefined;
   const verdict = judged(handedOn(body, diff, after), pr);
   if (typeof verdict === "string") return stoppedAt("modelRun", `${said} ended red, ${verdict}`);
-  const blocking = after === undefined ? [...verdict.gaps, ...(verdict.later ?? [])] : verdict.gaps;
-  const recorded = recordedLater(ticket, after === undefined ? [] : (verdict.later ?? []), turns);
+  const blocking = after === undefined ? [...verdict.gaps, ...(verdict.later ?? []).map(({ gap }) => gap)] : verdict.gaps;
+  const recorded = recordedLater(ticket, body, after === undefined ? [] : (verdict.later ?? []), turns);
   if (verdict.verdict === "match") {
     console.log(`${said} matches the Why of #${ticket}${recorded}`);
     return undefined;

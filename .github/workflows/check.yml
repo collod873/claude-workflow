@@ -111,7 +111,7 @@ jobs:
         if: needs.check.result == 'success'
         timeout-minutes: 12
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app.outputs.token }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           STAGE_MINUTES: 10
           HEAD_REF: ${{ github.head_ref }}
