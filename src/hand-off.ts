@@ -1,20 +1,10 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { rowsUnder } from "./machine-page.ts";
 import { commentOnTicket, openPr, type Gh } from "./post.ts";
-import { rowStopped } from "./stops.ts";
-
-const PAGE = "docs/agents/layers/one-ticket.md";
-const FIXER = /^The fixer\b/;
+import { clearerOf, rowStopped } from "./stops.ts";
 
 const git = (args: string[]) => spawnSync("git", args, { encoding: "utf8" }).stdout.trim();
 const gh: Gh = (args) => spawnSync("gh", args, { encoding: "utf8" });
-
-function clearedBy(page: string, row: string): string | undefined {
-  const cells = rowsUnder(page, "Runs").find(([stop]) => stop === row);
-  return cells?.[cells.length - 1];
-}
 
 function mark(top: string, ticket: string, label: string): void {
   spawnSync(join(top, "bin", "mark"), [ticket, label], { stdio: "ignore" });
@@ -40,8 +30,7 @@ function handOff(ticket: string, named: string | undefined): number {
     console.log(`${said} stopped at no row its logs name, so the fixer was not called`);
     return 0;
   }
-  const clearer = clearedBy(readFileSync(join(top, PAGE), "utf8"), row);
-  if (clearer === undefined || !FIXER.test(clearer)) {
+  if (clearerOf(row) !== "the fixer") {
     leftAlone(top, ticket, row);
     console.log(`${said} stopped at a row the fixer does not clear, so it was left alone`);
     return 0;

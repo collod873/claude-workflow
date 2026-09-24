@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { bytesOutsideSignedPages, loadedDocs, onDisk, pathsToNothing, type Tree } from "./loaded-docs.ts";
+import { loadedBytes, loadedDocs, onDisk, pathsToNothing, type Tree } from "./loaded-docs.ts";
 import { git, plant, scratch } from "./scenarios.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
@@ -21,9 +21,9 @@ function atCommit(repo: string, rev: string): Tree {
 
 function growthSinceBase(repo: string): string[] {
   const base = git(repo, "merge-base", "HEAD", "origin/main");
-  const before = bytesOutsideSignedPages(loadedDocs(atCommit(repo, base)));
-  const now = bytesOutsideSignedPages(loadedDocs(onDisk(repo)));
-  return now > before ? [`the docs every session loads hold ${now} bytes outside signed pages, over ${before} at the merge base ${base.slice(0, 12)}`] : [];
+  const before = loadedBytes(loadedDocs(atCommit(repo, base)));
+  const now = loadedBytes(loadedDocs(onDisk(repo)));
+  return now > before ? [`the docs every session loads hold ${now} bytes, over ${before} at the merge base ${base.slice(0, 12)}`] : [];
 }
 
 const skill = (name: string, description: string, body = "", disabled = false) =>
@@ -36,8 +36,6 @@ function committedDocs(): string {
   git(repo, "config", "user.name", "docs");
   plant(repo, "CLAUDE.md", "# Planted\n\nRead `CONTEXT.md`.\n");
   plant(repo, "CONTEXT.md", "**Ticket**:\nOne thing the machine builds.\n");
-  plant(repo, "docs/agents/charter.md", "# Charter\n");
-  plant(repo, "docs/agents/layers/one-ticket.md", "# One ticket\n");
   plant(repo, ".claude/skills/tdd/SKILL.md", skill("tdd", "Test first.", "A long body nobody loads until the skill runs."));
   plant(repo, ".claude/skills/drain/SKILL.md", skill("drain", "Drain tickets.", "", true));
   git(repo, "add", ".");
@@ -51,19 +49,16 @@ describe("the docs every session loads never grow in total, and name no path to 
     expect(growthSinceBase(REPO)).toEqual([]);
   });
 
-  it("refuses growth in a loaded doc or a skill or agent's description, and lets a signed page, a skill body or a hidden skill grow", () => {
+  it("refuses growth in a loaded doc or a skill or agent's description, and lets a skill body or a hidden skill grow", () => {
     const repo = committedDocs();
 
-    plant(repo, "docs/agents/charter.md", "# Charter\n\nA rule the owner signed.\n");
-    plant(repo, "docs/agents/layers/one-ticket.md", "# One ticket\n\nA stop the owner ruled.\n");
-    plant(repo, "docs/agents/layers/big-jobs.md", "# Big jobs\n");
     plant(repo, ".claude/skills/tdd/SKILL.md", skill("tdd", "Test first.", "A longer body nobody loads until the skill runs, whatever it says."));
     plant(repo, ".claude/skills/drain/SKILL.md", skill("drain", "Drain a batch of tickets in parallel worktrees.", "", true));
     plant(repo, "CONTEXT.md", "**Ticket**:\nOne unit the machine builds.\n");
     expect(growthSinceBase(repo)).toEqual([]);
 
     plant(repo, "CONTEXT.md", "**Ticket**:\nOne unit the machine builds, and one more line.\n");
-    expect(growthSinceBase(repo)).toEqual([expect.stringMatching(/^the docs every session loads hold \d+ bytes outside signed pages, over \d+ at the merge base [0-9a-f]{12}$/)]);
+    expect(growthSinceBase(repo)).toEqual([expect.stringMatching(/^the docs every session loads hold \d+ bytes, over \d+ at the merge base [0-9a-f]{12}$/)]);
 
     plant(repo, "CONTEXT.md", "**Ticket**:\nOne unit the machine builds.\n");
     plant(repo, ".claude/skills/tdd/SKILL.md", skill("tdd", "Test first, then build.", "A long body nobody loads until the skill runs."));
@@ -78,27 +73,23 @@ describe("the docs every session loads never grow in total, and name no path to 
     expect(pathsToNothing(REPO, loadedDocs(onDisk(REPO)))).toEqual([]);
   });
 
-  it("names the doc and line of a planted path to nothing, and leaves placeholders, urls, other repos and unbuilt enforcers alone", () => {
+  it("names the doc and line of a planted path to nothing, and leaves placeholders, urls and other repos alone", () => {
     const repo = committedDocs();
     plant(repo, "bin/check", "");
     plant(repo, "CLAUDE.md", [
       "# Planted",
       "",
-      "Run `bin/check`, never `src/gone.ts`; see [the charter](docs/agents/charter.md) and [the lanes](docs/agents/lanes.md).",
+      "Run `bin/check`, never `src/gone.ts`; see [the context](CONTEXT.md) and [the lanes](docs/agents/lanes.md).",
       "Branches are `ticket/<n>`, globs `core/**/*.ts`, commands `/ratify`, and [the tracker](https://github.com/collod873/claude-workflow#top).",
       "`anthropics/claude-code-action` is another repo; `lib/` is gone.",
       "",
     ].join("\n"));
-    plant(repo, "docs/agents/layers/one-ticket.md", "# One ticket\n\n[Charter](../charter.md), [ADR](../../adr/0200-gone.md)\n");
-    plant(repo, "docs/agents/charter.md", "| Rule | Enforcer |\n|---|---|\n| Nothing names `core/unbuilt.md` | `src/unbuilt.test.ts` |\n");
     plant(repo, ".claude/skills/tdd/SKILL.md", skill("tdd", "Test first, as `docs/nowhere.md` says.", "The body names `src/body-only.ts`."));
 
     expect(pathsToNothing(repo, loadedDocs(onDisk(repo)))).toEqual([
       "CLAUDE.md:3 names src/gone.ts, which does not exist",
       "CLAUDE.md:3 names docs/agents/lanes.md, which does not exist",
       "CLAUDE.md:5 names lib/, which does not exist",
-      "docs/agents/charter.md:3 names core/unbuilt.md, which does not exist",
-      "docs/agents/layers/one-ticket.md:3 names docs/adr/0200-gone.md, which does not exist",
       ".claude/skills/tdd/SKILL.md:3 names docs/nowhere.md, which does not exist",
     ]);
   });

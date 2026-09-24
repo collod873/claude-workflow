@@ -2,37 +2,11 @@ import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { rowsUnder } from "./machine-page.ts";
-import { parts } from "./parts.ts";
 import { saving } from "./scenarios.ts";
-import { STOPPED_AT, STOPS } from "./stops.ts";
-
+import { STOPPED_AT, STOPS, STOPS_NAMED_OUTSIDE_STAGES, clearerOf } from "./stops.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
-const RULING = "docs/agents/layers/one-ticket.md";
-const HELD = "The owner is never the one who fixes a stuck run";
-const THE_OWNER = /^the owner\b/i;
-const THE_FIXER = /^the fixer\b/i;
-const TEST_ONLY = /\.test\.ts$|^src\/scenarios\.ts$/;
-
-interface Row {
-  stop: string;
-  clearedBy: string;
-}
-
-function runsRows(markdown: string): Row[] {
-  return rowsUnder(markdown, "Runs").map(([stop, , clearedBy]) => ({ stop, clearedBy }));
-}
-
-function stopRefusals(named: Record<string, string>, rows: Row[]): string[] {
-  const unruled = Object.entries(named)
-    .filter(([, stop]) => !rows.some((row) => row.stop === stop))
-    .map(([exit, stop]) => `${exit} names no Runs row: ${stop}`);
-  const owned = rows.filter((row) => THE_OWNER.test(row.clearedBy)).map((row) => `${row.stop} is cleared by the owner`);
-  return [...unruled, ...owned];
-}
-
-const ruled = () => runsRows(readFileSync(join(REPO, RULING), "utf8"));
+const TEST_ONLY = /\.test\.ts$|^src\/scenarios\.ts$|^src\/stops\.ts$/;
 
 function machineText(): string {
   return spawnSync("git", ["ls-files", "src", "bin", ".github"], { cwd: REPO, encoding: "utf8" })
@@ -42,52 +16,29 @@ function machineText(): string {
     .join("\n");
 }
 
-const unnamedFixerRows = (rows: Row[], machine: string) => rows.filter((row) => THE_FIXER.test(row.clearedBy) && !machine.includes(row.stop)).map((row) => row.stop);
+const unnamed = (rows: string[], machine: string) => rows.filter((row) => !machine.includes(row));
 
-describe("every red exit names a Runs row whose clearer is not the owner (#812)", () => {
-  it("finds every stop the machine names in the ruling's Runs table, none cleared by the owner", () => {
-    expect(ruled().length).toBeGreaterThan(0);
-    expect(stopRefusals(STOPS, ruled())).toEqual([]);
-    expect(parts.find((part) => part.file === "src/stops.proc.test.ts")?.holds).toContain(HELD);
+describe("every red exit names a stop with a clearer (#812)", () => {
+  it("gives every stage stop a clearer", () => {
+    expect(Object.values(STOPS).filter((row) => clearerOf(row) === undefined)).toEqual([]);
   });
 
-  it("fails a stage whose red exit names no Runs row", () => {
-    expect(stopRefusals({ ...STOPS, builder: "The builder gave up" }, ruled())).toEqual(["builder names no Runs row: The builder gave up"]);
-  });
-
-  it("finds every row the fixer clears named by a part the machine runs, so no row promises a clearer nothing calls (#826, #827)", () => {
-    expect(unnamedFixerRows(ruled(), machineText())).toEqual([]);
-    expect(unnamedFixerRows([...ruled(), { stop: "The branch conflicts with main", clearedBy: "The fixer" }], machineText())).toEqual(["The branch conflicts with main"]);
-  });
-
-  it("fails a Runs row cleared by the owner", () => {
-    const page = [
-      "## Runs",
-      "",
-      "| Stop | What happens | Cleared by |",
-      "|---|---|---|",
-      "| Filing refused | Nothing is filed | The filing session, live with the owner |",
-      "| A run is stuck | It waits | The owner, by hand |",
-      "",
-    ].join("\n");
-
-    expect(stopRefusals({}, runsRows(page))).toEqual(["A run is stuck is cleared by the owner"]);
+  it("finds every stop named outside the stages in a part the machine runs, so no stop promises a clearer nothing calls (#826, #827)", () => {
+    expect(unnamed(Object.keys(STOPS_NAMED_OUTSIDE_STAGES), machineText())).toEqual([]);
+    expect(unnamed(["The branch conflicts with main"], machineText())).toEqual(["The branch conflicts with main"]);
   });
 });
 
-describe("bin/save names only Runs rows the fixer clears (#835)", () => {
-  it("finds every row bin/save can name in the ruling's Runs table, each cleared by the fixer", () => {
+describe("bin/save names only stops the fixer clears (#835)", () => {
+  it("finds every stop bin/save can name cleared by the fixer", () => {
     const pushRefused = saving({ remoteRefuses: "the remote refuses every push" });
     pushRefused.run();
     const autoMergeRefused = saving({ autoMergeRefused: true });
     autoMergeRefused.run();
 
-    const named = {
-      pushRefused: STOPPED_AT.exec(pushRefused.log().split("\n")[0])?.[1] ?? "",
-      autoMergeRefused: STOPPED_AT.exec(autoMergeRefused.log().split("\n")[0])?.[1] ?? "",
-    };
+    const named = [pushRefused.log(), autoMergeRefused.log()].map((log) => STOPPED_AT.exec(log.split("\n")[0])?.[1] ?? "");
 
-    expect(Object.values(named).every((row) => row !== "")).toBe(true);
-    expect(stopRefusals(named, ruled())).toEqual([]);
+    expect(named.every((row) => row !== "")).toBe(true);
+    expect(named.map(clearerOf)).toEqual(["the fixer", "the fixer"]);
   });
 });

@@ -22,6 +22,38 @@ export const STOPS = {
 
 export type Stop = keyof typeof STOPS;
 
+type Clearer = "the fixer" | "nobody" | "the run that started it";
+
+const STOP_CLEARERS: Record<Stop, Clearer> = {
+  shape: "the fixer",
+  stale: "the fixer",
+  alreadyPasses: "nobody",
+  unfreshTree: "the run that started it",
+  unread: "the fixer",
+  overCap: "the fixer",
+  dirtyTree: "the run that started it",
+  noTest: "the fixer",
+  modelRun: "the fixer",
+  uncommitted: "the fixer",
+  buildRed: "the fixer",
+  drift: "the fixer",
+  fixerEnds: "nobody",
+  unrecorded: "the fixer",
+};
+
+export const STOPS_NAMED_OUTSIDE_STAGES: Record<string, Clearer> = {
+  "Save: the push is refused": "the fixer",
+  "Save: the PR is not open with auto-merge on": "the fixer",
+  "Green on the ticket's checks, red on the PR's required check": "the fixer",
+  "Red on main after merge": "the fixer",
+  "A job cannot fetch the owner's hooks after 3 tries": "nobody",
+};
+
+export function clearerOf(row: string): Clearer | undefined {
+  const stop = (Object.keys(STOPS) as Stop[]).find((key) => STOPS[key] === row);
+  return stop === undefined ? STOPS_NAMED_OUTSIDE_STAGES[row] : STOP_CLEARERS[stop];
+}
+
 export interface Stopped {
   stop: Stop;
   refusals: string[];
