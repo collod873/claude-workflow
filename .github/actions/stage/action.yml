@@ -43,4 +43,4 @@ runs:
         rm -rf "$hooks/.git"
         python3 "$hooks/hookcheck.py" --root "$hooks" --settings "$RUNNER_TEMP/unregistered.json" --emit-settings >"$RUNNER_TEMP/agent-hooks.json"
         printf 'AGENT_HOOKS_SETTINGS=%s\n' "$RUNNER_TEMP/agent-hooks.json" >>"$GITHUB_ENV"
-        { printf 'FEED<<FEED_END\n'; cat "$GITHUB_ACTION_PATH/feed.jq"; printf 'FEED_END\n'; } >>"$GITHUB_ENV"
+        printf 'FEED=%s\n' "$GITHUB_ACTION_PATH/feed.jq" >>"$GITHUB_ENV"

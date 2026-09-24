@@ -172,7 +172,6 @@ describe("every job that spends a model is watched as it goes, read after it end
   });
 
   it("every step that spends a model shows what its stage's model does in the log as it happens, and ends with the stage's own status", () => {
-    const feed = readFileSync(FEED, "utf8");
     for (const step of modelJobs().flatMap(({ steps }) => steps.filter(spendsModel))) {
       const run = (step.run ?? "").replaceAll(/\$\{\{ github\.event\.(issue|pull_request)\.number \}\}/g, "9");
       const transcript = `.git/machine-logs/${transcriptOf(run)}-9.jsonl`;
@@ -180,7 +179,7 @@ describe("every job that spends a model is watched as it goes, read after it end
       mkdirSync(join(cwd, ".git", "machine-logs"), { recursive: true });
       const stage = [`printf '%s\\n' '${JSON.stringify(SAID)}' >>${transcript}`, "sleep 1.5", "exit 3"].join("\n");
 
-      const watched = spawnSync("bash", ["-e", "-c", `${run.split("\n")[0]}\n${stage}`], { cwd, env: { ...process.env, FEED: feed, HEAD_REF: "ticket/9" }, encoding: "utf8", timeout: 10000 });
+      const watched = spawnSync("bash", ["-e", "-c", `${run.split("\n")[0]}\n${stage}`], { cwd, env: { ...process.env, FEED, HEAD_REF: "ticket/9" }, encoding: "utf8", timeout: 10000 });
 
       expect(watched.stdout).toContain("said: reading the brief");
       expect(watched.status).toBe(3);

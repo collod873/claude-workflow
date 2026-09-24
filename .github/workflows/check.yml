@@ -84,7 +84,7 @@ jobs:
           STAGE_MINUTES: 10
           HEAD_REF: ${{ github.head_ref }}
         run: |
-          tail --pid=$$ -n +1 -F .git/machine-logs/review-${{ github.event.pull_request.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered "$FEED" &
+          tail --pid=$$ -n +1 -F .git/machine-logs/review-${{ github.event.pull_request.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
           bin/review ${{ github.event.pull_request.number }}
           bin/mark "${HEAD_REF#ticket/}" 5-merging || true
 
@@ -104,7 +104,7 @@ jobs:
           CHECKED: ${{ needs.check.result }}
           STAGE_MINUTES: 25
         run: |
-          tail --pid=$$ -n +1 -F ".git/machine-logs/fix-${HEAD_REF#ticket/}.jsonl" 2>/dev/null | jq -Rr --unbuffered "$FEED" &
+          tail --pid=$$ -n +1 -F ".git/machine-logs/fix-${HEAD_REF#ticket/}.jsonl" 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
           gh issue view "${HEAD_REF#ticket/}" --json labels --jq '.labels[].name' | grep -qx fixing && exit 0
           row='The reviewer finds drift from `## Why`'
           [[ $CHECKED == success ]] || row="Green on the ticket's checks, red on the PR's required check"
