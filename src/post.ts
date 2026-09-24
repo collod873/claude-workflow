@@ -40,6 +40,17 @@ function written(gh: Gh, args: string[]): { refusals: string[]; said: string } {
 
 export const commentOnTicket = (ticket: string, text: string, gh: Gh) => written(gh, ["issue", "comment", ticket, "--body", text]);
 
+export function commentsOn(on: string[], gh: Gh): string[] | undefined {
+  const got = gh([...on, "--json", "comments", "--jq", "[.comments[].body]"]);
+  if (got.status !== 0) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(got.stdout);
+    return Array.isArray(parsed) ? parsed.filter((said): said is string => typeof said === "string") : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export const commentOnPr = (pr: string, text: string, gh: Gh) => written(gh, ["pr", "comment", pr, "--body", text]);
 
 export function openPr(ticket: string, gh: Gh): string | undefined {

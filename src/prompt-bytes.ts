@@ -6,7 +6,7 @@ import { handedOn as fixerHandedOn } from "./fixer.ts";
 import { DIFF_CAP, handedOn as reviewerHandedOn, LIST_CAP, TICKET_CAP } from "./reviewer.ts";
 import { handedOn } from "./test-author.ts";
 
-export const CEILINGS: Record<string, number> = { "brief": 136, "test author": 850, "builder": 378, "repair": 84, "reviewer": 379, "fixer": 741 };
+export const CEILINGS: Record<string, number> = { "brief": 136, "test author": 850, "builder": 378, "repair": 84, "reviewer": 432, "reviewer after the fixer's turn": 784, "fixer": 741 };
 
 const AUTHORED = "src/planted.test.ts";
 const HIRES = /(spawn|execFile)\w*\(\s*"claude"/;
@@ -60,6 +60,13 @@ export const PROMPTS: Prompt[] = [
     cap: 2 * TICKET_CAP + DIFF_CAP + LIST_CAP + HANDED_ON,
     slots: ["body", "diff"],
     build: (filled) => reviewerHandedOn(filled.body ?? "", filled.diff ?? ""),
+  },
+  {
+    name: "reviewer after the fixer's turn",
+    file: "src/reviewer.ts",
+    cap: 2 * TICKET_CAP + 2 * DIFF_CAP + 2 * LIST_CAP + HANDED_ON,
+    slots: ["body", "diff", "earlier", "fix"],
+    build: (filled) => reviewerHandedOn(filled.body ?? "", filled.diff ?? "", { earlier: filled.earlier ?? "", fix: filled.fix ?? "" }),
   },
   {
     name: "fixer",

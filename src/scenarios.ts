@@ -666,6 +666,7 @@ const REVIEWED_TICKET = [
 ].join("\n");
 
 export const JUDGEMENT = "https://github.com/collod873/claude-workflow/pull/9810#issuecomment-1";
+const LATER_POSTED = "https://github.com/collod873/claude-workflow/issues/810#issuecomment-2";
 
 export function fileDiff(path: string, added: string): string {
   return `diff --git a/${path} b/${path}\nindex 0000000..1111111 100644\n--- a/${path}\n+++ b/${path}\n@@ -0,0 +1 @@\n+${added}\n`;
@@ -673,23 +674,39 @@ export function fileDiff(path: string, added: string): string {
 
 export function reviewing({
   branch = "ticket/810",
-  verdict = { verdict: "match", gaps: [] as string[] },
+  verdict = { verdict: "match", gaps: [] } as { verdict: string; gaps: string[]; later?: unknown[] },
   diff = fileDiff("src/reviewer.ts", "export const reviewed = 1;"),
-}: { branch?: string; verdict?: { verdict: string; gaps: string[] }; diff?: string } = {}) {
+  turns = [] as string[],
+  onPr = [] as string[],
+  repair = undefined as string | undefined,
+}: { branch?: string; verdict?: { verdict: string; gaps: string[]; later?: unknown[] }; diff?: string; turns?: string[]; onPr?: string[]; repair?: string } = {}) {
   const root = scratch("review-");
   const argvDir = join(root, "gh-argv");
   const handed = join(root, "claude-stdin");
   const hired = join(root, "claude-argv");
   const { setup, calls } = ghArgv(argvDir);
-  git(root, "init", "--quiet");
+  git(root, "init", "--quiet", "--initial-branch=ticket/810");
+  git(root, "config", "user.email", "review@test");
+  git(root, "config", "user.name", "review");
+  git(root, "commit", "--quiet", "--allow-empty", "-m", "Build #810 against its failing tests");
+  if (repair !== undefined) {
+    plant(root, "src/repaired.ts", repair);
+    git(root, "add", "src/repaired.ts");
+    git(root, "commit", "--quiet", "-m", "Repair #810 in the fixer's one turn");
+    git(root, "commit", "--quiet", "--allow-empty", "-m", "Merge branch 'main' into ticket/810");
+  }
   plant(root, "pr.diff", diff);
+  plant(root, "turns.json", JSON.stringify(turns));
+  plant(root, "on-pr.json", JSON.stringify(onPr));
   plant(root, "answer.json", `${JSON.stringify({ type: "result", subtype: "success", is_error: false, structured_output: verdict })}\n`);
   script(
     join(root, "bin", "gh"),
     [
       setup,
       'case "$*" in',
+      `  *"pr view"*"comments"*) cat "${join(root, "on-pr.json")}" ;;`,
       `  *"pr view"*) printf '%s\\n' '${branch}' ;;`,
+      `  *"issue view"*"comments"*) cat "${join(root, "turns.json")}" ;;`,
       "  *\"issue view\"*)",
       "    cat <<'TICKET'",
       REVIEWED_TICKET,
@@ -697,18 +714,21 @@ export function reviewing({
       "    ;;",
       `  *"pr diff"*) cat "${join(root, "pr.diff")}" ;;`,
       `  *"pr comment"*) printf '%s\\n' '${JUDGEMENT}' ;;`,
+      `  *"issue comment"*) printf '%s\\n' '${LATER_POSTED}' ;;`,
       "  *) exit 22 ;;",
       "esac",
       "",
     ].join("\n"),
   );
   script(join(root, "bin", "claude"), `printf '%s\\0' "$@" >"${hired}"\ncat >"${handed}"\ncat "${join(root, "answer.json")}"\n`);
+  const bodyOf = (args: string[]) => args[args.indexOf("--body") + 1];
   return {
     root,
     hired: () => (existsSync(hired) ? readFileSync(hired, "utf8").split("\0") : []),
     spent: () => existsSync(handed),
     handed: () => (existsSync(handed) ? readFileSync(handed, "utf8") : ""),
-    comments: () => calls().filter((args) => args[0] === "pr" && args[1] === "comment").map((args) => args[args.indexOf("--body") + 1]),
+    ticketComments: () => calls().filter((args) => args[0] === "issue" && args[1] === "comment").map(bodyOf),
+    comments: () => calls().filter((args) => args[0] === "pr" && args[1] === "comment").map(bodyOf),
     read: () => calls().some((args) => args[0] === "pr" && args[1] === "view"),
     run: (pr = "9810", extra: Record<string, string> = {}) => execute(join(BIN, "review"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}`, ...extra }, [pr]),
   };
