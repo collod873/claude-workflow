@@ -1,16 +1,13 @@
-import { spawnSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { authoredTests, capped, yourChecks } from "./brief.ts";
 import { redOutput, TAIL_CAP, tailOf } from "./builder.ts";
-import { commentOnTicket, openPr, post, rewriteTicket, type Gh } from "./post.ts";
-import { foundDrift, handedDiff, LIST_CAP, NO_EM_DASH } from "./reviewer.ts";
+import { commentOnTicket, commentsOn, openPr, post, rewriteTicket } from "./post.ts";
+import { foundDrift, gh, git, handedDiff, LIST_CAP, NO_EM_DASH, repairOf, TOOK_ITS_TURN } from "./reviewer.ts";
 import { runStage, type Opened, type Outcome, type Stage } from "./stage.ts";
 import { rowStopped } from "./stops.ts";
 import { claims, quoted } from "./ticket-shape.ts";
 
-const TOOK_ITS_TURN = "The fixer took its one turn on this ticket";
-const COMMENTS = ["--json", "comments", "--jq", "[.comments[].body]"];
 const JOB_LINK = /\/runs\/(\d+)\/job\/(\d+)/;
 
 const ANSWER = {
@@ -40,20 +37,6 @@ interface Handed {
 }
 
 type Turn = { refusal: string } | { verdict: string; closing?: string };
-
-const gh: Gh = (args) => spawnSync("gh", args, { encoding: "utf8", maxBuffer: Infinity });
-const git = (args: string[]) => spawnSync("git", args, { encoding: "utf8", maxBuffer: Infinity });
-
-function comments(on: string[]): string[] | undefined {
-  const got = gh([...on, ...COMMENTS]);
-  if (got.status !== 0) return undefined;
-  try {
-    const parsed: unknown = JSON.parse(got.stdout);
-    return Array.isArray(parsed) ? parsed.filter((said): said is string => typeof said === "string") : undefined;
-  } catch {
-    return undefined;
-  }
-}
 
 function failedChecks(branch: string): string[] {
   const listed = gh(["pr", "checks", branch, "--required", "--json", "name,bucket,link"]);
@@ -128,12 +111,12 @@ function closedUnbuilt(ticket: string, reason: string, row: string | undefined, 
 function fix(opened: Opened): Outcome {
   const { ticket, body, logs } = opened;
   const branch = `ticket/${ticket}`;
-  const turns = comments(["issue", "view", ticket]);
+  const turns = commentsOn(["issue", "view", ticket], gh);
   if (turns === undefined) return { stop: "fixerEnds", refusals: [`the comments on #${ticket} could not be read, so no model was spent`] };
   if (turns.some((said) => said.startsWith(TOOK_ITS_TURN))) return { stop: "fixerEnds", refusals: [`the fixer already took its one turn on #${ticket}, so no model was spent`] };
   const marked = commentOnTicket(ticket, `${TOOK_ITS_TURN}.`, gh);
   if (marked.refusals.length > 0) return { stop: "fixerEnds", refusals: [`its marker was refused, so no model was spent: ${quoted(marked.refusals[0])}`] };
-  const onPr = comments(["pr", "view", branch]);
+  const onPr = commentsOn(["pr", "view", branch], gh);
   const explain = (text: string) => (onPr === undefined ? commentOnTicket(ticket, text, gh) : post({ kind: "judgement", pr: branch, text }, gh));
   const spent = opened.spend(
     handedOn({
@@ -145,7 +128,7 @@ function fix(opened: Opened): Outcome {
       commands: opened.commands,
     }),
   );
-  const commit = { message: `Repair #${ticket} in the fixer's one turn`, branch: git(["branch", "--show-current"]).stdout.trim() === branch ? undefined : branch };
+  const commit = { message: repairOf(ticket), branch: git(["branch", "--show-current"]).stdout.trim() === branch ? undefined : branch };
   const ownCallFailed = spent.refusal !== undefined;
   const done = ownCallFailed ? { refusal: spent.refusal as string } : turn(opened, spent.answer as Answer | undefined, explain);
   const row = rowStopped(ticket, logs);

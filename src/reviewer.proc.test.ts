@@ -72,6 +72,59 @@ describe("bin/review reads a green ticket PR against its Why before it merges (#
   });
 });
 
+const TURN_TAKEN = "The fixer took its one turn on this ticket.";
+const EARLIER = "The reviewer read this PR against the Why of #810 and found drift.\n\n- the `steps` context lists only steps that carry an id\n";
+const STILL_OPEN = "the `steps` context still lists only steps that carry an id";
+const LATE = "the comment step runs gh with no GH_REPO, so it fails before any checkout";
+
+describe("bin/review names every gap in one pass, and after the fixer's turn only the earlier gaps or the fix's own lines block (#865)", () => {
+  it("asks for every gap it finds in one pass, not the first one", () => {
+    const { run, handed } = reviewing();
+
+    expect(run().status).toBe(0);
+    expect(handed().split("## Your verdict")[1]).toMatch(/every gap/i);
+    expect(handed()).not.toContain("## The fixer's turn");
+  });
+
+  it("hands the earlier gaps and the fix's own diff once the fixer took its turn on a drift", () => {
+    const { run, handed } = reviewing({ turns: [TURN_TAKEN], onPr: ["a comment nobody needs", EARLIER], repair: "export const repaired = 1;\n" });
+
+    expect(run().status).toBe(0);
+    const bounded = handed().split("## The fixer's turn")[1] ?? "";
+    expect(bounded).toContain("lists only steps that carry an id");
+    expect(bounded).toContain("+export const repaired = 1;");
+    expect(bounded).not.toContain("a comment nobody needs");
+    expect(bounded).toMatch(/later/);
+  });
+
+  it("merges past a later find, posting it once on the ticket, and ends red only on a blocking gap", () => {
+    const later = reviewing({ turns: [TURN_TAKEN], onPr: [EARLIER], repair: "export const repaired = 1;\n", verdict: { verdict: "match", gaps: [], later: [LATE] } });
+
+    const merged = later.run();
+    expect(merged.status).toBe(0);
+    expect(later.comments()).toEqual([]);
+    expect(later.ticketComments()).toEqual([expect.stringContaining(LATE)]);
+
+    const posted = later.ticketComments()[0];
+    const again = reviewing({ turns: [TURN_TAKEN, posted], onPr: [EARLIER], repair: "export const repaired = 1;\n", verdict: { verdict: "match", gaps: [], later: [LATE] } });
+    expect(again.run().status).toBe(0);
+    expect(again.ticketComments()).toEqual([]);
+
+    const blocked = reviewing({ turns: [TURN_TAKEN], onPr: [EARLIER], repair: "export const repaired = 1;\n", verdict: { verdict: "drift", gaps: [STILL_OPEN], later: [LATE] } });
+    expect(blocked.run().status).toBe(1);
+    expect(blocked.comments()).toEqual([expect.stringContaining(STILL_OPEN)]);
+    expect(blocked.comments()[0]).not.toContain(LATE);
+  });
+
+  it("blocks on every gap it names before the fixer's turn, later ones included", () => {
+    const { run, comments } = reviewing({ onPr: [EARLIER], verdict: { verdict: "drift", gaps: [STILL_OPEN], later: [LATE] } });
+
+    expect(run().status).toBe(1);
+    expect(comments()[0]).toContain(STILL_OPEN);
+    expect(comments()[0]).toContain(LATE);
+  });
+});
+
 describe("bin/review --help prints its usage and exits clean, reading no PR and hiring no model (#842)", () => {
   it("prints its usage line to stdout and exits 0, reading no PR and hiring no model", () => {
     const { run, read, hired, spent } = reviewing();
