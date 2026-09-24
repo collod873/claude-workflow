@@ -103,3 +103,40 @@ describe("bin/close ends a done ticket closed as completed with no stage label (
     expect(calls().some((call) => call.includes("--remove-label"))).toBe(true);
   });
 });
+
+describe("bin/close brings ticket PRs left behind by a merge up to date, so auto-merge is never stuck in silence (#858)", () => {
+  it("brings every open ticket PR up to date, as the App, so its checks run again and auto-merge can finish", () => {
+    const { calls, tokens, run } = closing({
+      ticket: "819",
+      behindPrs: [
+        { number: "901", ticket: "820" },
+        { number: "902", ticket: "821" },
+      ],
+    });
+
+    const result = run();
+
+    expect(result.status).toBe(0);
+    const first = calls().findIndex((call) => call.startsWith("pr\nupdate-branch\n901"));
+    const second = calls().findIndex((call) => call.startsWith("pr\nupdate-branch\n902"));
+    expect(first, "the first PR left behind by the merge is brought up to date").toBeGreaterThanOrEqual(0);
+    expect(second, "the second PR left behind by the merge is brought up to date").toBeGreaterThanOrEqual(0);
+    expect(tokens()[first], "runs as the App, so its checks run again").toBe("app");
+    expect(tokens()[second]).toBe("app");
+  });
+
+  it("names on its ticket the reason a PR that cannot be brought up to date was left, instead of leaving it waiting in silence", () => {
+    const { calls, run } = closing({
+      ticket: "819",
+      behindPrs: [{ number: "903", ticket: "822", refused: "GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts." }],
+    });
+
+    const result = run();
+
+    expect(result.status).toBe(0);
+    const commented = calls().find((call) => call.startsWith("issue\ncomment\n822\n"));
+    expect(commented, "the ticket behind the stuck PR is told why").toBeDefined();
+    expect(commented).toContain("903");
+    expect(commented).toContain("merge conflicts");
+  });
+});

@@ -571,6 +571,7 @@ export function closing({
   readable = true,
   timing = FAST_TIMING,
   closedAs,
+  behindPrs = [] as { number: string; ticket: string; branch?: string; refused?: string }[],
 }: {
   ticket?: string;
   ticketBody?: string;
@@ -578,6 +579,7 @@ export function closing({
   readable?: boolean;
   timing?: { filed: string; firstCommit: string; rebased?: string; prOpened: string; checksGreen: string; merged: string };
   closedAs?: "COMPLETED" | "NOT_PLANNED";
+  behindPrs?: { number: string; ticket: string; branch?: string; refused?: string }[];
 } = {}) {
   const root = scratch("closer-");
   const session = join(root, "session");
@@ -613,6 +615,10 @@ export function closing({
       ticketBody,
       "BODY",
       "    ;;",
+      `  *"pr list"*) printf '%s\\n' '${JSON.stringify(behindPrs.map((behind) => ({ number: Number(behind.number), headRefName: behind.branch ?? `ticket/${behind.ticket}`, mergeStateStatus: "BEHIND" })))}' ;;`,
+      ...behindPrs.map(
+        (behind) => `  *"pr update-branch ${behind.number}"*) ${behind.refused === undefined ? "exit 0" : `printf '%s\\n' '${behind.refused}' >&2; exit 1`} ;;`,
+      ),
       `  *"pr view"*) printf '%s\\n' '${timing.prOpened}' ;;`,
       `  *"pr checks"*) printf '%s\\n' '${timing.checksGreen}' ;;`,
       "  *) exit 0 ;;",
