@@ -61,7 +61,7 @@ describe("bin/review reads a green ticket PR against its Why before it merges (#
     const review = (parse(readFileSync(WORKFLOW, "utf8")) as { jobs: Record<string, { needs?: string; if?: string; steps?: { run?: string }[] }> }).jobs.review;
 
     expect(review.needs).toBe("check");
-    expect(review.if).toBe("startsWith(github.head_ref, 'ticket/')");
+    expect(review.if).toContain("startsWith(github.head_ref, 'ticket/')");
     expect(review.steps?.some((step) => /^bin\/review /m.test(step.run ?? ""))).toBe(true);
 
     const { run, spent, comments } = reviewing({ branch: "land/session" });

@@ -38,7 +38,7 @@ describe("the machine page renders from a part that runs (#710)", () => {
 
     expect(page).toContain("A ticket has 1 to 3 criteria (a trial), each with one `check:`  ← bin/file-issue, bin/start");
     expect(page).toContain("Checks test the behaviour meant, not a stand-in like a file or a text m…  ← bin/file-issue, bin/start");
-    expect(page).toContain("A build starts only from fresh main, only when main is green, and not w…  ← bin/start");
+    expect(page).toContain("A build starts only from fresh main, and not when the ticket's checks a…  ← bin/start");
     expect(page.split("NOT ENFORCED YET")[1]).not.toContain("A ticket has 1 to 3 criteria");
   });
 

@@ -1,17 +1,19 @@
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { rowsUnder } from "./machine-page.ts";
 import { parts } from "./parts.ts";
 import { saving } from "./scenarios.ts";
-import { STOPS } from "./stops.ts";
+import { STOPPED_AT, STOPS } from "./stops.ts";
 
-const STOPPED_AT = /^\d+ refusals, stopped at: (.+)$/;
 
 const REPO = resolve(import.meta.dirname, "..");
 const RULING = "docs/agents/layers/one-ticket.md";
 const HELD = "The owner is never the one who fixes a stuck run";
 const THE_OWNER = /^the owner\b/i;
+const THE_FIXER = /^the fixer\b/i;
+const TEST_ONLY = /\.test\.ts$|^src\/scenarios\.ts$/;
 
 interface Row {
   stop: string;
@@ -32,6 +34,16 @@ function stopRefusals(named: Record<string, string>, rows: Row[]): string[] {
 
 const ruled = () => runsRows(readFileSync(join(REPO, RULING), "utf8"));
 
+function machineText(): string {
+  return spawnSync("git", ["ls-files", "src", "bin", ".github"], { cwd: REPO, encoding: "utf8" })
+    .stdout.split("\n")
+    .filter((file) => file !== "" && !TEST_ONLY.test(file))
+    .map((file) => readFileSync(join(REPO, file), "utf8"))
+    .join("\n");
+}
+
+const unnamedFixerRows = (rows: Row[], machine: string) => rows.filter((row) => THE_FIXER.test(row.clearedBy) && !machine.includes(row.stop)).map((row) => row.stop);
+
 describe("every red exit names a Runs row whose clearer is not the owner (#812)", () => {
   it("finds every stop the machine names in the ruling's Runs table, none cleared by the owner", () => {
     expect(ruled().length).toBeGreaterThan(0);
@@ -41,6 +53,11 @@ describe("every red exit names a Runs row whose clearer is not the owner (#812)"
 
   it("fails a stage whose red exit names no Runs row", () => {
     expect(stopRefusals({ ...STOPS, builder: "The builder gave up" }, ruled())).toEqual(["builder names no Runs row: The builder gave up"]);
+  });
+
+  it("finds every row the fixer clears named by a part the machine runs, so no row promises a clearer nothing calls (#826, #827)", () => {
+    expect(unnamedFixerRows(ruled(), machineText())).toEqual([]);
+    expect(unnamedFixerRows([...ruled(), { stop: "The branch conflicts with main", clearedBy: "The fixer" }], machineText())).toEqual(["The branch conflicts with main"]);
   });
 
   it("fails a Runs row cleared by the owner", () => {

@@ -40,6 +40,12 @@ function written(gh: Gh, args: string[]): { refusals: string[]; said: string } {
 
 export const commentOnTicket = (ticket: string, text: string, gh: Gh) => written(gh, ["issue", "comment", ticket, "--body", text]);
 
+export function openPr(ticket: string, gh: Gh): string | undefined {
+  const got = gh(["pr", "view", `ticket/${ticket}`, "--json", "state,url", "--jq", 'select(.state == "OPEN") | .url']);
+  const url = got.status === 0 ? got.stdout.trim() : "";
+  return url === "" ? undefined : url;
+}
+
 export function rewriteTicket(ticket: string, read: string, rewrite: string, gh: Gh): { refusals: string[]; said: string } {
   const refused = rewriteRefusals(read, rewrite);
   return refused.length > 0 ? { refusals: refused, said: "" } : written(gh, ["issue", "edit", ticket, "--body", rewrite]);

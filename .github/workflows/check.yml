@@ -32,16 +32,9 @@ jobs:
       - if: failure() && steps.check.conclusion == 'failure'
         run: tail -n 60 "$(git rev-parse --git-common-dir)"/machine-logs/check-*.log
 
-      - if: failure() && startsWith(github.head_ref, 'ticket/')
-        env:
-          GH_TOKEN: ${{ github.token }}
-          HEAD_REF: ${{ github.head_ref }}
-        run: |
-          gh issue view "${HEAD_REF#ticket/}" --json labels --jq '.labels[].name' | grep -qx fixing || bin/mark "${HEAD_REF#ticket/}" failed
-
   review:
     needs: check
-    if: startsWith(github.head_ref, 'ticket/')
+    if: ${{ !cancelled() && startsWith(github.head_ref, 'ticket/') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -76,12 +69,14 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - env:
+      - if: needs.check.result == 'success'
+        env:
           GH_TOKEN: ${{ github.token }}
           HEAD_REF: ${{ github.head_ref }}
         run: bin/mark "${HEAD_REF#ticket/}" 4-reviewing || true
 
       - id: review
+        if: needs.check.result == 'success'
         timeout-minutes: 12
         env:
           GH_TOKEN: ${{ github.token }}
@@ -89,7 +84,7 @@ jobs:
           STAGE_MINUTES: 10
           HEAD_REF: ${{ github.head_ref }}
         run: |
-          tail --pid=$$ -n +1 -F .git/machine-logs/review-${{ github.event.pull_request.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered "$FEED" &
+          tail --pid=$$ -n +1 -F .git/machine-logs/review-${{ github.event.pull_request.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
           bin/review ${{ github.event.pull_request.number }}
           bin/mark "${HEAD_REF#ticket/}" 5-merging || true
 
@@ -100,16 +95,20 @@ jobs:
         run: bin/mark "${HEAD_REF#ticket/}" failed
 
       - id: hand-off
-        if: failure() && steps.review.outcome == 'failure'
+        if: (success() && needs.check.result == 'failure') || (failure() && steps.review.outcome == 'failure')
         timeout-minutes: 30
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           HEAD_REF: ${{ github.head_ref }}
+          CHECKED: ${{ needs.check.result }}
           STAGE_MINUTES: 25
         run: |
-          tail --pid=$$ -n +1 -F ".git/machine-logs/fix-${HEAD_REF#ticket/}.jsonl" 2>/dev/null | jq -Rr --unbuffered "$FEED" &
-          node src/hand-off.ts "${HEAD_REF#ticket/}" 'The reviewer finds drift from `## Why`'
+          tail --pid=$$ -n +1 -F ".git/machine-logs/fix-${HEAD_REF#ticket/}.jsonl" 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
+          gh issue view "${HEAD_REF#ticket/}" --json labels --jq '.labels[].name' | grep -qx fixing && exit 0
+          row='The reviewer finds drift from `## Why`'
+          [[ $CHECKED == success ]] || row="Green on the ticket's checks, red on the PR's required check"
+          node src/hand-off.ts "${HEAD_REF#ticket/}" "$row"
 
       - if: cancelled() || steps.hand-off.outcome == 'failure'
         env:

@@ -51,30 +51,33 @@ jobs:
               | sed -E 's#.*/runs/([0-9]+)/.*#\1#' \
               | sort -u \
               | while read -r run; do gh run rerun "$run" --failed; done
+            echo rerun=true >>"$GITHUB_OUTPUT"
           else
             bin/mark ${{ github.event.issue.number }} 1-defining || true
             bin/start ${{ github.event.issue.number }}
           fi
 
       - id: test-author
+        if: steps.start.outputs.rerun != 'true'
         timeout-minutes: 20
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           STAGE_MINUTES: 17
         run: |
-          tail --pid=$$ -n +1 -F .git/machine-logs/test-author-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered "$FEED" &
+          tail --pid=$$ -n +1 -F .git/machine-logs/test-author-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
           bin/test-author ${{ github.event.issue.number }}
           bin/mark ${{ github.event.issue.number }} 2-building || true
 
       - id: build
+        if: steps.start.outputs.rerun != 'true'
         timeout-minutes: 30
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           STAGE_MINUTES: 27
         run: |
-          tail --pid=$$ -n +1 -F .git/machine-logs/build-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered "$FEED" &
+          tail --pid=$$ -n +1 -F .git/machine-logs/build-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
           bin/build ${{ github.event.issue.number }}
 
       - if: always() && (steps.test-author.outcome != 'skipped' || steps.build.outcome != 'skipped')
@@ -93,7 +96,7 @@ jobs:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           STAGE_MINUTES: 25
         run: |
-          tail --pid=$$ -n +1 -F .git/machine-logs/fix-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered "$FEED" &
+          tail --pid=$$ -n +1 -F .git/machine-logs/fix-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
           node src/hand-off.ts ${{ github.event.issue.number }}
 
       - if: cancelled() || steps.hand-off.outcome == 'failure'
@@ -147,7 +150,7 @@ jobs:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           STAGE_MINUTES: 25
         run: |
-          tail --pid=$$ -n +1 -F .git/machine-logs/fix-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered "$FEED" &
+          tail --pid=$$ -n +1 -F .git/machine-logs/fix-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
           node src/hand-off.ts ${{ github.event.issue.number }} 'Red on main after merge'
 
       - if: cancelled() || steps.hand-off.outcome == 'failure'

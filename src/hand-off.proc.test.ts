@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { HANDED_OFF_PR, handingOff } from "./scenarios.ts";
+import { HANDED_OFF_PR, handingOff, holds, type StepOutcome } from "./scenarios.ts";
 import { STOPS, type Stop } from "./stops.ts";
 
 const RED_ON_MAIN = "Red on main after merge";
@@ -60,28 +60,13 @@ function spendsWithinACap(step: Step): void {
   expect(Object.keys(step.env ?? {})).toEqual(expect.arrayContaining(["GH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"]));
 }
 
-interface StepOutcome {
-  outcome: string;
-  conclusion: string;
-}
-
-function holds(condition: string, outcomes: Record<string, StepOutcome>, failed: boolean): boolean {
-  const source = condition
-    .replace(/^\s*\$\{\{|\}\}\s*$/g, "")
-    .replace(/steps\.([\w-]+)\.(outcome|conclusion)/g, 'steps["$1"].$2');
-  const evaluate = new Function("steps", "success", "failure", "always", "cancelled", `return Boolean(${source});`) as (
-    ...scope: unknown[]
-  ) => boolean;
-  return evaluate(outcomes, () => !failed, () => failed, () => true, () => false);
-}
-
-function stepsThatRun(job: Job, failing: Step): Step[] {
+function stepsThatRun(job: Job, failing: Step | undefined, checked = "success"): Step[] {
   const outcomes: Record<string, StepOutcome> = {};
   for (const step of job.steps) if (step.id !== undefined) outcomes[step.id] = { outcome: "skipped", conclusion: "skipped" };
   const ran: Step[] = [];
   let failed = false;
   for (const step of job.steps) {
-    if (!holds(step.if ?? "success()", outcomes, failed)) continue;
+    if (!holds(step.if ?? "success()", { steps: outcomes, needs: { check: { result: checked } }, failed })) continue;
     ran.push(step);
     const broke = step === failing;
     if (step.id !== undefined) outcomes[step.id] = { outcome: broke ? "failure" : "success", conclusion: broke ? "failure" : "success" };
@@ -273,5 +258,20 @@ describe("hand-off calls the fixer only for the reviewer's own failure (#849)", 
 
     const afterReviewer = stepsThatRun(job, review);
     expect(afterReviewer).toContain(handing);
+  });
+});
+
+describe("a red required check on a ticket PR reaches the fixer (#826, #827)", () => {
+  it("the review job skips the reviewer and hands the ticket to the fixer, naming the row the fixer clears", () => {
+    const job = jobRunning("check", "bin/review");
+    const review = job.steps.find((step) => runs(step, "bin/review")) as Step;
+    const handing = handingStep(job, "bin/review");
+    const ran = stepsThatRun(job, undefined, "failure");
+
+    expect(job.if).toMatch(/!cancelled\(\)|always\(\)|failure\(\)/);
+    expect(ran).not.toContain(review);
+    expect(ran).toContain(handing);
+    expect(stepsThatRun(job, undefined, "success")).not.toContain(handing);
+    expect(handing.run).toContain("Green on the ticket's checks, red on the PR's required check");
   });
 });

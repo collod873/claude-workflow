@@ -1,3 +1,8 @@
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
+
+export const STOPPED_AT = /^\d+ refusals, stopped at: (.+)$/;
+
 export const STOPS = {
   shape: "Start refused: shape (a raw filing that skipped `file-issue`)",
   stale: "Start refused: a claimed file is deleted, or a check names a `--config` that does not exist",
@@ -25,6 +30,15 @@ export interface Stopped {
 export function stoppedAt(stop: Stop, line: string): Stop {
   console.error(line);
   return stop;
+}
+
+export function rowStopped(ticket: string, logs: string): string | undefined {
+  if (!existsSync(logs)) return undefined;
+  return readdirSync(logs)
+    .filter((name) => name.endsWith(`-${ticket}.log`))
+    .map((name) => join(logs, name))
+    .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)
+    .flatMap((log) => STOPPED_AT.exec(readFileSync(log, "utf8").split("\n")[0])?.slice(1) ?? [])[0];
 }
 
 export const exitFor = (stop: Stop | undefined): number => (stop === undefined ? 0 : 1);
