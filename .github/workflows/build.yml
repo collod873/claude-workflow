@@ -118,6 +118,7 @@ jobs:
       - if: failure() || cancelled()
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           STEPS_JSON: ${{ toJSON(steps) }}
         run: |
           step=$(printf '%s' "$STEPS_JSON" | jq -r '[to_entries[] | select(.value.outcome == "failure")] | .[-1].key // "cancelled before any step finished"')
@@ -190,6 +191,7 @@ jobs:
       - if: failure() || cancelled()
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           STEPS_JSON: ${{ toJSON(steps) }}
         run: |
           step=$(printf '%s' "$STEPS_JSON" | jq -r '[to_entries[] | select(.value.outcome == "failure")] | .[-1].key // "cancelled before any step finished"')
