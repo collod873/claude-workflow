@@ -36,6 +36,9 @@ function handOff(ticket: string, named: string | undefined): number {
   }
   const row = named ?? rowStopped(ticket, join(git(["rev-parse", "--path-format=absolute", "--git-common-dir"]), "machine-logs"));
   if (row === undefined) {
+    const pr = openPr(ticket, gh);
+    const note = `hand-off: #${ticket} stopped at no row its logs name${pr === undefined ? "" : `; its open PR: ${pr}`}`;
+    commentOnTicket(ticket, note, gh);
     mark(top, ticket, "failed");
     console.log(`${said} stopped at no row its logs name, so the fixer was not called`);
     return 0;

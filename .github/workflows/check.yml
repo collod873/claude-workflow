@@ -130,6 +130,15 @@ jobs:
           HEAD_REF: ${{ github.head_ref }}
         run: bin/mark "${HEAD_REF#ticket/}" failed
 
+      - if: failure() || cancelled()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ github.head_ref }}
+          STEPS_JSON: ${{ toJSON(steps) }}
+        run: |
+          step=$(printf '%s' "$STEPS_JSON" | jq -r '[to_entries[] | select(.value.outcome == "failure")] | .[-1].key // "cancelled before any step finished"')
+          gh issue comment "${HEAD_REF#ticket/}" --body "review: failed at step \`$step\`, see the run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
       - if: always()
         timeout-minutes: 6
         uses: ./.github/actions/stage-logs

@@ -12,6 +12,9 @@ jobs:
     if: ${{ github.event.sender.login == github.repository_owner && !contains(github.event.issue.labels.*.name, 'note') }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    permissions:
+      contents: read
+      issues: write
     steps:
       - id: app
         uses: actions/create-github-app-token@v3
@@ -105,6 +108,14 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
         run: bin/mark ${{ github.event.issue.number }} failed
 
+      - if: failure() || cancelled()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STEPS_JSON: ${{ toJSON(steps) }}
+        run: |
+          step=$(printf '%s' "$STEPS_JSON" | jq -r '[to_entries[] | select(.value.outcome == "failure")] | .[-1].key // "cancelled before any step finished"')
+          gh issue comment ${{ github.event.issue.number }} --body "build: failed at step \`$step\`, see the run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
       - if: always()
         timeout-minutes: 6
         uses: ./.github/actions/stage-logs
@@ -116,6 +127,9 @@ jobs:
     if: ${{ github.event.action == 'reopened' && github.event.sender.type == 'Bot' && !contains(github.event.issue.labels.*.name, 'note') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    permissions:
+      contents: read
+      issues: write
     steps:
       - id: app
         uses: actions/create-github-app-token@v3
@@ -159,6 +173,14 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
         run: bin/mark ${{ github.event.issue.number }} failed
+
+      - if: failure() || cancelled()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STEPS_JSON: ${{ toJSON(steps) }}
+        run: |
+          step=$(printf '%s' "$STEPS_JSON" | jq -r '[to_entries[] | select(.value.outcome == "failure")] | .[-1].key // "cancelled before any step finished"')
+          gh issue comment ${{ github.event.issue.number }} --body "build: failed at step \`$step\`, see the run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
       - if: always()
         timeout-minutes: 6
