@@ -153,7 +153,7 @@ function behindPrs(): { number: string; headRefName: string }[] {
   if (listed.status !== 0) return [];
   try {
     return (JSON.parse(listed.stdout) as { number: number; headRefName: string; mergeStateStatus: string }[])
-      .filter((pr) => pr.mergeStateStatus === "BEHIND")
+      .filter((pr) => pr.mergeStateStatus === "BEHIND" || pr.mergeStateStatus === "DIRTY")
       .map((pr) => ({ number: String(pr.number), headRefName: pr.headRefName }));
   } catch {
     return [];
