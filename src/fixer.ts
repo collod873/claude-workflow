@@ -2,8 +2,9 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { authoredTests, capped, yourChecks } from "./brief.ts";
 import { redOutput, TAIL_CAP, tailOf } from "./builder.ts";
-import { commentOnTicket, commentsOn, openPr, post, prNumber, rewriteTicket } from "./post.ts";
-import { foundDrift, gh, git, handedDiff, LIST_CAP, NO_EM_DASH, repairOf, TOOK_ITS_TURN } from "./reviewer.ts";
+import { repairOf, takeTurn, turnOn } from "./fixer-turn.ts";
+import { commentOnTicket, gh, git, openPr, post, prNumber, rewriteTicket } from "./post.ts";
+import { handedDiff, LIST_CAP, NO_EM_DASH } from "./reviewer.ts";
 import { runStage, type Opened, type Outcome, type Stage } from "./stage.ts";
 import { rowStopped } from "./stops.ts";
 import { claims, quoted } from "./ticket-shape.ts";
@@ -111,21 +112,20 @@ function closedUnbuilt(ticket: string, reason: string, row: string | undefined, 
 function fix(opened: Opened): Outcome {
   const { ticket, body, logs } = opened;
   const branch = `ticket/${ticket}`;
-  const turns = commentsOn(ticket, gh);
-  if (turns === undefined) return { stop: "fixerEnds", refusals: [`the comments on #${ticket} could not be read, so no model was spent`] };
-  if (turns.some((said) => said.startsWith(TOOK_ITS_TURN))) return { stop: "fixerEnds", refusals: [`the fixer already took its one turn on #${ticket}, so no model was spent`] };
-  const marked = commentOnTicket(ticket, `${TOOK_ITS_TURN}.`, gh);
-  if (marked.refusals.length > 0) return { stop: "fixerEnds", refusals: [`its marker was refused, so no model was spent: ${quoted(marked.refusals[0])}`] };
   const onBranch = prNumber(branch, gh);
-  const onPr = onBranch === undefined ? undefined : commentsOn(onBranch, gh);
-  const explain = (text: string) => (onPr === undefined ? commentOnTicket(ticket, text, gh) : post({ kind: "judgement", pr: branch, text }, gh));
+  const record = turnOn(ticket, onBranch, gh);
+  if (record === undefined) return { stop: "fixerEnds", refusals: [`the comments on #${ticket} or its PR could not be read, so no model was spent`] };
+  if (record.taken) return { stop: "fixerEnds", refusals: [`the fixer already took its one turn on #${ticket}, so no model was spent`] };
+  const marked = takeTurn(ticket, gh);
+  if (marked.refusals.length > 0) return { stop: "fixerEnds", refusals: [`its marker was refused, so no model was spent: ${quoted(marked.refusals[0])}`] };
+  const explain = (text: string) => (onBranch === undefined ? commentOnTicket(ticket, text, gh) : post({ kind: "judgement", pr: branch, text }, gh));
   const spent = opened.spend(
     handedOn({
       briefed: opened.briefed,
       body,
       failed: failure(opened, branch),
       diff: git(["diff", "origin/main...HEAD"]).stdout ?? "",
-      gaps: (onPr ?? []).filter((said) => said.startsWith(foundDrift(ticket))).join("\n\n"),
+      gaps: record.earlier,
       commands: opened.commands,
     }),
   );
