@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fixing } from "./scenarios.ts";
+import { FULL_CHECK_RED_ONCE, fixing } from "./scenarios.ts";
 
 const DRIFT = "The reviewer read this PR against the Why of #811 and found drift.\n\n- src/fixer.ts posts no marker\n";
 
@@ -94,14 +94,14 @@ describe("bin/fix clears a stuck ticket with one fixer turn (#811)", () => {
   it("hands the model the Why, the failure, the diff and the reviewer's gaps, and commits a code fix on the ticket branch", () => {
     const { run, handed, committed, closes } = fixing({
       answer: { outcome: "code", reason: "the export was never renamed" },
-      logged: { "build-811.log": "1 refusals\nthe checks are still red after the repair round\n" },
+      logged: { "build-811.log": "1 refusals\nthe checks are still red after 3 of 3 rounds handed back\n" },
       onPr: ["a comment nobody needs", DRIFT],
       claude: "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n",
     });
 
     expect(run().status).toBe(0);
     expect(handed()).toContain("a stuck ticket gets one turn from a fresh fixer, never the owner");
-    expect(handed()).toContain("the checks are still red after the repair round");
+    expect(handed()).toContain("the checks are still red after 3 of 3 rounds handed back");
     expect(handed()).toContain("Tests  1 failed");
     expect(handed()).toContain("src/fixer.ts posts no marker");
     expect(handed()).not.toContain("a comment nobody needs");
@@ -109,6 +109,42 @@ describe("bin/fix clears a stuck ticket with one fixer turn (#811)", () => {
     expect(committed()).toEqual([expect.stringContaining("#811"), "src/ticket-shape.ts"]);
     expect(committed()[0]).not.toMatch(/\b(close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)\b:?[ \t]+#[0-9]+/i);
     expect(closes()).toEqual([]);
+  });
+
+  it("hands a red bin/check back to the fixer, resumed, after it fixes the code (#898)", () => {
+    const { run, handed, order } = fixing({
+      answer: { outcome: "code", reason: "the export was never renamed" },
+      claude: "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n",
+      check: FULL_CHECK_RED_ONCE,
+    });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(order().filter((call) => call === "claude")).toHaveLength(2);
+    expect(handed()).toContain("OTHER-TEST-BROKE in src/stops.test.ts");
+  });
+
+  it("keeps its fix and says bin/check is still red after 3 rounds handed back, for the PR's own check to judge (#898)", () => {
+    const { run, order, committed } = fixing({
+      answer: { outcome: "code", reason: "the export was never renamed" },
+      claude: "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n",
+      check: "printf 'bin/check: FAILED test\\n'\nexit 1\n",
+    });
+
+    const result = run();
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("still red after 3 of 3 rounds handed back");
+    expect(order().filter((call) => call === "claude")).toHaveLength(4);
+    expect(committed()).toEqual([expect.stringContaining("#811"), "src/ticket-shape.ts"]);
+  });
+
+  it("runs no bin/check when it closes the ticket unbuilt (#898)", () => {
+    const { run, order } = fixing({ check: "touch ../checked\nexit 1\n" });
+
+    expect(run().status).toBe(0);
+    expect(order().filter((call) => call === "claude")).toHaveLength(1);
   });
 
   it("hands the model the log of a failed required check under How it failed, when the ticket's own checks passed", () => {

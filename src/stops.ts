@@ -14,7 +14,7 @@ export const STOPS = {
   noTest: "The test author writes no test, or cannot write a failing test for a criterion",
   modelRun: "A stage writes outside the repo, or its model run exits non-zero",
   uncommitted: "A stage's work will not commit",
-  buildRed: "Build red after the repair round",
+  buildRed: "Build red after 3 rounds handed back",
   drift: "The reviewer finds drift from `## Why`",
   fixerEnds: "The fixer ends red, or rules the ticket should not exist as written",
   unrecorded: "Close: the closing record is refused, or the ticket will not close",

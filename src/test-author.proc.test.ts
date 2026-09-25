@@ -38,6 +38,19 @@ const WROTE_A_SANITY_TEST = [
   'printf \'import { it } from "vitest";\\nit("names the behaviour the criterion asks for", () => {});\\n\' >src/ticket-shape.test.ts',
   ": >src/_sanity.test.ts",
 ].join("\n");
+const FIXED_WHEN_RESUMED = [
+  'case "$*" in',
+  '  *--resume*) printf \'import { it } from "vitest";\\nit("fixed", () => {});\\n\' >src/ticket-shape.test.ts ;;',
+  '  *) printf \'import { it } from "vitest";\\nit("passes already", () => {});\\n\' >src/ticket-shape.test.ts ;;',
+  "esac",
+  "",
+].join("\n");
+const RED_ONCE_FIXED = [
+  "if grep -q fixed src/ticket-shape.test.ts; then printf ' FAIL  src/ticket-shape.test.ts > fixed\\n      Tests  1 failed (1)\\n'; exit 1; fi",
+  "printf ' ✓ src/ticket-shape.test.ts > passes already\\n      Tests  1 passed (1)\\n'",
+  "exit 0",
+  "",
+].join("\n");
 const GREEN_WITH_PROTOTYPE = [
   "if [ -e src/prototype.ts ]; then printf '      Tests  1 passed (1)\\n'; exit 0; fi",
   "printf ' FAIL  src/ticket-shape.test.ts > names the behaviour\\n      Tests  1 failed (1)\\n'",
@@ -46,6 +59,29 @@ const GREEN_WITH_PROTOTYPE = [
 ].join("\n");
 
 describe("the test author writes one failing test per criterion, or ends red (#663)", () => {
+  it("hands a refusal back to the same author, resumed, and ends green once its test fails (#898)", () => {
+    const { run, stdin, handedOn, committed } = authoring({ claude: FIXED_WHEN_RESUMED, npx: RED_ONCE_FIXED });
+
+    const result = run();
+
+    expect(heard(result)).toEqual({ status: 0, stderr: "", lines: [expect.stringContaining("#723")] });
+    expect(stdin()).toHaveLength(2);
+    expect(stdin()[1]).toContain("criterion 1 has no failing test");
+    expect(handedOn()).toContain("--resume\nsess-author");
+    expect(committed()).toEqual(["src/ticket-shape.test.ts"]);
+  });
+
+  it("ends red naming the refusal after 3 rounds handed back, and writes nothing (#898)", () => {
+    const { run, stdin, committed } = authoring({ npx: "printf '      Tests  1 passed (1)\\n'\nexit 0\n" });
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("criterion 1 has no failing test");
+    expect(stdin()).toHaveLength(4);
+    expect(committed()).toEqual([]);
+  });
+
   it("counts a criterion covered only when its check ends red on a test that ran", () => {
     expect(uncovered(wellFormedTicket, ".", RED)).toEqual([]);
     expect(uncovered(wellFormedTicket, ".", GREEN)).toEqual([expect.stringContaining("criterion 1 has no failing test")]);
@@ -159,6 +195,10 @@ describe("the test author writes one failing test per criterion, or ends red (#6
 
   it("tells the model a prototype proves nothing and a claimed file not written yet already counts as red", () => {
     expect(prompted("", [])).toMatch(/prototype proves nothing.*claimed file not written yet already counts as red/s);
+  });
+
+  it("tells the model a check that runs no tests is refused (#898)", () => {
+    expect(prompted("", [])).toMatch(/runs no tests, is refused/);
   });
 
   it("spends no model on a ticket GitHub will not hand over", () => {

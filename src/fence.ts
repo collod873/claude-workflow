@@ -1,4 +1,6 @@
 export const STATIC = "bin/check static";
+export const CHECK = "bin/check";
+export const GATED = [CHECK, `./${CHECK}`, "~/bin/check"];
 
 const TOOLS = ["Read", "Edit", "Write", "Grep", "Glob", "Bash"];
 
@@ -27,12 +29,14 @@ const OWNER_HOOKS = [
   "session-capture",
 ];
 
+const GATE_HOOKS = ["check-gate"];
+
 export type Registration = Record<string, { matcher?: string; hooks: { command: string }[] }[]>;
 
-const isOwnerHook = (command: string) => OWNER_HOOKS.some((name) => command.includes(`/hooks/${name}.py`));
+const isOwnerHook = (command: string, gated: boolean) => [...OWNER_HOOKS, ...(gated ? GATE_HOOKS : [])].some((name) => command.includes(`/hooks/${name}.py`));
 
-export function ownerHooks(registered: Registration): Registration {
-  const kept = Object.entries(registered).map(([event, entries]) => [event, entries.filter(({ hooks }) => hooks.every(({ command }) => isOwnerHook(command)))] as const);
+export function ownerHooks(registered: Registration, gated = false): Registration {
+  const kept = Object.entries(registered).map(([event, entries]) => [event, entries.filter(({ hooks }) => hooks.every(({ command }) => isOwnerHook(command, gated)))] as const);
   return Object.fromEntries(kept.filter(([, entries]) => entries.length > 0));
 }
 

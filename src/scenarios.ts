@@ -326,6 +326,7 @@ export function authoring({ body = wellFormedTicket, claude = WROTE_A_TEST, npx 
   const root = scratch("test-author-");
   const session = join(root, "session");
   const argv = join(root, "claude-argv");
+  const calls = join(root, "claude-calls");
   mkdirSync(session, { recursive: true });
   git(session, "init", "--quiet", "--initial-branch=main");
   git(session, "config", "user.email", "author@test");
@@ -335,10 +336,11 @@ export function authoring({ body = wellFormedTicket, claude = WROTE_A_TEST, npx 
   git(session, "commit", "--quiet", "-m", "what the claim stands on");
   script(join(root, "bin", "gh"), reads ? ghAnswers(body) : "exit 22\n");
   script(join(root, "bin", "npx"), npx);
-  script(join(root, "bin", "claude"), `printf '%s\\n' "$@" >"${argv}"\ncat >/dev/null\n${claude}`);
+  script(join(root, "bin", "claude"), `printf '%s\\n' "$@" >"${argv}"\ncat >>"${calls}"\nprintf '\\0' >>"${calls}"\n${claude}\nprintf '{"session_id":"sess-author"}\\n'`);
   return {
     session,
     handedOn: () => (existsSync(argv) ? readFileSync(argv, "utf8") : ""),
+    stdin: () => (existsSync(calls) ? readFileSync(calls, "utf8").split("\0").slice(0, -1) : []),
     committed: (branch = "ticket/723") => {
       try {
         return git(session, "show", "--name-only", "--format=", branch).split("\n").filter((path) => path !== "");
@@ -350,6 +352,16 @@ export function authoring({ body = wellFormedTicket, claude = WROTE_A_TEST, npx 
   };
 }
 
+export const FULL_CHECK_RED_ONCE = [
+  "if [ -f ../checked ]; then exit 0; fi",
+  "touch ../checked",
+  "mkdir -p .git/machine-logs",
+  "printf -- '--- test ---\\nOTHER-TEST-BROKE in src/stops.test.ts\\n' >.git/machine-logs/check-red.log",
+  "printf 'bin/check: FAILED test src/stops.test.ts; log .git/machine-logs/check-red.log\\n'",
+  "exit 1",
+  "",
+].join("\n");
+
 const AUTHORED_TEST = 'import { it } from "vitest";\nit("names the behaviour the criterion asks for", () => {});\n';
 
 export function building({
@@ -359,6 +371,7 @@ export function building({
   npx = CHECK_RED,
   sessionId = "sess-42",
   claude = "",
+  check = "exit 0\n",
   extra = {} as Record<string, string>,
 } = {}) {
   const root = scratch("builder-");
@@ -367,6 +380,7 @@ export function building({
   const stdinDir = join(root, "claude-stdin");
   mkdirSync(argvDir, { recursive: true });
   mkdirSync(stdinDir, { recursive: true });
+  script(join(session, "bin", "check"), check);
   claimedSession(session, "builder", claimed, tests, "ticket/724");
   script(join(root, "bin", "gh"), ghAnswers(body));
   script(join(root, "bin", "npx"), npx);
@@ -779,9 +793,11 @@ export function fixing({
   npx = CHECK_RED,
   failedCheck = undefined as string | undefined,
   prOpen = false,
+  check = "exit 0\n",
 } = {}) {
   const root = scratch("fixer-");
   const session = join(root, "session");
+  script(join(session, "bin", "check"), check);
   const order = join(root, "order");
   const handed = join(root, "claude-stdin");
   const argvDir = join(root, "gh-argv");

@@ -41,6 +41,8 @@ runs:
           attempt=$((attempt + 1))
         done
         rm -rf "$hooks/.git"
+        mkdir -p "$HOME/bin"
+        ln -sf "$hooks/bin/check" "$HOME/bin/check"
         python3 "$hooks/hookcheck.py" --root "$hooks" --settings "$RUNNER_TEMP/unregistered.json" --emit-settings >"$RUNNER_TEMP/agent-hooks.json"
         printf 'AGENT_HOOKS_SETTINGS=%s\n' "$RUNNER_TEMP/agent-hooks.json" >>"$GITHUB_ENV"
         printf 'FEED=%s\n' "$GITHUB_ACTION_PATH/feed.jq" >>"$GITHUB_ENV"
