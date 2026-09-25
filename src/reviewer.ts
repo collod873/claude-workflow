@@ -15,7 +15,8 @@ const FILE_START = /^(?=diff --git )/m;
 const CHANGED_PATH = /^diff --git a\/.+? b\/(.+)$/m;
 const TOOLS = ["Read", "Grep", "Glob"];
 export const NO_EM_DASH = "^[^\\u2014]*$";
-export const foundDrift = (ticket: string) => `The reviewer read this PR against the Why of #${ticket} and found drift.`;
+const foundDrift = (ticket: string) => `The reviewer read this PR against the Why of #${ticket} and found drift.`;
+export const earlierDrift = (ticket: string, comments: string[]) => comments.filter((comment) => comment.startsWith(foundDrift(ticket))).join("\n\n");
 export const repairOf = (ticket: string) => `Repair #${ticket} as its fixer`;
 
 const VERDICT = {
@@ -189,7 +190,7 @@ function review(pr: string): Stop | undefined {
   if (turns === undefined) return stoppedAt("unread", `${said} ended red, the comments on #${ticket} could not be read, so no model was spent`);
   const onPr = commentsOn(pr, gh);
   if (onPr === undefined) return stoppedAt("unread", `${said} ended red, the comments on its PR could not be read, so no model was spent`);
-  const earlier = onPr.filter((comment) => comment.startsWith(foundDrift(ticket))).join("\n\n");
+  const earlier = earlierDrift(ticket, onPr);
   const fix = fixDiff(ticket);
   const after = earlier !== "" && fix !== "" ? { earlier, fix } : undefined;
   const verdict = judged(handedOn(body, diff, after), pr);

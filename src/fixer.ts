@@ -6,14 +6,14 @@ import { capped, onDisk } from "./brief.ts";
 import { repaired, stillRed, TAIL_CAP, tailOf } from "./builder.ts";
 import { UNFENCED } from "./fence.ts";
 import { commentOnTicket, commentsOn, gh, git, OWNER, prNumber, rewriteTicket } from "./post.ts";
-import { foundDrift, handedDiff, LIST_CAP, NO_EM_DASH, repairOf, TICKET_CAP } from "./reviewer.ts";
+import { earlierDrift, handedDiff, LIST_CAP, NO_EM_DASH, repairOf, TICKET_CAP } from "./reviewer.ts";
 import { hired, machineLogs, type Spent } from "./stage.ts";
 import { checks, claims, quoted } from "./ticket-shape.ts";
 
 const ANSWER = {
   type: "object",
   properties: {
-    outcome: { enum: ["code", "ticket", "close", "machine", "rerun"] },
+    outcome: { enum: ["code", "ticket", "close", "machine"] },
     reason: { type: "string", pattern: NO_EM_DASH },
     body: { type: "string", pattern: NO_EM_DASH },
   },
@@ -22,7 +22,7 @@ const ANSWER = {
 };
 
 interface Answer {
-  outcome: "code" | "ticket" | "close" | "machine" | "rerun";
+  outcome: "code" | "ticket" | "close" | "machine";
   reason: string;
   body?: string;
 }
@@ -53,12 +53,11 @@ export function handedOn({ ticket, body, failed, diff, gaps }: Handed): string {
     capped(gaps, LIST_CAP) || "(none)",
     "## You own it until it merges",
     "Every red on this ticket comes back to you until it merges. Read its Why first; `gh` reads any run. Answer one outcome:",
-    "- `code`: fix it here; the machine commits, runs `bin/check` and the ticket's checks, hands back red, pushes green.",
+    "- `code`: fix it, or change nothing on a flake; the machine commits, runs `bin/check` and the ticket's checks, hands back red, pushes green or reruns the red Check.",
     "- `ticket`: a criterion or test is wrong; fix the test, or return the ticket as `body`, Why byte-identical.",
     "- `close`: the ticket should not exist as written.",
     "- `machine`: the machine is at fault, reviewer included; fix it in a worktree off `origin/main`, commit naming this ticket, and `bin/land` it first.",
-    "- `rerun`: an outage or flake; its failed jobs rerun.",
-    "`reason`: one paragraph for the owner. A round that changes nothing calls the owner.",
+    "`reason`: one paragraph for the owner. Two rounds in a row that change nothing call them.",
     "",
   ].join("\n\n");
 }
@@ -67,7 +66,7 @@ const mark = (ticket: string, label: string) => spawnSync(join(process.cwd(), "b
 const head = () => git(["rev-parse", "HEAD"]).stdout.trim();
 const sessionFile = (ticket: string) => join(homedir(), ".claude", "fixer", ticket);
 
-function main(): string {
+function fetchedMain(): string {
   git(["fetch", "--quiet", "origin", "main"]);
   return git(["rev-parse", "origin/main"]).stdout.trim();
 }
@@ -119,23 +118,16 @@ function rewritten(ticket: string, body: string, answer: Answer): Round {
 }
 
 function landedOnMain(ticket: string, reason: string, before: string): Round {
-  if (main() === before) return { red: "You answered `machine` and main has not moved: land the machine fix with `bin/land` before you answer." };
+  if (fetchedMain() === before) return { red: "You answered `machine` and main has not moved: land the machine fix with `bin/land` before you answer." };
   commentOnTicket(ticket, `@${OWNER} the fixer of #${ticket} changed the machine: ${reason}`, gh);
   if (git(["merge", "--quiet", "--no-edit", "origin/main"]).status === 0) return {};
   git(["merge", "--abort"]);
   return { red: "origin/main, with your machine fix, does not merge cleanly into this branch: merge it and resolve the conflict." };
 }
 
-function rerun(run: string | undefined): Round {
-  if (run === undefined) return { red: `You answered \`rerun\` and there is no failed run to rerun. ${REDDENED_ON_MAIN}` };
-  const again = gh(["run", "rerun", run, "--failed"]);
-  return again.status === 0 ? { ended: 0 } : { red: `The rerun of run ${run} was refused: ${quoted((again.stderr || again.stdout).trim().split("\n")[0])}` };
-}
-
-function answered(ticket: string, body: string, run: string | undefined, answer: Answer | undefined, mainBefore: string): Round {
+function answered(ticket: string, body: string, answer: Answer | undefined, mainBefore: string): Round {
   if (answer === undefined) return { red: "You gave no outcome. Answer one." };
   if (answer.outcome === "close") return { ended: closedUnbuilt(ticket, answer.reason) };
-  if (answer.outcome === "rerun") return rerun(run);
   if (answer.outcome === "ticket") return rewritten(ticket, body, answer);
   if (answer.outcome === "machine") return landedOnMain(ticket, answer.reason, mainBefore);
   return {};
@@ -147,13 +139,14 @@ function committed(ticket: string): void {
   git(["commit", "--quiet", "-m", repairOf(ticket)]);
 }
 
-function spentOn(spend: Spend, input: string, session: string | undefined): Spent {
-  if (session === undefined) return spend(input);
+function spentOn(spend: Spend, input: string, session: string | undefined, opening: string): Spent {
+  const fresh = () => spend(input === opening ? input : [opening, input].join("\n\n"));
+  if (session === undefined) return fresh();
   const resumed = spend(input, session);
-  return resumed.refusal === undefined ? resumed : spend(input);
+  return resumed.refusal === undefined ? resumed : fresh();
 }
 
-function saved(ticket: string, logs: string): string | undefined {
+function saveRefusal(ticket: string, logs: string): string | undefined {
   const save = spawnSync(join(process.cwd(), "bin", "save"), [ticket], { encoding: "utf8" });
   if (save.status === 0) return undefined;
   return `Save could not push this branch or open its PR:\n\n${tailOf(onDisk(join(logs, `save-${ticket}.log`)) ?? save.stderr, TAIL_CAP)}`;
@@ -161,10 +154,25 @@ function saved(ticket: string, logs: string): string | undefined {
 
 function redOrSaved(ticket: string, body: string, logs: string): string | undefined {
   const red = stillRed(checks(body).map(({ command }) => command));
-  return red === "" ? saved(ticket, logs) : repaired(red);
+  return red === "" ? saveRefusal(ticket, logs) : repaired(red);
 }
 
-function own(ticket: string, run: string | undefined): number {
+const ranAs = (run: string | undefined) =>
+  run === undefined ? "" : gh(["run", "view", run, "--json", "workflowName,headSha,attempt", "--jq", '.workflowName + " " + .headSha + " " + (.attempt | tostring)']).stdout.trim();
+
+function checkingAgain(ticket: string, run: string | undefined): number {
+  const ran = ranAs(run);
+  if (ran.startsWith(`Check ${head()} `)) {
+    if (ran !== `Check ${head()} 1`) return calledOwner(ticket, "its red Check already reran once, and it is green here unchanged");
+    const again = gh(["run", "rerun", String(run), "--failed"]);
+    if (again.status !== 0) return calledOwner(ticket, `it is green unchanged and the rerun of its red Check was refused: ${quoted((again.stderr || again.stdout).trim().split("\n")[0])}`);
+  }
+  mark(ticket, "3-checking");
+  console.log(`fix: #${ticket} is green and pushed, so its PR checks run again`);
+  return 0;
+}
+
+function ownRedTicket(ticket: string, run: string | undefined): number {
   mark(ticket, "fixing");
   const logs = machineLogs(process.cwd());
   mkdirSync(logs, { recursive: true });
@@ -176,36 +184,36 @@ function own(ticket: string, run: string | undefined): number {
   const spend = hired({ name: "fixer", transcript: join(logs, `fix-${ticket}.jsonl`), answers: ANSWER, gated: true, reach: UNFENCED });
   if (typeof spend === "string") return calledOwner(ticket, `the owner's hooks could not be read from ${spend}`);
   let session = savedSession(ticket);
-  let input = handedOn({
+  const opening = handedOn({
     ticket,
     body,
     failed: failure(ticket, logs, run),
     diff: git(["diff", "origin/main...HEAD"]).stdout ?? "",
-    gaps: judged.filter((said) => said.startsWith(foundDrift(ticket))).join("\n\n"),
+    gaps: earlierDrift(ticket, judged),
   });
+  let input = opening;
+  let idle = false;
   for (;;) {
-    const before = { head: head(), main: main() };
-    const spent = spentOn(spend, input, session);
+    const before = { head: head(), main: fetchedMain() };
+    const spent = spentOn(spend, input, session, opening);
     session = spent.session ?? session;
     keepSession(ticket, session);
     if (spent.refusal !== undefined) return calledOwner(ticket, spent.refusal);
     const answer = spent.answer as Answer | undefined;
-    const round = answered(ticket, body, run, answer, before.main);
+    const round = answered(ticket, body, answer, before.main);
     if (round.ended !== undefined) return round.ended;
     body = round.body ?? body;
     committed(ticket);
-    if (head() === before.head && main() === before.main && round.body === undefined) return calledOwner(ticket, `a round changed nothing: ${round.red ?? answer?.reason ?? "it gave no outcome"}`);
+    const changed = head() !== before.head || fetchedMain() !== before.main || round.body !== undefined;
     const red = round.red ?? redOrSaved(ticket, body, logs);
-    if (red === undefined) {
-      mark(ticket, "3-checking");
-      console.log(`fix: #${ticket} is green and pushed, so its PR checks run again`);
-      return 0;
-    }
+    if (red === undefined) return checkingAgain(ticket, run);
+    if (!changed && idle) return calledOwner(ticket, `two rounds in a row changed nothing: ${round.red ?? answer?.reason ?? "it gave no outcome"}`);
+    idle = !changed;
     input = red;
   }
 }
 
 if (import.meta.main) {
   const [ticket, run] = process.argv.slice(2);
-  process.exit(own(ticket, run));
+  process.exit(ownRedTicket(ticket, run));
 }
