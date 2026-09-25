@@ -44,12 +44,14 @@ head=$(git rev-parse "refs/heads/$branch")
 opened() {
   call gh issue view "$ticket" --json title --jq .title || return 1
   meter=$(node "$src/reads-outside-brief.ts" "$logs" "$top" "$ticket")
+  hand_back=${meter##*$'\n'}
   body=$(printf 'Builds #%s\n\n%s\n' "$ticket" "$meter")
   if ! call gh pr create --base main --head "$branch" --title "$said" --body "$body"; then
     call gh pr view "$branch" --json state,url --jq 'select(.state == "OPEN").url' || return 1
     [[ -n $said ]] || return 1
   fi
   url=$said
+  [[ $hand_back == *"nothing to hand back" ]] || call gh issue comment "$ticket" --body "$hand_back"
   call gh pr merge "$branch" --auto --merge --match-head-commit "$head"
 }
 
