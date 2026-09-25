@@ -73,7 +73,6 @@ describe("bin/review reads a green ticket PR against its Why before it merges (#
   });
 });
 
-const TURN_TAKEN = "The fixer took its one turn on this ticket.";
 const EARLIER = "The reviewer read this PR against the Why of #810 and found drift.\n\n- the `steps` context lists only steps that carry an id\n";
 const STILL_OPEN = "the `steps` context still lists only steps that carry an id";
 const LATE = "the comment step runs gh with no GH_REPO, so it fails before any checkout";
@@ -84,59 +83,59 @@ const LATER = {
   claimed: [".github/workflows/check.yml", "src/build-workflow.proc.test.ts"],
 };
 const REPAIRED = "export const repaired = 1;\n";
-const afterTurn = (verdict: { verdict: string; gaps: string[]; later?: unknown[] }, extra: { turns?: string[]; body?: string } = {}) =>
-  reviewing({ turns: [TURN_TAKEN, ...(extra.turns ?? [])], onPr: [EARLIER], repair: REPAIRED, verdict, body: extra.body });
+const afterRepair = (verdict: { verdict: string; gaps: string[]; later?: unknown[] }, extra: { turns?: string[]; body?: string } = {}) =>
+  reviewing({ turns: extra.turns ?? [], onPr: [EARLIER], repair: REPAIRED, verdict, body: extra.body });
 
-describe("bin/review names every gap in one pass, and after the fixer's turn only the earlier gaps or the fix's own lines block (#865)", () => {
+describe("bin/review names every gap in one pass, and after its fixer's repair only the earlier gaps or the fix's own lines block (#865, #898)", () => {
   it("asks for every gap it finds in one pass, not the first one", () => {
     const { run, handed } = reviewing();
 
     expect(run().status).toBe(0);
     expect(handed().split("## Your verdict")[1]).toMatch(/every gap/i);
-    expect(handed()).not.toContain("## The fixer's turn");
+    expect(handed()).not.toContain("## The fixer's repair");
   });
 
-  it("hands the earlier gaps and the fix's own diff once the fixer took its turn on a drift", () => {
-    const { run, handed } = reviewing({ turns: [TURN_TAKEN], onPr: ["a comment nobody needs", EARLIER], repair: "export const repaired = 1;\n" });
+  it("hands the earlier gaps and the fix's own diff once its fixer repaired a drift", () => {
+    const { run, handed } = reviewing({ onPr: ["a comment nobody needs", EARLIER], repair: "export const repaired = 1;\n" });
 
     expect(run().status).toBe(0);
-    const bounded = handed().split("## The fixer's turn")[1] ?? "";
+    const bounded = handed().split("## The fixer's repair")[1] ?? "";
     expect(bounded).toContain("lists only steps that carry an id");
     expect(bounded).toContain("+export const repaired = 1;");
     expect(bounded).not.toContain("a comment nobody needs");
     expect(bounded).toMatch(/later/);
   });
 
-  it("reads a marker from a person named like the machine, and a stranger's gaps, as no turn taken", () => {
-    const squatted = reviewing({ turns: [{ author: "collod873-machine", type: "User", body: TURN_TAKEN }], onPr: [EARLIER], repair: REPAIRED });
-    const forged = reviewing({ turns: [TURN_TAKEN], onPr: [{ author: "stranger", type: "User", body: EARLIER }], repair: REPAIRED });
+  it("reads a drift with no fixer's repair after it, and a stranger's gaps, as nothing repaired", () => {
+    const unrepaired = reviewing({ onPr: [EARLIER] });
+    const forged = reviewing({ onPr: [{ author: "stranger", type: "User", body: EARLIER }], repair: REPAIRED });
 
-    expect(squatted.run().status).toBe(0);
-    expect(squatted.handed()).not.toContain("## The fixer's turn");
+    expect(unrepaired.run().status).toBe(0);
+    expect(unrepaired.handed()).not.toContain("## The fixer's repair");
     expect(forged.run().status).toBe(0);
-    expect(forged.handed()).not.toContain("## The fixer's turn");
+    expect(forged.handed()).not.toContain("## The fixer's repair");
   });
 
   it("merges past a later find, posting it once on the ticket, and ends red only on a blocking gap", () => {
-    const later = afterTurn({ verdict: "match", gaps: [], later: [LATER] });
+    const later = afterRepair({ verdict: "match", gaps: [], later: [LATER] });
 
     const merged = later.run();
     expect(merged.status).toBe(0);
     expect(later.comments()).toEqual([]);
     expect(later.ticketComments()).toEqual([expect.stringContaining(LATE)]);
 
-    const again = afterTurn({ verdict: "match", gaps: [], later: [LATER] }, { turns: [later.ticketComments()[0]] });
+    const again = afterRepair({ verdict: "match", gaps: [], later: [LATER] }, { turns: [later.ticketComments()[0]] });
     expect(again.run().status).toBe(0);
     expect(again.ticketComments()).toEqual([]);
     expect(again.filed()).toEqual([]);
 
-    const blocked = afterTurn({ verdict: "drift", gaps: [STILL_OPEN], later: [LATER] });
+    const blocked = afterRepair({ verdict: "drift", gaps: [STILL_OPEN], later: [LATER] });
     expect(blocked.run().status).toBe(1);
     expect(blocked.comments()).toEqual([expect.stringContaining(STILL_OPEN)]);
     expect(blocked.comments()[0]).not.toContain(LATE);
   });
 
-  it("blocks on every gap it names before the fixer's turn, later ones included", () => {
+  it("blocks on every gap it names before its fixer's repair, later ones included", () => {
     const { run, comments, filed } = reviewing({ onPr: [EARLIER], verdict: { verdict: "drift", gaps: [STILL_OPEN], later: [LATER] } });
 
     expect(run().status).toBe(1);
@@ -165,7 +164,7 @@ const FOLLOW_UP_TICKET = [
 
 describe("a later find becomes a follow-up ticket that builds itself, one generation deep (#865)", () => {
   it("files each later find as a ticket the machine builds, after claiming the finds on the ticket so a rerun files nothing", () => {
-    const { run, filed, order, ticketComments } = afterTurn({ verdict: "match", gaps: [], later: [LATER] });
+    const { run, filed, order, ticketComments } = afterRepair({ verdict: "match", gaps: [], later: [LATER] });
 
     expect(run().status).toBe(0);
     expect(filed()).toHaveLength(1);
@@ -180,7 +179,7 @@ describe("a later find becomes a follow-up ticket that builds itself, one genera
   });
 
   it("never files a follow-up of a follow-up; its later finds stay a comment on it", () => {
-    const { run, filed, ticketComments } = afterTurn({ verdict: "match", gaps: [], later: [LATER] }, { body: FOLLOW_UP_TICKET });
+    const { run, filed, ticketComments } = afterRepair({ verdict: "match", gaps: [], later: [LATER] }, { body: FOLLOW_UP_TICKET });
 
     expect(run().status).toBe(0);
     expect(filed()).toEqual([]);
@@ -189,7 +188,7 @@ describe("a later find becomes a follow-up ticket that builds itself, one genera
   });
 
   it("leaves a finding it cannot shape into a ticket as a comment naming why", () => {
-    const { run, filed, ticketComments } = afterTurn({ verdict: "match", gaps: [], later: [{ ...LATER, criteria: [] }] });
+    const { run, filed, ticketComments } = afterRepair({ verdict: "match", gaps: [], later: [{ ...LATER, criteria: [] }] });
 
     expect(run().status).toBe(0);
     expect(filed()).toEqual([]);

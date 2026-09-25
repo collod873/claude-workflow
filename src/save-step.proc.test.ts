@@ -38,7 +38,7 @@ describe("the save step pushes the branch before anything can refuse it, and ope
   });
 });
 
-describe("bin/save's red exits name the stop the hand-off reads to call the fixer (#835)", () => {
+describe("bin/save's red exits name the stop the fixer reads (#835)", () => {
   it("a push is refused leaves a save log whose first line names the push is refused row", () => {
     const { run, log } = saving({ remoteRefuses: "the remote refuses every push" });
 

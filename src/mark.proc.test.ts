@@ -3,22 +3,22 @@ import { heard, marking } from "./scenarios.ts";
 
 const OTHER_STAGES = "1-defining,3-checking,4-reviewing,5-merging,fixing";
 
-describe("bin/mark shows the owner which stage a ticket is at, and whether its run stopped red (#835)", () => {
-  it("swaps the ticket onto one stage label and clears failed, since a stage starting means the run is moving again", () => {
+describe("bin/mark shows the owner which stage a ticket is at, and whether it needs the owner (#835, #898)", () => {
+  it("swaps the ticket onto one stage label and clears needs-human, since a stage starting means the run is moving again", () => {
     const marked = marking();
 
     expect(heard(marked.run("811", "2-building"))).toEqual({ status: 0, stderr: "", lines: ["mark: #811 is at 2-building"] });
-    expect(marked.calls()).toEqual([`issue edit 811 --add-label 2-building --remove-label failed,${OTHER_STAGES}`]);
+    expect(marked.calls()).toEqual([`issue edit 811 --add-label 2-building --remove-label needs-human,${OTHER_STAGES}`]);
   });
 
-  it("adds failed beside the stage label, so the owner sees where the run stopped", () => {
+  it("adds needs-human beside the stage label, so the owner sees where the fixer stopped", () => {
     const marked = marking();
 
-    expect(heard(marked.run("811", "failed")).status).toBe(0);
-    expect(marked.calls()).toEqual(["issue edit 811 --add-label failed"]);
+    expect(heard(marked.run("811", "needs-human")).status).toBe(0);
+    expect(marked.calls()).toEqual(["issue edit 811 --add-label needs-human"]);
   });
 
-  it("refuses a label that is not a stage or failed, and asks GitHub for nothing", () => {
+  it("refuses a label that is not a stage or needs-human, and asks GitHub for nothing", () => {
     const marked = marking();
 
     expect(heard(marked.run("811", "7-fixing")).status).toBe(2);

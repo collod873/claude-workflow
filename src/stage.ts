@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { closeSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { brief, onDisk } from "./brief.ts";
-import { CHECK, GATED, ownerHooks, stageArgv, type Registration } from "./fence.ts";
+import { CHECK, GATED, ownerHooks, stageArgv, type Reach, type Registration } from "./fence.ts";
 import { STOPS, type Stop, type Stopped } from "./stops.ts";
 import { checks, quoted } from "./ticket-shape.ts";
 
@@ -40,7 +40,6 @@ export interface Stage {
   undone: string;
   clean?: boolean;
   gated?: boolean;
-  endsAt?: Stop;
   answers?: object;
   tests?: { found: () => string[]; missing?: string };
   keeps: (path: string, opened: Opened) => boolean;
@@ -127,6 +126,7 @@ export interface Hire {
   tools?: string[];
   answers?: object;
   gated?: boolean;
+  reach?: Reach;
 }
 
 export interface Spent {
@@ -141,7 +141,7 @@ export function hired(hire: Hire): ((input: string, resume?: string) => Spent) |
   const deadline = Date.now() + minutes * 60_000;
   const hooks = registered();
   if (typeof hooks === "string") return hooks;
-  const argv = [...stageArgv(hire.commands ?? [], ownerHooks(hooks, hire.gated), hire.tools), ...(hire.answers === undefined ? [] : ["--json-schema", JSON.stringify(hire.answers)])];
+  const argv = [...stageArgv(hire.commands ?? [], ownerHooks(hooks, hire.gated), hire.tools, hire.reach), ...(hire.answers === undefined ? [] : ["--json-schema", JSON.stringify(hire.answers)])];
   rmSync(hire.transcript, { force: true });
   const attempt = (input: string, resume?: string) => {
     const from = existsSync(hire.transcript) ? statSync(hire.transcript).size : 0;
@@ -250,7 +250,7 @@ export function runStage(stage: Stage, ticket: string): number {
   rmSync(log, { force: true });
   const shown = relative(cwd, log).startsWith("..") ? log : relative(cwd, log);
   const ended = ({ stop, refusals }: Stopped, line: string) => {
-    writeFileSync(log, `${refusals.length} refusals, stopped at: ${STOPS[stage.endsAt ?? stop]}\n${refusals.join("\n")}\n`);
+    writeFileSync(log, `${refusals.length} refusals, stopped at: ${STOPS[stop]}\n${refusals.join("\n")}\n`);
     console.error(`${line}; log ${shown}`);
     return 1;
   };

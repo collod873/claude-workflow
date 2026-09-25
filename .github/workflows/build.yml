@@ -1,4 +1,5 @@
 name: Build
+run-name: "Build ticket/${{ github.event.issue.number }}: ${{ github.event.issue.title }}"
 
 "on":
   issues:
@@ -55,7 +56,6 @@ jobs:
         run: |
           branch="ticket/${{ github.event.issue.number }}"
           if [[ '${{ github.event.action }}' == reopened ]] && state=$(gh pr view "$branch" --json state --jq .state 2>/dev/null) && [[ $state == OPEN ]]; then
-            gh issue edit ${{ github.event.issue.number }} --remove-label failed
             gh pr checks "$branch" --json name,bucket,link \
               | jq -r '.[] | select(.bucket == "fail") | .link' \
               | sed -E 's#.*/runs/([0-9]+)/.*#\1#' \
@@ -99,97 +99,7 @@ jobs:
           bin/save ${{ github.event.issue.number }}
           bin/mark ${{ github.event.issue.number }} 3-checking || true
 
-      - id: hand-off
-        if: failure()
-        timeout-minutes: 40
-        env:
-          GH_TOKEN: ${{ steps.app.outputs.token }}
-          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          STAGE_MINUTES: 25
-        run: |
-          tail --pid=$$ -n +1 -F .git/machine-logs/fix-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
-          node src/hand-off.ts ${{ github.event.issue.number }}
-
-      - id: mark-failed
-        if: cancelled() || steps.hand-off.outcome == 'failure'
-        env:
-          GH_TOKEN: ${{ steps.app.outputs.token }}
-        run: bin/mark ${{ github.event.issue.number }} failed
-
-      - if: (failure() || cancelled()) && steps.hand-off.outcome != 'success'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          STEPS_JSON: ${{ toJSON(steps) }}
-        run: |
-          step=$(printf '%s' "$STEPS_JSON" | jq -r '[to_entries[] | select(.value.outcome == "failure")] | .[-1].key // "cancelled before any step finished"')
-          gh issue comment ${{ github.event.issue.number }} --body "build: failed at step \`$step\`, see the run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-
-      - if: always()
-        timeout-minutes: 6
-        uses: ./.github/actions/stage-logs
-        with:
-          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
-          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
-
-  fix:
-    if: ${{ github.event.action == 'reopened' && github.event.sender.type == 'Bot' && !contains(github.event.issue.labels.*.name, 'note') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 55
-    permissions:
-      contents: read
-      issues: write
-    steps:
-      - id: app
-        uses: actions/create-github-app-token@v3
-        with:
-          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
-          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
-
-      - id: checkout
-        uses: actions/checkout@v4
-        with:
-          ref: main
-          fetch-depth: 0
-          token: ${{ steps.app.outputs.token }}
-
-      - id: setup-node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-
-      - id: npm-ci
-        run: npm ci
-
-      - id: stage
-        uses: ./.github/actions/stage
-        with:
-          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
-          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
-
-      - id: git-config
-        run: |
-          git config user.name "core-app[bot]"
-          git config user.email "core-app[bot]@users.noreply.github.com"
-          git checkout -B "ticket/${{ github.event.issue.number }}"
-
-      - id: hand-off
-        timeout-minutes: 40
-        env:
-          GH_TOKEN: ${{ steps.app.outputs.token }}
-          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          STAGE_MINUTES: 25
-        run: |
-          tail --pid=$$ -n +1 -F .git/machine-logs/fix-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
-          node src/hand-off.ts ${{ github.event.issue.number }} 'Red on main after merge'
-
-      - id: mark-failed
-        if: cancelled() || steps.hand-off.outcome == 'failure'
-        env:
-          GH_TOKEN: ${{ steps.app.outputs.token }}
-        run: bin/mark ${{ github.event.issue.number }} failed
-
-      - if: (failure() || cancelled()) && steps.hand-off.outcome != 'success'
+      - if: failure() || cancelled()
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}

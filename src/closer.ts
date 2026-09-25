@@ -10,7 +10,7 @@ import { checks, quoted } from "./ticket-shape.ts";
 
 const MERGED = /^Merge pull request #(\d+) from \S+?(?:\/ticket\/(\d+))?$/;
 const BUILDS = /^Builds #(\d+)[ \t]*$/m;
-const STAGE_LABELS = "1-defining,2-building,3-checking,4-reviewing,5-merging,fixing,failed";
+const STAGE_LABELS = "1-defining,2-building,3-checking,4-reviewing,5-merging,fixing,needs-human";
 const TICKET_BRANCH = /^ticket\/(\d+)$/;
 const MACHINE_BRANCH = /^(ticket|land)\//;
 

@@ -1,10 +1,11 @@
 #!/bin/bash
 set -uo pipefail
 
-usage="fix: usage: fix <ticket number>"
+usage="fix: usage: fix <ticket number> [failed run id]"
 
 ticket=${1:-}
-if [[ $# -ne 1 || ! $ticket =~ ^[0-9]+$ ]]; then
+run=${2:-}
+if [[ $# -lt 1 || $# -gt 2 || ! $ticket =~ ^[0-9]+$ || ! $run =~ ^[0-9]*$ ]]; then
   printf '%s\n' "$usage" >&2
   exit 2
 fi
@@ -12,4 +13,4 @@ fi
 src="$(cd "${BASH_SOURCE[0]%/*}/../src" && pwd)"
 top=$(git rev-parse --show-toplevel) || exit 1
 cd "$top" || exit 1
-exec node "$src/fixer.ts" "$ticket"
+exec node "$src/fixer.ts" "$ticket" ${run:+"$run"}

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -uo pipefail
 
-usage="mark: usage: mark <ticket number> <1-defining|2-building|3-checking|4-reviewing|5-merging|fixing|failed>"
+usage="mark: usage: mark <ticket number> <1-defining|2-building|3-checking|4-reviewing|5-merging|fixing|needs-human>"
 stages=(1-defining 2-building 3-checking 4-reviewing 5-merging fixing)
 
 ticket=${1:-}
@@ -11,10 +11,10 @@ if [[ $# -ne 2 || ! $ticket =~ ^[0-9]+$ ]]; then
   exit 2
 fi
 
-if [[ $label == failed ]]; then
+if [[ $label == needs-human ]]; then
   cleared=()
 elif [[ " ${stages[*]} " == *" $label "* ]]; then
-  cleared=(failed)
+  cleared=(needs-human)
   for stage in "${stages[@]}"; do
     [[ $stage == "$label" ]] || cleared+=("$stage")
   done

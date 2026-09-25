@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parts, type Part } from "./parts.ts";
-import { LINE_LIMIT, MOST_LINES, authoring, briefing, building, checkRepo, checking, closing, coveredByCheck, execute, filing, fixing, handingOff, landSession, launching, marking, misshapenTicket, overLimit, reviewing, saving, scratch, script, starting, wellFormedNote, wellFormedTicket, type Run } from "./scenarios.ts";
+import { LINE_LIMIT, MOST_LINES, authoring, briefing, building, checkRepo, checking, closing, coveredByCheck, execute, filing, fixing, landSession, launching, marking, misshapenTicket, overLimit, reviewing, saving, scratch, script, starting, wellFormedNote, wellFormedTicket, type Run } from "./scenarios.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
 const NOISE = "a line a tool prints that nobody needed to read\n".repeat(40).trim();
@@ -60,7 +60,7 @@ const scenarios: Record<string, Scenario[]> = {
   ],
   "bin/mark": [
     { label: "moving a ticket to a stage", run: () => marking().run("811", "2-building") },
-    { label: "with GitHub refusing the label", run: () => marking({ gh: `cat >&2 <<'NOISE'\n${NOISE}\nNOISE\nexit 1\n` }).run("811", "failed") },
+    { label: "with GitHub refusing the label", run: () => marking({ gh: `cat >&2 <<'NOISE'\n${NOISE}\nNOISE\nexit 1\n` }).run("811", "needs-human") },
   ],
   "bin/close": [
     { label: "closing a ticket whose checks pass on the merge commit", run: () => closing({ ticket: "814", fixes: true }).run() },
@@ -71,16 +71,12 @@ const scenarios: Record<string, Scenario[]> = {
     { label: "posting a drift", run: () => reviewing({ verdict: { verdict: "drift", gaps: ["the Why asks for more than was built"] } }).run() },
   ],
   "bin/fix": [
-    { label: "closing a ticket unbuilt", run: () => fixing().run() },
-    { label: "refusing a second turn", run: () => fixing({ turns: ["The fixer took its one turn on this ticket."] }).run() },
+    { label: "pushing a fix", run: () => fixing({ claude: "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n" }).run() },
+    { label: "calling the owner when a round changes nothing", run: () => fixing().run() },
   ],
   "bin/test-author": [
     { label: "writing a failing test for each criterion", run: () => authoring().run() },
     { label: "refusing a criterion whose check already passes", run: () => authoring({ npx: GREEN }).run() },
-  ],
-  "src/hand-off.ts": [
-    { label: "handing a build red ticket to the fixer", run: () => handingOff({ stoppedAt: "Build red after 3 rounds handed back" }).run() },
-    { label: "outside a repo to read", run: () => execute(process.execPath, scratch("hand-off-"), {}, [join(REPO, "src", "hand-off.ts"), "811"]) },
   ],
   "bin/start": [
     { label: "starting a build", run: () => starting().run() },

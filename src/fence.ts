@@ -46,18 +46,26 @@ function fenced(runs: string[], owned: Registration): string {
   return JSON.stringify({ hooks: { ...owned, PreToolUse: [fence, ...(owned.PreToolUse ?? [])] } });
 }
 
-export function stageArgv(commands: string[], owned: Registration = {}, tools: string[] = TOOLS): string[] {
+export interface Reach {
+  model: string;
+  fenced: boolean;
+}
+
+const FENCED: Reach = { model: "sonnet", fenced: true };
+export const UNFENCED: Reach = { model: "opus", fenced: false };
+
+export function stageArgv(commands: string[], owned: Registration = {}, tools: string[] = TOOLS, reach: Reach = FENCED): string[] {
   const runs = [...commands, STATIC, `./${STATIC}`];
+  const settings = reach.fenced ? fenced(runs, owned) : JSON.stringify({ hooks: owned });
   return [
     "--print",
     "--model",
-    "sonnet",
+    reach.model,
     "--setting-sources",
     "",
     "--settings",
-    fenced(runs, owned),
-    "--tools",
-    tools.join(","),
+    settings,
+    ...(reach.fenced ? ["--tools", tools.join(",")] : []),
     "--permission-mode",
     "bypassPermissions",
   ];

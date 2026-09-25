@@ -6,7 +6,7 @@ import { handedOn as fixerHandedOn } from "./fixer.ts";
 import { DIFF_CAP, handedOn as reviewerHandedOn, LIST_CAP, TICKET_CAP } from "./reviewer.ts";
 import { handedOn, refused, REFUSALS_CAP } from "./test-author.ts";
 
-export const CEILINGS: Record<string, number> = { "brief": 136, "test author": 870, "test author refused": 94, "builder": 485, "repair": 87, "reviewer": 432, "reviewer after the fixer's turn": 996, "fixer": 848 };
+export const CEILINGS: Record<string, number> = { "brief": 136, "test author": 870, "test author refused": 94, "builder": 485, "repair": 87, "reviewer": 432, "reviewer after the fixer's repair": 992, "fixer": 826 };
 
 const AUTHORED = "src/planted.test.ts";
 const HIRES = /(spawn|execFile)\w*\(\s*"claude"/;
@@ -69,7 +69,7 @@ export const PROMPTS: Prompt[] = [
     build: (filled) => reviewerHandedOn(filled.body ?? "", filled.diff ?? ""),
   },
   {
-    name: "reviewer after the fixer's turn",
+    name: "reviewer after the fixer's repair",
     file: "src/reviewer.ts",
     cap: 2 * TICKET_CAP + 2 * DIFF_CAP + 2 * LIST_CAP + HANDED_ON,
     slots: ["body", "diff", "earlier", "fix"],
@@ -78,17 +78,9 @@ export const PROMPTS: Prompt[] = [
   {
     name: "fixer",
     file: "src/fixer.ts",
-    cap: CAP + TAIL_CAP + DIFF_CAP + 2 * LIST_CAP + HANDED_ON,
-    slots: ["ticket", "body", "tests", "failed", "diff", "gaps", "commands"],
-    build: (filled) =>
-      fixerHandedOn({
-        briefed: briefText(filled),
-        body: filled.body ?? "",
-        failed: filled.failed ?? "",
-        diff: filled.diff ?? "",
-        gaps: filled.gaps ?? "",
-        commands: filled.commands === undefined ? [] : [filled.commands],
-      }),
+    cap: TICKET_CAP + TAIL_CAP + DIFF_CAP + 2 * LIST_CAP + HANDED_ON,
+    slots: ["body", "failed", "diff", "gaps"],
+    build: (filled) => fixerHandedOn({ ticket: "", body: filled.body ?? "", failed: filled.failed ?? "", diff: filled.diff ?? "", gaps: filled.gaps ?? "" }),
   },
 ];
 
