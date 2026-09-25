@@ -46,9 +46,8 @@ exists until a second repo enrols ([#674](https://github.com/collod873/claude-wo
 _Avoid_: shim, wrapper, vendored copy
 
 **Fixer**:
-The agent that owns a red ticket until it merges, one session across every red run. It fixes the
-code, the ticket or the machine, or closes the ticket unbuilt; the owner hears only when a round
-changes nothing.
+The agent that owns a red ticket until it merges, one session across red runs. It fixes the code,
+the ticket or the machine, or closes the ticket unbuilt; when it stops, it marks it `needs-human`.
 _Avoid_: mechanic, fresh eyes, repair agent
 
 **Stable machine**:
@@ -74,6 +73,6 @@ worth keeping, and the build skips it.
 _Avoid_: idea, bug, backlog item, memo
 
 **Stage**:
-One agent process in a pipeline run, with no memory of the ones before it. Not an Actions job or
-step: a stage is a context boundary and they are not.
+One agent process in a pipeline run, with no memory of other stages. Not an Actions job or step: a
+stage is a context boundary and they are not.
 _Avoid_: phase, pass, step, job

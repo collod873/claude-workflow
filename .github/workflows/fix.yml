@@ -36,12 +36,13 @@ jobs:
     concurrency:
       group: fix-${{ needs.which.outputs.ticket }}
     runs-on: ubuntu-latest
-    timeout-minutes: 330
+    timeout-minutes: 70
     permissions:
       contents: read
       issues: write
       actions: read
     env:
+      TICKET: ${{ needs.which.outputs.ticket }}
       HEAD_REF: ticket/${{ needs.which.outputs.ticket }}
     steps:
       - id: app
@@ -114,15 +115,15 @@ jobs:
 
       - id: fix
         if: steps.branch.outputs.stale != 'true'
-        timeout-minutes: 300
+        timeout-minutes: 50
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          STAGE_MINUTES: 290
+          STAGE_MINUTES: 45
           RUN: ${{ github.event.workflow_run.id }}
         run: |
-          tail --pid=$$ -n +1 -F ".git/machine-logs/fix-${HEAD_REF#ticket/}.jsonl" 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
-          bin/fix "${HEAD_REF#ticket/}" $RUN
+          tail --pid=$$ -n +1 -F ".git/machine-logs/fix-$TICKET.jsonl" 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
+          bin/fix "$TICKET" $RUN
 
       - if: always() && steps.fix.outcome != 'skipped'
         uses: actions/cache/save@v6
@@ -137,9 +138,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          gh issue view "${HEAD_REF#ticket/}" --json labels --jq '.labels[].name' | grep -qx needs-human && exit 0
-          gh issue edit "${HEAD_REF#ticket/}" --add-label needs-human
-          gh issue comment "${HEAD_REF#ticket/}" --body "@${{ github.repository_owner }} the fixer's job ended before the fixer could finish, see the run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          gh issue view "$TICKET" --json labels --jq '.labels[].name' | grep -qx needs-human && exit 0
+          gh issue edit "$TICKET" --add-label needs-human
+          gh issue comment "$TICKET" --body "@${{ github.repository_owner }} the fixer's job ended before the fixer could finish, see the run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
       - if: always()
         timeout-minutes: 6

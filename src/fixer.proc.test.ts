@@ -52,13 +52,14 @@ describe("the fixer owns a red ticket until it merges (#898)", () => {
     expect(saved()).toEqual(["811"]);
   });
 
-  it("calls the owner by name, and pushes nothing, when a round changes nothing", () => {
+  it("calls the owner by name, and pushes nothing, when two rounds in a row change nothing", () => {
     const { run, handed, saved, marked, ticketComments } = fixing({ check: "printf 'bin/check: FAILED test\\n'\nexit 1\n" });
 
     const result = run();
 
     expect(result.status).toBe(1);
-    expect(handed()).toHaveLength(1);
+    expect(handed()).toHaveLength(2);
+    expect(handed()[1]).toContain("bin/check: FAILED test");
     expect(saved()).toEqual([]);
     expect(marked()).toContain("811 needs-human");
     expect(ticketComments().at(-1)).toMatch(/^@collod873 /);
@@ -140,17 +141,50 @@ describe("the fixer owns a red ticket until it merges (#898)", () => {
     const { run, handed, saved, ticketComments } = fixing({ answer: { outcome: "machine", reason: "the reviewer is wrong" } });
 
     expect(run().status).toBe(1);
-    expect(handed()).toHaveLength(1);
+    expect(handed()).toHaveLength(2);
     expect(saved()).toEqual([]);
     expect(ticketComments().at(-1)).toContain("main has not moved");
   });
 
-  it("reruns the failed jobs of the run that went red on a flake, and pushes nothing", () => {
-    const flake = fixing({ answer: { outcome: "rerun", reason: "the model API returned 529" } });
+  it("reruns only the red jobs of a Check it left unchanged and green, and never restarts a Build", () => {
+    const flake = fixing({ ranAs: "Check" });
+    const fixed = fixing({ ranAs: "Check", claude: FIXES });
+    const built = fixing({ ranAs: "Build" });
 
     expect(flake.run("811", "555").status).toBe(0);
     expect(flake.reruns()).toEqual([["run", "rerun", "555", "--failed"]]);
-    expect(flake.saved()).toEqual([]);
+    expect(flake.marked()).toEqual(["811 fixing", "811 3-checking"]);
+    expect(fixed.run("811", "555").status).toBe(0);
+    expect(fixed.reruns()).toEqual([]);
+    expect(built.run("811", "555").status).toBe(0);
+    expect(built.reruns()).toEqual([]);
+    expect(built.saved()).toEqual(["811"]);
+  });
+
+  it("reruns a red Check only once, then calls the owner, so an unchanged branch cannot loop through Check", () => {
+    const { run, reruns, marked, ticketComments } = fixing({ ranAs: "Check", attempt: 2 });
+
+    expect(run("811", "555").status).toBe(1);
+    expect(reruns()).toEqual([]);
+    expect(marked()).toContain("811 needs-human");
+    expect(ticketComments().at(-1)).toContain("already reran once");
+  });
+
+  it("calls the owner when the rerun of its unchanged green Check is refused", () => {
+    const { run, marked, ticketComments } = fixing({ ranAs: "Check", rerun: "printf 'HTTP 403: Resource not accessible by integration\\n' >&2\nexit 1" });
+
+    expect(run("811", "555").status).toBe(1);
+    expect(marked()).toContain("811 needs-human");
+    expect(ticketComments().at(-1)).toContain("HTTP 403");
+  });
+
+  it("hands a fresh session the ticket again with the red when resuming its own session fails", () => {
+    const resumeFails = 'if printf \'%s\\n\' "$@" | grep -qx -- --resume; then printf \'No conversation found\\n\' >&2; exit 1; fi\n';
+    const { run, handed } = fixing({ claude: resumeFails + FIXES_EACH_ROUND, check: FULL_CHECK_RED_ONCE });
+
+    expect(run().status).toBe(0);
+    expect(handed().at(-1)).toContain("never the owner");
+    expect(handed().at(-1)).toContain("OTHER-TEST-BROKE in src/stops.test.ts");
   });
 
   it("calls the owner and closes nothing when its own model call fails twice (#862)", () => {

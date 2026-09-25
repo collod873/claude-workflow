@@ -72,7 +72,7 @@ const scenarios: Record<string, Scenario[]> = {
   ],
   "bin/fix": [
     { label: "pushing a fix", run: () => fixing({ claude: "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n" }).run() },
-    { label: "calling the owner when a round changes nothing", run: () => fixing().run() },
+    { label: "calling the owner when two rounds in a row change nothing", run: () => fixing({ check: "printf 'bin/check: FAILED test\\n'\nexit 1\n" }).run() },
   ],
   "bin/test-author": [
     { label: "writing a failing test for each criterion", run: () => authoring().run() },

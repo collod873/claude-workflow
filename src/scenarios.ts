@@ -781,6 +781,9 @@ export function fixing({
   check = "exit 0\n",
   save = "exit 0\n",
   failedRun = "",
+  ranAs = "Build",
+  attempt = 1,
+  rerun = "exit 0",
   savedSession = undefined as string | undefined,
 } = {}) {
   const root = scratch("fixer-");
@@ -799,6 +802,7 @@ export function fixing({
   script(join(session, "bin", "save"), `printf '%s\\n' "$*" >>"${saves}"\n${save}`);
   claimedSession(session, "fixer", { "src/ticket-shape.ts": "export const shaped = 1;\n" }, { "src/ticket-shape.test.ts": AUTHORED_TEST }, "ticket/811");
   git(session, "commit", "--quiet", "--allow-empty", "-m", "Build #811 against its failing tests");
+  const redAt = git(session, "rev-parse", "HEAD");
   for (const [name, text] of Object.entries(logged)) plant(session, `.git/machine-logs/${name}`, text);
   for (const [path, text] of Object.entries(leftover)) plant(session, path, text);
   if (savedSession !== undefined) plant(home, ".claude/fixer/811", `${savedSession}\n`);
@@ -816,7 +820,9 @@ export function fixing({
       `  *"api"*"issues/9811/comments"*) cat "${join(root, "on-pr.json")}" ;;`,
       `  *"issue view"*) cat "${join(root, "ticket.md")}" ;;`,
       `  *"pr view"*"number"*) ${onPr === undefined ? "exit 1" : "printf '9811\\n'"} ;;`,
+      `  *"run view"*"--json"*) printf '%s %s %s\\n' '${ranAs}' '${redAt}' '${attempt}' ;;`,
       `  *"run view"*) cat "${join(root, "failed-run.log")}" ;;`,
+      `  *"run rerun"*) ${rerun} ;;`,
       "  *\"pr view\"*) exit 22 ;;",
       "  *) printf 'https://github.com/collod873/claude-workflow/issues/811#issuecomment-1\\n' ;;",
       "esac",

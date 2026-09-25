@@ -210,7 +210,7 @@ describe("every job that spends a model is watched as it goes, read after it end
       mkdirSync(join(cwd, ".git", "machine-logs"), { recursive: true });
       const stage = [`printf '%s\\n' '${JSON.stringify(SAID)}' >>${transcript}`, "sleep 1.5", "exit 3"].join("\n");
 
-      const watched = spawnSync("bash", ["-e", "-c", `${run.split("\n")[0]}\n${stage}`], { cwd, env: { ...process.env, FEED, HEAD_REF: "ticket/9" }, encoding: "utf8", timeout: 10000 });
+      const watched = spawnSync("bash", ["-e", "-c", `${run.split("\n")[0]}\n${stage}`], { cwd, env: { ...process.env, FEED, HEAD_REF: "ticket/9", TICKET: "9" }, encoding: "utf8", timeout: 10000 });
 
       expect(watched.stdout).toContain("said: reading the brief");
       expect(watched.status).toBe(3);
@@ -333,7 +333,7 @@ describe("fix.yml hands every red run of a ticket to its fixer, however the run 
       const root = scratch("fix-called-");
       const calls = join(root, "calls");
       script(join(root, "bin", "gh"), `printf '%s\\n' "$*" >>"${calls}"\n[[ $2 == view ]] && printf '%s\\n' ${labels}\nexit 0\n`);
-      ranStep(calling, root, { PATH: `${join(root, "bin")}:${process.env.PATH}`, HEAD_REF: "ticket/9" });
+      ranStep(calling, root, { PATH: `${join(root, "bin")}:${process.env.PATH}`, TICKET: "9" });
       return existsSync(calls) ? readFileSync(calls, "utf8") : "";
     };
 
