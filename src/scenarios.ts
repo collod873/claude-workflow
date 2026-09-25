@@ -518,6 +518,8 @@ export function saving({
   alreadyOpen = false,
   autoMergeRefused = false,
   why = CONSENT_ONLY_WHY,
+  criteria = ["- [ ] a fix lands - check: `npx vitest run --config vitest.config.ts ticket-shape`"],
+  files = {} as Record<string, string>,
 }: {
   remoteRefuses?: string;
   brief?: string;
@@ -525,6 +527,8 @@ export function saving({
   alreadyOpen?: boolean;
   autoMergeRefused?: boolean;
   why?: string;
+  criteria?: string[];
+  files?: Record<string, string>;
 } = {}) {
   const root = scratch("save-");
   const { remote, session } = cloned(root, "base");
@@ -532,9 +536,10 @@ export function saving({
   const argvDir = join(root, "gh-argv");
   const judged = join(root, "judged");
   const { setup, calls: argvCalls } = ghArgv(argvDir);
-  const ticketBody = ["## Why", "", why, "", "## Acceptance criteria", "", "- [ ] a fix lands - check: `npx vitest run --config vitest.config.ts ticket-shape`", ""].join("\n");
+  const ticketBody = ["## Why", "", why, "", "## Acceptance criteria", "", ...criteria, ""].join("\n");
   git(session, "checkout", "--quiet", "-b", "ticket/726");
   plant(session, "src/ticket-shape.ts", "export const shaped = 2;\n");
+  for (const [path, content] of Object.entries(files)) plant(session, path, content);
   git(session, "add", ".");
   git(session, "commit", "--quiet", "-m", "Build #726 against its failing tests");
   const built = git(session, "rev-parse", "HEAD");

@@ -160,3 +160,86 @@ describe("bin/save's consent-only quote (meter) reads the ticket's last > passag
     expect(none.prBody() ?? "").toContain("consent-only quote (meter): would refuse nothing");
   });
 });
+
+const SHAPE_ONLY_FIXTURE = [
+  'import { describe, expect, it } from "vitest";',
+  'import { parse } from "yaml";',
+  "",
+  'describe("a fixture criterion for #908", () => {',
+  '  it("only parses a shape, never touching the shipped code", () => {',
+  '    expect(parse("a: 1\\n")).toEqual({ a: 1 });',
+  "  });",
+  "});",
+  "",
+].join("\n");
+
+const SHIPPED_VIA_HELPER_FIXTURE = [
+  'import { describe, expect, it } from "vitest";',
+  'import { checkRepo, heard } from "./scenarios.ts";',
+  "",
+  'describe("a fixture criterion for #908", () => {',
+  '  it("exercises shipped code through a scenarios.ts helper", () => {',
+  "    const { run } = checkRepo();",
+  "    expect(heard(run()).status).toBe(0);",
+  "  });",
+  "});",
+  "",
+].join("\n");
+
+const SHIPPED_VIA_BIN_SPAWN_FIXTURE = [
+  'import { describe, it } from "vitest";',
+  'import { spawnSync } from "node:child_process";',
+  'import { join } from "node:path";',
+  "",
+  'const BIN = join(import.meta.dirname, "..", "bin");',
+  "",
+  'describe("a fixture criterion for #908", () => {',
+  '  it("spawns a shipped bin script directly", () => {',
+  '    spawnSync(join(BIN, "mark"), ["908"]);',
+  "  });",
+  "});",
+  "",
+].join("\n");
+
+describe("bin/save flags a shape-only check (meter) whose criteria only test shape, never the shipped code (#908)", () => {
+  it("names each flagged criterion by number and check, and still exits 0 and opens the PR", () => {
+    const { run, prBody } = saving({
+      criteria: [
+        "- [ ] a file appears - check: `test -f built.txt`",
+        '- [ ] nothing matches - check: `npx vitest run --config vitest.config.ts totally-missing-file -t "does not matter"`',
+        '- [ ] shape only - check: `npx vitest run --config vitest.config.ts shape-fixture-shape-only -t "only parses a shape"`',
+      ],
+      files: { "src/shape-fixture-shape-only.test.ts": SHAPE_ONLY_FIXTURE },
+    });
+
+    expect(run().status).toBe(0);
+    const flagged = (prBody() ?? "").split("\n").find((row) => row.startsWith("shape-only check (meter): would refuse,"));
+    expect(flagged).toBeDefined();
+    expect(flagged).toContain("criterion 1");
+    expect(flagged).toContain("test -f built.txt");
+    expect(flagged).toContain("criterion 2");
+    expect(flagged).toContain("totally-missing-file");
+    expect(flagged).toContain("criterion 3");
+    expect(flagged).toContain("shape-fixture-shape-only");
+  });
+});
+
+describe("bin/save's shape-only check (meter) would refuse nothing once every criterion's check runs the shipped code (#908)", () => {
+  it("puts 'shape-only check (meter): would refuse nothing' on the PR when every check selects a test that runs the shipped code, including through a scenarios.ts helper that calls execute()", () => {
+    const { run, prBody } = saving({
+      criteria: [
+        '- [ ] a fix lands - check: `npx vitest run --config vitest.config.ts shape-fixture-shipped -t "exercises shipped code"`',
+        '- [ ] a script runs - check: `npx vitest run --config vitest.config.ts shape-fixture-bin-spawn -t "spawns a shipped bin script directly"`',
+      ],
+      files: {
+        "src/shape-fixture-shipped.test.ts": SHIPPED_VIA_HELPER_FIXTURE,
+        "src/shape-fixture-bin-spawn.test.ts": SHIPPED_VIA_BIN_SPAWN_FIXTURE,
+      },
+    });
+
+    const result = run();
+
+    expect(result.status).toBe(0);
+    expect(prBody() ?? "").toContain("shape-only check (meter): would refuse nothing");
+  });
+});
