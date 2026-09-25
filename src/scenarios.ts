@@ -511,6 +511,8 @@ function ghArgv(dir: string): { setup: string; calls: () => string[][] } {
 
 const CONSENT_ONLY_WHY = 'The owner, in session: "a plan carrying its own intent, spoken plainly, at length, right where it was proposed".';
 
+const TICKET_SHAPE_TEST = ['import { describe, it } from "vitest";', 'import { checkRepo } from "./scenarios.ts";', "", 'describe("ticket-shape", () => {', '  it("runs the shipped code", () => {', "    checkRepo();", "  });", "});", ""].join("\n");
+
 export function saving({
   remoteRefuses,
   brief,
@@ -539,6 +541,7 @@ export function saving({
   const ticketBody = ["## Why", "", why, "", "## Acceptance criteria", "", ...criteria, ""].join("\n");
   git(session, "checkout", "--quiet", "-b", "ticket/726");
   plant(session, "src/ticket-shape.ts", "export const shaped = 2;\n");
+  plant(session, "src/ticket-shape.test.ts", TICKET_SHAPE_TEST);
   for (const [path, content] of Object.entries(files)) plant(session, path, content);
   git(session, "add", ".");
   git(session, "commit", "--quiet", "-m", "Build #726 against its failing tests");
