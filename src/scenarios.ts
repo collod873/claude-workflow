@@ -509,18 +509,22 @@ function ghArgv(dir: string): { setup: string; calls: () => string[][] } {
   };
 }
 
+const CONSENT_ONLY_WHY = 'The owner, in session: "a plan carrying its own intent, spoken plainly, at length, right where it was proposed".';
+
 export function saving({
   remoteRefuses,
   brief,
   streams = {} as Partial<Record<string, string[]>>,
   alreadyOpen = false,
   autoMergeRefused = false,
+  why = CONSENT_ONLY_WHY,
 }: {
   remoteRefuses?: string;
   brief?: string;
   streams?: Partial<Record<string, string[]>>;
   alreadyOpen?: boolean;
   autoMergeRefused?: boolean;
+  why?: string;
 } = {}) {
   const root = scratch("save-");
   const { remote, session } = cloned(root, "base");
@@ -528,6 +532,7 @@ export function saving({
   const argvDir = join(root, "gh-argv");
   const judged = join(root, "judged");
   const { setup, calls: argvCalls } = ghArgv(argvDir);
+  const ticketBody = ["## Why", "", why, "", "## Acceptance criteria", "", "- [ ] a fix lands - check: `npx vitest run --config vitest.config.ts ticket-shape`", ""].join("\n");
   git(session, "checkout", "--quiet", "-b", "ticket/726");
   plant(session, "src/ticket-shape.ts", "export const shaped = 2;\n");
   git(session, "add", ".");
@@ -550,6 +555,11 @@ export function saving({
       `printf '%s|%s\\n' "$(printf '%s' "$*" | tr '\\n' ' ')" "$(git --git-dir="${remote}" rev-parse --verify --quiet refs/heads/ticket/726)" >>"${calls}"`,
       setup,
       'case "$*" in',
+      "  *\"issue view\"*\"--json body\"*)",
+      "    cat <<'TICKET_BODY'",
+      ticketBody,
+      "TICKET_BODY",
+      "    ;;",
       "  *\"issue view\"*) printf 'Push the branch before anything can refuse it\\n' ;;",
       alreadyOpen ? "  *\"pr create\"*) exit 1 ;;" : `  *"pr create"*) printf '%s\\n' '${SAVED_PR}' ;;`,
       `  *"pr view"*) printf '%s\\n' '${SAVED_PR}' ;;`,

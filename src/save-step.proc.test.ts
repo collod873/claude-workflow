@@ -122,3 +122,41 @@ describe("bin/save hands reads outside the brief back to the filer when there ar
     expect(totalOutside(body)).toBe(4);
   });
 });
+
+describe("bin/save's consent-only quote (meter) reads the ticket's last > passage under Why (#906)", () => {
+  it("puts a consent-only quote (meter) line on the PR, quoting the passage and its word count, when the ticket's last > passage under Why is 5 words or fewer", () => {
+    const { run, prBody } = saving({
+      why: [
+        "The owner proposed a plan and later confirmed it:",
+        "",
+        "> The assistant proposed building a consent-only quote meter that flags short trailing quotes as likely consent",
+        "> rather than intent, spanning this single passage across two consecutive quoted lines held together",
+        "",
+        "> ok do those",
+      ].join("\n"),
+    });
+
+    expect(run().status).toBe(0);
+    const line = (prBody() ?? "").split("\n").find((row) => row.startsWith("consent-only quote (meter): would refuse,"));
+    expect(line).toBeDefined();
+    expect(line).toContain("ok do those");
+    expect(line).toMatch(/\b3\b/);
+    expect(line).toMatch(/\bwords?\b/);
+  });
+
+  it("says the quote carries intent, would refuse nothing, when the last > passage is over 5 words, or Why has no > passage at all", () => {
+    const long = saving({
+      why: ["The owner, in session:", "", "> Let's ship the whole consent meter feature by the end of this week please"].join("\n"),
+    });
+
+    expect(long.run().status).toBe(0);
+    expect(long.prBody() ?? "").toContain("consent-only quote (meter): would refuse nothing");
+
+    const none = saving({
+      why: 'The owner, in session: "this quotes only inline, never a > line, so Why carries no passage at all".',
+    });
+
+    expect(none.run().status).toBe(0);
+    expect(none.prBody() ?? "").toContain("consent-only quote (meter): would refuse nothing");
+  });
+});
