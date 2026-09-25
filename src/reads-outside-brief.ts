@@ -60,7 +60,22 @@ export function totalOutside(text: string): number | undefined {
   return counts.length === 0 ? undefined : counts.reduce((sum, count) => sum + count, 0);
 }
 
+const HAND_BACK_THRESHOLD = 5;
+
+function insideRepo(path: string): boolean {
+  return path !== ".git" && !path.startsWith(".git/") && !path.startsWith("..");
+}
+
+function handBackLine(meters: Meter[]): string {
+  const files = new Set<string>();
+  for (const { outside } of meters) for (const path of outside) if (insideRepo(path)) files.add(path);
+  if (files.size < HAND_BACK_THRESHOLD) return "reads back to the filer (meter): nothing to hand back";
+  const word = files.size === 1 ? "file" : "files";
+  return `reads back to the filer (meter): ${files.size} ${word} missing from the brief: ${[...files].sort().join(", ")}`;
+}
+
 if (import.meta.main) {
   const [logs, top, ticket] = process.argv.slice(2);
-  process.stdout.write(`${report(metered(logs, top, ticket))}\n`);
+  const meters = metered(logs, top, ticket);
+  process.stdout.write(`${report(meters)}\n${handBackLine(meters)}\n`);
 }
