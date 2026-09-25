@@ -21,13 +21,13 @@ jobs:
       - id: which
         env:
           ISSUE: ${{ github.event.issue.number }}
-          RAN: ${{ github.event.workflow_run.name }}
+          RAN: ${{ github.event.workflow_run.path }}
           RAN_ON: ${{ github.event.workflow_run.head_branch }}
           TITLE: ${{ github.event.workflow_run.display_title }}
         run: |
           ticket=$ISSUE
-          [[ $RAN == Check && $RAN_ON =~ ^ticket/([0-9]+)$ ]] && ticket=${BASH_REMATCH[1]}
-          [[ $RAN == Build && $TITLE =~ ^Build\ ticket/([0-9]+): ]] && ticket=${BASH_REMATCH[1]}
+          [[ $RAN == .github/workflows/check.yml && $RAN_ON =~ ^ticket/([0-9]+)$ ]] && ticket=${BASH_REMATCH[1]}
+          [[ $RAN == .github/workflows/build.yml && $TITLE =~ ^Build\ ticket/([0-9]+): ]] && ticket=${BASH_REMATCH[1]}
           printf 'ticket=%s\n' "$ticket" >>"$GITHUB_OUTPUT"
 
   fix:
@@ -61,7 +61,7 @@ jobs:
       - id: branch
         env:
           EVENT: ${{ github.event_name }}
-          RAN: ${{ github.event.workflow_run.name }}
+          RAN: ${{ github.event.workflow_run.path }}
           RAN_AT: ${{ github.event.workflow_run.head_sha }}
           ENDED: ${{ github.event.workflow_run.updated_at }}
         run: |
@@ -73,7 +73,7 @@ jobs:
           fi
           git checkout --quiet -B "$HEAD_REF" FETCH_HEAD
           [[ $EVENT == workflow_run ]] || exit 0
-          if [[ $RAN == Check && $(git rev-parse HEAD) != "$RAN_AT" ]] || [[ $RAN == Build && $(git log -1 --format=%ct HEAD) -gt $(date -d "$ENDED" +%s) ]]; then
+          if [[ $RAN == .github/workflows/check.yml && $(git rev-parse HEAD) != "$RAN_AT" ]] || [[ $RAN == .github/workflows/build.yml && $(git log -1 --format=%ct HEAD) -gt $(date -d "$ENDED" +%s) ]]; then
             printf 'fix: %s moved since run %s went red, so a newer run judges it\n' "$HEAD_REF" "$RAN"
             echo stale=true >>"$GITHUB_OUTPUT"
           fi

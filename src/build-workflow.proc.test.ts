@@ -290,10 +290,10 @@ describe("fix.yml hands every red run of a ticket to its fixer, however the run 
       .replace("${{ github.event.issue.number }}", "894")
       .replace("${{ github.event.issue.title }}", "Give the Fixer's one turn a single record: ticket/5");
 
-    expect(ticketNamed({ RAN: "Check", RAN_ON: "ticket/891", TITLE: "Stamp the session id" })).toBe("891");
-    expect(ticketNamed({ RAN: "Build", RAN_ON: "main", TITLE: buildName })).toBe("894");
+    expect(ticketNamed({ RAN: ".github/workflows/check.yml", RAN_ON: "ticket/891", TITLE: "Stamp the session id" })).toBe("891");
+    expect(ticketNamed({ RAN: ".github/workflows/build.yml", RAN_ON: "main", TITLE: buildName })).toBe("894");
     expect(ticketNamed({ ISSUE: "812" })).toBe("812");
-    expect(ticketNamed({ RAN: "Check", RAN_ON: "land/4b58f3372b91", TITLE: "Build ticket/7: a land PR's title" })).toBe("");
+    expect(ticketNamed({ RAN: ".github/workflows/check.yml", RAN_ON: "land/4b58f3372b91", TITLE: "Build ticket/7: a land PR's title" })).toBe("");
   });
 
   it("stands down, spending no model, when the ticket moved on since the run that went red", () => {
@@ -306,7 +306,7 @@ describe("fix.yml hands every red run of a ticket to its fixer, however the run 
     const judged = git(session, "rev-parse", "HEAD");
     git(session, "push", "--quiet", "origin", "ticket/9");
     git(session, "checkout", "--quiet", "main");
-    const env = { HEAD_REF: "ticket/9", EVENT: "workflow_run", RAN: "Check", ENDED: "2026-09-25T02:37:28Z" };
+    const env = { HEAD_REF: "ticket/9", EVENT: "workflow_run", RAN: ".github/workflows/check.yml", ENDED: "2026-09-25T02:37:28Z" };
 
     const current = ranStep(branch, session, { ...env, RAN_AT: judged });
     expect(current.status, current.stderr).toBe(0);
