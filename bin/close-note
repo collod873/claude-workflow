@@ -1,0 +1,26 @@
+#!/bin/bash
+set -uo pipefail
+
+usage="close-note: usage: close-note <note number>"
+
+note=${1:-}
+if [[ $# -ne 1 || ! $note =~ ^[0-9]+$ ]]; then
+  printf '%s\n' "$usage" >&2
+  exit 2
+fi
+
+first_line() { printf '%s' "$1" | head -n 1 | cut -c 1-120; }
+
+if ! labels=$(gh issue view "$note" --json labels --jq '.labels[].name' 2>&1); then
+  printf 'close-note: #%s not read: %s\n' "$note" "$(first_line "$labels")" >&2
+  exit 1
+fi
+if ! grep -qx note <<<"$labels"; then
+  printf 'close-note: #%s is not a note; a ticket closes when its PR merges\n' "$note" >&2
+  exit 1
+fi
+if ! said=$(gh issue close "$note" --reason completed 2>&1); then
+  printf 'close-note: #%s not closed: %s\n' "$note" "$(first_line "$said")" >&2
+  exit 1
+fi
+printf 'close-note: #%s is closed\n' "$note"
