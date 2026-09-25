@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { filing, misshapenTicket, wellFormedNote, wellFormedTicket } from "./scenarios.ts";
+import { why } from "./ticket-shape.ts";
 
 const URL = "https://github.com/collod873/claude-workflow/issues/700";
 const RECORDS = `python3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "$@" >>"$PWD/gh-argv"\nprintf '%s\\n' ${URL}\n`;
@@ -12,6 +13,10 @@ const NOTE_CALL = ["note", "--title", "What the audit found", "--body-file", "bo
 function ghSaw(repo: string): string[][] {
   if (!existsSync(join(repo, "gh-argv"))) return [];
   return readFileSync(join(repo, "gh-argv"), "utf8").trim().split("\n").map((line) => JSON.parse(line) as string[]);
+}
+
+function bodyOf(call: string[]): string {
+  return call[call.indexOf("--body") + 1];
 }
 
 describe("bin/file-issue files a ticket, or refuses it and files nothing (#662)", () => {
@@ -84,6 +89,38 @@ describe("bin/file-issue files a ticket, or refuses it and files nothing (#662)"
 
     expect(run(NOTE_CALL)).toMatchObject({ status: 1, stderr: "the body carries no '## Why', so nothing says why this was worth keeping\n" });
     expect(ghSaw(repo)).toEqual([]);
+  });
+
+  it("stamps the session id from CLAUDE_CODE_SESSION_ID as the last line of '## Why', and adds nothing once it is already there", () => {
+    const stamped = filing({ gh: RECORDS, body: wellFormedTicket, sessionId: "sess-abc" });
+
+    const result = stamped.run();
+
+    expect(result).toMatchObject({ status: 0, stdout: `${URL}\n`, stderr: "" });
+    const posted = bodyOf(ghSaw(stamped.repo)[0]);
+    expect(why(posted).split("\n").at(-1)).toBe("Session: `sess-abc`");
+
+    const untouched = filing({ gh: RECORDS, body: posted, sessionId: "sess-abc" });
+    untouched.run();
+
+    expect(bodyOf(ghSaw(untouched.repo)[0])).toBe(posted);
+  });
+
+  it("names no session on stderr when CLAUDE_CODE_SESSION_ID is unset or empty, filing the body unchanged either way", () => {
+    const unset = filing({ gh: RECORDS, body: wellFormedTicket });
+
+    const unsetResult = unset.run();
+
+    expect(unsetResult).toMatchObject({ status: 0, stdout: `${URL}\n` });
+    expect(unsetResult.stderr).toMatch(/names no session/);
+    expect(ghSaw(unset.repo)).toEqual([["issue", "create", "--title", "A ticket the machine can build", "--body", wellFormedTicket]]);
+
+    const empty = filing({ gh: RECORDS, body: wellFormedTicket, sessionId: "" });
+
+    const emptyResult = empty.run();
+
+    expect(emptyResult).toMatchObject({ status: 0, stdout: `${URL}\n` });
+    expect(emptyResult.stderr).toMatch(/names no session/);
   });
 
   it("prints its usage line to stdout and exits 0 for help, filing nothing", () => {
