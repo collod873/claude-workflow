@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { passingCriteria, runCheck, type Shell } from "./check-runner.ts";
 import { LINE_LIMIT } from "./scenarios.ts";
 
@@ -65,5 +65,14 @@ describe("src/check-runner.ts passes a check only when it ran and measured somet
 
     expect(refusal.length).toBeLessThan(LINE_LIMIT);
     expect(refusal).toContain("…");
+  });
+
+  it("runs a check on the runner the way it runs on the owner's machine, so no tool switches to its annotation output (#894)", () => {
+    vi.stubEnv("GITHUB_ACTIONS", "true");
+    try {
+      expect(runCheck("printenv GITHUB_ACTIONS || printf unset", ".").output).toBe("unset");
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
