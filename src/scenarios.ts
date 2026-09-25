@@ -570,6 +570,10 @@ export function saving({
       const at = call?.indexOf("--body") ?? -1;
       return at === -1 ? undefined : call?.[at + 1];
     },
+    ticketComments: () =>
+      argvCalls()
+        .filter((args) => args[0] === "issue" && args[1] === "comment")
+        .map((args) => args[args.indexOf("--body") + 1]),
     run: (ticket = "726") => execute(join(BIN, "save"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, [ticket]),
   };
 }

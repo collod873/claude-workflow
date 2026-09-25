@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { totalOutside } from "./reads-outside-brief.ts";
 import { SAVED_PR, git, heard, saving } from "./scenarios.ts";
 
 function savedWithAutoMerge<Saved extends ReturnType<typeof saving>>(saved: Saved, opening: RegExp[]): Saved {
@@ -77,5 +78,47 @@ describe("bin/save meters what each stage read outside its brief, from the stage
     expect(body).toContain("src/post.ts");
     expect(body).toMatch(/build read 0\b[^\n]*outside its brief/);
     expect(body).not.toContain("ticket-shape");
+  });
+});
+
+describe("bin/save hands reads outside the brief back to the filer when there are enough to matter (#904)", () => {
+  const brief = ["# Brief for ticket 726", "", "## Claimed files", "", "### src/ticket-shape.ts", "", "1  export const shaped = 2;", ""].join("\n");
+
+  it("posts a 'reads back to the filer' line on the PR and the ticket when 5 or more distinct files outside the brief were read", () => {
+    const { run, prBody, ticketComments } = saving({
+      brief,
+      streams: {
+        "test-author": ["src/a.ts", "src/b.ts", "src/c.ts"],
+        build: ["src/c.ts", "src/d.ts", "src/e.ts"],
+      },
+    });
+
+    const result = run();
+
+    expect(result.status).toBe(0);
+    const body = prBody() ?? "";
+    const line = body.split("\n").find((row) => row.startsWith("reads back to the filer (meter):"));
+    expect(line).toMatch(/^reads back to the filer \(meter\): 5\b/);
+    for (const file of ["src/a.ts", "src/b.ts", "src/c.ts", "src/d.ts", "src/e.ts"]) expect(line).toContain(file);
+    expect(ticketComments()).toEqual([line]);
+    expect(totalOutside(body)).toBe(6);
+  });
+
+  it("hands nothing back when 4 or fewer distinct files outside the brief were read, and posts no comment on the ticket", () => {
+    const { run, prBody, ticketComments } = saving({
+      brief,
+      streams: {
+        "test-author": ["src/a.ts", "src/b.ts"],
+        build: ["src/b.ts", "src/c.ts"],
+      },
+    });
+
+    const result = run();
+
+    expect(result.status).toBe(0);
+    const body = prBody() ?? "";
+    expect(body).toContain("reads back to the filer (meter): nothing to hand back");
+    expect(ticketComments()).toEqual([]);
+    expect(totalOutside(body)).toBe(4);
   });
 });
