@@ -13,6 +13,9 @@ export interface Posting {
 
 export type Gh = (args: string[]) => { status: number | null; stdout: string; stderr: string };
 
+export const gh: Gh = (args) => spawnSync("gh", args, { encoding: "utf8", maxBuffer: Infinity });
+export const git = (args: string[]) => spawnSync("git", args, { encoding: "utf8", maxBuffer: Infinity });
+
 interface Kind {
   refuses: (text: string) => string[];
   on: "title" | "pr";
@@ -109,7 +112,7 @@ export function post(posting: Posting, gh: Gh): { refusals: string[]; said: stri
 
 if (import.meta.main) {
   const [kind, title, sessionId] = process.argv.slice(2);
-  const { refusals, said } = post({ kind, text: await read(process.stdin), title, sessionId }, (args) => spawnSync("gh", args, { encoding: "utf8" }));
+  const { refusals, said } = post({ kind, text: await read(process.stdin), title, sessionId }, gh);
   for (const refusal of refusals) console.error(refusal);
   if (said !== "") console.log(said);
   process.exit(refusals.length > 0 ? 1 : 0);

@@ -1,8 +1,8 @@
-import { spawnSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { capped } from "./brief.ts";
-import { commentOnTicket, commentsOn, post, type Gh } from "./post.ts";
+import { foundDrift, repairOf, turnOn } from "./fixer-turn.ts";
+import { commentOnTicket, commentsOn, gh, git, post } from "./post.ts";
 import { hired, machineLogs } from "./stage.ts";
 import { exitFor, stoppedAt, type Stop } from "./stops.ts";
 import { acceptance, claims, quoted, why } from "./ticket-shape.ts";
@@ -59,13 +59,8 @@ interface AfterTurn {
   fix: string;
 }
 
-export const TOOK_ITS_TURN = "The fixer took its one turn on this ticket";
-export const repairOf = (ticket: string) => `Repair #${ticket} in the fixer's one turn`;
 const laterFinds = (ticket: string) => `The reviewer found these on #${ticket} after the fixer's turn, outside the earlier gaps and the fix's own lines, so they do not block its merge:`;
 const FOLLOW_UP_OF = "Follow-up of #";
-
-export const gh: Gh = (args) => spawnSync("gh", args, { encoding: "utf8", maxBuffer: Infinity });
-export const git = (args: string[]) => spawnSync("git", args, { encoding: "utf8", maxBuffer: Infinity });
 
 const firstLine = (text: string) => quoted(text.trim().split("\n")[0]);
 
@@ -131,8 +126,6 @@ function judged(prompt: string, pr: string): Verdict | string {
   return isVerdict(spent.answer) ? spent.answer : `the reviewer gave no verdict: ${firstLine(spent.stdout)}`;
 }
 
-export const foundDrift = (ticket: string) => `The reviewer read this PR against the Why of #${ticket} and found drift.`;
-
 function judgement(ticket: string, gaps: string[]): string {
   const named = gaps.length === 0 ? ["- the reviewer ruled drift and named no gap"] : gaps.map((gap) => `- ${gap}`);
   return [foundDrift(ticket), "", ...named, ""].join("\n");
@@ -195,10 +188,10 @@ function review(pr: string): Stop | undefined {
     return stoppedAt("unread", `${said} ended red, ${body === undefined ? `ticket #${ticket}` : "its diff"} could not be read, so no model was spent`);
   }
   const turns = commentsOn(ticket, gh);
-  const onPr = commentsOn(pr, gh);
-  if (turns === undefined || onPr === undefined) return stoppedAt("unread", `${said} ended red, the comments on #${ticket} or its PR could not be read, so no model was spent`);
-  const earlier = onPr.filter((comment) => comment.startsWith(foundDrift(ticket)));
-  const after = earlier.length > 0 && turns.some((comment) => comment.startsWith(TOOK_ITS_TURN)) ? { earlier: earlier.join("\n\n"), fix: fixDiff(ticket) } : undefined;
+  if (turns === undefined) return stoppedAt("unread", `${said} ended red, the comments on #${ticket} could not be read, so no model was spent`);
+  const turn = turnOn(ticket, pr, gh);
+  if (turn === undefined) return stoppedAt("unread", `${said} ended red, the comments on #${ticket} or its PR could not be read, so no model was spent`);
+  const after = turn.taken && turn.earlier !== "" ? { earlier: turn.earlier, fix: fixDiff(ticket) } : undefined;
   const verdict = judged(handedOn(body, diff, after), pr);
   if (typeof verdict === "string") return stoppedAt("modelRun", `${said} ended red, ${verdict}`);
   const blocking = after === undefined ? [...verdict.gaps, ...(verdict.later ?? []).map(({ gap }) => gap)] : verdict.gaps;
