@@ -1,13 +1,14 @@
 import { spawnSync } from "node:child_process";
 import { text as read } from "node:stream/consumers";
 import { emDashLines } from "./em-dash.ts";
-import { noteRefusals, rewriteRefusals, ticketRefusals } from "./ticket-shape.ts";
+import { noteRefusals, rewriteRefusals, ticketRefusals, why } from "./ticket-shape.ts";
 
 export interface Posting {
   kind: string;
   text: string;
   title?: string;
   pr?: string;
+  sessionId?: string;
 }
 
 export type Gh = (args: string[]) => { status: number | null; stdout: string; stderr: string };
@@ -31,6 +32,21 @@ const KINDS: Record<string, Kind> = {
   note: filed(noteRefusals, ["--label", "note"]),
   judgement: { refuses: judgementRefusals, on: "pr", args: (pr, text) => ["pr", "comment", pr, "--body", text] },
 };
+
+const WHY_HEADING = /^##[ \t]+Why[ \t]*$/m;
+const NEXT_HEADING = /^##[ \t]/m;
+
+function stampedWithSession(text: string, sessionId: string): string {
+  const line = `Session: \`${sessionId}\``;
+  if (why(text).includes(line)) return text;
+  const found = WHY_HEADING.exec(text);
+  if (found === null) return text;
+  const start = found.index + found[0].length;
+  const next = NEXT_HEADING.exec(text.slice(start));
+  const end = next === null ? text.length : start + next.index;
+  const section = text.slice(start, end).replace(/\s+$/, "");
+  return `${text.slice(0, start)}${section}\n\n${line}\n\n${text.slice(end)}`;
+}
 
 function written(gh: Gh, args: string[]): { refusals: string[]; said: string } {
   const { status, stdout, stderr } = gh(args);
@@ -80,19 +96,20 @@ export function rewriteTicket(ticket: string, read: string, rewrite: string, gh:
 }
 
 export function post(posting: Posting, gh: Gh): { refusals: string[]; said: string } {
-  const { kind, text } = posting;
+  const { kind, sessionId } = posting;
   const shape = KINDS[kind];
   if (shape === undefined) return { refusals: [`${kind} is not a kind src/post.ts writes: ${Object.keys(KINDS).join(", ")}`], said: "" };
   const on = posting[shape.on];
   if (on === undefined) return { refusals: [`a ${kind} carries no ${shape.on}`], said: "" };
+  const text = shape.on === "title" && sessionId ? stampedWithSession(posting.text, sessionId) : posting.text;
   const refused = shape.refuses(text);
   if (refused.length > 0) return { refusals: refused, said: "" };
   return written(gh, shape.args(on, text));
 }
 
 if (import.meta.main) {
-  const [kind, title] = process.argv.slice(2);
-  const { refusals, said } = post({ kind, text: await read(process.stdin), title }, (args) => spawnSync("gh", args, { encoding: "utf8" }));
+  const [kind, title, sessionId] = process.argv.slice(2);
+  const { refusals, said } = post({ kind, text: await read(process.stdin), title, sessionId }, (args) => spawnSync("gh", args, { encoding: "utf8" }));
   for (const refusal of refusals) console.error(refusal);
   if (said !== "") console.log(said);
   process.exit(refusals.length > 0 ? 1 : 0);
