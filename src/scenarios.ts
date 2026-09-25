@@ -79,21 +79,6 @@ export function holds(
   );
 }
 
-export function stepsRun<S extends { id?: string; if?: string }>(steps: S[], failing: S | undefined, { checked = "success", outputs = {} }: { checked?: string; outputs?: Record<string, string> } = {}): S[] {
-  const outcomes: Record<string, StepOutcome> = {};
-  for (const step of steps) if (step.id !== undefined) outcomes[step.id] = { outcome: "skipped", conclusion: "skipped", outputs: {} };
-  const ran: S[] = [];
-  let failed = false;
-  for (const step of steps) {
-    if (!holds(step.if ?? "success()", { steps: outcomes, needs: { check: { result: checked } }, failed })) continue;
-    ran.push(step);
-    const broke = step === failing;
-    if (step.id !== undefined) outcomes[step.id] = { outcome: broke ? "failure" : "success", conclusion: broke ? "failure" : "success", outputs: broke ? outputs : {} };
-    failed = failed || broke;
-  }
-  return ran;
-}
-
 export function scratch(prefix: string): string {
   const dir = mkdtempSync(join(tmpdir(), prefix));
   onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
@@ -726,7 +711,7 @@ export function reviewing({
   if (repair !== undefined) {
     plant(root, "src/repaired.ts", repair);
     git(root, "add", "src/repaired.ts");
-    git(root, "commit", "--quiet", "-m", "Repair #810 in the fixer's one turn");
+    git(root, "commit", "--quiet", "-m", "Repair #810 as its fixer");
     git(root, "commit", "--quiet", "--allow-empty", "-m", "Merge branch 'main' into ticket/810");
   }
   plant(root, "pr.diff", diff);
@@ -771,11 +756,11 @@ export function reviewing({
 const FIXED_TICKET = [
   "## Why",
   "",
-  'The owner, in session: "a stuck ticket gets one turn from a fresh fixer, never the owner".',
+  'The owner, in session: "a red ticket stays with its fixer until it merges, never the owner".',
   "",
   "## Acceptance criteria",
   "",
-  "- [ ] The fixer clears a stuck ticket - check: `npx vitest run --config vitest.config.ts ticket-shape`",
+  "- [ ] The fixer clears a red ticket - check: `npx vitest run --config vitest.config.ts ticket-shape`",
   "",
   "## Files claimed",
   "",
@@ -783,119 +768,83 @@ const FIXED_TICKET = [
   "",
 ].join("\n");
 
+export const FIXER_SESSION = "sess-fix";
+
 export function fixing({
   body = FIXED_TICKET,
-  answer = { outcome: "close", reason: "the ticket asks for a stage the ruling has since dropped" } as { outcome: string; reason: string; body?: string },
-  turns = [] as Said[],
+  answer = { outcome: "code", reason: "the export was never renamed" } as { outcome: string; reason: string; body?: string },
   onPr = [] as Said[] | undefined,
   logged = {} as Record<string, string>,
+  leftover = {} as Record<string, string>,
   claude = "",
-  npx = CHECK_RED,
-  failedCheck = undefined as string | undefined,
-  prOpen = false,
+  npx = "exit 0\n",
   check = "exit 0\n",
+  save = "exit 0\n",
+  failedRun = "",
+  savedSession = undefined as string | undefined,
 } = {}) {
   const root = scratch("fixer-");
   const session = join(root, "session");
-  script(join(session, "bin", "check"), check);
-  const order = join(root, "order");
-  const handed = join(root, "claude-stdin");
+  const home = join(root, "home");
+  const spent = join(root, "claude-calls");
+  const hires = join(root, "claude-argv");
+  const marks = join(root, "mark-calls");
+  const saves = join(root, "save-calls");
   const argvDir = join(root, "gh-argv");
   const { setup, calls } = ghArgv(argvDir);
+  mkdirSync(spent, { recursive: true });
+  mkdirSync(hires, { recursive: true });
+  script(join(session, "bin", "check"), check);
+  script(join(session, "bin", "mark"), `printf '%s\\n' "$*" >>"${marks}"\n`);
+  script(join(session, "bin", "save"), `printf '%s\\n' "$*" >>"${saves}"\n${save}`);
   claimedSession(session, "fixer", { "src/ticket-shape.ts": "export const shaped = 1;\n" }, { "src/ticket-shape.test.ts": AUTHORED_TEST }, "ticket/811");
   git(session, "commit", "--quiet", "--allow-empty", "-m", "Build #811 against its failing tests");
   for (const [name, text] of Object.entries(logged)) plant(session, `.git/machine-logs/${name}`, text);
+  for (const [path, text] of Object.entries(leftover)) plant(session, path, text);
+  if (savedSession !== undefined) plant(home, ".claude/fixer/811", `${savedSession}\n`);
   plant(root, "ticket.md", body);
-  plant(root, "turns.json", authored(turns));
   plant(root, "on-pr.json", authored(onPr ?? []));
-  plant(root, "failed-check.log", failedCheck ?? "");
-  const result = { type: "result", subtype: "success", is_error: false, session_id: "sess-fix", structured_output: answer };
-  plant(root, "answer.jsonl", `${JSON.stringify({ type: "system", session_id: "sess-fix" })}\n${JSON.stringify(result)}\n`);
+  plant(root, "failed-run.log", failedRun);
+  const result = { type: "result", subtype: "success", is_error: false, session_id: FIXER_SESSION, structured_output: answer };
+  plant(root, "answer.jsonl", `${JSON.stringify({ type: "system", session_id: FIXER_SESSION })}\n${JSON.stringify(result)}\n`);
   script(join(root, "bin", "npx"), npx);
   script(
     join(root, "bin", "gh"),
     [
       setup,
-      `printf 'gh %s %s\\n' "$1" "$2" >>"${order}"`,
       'case "$*" in',
-      `  *"api"*"issues/811/comments"*) cat "${join(root, "turns.json")}" ;;`,
-      `  *"api"*"/comments"*) cat "${join(root, "on-pr.json")}" ;;`,
+      `  *"api"*"issues/9811/comments"*) cat "${join(root, "on-pr.json")}" ;;`,
       `  *"issue view"*) cat "${join(root, "ticket.md")}" ;;`,
       `  *"pr view"*"number"*) ${onPr === undefined ? "exit 1" : "printf '9811\\n'"} ;;`,
-      `  *"pr view"*"state"*) ${prOpen ? `printf '%s\\n' '${HANDED_OFF_PR}'` : "printf '\\n'"} ;;`,
+      `  *"run view"*) cat "${join(root, "failed-run.log")}" ;;`,
       "  *\"pr view\"*) exit 22 ;;",
-      ...(failedCheck === undefined
-        ? []
-        : [
-            `  *"pr checks"*) printf '%s\\n' '${JSON.stringify([{ name: "check", bucket: "fail", link: "https://github.com/collod873/claude-workflow/actions/runs/555/job/777" }])}' ;;`,
-            `  *"run view"*) cat "${join(root, "failed-check.log")}" ;;`,
-          ]),
       "  *) printf 'https://github.com/collod873/claude-workflow/issues/811#issuecomment-1\\n' ;;",
       "esac",
       "",
     ].join("\n"),
   );
-  script(join(root, "bin", "claude"), `printf 'claude\\n' >>"${order}"\ncat >"${handed}"\n${claude}\ncat "${join(root, "answer.jsonl")}"\n`);
+  script(
+    join(root, "bin", "claude"),
+    [`CALL=$(( $(ls "${spent}" | wc -l) + 1 ))`, `printf '%s\\0' "$@" >"${hires}/$CALL"`, `cat >"${spent}/$CALL"`, claude, `cat "${join(root, "answer.jsonl")}"`, ""].join("\n"),
+  );
+  const listed = (file: string) => (existsSync(file) ? readFileSync(file, "utf8").trimEnd().split("\n") : []);
+  const numbered = (dir: string) => readdirSync(dir).map((_, index) => readFileSync(join(dir, String(index + 1)), "utf8"));
   const bodyOf = (args: string[]) => args[args.indexOf("--body") + 1];
   return {
     body,
-    spent: () => existsSync(handed),
-    handed: () => (existsSync(handed) ? readFileSync(handed, "utf8") : ""),
-    order: () => (existsSync(order) ? readFileSync(order, "utf8").trimEnd().split("\n") : []),
+    session,
+    handed: () => numbered(spent),
+    hired: () => numbered(hires).map((argv) => argv.split("\0").filter((part) => part !== "")),
+    marked: () => listed(marks),
+    saved: () => listed(saves),
     calls,
     ticketComments: () => calls().filter((args) => args[0] === "issue" && args[1] === "comment").map(bodyOf),
-    prComments: () => calls().filter((args) => args[0] === "pr" && args[1] === "comment").map(bodyOf),
     edits: () => calls().filter((args) => args[0] === "issue" && args[1] === "edit").map(bodyOf),
-    closes: () => calls().filter((args) => args[0] === "issue" && args[1] === "close"),
-    branches: () => git(session, "branch", "--format=%(refname:short)").split("\n"),
-    committed: () => git(session, "show", "--name-only", "--format=%s", "HEAD").split("\n").filter((line) => line !== ""),
-    run: (ticket = "811") => execute(join(BIN, "fix"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, [ticket]),
-  };
-}
-
-export const HANDED_OFF_PR = "https://github.com/collod873/claude-workflow/pull/900";
-
-export function handingOff({
-  stoppedAt,
-  commits = false,
-  pr = HANDED_OFF_PR as string | undefined,
-}: { stoppedAt?: string; commits?: boolean; pr?: string | undefined } = {}) {
-  const root = scratch("hand-off-");
-  const session = join(root, "session");
-  const fixed = join(root, "fix-calls");
-  const saved = join(root, "save-calls");
-  const marks = join(root, "mark-calls");
-  const argvDir = join(root, "gh-argv");
-  const { setup, calls } = ghArgv(argvDir);
-  mkdirSync(session, { recursive: true });
-  git(session, "init", "--quiet", "--initial-branch=main");
-  git(session, "config", "user.email", "hand-off@test");
-  git(session, "config", "user.name", "hand-off");
-  script(join(session, "bin", "fix"), `printf '%s\\n' "$*" >>"${fixed}"\n${commits ? 'git commit --quiet --allow-empty -m "Repair #811 in the fixer\'s one turn"\n' : ""}`);
-  script(join(session, "bin", "save"), `printf '%s\\n' "$*" >>"${saved}"\n`);
-  script(join(session, "bin", "mark"), `printf '%s\\n' "$*" >>"${marks}"\n`);
-  git(session, "add", ".");
-  git(session, "commit", "--quiet", "-m", "what the hand-off stands on");
-  if (stoppedAt !== undefined) plant(session, ".git/machine-logs/build-811.log", `1 refusals, stopped at: ${stoppedAt}\nthe build stayed red\n`);
-  script(
-    join(root, "bin", "gh"),
-    [
-      setup,
-      'case "$*" in',
-      `  *"pr view ticket/811"*) ${pr === undefined ? "exit 1" : `printf '%s\\n' '${pr}'`} ;;`,
-      "  *) exit 0 ;;",
-      "esac",
-      "",
-    ].join("\n"),
-  );
-  return {
-    session,
-    fixed: () => (existsSync(fixed) ? readFileSync(fixed, "utf8").trimEnd().split("\n") : []),
-    saved: () => (existsSync(saved) ? readFileSync(saved, "utf8").trimEnd().split("\n") : []),
-    marked: () => (existsSync(marks) ? readFileSync(marks, "utf8").trimEnd().split("\n") : []),
-    comments: () => calls().filter((args) => args[0] === "issue" && args[1] === "comment").map((args) => args[args.indexOf("--body") + 1]),
-    run: (row?: string) =>
-      execute(process.execPath, session, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, [join(SRC, "hand-off.ts"), "811", ...(row === undefined ? [] : [row])]),
+    closes: () => calls().filter((args) => (args[0] === "issue" || args[0] === "pr") && args[1] === "close"),
+    reruns: () => calls().filter((args) => args[0] === "run" && args[1] === "rerun"),
+    keptSession: () => readFileSync(join(home, ".claude", "fixer", "811"), "utf8").trim(),
+    log: (...args: string[]) => git(session, "log", ...args),
+    run: (...args: string[]) => execute(join(BIN, "fix"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}`, HOME: home }, args.length === 0 ? ["811"] : args),
   };
 }
 

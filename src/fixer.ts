@@ -1,21 +1,19 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { authoredTests, capped, yourChecks } from "./brief.ts";
-import { checkRed, HANDS_BACK, redOutput, repaired, roundsHandedBack, TAIL_CAP, tailOf } from "./builder.ts";
-import { repairOf, takeTurn, turnOn } from "./fixer-turn.ts";
-import { commentOnTicket, gh, git, openPr, post, prNumber, rewriteTicket } from "./post.ts";
-import { CHECK } from "./fence.ts";
-import { handedDiff, LIST_CAP, NO_EM_DASH } from "./reviewer.ts";
-import { ROUNDS, runStage, type Opened, type Outcome, type Spent, type Stage } from "./stage.ts";
-import { rowStopped } from "./stops.ts";
-import { claims, quoted } from "./ticket-shape.ts";
-
-const JOB_LINK = /\/runs\/(\d+)\/job\/(\d+)/;
+import { spawnSync } from "node:child_process";
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
+import { capped, onDisk } from "./brief.ts";
+import { repaired, stillRed, TAIL_CAP, tailOf } from "./builder.ts";
+import { UNFENCED } from "./fence.ts";
+import { commentOnTicket, commentsOn, gh, git, OWNER, prNumber, rewriteTicket } from "./post.ts";
+import { foundDrift, handedDiff, LIST_CAP, NO_EM_DASH, repairOf, TICKET_CAP } from "./reviewer.ts";
+import { hired, machineLogs, type Spent } from "./stage.ts";
+import { checks, claims, quoted } from "./ticket-shape.ts";
 
 const ANSWER = {
   type: "object",
   properties: {
-    outcome: { enum: ["code", "ticket", "close"] },
+    outcome: { enum: ["code", "ticket", "close", "machine", "rerun"] },
     reason: { type: "string", pattern: NO_EM_DASH },
     body: { type: "string", pattern: NO_EM_DASH },
   },
@@ -24,150 +22,190 @@ const ANSWER = {
 };
 
 interface Answer {
-  outcome: "code" | "ticket" | "close";
+  outcome: "code" | "ticket" | "close" | "machine" | "rerun";
   reason: string;
   body?: string;
 }
 
 interface Handed {
-  briefed: string;
+  ticket: string;
   body: string;
   failed: string;
   diff: string;
   gaps: string;
-  commands: string[];
 }
 
-type Turn = { refusal: string } | { verdict: string; closing?: string };
+type Round = { red?: string; ended?: number; body?: string };
 
-function failedChecks(branch: string): string[] {
-  const listed = gh(["pr", "checks", branch, "--required", "--json", "name,bucket,link"]);
-  let checks: unknown;
-  try {
-    checks = JSON.parse(listed.stdout);
-  } catch {
-    return [];
-  }
-  if (!Array.isArray(checks)) return [];
-  return checks.flatMap((check: { name?: unknown; bucket?: unknown; link?: unknown }) => {
-    const job = typeof check.link === "string" ? JOB_LINK.exec(check.link) : null;
-    if (check.bucket !== "fail" || job === null) return [];
-    const log = gh(["run", "view", job[1], "--job", job[2], "--log-failed"]);
-    return log.status === 0 && log.stdout.trim() !== "" ? [`### failed required check: ${String(check.name)}\n\n${log.stdout.trim()}`] : [];
-  });
-}
+type Spend = (input: string, resume?: string) => Spent;
 
-function failure({ ticket, logs, commands }: Opened, branch: string): string {
-  const logged = readdirSync(logs)
-    .filter((name) => name.endsWith(`-${ticket}.log`))
-    .sort()
-    .map((name) => `### ${name}\n\n${readFileSync(join(logs, name), "utf8").trim()}`);
-  return [...logged, redOutput(commands), ...failedChecks(branch)].filter((text) => text !== "").join("\n\n");
-}
+const REDDENED_ON_MAIN = "It went red on main after its merge; its closing record on the ticket names the check.";
 
-export function handedOn({ briefed, body, failed, diff, gaps, commands }: Handed): string {
+export function handedOn({ ticket, body, failed, diff, gaps }: Handed): string {
   return [
-    briefed,
+    `# Ticket #${ticket}`,
+    capped(body, TICKET_CAP),
     "## How it failed",
     tailOf(failed, TAIL_CAP) || "(nothing logged)",
     "## Diff from main",
     handedDiff(diff, claims(body)) || "(none)",
     "## Reviewer's gaps",
     capped(gaps, LIST_CAP) || "(none)",
-    "## Your one turn",
-    `This ticket is stuck and you are its fixer. Read its Why before the failure, then answer one outcome. ${yourChecks(commands)}`,
-    "- `code`: the ticket is right and the code is wrong; fix the code.",
-    "- `ticket`: a criterion or a test is wrong; fix the test, or return the whole ticket as `body` with only its criteria changed and the Why byte-identical.",
-    "- `close`: the ticket should not exist as written; it closes unbuilt.",
-    "`reason` is one paragraph on why, posted for the owner to read later.",
-    HANDS_BACK,
+    "## You own it until it merges",
+    "Every red on this ticket comes back to you until it merges. Read its Why first; `gh` reads any run. Answer one outcome:",
+    "- `code`: fix it here; the machine commits, runs `bin/check` and the ticket's checks, hands back red, pushes green.",
+    "- `ticket`: a criterion or test is wrong; fix the test, or return the ticket as `body`, Why byte-identical.",
+    "- `close`: the ticket should not exist as written.",
+    "- `machine`: the machine is at fault, reviewer included; fix it in a worktree off `origin/main`, commit naming this ticket, and `bin/land` it first.",
+    "- `rerun`: an outage or flake; its failed jobs rerun.",
+    "`reason`: one paragraph for the owner. A round that changes nothing calls the owner.",
     "",
   ].join("\n\n");
 }
 
-function fixedTicket(opened: Opened, answer: Answer, explain: (text: string) => { refusals: string[] }): Turn {
-  const { ticket, body } = opened;
-  const rewrite = answer.body !== undefined && answer.body.trim() !== body.trim() ? answer.body : undefined;
-  if (rewrite === undefined && opened.wrote().length === 0) return { refusal: "the fixer said it fixed the ticket and changed nothing" };
-  const rewritten = rewrite === undefined ? { refusals: [] } : rewriteTicket(ticket, body, rewrite, gh);
-  if (rewritten.refusals.length > 0) return { refusal: `its rewrite of the ticket was refused: ${quoted(rewritten.refusals[0])}` };
-  const said = explain(`The fixer fixed #${ticket} itself rather than its code: ${answer.reason}`);
-  if (said.refusals.length > 0) return { refusal: `its reason was refused: ${quoted(said.refusals[0])}` };
-  return { verdict: `fixed the ticket: ${quoted(answer.reason)}` };
+const mark = (ticket: string, label: string) => spawnSync(join(process.cwd(), "bin", "mark"), [ticket, label], { stdio: "ignore" });
+const head = () => git(["rev-parse", "HEAD"]).stdout.trim();
+const sessionFile = (ticket: string) => join(homedir(), ".claude", "fixer", ticket);
+
+function main(): string {
+  git(["fetch", "--quiet", "origin", "main"]);
+  return git(["rev-parse", "origin/main"]).stdout.trim();
 }
 
-function turn(opened: Opened, answer: Answer | undefined, explain: (text: string) => { refusals: string[] }): Turn {
-  if (answer === undefined) return { refusal: "the fixer gave no outcome" };
-  if (answer.outcome === "close") return { verdict: `closed unbuilt: ${quoted(answer.reason)}`, closing: answer.reason };
-  if (answer.outcome === "ticket") return fixedTicket(opened, answer, explain);
-  if (opened.wrote().length === 0) return { refusal: "the fixer said it fixed the code and changed nothing" };
-  return { verdict: `fixed the code: ${quoted(answer.reason)}` };
+function savedSession(ticket: string): string | undefined {
+  const saved = onDisk(sessionFile(ticket))?.trim();
+  return saved === "" ? undefined : saved;
 }
 
-function closedUnbuilt(ticket: string, reason: string, row: string | undefined, pr: string | undefined): string | undefined {
-  const note = `The fixer closed #${ticket} unbuilt and kept its branch: ${reason}${row === undefined ? "" : `, stopped at: ${row}`}${pr === undefined ? "" : `; its open PR: ${pr}`}`;
-  const said = commentOnTicket(ticket, note, gh);
-  if (said.refusals.length > 0) return `its closing reason was refused: ${quoted(said.refusals[0])}`;
-  return gh(["issue", "close", ticket, "--reason", "not planned"]).status === 0 ? undefined : `#${ticket} could not be closed`;
+function keepSession(ticket: string, session: string | undefined): void {
+  if (session === undefined) return;
+  mkdirSync(dirname(sessionFile(ticket)), { recursive: true });
+  writeFileSync(sessionFile(ticket), `${session}\n`);
 }
 
-function fix(opened: Opened): Outcome {
-  const { ticket, body, logs } = opened;
-  const branch = `ticket/${ticket}`;
-  const onBranch = prNumber(branch, gh);
-  const record = turnOn(ticket, onBranch, gh);
-  if (record === undefined) return { stop: "fixerEnds", refusals: [`the comments on #${ticket} or its PR could not be read, so no model was spent`] };
-  if (record.taken) return { stop: "fixerEnds", refusals: [`the fixer already took its one turn on #${ticket}, so no model was spent`] };
-  const marked = takeTurn(ticket, gh);
-  if (marked.refusals.length > 0) return { stop: "fixerEnds", refusals: [`its marker was refused, so no model was spent: ${quoted(marked.refusals[0])}`] };
-  const explain = (text: string) => (onBranch === undefined ? commentOnTicket(ticket, text, gh) : post({ kind: "judgement", pr: branch, text }, gh));
-  const judge = ({ answer }: Spent) => {
-    const outcome = (answer as Answer | undefined)?.outcome;
-    return (outcome === "code" || outcome === "ticket") && opened.wrote().length > 0 ? checkRed() || undefined : undefined;
-  };
-  const { spent, red } = opened.handBack(
-    handedOn({
-      briefed: opened.briefed,
-      body,
-      failed: failure(opened, branch),
-      diff: git(["diff", "origin/main...HEAD"]).stdout ?? "",
-      gaps: record.earlier,
-      commands: opened.commands,
-    }),
-    judge,
-    repaired,
-  );
-  const commit = { message: repairOf(ticket), branch: git(["branch", "--show-current"]).stdout.trim() === branch ? undefined : branch };
-  const ownCallFailed = spent.refusal !== undefined;
-  const done = ownCallFailed ? { refusal: spent.refusal as string } : turn(opened, spent.answer as Answer | undefined, explain);
-  const row = rowStopped(ticket, logs);
-  if ("refusal" in done) {
-    const pr = openPr(ticket, gh);
-    if (pr !== undefined || ownCallFailed) {
-      const because = pr === undefined ? "its own model call failed" : `its PR stays open: ${pr}`;
-      const said = commentOnTicket(ticket, `The fixer's turn on #${ticket} ended red, stopped at: ${row ?? "an unlogged row"}; ${because}; ${done.refusal}`, gh);
-      const stays = pr === undefined ? "stays open, its own model call failed" : "stays open with its PR";
-      return { stop: "fixerEnds", refusals: [`${done.refusal}, so #${ticket} ${stays}`, ...(said.refusals.length > 0 ? [`its comment was refused: ${quoted(said.refusals[0])}`] : [])], commit };
+function failure(ticket: string, logs: string, run: string | undefined): string {
+  const logged = readdirSync(logs)
+    .filter((name) => name.endsWith(`-${ticket}.log`))
+    .sort()
+    .map((name) => `### ${name}\n\n${readFileSync(join(logs, name), "utf8").trim()}`);
+  if (run === undefined) return [...logged, REDDENED_ON_MAIN].join("\n\n");
+  const failedRun = gh(["run", "view", run, "--log-failed"]);
+  const ranRed = failedRun.status === 0 && failedRun.stdout.trim() !== "" ? [`### run ${run}, its failed steps\n\n${failedRun.stdout.trim()}`] : [];
+  return [...logged, ...ranRed].join("\n\n");
+}
+
+function calledOwner(ticket: string, why: string): number {
+  mark(ticket, "needs-human");
+  commentOnTicket(ticket, `@${OWNER} the fixer of #${ticket} stopped and needs you: ${why}`, gh);
+  console.error(`fix: #${ticket} needs the owner, ${why}`);
+  return 1;
+}
+
+function closedUnbuilt(ticket: string, reason: string): number {
+  const said = commentOnTicket(ticket, `The fixer closed #${ticket} unbuilt and kept its branch: ${reason}`, gh);
+  if (said.refusals.length > 0) return calledOwner(ticket, `its closing reason was refused: ${quoted(said.refusals[0])}`);
+  if (gh(["issue", "close", ticket, "--reason", "not planned"]).status !== 0) return calledOwner(ticket, "it ruled the ticket closed and the ticket would not close");
+  gh(["pr", "close", `ticket/${ticket}`]);
+  console.log(`fix: #${ticket} closed unbuilt: ${reason}`);
+  return 0;
+}
+
+function rewritten(ticket: string, body: string, answer: Answer): Round {
+  if (answer.body === undefined || answer.body.trim() === body.trim()) return {};
+  const written = rewriteTicket(ticket, body, answer.body, gh);
+  if (written.refusals.length > 0) return { red: `Your rewrite of the ticket was refused: ${quoted(written.refusals[0])}` };
+  commentOnTicket(ticket, `The fixer rewrote the criteria of #${ticket}: ${answer.reason}`, gh);
+  return { body: answer.body };
+}
+
+function landedOnMain(ticket: string, reason: string, before: string): Round {
+  if (main() === before) return { red: "You answered `machine` and main has not moved: land the machine fix with `bin/land` before you answer." };
+  commentOnTicket(ticket, `@${OWNER} the fixer of #${ticket} changed the machine: ${reason}`, gh);
+  if (git(["merge", "--quiet", "--no-edit", "origin/main"]).status === 0) return {};
+  git(["merge", "--abort"]);
+  return { red: "origin/main, with your machine fix, does not merge cleanly into this branch: merge it and resolve the conflict." };
+}
+
+function rerun(run: string | undefined): Round {
+  if (run === undefined) return { red: `You answered \`rerun\` and there is no failed run to rerun. ${REDDENED_ON_MAIN}` };
+  const again = gh(["run", "rerun", run, "--failed"]);
+  return again.status === 0 ? { ended: 0 } : { red: `The rerun of run ${run} was refused: ${quoted((again.stderr || again.stdout).trim().split("\n")[0])}` };
+}
+
+function answered(ticket: string, body: string, run: string | undefined, answer: Answer | undefined, mainBefore: string): Round {
+  if (answer === undefined) return { red: "You gave no outcome. Answer one." };
+  if (answer.outcome === "close") return { ended: closedUnbuilt(ticket, answer.reason) };
+  if (answer.outcome === "rerun") return rerun(run);
+  if (answer.outcome === "ticket") return rewritten(ticket, body, answer);
+  if (answer.outcome === "machine") return landedOnMain(ticket, answer.reason, mainBefore);
+  return {};
+}
+
+function committed(ticket: string): void {
+  if (git(["status", "--porcelain"]).stdout.trim() === "") return;
+  git(["add", "--all"]);
+  git(["commit", "--quiet", "-m", repairOf(ticket)]);
+}
+
+function spentOn(spend: Spend, input: string, session: string | undefined): Spent {
+  if (session === undefined) return spend(input);
+  const resumed = spend(input, session);
+  return resumed.refusal === undefined ? resumed : spend(input);
+}
+
+function saved(ticket: string, logs: string): string | undefined {
+  const save = spawnSync(join(process.cwd(), "bin", "save"), [ticket], { encoding: "utf8" });
+  if (save.status === 0) return undefined;
+  return `Save could not push this branch or open its PR:\n\n${tailOf(onDisk(join(logs, `save-${ticket}.log`)) ?? save.stderr, TAIL_CAP)}`;
+}
+
+function redOrSaved(ticket: string, body: string, logs: string): string | undefined {
+  const red = stillRed(checks(body).map(({ command }) => command));
+  return red === "" ? saved(ticket, logs) : repaired(red);
+}
+
+function own(ticket: string, run: string | undefined): number {
+  mark(ticket, "fixing");
+  const logs = machineLogs(process.cwd());
+  mkdirSync(logs, { recursive: true });
+  const asked = gh(["issue", "view", ticket, "--json", "body", "--jq", ".body"]);
+  if (asked.status !== 0) return calledOwner(ticket, "its ticket could not be read");
+  let body = asked.stdout;
+  const pr = prNumber(`ticket/${ticket}`, gh);
+  const judged = pr === undefined ? [] : (commentsOn(pr, gh) ?? []);
+  const spend = hired({ name: "fixer", transcript: join(logs, `fix-${ticket}.jsonl`), answers: ANSWER, gated: true, reach: UNFENCED });
+  if (typeof spend === "string") return calledOwner(ticket, `the owner's hooks could not be read from ${spend}`);
+  let session = savedSession(ticket);
+  let input = handedOn({
+    ticket,
+    body,
+    failed: failure(ticket, logs, run),
+    diff: git(["diff", "origin/main...HEAD"]).stdout ?? "",
+    gaps: judged.filter((said) => said.startsWith(foundDrift(ticket))).join("\n\n"),
+  });
+  for (;;) {
+    const before = { head: head(), main: main() };
+    const spent = spentOn(spend, input, session);
+    session = spent.session ?? session;
+    keepSession(ticket, session);
+    if (spent.refusal !== undefined) return calledOwner(ticket, spent.refusal);
+    const answer = spent.answer as Answer | undefined;
+    const round = answered(ticket, body, run, answer, before.main);
+    if (round.ended !== undefined) return round.ended;
+    body = round.body ?? body;
+    committed(ticket);
+    if (head() === before.head && main() === before.main && round.body === undefined) return calledOwner(ticket, `a round changed nothing: ${round.red ?? answer?.reason ?? "it gave no outcome"}`);
+    const red = round.red ?? redOrSaved(ticket, body, logs);
+    if (red === undefined) {
+      mark(ticket, "3-checking");
+      console.log(`fix: #${ticket} is green and pushed, so its PR checks run again`);
+      return 0;
     }
-    const unclosed = closedUnbuilt(ticket, done.refusal, row, undefined);
-    return { stop: "fixerEnds", refusals: [`${done.refusal}, so #${ticket} ${unclosed === undefined ? "was closed unbuilt" : "stays open"}`, ...(unclosed === undefined ? [] : [unclosed])], commit };
+    input = red;
   }
-  const unclosed = done.closing === undefined ? undefined : closedUnbuilt(ticket, done.closing, row, openPr(ticket, gh));
-  const verdict = red === undefined ? done.verdict : `${done.verdict}; \`${CHECK}\` still red after ${roundsHandedBack(ROUNDS)}`;
-  return unclosed === undefined ? { verdict, commit } : { stop: "fixerEnds", refusals: [unclosed], commit };
 }
 
-const FIXER: Stage = {
-  name: "fixer",
-  bin: "fix",
-  undone: "nothing was fixed",
-  clean: true,
-  gated: true,
-  endsAt: "fixerEnds",
-  answers: ANSWER,
-  tests: { found: authoredTests },
-  keeps: () => true,
-  work: fix,
-};
-
-if (import.meta.main) process.exit(runStage(FIXER, process.argv[2]));
+if (import.meta.main) {
+  const [ticket, run] = process.argv.slice(2);
+  process.exit(own(ticket, run));
+}

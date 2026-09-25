@@ -1,7 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { capped } from "./brief.ts";
-import { foundDrift, repairOf, turnOn } from "./fixer-turn.ts";
 import { commentOnTicket, commentsOn, gh, git, post } from "./post.ts";
 import { hired, machineLogs } from "./stage.ts";
 import { exitFor, stoppedAt, type Stop } from "./stops.ts";
@@ -16,6 +15,8 @@ const FILE_START = /^(?=diff --git )/m;
 const CHANGED_PATH = /^diff --git a\/.+? b\/(.+)$/m;
 const TOOLS = ["Read", "Grep", "Glob"];
 export const NO_EM_DASH = "^[^\\u2014]*$";
+export const foundDrift = (ticket: string) => `The reviewer read this PR against the Why of #${ticket} and found drift.`;
+export const repairOf = (ticket: string) => `Repair #${ticket} as its fixer`;
 
 const VERDICT = {
   type: "object",
@@ -59,7 +60,7 @@ interface AfterTurn {
   fix: string;
 }
 
-const laterFinds = (ticket: string) => `The reviewer found these on #${ticket} after the fixer's turn, outside the earlier gaps and the fix's own lines, so they do not block its merge:`;
+const laterFinds = (ticket: string) => `The reviewer found these on #${ticket} after its fixer's repair, outside the earlier gaps and the fix's own lines, so they do not block its merge:`;
 const FOLLOW_UP_OF = "Follow-up of #";
 
 const firstLine = (text: string) => quoted(text.trim().split("\n")[0]);
@@ -87,7 +88,7 @@ export function handedOn(body: string, diff: string, after?: AfterTurn): string 
   const turn =
     after === undefined
       ? []
-      : ["## The fixer's turn", "This PR was judged drift, then the fixer took its one turn. The earlier judgements:", capped(after.earlier, LIST_CAP), "The fix's own diff:", capped(after.fix, DIFF_CAP) || "(none, the fixer changed the ticket)"];
+      : ["## The fixer's repair", "This PR was judged drift, then its fixer repaired it. The earlier judgements:", capped(after.earlier, LIST_CAP), "The fix's own diff:", capped(after.fix, DIFF_CAP) || "(none, the fixer changed the ticket)"];
   const sorted =
     after === undefined
       ? []
@@ -131,16 +132,13 @@ function judgement(ticket: string, gaps: string[]): string {
   return [foundDrift(ticket), "", ...named, ""].join("\n");
 }
 
-function fixDiff(ticket: string): string {
-  const repair = (git(["log", "-1", "--format=%H", "--fixed-strings", `--grep=${repairOf(ticket)}`, "HEAD"]).stdout ?? "").trim();
-  return repair === "" ? "" : (git(["show", "--format=", repair]).stdout ?? "");
-}
+const fixDiff = (ticket: string): string => git(["log", "--format=", "-p", "--fixed-strings", `--grep=${repairOf(ticket)}`, "HEAD"]).stdout ?? "";
 
 function followUp(ticket: string, { gap, criteria, claimed }: Later): string {
   return [
     "## Why",
     "",
-    `${FOLLOW_UP_OF}${ticket}: its review found this after the fixer's one turn, outside the earlier gaps and the fix's own lines.`,
+    `${FOLLOW_UP_OF}${ticket}: its review found this after its fixer's repair, outside the earlier gaps and the fix's own lines.`,
     "",
     `> ${gap}`,
     "",
@@ -189,9 +187,11 @@ function review(pr: string): Stop | undefined {
   }
   const turns = commentsOn(ticket, gh);
   if (turns === undefined) return stoppedAt("unread", `${said} ended red, the comments on #${ticket} could not be read, so no model was spent`);
-  const turn = turnOn(ticket, pr, gh);
-  if (turn === undefined) return stoppedAt("unread", `${said} ended red, the comments on #${ticket} or its PR could not be read, so no model was spent`);
-  const after = turn.taken && turn.earlier !== "" ? { earlier: turn.earlier, fix: fixDiff(ticket) } : undefined;
+  const onPr = commentsOn(pr, gh);
+  if (onPr === undefined) return stoppedAt("unread", `${said} ended red, the comments on its PR could not be read, so no model was spent`);
+  const earlier = onPr.filter((comment) => comment.startsWith(foundDrift(ticket))).join("\n\n");
+  const fix = fixDiff(ticket);
+  const after = earlier !== "" && fix !== "" ? { earlier, fix } : undefined;
   const verdict = judged(handedOn(body, diff, after), pr);
   if (typeof verdict === "string") return stoppedAt("modelRun", `${said} ended red, ${verdict}`);
   const blocking = after === undefined ? [...verdict.gaps, ...(verdict.later ?? []).map(({ gap }) => gap)] : verdict.gaps;

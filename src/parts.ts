@@ -130,9 +130,9 @@ export const parts: Part[] = [
     stops: "https://github.com/collod873/claude-workflow/issues/663",
   },
   {
-    name: "src/hand-off.ts",
-    file: "src/hand-off.ts",
-    stops: "https://github.com/collod873/claude-workflow/issues/827",
+    name: "fix.yml",
+    file: ".github/workflows/fix.yml",
+    stops: "https://github.com/collod873/claude-workflow/actions/runs/36086791587",
   },
   {
     name: "src/growth-limits.proc.test.ts",
@@ -153,11 +153,6 @@ export const parts: Part[] = [
     name: "src/rulesets.proc.test.ts",
     file: "src/rulesets.proc.test.ts",
     stops: "https://github.com/collod873/claude-workflow/issues/652",
-  },
-  {
-    name: "src/stops.proc.test.ts",
-    file: "src/stops.proc.test.ts",
-    stops: "https://github.com/collod873/claude-workflow/issues/663",
   },
   {
     name: "src/em-dash.proc.test.ts",

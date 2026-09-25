@@ -59,7 +59,8 @@ function written(gh: Gh, args: string[]): { refusals: string[]; said: string } {
 
 export const commentOnTicket = (ticket: string, text: string, gh: Gh) => written(gh, ["issue", "comment", ticket, "--body", text]);
 
-const TRUSTED = new Set(["User collod873", "Bot collod873-machine[bot]"]);
+export const OWNER = "collod873";
+const TRUSTED = new Set([`User ${OWNER}`, "Bot collod873-machine[bot]"]);
 
 const trusted = (said: unknown): said is { body: string } =>
   typeof said === "object" && said !== null && "author" in said && "type" in said && "body" in said && typeof said.body === "string" && TRUSTED.has(`${said.type} ${said.author}`);
@@ -86,12 +87,6 @@ export function prNumber(branch: string, gh: Gh): string | undefined {
 }
 
 export const commentOnPr = (pr: string, text: string, gh: Gh) => written(gh, ["pr", "comment", pr, "--body", text]);
-
-export function openPr(ticket: string, gh: Gh): string | undefined {
-  const got = gh(["pr", "view", `ticket/${ticket}`, "--json", "state,url", "--jq", 'select(.state == "OPEN") | .url']);
-  const url = got.status === 0 ? got.stdout.trim() : "";
-  return url === "" ? undefined : url;
-}
 
 export function rewriteTicket(ticket: string, read: string, rewrite: string, gh: Gh): { refusals: string[]; said: string } {
   const refused = rewriteRefusals(read, rewrite);

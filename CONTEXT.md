@@ -46,9 +46,9 @@ exists until a second repo enrols ([#674](https://github.com/collod873/claude-wo
 _Avoid_: shim, wrapper, vendored copy
 
 **Fixer**:
-The one fresh agent that clears a stuck ticket in the machine, reading why the ticket exists
-before the failure. It fixes the code or the ticket itself, or closes the ticket unbuilt; it never
-hands back, and the owner is never asked.
+The agent that owns a red ticket until it merges, one session across every red run. It fixes the
+code, the ticket or the machine, or closes the ticket unbuilt; the owner hears only when a round
+changes nothing.
 _Avoid_: mechanic, fresh eyes, repair agent
 
 **Stable machine**:

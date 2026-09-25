@@ -30,7 +30,7 @@ export function repaired(output: string): string {
   return [`Your checks or \`${CHECK}\` are still red. The end of their output:`, tailOf(output, TAIL_CAP), "Make them pass.", ""].join("\n\n");
 }
 
-export function redOutput(commands: string[]): string {
+function redOutput(commands: string[]): string {
   return commands
     .map((command) => runCheck(command, process.cwd()))
     .filter(({ passed }) => !passed)
@@ -38,16 +38,16 @@ export function redOutput(commands: string[]): string {
     .join("\n");
 }
 
-export function checkRed(): string {
+function checkRed(): string {
   const { passed, output } = runCheck(CHECK, process.cwd());
   if (passed) return "";
   const log = LOGGED.exec(output)?.[1];
   return [output.trim(), log === undefined ? "" : (onDisk(resolve(log)) ?? "")].join("\n");
 }
 
-const stillRed = (commands: string[]) => [checkRed(), redOutput(commands)].filter((output) => output !== "").join("\n");
+export const stillRed = (commands: string[]) => [checkRed(), redOutput(commands)].filter((output) => output !== "").join("\n");
 
-export const roundsHandedBack = (rounds: number) => `${rounds} of ${ROUNDS} rounds handed back`;
+const roundsHandedBack = (rounds: number) => `${rounds} of ${ROUNDS} rounds handed back`;
 
 function withAside(verdict: string, aside: string[]): string {
   return aside.length === 0 ? verdict : `${verdict}, having set aside ${aside.join(", ")}`;
