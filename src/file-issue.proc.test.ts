@@ -10,6 +10,23 @@ const REFUSES = "printf 'nothing filed\\n' >&2\nexit 1\n";
 const RAN_A_CHECK = "printf 'a note never pays for a check run\\n' >&2\nexit 1\n";
 const UNSTAMPED = "file-issue: CLAUDE_CODE_SESSION_ID is empty, so the filing names no session\n";
 const NOTE_CALL = ["note", "--title", "What the audit found", "--body-file", "body.md"];
+const FILLER_FILE = "export const filler = 1;\n".repeat(9000);
+const SMALL_FILE = "export const small = 1;\n";
+const OVER_CAP_TICKET = [
+  "## Why",
+  "",
+  'The owner, in session: "a ticket over the brief cap is refused where it is filed, not thirty seconds into a Build".',
+  "",
+  "## Acceptance criteria",
+  "",
+  "- [ ] The oversized claim builds - check: `npx vitest run --config vitest.config.ts big`",
+  "",
+  "## Files claimed",
+  "",
+  "- src/small.ts",
+  "- src/big.ts",
+  "",
+].join("\n");
 
 function ghSaw(repo: string): string[][] {
   if (!existsSync(join(repo, "gh-argv"))) return [];
@@ -54,6 +71,21 @@ describe("bin/file-issue files a ticket, or refuses it and files nothing (#662)"
     const kept = readFileSync(join(repo, log), "utf8").trim().split("\n");
     expect(kept[0]).toMatch(/^\d+ refusals$/);
     expect(kept.length).toBeGreaterThan(5);
+    expect(ghSaw(repo)).toEqual([]);
+  });
+
+  it("refuses a ticket whose brief is over its brief cap, naming the cap and each inlined file largest first, and files nothing", () => {
+    const { repo, run } = filing({ gh: RECORDS, body: OVER_CAP_TICKET, files: { "src/big.ts": FILLER_FILE, "src/small.ts": SMALL_FILE } });
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr.trim().split("\n")).toEqual([
+      expect.stringMatching(/^the brief for ticket .* is \d+ bytes, over 204800$/),
+      "src/big.ts inlines 225000 bytes",
+      "src/small.ts inlines 24 bytes",
+    ]);
     expect(ghSaw(repo)).toEqual([]);
   });
 

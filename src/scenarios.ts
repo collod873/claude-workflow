@@ -167,18 +167,21 @@ export function filing({
   title = "A ticket the machine can build",
   npx = "exit 1\n",
   sessionId,
+  files = {} as Record<string, string>,
 }: {
   gh: string;
   body: string;
   title?: string;
   npx?: string;
   sessionId?: string;
+  files?: Record<string, string>;
 }) {
   const root = scratch("file-issue-");
   const repo = join(root, "repo");
   mkdirSync(repo, { recursive: true });
   git(repo, "init", "--quiet", "--initial-branch=main");
   writeFileSync(join(repo, "body.md"), body);
+  for (const [path, content] of Object.entries(files)) plant(repo, path, content);
   script(join(root, "bin", "gh"), gh);
   script(join(root, "bin", "npx"), npx);
   return {
