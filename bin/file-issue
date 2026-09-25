@@ -44,12 +44,13 @@ if [[ $kind == ticket ]]; then
 fi
 
 if (( status == 0 )); then
-  node "$src/post.ts" "$kind" "$title" <"$body" >"$out" 2>"$err"
+  node "$src/post.ts" "$kind" "$title" "${CLAUDE_CODE_SESSION_ID:-}" <"$body" >"$out" 2>"$err"
   status=$?
 fi
 
 if (( status == 0 )); then
   cat "$out"
+  [[ -z ${CLAUDE_CODE_SESSION_ID:-} ]] && printf 'file-issue: CLAUDE_CODE_SESSION_ID is empty, so the filing names no session\n' >&2
   exit 0
 fi
 

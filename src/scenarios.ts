@@ -176,7 +176,19 @@ export const misshapenTicket = [
 
 export const wellFormedNote = ["## Why", "", "Three passes over the standards left four proposals nobody can build until the owner weighs them.", ""].join("\n");
 
-export function filing({ gh, body, title = "A ticket the machine can build", npx = "exit 1\n" }: { gh: string; body: string; title?: string; npx?: string }) {
+export function filing({
+  gh,
+  body,
+  title = "A ticket the machine can build",
+  npx = "exit 1\n",
+  sessionId,
+}: {
+  gh: string;
+  body: string;
+  title?: string;
+  npx?: string;
+  sessionId?: string;
+}) {
   const root = scratch("file-issue-");
   const repo = join(root, "repo");
   mkdirSync(repo, { recursive: true });
@@ -187,7 +199,7 @@ export function filing({ gh, body, title = "A ticket the machine can build", npx
   return {
     repo,
     run: (args = ["ticket", "--title", title, "--body-file", "body.md"]) =>
-      execute(join(BIN, "file-issue"), repo, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, args),
+      execute(join(BIN, "file-issue"), repo, { PATH: `${join(root, "bin")}:${process.env.PATH}`, CLAUDE_CODE_SESSION_ID: sessionId ?? "" }, args),
   };
 }
 
