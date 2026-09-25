@@ -854,14 +854,22 @@ export function fixing({
   };
 }
 
-export function marking({ gh = "exit 0\n" }: { gh?: string } = {}) {
-  const root = scratch("mark-");
+function onGh(command: string, gh: string) {
+  const root = scratch(`${command}-`);
   const calls = join(root, "gh-calls");
   script(join(root, "bin", "gh"), `printf '%s\\n' "$*" >>"${calls}"\n${gh}`);
   return {
     calls: () => (existsSync(calls) ? readFileSync(calls, "utf8").trimEnd().split("\n") : []),
-    run: (...args: string[]) => execute(join(BIN, "mark"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, args),
+    run: (...args: string[]) => execute(join(BIN, command), root, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, args),
   };
+}
+
+export function marking({ gh = "exit 0\n" }: { gh?: string } = {}) {
+  return onGh("mark", gh);
+}
+
+export function closingNote(labels: string, { gh = "exit 0\n" }: { gh?: string } = {}) {
+  return onGh("close-note", `[[ $2 == view ]] && { printf '${labels}'; exit 0; }\n${gh}`);
 }
 
 type Left = "uncommitted" | "unlanded" | "landed" | "held by a live session";
