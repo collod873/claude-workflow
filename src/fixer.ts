@@ -1,11 +1,12 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { authoredTests, capped, yourChecks } from "./brief.ts";
-import { redOutput, TAIL_CAP, tailOf } from "./builder.ts";
+import { checkRed, HANDS_BACK, redOutput, repaired, roundsHandedBack, TAIL_CAP, tailOf } from "./builder.ts";
 import { repairOf, takeTurn, turnOn } from "./fixer-turn.ts";
 import { commentOnTicket, gh, git, openPr, post, prNumber, rewriteTicket } from "./post.ts";
+import { CHECK } from "./fence.ts";
 import { handedDiff, LIST_CAP, NO_EM_DASH } from "./reviewer.ts";
-import { runStage, type Opened, type Outcome, type Stage } from "./stage.ts";
+import { ROUNDS, runStage, type Opened, type Outcome, type Spent, type Stage } from "./stage.ts";
 import { rowStopped } from "./stops.ts";
 import { claims, quoted } from "./ticket-shape.ts";
 
@@ -79,6 +80,7 @@ export function handedOn({ briefed, body, failed, diff, gaps, commands }: Handed
     "- `ticket`: a criterion or a test is wrong; fix the test, or return the whole ticket as `body` with only its criteria changed and the Why byte-identical.",
     "- `close`: the ticket should not exist as written; it closes unbuilt.",
     "`reason` is one paragraph on why, posted for the owner to read later.",
+    HANDS_BACK,
     "",
   ].join("\n\n");
 }
@@ -119,7 +121,11 @@ function fix(opened: Opened): Outcome {
   const marked = takeTurn(ticket, gh);
   if (marked.refusals.length > 0) return { stop: "fixerEnds", refusals: [`its marker was refused, so no model was spent: ${quoted(marked.refusals[0])}`] };
   const explain = (text: string) => (onBranch === undefined ? commentOnTicket(ticket, text, gh) : post({ kind: "judgement", pr: branch, text }, gh));
-  const spent = opened.spend(
+  const judge = ({ answer }: Spent) => {
+    const outcome = (answer as Answer | undefined)?.outcome;
+    return (outcome === "code" || outcome === "ticket") && opened.wrote().length > 0 ? checkRed() || undefined : undefined;
+  };
+  const { spent, red } = opened.handBack(
     handedOn({
       briefed: opened.briefed,
       body,
@@ -128,6 +134,8 @@ function fix(opened: Opened): Outcome {
       gaps: record.earlier,
       commands: opened.commands,
     }),
+    judge,
+    repaired,
   );
   const commit = { message: repairOf(ticket), branch: git(["branch", "--show-current"]).stdout.trim() === branch ? undefined : branch };
   const ownCallFailed = spent.refusal !== undefined;
@@ -145,7 +153,8 @@ function fix(opened: Opened): Outcome {
     return { stop: "fixerEnds", refusals: [`${done.refusal}, so #${ticket} ${unclosed === undefined ? "was closed unbuilt" : "stays open"}`, ...(unclosed === undefined ? [] : [unclosed])], commit };
   }
   const unclosed = done.closing === undefined ? undefined : closedUnbuilt(ticket, done.closing, row, openPr(ticket, gh));
-  return unclosed === undefined ? { verdict: done.verdict, commit } : { stop: "fixerEnds", refusals: [unclosed], commit };
+  const verdict = red === undefined ? done.verdict : `${done.verdict}; \`${CHECK}\` still red after ${roundsHandedBack(ROUNDS)}`;
+  return unclosed === undefined ? { verdict, commit } : { stop: "fixerEnds", refusals: [unclosed], commit };
 }
 
 const FIXER: Stage = {
@@ -153,6 +162,7 @@ const FIXER: Stage = {
   bin: "fix",
   undone: "nothing was fixed",
   clean: true,
+  gated: true,
   endsAt: "fixerEnds",
   answers: ANSWER,
   tests: { found: authoredTests },

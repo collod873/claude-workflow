@@ -4,9 +4,9 @@ import { brief, CAP } from "./brief.ts";
 import { handedOn as builderHandedOn, repaired, TAIL_CAP } from "./builder.ts";
 import { handedOn as fixerHandedOn } from "./fixer.ts";
 import { DIFF_CAP, handedOn as reviewerHandedOn, LIST_CAP, TICKET_CAP } from "./reviewer.ts";
-import { handedOn } from "./test-author.ts";
+import { handedOn, refused, REFUSALS_CAP } from "./test-author.ts";
 
-export const CEILINGS: Record<string, number> = { "brief": 136, "test author": 850, "builder": 378, "repair": 84, "reviewer": 432, "reviewer after the fixer's turn": 996, "fixer": 741 };
+export const CEILINGS: Record<string, number> = { "brief": 136, "test author": 870, "test author refused": 94, "builder": 485, "repair": 87, "reviewer": 432, "reviewer after the fixer's turn": 996, "fixer": 848 };
 
 const AUTHORED = "src/planted.test.ts";
 const HIRES = /(spawn|execFile)\w*\(\s*"claude"/;
@@ -39,6 +39,13 @@ export const PROMPTS: Prompt[] = [
     cap: CAP + HANDED_ON,
     slots: ["ticket", "body", "tests", "commands"],
     build: (filled) => handedOn(briefText(filled), filled.commands === undefined ? [] : [filled.commands]),
+  },
+  {
+    name: "test author refused",
+    file: "src/test-author.ts",
+    cap: REFUSALS_CAP + HANDED_ON,
+    slots: ["refusals"],
+    build: (filled) => refused(filled.refusals === undefined ? [] : [filled.refusals]),
   },
   {
     name: "builder",

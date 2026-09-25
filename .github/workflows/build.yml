@@ -11,7 +11,7 @@ jobs:
   build:
     if: "${{ (github.event.sender.login == github.repository_owner || (github.event.sender.login == 'collod873-machine[bot]' && contains(github.event.issue.body, 'Follow-up of #'))) && !contains(github.event.issue.labels.*.name, 'note') }}"
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 110
     permissions:
       contents: read
       issues: write
@@ -81,7 +81,7 @@ jobs:
 
       - id: build
         if: steps.start.outputs.rerun != 'true'
-        timeout-minutes: 30
+        timeout-minutes: 40
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -101,7 +101,7 @@ jobs:
 
       - id: hand-off
         if: failure()
-        timeout-minutes: 30
+        timeout-minutes: 40
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -135,7 +135,7 @@ jobs:
   fix:
     if: ${{ github.event.action == 'reopened' && github.event.sender.type == 'Bot' && !contains(github.event.issue.labels.*.name, 'note') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 55
     permissions:
       contents: read
       issues: write
@@ -174,7 +174,7 @@ jobs:
           git checkout -B "ticket/${{ github.event.issue.number }}"
 
       - id: hand-off
-        timeout-minutes: 30
+        timeout-minutes: 40
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

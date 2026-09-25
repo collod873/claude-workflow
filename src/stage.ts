@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { closeSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { brief, onDisk } from "./brief.ts";
-import { ownerHooks, stageArgv, type Registration } from "./fence.ts";
+import { CHECK, GATED, ownerHooks, stageArgv, type Registration } from "./fence.ts";
 import { STOPS, type Stop, type Stopped } from "./stops.ts";
 import { checks, quoted } from "./ticket-shape.ts";
 
@@ -11,6 +11,7 @@ const STREAM = ["--output-format", "stream-json", "--verbose"];
 const TIMED_OUT = 124;
 const GRACE_SECONDS = "30";
 const RETRY_WAIT_SECONDS = "5";
+export const ROUNDS = 3;
 
 export interface Opened {
   ticket: string;
@@ -21,8 +22,14 @@ export interface Opened {
   aside: string[];
   logs: string;
   wrote: () => string[];
-  spend: (input: string, resume?: string) => Spent;
+  handBack: <Red>(input: string, judge: (spent: Spent) => Red | undefined, told: (red: Red) => string) => HandedBack<Red>;
   setAside: (paths: string[]) => void;
+}
+
+interface HandedBack<Red> {
+  spent: Spent;
+  red?: Red;
+  rounds: number;
 }
 
 export type Outcome = (Stopped | { stop?: undefined; verdict: string }) & { commit?: { message: string; branch?: string } };
@@ -32,6 +39,7 @@ export interface Stage {
   bin: string;
   undone: string;
   clean?: boolean;
+  gated?: boolean;
   endsAt?: Stop;
   answers?: object;
   tests?: { found: () => string[]; missing?: string };
@@ -118,6 +126,7 @@ export interface Hire {
   commands?: string[];
   tools?: string[];
   answers?: object;
+  gated?: boolean;
 }
 
 export interface Spent {
@@ -132,7 +141,7 @@ export function hired(hire: Hire): ((input: string, resume?: string) => Spent) |
   const deadline = Date.now() + minutes * 60_000;
   const hooks = registered();
   if (typeof hooks === "string") return hooks;
-  const argv = [...stageArgv(hire.commands ?? [], ownerHooks(hooks), hire.tools), ...(hire.answers === undefined ? [] : ["--json-schema", JSON.stringify(hire.answers)])];
+  const argv = [...stageArgv(hire.commands ?? [], ownerHooks(hooks, hire.gated), hire.tools), ...(hire.answers === undefined ? [] : ["--json-schema", JSON.stringify(hire.answers)])];
   rmSync(hire.transcript, { force: true });
   const attempt = (input: string, resume?: string) => {
     const from = existsSync(hire.transcript) ? statSync(hire.transcript).size : 0;
@@ -168,11 +177,12 @@ function open(stage: Stage, ticket: string, cwd: string, logs: string): Opened |
   const body = asked.stdout;
   const tests = stage.tests?.found() ?? [];
   if (stage.tests?.missing !== undefined && tests.length === 0) return { stop: "noTest", refusals: [stage.tests.missing] };
-  const briefed = brief({ ticket, body, tests, read: onDisk });
+  const briefed = brief({ ticket, body, tests, read: onDisk, also: stage.gated === true ? [CHECK] : [] });
   if (briefed.refusals.length > 0) return { stop: "overCap", refusals: briefed.refusals };
   writeFileSync(join(logs, `brief-${ticket}.md`), briefed.text);
   const commands = checks(body).map(({ command }) => command);
-  const spend = hired({ name: stage.name, transcript: join(logs, `${stage.bin}-${ticket}.jsonl`), commands, answers: stage.answers });
+  const runs = stage.gated === true ? [...commands, ...GATED] : commands;
+  const spend = hired({ name: stage.name, transcript: join(logs, `${stage.bin}-${ticket}.jsonl`), commands: runs, answers: stage.answers, gated: stage.gated });
   if (typeof spend === "string") return { stop: "modelRun", refusals: [`the owner's hooks could not be read from ${spend}, so ${stage.undone}`] };
   const kept = join(logs, `${stage.bin}-${ticket}-set-aside`);
   rmSync(kept, { recursive: true, force: true });
@@ -198,12 +208,26 @@ function open(stage: Stage, ticket: string, cwd: string, logs: string): Opened |
     logs,
     wrote: () => fresh().map(([path]) => path),
     setAside,
-    spend: (input, resume) => {
-      const spent = spend(input, resume);
-      setAside(opened.wrote().filter((path) => !stage.keeps(path, opened)));
-      const stray = writtenOutsideRepo(cwd, spent.stdout);
-      return stray === undefined ? spent : { stdout: spent.stdout, refusal: `the ${stage.name} wrote outside the repo: ${stray}` };
+    handBack: (input, judge, told) => {
+      let spent = spendOnce(input);
+      let session = spent.session;
+      let rounds = 0;
+      let red = spent.refusal === undefined ? judge(spent) : undefined;
+      while (spent.refusal === undefined && red !== undefined && rounds < ROUNDS) {
+        if (session === undefined) return { spent: { ...spent, refusal: `the ${stage.name} named no session to resume` }, red, rounds };
+        spent = spendOnce(told(red), session);
+        session = spent.session ?? session;
+        rounds++;
+        if (spent.refusal === undefined) red = judge(spent);
+      }
+      return { spent, red, rounds };
     },
+  };
+  const spendOnce = (input: string, resume?: string): Spent => {
+    const spent = spend(input, resume);
+    setAside(opened.wrote().filter((path) => !stage.keeps(path, opened)));
+    const stray = writtenOutsideRepo(cwd, spent.stdout);
+    return stray === undefined ? spent : { stdout: spent.stdout, refusal: `the ${stage.name} wrote outside the repo: ${stray}` };
   };
   return opened;
 }

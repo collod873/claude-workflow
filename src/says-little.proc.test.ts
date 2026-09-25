@@ -51,7 +51,7 @@ const scenarios: Record<string, Scenario[]> = {
   ],
   "bin/build": [
     { label: "building to the checks", run: () => building({ npx: GREEN }).run() },
-    { label: "ending red after the repair round", run: () => building().run() },
+    { label: "ending red after its rounds handed back", run: () => building().run() },
     { label: "refusing a claim over the cap", run: () => building({ claimed: { "src/ticket-shape.ts": "export const filler = 1;\n".repeat(9000) } }).run() },
   ],
   "bin/save": [
@@ -79,7 +79,7 @@ const scenarios: Record<string, Scenario[]> = {
     { label: "refusing a criterion whose check already passes", run: () => authoring({ npx: GREEN }).run() },
   ],
   "src/hand-off.ts": [
-    { label: "handing a build red ticket to the fixer", run: () => handingOff({ stoppedAt: "Build red after the repair round" }).run() },
+    { label: "handing a build red ticket to the fixer", run: () => handingOff({ stoppedAt: "Build red after 3 rounds handed back" }).run() },
     { label: "outside a repo to read", run: () => execute(process.execPath, scratch("hand-off-"), {}, [join(REPO, "src", "hand-off.ts"), "811"]) },
   ],
   "bin/start": [

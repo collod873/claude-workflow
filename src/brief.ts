@@ -29,6 +29,7 @@ interface Asked {
   body: string;
   tests: string[];
   read: Read;
+  also?: string[];
 }
 
 export function yourChecks(commands: string[]): string {
@@ -73,7 +74,7 @@ function filled(paths: string[], read: Read): string[] {
     .map(({ path, bytes }) => `${path} inlines ${bytes} bytes`);
 }
 
-export function brief({ ticket, body, tests, read }: Asked): { text: string; refusals: string[] } {
+export function brief({ ticket, body, tests, read, also = [] }: Asked): { text: string; refusals: string[] } {
   const seen = new Set<string>();
   const authored = firstSight(tests, seen);
   const claimed = firstSight(claims(body), seen);
@@ -82,7 +83,7 @@ export function brief({ ticket, body, tests, read }: Asked): { text: string; ref
     [...authored, ...claimed].flatMap((path) => importedBy(path, read(path) ?? "")).filter((path) => read(path) !== undefined),
     seen,
   );
-  const carried = firstSight(ALWAYS, seen).filter((path) => read(path) !== undefined);
+  const carried = firstSight([...ALWAYS, ...also], seen).filter((path) => read(path) !== undefined);
   const text = [
     `# Brief for ticket ${ticket}`,
     "## Ticket",
