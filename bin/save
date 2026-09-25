@@ -46,9 +46,10 @@ opened() {
   title=${said%%$'\x01'*}
   body_text=${said#*$'\x01'}
   consent=$(printf '%s' "$body_text" | node "$src/consent-only-quote.ts")
+  shape=$(printf '%s' "$body_text" | node "$src/shape-only-check.ts")
   meter=$(node "$src/reads-outside-brief.ts" "$logs" "$top" "$ticket")
   hand_back=${meter##*$'\n'}
-  body=$(printf 'Builds #%s\n\n%s\n%s\n' "$ticket" "$meter" "$consent")
+  body=$(printf 'Builds #%s\n\n%s\n%s\n%s\n' "$ticket" "$meter" "$consent" "$shape")
   if ! call gh pr create --base main --head "$branch" --title "$title" --body "$body"; then
     call gh pr view "$branch" --json state,url --jq 'select(.state == "OPEN").url' || return 1
     [[ -n $said ]] || return 1
