@@ -17,7 +17,10 @@ const RUNS_VITEST = /(?<![A-Za-z])vitest(?![A-Za-z])/;
 const SUMMARY = /^[ \t]*Tests[ \t]+(.+)$/m;
 const COUNTED = /(\d+)[ \t]+(?:passed|failed)/g;
 
-const bash: Shell = (command, cwd) => spawnSync("bash", ["-c", command], { cwd, encoding: "utf8" });
+const bash: Shell = (command, cwd) => {
+  const { GITHUB_ACTIONS: _annotating, ...env } = process.env;
+  return spawnSync("bash", ["-c", command], { cwd, env, encoding: "utf8" });
+};
 
 function testsRan(output: string): number {
   const summary = SUMMARY.exec(stripVTControlCharacters(output))?.[1] ?? "";
