@@ -90,6 +90,7 @@ describe("src/ticket-shape refuses a ticket body that hides what was meant (#662
 
   it("clips the criterion it quotes, so no refusal outgrows a line the caller can print", () => {
     const [refusal] = ticketRefusals(body({ criteria: [`- [ ] ${"a criterion nobody could read ".repeat(8)}`] }));
+    if (refusal === undefined) throw new Error("no refusal for a long criterion");
 
     expect(refusal.length).toBeLessThanOrEqual(LINE_LIMIT);
     expect(refusal).toMatch(/…$/);

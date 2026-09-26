@@ -60,7 +60,7 @@ describe("bin/review reads a green ticket PR against its Why before it merges (#
   });
 
   it("runs after the check and only on a ticket branch", () => {
-    const review = (parse(readFileSync(WORKFLOW, "utf8")) as { jobs: Record<string, { needs?: string; if?: string; steps?: { run?: string }[] }> }).jobs.review;
+    const review = jobNamed((parse(readFileSync(WORKFLOW, "utf8")) as { jobs: Record<string, { needs?: string; if?: string; steps?: { run?: string }[] }> }).jobs, "review");
 
     expect(review.needs).toBe("check");
     expect(review.if).toContain("startsWith(github.head_ref, 'ticket/')");
@@ -124,7 +124,9 @@ describe("bin/review names every gap in one pass, and after its fixer's repair o
     expect(later.comments()).toEqual([]);
     expect(later.ticketComments()).toEqual([expect.stringContaining(LATE)]);
 
-    const again = afterRepair({ verdict: "match", gaps: [], later: [LATER] }, { turns: [later.ticketComments()[0]] });
+    const [turn] = later.ticketComments();
+    if (turn === undefined) throw new Error("no comment on the ticket");
+    const again = afterRepair({ verdict: "match", gaps: [], later: [LATER] }, { turns: [turn] });
     expect(again.run().status).toBe(0);
     expect(again.ticketComments()).toEqual([]);
     expect(again.filed()).toEqual([]);
@@ -168,7 +170,10 @@ describe("a later find becomes a follow-up ticket that builds itself, one genera
 
     expect(run().status).toBe(0);
     expect(filed()).toHaveLength(1);
-    const [{ title, body }] = filed();
+    const [filing] = filed();
+    if (filing === undefined) throw new Error("no ticket filed");
+    const { title, body } = filing;
+    if (body === undefined) throw new Error("no --body on the filed ticket");
     expect(title).toBe(LATER.title);
     expect(ticketRefusals(body)).toEqual([]);
     expect(body).toContain("Follow-up of #810");
@@ -198,7 +203,7 @@ describe("a later find becomes a follow-up ticket that builds itself, one genera
 
   it("files as the App, since a ticket filed with the job's own token starts no build", () => {
     const { jobs } = parse(readFileSync(WORKFLOW, "utf8")) as { jobs: Record<string, { steps: { id?: string; uses?: string; run?: string; env?: Record<string, string> }[] }> };
-    const steps = jobs.review.steps;
+    const steps = jobNamed(jobs, "review").steps;
     const minted = steps.find((step) => step.uses?.startsWith("actions/create-github-app-token@") === true);
     const reviewer = steps.find((step) => /bin\/review /.test(step.run ?? ""));
 
@@ -230,6 +235,12 @@ interface CheckWorkflow {
   jobs: Record<string, { if?: string; steps: CheckStep[] }>;
 }
 
+function jobNamed<T>(jobs: Record<string, T>, name: string): T {
+  const job = jobs[name];
+  if (job === undefined) throw new Error(`no ${name} job in ${WORKFLOW}`);
+  return job;
+}
+
 const checkWorkflow = () => parse(readFileSync(WORKFLOW, "utf8")) as CheckWorkflow;
 const stepRunning = (steps: CheckStep[], command: string) => steps.find((step) => (step.run ?? "").includes(command)) as CheckStep;
 const JUDGED = ["vitest.config.ts", "src/growth-limits.proc.test.ts", "bin/review"];
@@ -238,7 +249,8 @@ const outsideAnyRepo = Object.fromEntries(Object.entries(process.env).filter(([n
 describe("check.yml judges a PR with main's reviewer and main's test count, whatever the PR changed (#652)", () => {
   it("runs from main's copy of itself and refuses a fork before any of its code runs", () => {
     const { on, jobs } = checkWorkflow();
-    const guard = jobs.check.steps[0];
+    const [guard] = jobNamed(jobs, "check").steps;
+    if (guard === undefined) throw new Error(`no first step in the check job of ${WORKFLOW}`);
     const judged = (headRepo: string) =>
       spawnSync("bash", ["-e", "-c", guard.run ?? ""], { env: { ...process.env, HEAD_REPO: headRepo, GITHUB_REPOSITORY: "collod873/claude-workflow" }, encoding: "utf8" }).status;
 
@@ -246,7 +258,7 @@ describe("check.yml judges a PR with main's reviewer and main's test count, what
     expect(judged("collod873/claude-workflow")).toBe(0);
     expect(judged("stranger/claude-workflow")).toBe(1);
     expect(judged("")).toBe(1);
-    expect(jobs.review.if).toContain("github.event.pull_request.head.repo.full_name == github.repository");
+    expect(jobNamed(jobs, "review").if).toContain("github.event.pull_request.head.repo.full_name == github.repository");
   });
 
   it("puts main's test runner and test count back, and reviews with main's reviewer, when the PR changed all three", () => {
@@ -263,13 +275,13 @@ describe("check.yml judges a PR with main's reviewer and main's test count, what
     const runnerTemp = scratch("runner-");
     const run = (step: CheckStep) => spawnSync("bash", ["-e", "-c", step.run ?? ""], { cwd: session, env: { ...outsideAnyRepo, RUNNER_TEMP: runnerTemp }, encoding: "utf8" });
 
-    expect(run(stepRunning(jobs.check.steps, "git checkout origin/main --")).status).toBe(0);
-    expect(run(stepRunning(jobs.review.steps, "git worktree add")).status).toBe(0);
+    expect(run(stepRunning(jobNamed(jobs, "check").steps, "git checkout origin/main --")).status).toBe(0);
+    expect(run(stepRunning(jobNamed(jobs, "review").steps, "git worktree add")).status).toBe(0);
 
     expect(readFileSync(join(session, "vitest.config.ts"), "utf8")).toBe("main's copy\n");
     expect(readFileSync(join(session, "src/growth-limits.proc.test.ts"), "utf8")).toBe("main's copy\n");
     expect(readFileSync(join(session, "bin/review"), "utf8")).toBe("the PR's copy\n");
     expect(readFileSync(join(runnerTemp, "main", "bin/review"), "utf8")).toBe("main's copy\n");
-    expect(stepRunning(jobs.review.steps, "bin/review ").run).toContain("$RUNNER_TEMP/main/bin/review ");
+    expect(stepRunning(jobNamed(jobs, "review").steps, "bin/review ").run).toContain("$RUNNER_TEMP/main/bin/review ");
   });
 });

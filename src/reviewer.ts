@@ -64,7 +64,7 @@ interface AfterTurn {
 const laterFinds = (ticket: string) => `The reviewer found these on #${ticket} after its fixer's repair, outside the earlier gaps and the fix's own lines, so they do not block its merge:`;
 export const FOLLOW_UP_OF = "Follow-up of #";
 
-const firstLine = (text: string) => quoted(text.trim().split("\n")[0]);
+const firstLine = (text: string) => quoted(text.trim().split("\n")[0] ?? "");
 
 function changedFiles(diff: string): { path: string; text: string }[] {
   return diff.split(FILE_START).flatMap((text) => {
@@ -161,10 +161,11 @@ function recordedLater(ticket: string, body: string, later: Later[], turns: stri
   const deep = body.includes(FOLLOW_UP_OF);
   const fate = deep ? `Not filed, since #${ticket} is itself a follow-up.` : "Each is filed as a follow-up ticket that builds itself.";
   const posted = commentOnTicket(ticket, [laterFinds(ticket), "", ...later.map(({ gap }) => `- ${gap}`), "", fate, ""].join("\n"), gh);
-  if (posted.refusals.length > 0) return `, its later finds refused: ${quoted(posted.refusals[0])}`;
+  const [refusal] = posted.refusals;
+  if (refusal !== undefined) return `, its later finds refused: ${quoted(refusal)}`;
   if (deep) return `, ${later.length} later finds posted, not filed: ${posted.said}`;
   const filed = later.map((find) => ({ find, ...post({ kind: "ticket", title: find.title, text: followUp(ticket, find) }, gh) }));
-  const refused = filed.flatMap(({ find, refusals }) => (refusals.length > 0 ? [`- ${find.gap}: ${quoted(refusals[0])}`] : []));
+  const refused = filed.flatMap(({ find, refusals }) => refusals.slice(0, 1).map((refusal) => `- ${find.gap}: ${quoted(refusal)}`));
   if (refused.length > 0) commentOnTicket(ticket, [`These later finds on #${ticket} were not filed, their follow-up tickets were refused:`, "", ...refused, ""].join("\n"), gh);
   return `, ${later.length} later finds posted: ${posted.said}; follow-ups filed: ${filed.map(({ said }) => said).filter((said) => said !== "").join(" ") || "none"}`;
 }
@@ -203,8 +204,13 @@ function review(pr: string): Stop | undefined {
     return undefined;
   }
   const posted = post({ kind: "judgement", pr, text: judgement(ticket, blocking) }, gh);
-  if (posted.refusals.length > 0) return stoppedAt("drift", `${said} drifts from the Why of #${ticket}, and its judgement was refused: ${quoted(posted.refusals[0])}${recorded}`);
+  const [refusal] = posted.refusals;
+  if (refusal !== undefined) return stoppedAt("drift", `${said} drifts from the Why of #${ticket}, and its judgement was refused: ${quoted(refusal)}${recorded}`);
   return stoppedAt("drift", `${said} drifts from the Why of #${ticket}, ${blocking.length} gaps posted: ${posted.said}${recorded}`);
 }
 
-if (import.meta.main) process.exit(exitFor(review(process.argv[2])));
+if (import.meta.main) {
+  const pr = process.argv[2];
+  if (pr === undefined) throw new Error("no PR number in the arguments");
+  process.exit(exitFor(review(pr)));
+}

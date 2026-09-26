@@ -74,6 +74,7 @@ describe("GitHub holds main, and this reads the ruleset it holds it with (#652)"
 
   it("names a ruleset that is missing, switched off, weakened, or bypassed", () => {
     const [main] = Object.entries(RULED).map(([name, ruled]) => asRuled(name, ruled));
+    if (main === undefined) throw new Error("no ruleset in RULED");
 
     expect(refusals([main], ON_MAIN)).toEqual([]);
     expect(refusals([], ON_MAIN)).toEqual(["no ruleset named main lands only through a PR"]);

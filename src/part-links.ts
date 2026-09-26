@@ -10,13 +10,15 @@ const run = promisify(execFile);
 
 async function problemWith(gh: string, link: string): Promise<string | undefined> {
   const [, repo, kind, number] = FAILURE_LINK.exec(link) ?? [];
+  const endpoint = kind === undefined ? undefined : ENDPOINT[kind];
+  if (repo === undefined || endpoint === undefined || number === undefined) return "which is not a link to a GitHub issue, pull request, or run";
   try {
-    const { stdout } = await run(gh, ["api", `repos/${repo}/${ENDPOINT[kind]}/${number}`]);
+    const { stdout } = await run(gh, ["api", `repos/${repo}/${endpoint}/${number}`]);
     if (kind !== "actions/runs") return undefined;
     const { status, conclusion } = JSON.parse(stdout) as { status: string; conclusion: string | null };
     return conclusion === "failure" ? undefined : `a run that did not fail (${conclusion ?? status})`;
   } catch (error) {
-    const said = String((error as { stderr?: string }).stderr ?? error).trim().split("\n")[0];
+    const said = String((error as { stderr?: string }).stderr ?? error).trim().replace(/\n[\s\S]*/, "");
     return /HTTP 404/.test(said) ? "which does not exist" : `which gh could not read: ${said}`;
   }
 }

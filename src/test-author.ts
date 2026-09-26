@@ -15,7 +15,10 @@ export const REFUSALS_CAP = 4 * 1024;
 const WROTE_NOTHING = "the author wrote nothing, so it wrote no test for any criterion";
 
 function awaitsTheBuild(body: string, cwd: string, output: string): boolean {
-  const missing = [...output.matchAll(UNIMPORTED)].map(([, module, importer]) => relative(cwd, resolve(cwd, dirname(importer), module)));
+  const missing = [...output.matchAll(UNIMPORTED)].map(([line, module, importer]) => {
+    if (module === undefined || importer === undefined) throw new Error(`no module or importer in ${JSON.stringify(line)}`);
+    return relative(cwd, resolve(cwd, dirname(importer), module));
+  });
   const unwritten = new Set(claims(body).filter((path) => !existsSync(join(cwd, path))));
   return missing.length > 0 && missing.every((path) => unwritten.has(path));
 }
@@ -79,4 +82,8 @@ const AUTHOR: Stage = {
   work: author,
 };
 
-if (import.meta.main) process.exit(runStage(AUTHOR, process.argv[2]));
+if (import.meta.main) {
+  const ticket = process.argv[2];
+  if (ticket === undefined) throw new Error("no ticket number in the arguments to the test author");
+  process.exit(runStage(AUTHOR, ticket));
+}

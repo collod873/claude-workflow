@@ -73,12 +73,18 @@ export function loadedBytes(docs: LoadedDoc[]): number {
 }
 
 function namedIn(file: string, text: string): string[] {
-  const linked = [...text.matchAll(LINK)]
-    .filter(([, target]) => !SCHEME.test(target) && !target.startsWith("#"))
-    .map((match) => ({ at: match.index, path: normalize(join(dirname(file), match[1].split("#")[0])) }));
-  const quoted = [...text.matchAll(QUOTED)]
-    .filter(([, token]) => token.includes("/") && PATH.test(token))
-    .map((match) => ({ at: match.index, path: match[1] }));
+  const found = (pattern: RegExp) =>
+    [...text.matchAll(pattern)].map((match) => {
+      const token = match[1];
+      if (token === undefined) throw new Error(`no capture in ${JSON.stringify(match[0])} of ${file}`);
+      return { at: match.index, token };
+    });
+  const linked = found(LINK)
+    .filter(({ token }) => !SCHEME.test(token) && !token.startsWith("#"))
+    .map(({ at, token }) => ({ at, path: normalize(join(dirname(file), token.replace(/#.*/, ""))) }));
+  const quoted = found(QUOTED)
+    .filter(({ token }) => token.includes("/") && PATH.test(token))
+    .map(({ at, token }) => ({ at, path: token }));
   return [...new Set([...linked, ...quoted].sort((a, b) => a.at - b.at).map(({ path }) => path))];
 }
 
@@ -86,7 +92,7 @@ export function pathsToNothing(repo: string, docs: LoadedDoc[]): string[] {
   return docs.flatMap((doc) =>
     doc.lines.flatMap((line) =>
       namedIn(doc.file, line.text)
-        .filter((path) => !(ANOTHER_REPO.test(path) && !existsSync(join(repo, path.split("/")[0]))))
+        .filter((path) => !(ANOTHER_REPO.test(path) && !existsSync(join(repo, path.replace(/\/.*/, "")))))
         .filter((path) => !existsSync(join(repo, path)))
         .map((path) => `${doc.file}:${line.number} names ${path}, which does not exist`),
     ),

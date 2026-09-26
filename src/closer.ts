@@ -83,14 +83,13 @@ function marksFor(ticket: string, pr: string | undefined): Marks {
 
 function waits(marks: Marks): Wait[] {
   const found: Wait[] = [];
-  for (let at = 0; at < STEPS.length - 1; at++) {
-    const from = marks[STEPS[at].key];
-    const to = marks[STEPS[at + 1].key];
-    if (from === undefined || to === undefined) continue;
-    const ms = Date.parse(to) - Date.parse(from);
-    if (Number.isNaN(ms)) continue;
-    found.push({ label: `${STEPS[at].label} to ${STEPS[at + 1].label}`, ms });
-  }
+  STEPS.reduce((before, after) => {
+    const from = marks[before.key];
+    const to = marks[after.key];
+    const ms = from === undefined || to === undefined ? Number.NaN : Date.parse(to) - Date.parse(from);
+    if (!Number.isNaN(ms)) found.push({ label: `${before.label} to ${after.label}`, ms });
+    return after;
+  });
   return found;
 }
 
@@ -181,7 +180,7 @@ function wokenFromSplit(ticket: string, body: string): string {
   if (parent === undefined) return "";
   if (!(ghText(["issue", "view", parent, "--json", "labels", "--jq", ".labels[].name"]) ?? "").split("\n").includes(WAITING)) return "";
   const split = commentsOn(parent, gh)?.find((said) => said.startsWith(splitInto(parent)));
-  const pieces = [...(NAMED.exec(split?.slice(splitInto(parent).length).trimStart() ?? "")?.[0] ?? "").matchAll(/#(\d+)/g)].map(([, number]) => number);
+  const pieces = ((NAMED.exec(split?.slice(splitInto(parent).length).trimStart() ?? "")?.[0] ?? "").match(/#\d+/g) ?? []).map((named) => named.slice(1));
   if (pieces.length === 0) return `; #${parent} waits, and no split record names what for`;
   const open = pieces.filter((piece) => piece !== ticket && ticketState(piece) !== "CLOSED COMPLETED");
   if (open.length > 0) return `; #${parent} still waits for ${open.map((piece) => `#${piece}`).join(", ")}`;
@@ -202,7 +201,8 @@ function close(): Stop | undefined {
   const prBody = pr === undefined ? undefined : ghText(["pr", "view", pr, "--json", "body", "--jq", ".body"]);
   const speed = speedReport(marksFor(ticket, pr), prBody === undefined ? undefined : totalOutside(prBody));
   const posted = commentOnTicket(ticket, record(ticket, gathered, speed), gh);
-  if (posted.refusals.length > 0) return stoppedAt("unrecorded", `close: #${ticket} got no closing record: ${quoted(posted.refusals[0])}`);
+  const [refusal] = posted.refusals;
+  if (refusal !== undefined) return stoppedAt("unrecorded", `close: #${ticket} got no closing record: ${quoted(refusal)}`);
   const done = gathered.length > 0 && gathered.every((verdict) => verdict.merge);
   if (done) {
     const state = ticketState(ticket);

@@ -33,8 +33,11 @@ function ghSaw(repo: string): string[][] {
   return readFileSync(join(repo, "gh-argv"), "utf8").trim().split("\n").map((line) => JSON.parse(line) as string[]);
 }
 
-function bodyOf(call: string[]): string {
-  return call[call.indexOf("--body") + 1];
+function firstBody(repo: string): string {
+  const [call] = ghSaw(repo);
+  const body = call?.[call.indexOf("--body") + 1];
+  if (body === undefined) throw new Error(`no gh call with a --body in ${repo}`);
+  return body;
 }
 
 describe("bin/file-issue files a ticket, or refuses it and files nothing (#662)", () => {
@@ -67,7 +70,7 @@ describe("bin/file-issue files a ticket, or refuses it and files nothing (#662)"
     const said = result.stderr.trim().split("\n");
     expect(said).toHaveLength(5);
     expect(said[4]).toMatch(/^file-issue: \d+ refusals, 4 shown; nothing filed; log \S+\.log$/);
-    const log = /log (\S+\.log)$/.exec(said[4])?.[1] ?? "";
+    const log = /log (\S+\.log)$/.exec(said[4] ?? "")?.[1] ?? "";
     const kept = readFileSync(join(repo, log), "utf8").trim().split("\n");
     expect(kept[0]).toMatch(/^\d+ refusals$/);
     expect(kept.length).toBeGreaterThan(5);
@@ -130,13 +133,13 @@ describe("bin/file-issue files a ticket, or refuses it and files nothing (#662)"
     const result = stamped.run();
 
     expect(result).toMatchObject({ status: 0, stdout: `${URL}\n`, stderr: "" });
-    const posted = bodyOf(ghSaw(stamped.repo)[0]);
+    const posted = firstBody(stamped.repo);
     expect(why(posted).split("\n").at(-1)).toBe("Session: `sess-abc`");
 
     const untouched = filing({ gh: RECORDS, body: posted, sessionId: "sess-abc" });
     untouched.run();
 
-    expect(bodyOf(ghSaw(untouched.repo)[0])).toBe(posted);
+    expect(firstBody(untouched.repo)).toBe(posted);
   });
 
   it("names no session on stderr when CLAUDE_CODE_SESSION_ID is unset or empty, filing the body unchanged either way", () => {

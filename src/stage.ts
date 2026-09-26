@@ -52,7 +52,7 @@ function changed(cwd: string): Map<string, string> {
   const entries = git(cwd, ["status", "--porcelain", "-z", "-uall"]).stdout.split("\0");
   const found = new Map<string, string>();
   for (let at = 0; at < entries.length; at++) {
-    const entry = entries[at];
+    const entry = entries[at] ?? "";
     if (entry.length < 4) continue;
     found.set(entry.slice(3), entry.slice(0, 2));
     if (/^[RC]/.test(entry)) at++;
@@ -103,7 +103,7 @@ function sessionOf(stdout: string): string | undefined {
   return session;
 }
 
-function capped(argv: string[], minutes: number, deadline: number): string[] {
+function capped(argv: string[], minutes: number, deadline: number): [string, ...string[]] {
   if (!(minutes > 0)) return ["claude", ...argv];
   const left = Math.max(1, Math.ceil((deadline - Date.now()) / 1000));
   return ["timeout", `--kill-after=${GRACE_SECONDS}`, String(left), "claude", ...argv];
@@ -154,7 +154,7 @@ export function hired(hire: Hire): ((input: string, resume?: string) => Spent) |
   };
   const refusalFor = (got: { stdout: string; status: number | null; stderr: string }): string | undefined => {
     if (got.status === TIMED_OUT && minutes > 0) return `the ${hire.name} ran past its ${minutes} minute cap`;
-    if (got.status !== 0) return `the ${hire.name} ended ${got.status}: ${quoted(String(got.stderr || got.stdout).trim().split("\n")[0])}`;
+    if (got.status !== 0) return `the ${hire.name} ended ${got.status}: ${quoted(String(got.stderr || got.stdout).trim().split("\n")[0] ?? "")}`;
     return undefined;
   };
   return (input, resume) => {

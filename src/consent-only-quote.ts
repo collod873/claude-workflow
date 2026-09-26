@@ -9,7 +9,7 @@ function passages(section: string): string[] {
   let current: string[] = [];
   for (const line of section.split("\n")) {
     const quoted = PASSAGE_LINE.exec(line.trim());
-    if (quoted) current.push(quoted[1]);
+    if (quoted) current.push(quoted[1] ?? "");
     else if (current.length > 0) {
       found.push(current.join(" "));
       current = [];

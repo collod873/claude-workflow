@@ -34,15 +34,15 @@ function readHistory(): History {
   const renamedTo = new Map<string, string>();
   const touched = new Set<string>();
   for (const line of git(["log", "--name-status", "--format="]).stdout.split("\n")) {
-    const rename = RENAME.exec(line);
-    if (rename !== null) {
-      touched.add(rename[1]);
-      touched.add(rename[2]);
-      if (!renamedTo.has(rename[1])) renamedTo.set(rename[1], rename[2]);
+    const [, from, to] = RENAME.exec(line) ?? [];
+    if (from !== undefined && to !== undefined) {
+      touched.add(from);
+      touched.add(to);
+      if (!renamedTo.has(from)) renamedTo.set(from, to);
       continue;
     }
-    const plain = PLAIN_STATUS.exec(line);
-    if (plain !== null) touched.add(plain[1]);
+    const [, plain] = PLAIN_STATUS.exec(line) ?? [];
+    if (plain !== undefined) touched.add(plain);
   }
   return { renamedTo, touched };
 }
@@ -117,7 +117,9 @@ function startRefusals(ticket: string): { notices: string[]; stopped?: Stopped }
 }
 
 if (import.meta.main) {
-  const { notices, stopped } = startRefusals(process.argv[2]);
+  const ticket = process.argv[2];
+  if (ticket === undefined) throw new Error("no ticket number in the arguments");
+  const { notices, stopped } = startRefusals(ticket);
   for (const notice of notices) console.error(notice);
   for (const refusal of stopped?.refusals ?? []) console.error(refusal);
   if (stopped !== undefined) console.log(STOPS[stopped.stop]);
