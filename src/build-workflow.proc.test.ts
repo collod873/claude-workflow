@@ -39,7 +39,9 @@ function workflow(): { on: Workflow["on"]; job: Job } {
   const { on, jobs } = parse(readFileSync(WORKFLOW, "utf8")) as Workflow;
   const building = Object.values(jobs).filter(({ steps }) => steps.some((step) => /(^|\s|\/)bin\/start(\s|$)/.test(step.run ?? "")));
   expect(building).toHaveLength(1);
-  return { on, job: building[0] };
+  const [job] = building;
+  if (job === undefined) throw new Error(`no job that runs bin/start in ${WORKFLOW}`);
+  return { on, job };
 }
 
 function stageStep(job: Job, stage: Stage): Step {
@@ -201,17 +203,17 @@ describe("every job that spends a model is watched as it goes, read after it end
       expect(steps[minted]?.with).toMatchObject({ owner: "collod873", "permission-contents": "write" });
       expect(minted).toBeGreaterThan(lastModel);
       expect(filed).toBeGreaterThan(minted);
-      expect(steps[minted].if).toBe("always()");
-      expect(steps[filed].if).toBe("always()");
+      expect(steps[minted]?.if).toBe("always()");
+      expect(steps[filed]?.if).toBe("always()");
     }
   });
 
   it("every job keeps its machine logs as a run artifact, whatever ended it", () => {
     for (const { steps } of modelJobs()) {
       const last = steps[steps.length - 1];
-      expect(last.uses).toMatch(/^actions\/upload-artifact@/);
-      expect(last.if).toBe("always()");
-      expect(last.with).toMatchObject({ path: ".git/machine-logs", "include-hidden-files": true });
+      expect(last?.uses).toMatch(/^actions\/upload-artifact@/);
+      expect(last?.if).toBe("always()");
+      expect(last?.with).toMatchObject({ path: ".git/machine-logs", "include-hidden-files": true });
     }
   });
 
@@ -235,7 +237,13 @@ const CHECK_WORKFLOW = join(WORKFLOWS, "check.yml");
 
 function reviewJob(): Job {
   const { jobs } = parse(readFileSync(CHECK_WORKFLOW, "utf8")) as { jobs: Record<string, Job> };
-  return jobs.review;
+  return namedJob(jobs, "review", CHECK_WORKFLOW);
+}
+
+function namedJob(jobs: Record<string, Job>, name: string, where: string): Job {
+  const job = jobs[name];
+  if (job === undefined) throw new Error(`no ${name} job in ${where}`);
+  return job;
 }
 
 const outcome = (value: string): StepOutcome => ({ outcome: value, conclusion: value, outputs: {} });
@@ -285,7 +293,7 @@ function ranStep(step: Step, cwd: string, env: Record<string, string>): { status
 }
 
 function ticketNamed(env: Record<string, string>): string | undefined {
-  const which = fixWorkflow().jobs.which.steps.find((step) => step.id === "which") as Step;
+  const which = namedJob(fixWorkflow().jobs, "which", FIX_WORKFLOW).steps.find((step) => step.id === "which") as Step;
   return ranStep(which, scratch("which-"), { ISSUE: "", RAN: "", RAN_ON: "", TITLE: "", ...env }).output.ticket;
 }
 
@@ -310,8 +318,8 @@ describe("fix.yml hands every red run of a ticket to its fixer, however the run 
   });
 
   it("stands down, spending no model, when the ticket moved on since the run that went red", () => {
-    const { jobs } = fixWorkflow();
-    const branch = jobs.fix.steps.find((step) => step.id === "branch") as Step;
+    const fix = namedJob(fixWorkflow().jobs, "fix", FIX_WORKFLOW);
+    const branch = fix.steps.find((step) => step.id === "branch") as Step;
     const root = scratch("fix-branch-");
     const { session } = cloned(root, "main as it was");
     git(session, "checkout", "--quiet", "-b", "ticket/9");
@@ -329,8 +337,8 @@ describe("fix.yml hands every red run of a ticket to its fixer, however the run 
     const moved = ranStep(branch, session, { ...env, RAN_AT: "0000000000000000000000000000000000000000" });
     expect(moved.status, moved.stderr).toBe(0);
     expect(moved.output.stale).toBe("true");
-    const skipped = { ...allSkipped(jobs.fix.steps), branch: { outcome: "success", conclusion: "success", outputs: { stale: "true" } } };
-    expect(jobs.fix.steps.filter(spendsModel).map((step) => holds(step.if ?? "success()", { steps: skipped }))).toEqual([false]);
+    const skipped = { ...allSkipped(fix.steps), branch: { outcome: "success", conclusion: "success", outputs: { stale: "true" } } };
+    expect(fix.steps.filter(spendsModel).map((step) => holds(step.if ?? "success()", { steps: skipped }))).toEqual([false]);
 
     const fresh = ranStep(branch, session, { ...env, HEAD_REF: "ticket/10", RAN_AT: judged });
     expect(fresh.status, fresh.stderr).toBe(0);
@@ -340,7 +348,7 @@ describe("fix.yml hands every red run of a ticket to its fixer, however the run 
   });
 
   it("calls the owner by name whatever ends the fixer's job, unless the fixer already did", () => {
-    const job = fixWorkflow().jobs.fix;
+    const job = namedJob(fixWorkflow().jobs, "fix", FIX_WORKFLOW);
     const calling = job.steps.find((step) => /gh issue comment/.test(step.run ?? "")) as Step;
     const labelled = (labels: string) => {
       const root = scratch("fix-called-");
@@ -373,7 +381,9 @@ describe("every step that runs gh names its repo, since gh otherwise reads it fr
       const checkout = job.steps.findIndex((candidate) => candidate.uses?.startsWith("actions/checkout@") === true);
       expect(checkout, step.run).toBeGreaterThanOrEqual(0);
       expect(job.steps.indexOf(step), step.run).toBeGreaterThan(checkout);
-      const checkoutId = job.steps[checkout].id;
+      const checkoutStep = job.steps[checkout];
+      if (checkoutStep === undefined) throw new Error(`no checkout step in the job running ${step.run ?? ""}`);
+      const checkoutId = checkoutStep.id;
       const steps = { ...allSkipped(job.steps), ...(checkoutId === undefined ? {} : { [checkoutId]: outcome("failure") }) };
       for (const result of ["success", "failure"]) {
         const needs = Object.fromEntries([job.needs ?? []].flat().map((name) => [name, { result }]));

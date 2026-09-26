@@ -23,7 +23,8 @@ describe("the fixer owns a red ticket until it merges (#898)", () => {
     const { run, hired } = fixing({ claude: FIXES });
 
     expect(run().status).toBe(0);
-    const argv = hired()[0];
+    const [argv] = hired();
+    if (argv === undefined) throw new Error("no claude hired");
     expect(argv[argv.indexOf("--model") + 1]).toBe("opus");
     expect(argv).not.toContain("--tools");
     expect(argv[argv.indexOf("--settings") + 1]).not.toContain("node");
@@ -70,7 +71,8 @@ describe("the fixer owns a red ticket until it merges (#898)", () => {
     const { run, hired, keptSession } = fixing({ claude: FIXES, savedSession: "sess-earlier" });
 
     expect(run().status).toBe(0);
-    const argv = hired()[0];
+    const [argv] = hired();
+    if (argv === undefined) throw new Error("no claude hired");
     expect(argv[argv.indexOf("--resume") + 1]).toBe("sess-earlier");
     expect(keptSession()).toBe(FIXER_SESSION);
   });
@@ -140,9 +142,11 @@ describe("the fixer owns a red ticket until it merges (#898)", () => {
     expect(filed()).toHaveLength(2);
     for (const [at, piece] of filed().entries()) {
       expect(piece).toMatch(/^## Why\n\nFollow-up of #811: its fixer split it/);
-      expect(piece).toContain(`> ${tickets[at].why}`);
+      const ticket = tickets[at];
+      if (ticket === undefined) throw new Error(`no ticket for filed piece ${at}`);
+      expect(piece).toContain(`> ${ticket.why}`);
       expect(piece).toContain("> The owner, in session: \"a red ticket stays with its fixer until it merges, never the owner\".");
-      expect(piece).toContain(`- ${tickets[at].claimed[0]}`);
+      for (const claimed of ticket.claimed) expect(piece).toContain(`- ${claimed}`);
     }
     expect(edits()).toEqual([waits]);
     expect(ticketComments().at(-1)).toMatch(new RegExp(`^@collod873 the fixer split #811 into #901, #902, which build themselves\\..*${reason}`));

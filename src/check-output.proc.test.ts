@@ -10,9 +10,11 @@ function saidOneLine(stdout: string): { line: string; log: string } {
   const lines = stdout.split("\n");
   expect(lines).toHaveLength(2);
   expect(lines[1]).toBe("");
-  const log = /; log (\S.*\.log)$/.exec(lines[0])?.[1];
-  expect(log, lines[0]).toBeDefined();
-  return { line: lines[0], log: log ?? "" };
+  const [line] = lines;
+  if (line === undefined) throw new Error("no line on stdout");
+  const log = /; log (\S.*\.log)$/.exec(line)?.[1];
+  if (log === undefined) throw new Error(`no log path in ${line}`);
+  return { line, log };
 }
 
 describe("bin/check says one line and keeps each failing tool's full output in a log it names (#683)", () => {

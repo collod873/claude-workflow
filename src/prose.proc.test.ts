@@ -37,7 +37,7 @@ function braceProse(path: string, source: string): Prose[] {
     const text = source.slice(range.pos, range.end);
     const line = lineOf(source, range.pos);
     if (MACHINE_READ.test(text)) continue;
-    found.push({ path, line, text: text.split("\n")[0] });
+    found.push({ path, line, text: text.split("\n")[0] ?? "" });
   }
   return found.sort((a, b) => a.line - b.line);
 }

@@ -113,6 +113,7 @@ export function authoredTests(): string[] {
 
 if (import.meta.main) {
   const ticket = process.argv[2];
+  if (ticket === undefined) throw new Error("no ticket number in the arguments to brief");
   const asked = spawnSync("gh", ["issue", "view", ticket, "--json", "body", "--jq", ".body"], { encoding: "utf8" });
   const { text, refusals } =
     asked.status === 0

@@ -11,7 +11,10 @@ interface Meter {
 }
 
 function carriedPaths(brief: string): Set<string> {
-  return new Set([...brief.matchAll(CARRIED)].map(([, path]) => path.trim()));
+  return new Set([...brief.matchAll(CARRIED)].map(([heading, path]) => {
+    if (path === undefined) throw new Error(`no path in ${JSON.stringify(heading)}`);
+    return path.trim();
+  }));
 }
 
 function readPaths(stream: string, top: string): string[] {
@@ -76,6 +79,7 @@ function handBackLine(meters: Meter[]): string {
 
 if (import.meta.main) {
   const [logs, top, ticket] = process.argv.slice(2);
+  if (logs === undefined || top === undefined || ticket === undefined) throw new Error("no logs directory, repo top, and ticket number in the arguments");
   const meters = metered(logs, top, ticket);
   process.stdout.write(`${report(meters)}\n${handBackLine(meters)}\n`);
 }

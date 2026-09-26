@@ -75,4 +75,8 @@ const BUILDER: Stage = {
   work: build,
 };
 
-if (import.meta.main) process.exit(runStage(BUILDER, process.argv[2]));
+if (import.meta.main) {
+  const ticket = process.argv[2];
+  if (ticket === undefined) throw new Error("no ticket number in the arguments to build");
+  process.exit(runStage(BUILDER, ticket));
+}

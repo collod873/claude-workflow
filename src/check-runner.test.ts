@@ -62,6 +62,7 @@ describe("src/check-runner.ts passes a check only when it ran and measured somet
   it("keeps a long command inside the line it refuses with", () => {
     const long = `npx vitest run --config vitest.config.ts ${"name-".repeat(40)}`;
     const [refusal] = passingCriteria(ticket(long), ".", says(RAN_ONE, 0));
+    if (refusal === undefined) throw new Error("no refusal for a long command");
 
     expect(refusal.length).toBeLessThan(LINE_LIMIT);
     expect(refusal).toContain("…");

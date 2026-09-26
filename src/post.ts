@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { text as read } from "node:stream/consumers";
 import { brief, onDisk } from "./brief.ts";
 import { emDashLines } from "./em-dash.ts";
-import { noteRefusals, rewriteRefusals, ticketRefusals, why } from "./ticket-shape.ts";
+import { matchEnd, noteRefusals, rewriteRefusals, ticketRefusals, why } from "./ticket-shape.ts";
 
 export interface Posting {
   kind: string;
@@ -47,7 +47,7 @@ function stampedWithSession(text: string, sessionId: string): string {
   if (why(text).includes(line)) return text;
   const found = WHY_HEADING.exec(text);
   if (found === null) return text;
-  const start = found.index + found[0].length;
+  const start = matchEnd(found);
   const next = NEXT_HEADING.exec(text.slice(start));
   const end = next === null ? text.length : start + next.index;
   const section = text.slice(start, end).replace(/\s+$/, "");
@@ -118,6 +118,7 @@ export function post(posting: Posting, gh: Gh): { refusals: string[]; said: stri
 
 if (import.meta.main) {
   const [kind, title, sessionId] = process.argv.slice(2);
+  if (kind === undefined) throw new Error("no kind of posting in the arguments to post");
   const { refusals, said } = post({ kind, text: await read(process.stdin), title, sessionId }, gh);
   for (const refusal of refusals) console.error(refusal);
   if (said !== "") console.log(said);

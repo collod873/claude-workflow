@@ -5,7 +5,9 @@ import { execute, scratch, script, type Run } from "./scenarios.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
 const CHECK = readFileSync(join(REPO, "bin", "check"), "utf8");
-const UNUSED = (CHECK.match(/^run unused (.+)$/m) as RegExpMatchArray)[1].split(" ");
+const UNUSED_LINE = /^run unused (.+)$/m.exec(CHECK)?.[1];
+if (UNUSED_LINE === undefined) throw new Error("no `run unused` line in bin/check");
+const [UNUSED_COMMAND, ...UNUSED_ARGS] = UNUSED_LINE.split(" ");
 const PLANTED = ["reached", "lonely"];
 
 function planted(registry: string[]): string {
@@ -25,7 +27,8 @@ function planted(registry: string[]): string {
 }
 
 function unused(root: string): Run {
-  return execute(UNUSED[0], root, { PATH: `${join(REPO, "node_modules", ".bin")}:${process.env.PATH ?? ""}` }, UNUSED.slice(1));
+  if (UNUSED_COMMAND === undefined) throw new Error("no command on the `run unused` line in bin/check");
+  return execute(UNUSED_COMMAND, root, { PATH: `${join(REPO, "node_modules", ".bin")}:${process.env.PATH ?? ""}` }, UNUSED_ARGS);
 }
 
 describe("knip counts its entries from the registered parts, not from the tests (#710)", () => {

@@ -129,7 +129,8 @@ function calledOwner(ticket: string, why: string): number {
 
 function closedUnbuilt(ticket: string, said: string): number {
   const posted = commentOnTicket(ticket, said, gh);
-  if (posted.refusals.length > 0) return calledOwner(ticket, `its closing reason was refused: ${quoted(posted.refusals[0])}`);
+  const [refusal] = posted.refusals;
+  if (refusal !== undefined) return calledOwner(ticket, `its closing reason was refused: ${quoted(refusal)}`);
   if (gh(["issue", "close", ticket, "--reason", "not planned"]).status !== 0) return calledOwner(ticket, "it ruled the ticket closed and the ticket would not close");
   gh(["issue", "edit", ticket, "--remove-label", "fixing"]);
   gh(["pr", "close", `ticket/${ticket}`]);
@@ -185,7 +186,8 @@ function split(ticket: string, body: string, answer: Answer): Round {
 function rewritten(ticket: string, body: string, answer: Answer): Round {
   if (answer.body === undefined || answer.body.trim() === body.trim()) return {};
   const written = rewriteTicket(ticket, body, answer.body, gh);
-  if (written.refusals.length > 0) return { red: `Your rewrite of the ticket was refused: ${quoted(written.refusals[0])}` };
+  const [refusal] = written.refusals;
+  if (refusal !== undefined) return { red: `Your rewrite of the ticket was refused: ${quoted(refusal)}` };
   commentOnTicket(ticket, `The fixer rewrote the criteria of #${ticket}: ${answer.reason}`, gh);
   return { body: answer.body };
 }
@@ -239,7 +241,7 @@ function checkingAgain(ticket: string, run: string | undefined): number {
   if (ran.startsWith(`Check ${head()} `)) {
     if (ran !== `Check ${head()} 1`) return calledOwner(ticket, "its red Check already reran once, and it is green here unchanged");
     const again = gh(["run", "rerun", String(run), "--failed"]);
-    if (again.status !== 0) return calledOwner(ticket, `it is green unchanged and the rerun of its red Check was refused: ${quoted((again.stderr || again.stdout).trim().split("\n")[0])}`);
+    if (again.status !== 0) return calledOwner(ticket, `it is green unchanged and the rerun of its red Check was refused: ${quoted((again.stderr || again.stdout).trim().split("\n")[0] ?? "")}`);
   }
   mark(ticket, "3-checking");
   console.log(`fix: #${ticket} is green and pushed, so its PR checks run again`);
@@ -289,5 +291,6 @@ function ownRedTicket(ticket: string, run: string | undefined): number {
 
 if (import.meta.main) {
   const [ticket, run] = process.argv.slice(2);
+  if (ticket === undefined) throw new Error("no ticket number in the arguments");
   process.exit(ownRedTicket(ticket, run));
 }

@@ -25,12 +25,18 @@ const RETRIES_ONCE_THEN_BUILDS = [
   "",
 ].join("\n");
 
-const after = (argv: string, flag: string) => argv.split("\n")[argv.split("\n").indexOf(flag) + 1];
+function after(argv: string, flag: string): string {
+  const value = argv.split("\n")[argv.split("\n").indexOf(flag) + 1];
+  if (value === undefined) throw new Error(`no value after ${flag} in the argv`);
+  return value;
+}
 
 function fenceSays(argv: string, input: string) {
   const { hooks } = JSON.parse(after(argv, "--settings")) as { hooks: { PreToolUse: { matcher: string; hooks: { command: string }[] }[] } };
   const [bash] = hooks.PreToolUse.filter(({ matcher }) => matcher === "Bash");
-  return spawnSync("bash", ["-c", bash.hooks[0].command], { input, encoding: "utf8" });
+  const command = bash?.hooks[0]?.command;
+  if (command === undefined) throw new Error("no Bash hook command in --settings");
+  return spawnSync("bash", ["-c", command], { input, encoding: "utf8" });
 }
 
 const asking = (command: unknown) => JSON.stringify({ tool_name: "Bash", tool_input: { command } });
@@ -192,7 +198,7 @@ describe("the builder builds against the brief, and every red is handed back to 
     expect(Date.now() - started).toBeLessThan(15000);
     expect(result.stderr).toContain("ran past its 0.03 minute cap");
     const child = readFileSync(join(session, "..", "child"), "utf8");
-    const state = existsSync(`/proc/${child}/stat`) ? readFileSync(`/proc/${child}/stat`, "utf8").split(") ")[1][0] : "gone";
+    const state = existsSync(`/proc/${child}/stat`) ? readFileSync(`/proc/${child}/stat`, "utf8").split(") ")[1]?.[0] : "gone";
     expect(["gone", "Z"]).toContain(state);
   });
 

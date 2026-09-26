@@ -101,7 +101,8 @@ export function shrunk(prompts: Prompt[], ceilings: Record<string, number>): Rec
   const paid = { ...ceilings };
   for (const prompt of prompts) {
     const bytes = ownWords(prompt);
-    if (paid[prompt.name] !== undefined && bytes < paid[prompt.name]) paid[prompt.name] = bytes;
+    const ceiling = paid[prompt.name];
+    if (ceiling !== undefined && bytes < ceiling) paid[prompt.name] = bytes;
   }
   return paid;
 }

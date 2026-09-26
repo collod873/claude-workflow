@@ -16,10 +16,16 @@ const FEWEST = 1;
 const MOST = 3;
 const QUOTE = 80;
 
+export function matchEnd(found: RegExpMatchArray): number {
+  const [whole] = found;
+  if (whole === undefined || found.index === undefined) throw new Error("no whole match or index in a regex match");
+  return found.index + whole.length;
+}
+
 function section(body: string, heading: RegExp): string {
   const found = heading.exec(body);
   if (found === null) return "";
-  const rest = body.slice(found.index + found[0].length);
+  const rest = body.slice(matchEnd(found));
   const next = NEXT_HEADING.exec(rest);
   return next === null ? rest : rest.slice(0, next.index);
 }
@@ -56,7 +62,7 @@ export const acceptance = (body: string): string => section(body.replaceAll(/\r\
 function outsideCriteria(body: string): string {
   const text = body.replaceAll(/\r\n?/g, "\n");
   const found = CRITERIA.exec(text);
-  const start = found === null ? text.length : found.index + found[0].length;
+  const start = found === null ? text.length : matchEnd(found);
   const next = NEXT_HEADING.exec(text.slice(start));
   return `${text.slice(0, start)}${next === null ? "" : text.slice(start + next.index)}`
     .split("\n")

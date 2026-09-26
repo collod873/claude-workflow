@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { text } from "node:stream/consumers";
-import { checks, quoted } from "./ticket-shape.ts";
+import { checks, matchEnd, quoted } from "./ticket-shape.ts";
 
 const VITEST_RUN = /^npx vitest run\b/;
 const TOKEN = /"([^"]*)"|'([^']*)'|(\S+)/g;
@@ -15,7 +15,13 @@ const CALLED_NAME = /\b([A-Za-z_$][\w$]*)\s*\(/g;
 const SCENARIOS_SOURCE = readFileSync(join(import.meta.dirname, "scenarios.ts"), "utf8");
 const SCENARIOS_TOP_LEVEL = topLevelNames(SCENARIOS_SOURCE);
 
-const OPEN_TO_CLOSE: Record<string, string> = { "(": ")", "{": "}", "[": "]" };
+const OPEN_TO_CLOSE: Record<"(" | "{" | "[", string> = { "(": ")", "{": "}", "[": "]" };
+
+function captured(match: RegExpMatchArray, index: number, what: string): string {
+  const value = match[index];
+  if (value === undefined) throw new Error(`no ${what} in ${JSON.stringify(match[0])}`);
+  return value;
+}
 
 function skipString(source: string, quoteIndex: number): number {
   const quote = source[quoteIndex];
@@ -50,7 +56,9 @@ function skipTrivial(source: string, i: number): number | undefined {
 }
 
 function skipBalanced(source: string, openIndex: number): number {
-  const stack: string[] = [OPEN_TO_CLOSE[source[openIndex]]];
+  const open = source[openIndex];
+  if (open !== "(" && open !== "{" && open !== "[") throw new Error(`no opening bracket at index ${openIndex} of the source`);
+  const stack: string[] = [OPEN_TO_CLOSE[open]];
   let i = openIndex + 1;
   while (i < source.length && stack.length > 0) {
     const trivial = skipTrivial(source, i);
@@ -90,21 +98,21 @@ function endOfStatement(source: string, from: number): number {
 
 function topLevelNames(source: string): Set<string> {
   const names = new Set<string>();
-  for (const [, name] of source.matchAll(TOP_LEVEL_FUNCTION)) names.add(name);
-  for (const [, name] of source.matchAll(TOP_LEVEL_CONST)) names.add(name);
+  for (const match of source.matchAll(TOP_LEVEL_FUNCTION)) names.add(captured(match, 1, "function name"));
+  for (const match of source.matchAll(TOP_LEVEL_CONST)) names.add(captured(match, 1, "const name"));
   return names;
 }
 
 function topLevelDeclaration(source: string, name: string): string | undefined {
   const fn = new RegExp(`^(?:export\\s+)?(?:async\\s+)?function\\s+${name}\\s*\\(`, "m").exec(source);
   if (fn !== null) {
-    const parenEnd = skipBalanced(source, fn.index + fn[0].length - 1);
+    const parenEnd = skipBalanced(source, matchEnd(fn) - 1);
     const braceStart = source.indexOf("{", parenEnd);
     return source.slice(fn.index, skipBalanced(source, braceStart));
   }
   const cst = new RegExp(`^(?:export\\s+)?const\\s+${name}\\b`, "m").exec(source);
   if (cst !== null) {
-    const eq = source.indexOf("=", cst.index + cst[0].length);
+    const eq = source.indexOf("=", matchEnd(cst));
     if (eq === -1) return undefined;
     return source.slice(cst.index, endOfStatement(source, eq + 1));
   }
@@ -112,7 +120,7 @@ function topLevelDeclaration(source: string, name: string): string | undefined {
 }
 
 function calledNames(source: string): Set<string> {
-  return new Set([...source.matchAll(CALLED_NAME)].map(([, name]) => name));
+  return new Set([...source.matchAll(CALLED_NAME)].map((match) => captured(match, 1, "called name")));
 }
 
 function reachableText(source: string, seed: string, declared: Set<string>): string {
@@ -136,20 +144,23 @@ function reachableText(source: string, seed: string, declared: Set<string>): str
 
 function fileImports(source: string): Map<string, string> {
   const map = new Map<string, string>();
-  for (const [, names, specifier] of source.matchAll(NAMED_IMPORT)) {
-    for (const part of names.split(",")) {
+  for (const match of source.matchAll(NAMED_IMPORT)) {
+    const specifier = captured(match, 2, "import specifier");
+    for (const part of captured(match, 1, "imported names").split(",")) {
       const trimmed = part.trim();
       if (trimmed === "") continue;
-      map.set(trimmed.split(/\s+as\s+/).pop()!.trim(), specifier);
+      const local = trimmed.split(/\s+as\s+/).at(-1);
+      if (local === undefined) throw new Error(`no local name in import ${JSON.stringify(trimmed)}`);
+      map.set(local.trim(), specifier);
     }
   }
-  for (const [, name, specifier] of source.matchAll(DEFAULT_IMPORT)) map.set(name, specifier);
+  for (const match of source.matchAll(DEFAULT_IMPORT)) map.set(captured(match, 1, "default import name"), captured(match, 2, "import specifier"));
   return map;
 }
 
 function firstStringArg(source: string, from: number): string {
   let i = from;
-  while (i < source.length && /\s/.test(source[i])) i += 1;
+  while (i < source.length && /\s/.test(source[i] ?? "")) i += 1;
   const quote = source[i];
   if (quote === "`") return source.slice(i + 1, skipTemplate(source, i) - 1);
   if (quote !== '"' && quote !== "'") return "";
@@ -165,9 +176,9 @@ interface TestNode {
 function testsInFile(source: string): TestNode[] {
   const calls: { kind: string; title: string; start: number; end: number; bodyStart: number }[] = [];
   for (const match of source.matchAll(CALL_SITE)) {
-    const openParen = match.index + match[0].length - 1;
+    const openParen = matchEnd(match) - 1;
     const end = skipBalanced(source, openParen);
-    calls.push({ kind: match[1], title: firstStringArg(source, openParen + 1), start: match.index, end, bodyStart: openParen });
+    calls.push({ kind: captured(match, 1, "call kind"), title: firstStringArg(source, openParen + 1), start: match.index, end, bodyStart: openParen });
   }
   return calls
     .filter((call) => call.kind === "it" || call.kind === "test")
@@ -211,11 +222,12 @@ interface Selection {
 
 function selection(command: string): Selection | undefined {
   if (!VITEST_RUN.test(command.trim())) return undefined;
-  const tokens = [...command.matchAll(TOKEN)].map(([, dq, sq, bare]) => dq ?? sq ?? bare);
+  const tokens = [...command.matchAll(TOKEN)].map((match) => match[1] ?? match[2] ?? captured(match, 3, "command token"));
   const filters: string[] = [];
   let patternText: string | undefined;
   for (let i = 0; i < tokens.length; i += 1) {
     const token = tokens[i];
+    if (token === undefined) throw new Error(`no token at position ${i} of ${JSON.stringify(command)}`);
     if (token === "npx" || token === "vitest" || token === "run") continue;
     if (token === "--config") {
       i += 1;
@@ -237,7 +249,7 @@ function selectedTests(sel: Selection, files: FileInfo[]): { file: FileInfo; tes
 
 function spawnsBinOrSrc(text: string): boolean {
   for (const match of text.matchAll(SPAWN_SITE)) {
-    const openParen = match.index + match[0].length - 1;
+    const openParen = matchEnd(match) - 1;
     const args = text.slice(openParen, skipBalanced(text, openParen));
     if (/\b(?:BIN|SRC)\b/.test(args)) return true;
   }
