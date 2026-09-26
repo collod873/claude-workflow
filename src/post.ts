@@ -96,18 +96,24 @@ export function rewriteTicket(ticket: string, read: string, rewrite: string, gh:
   return refused.length > 0 ? { refusals: refused, said: "" } : written(gh, ["issue", "edit", ticket, "--body", rewrite]);
 }
 
-export function post(posting: Posting, gh: Gh): { refusals: string[]; said: string } {
+function prepared(posting: Posting): { refusals: string[]; args: string[] } {
   const { kind, sessionId } = posting;
   const shape = KINDS[kind];
-  if (shape === undefined) return { refusals: [`${kind} is not a kind src/post.ts writes: ${Object.keys(KINDS).join(", ")}`], said: "" };
+  if (shape === undefined) return { refusals: [`${kind} is not a kind src/post.ts writes: ${Object.keys(KINDS).join(", ")}`], args: [] };
   const on = posting[shape.on];
-  if (on === undefined) return { refusals: [`a ${kind} carries no ${shape.on}`], said: "" };
+  if (on === undefined) return { refusals: [`a ${kind} carries no ${shape.on}`], args: [] };
   const text = shape.on === "title" && sessionId ? stampedWithSession(posting.text, sessionId) : posting.text;
   const refused = shape.refuses(text);
-  if (refused.length > 0) return { refusals: refused, said: "" };
+  if (refused.length > 0) return { refusals: refused, args: [] };
   const overCap = shape.briefed === true ? brief({ ticket: on, body: text, tests: [], read: onDisk }).refusals : [];
-  if (overCap.length > 0) return { refusals: overCap, said: "" };
-  return written(gh, shape.args(on, text));
+  return { refusals: overCap, args: shape.args(on, text) };
+}
+
+export const postRefusals = (posting: Posting): string[] => prepared(posting).refusals;
+
+export function post(posting: Posting, gh: Gh): { refusals: string[]; said: string } {
+  const { refusals, args } = prepared(posting);
+  return refusals.length > 0 ? { refusals, said: "" } : written(gh, args);
 }
 
 if (import.meta.main) {

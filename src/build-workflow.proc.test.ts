@@ -97,6 +97,19 @@ describe("build.yml builds a ticket the moment it is filed (#826)", () => {
     expect(holds(job.if ?? "true", { sender: "collod873-machine[bot]", body: followUp, labels: ["note"] })).toBe(false);
   });
 
+  it("a ticket split by its fixer builds what waited once `waiting` comes off, and no other label change starts a build (#910)", () => {
+    const { on, job } = workflow();
+    const starts = (sender: string, label: string) => holds(job.if ?? "true", { sender, action: "unlabeled", label, body: "## Why\n\nThe owner's own words.\n" });
+
+    expect(on.issues?.types).toContain("unlabeled");
+    expect(starts("collod873-machine[bot]", "waiting")).toBe(true);
+    expect(starts("collod873", "waiting")).toBe(true);
+    expect(starts("collod873-machine[bot]", "fixing")).toBe(false);
+    expect(starts("collod873", "needs-human")).toBe(false);
+    expect(starts("stranger", "waiting")).toBe(false);
+    expect(holds(job.if ?? "true", { sender: "collod873-machine[bot]", action: "unlabeled", label: "waiting", labels: ["note"] })).toBe(false);
+  });
+
   it("the branch is saved when the build ends red and nothing runs after a start refusal", () => {
     const { job } = workflow();
 

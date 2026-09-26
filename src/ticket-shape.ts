@@ -65,8 +65,11 @@ function outsideCriteria(body: string): string {
     .join("\n");
 }
 
+export const whyChanged = (read: string, written: string): string[] => (why(written) === why(read) ? [] : ["the rewrite changes '## Why', the owner's words, which stay byte-identical"]);
+
 export function rewriteRefusals(read: string, written: string): string[] {
-  if (why(written) !== why(read)) return ["the rewrite changes '## Why', the owner's words, which stay byte-identical"];
+  const changed = whyChanged(read, written);
+  if (changed.length > 0) return changed;
   if (outsideCriteria(written) !== outsideCriteria(read)) return ["the rewrite changes more than '## Acceptance criteria'"];
   return ticketRefusals(written);
 }

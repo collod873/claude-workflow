@@ -3,14 +3,14 @@ run-name: "Build ticket/${{ github.event.issue.number }}: ${{ github.event.issue
 
 "on":
   issues:
-    types: [opened, reopened]
+    types: [opened, reopened, unlabeled]
 
 permissions:
   contents: read
 
 jobs:
   build:
-    if: "${{ (github.event.sender.login == github.repository_owner || (github.event.sender.login == 'collod873-machine[bot]' && contains(github.event.issue.body, 'Follow-up of #'))) && !contains(github.event.issue.labels.*.name, 'note') }}"
+    if: "${{ (github.event.action != 'unlabeled' || github.event.label.name == 'waiting') && (github.event.sender.login == github.repository_owner || (github.event.sender.login == 'collod873-machine[bot]' && (github.event.action == 'unlabeled' || contains(github.event.issue.body, 'Follow-up of #')))) && !contains(github.event.issue.labels.*.name, 'note') }}"
     runs-on: ubuntu-latest
     timeout-minutes: 110
     permissions:

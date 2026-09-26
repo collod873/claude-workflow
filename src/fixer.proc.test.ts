@@ -111,18 +111,82 @@ describe("the fixer owns a red ticket until it merges (#898)", () => {
     expect(written.saved()).toEqual(["811"]);
   });
 
-  it("closes the ticket and its PR unbuilt with the reason, keeping the branch, and runs no check", () => {
+  it("closes the ticket and its PR unbuilt with the reason, calling the owner by name, keeping the branch, and runs no check", () => {
     const reason = "the ticket asks for a stage the ruling has since dropped";
-    const { run, closes, ticketComments, saved, handed } = fixing({ answer: { outcome: "close", reason }, check: "touch ../checked\nexit 1\n" });
+    const { run, closes, ticketComments, labelled, saved, handed } = fixing({ answer: { outcome: "close", reason }, check: "touch ../checked\nexit 1\n" });
 
     expect(run().status).toBe(0);
     expect(closes()).toEqual([
       ["issue", "close", "811", "--reason", "not planned"],
       ["pr", "close", "ticket/811"],
     ]);
-    expect(ticketComments().at(-1)).toContain(reason);
+    expect(ticketComments().at(-1)).toMatch(new RegExp(`^@collod873 .*${reason}`));
+    expect(labelled()).toContain("811 --remove-label fixing");
     expect(saved()).toEqual([]);
     expect(handed()).toHaveLength(1);
+  });
+
+  it("splits a ticket too big for one build into follow-up tickets that build themselves, and parks what must wait under `waiting`, where #910 was closed in silence", () => {
+    const { body } = fixing();
+    const waits = body.replace("The fixer clears a red ticket", "The fixer turns the flag on once its pieces merge").replace("- src/ticket-shape.ts", "- tsconfig.json");
+    const reason = "the claimed files come to more than one brief holds";
+    const tickets = [
+      { title: "Handle the misses in the shape rules", why: "The shape rules refuse a missing read by name.", criteria: ["Shape reads refuse by name - check: `npx vitest run --config vitest.config.ts ticket-shape`"], claimed: ["src/ticket-shape.ts"] },
+      { title: "Handle the misses in the post door", why: "The post door refuses a missing read by name.", criteria: ["Post reads refuse by name - check: `npx vitest run --config vitest.config.ts post`"], claimed: ["src/post.ts"] },
+    ];
+    const { run, filed, edits, labelled, closes, ticketComments, saved, handed } = fixing({ answer: { outcome: "split", reason, tickets, body: waits }, check: "touch ../checked\nexit 1\n" });
+
+    expect(run().status).toBe(0);
+    expect(filed()).toHaveLength(2);
+    for (const [at, piece] of filed().entries()) {
+      expect(piece).toMatch(/^## Why\n\nFollow-up of #811: its fixer split it/);
+      expect(piece).toContain(`> ${tickets[at].why}`);
+      expect(piece).toContain("> The owner, in session: \"a red ticket stays with its fixer until it merges, never the owner\".");
+      expect(piece).toContain(`- ${tickets[at].claimed[0]}`);
+    }
+    expect(edits()).toEqual([waits]);
+    expect(ticketComments().at(-1)).toMatch(new RegExp(`^@collod873 the fixer split #811 into #901, #902, which build themselves\\..*${reason}`));
+    expect(labelled()).toContain("811 --add-label waiting --remove-label fixing");
+    expect(closes()).toEqual([["pr", "close", "ticket/811", "--delete-branch"]]);
+    expect(saved()).toEqual([]);
+    expect(handed()).toHaveLength(1);
+  });
+
+  it("closes a split ticket with nothing left to wait, once its follow-ups are filed", () => {
+    const tickets = [{ title: "Handle the misses in the shape rules", why: "The shape rules refuse a missing read by name.", criteria: ["Shape reads refuse by name - check: `npx vitest run --config vitest.config.ts ticket-shape`"], claimed: ["src/ticket-shape.ts"] }];
+    const { run, filed, closes, ticketComments } = fixing({ answer: { outcome: "split", reason: "one piece holds all of it", tickets } });
+
+    expect(run().status).toBe(0);
+    expect(filed()).toHaveLength(1);
+    expect(ticketComments().at(-1)).toMatch(/^@collod873 the fixer split #811 into #901, which build themselves, and closed it/);
+    expect(closes()).toEqual([
+      ["issue", "close", "811", "--reason", "not planned"],
+      ["pr", "close", "ticket/811"],
+    ]);
+  });
+
+  it("files nothing and hands the split back when two follow-ups claim one file, or a follow-up would not fit one brief", () => {
+    const piece = { title: "Handle the misses", why: "The rules refuse a missing read by name.", criteria: ["Reads refuse by name - check: `npx vitest run --config vitest.config.ts ticket-shape`"], claimed: ["src/ticket-shape.ts"] };
+    const overlapping = fixing({ answer: { outcome: "split", reason: "two halves", tickets: [piece, { ...piece, title: "The other half" }] } });
+    const unshaped = fixing({ answer: { outcome: "split", reason: "no criteria", tickets: [{ ...piece, criteria: [] }] } });
+
+    expect(overlapping.run().status).toBe(1);
+    expect(overlapping.filed()).toEqual([]);
+    expect(overlapping.handed()[1]).toContain("`src/ticket-shape.ts` is claimed by more than one ticket");
+    expect(unshaped.run().status).toBe(1);
+    expect(unshaped.filed()).toEqual([]);
+    expect(unshaped.handed()[1]).toContain("Handle the misses: '## Acceptance criteria' carries 0");
+  });
+
+  it("will not split a follow-up again, so a chain of splits stops at one generation", () => {
+    const { body } = fixing();
+    const followUp = body.replace("The owner, in session:", "Follow-up of #700: its fixer split it, since it does not fit one build.\n\n>");
+    const piece = { title: "Handle the misses", why: "The rules refuse a missing read by name.", criteria: ["Reads refuse by name - check: `npx vitest run --config vitest.config.ts ticket-shape`"], claimed: ["src/ticket-shape.ts"] };
+    const { run, filed, handed } = fixing({ body: followUp, answer: { outcome: "split", reason: "still too big", tickets: [piece] } });
+
+    expect(run().status).toBe(1);
+    expect(filed()).toEqual([]);
+    expect(handed()[1]).toContain("itself a follow-up, so it is not split again");
   });
 
   it("merges a machine fix it landed on main into the ticket, tells the owner, and pushes once green", () => {

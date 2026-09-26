@@ -55,11 +55,24 @@ export function holds(
     cancelled = false,
     sender = OWNER,
     body = "",
-  }: { labels?: string[]; steps?: Record<string, StepOutcome>; needs?: Record<string, { result: string }>; failed?: boolean; cancelled?: boolean; sender?: string; body?: string },
+    action = "opened",
+    label = "",
+  }: {
+    labels?: string[];
+    steps?: Record<string, StepOutcome>;
+    needs?: Record<string, { result: string }>;
+    failed?: boolean;
+    cancelled?: boolean;
+    sender?: string;
+    body?: string;
+    action?: string;
+    label?: string;
+  },
 ): boolean {
   const bare = condition.replace(/^\s*\$\{\{|\}\}\s*$/g, "");
   const source = (/\b(success|failure|always|cancelled)\(\)/.test(bare) ? bare : `success() && (${bare})`)
-    .replace(/github\.event\.action/g, "'opened'")
+    .replace(/github\.event\.action/g, JSON.stringify(action))
+    .replace(/github\.event\.label\.name/g, JSON.stringify(label))
     .replace(/github\.event\.sender\.login/g, JSON.stringify(sender))
     .replace(/contains\(\s*github\.event\.issue\.body\s*,\s*('[^']*')\s*\)/g, `${JSON.stringify(body)}.includes($1)`)
     .replace(/github\.repository_owner/g, JSON.stringify(OWNER))
@@ -630,6 +643,7 @@ export function closing({
   timing = FAST_TIMING,
   closedAs,
   behindPrs = [] as { number: string; ticket: string; branch?: string; refused?: string }[],
+  splitFrom,
 }: {
   ticket?: string;
   ticketBody?: string;
@@ -638,6 +652,7 @@ export function closing({
   timing?: { filed: string; firstCommit: string; rebased?: string; prOpened: string; checksGreen: string; merged: string };
   closedAs?: "COMPLETED" | "NOT_PLANNED";
   behindPrs?: { number: string; ticket: string; branch?: string; refused?: string }[];
+  splitFrom?: { parent: string; labels: string; said: string; siblings: Record<string, string> };
 } = {}) {
   const root = scratch("closer-");
   const session = join(root, "session");
@@ -665,6 +680,13 @@ export function closing({
       `printf '%s\\n' "$@" >"${callsDir}/$n"`,
       `printf '%s' "$GH_TOKEN" >"${tokensDir}/$n"`,
       'case "$*" in',
+      ...(splitFrom === undefined
+        ? []
+        : [
+            `  *"issue view ${splitFrom.parent} "*"labels"*) printf '${splitFrom.labels}' ;;`,
+            `  *"api"*"issues/${splitFrom.parent}/comments"*) cat <<'SAID'\n${JSON.stringify({ author: MACHINE, type: "Bot", body: splitFrom.said })}\nSAID\n    ;;`,
+            ...Object.entries(splitFrom.siblings).map(([sibling, state]) => `  *"issue view ${sibling} "*"state"*) printf '%s\\n' '${state}' ;;`),
+          ]),
       `  *"issue view"*"createdAt"*) printf '%s\\n' '${timing.filed}' ;;`,
       `  *"issue view"*"state"*) printf '%s\\n' '${closedAs === undefined ? "OPEN REOPENED" : `CLOSED ${closedAs}`}' ;;`,
       "  *\"issue view\"*)",
@@ -797,7 +819,7 @@ export const FIXER_SESSION = "sess-fix";
 
 export function fixing({
   body = FIXED_TICKET,
-  answer = { outcome: "code", reason: "the export was never renamed" } as { outcome: string; reason: string; body?: string },
+  answer = { outcome: "code", reason: "the export was never renamed" } as { outcome: string; reason: string; body?: string; tickets?: unknown[] },
   onPr = [] as Said[] | undefined,
   logged = {} as Record<string, string>,
   leftover = {} as Record<string, string>,
@@ -843,6 +865,7 @@ export function fixing({
       setup,
       'case "$*" in',
       `  *"api"*"issues/9811/comments"*) cat "${join(root, "on-pr.json")}" ;;`,
+      `  *"issue create"*) n=$(( $(cat "${join(root, "created")}" 2>/dev/null || echo 900) + 1 )); printf '%s\\n' "$n" >"${join(root, "created")}"; printf 'https://github.com/collod873/claude-workflow/issues/%s\\n' "$n" ;;`,
       `  *"issue view"*) cat "${join(root, "ticket.md")}" ;;`,
       `  *"pr view"*"number"*) ${onPr === undefined ? "exit 1" : "printf '9811\\n'"} ;;`,
       `  *"run view"*"--json"*) printf '%s %s %s\\n' '${ranAs}' '${redAt}' '${attempt}' ;;`,
@@ -870,7 +893,9 @@ export function fixing({
     saved: () => listed(saves),
     calls,
     ticketComments: () => calls().filter((args) => args[0] === "issue" && args[1] === "comment").map(bodyOf),
-    edits: () => calls().filter((args) => args[0] === "issue" && args[1] === "edit").map(bodyOf),
+    edits: () => calls().filter((args) => args[0] === "issue" && args[1] === "edit" && args.includes("--body")).map(bodyOf),
+    labelled: () => calls().filter((args) => args[0] === "issue" && args[1] === "edit" && !args.includes("--body")).map((args) => args.slice(2).join(" ")),
+    filed: () => calls().filter((args) => args[0] === "issue" && args[1] === "create").map(bodyOf),
     closes: () => calls().filter((args) => (args[0] === "issue" || args[0] === "pr") && args[1] === "close"),
     reruns: () => calls().filter((args) => args[0] === "run" && args[1] === "rerun"),
     keptSession: () => readFileSync(join(home, ".claude", "fixer", "811"), "utf8").trim(),
