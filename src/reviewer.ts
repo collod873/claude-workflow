@@ -98,7 +98,7 @@ export function handedOn(body: string, diff: string, after?: AfterTurn): string 
           "Each `later` item becomes its own ticket: the `gap` in one sentence, a `title`, 1 to 3 `criteria` each ending ` - check: `<command>`` with one a vitest run of a test not yet written, and the files it `claimed`.",
         ];
   return [
-    "Review a pull request built for a ticket against the owner's `## Why` and the acceptance criteria. Change nothing; read the repo only where the diff leaves a question.",
+    "Review a ticket's pull request against the owner's `## Why` and acceptance criteria. Change nothing. `bin/check`, typecheck and all, is green; read the repo only where the diff leaves a question.",
     "## Why",
     capped(why(body), TICKET_CAP),
     "## Acceptance criteria",
@@ -107,7 +107,7 @@ export function handedOn(body: string, diff: string, after?: AfterTurn): string 
     handedDiff(diff, claims(body)),
     ...turn,
     "## Your verdict",
-    "`match` if the diff builds what the Why means. `drift` if it builds less, more or something else. Name every gap you find in this one pass, not only the first, each one sentence a fixer can act on.",
+    "`match` if the diff builds what the Why means. `drift` if it builds less, more or something else. Name every gap in this one pass, each one sentence a fixer can act on.",
     ...sorted,
     "",
   ].join("\n\n");
