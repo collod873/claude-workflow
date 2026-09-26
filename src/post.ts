@@ -118,7 +118,8 @@ export function post(posting: Posting, gh: Gh): { refusals: string[]; said: stri
 
 if (import.meta.main) {
   const [kind, title, sessionId] = process.argv.slice(2);
-  const { refusals, said } = post({ kind: kind ?? "", text: await read(process.stdin), title, sessionId }, gh);
+  if (kind === undefined) throw new Error("no kind of posting in the arguments to post");
+  const { refusals, said } = post({ kind, text: await read(process.stdin), title, sessionId }, gh);
   for (const refusal of refusals) console.error(refusal);
   if (said !== "") console.log(said);
   process.exit(refusals.length > 0 ? 1 : 0);
