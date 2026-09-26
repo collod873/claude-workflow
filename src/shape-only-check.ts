@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { text } from "node:stream/consumers";
-import { checks, quoted } from "./ticket-shape.ts";
+import { checks, matchEnd, quoted } from "./ticket-shape.ts";
 
 const VITEST_RUN = /^npx vitest run\b/;
 const TOKEN = /"([^"]*)"|'([^']*)'|(\S+)/g;
@@ -106,13 +106,13 @@ function topLevelNames(source: string): Set<string> {
 function topLevelDeclaration(source: string, name: string): string | undefined {
   const fn = new RegExp(`^(?:export\\s+)?(?:async\\s+)?function\\s+${name}\\s*\\(`, "m").exec(source);
   if (fn !== null) {
-    const parenEnd = skipBalanced(source, fn.index + fn[0].length - 1);
+    const parenEnd = skipBalanced(source, matchEnd(fn) - 1);
     const braceStart = source.indexOf("{", parenEnd);
     return source.slice(fn.index, skipBalanced(source, braceStart));
   }
   const cst = new RegExp(`^(?:export\\s+)?const\\s+${name}\\b`, "m").exec(source);
   if (cst !== null) {
-    const eq = source.indexOf("=", cst.index + cst[0].length);
+    const eq = source.indexOf("=", matchEnd(cst));
     if (eq === -1) return undefined;
     return source.slice(cst.index, endOfStatement(source, eq + 1));
   }
@@ -176,7 +176,7 @@ interface TestNode {
 function testsInFile(source: string): TestNode[] {
   const calls: { kind: string; title: string; start: number; end: number; bodyStart: number }[] = [];
   for (const match of source.matchAll(CALL_SITE)) {
-    const openParen = match.index + match[0].length - 1;
+    const openParen = matchEnd(match) - 1;
     const end = skipBalanced(source, openParen);
     calls.push({ kind: captured(match, 1, "call kind"), title: firstStringArg(source, openParen + 1), start: match.index, end, bodyStart: openParen });
   }
@@ -249,7 +249,7 @@ function selectedTests(sel: Selection, files: FileInfo[]): { file: FileInfo; tes
 
 function spawnsBinOrSrc(text: string): boolean {
   for (const match of text.matchAll(SPAWN_SITE)) {
-    const openParen = match.index + match[0].length - 1;
+    const openParen = matchEnd(match) - 1;
     const args = text.slice(openParen, skipBalanced(text, openParen));
     if (/\b(?:BIN|SRC)\b/.test(args)) return true;
   }
