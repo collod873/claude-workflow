@@ -3,12 +3,16 @@ import { existsSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runCheck } from "./check-runner.ts";
-import { commentOnPr, commentOnTicket } from "./post.ts";
+import { splitInto, WAITING } from "./fixer.ts";
+import { commentOnPr, commentOnTicket, commentsOn } from "./post.ts";
 import { totalOutside } from "./reads-outside-brief.ts";
+import { FOLLOW_UP_OF } from "./reviewer.ts";
 import { exitFor, stoppedAt, type Stop } from "./stops.ts";
-import { checks, quoted } from "./ticket-shape.ts";
+import { checks, quoted, why } from "./ticket-shape.ts";
 
 const MERGED = /^Merge pull request #(\d+) from \S+?(?:\/ticket\/(\d+))?$/;
+const SPLIT_FROM = new RegExp(`^${FOLLOW_UP_OF}(\\d+): its fixer split it`, "m");
+const NAMED = /^(?:[ ,]*#\d+)+/;
 const BUILDS = /^Builds #(\d+)[ \t]*$/m;
 const STAGE_LABELS = "1-defining,2-building,3-checking,4-reviewing,5-merging,fixing,needs-human";
 const TICKET_BRANCH = /^ticket\/(\d+)$/;
@@ -172,6 +176,19 @@ function bringUpToDate(): void {
   }
 }
 
+function wokenFromSplit(ticket: string, body: string): string {
+  const parent = SPLIT_FROM.exec(why(body))?.[1];
+  if (parent === undefined) return "";
+  if (!(ghText(["issue", "view", parent, "--json", "labels", "--jq", ".labels[].name"]) ?? "").split("\n").includes(WAITING)) return "";
+  const split = commentsOn(parent, gh)?.find((said) => said.startsWith(splitInto(parent)));
+  const pieces = [...(NAMED.exec(split?.slice(splitInto(parent).length).trimStart() ?? "")?.[0] ?? "").matchAll(/#(\d+)/g)].map(([, number]) => number);
+  if (pieces.length === 0) return `; #${parent} waits, and no split record names what for`;
+  const open = pieces.filter((piece) => piece !== ticket && ticketState(piece) !== "CLOSED COMPLETED");
+  if (open.length > 0) return `; #${parent} still waits for ${open.map((piece) => `#${piece}`).join(", ")}`;
+  const woke = gh(["issue", "edit", parent, "--remove-label", WAITING]);
+  return woke.status === 0 ? `; #${parent} builds now, its split tickets all merged` : `; #${parent} could not be woken: ${quoted((woke.stderr || woke.stdout).trim().split("\n")[0] ?? "")}`;
+}
+
 function close(): Stop | undefined {
   const top = process.cwd();
   bringUpToDate();
@@ -194,7 +211,7 @@ function close(): Stop | undefined {
       if (state.startsWith("CLOSED")) quietGh(["issue", "reopen", ticket]);
       if (quietGh(["issue", "close", ticket, "--reason", "completed"]).status !== 0) return stoppedAt("unrecorded", `close: #${ticket} is done but could not be closed${recorded(posted.said)}`);
     }
-    console.log(`close: #${ticket} closed as completed, every check green on the merge commit${recorded(posted.said)}`);
+    console.log(`close: #${ticket} closed as completed, every check green on the merge commit${recorded(posted.said)}${wokenFromSplit(ticket, asked.stdout)}`);
     return undefined;
   }
   if (ticketState(ticket).startsWith("CLOSED")) gh(["issue", "reopen", ticket]);

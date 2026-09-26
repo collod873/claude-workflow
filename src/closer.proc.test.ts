@@ -171,3 +171,34 @@ describe("bin/close brings land PRs left behind by a merge up to date too, since
     expect(calls().some((call) => call.includes("\n906"))).toBe(false);
   });
 });
+
+describe("bin/close wakes a ticket its fixer split once every follow-up it split into has merged (#910)", () => {
+  const piece = (ticket: string) =>
+    ["## Why", "", "Follow-up of #811: its fixer split it, since it does not fit one build.", "", "> The shape rules refuse a missing read by name.", "", "## Acceptance criteria", "", "- [ ] The fix lands - check: `test -f built.txt`", "", "## Files claimed", "", `- src/built-${ticket}.ts`, ""].join("\n");
+  const said = "@collod873 the fixer split #811 into #812, #813, which build themselves. #811 keeps what must wait for them, labelled `waiting`, and builds once they all merge: see #889";
+  const woken = (calls: string[]) => calls.findIndex((call) => call.trimEnd() === "issue\nedit\n811\n--remove-label\nwaiting");
+
+  it("takes `waiting` off the split ticket, as the App so its build starts, when the last follow-up merges", () => {
+    const { calls, tokens, run } = closing({ ticket: "812", ticketBody: piece("812"), splitFrom: { parent: "811", labels: "waiting\n", said, siblings: { "813": "CLOSED COMPLETED" } } });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(woken(calls())).toBeGreaterThanOrEqual(0);
+    expect(tokens()[woken(calls())]).toBe("app");
+    expect(result.stdout).toContain("#811 builds now");
+  });
+
+  it("leaves the split ticket waiting while a follow-up is still open, and never wakes one that is not waiting", () => {
+    const early = closing({ ticket: "812", ticketBody: piece("812"), splitFrom: { parent: "811", labels: "waiting\n", said, siblings: { "813": "OPEN " } } });
+    const unparked = closing({ ticket: "812", ticketBody: piece("812"), splitFrom: { parent: "811", labels: "fixing\n", said, siblings: { "813": "CLOSED COMPLETED" } } });
+
+    const result = early.run();
+
+    expect(result.status).toBe(0);
+    expect(woken(early.calls())).toBe(-1);
+    expect(result.stdout).toContain("#811 still waits for #813");
+    expect(unparked.run().status).toBe(0);
+    expect(woken(unparked.calls())).toBe(-1);
+  });
+});

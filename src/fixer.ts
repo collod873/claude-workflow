@@ -5,27 +5,53 @@ import { dirname, join } from "node:path";
 import { capped, onDisk } from "./brief.ts";
 import { repaired, stillRed, TAIL_CAP, tailOf } from "./builder.ts";
 import { UNFENCED } from "./fence.ts";
-import { commentOnTicket, commentsOn, gh, git, OWNER, prNumber, rewriteTicket } from "./post.ts";
-import { earlierDrift, handedDiff, LIST_CAP, NO_EM_DASH, repairOf, TICKET_CAP } from "./reviewer.ts";
+import { commentOnTicket, commentsOn, gh, git, OWNER, post, postRefusals, prNumber, rewriteTicket } from "./post.ts";
+import { earlierDrift, FOLLOW_UP_OF, followUpBody, handedDiff, LIST_CAP, NO_EM_DASH, repairOf, TICKET_CAP } from "./reviewer.ts";
 import { hired, machineLogs, type Spent } from "./stage.ts";
-import { checks, claims, quoted } from "./ticket-shape.ts";
+import { checks, claims, quoted, why, whyChanged } from "./ticket-shape.ts";
 
 const ANSWER = {
   type: "object",
   properties: {
-    outcome: { enum: ["code", "ticket", "close", "machine"] },
+    outcome: { enum: ["code", "ticket", "split", "close", "machine"] },
     reason: { type: "string", pattern: NO_EM_DASH },
     body: { type: "string", pattern: NO_EM_DASH },
+    tickets: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          title: { type: "string", pattern: NO_EM_DASH },
+          why: { type: "string", pattern: NO_EM_DASH },
+          criteria: { type: "array", items: { type: "string", pattern: NO_EM_DASH } },
+          claimed: { type: "array", items: { type: "string", pattern: NO_EM_DASH } },
+        },
+        required: ["title", "why", "criteria", "claimed"],
+        additionalProperties: false,
+      },
+    },
   },
   required: ["outcome", "reason"],
   additionalProperties: false,
 };
 
+interface Piece {
+  title: string;
+  why: string;
+  criteria: string[];
+  claimed: string[];
+}
+
 interface Answer {
-  outcome: "code" | "ticket" | "close" | "machine";
+  outcome: "code" | "ticket" | "split" | "close" | "machine";
   reason: string;
   body?: string;
+  tickets?: Piece[];
 }
+
+export const WAITING = "waiting";
+export const splitInto = (ticket: string) => `@${OWNER} the fixer split #${ticket} into`;
+const FILED = /\/issues\/(\d+)\s*$/;
 
 interface Handed {
   ticket: string;
@@ -55,7 +81,8 @@ export function handedOn({ ticket, body, failed, diff, gaps }: Handed): string {
     "Every red on this ticket comes back to you until it merges. Read its Why first; `gh` reads any run. Answer one outcome:",
     "- `code`: fix it, or change nothing on a flake; the machine commits, runs `bin/check` and the ticket's checks, hands back red, pushes green or reruns the red Check.",
     "- `ticket`: a criterion or test is wrong; fix the test, or return the ticket as `body`, Why byte-identical.",
-    "- `close`: the ticket should not exist as written.",
+    "- `split`: too big for one build; file `tickets` that build at once, each 1 to 3 `criteria` ending ` - check: `<command>`` and `claimed` files no other claims. What must wait for them stays as `body`, Why byte-identical, and builds once they merge.",
+    "- `close`: the ticket should not exist as written, and nothing should replace it.",
     "- `machine`: the machine is at fault, reviewer included; fix it in a worktree off `origin/main`, commit naming this ticket, and `bin/land` it first.",
     "`reason`: one paragraph for the owner. Two rounds in a row that change nothing call them.",
     "",
@@ -100,13 +127,59 @@ function calledOwner(ticket: string, why: string): number {
   return 1;
 }
 
-function closedUnbuilt(ticket: string, reason: string): number {
-  const said = commentOnTicket(ticket, `The fixer closed #${ticket} unbuilt and kept its branch: ${reason}`, gh);
-  if (said.refusals.length > 0) return calledOwner(ticket, `its closing reason was refused: ${quoted(said.refusals[0])}`);
+function closedUnbuilt(ticket: string, said: string): number {
+  const posted = commentOnTicket(ticket, said, gh);
+  if (posted.refusals.length > 0) return calledOwner(ticket, `its closing reason was refused: ${quoted(posted.refusals[0])}`);
   if (gh(["issue", "close", ticket, "--reason", "not planned"]).status !== 0) return calledOwner(ticket, "it ruled the ticket closed and the ticket would not close");
+  gh(["issue", "edit", ticket, "--remove-label", "fixing"]);
   gh(["pr", "close", `ticket/${ticket}`]);
-  console.log(`fix: #${ticket} closed unbuilt: ${reason}`);
+  console.log(`fix: #${ticket} closed unbuilt: ${said}`);
   return 0;
+}
+
+const pieceBody = (ticket: string, parentWhy: string, { why: piece, criteria, claimed }: Piece): string =>
+  followUpBody(
+    [
+      `${FOLLOW_UP_OF}${ticket}: its fixer split it, since it does not fit one build.`,
+      "",
+      `> ${piece}`,
+      "",
+      `The Why of #${ticket}, of which this builds only the part above:`,
+      "",
+      ...parentWhy.split("\n").map((line) => `> ${line}`.trimEnd()),
+    ],
+    criteria,
+    claimed,
+  );
+
+function splitRefusals(body: string, answer: Answer, postings: { title: string; text: string }[]): string[] {
+  if (why(body).includes(FOLLOW_UP_OF)) return ["this ticket is itself a follow-up, so it is not split again"];
+  if (postings.length === 0) return ["a split files at least one ticket in `tickets`"];
+  const claimed = (answer.tickets ?? []).flatMap((piece) => piece.claimed);
+  const twice = [...new Set(claimed.filter((path, at) => claimed.indexOf(path) !== at))];
+  return [
+    ...twice.map((path) => `\`${path}\` is claimed by more than one ticket, and they build at once`),
+    ...(answer.body === undefined ? [] : [...whyChanged(body, answer.body), ...postRefusals({ kind: "ticket", title: "what waits", text: answer.body })].map((refusal) => `the ticket's rewrite: ${refusal}`)),
+    ...postings.flatMap((posting) => postRefusals({ kind: "ticket", ...posting }).map((refusal) => `${posting.title}: ${refusal}`)),
+  ];
+}
+
+function split(ticket: string, body: string, answer: Answer): Round {
+  const postings = (answer.tickets ?? []).map((piece) => ({ title: piece.title, text: pieceBody(ticket, why(body), piece) }));
+  const refused = splitRefusals(body, answer, postings);
+  if (refused.length > 0) return { red: ["Your split was refused, and nothing was filed:", ...refused.map((refusal) => `- ${refusal}`)].join("\n") };
+  const filed = postings.map((posting) => ({ title: posting.title, ...post({ kind: "ticket", ...posting }, gh) }));
+  const numbers = filed.flatMap(({ said }) => FILED.exec(said)?.slice(1) ?? []);
+  const named = numbers.map((number) => `#${number}`).join(", ");
+  if (numbers.length < filed.length) return { ended: calledOwner(ticket, `its split filed ${numbers.length} of ${filed.length} tickets${named === "" ? "" : `, ${named}`}: ${quoted(filed.find(({ said }) => !FILED.test(said))?.refusals[0] ?? "")}`) };
+  if (answer.body === undefined) return { ended: closedUnbuilt(ticket, `${splitInto(ticket)} ${named}, which build themselves, and closed it: ${answer.reason}`) };
+  const written = gh(["issue", "edit", ticket, "--body", answer.body]);
+  if (written.status !== 0) return { ended: calledOwner(ticket, `it filed ${named} and its rewrite of what waits would not save: ${quoted((written.stderr || written.stdout).trim().split("\n")[0] ?? "")}`) };
+  commentOnTicket(ticket, `${splitInto(ticket)} ${named}, which build themselves. #${ticket} keeps what must wait for them, labelled \`${WAITING}\`, and builds once they all merge: ${answer.reason}`, gh);
+  gh(["issue", "edit", ticket, "--add-label", WAITING, "--remove-label", "fixing"]);
+  gh(["pr", "close", `ticket/${ticket}`, "--delete-branch"]);
+  console.log(`fix: #${ticket} split into ${named}; it waits for them`);
+  return { ended: 0 };
 }
 
 function rewritten(ticket: string, body: string, answer: Answer): Round {
@@ -127,7 +200,8 @@ function landedOnMain(ticket: string, reason: string, before: string): Round {
 
 function answered(ticket: string, body: string, answer: Answer | undefined, mainBefore: string): Round {
   if (answer === undefined) return { red: "You gave no outcome. Answer one." };
-  if (answer.outcome === "close") return { ended: closedUnbuilt(ticket, answer.reason) };
+  if (answer.outcome === "close") return { ended: closedUnbuilt(ticket, `@${OWNER} the fixer closed #${ticket} unbuilt and kept its branch: ${answer.reason}`) };
+  if (answer.outcome === "split") return split(ticket, body, answer);
   if (answer.outcome === "ticket") return rewritten(ticket, body, answer);
   if (answer.outcome === "machine") return landedOnMain(ticket, answer.reason, mainBefore);
   return {};

@@ -47,7 +47,7 @@ _Avoid_: shim, wrapper, vendored copy
 
 **Fixer**:
 The agent that owns a red ticket until it merges, one session across red runs. It fixes the code,
-the ticket or the machine, or closes the ticket unbuilt; when it stops, it marks it `needs-human`.
+ticket or machine, splits the ticket, or closes it unbuilt; when it stops, it marks `needs-human`.
 _Avoid_: mechanic, fresh eyes, repair agent
 
 **Stable machine**:

@@ -62,7 +62,7 @@ interface AfterTurn {
 }
 
 const laterFinds = (ticket: string) => `The reviewer found these on #${ticket} after its fixer's repair, outside the earlier gaps and the fix's own lines, so they do not block its merge:`;
-const FOLLOW_UP_OF = "Follow-up of #";
+export const FOLLOW_UP_OF = "Follow-up of #";
 
 const firstLine = (text: string) => quoted(text.trim().split("\n")[0]);
 
@@ -135,13 +135,14 @@ function judgement(ticket: string, gaps: string[]): string {
 
 const fixDiff = (ticket: string): string => git(["log", "--format=", "-p", "--fixed-strings", `--grep=${repairOf(ticket)}`, "HEAD"]).stdout ?? "";
 
-function followUp(ticket: string, { gap, criteria, claimed }: Later): string {
+const followUp = (ticket: string, { gap, criteria, claimed }: Later): string =>
+  followUpBody([`${FOLLOW_UP_OF}${ticket}: its review found this after its fixer's repair, outside the earlier gaps and the fix's own lines.`, "", `> ${gap}`], criteria, claimed);
+
+export function followUpBody(whyLines: string[], criteria: string[], claimed: string[]): string {
   return [
     "## Why",
     "",
-    `${FOLLOW_UP_OF}${ticket}: its review found this after its fixer's repair, outside the earlier gaps and the fix's own lines.`,
-    "",
-    `> ${gap}`,
+    ...whyLines,
     "",
     "## Acceptance criteria",
     "",
