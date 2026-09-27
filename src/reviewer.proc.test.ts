@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { cloned, fileDiff, git, JUDGEMENT, plant, REVIEWED_TICKET, reviewing, scratch } from "./scenarios.ts";
+import { askingBash, cloned, fenceSays, fileDiff, flagValue, git, JUDGEMENT, plant, REVIEWED_TICKET, reviewing, scratch } from "./scenarios.ts";
 import { NO_EM_DASH, PLAIN_WORDS } from "./reviewer.ts";
 import { claims, ticketRefusals } from "./ticket-shape.ts";
 
@@ -84,6 +84,32 @@ describe("bin/review reads a green ticket PR against its Why before it merges (#
     expect(run().status).toBe(0);
     expect(spent()).toBe(false);
     expect(comments()).toEqual([]);
+  });
+});
+
+describe("bin/review fences its shell to `bin/check static`, which the permission mode alone would not (#962)", () => {
+  it("fences to the static gates under either spelling of the path, and refuses anything else", () => {
+    const { run, hired } = reviewing();
+
+    run();
+
+    const argv = hired().join("\n");
+    expect(fenceSays(argv, askingBash("bin/check static")).status).toBe(0);
+    expect(fenceSays(argv, askingBash("./bin/check static")).status).toBe(0);
+    const refused = fenceSays(argv, askingBash("touch unlisted-marker"));
+    expect(refused.status).toBe(2);
+    expect(refused.stderr).toContain("bin/check static");
+    expect(flagValue(argv, "--tools")).toBe("Read,Grep,Glob");
+  });
+
+  it("refuses a shell command its fence cannot read, rather than let it through", () => {
+    const { run, hired } = reviewing();
+
+    run();
+
+    const argv = hired().join("\n");
+    expect(fenceSays(argv, askingBash(42)).status).toBe(2);
+    expect(fenceSays(argv, "what a broken hook call looks like").status).toBe(2);
   });
 });
 

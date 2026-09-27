@@ -11,7 +11,7 @@ interface Outcome {
   output: string;
 }
 
-export const RAN_NO_TESTS = "ran no tests";
+const RAN_NO_TESTS = "ran no tests";
 
 const RUNS_VITEST = /(?<![A-Za-z])vitest(?![A-Za-z])/;
 const SUMMARY = /^[ \t]*Tests[ \t]+(.+)$/m;
