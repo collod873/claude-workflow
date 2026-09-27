@@ -1,9 +1,10 @@
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { cloned, fileDiff, git, JUDGEMENT, plant, reviewing, scratch } from "./scenarios.ts";
+import { cloned, fileDiff, git, JUDGEMENT, plant, REVIEWED_TICKET, reviewing, scratch } from "./scenarios.ts";
 import { NO_EM_DASH, PLAIN_WORDS } from "./reviewer.ts";
 import { claims, ticketRefusals } from "./ticket-shape.ts";
 
@@ -290,6 +291,93 @@ describe("a later find becomes a follow-up ticket that builds itself, one genera
     const reviewer = steps.find((step) => /bin\/review /.test(step.run ?? ""));
 
     expect(reviewer?.env?.GH_TOKEN).toContain(`steps.${minted?.id}.outputs.token`);
+  });
+});
+
+function patchId(diff: string): string {
+  const got = spawnSync("git", ["patch-id", "--stable"], { cwd: import.meta.dirname, input: diff, encoding: "utf8" });
+  return got.stdout.trim().split(/\s+/)[0] ?? "";
+}
+
+function fingerprintOf(diff: string, body: string): string {
+  return `${patchId(diff)}-${createHash("sha256").update(body).digest("hex").slice(0, 12)}`;
+}
+
+const matchComment = (fingerprint: string) => `It builds what the ticket asked.\n\nFingerprint: \`${fingerprint}\`\n`;
+const driftComment = (ticket: string, fingerprint: string) => `The reviewer read this PR against the Why of #${ticket} and found drift.\n\n- an old gap\n\nFingerprint: \`${fingerprint}\`\n`;
+
+function diffsAcrossMerge(): { before: string; after: string } {
+  const repo = scratch("merge-diff-");
+  git(repo, "init", "--quiet", "--initial-branch=main");
+  git(repo, "config", "user.email", "merge@test");
+  git(repo, "config", "user.name", "merge");
+  const original = `${Array.from({ length: 10 }, (_, i) => `line ${i + 1}`).join("\n")}\n`;
+  plant(repo, "src/sample.ts", original);
+  git(repo, "add", ".");
+  git(repo, "commit", "--quiet", "-m", "base");
+  git(repo, "checkout", "--quiet", "-b", "ticket/810");
+  plant(repo, "src/sample.ts", original.replace("line 8", "line 8 changed by the ticket"));
+  git(repo, "add", ".");
+  git(repo, "commit", "--quiet", "-m", "the ticket's own change");
+  const before = git(repo, "diff", "main...ticket/810");
+
+  git(repo, "checkout", "--quiet", "main");
+  plant(repo, "src/sample.ts", `shifted line a\nshifted line b\nshifted line c\n${original}`);
+  git(repo, "add", ".");
+  git(repo, "commit", "--quiet", "-m", "main moves on, shifting the lines below");
+
+  git(repo, "checkout", "--quiet", "ticket/810");
+  git(repo, "merge", "--quiet", "--no-edit", "main");
+  const after = git(repo, "diff", "main...ticket/810");
+  return { before, after };
+}
+
+describe("bin/review reuses its last judgement on the PR when what it judged has not changed (#955)", () => {
+  it("reuses its last judgement when the diff and the ticket are unchanged, hiring no model and posting nothing, and ends as that judgement did", () => {
+    const diff = fileDiff("src/reviewer.ts", "export const reviewed = 1;");
+
+    const matched = reviewing({ diff, onPr: [matchComment(fingerprintOf(diff, REVIEWED_TICKET))] });
+    const matchedResult = matched.run();
+    expect(matchedResult.status).toBe(0);
+    expect(matched.hired()).toEqual([]);
+    expect(matched.comments()).toEqual([]);
+
+    const drifted = reviewing({ diff, onPr: [driftComment("810", fingerprintOf(diff, REVIEWED_TICKET))], verdict: { verdict: "drift", gaps: ["should never be asked, the judgement is reused"] } });
+    const driftedResult = drifted.run();
+    expect(driftedResult.status).toBe(1);
+    expect(drifted.hired()).toEqual([]);
+    expect(drifted.comments()).toEqual([]);
+  });
+
+  it("judges afresh when the diff or the ticket changed since the last judgement, or no judgement on the PR carries a fingerprint, and posts the fingerprint it judged", () => {
+    const diff = fileDiff("src/reviewer.ts", "export const reviewed = 1;");
+    const otherDiff = fileDiff("src/reviewer.ts", "export const reviewed = 2;");
+    const otherBody = REVIEWED_TICKET.replace("A drift verdict posts every gap", "A drift verdict posts every gap, sorted");
+
+    const diffChanged = reviewing({ diff, onPr: [matchComment(fingerprintOf(otherDiff, REVIEWED_TICKET))] });
+    expect(diffChanged.run().status).toBe(0);
+    expect(diffChanged.hired()).not.toEqual([]);
+    expect(diffChanged.comments()[0]).toContain(`Fingerprint: \`${fingerprintOf(diff, REVIEWED_TICKET)}\``);
+
+    const ticketChanged = reviewing({ diff, body: otherBody, onPr: [matchComment(fingerprintOf(diff, REVIEWED_TICKET))] });
+    expect(ticketChanged.run().status).toBe(0);
+    expect(ticketChanged.hired()).not.toEqual([]);
+    expect(ticketChanged.comments()[0]).toContain(`Fingerprint: \`${fingerprintOf(diff, otherBody)}\``);
+
+    const noFingerprint = reviewing({ diff, onPr: ["a past judgement that carries no fingerprint at all"] });
+    expect(noFingerprint.run().status).toBe(0);
+    expect(noFingerprint.hired()).not.toEqual([]);
+    expect(noFingerprint.comments()[0]).toContain(`Fingerprint: \`${fingerprintOf(diff, REVIEWED_TICKET)}\``);
+  });
+
+  it("keeps one fingerprint when main is merged in, unchanged by the shift in its own lines, so the merged PR still reuses its last judgement", () => {
+    const { before, after } = diffsAcrossMerge();
+    expect(before).not.toBe(after);
+
+    const merged = reviewing({ diff: after, onPr: [matchComment(fingerprintOf(before, REVIEWED_TICKET))] });
+    expect(merged.run().status).toBe(0);
+    expect(merged.hired()).toEqual([]);
+    expect(merged.comments()).toEqual([]);
   });
 });
 

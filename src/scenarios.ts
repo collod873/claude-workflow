@@ -714,7 +714,7 @@ export function closing({
   };
 }
 
-const REVIEWED_TICKET = [
+export const REVIEWED_TICKET = [
   "## Why",
   "",
   'The owner, in session: "a green build is read against what was meant before it merges".',
