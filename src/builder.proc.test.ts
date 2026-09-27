@@ -279,22 +279,22 @@ describe("the builder builds against the brief, and every red is handed back to 
     expect(committed()).toEqual([expect.stringContaining("#724"), "src/ticket-shape.ts"]);
   });
 
-  it("sets aside a file the ticket does not claim", () => {
+  it("keeps a file the ticket does not claim, beside the claimed ones", () => {
     const { run, committed } = building({ claude: WRITES_UNCLAIMED_FILE, npx: GREEN_ONCE_BUILT });
 
     const result = run();
 
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain("src/unclaimed-helper.ts");
-    expect(committed()).toEqual([expect.stringContaining("#724"), "src/ticket-shape.ts"]);
+    expect(result.stdout).not.toContain("set aside");
+    expect(committed()).toEqual([expect.stringContaining("#724"), "src/ticket-shape.ts", "src/unclaimed-helper.ts"]);
   });
 
-  it("needed a file the ticket does not claim", () => {
-    const { run } = building({ claude: WRITES_ONLY_UNCLAIMED_FILE, npx: GREEN_WHILE_FILE_PRESENT });
+  it("goes green when the build needs a file the ticket does not claim, where #918 and #920 ran out their cap", () => {
+    const { run, committed } = building({ claude: WRITES_ONLY_UNCLAIMED_FILE, npx: GREEN_WHILE_FILE_PRESENT });
 
     const result = run();
 
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain("src/unclaimed-helper.ts");
+    expect(result.status).toBe(0);
+    expect(committed()).toEqual([expect.stringContaining("#724"), "src/unclaimed-helper.ts"]);
   });
 });

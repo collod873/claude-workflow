@@ -4,7 +4,6 @@ import { runCheck } from "./check-runner.ts";
 import { CHECK } from "./fence.ts";
 import { ROUNDS, runStage, type Opened, type Outcome, type Stage } from "./stage.ts";
 import type { Stop } from "./stops.ts";
-import { claims } from "./ticket-shape.ts";
 
 export const TAIL_CAP = 8 * 1024;
 const LOGGED = /; log (.+?)\s*$/m;
@@ -71,7 +70,7 @@ const BUILDER: Stage = {
   clean: true,
   gated: true,
   tests: { found: authoredTests, missing: "the branch carries no failing test from the author, so there is nothing to build against" },
-  keeps: (path, { tests, body }) => !tests.includes(path) && claims(body).includes(path),
+  keeps: (path, { tests }) => !tests.includes(path),
   work: build,
 };
 
