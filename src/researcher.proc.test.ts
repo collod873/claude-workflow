@@ -37,11 +37,15 @@ describe("bin/research answers a research note on the note and closes it, with n
     expect(answered.handed()).toContain(wellFormedNote.trim());
   });
 
-  it("hires a model that can read the repo and the web and nothing else", () => {
-    const { run, hired } = researching();
+  it("hires a model with the web and an open shell, so a note that counts is answered by a script (#945)", () => {
+    const { run, hired, handed } = researching();
 
     expect(run().status).toBe(0);
-    expect(hired()[hired().indexOf("--tools") + 1]).toBe("Read,Grep,Glob,WebSearch,WebFetch");
+    expect(hired()).not.toContain("--tools");
+    expect(hired()[hired().indexOf("--model") + 1]).toBe("sonnet");
+    expect(hired()[hired().indexOf("--settings") + 1]).not.toContain("this stage runs only its own commands");
+    expect(handed()).toContain("You have a shell");
+    expect(handed()).toContain("`/tmp`");
   });
 
   it("tells the researcher where the run history and the session captures are, only when the job fetched them (#936, #937)", () => {
