@@ -100,6 +100,15 @@ describe("build.yml builds a ticket the moment it is filed (#826)", () => {
     expect(holds(job.if ?? "true", { sender: "collod873-machine[bot]", body: followUp, labels: ["note"] })).toBe(false);
   });
 
+  it("builds nothing on the App's reopen", () => {
+    const { job } = workflow();
+    const followUp = "## Why\n\nFollow-up of #865: its review found this after the fixer's one turn.\n";
+
+    expect(holds(job.if ?? "true", { sender: "collod873-machine[bot]", body: followUp, action: "opened" })).toBe(true);
+    expect(holds(job.if ?? "true", { sender: "collod873-machine[bot]", body: followUp, action: "reopened" })).toBe(false);
+    expect(holds(job.if ?? "true", { sender: "collod873-machine[bot]", action: "unlabeled", label: "waiting", body: "## Why\n\nThe owner's own words.\n" })).toBe(true);
+  });
+
   it("a ticket split by its fixer builds what waited once `waiting` comes off, and no other label change starts a build (#910)", () => {
     const { on, job } = workflow();
     const starts = (sender: string, label: string) => holds(job.if ?? "true", { sender, action: "unlabeled", label, body: "## Why\n\nThe owner's own words.\n" });
@@ -285,22 +294,29 @@ function lookedUp(env: Record<string, string>): ReturnType<typeof ranStep> {
 const ticketNamed = (env: Record<string, string>): string | undefined => lookedUp(env).output.ticket;
 
 describe("fix.yml hands every red run of a ticket to its fixer, however the run died (#898)", () => {
-  it("starts on GitHub's own word that a Build or Check run finished, and on the machine's reopen of a ticket red on main", () => {
+  it("starts on GitHub's own word that a Build or Check run finished", () => {
     const { on } = fixWorkflow();
 
     expect(on.workflow_run?.workflows).toEqual(["Build", "Check"]);
     expect(on.workflow_run?.types).toEqual(["completed"]);
-    expect(on.issues?.types).toEqual(["reopened"]);
   });
 
-  it("reads the ticket from a Check run's branch, a Build run's name, or the reopened issue, and from nothing else", () => {
+  it("starts the fixer on no reopen", () => {
+    const { on } = parse(readFileSync(FIX_WORKFLOW, "utf8")) as { on: Record<string, unknown> };
+
+    expect(on.workflow_run).toBeDefined();
+    expect(on.workflow_dispatch).toBeDefined();
+    expect(on.issues).toBeUndefined();
+  });
+
+  it("reads the ticket from a Check run's branch, a Build run's name, or the closer's dispatch, and from nothing else", () => {
     const buildName = (parse(readFileSync(WORKFLOW, "utf8")) as { "run-name": string })["run-name"]
       .replace("${{ github.event.issue.number }}", "894")
       .replace("${{ github.event.issue.title }}", "Give the Fixer's one turn a single record: ticket/5");
 
     expect(ticketNamed({ RAN: ".github/workflows/check.yml", RAN_ON: "ticket/891", TITLE: "Stamp the session id" })).toBe("891");
     expect(ticketNamed({ RAN: ".github/workflows/build.yml", RAN_ON: "main", TITLE: buildName })).toBe("894");
-    expect(ticketNamed({ ISSUE: "812" })).toBe("812");
+    expect(ticketNamed({ DISPATCHED: "812" })).toBe("812");
     expect(ticketNamed({ RAN: ".github/workflows/check.yml", RAN_ON: "land/4b58f3372b91", TITLE: "Build ticket/7: a land PR's title" })).toBe("");
   });
 
