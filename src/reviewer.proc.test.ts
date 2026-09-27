@@ -341,23 +341,27 @@ describe("bin/review's depth (meter) reports the reviewer's depth findings on th
   });
 });
 
+function depthPrompt(): string {
+  const { run, hired, handed } = reviewing();
+
+  expect(run().status).toBe(0);
+
+  const argv = hired();
+  const schemaText = argv[argv.indexOf("--json-schema") + 1];
+  if (schemaText === undefined) throw new Error("no --json-schema in the reviewer's argv");
+  const schema = JSON.parse(schemaText) as { required: string[]; properties: { depth?: { type: string; minItems?: number; items?: { type: string; pattern: string } } } };
+  expect(schema.required).toContain("depth");
+  expect(schema.properties.depth?.type).toBe("array");
+  expect(schema.properties.depth?.minItems).toBeUndefined();
+  expect(schema.properties.depth?.items?.type).toBe("string");
+  expect(schema.properties.depth?.items?.pattern).toBe(NO_EM_DASH);
+
+  return handed();
+}
+
 describe("the reviewer's answer schema and prompt ask for each shallow, pass-through, or tangled module the diff touches (#920)", () => {
   it("requires a depth finding for each shallow module, pass-through, or tangle the diff adds or widens, allows an empty list, and names entry points Actions call and one-line test fixture helpers as not findings", () => {
-    const { run, hired, handed } = reviewing();
-
-    expect(run().status).toBe(0);
-
-    const argv = hired();
-    const schemaText = argv[argv.indexOf("--json-schema") + 1];
-    if (schemaText === undefined) throw new Error("no --json-schema in the reviewer's argv");
-    const schema = JSON.parse(schemaText) as { required: string[]; properties: { depth?: { type: string; minItems?: number; items?: { type: string; pattern: string } } } };
-    expect(schema.required).toContain("depth");
-    expect(schema.properties.depth?.type).toBe("array");
-    expect(schema.properties.depth?.minItems).toBeUndefined();
-    expect(schema.properties.depth?.items?.type).toBe("string");
-    expect(schema.properties.depth?.items?.pattern).toBe(NO_EM_DASH);
-
-    const prompt = handed();
+    const prompt = depthPrompt();
     expect(prompt).toContain("each module the diff adds or widens");
     expect(prompt).toContain("shallow");
     expect(prompt).toContain("pass-through");
@@ -371,21 +375,7 @@ describe("the reviewer's answer schema and prompt ask for each shallow, pass-thr
 
 describe("the reviewer's depth prompt also asks about a hand-off spelled on both sides instead of owned by one module (#922)", () => {
   it("asks for each marker comment, stop line, commit subject or PR body line where a writer and a reader each spell it rather than share a single message owner, naming both sides, and says text carried through one module's own exports is not a finding, while leaving the depth schema and its existing findings unchanged", () => {
-    const { run, hired, handed } = reviewing();
-
-    expect(run().status).toBe(0);
-
-    const argv = hired();
-    const schemaText = argv[argv.indexOf("--json-schema") + 1];
-    if (schemaText === undefined) throw new Error("no --json-schema in the reviewer's argv");
-    const schema = JSON.parse(schemaText) as { required: string[]; properties: { depth?: { type: string; minItems?: number; items?: { type: string; pattern: string } } } };
-    expect(schema.required).toContain("depth");
-    expect(schema.properties.depth?.type).toBe("array");
-    expect(schema.properties.depth?.minItems).toBeUndefined();
-    expect(schema.properties.depth?.items?.type).toBe("string");
-    expect(schema.properties.depth?.items?.pattern).toBe(NO_EM_DASH);
-
-    const prompt = handed();
+    const prompt = depthPrompt();
     expect(prompt).toContain("each module the diff adds or widens");
     expect(prompt).toContain("joins behaviours that change for different reasons");
     expect(prompt).toMatch(/another stage or workflow/i);
