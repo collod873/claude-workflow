@@ -40,20 +40,10 @@ _Avoid_: soft gate, warning, advisory check
 A gate that fires before a run spends model time, so it is free when it fires.
 _Avoid_: precondition, validation, check
 
-**Stub**:
-What a second repo will carry in place of a lane: one trigger and one `uses:` at `@stable`. None
-exists until a second repo enrols ([#674](https://github.com/collod873/claude-workflow/issues/674)).
-_Avoid_: shim, wrapper, vendored copy
-
 **Fixer**:
 The agent that owns a red ticket until it merges, one session across red runs. It fixes the code,
 ticket or machine, splits the ticket, or closes it unbuilt; when it stops, it marks `needs-human`.
 _Avoid_: mechanic, fresh eyes, repair agent
-
-**Stable machine**:
-The tagged copy of the machine tickets will run on once a second repo enrols; until then `main`
-is the only copy ([#674](https://github.com/collod873/claude-workflow/issues/674)).
-_Avoid_: prod, release, pinned version
 
 ### The work
 
