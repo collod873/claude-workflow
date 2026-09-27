@@ -739,7 +739,7 @@ export function fileDiff(path: string, added: string): string {
 
 export function reviewing({
   branch = "ticket/810",
-  verdict = { verdict: "match", gaps: [] } as { verdict: string; gaps: string[]; later?: unknown[]; readback?: string },
+  verdict = { verdict: "match", gaps: [], readback: "It now reads a green build against what was meant before it merges." } as { verdict: string; gaps: string[]; later?: unknown[]; readback?: string },
   diff = fileDiff("src/reviewer.ts", "export const reviewed = 1;"),
   turns = [] as Said[],
   onPr = [] as Said[],

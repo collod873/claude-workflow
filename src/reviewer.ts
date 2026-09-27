@@ -21,7 +21,7 @@ export const earlierDrift = (ticket: string, comments: string[]) => comments.fil
 export const repairOf = (ticket: string) => `Repair #${ticket} as its fixer`;
 const QUOTE_LINE = /^>.*$/gm;
 const DOUBLE_QUOTE = /"[^"\n]+"/g;
-const READBACK_PROMPT = "On match, readback for someone who does not read code: what to try and what should happen, or what it now does and did not before.";
+const READBACK_PROMPT = "`readback`: for someone who does not read code, what to try and what should happen, or what it now does and did not before.";
 
 function ownerQuotes(body: string): string[] {
   const text = why(body);
@@ -53,7 +53,7 @@ const VERDICT = {
       },
     },
   },
-  required: ["verdict", "gaps"],
+  required: ["verdict", "gaps", "readback"],
   additionalProperties: false,
 };
 
@@ -68,7 +68,7 @@ interface Verdict {
   verdict: "match" | "drift";
   gaps: string[];
   later?: Later[];
-  readback?: string;
+  readback: string;
 }
 
 interface AfterTurn {
@@ -216,10 +216,6 @@ function review(pr: string): Stop | undefined {
   const blocking = after === undefined ? [...verdict.gaps, ...(verdict.later ?? []).map(({ gap }) => gap)] : verdict.gaps;
   const recorded = recordedLater(ticket, body, after === undefined ? [] : (verdict.later ?? []), turns);
   if (verdict.verdict === "match") {
-    if (typeof verdict.readback !== "string") {
-      console.log(`${said} matches the Why of #${ticket}${recorded}`);
-      return undefined;
-    }
     const posted = post({ kind: "judgement", pr, text: readbackText(body, verdict.readback) }, gh);
     const [refusal] = posted.refusals;
     console.log(`${said} matches the Why of #${ticket}${recorded}, ${refusal === undefined ? `its readback posted: ${posted.said}` : `its readback was refused: ${quoted(refusal)}`}`);

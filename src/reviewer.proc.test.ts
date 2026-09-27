@@ -26,11 +26,12 @@ describe("bin/review reads a green ticket PR against its Why before it merges (#
     expect(result.stdout + result.stderr).toContain(JUDGEMENT);
   });
 
-  it("passes a match and posts nothing", () => {
+  it("passes a match and posts its readback", () => {
     const { run, comments, handed } = reviewing();
 
     expect(run().status).toBe(0);
-    expect(comments()).toEqual([]);
+    expect(comments()).toHaveLength(1);
+    expect(comments()[0]).toContain("It now reads a green build against what was meant before it merges.");
     expect(handed()).toContain("a green build is read against what was meant before it merges");
     expect(handed()).toContain("A drift verdict posts every gap");
     expect(handed()).toContain("+export const reviewed = 1;");
@@ -190,7 +191,8 @@ describe("bin/review names every gap in one pass, and after its fixer's repair o
 
     const merged = later.run();
     expect(merged.status).toBe(0);
-    expect(later.comments()).toEqual([]);
+    expect(later.comments()).toHaveLength(1);
+    expect(later.comments()[0]).not.toContain(LATE);
     expect(later.ticketComments()).toEqual([expect.stringContaining(LATE)]);
 
     const [turn] = later.ticketComments();
