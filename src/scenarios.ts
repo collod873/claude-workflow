@@ -950,7 +950,8 @@ export function researching({
   labels = ["note", "research"],
   findings = "The closer judges only an issue with checks, so a note waits on a session.",
   gh = "",
-}: { labels?: string[]; findings?: string; gh?: string } = {}) {
+  sources = "",
+}: { labels?: string[]; findings?: string; gh?: string; sources?: string } = {}) {
   const root = scratch("research-");
   const { setup, calls } = ghArgv(join(root, "gh-argv"));
   const handed = join(root, "claude-stdin");
@@ -965,7 +966,7 @@ export function researching({
     handed: () => (existsSync(handed) ? readFileSync(handed, "utf8") : ""),
     calls: () => calls().map((args) => args.slice(0, 3).join(" ")),
     comments: () => calls().filter((args) => args[1] === "comment").map((args) => args[args.indexOf("--body") + 1]),
-    run: (...args: string[]) => execute(join(BIN, "research"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, args.length > 0 ? args : ["902"]),
+    run: (...args: string[]) => execute(join(BIN, "research"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}`, RESEARCH_SOURCES: sources }, args.length > 0 ? args : ["902"]),
   };
 }
 

@@ -12,10 +12,11 @@ jobs:
   research:
     if: "${{ github.event.sender.login == github.repository_owner && contains(github.event.issue.labels.*.name, 'research') }}"
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 40
     permissions:
       contents: read
       issues: write
+      actions: read
     steps:
       - id: app
         uses: actions/create-github-app-token@v3
@@ -27,6 +28,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: main
+          fetch-depth: 0
           persist-credentials: false
 
       - id: setup-node
@@ -42,6 +44,41 @@ jobs:
         with:
           client-id: ${{ vars.CORE_APP_CLIENT_ID }}
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+
+      - id: captures-app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          owner: collod873
+          repositories: Knowledge-Base
+          permission-contents: read
+
+      - id: sources
+        timeout-minutes: 6
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          CAPTURES_TOKEN: ${{ steps.captures-app.outputs.token }}
+          NEWEST_RUNS: 150
+          NEWEST_LOGS: 50
+        run: |
+          sources="$RUNNER_TEMP/research-sources"
+          captures="$RUNNER_TEMP/captures"
+          mkdir -p "$sources/machine-logs" "$sources/sessions"
+          git log --date=short --format='commit %h %ad %s' --name-status >"$sources/git-log.txt"
+          gh run list --limit 1000 --json databaseId,workflowName,displayTitle,event,headBranch,conclusion,createdAt,url | jq -c '.[]' >"$sources/runs.jsonl"
+          head -n "$NEWEST_RUNS" "$sources/runs.jsonl" | jq -r .databaseId | while read -r run; do
+            gh api "repos/$GH_REPO/actions/runs/$run/jobs" --jq ".jobs[] | {run: $run, job: .name, conclusion, steps: [.steps[] | {name, conclusion}]}"
+          done >"$sources/jobs.jsonl"
+          gh api "repos/$GH_REPO/actions/artifacts?per_page=$NEWEST_LOGS" --jq '.artifacts[] | select(.expired | not) | "\(.workflow_run.id) \(.name)"' | while read -r run kept; do
+            gh run download "$run" --name "$kept" --dir "$sources/machine-logs/$run-$kept"
+          done
+          git clone --quiet --depth 1 "https://x-access-token:$CAPTURES_TOKEN@github.com/collod873/Knowledge-Base" "$captures"
+          grep -lE '^project: .*(Workflow|claude-workflow|\.agents)' "$captures"/raw/sessions/*.md | xargs cp -t "$sources/sessions"
+          rm -rf "$captures"
+          printf 'RESEARCH_SOURCES=%s\n' "$sources" >>"$GITHUB_ENV"
 
       - id: research
         timeout-minutes: 22
