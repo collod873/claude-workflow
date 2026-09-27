@@ -948,6 +948,31 @@ export function closingNote(labels: string, { gh = "exit 0\n" }: { gh?: string }
   return onGh("close-note", `[[ $2 == view ]] && { printf '${labels}'; exit 0; }\n${gh}`);
 }
 
+export const FINDINGS_POSTED = "https://github.com/collod873/claude-workflow/issues/902#issuecomment-1";
+
+export function researching({
+  labels = ["note", "research"],
+  findings = "The closer judges only an issue with checks, so a note waits on a session.",
+  gh = "",
+}: { labels?: string[]; findings?: string; gh?: string } = {}) {
+  const root = scratch("research-");
+  const { setup, calls } = ghArgv(join(root, "gh-argv"));
+  const handed = join(root, "claude-stdin");
+  const hired = join(root, "claude-argv");
+  git(root, "init", "--quiet", "--initial-branch=main");
+  plant(root, "issue.json", JSON.stringify({ title: "What does the closer judge", body: wellFormedNote, labels: labels.map((name) => ({ name })) }));
+  plant(root, "answer.json", `${JSON.stringify({ type: "result", subtype: "success", is_error: false, structured_output: { findings } })}\n`);
+  script(join(root, "bin", "gh"), [setup, gh, 'case "$*" in', `  *"issue view"*) cat "${join(root, "issue.json")}" ;;`, `  *"issue comment"*) printf '%s\\n' '${FINDINGS_POSTED}' ;;`, "esac", ""].join("\n"));
+  script(join(root, "bin", "claude"), `printf '%s\\0' "$@" >"${hired}"\ncat >"${handed}"\ncat "${join(root, "answer.json")}"\n`);
+  return {
+    hired: () => (existsSync(hired) ? readFileSync(hired, "utf8").split("\0") : []),
+    handed: () => (existsSync(handed) ? readFileSync(handed, "utf8") : ""),
+    calls: () => calls().map((args) => args.slice(0, 3).join(" ")),
+    comments: () => calls().filter((args) => args[1] === "comment").map((args) => args[args.indexOf("--body") + 1]),
+    run: (...args: string[]) => execute(join(BIN, "research"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, args.length > 0 ? args : ["902"]),
+  };
+}
+
 type Left = "uncommitted" | "unlanded" | "landed" | "held by a live session";
 
 export function launching({

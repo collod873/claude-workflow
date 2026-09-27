@@ -12,6 +12,7 @@ export const STOPS = {
   buildRed: "Build red after 3 rounds handed back",
   drift: "The reviewer finds drift from `## Why`",
   unrecorded: "Close: the closing record is refused, or the ticket will not close",
+  notResearch: "Research refused: the issue is not a research note",
 } as const;
 
 export type Stop = keyof typeof STOPS;

@@ -1,0 +1,60 @@
+name: Research
+run-name: "Research #${{ github.event.issue.number }}: ${{ github.event.issue.title }}"
+
+"on":
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+
+jobs:
+  research:
+    if: "${{ github.event.sender.login == github.repository_owner && contains(github.event.issue.labels.*.name, 'research') }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+
+      - id: checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - id: setup-node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - id: npm-ci
+        run: npm ci
+
+      - id: stage
+        uses: ./.github/actions/stage
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+
+      - id: research
+        timeout-minutes: 22
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          STAGE_MINUTES: 20
+        run: |
+          tail --pid=$$ -n +1 -F .git/machine-logs/research-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
+          bin/research ${{ github.event.issue.number }}
+
+      - if: always()
+        timeout-minutes: 6
+        uses: ./.github/actions/stage-logs
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}

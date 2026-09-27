@@ -106,7 +106,7 @@ describe("bin/file-issue files a ticket, or refuses it and files nothing (#662)"
 
     expect(run(["judgement", "--title", "A judgement", "--body-file", "body.md"])).toMatchObject({
       status: 2,
-      stderr: "file-issue: usage: file-issue ticket|note --title <title> --body-file <path>\n",
+      stderr: "file-issue: usage: file-issue ticket|note|research --title <title> --body-file <path>\n",
     });
     expect(run(["ticket", "--body-file", "body.md"]).status).toBe(2);
     expect(ghSaw(repo)).toEqual([]);
@@ -118,6 +118,13 @@ describe("bin/file-issue files a ticket, or refuses it and files nothing (#662)"
     expect(run(NOTE_CALL)).toMatchObject({ status: 0, stdout: `${URL}\n`, stderr: UNSTAMPED });
     expect(ghSaw(repo)).toEqual([["issue", "create", "--title", "What the audit found", "--label", "note", "--body", wellFormedNote]]);
     expect(run().stderr).toContain("the body carries no '## Acceptance criteria'");
+  });
+
+  it("files a research note as a note labelled research, without running a check (#902)", () => {
+    const { repo, run } = filing({ gh: RECORDS, body: wellFormedNote, npx: RAN_A_CHECK });
+
+    expect(run(["research", "--title", "What does the closer judge", "--body-file", "body.md"])).toMatchObject({ status: 0, stdout: `${URL}\n` });
+    expect(ghSaw(repo)).toEqual([["issue", "create", "--title", "What does the closer judge", "--label", "note", "--label", "research", "--body", wellFormedNote]]);
   });
 
   it("asks a note for a why and nothing else, so filing one at the end of a session costs no judgement", () => {
@@ -166,7 +173,7 @@ describe("bin/file-issue files a ticket, or refuses it and files nothing (#662)"
 
     expect(result).toMatchObject({
       status: 0,
-      stdout: "file-issue: usage: file-issue ticket|note --title <title> --body-file <path>\n",
+      stdout: "file-issue: usage: file-issue ticket|note|research --title <title> --body-file <path>\n",
       stderr: "",
     });
     expect(ghSaw(repo)).toEqual([]);
