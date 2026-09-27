@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { authoredTests, onDisk, yourChecks } from "./brief.ts";
 import { runCheck } from "./check-runner.ts";
-import { CHECK } from "./fence.ts";
+import { CHECK, OPEN_SHELL } from "./fence.ts";
 import { ROUNDS, runStage, type Opened, type Outcome, type Stage } from "./stage.ts";
 import type { Stop } from "./stops.ts";
 
@@ -20,6 +20,7 @@ export function handedOn(briefed: string, commands: string[]): string {
     "## What to build",
     `Build what the ticket asks for until the acceptance test passes. ${yourChecks(commands)}`,
     "`bin/check static` runs the gates your code must pass: no comments, no em dash, no copied code, and every export used by a part.",
+    "Commit your own work, each message saying why. If the test count drops, give the reason on a line of its own: `Test count drop: <why>`.",
     HANDS_BACK,
     "",
   ].join("\n\n");
@@ -65,6 +66,7 @@ const BUILDER: Stage = {
   undone: "nothing was built",
   clean: true,
   gated: true,
+  reach: OPEN_SHELL,
   tests: { found: authoredTests, missing: "the branch carries no failing test from the author, so there is nothing to build against" },
   work: build,
 };

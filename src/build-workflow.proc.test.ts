@@ -27,6 +27,7 @@ interface Job {
   if?: string;
   needs?: string | string[];
   env?: Record<string, unknown>;
+  permissions?: Record<string, string>;
   steps: Step[];
 }
 
@@ -123,7 +124,7 @@ describe("build.yml builds a ticket the moment it is filed (#826)", () => {
     expect(at).toEqual([...at].sort((a, b) => a - b));
   });
 
-  it("every stage has its own time cap and the run acts as the App", () => {
+  it("every stage has its own time cap and acts as the App, but the build, whose open shell reads with the job's own token (#946)", () => {
     const { job } = workflow();
     const minting = job.steps.find((step) => step.uses?.startsWith("actions/create-github-app-token@") === true);
 
@@ -136,11 +137,23 @@ describe("build.yml builds a ticket the moment it is filed (#826)", () => {
       const step = stageStep(job, stage);
       expect(job.steps.indexOf(minting as Step)).toBeLessThan(job.steps.indexOf(step));
       expect(step["timeout-minutes"], `${stage} time cap`).toBeGreaterThan(0);
-      expect(String({ ...job.env, ...step.env }.GH_TOKEN), `${stage} token`).toMatch(token);
+      const given = String({ ...job.env, ...step.env }.GH_TOKEN);
+      if (stage === "build") expect(given, `${stage} token`).toBe("${{ github.token }}");
+      else expect(given, `${stage} token`).toMatch(token);
     }
     for (const checkout of job.steps.filter((step) => step.uses?.startsWith("actions/checkout@") === true)) {
       expect(String(checkout.with?.token)).toMatch(token);
     }
+  });
+
+  it("leaves the builder's open shell no token that writes: the checkout keeps no credential, the job's own token only reads, and git takes the App's token only to save (#946)", () => {
+    const { job } = workflow();
+    const checkouts = job.steps.filter((step) => step.uses?.startsWith("actions/checkout@") === true);
+
+    expect(checkouts.length).toBeGreaterThan(0);
+    for (const checkout of checkouts) expect(checkout.with?.["persist-credentials"]).toBe(false);
+    expect(Object.values(job.permissions ?? { all: "write" })).not.toContain("write");
+    expect(stageStep(job, "save").run).toMatch(/^gh auth setup-git\n.*bin\/save /s);
   });
 });
 

@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { capped } from "./brief.ts";
+import { OPEN_SHELL } from "./fence.ts";
 import { commentOnTicket, gh, RESEARCH } from "./post.ts";
 import { NO_EM_DASH } from "./reviewer.ts";
 import { hired, machineLogs } from "./stage.ts";
@@ -10,7 +11,6 @@ import { quoted } from "./ticket-shape.ts";
 export const NOTE_CAP = 16 * 1024;
 const COMMENT_CAP = 60_000;
 const SOURCES_CAP = 256;
-const OPEN_SHELL = { model: "sonnet", fenced: false };
 const WRITE_UP_MINUTES = 5;
 export const OUT_OF_TIME = "Your reading time is up. Read nothing more. Give `findings` now from what you have read: the answer as far as it goes, what it rests on, and what you did not reach.\n";
 
