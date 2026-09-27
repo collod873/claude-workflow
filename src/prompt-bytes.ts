@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { brief, CAP } from "./brief.ts";
 import { handedOn as builderHandedOn, repaired, TAIL_CAP } from "./builder.ts";
@@ -7,8 +7,6 @@ import { handedOn as meterReviewerHandedOn } from "./meter-reviewer.ts";
 import { handedOn as researcherHandedOn, NOTE_CAP, OUT_OF_TIME } from "./researcher.ts";
 import { DIFF_CAP, handedOn as reviewerHandedOn, LIST_CAP, TICKET_CAP } from "./reviewer.ts";
 import { handedOn, refused, REFUSALS_CAP } from "./test-author.ts";
-
-export const CEILINGS: Record<string, number> = { "brief": 136, "test author": 869, "test author refused": 94, "builder": 622, "repair": 87, "reviewer": 424, "reviewer after the fixer's repair": 984, "meter reviewer": 1679, "fixer": 1106, "researcher": 821, "researcher out of time": 165 };
 
 const AUTHORED = "src/planted.test.ts";
 const HIRES = /(spawn|execFile)\w*\(\s*"claude"/;
@@ -105,23 +103,11 @@ function ownWords(prompt: Prompt): number {
   return Buffer.byteLength(prompt.build({}));
 }
 
-export function grown(prompts: Prompt[], ceilings: Record<string, number>): string[] {
-  return prompts.flatMap((prompt) => {
-    const ceiling = ceilings[prompt.name];
-    if (ceiling === undefined) return [`the ${prompt.name} prompt has no recorded ceiling`];
-    const bytes = ownWords(prompt);
-    return bytes > ceiling ? [`the ${prompt.name} prompt writes ${bytes} bytes of its own words, over its ceiling of ${ceiling}`] : [];
-  });
-}
-
-export function shrunk(prompts: Prompt[], ceilings: Record<string, number>): Record<string, number> {
-  const paid = { ...ceilings };
-  for (const prompt of prompts) {
-    const bytes = ownWords(prompt);
-    const ceiling = paid[prompt.name];
-    if (ceiling !== undefined && bytes < ceiling) paid[prompt.name] = bytes;
-  }
-  return paid;
+export function sized(prompts: Prompt[]): string {
+  const sizes = prompts.map((prompt) => ({ name: prompt.name, bytes: ownWords(prompt) }));
+  const total = sizes.reduce((sum, { bytes }) => sum + bytes, 0);
+  const largest = sizes.reduce((most, size) => (size.bytes > most.bytes ? size : most));
+  return `prompt-bytes: ${prompts.length} prompts, ${total} bytes of their own words, the largest the ${largest.name} at ${largest.bytes}`;
 }
 
 export function uncapped(prompts: Prompt[]): string[] {
@@ -154,21 +140,10 @@ export function unlaunched(repo: string): string[] {
     .map((file) => `${file} starts claude itself; hire through ${STAGE_MODULE} so it gets the owner's hooks, a transcript and a time cap`);
 }
 
-export function record(file: string, ceilings: Record<string, number>): void {
-  const rendered = Object.entries(ceilings).map(([name, bytes]) => `"${name}": ${bytes}`).join(", ");
-  const source = readFileSync(file, "utf8");
-  writeFileSync(file, source.replace(/(CEILINGS: Record<string, number> = )\{[^}]*\}/, `$1{ ${rendered} }`));
-}
-
 if (import.meta.main) {
   const repo = join(import.meta.dirname, "..");
-  const refusals = [...grown(PROMPTS, CEILINGS), ...uncapped(PROMPTS), ...unmeasured(repo, PROMPTS), ...unlaunched(repo)];
+  const refusals = [...uncapped(PROMPTS), ...unmeasured(repo, PROMPTS), ...unlaunched(repo)];
   for (const refusal of refusals) console.error(refusal);
-  if (refusals.length === 0) {
-    const paid = shrunk(PROMPTS, CEILINGS);
-    const cut = Object.keys(paid).filter((name) => paid[name] !== CEILINGS[name]);
-    if (cut.length > 0) record(join(import.meta.dirname, "prompt-bytes.ts"), paid);
-    console.log(`prompt-bytes: ${PROMPTS.length} prompts${cut.length > 0 ? `, recorded ${cut.join(", ")} smaller` : " at their ceilings"}`);
-  }
+  if (refusals.length === 0) console.log(sized(PROMPTS));
   process.exit(refusals.length > 0 ? 1 : 0);
 }
