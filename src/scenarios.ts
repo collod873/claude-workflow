@@ -862,6 +862,7 @@ export function fixing({
   attempt = 1,
   rerun = "exit 0",
   savedSession = undefined as string | undefined,
+  reason = undefined as string | undefined,
 } = {}) {
   const root = scratch("fixer-");
   const session = join(root, "session");
@@ -930,7 +931,8 @@ export function fixing({
     reruns: () => calls().filter((args) => args[0] === "run" && args[1] === "rerun"),
     keptSession: () => readFileSync(join(home, ".claude", "fixer", "811"), "utf8").trim(),
     log: (...args: string[]) => git(session, "log", ...args),
-    run: (...args: string[]) => execute(join(BIN, "fix"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}`, HOME: home }, args.length === 0 ? ["811"] : args),
+    run: (...args: string[]) =>
+      execute(join(BIN, "fix"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}`, HOME: home, ...(reason === undefined ? {} : { REASON: reason }) }, args.length === 0 ? ["811"] : args),
   };
 }
 

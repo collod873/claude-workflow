@@ -6,6 +6,10 @@ const FIXES = "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n";
 const RED_FOUR_TIMES = ["n=$(cat ../reds 2>/dev/null || echo 0)", "[ \"$n\" -ge 4 ] && exit 0", "echo $((n + 1)) >../reds", "printf 'bin/check: FAILED test src/stops.test.ts\\n'", "exit 1", ""].join("\n");
 const FIXES_EACH_ROUND = "printf 'export const shaped = %s;\\n' \"$((CALL + 1))\" >src/ticket-shape.ts\n";
 const MOVES_MAIN = 'git update-ref refs/remotes/origin/main "$(git commit-tree -p refs/remotes/origin/main -m "Land the reviewer fix #811 needed" "$(git rev-parse "refs/remotes/origin/main^{tree}")")"\n';
+const woken = (reason: string) => {
+  const { run, handed } = fixing({ reason, claude: FIXES });
+  return { result: run("811"), prompt: handed()[0] };
+};
 
 describe("the fixer owns a red ticket until it merges (#898)", () => {
   it("starts on a tree a red stage left dirty, and commits what is there with its fix, where #894 refused before any model", () => {
@@ -281,5 +285,27 @@ describe("the fixer owns a red ticket until it merges (#898)", () => {
     expect(run().status).toBe(0);
     expect(handed()).toHaveLength(2);
     expect(handed()[1]).toContain("Save could not push");
+  });
+
+  it("is handed the reason the closer woke it as how the ticket failed, instead of reading logs (#957)", () => {
+    const reason = "#811 is not done: a check is red on the merge commit\n\n- `test -f built.txt` exited 1 on the merge commit";
+
+    const { result, prompt } = woken(reason);
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(prompt).toContain("## How it failed");
+    expect(prompt).toContain(reason);
+  });
+
+  it("is handed the reason the closer woke it, and a conflict is handed the word to merge main in and resolve it keeping the ticket's Why (#957)", () => {
+    const reason = "#811's PR #903 could not be brought up to date with main: GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts.";
+
+    const { result, prompt } = woken(reason);
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(prompt).toContain(reason);
+    expect(prompt).toMatch(/merge main in/i);
+    expect(prompt).toMatch(/resolve (the|it)[^.\n]*conflict/i);
+    expect(prompt).toMatch(/keeping[^.\n]*Why/i);
   });
 });
