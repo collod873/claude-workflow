@@ -99,6 +99,26 @@ describe("the builder builds against the brief, and every red is handed back to 
     expect(stdin(1)).toContain(HANDS_BACK);
   });
 
+  it("carries the test the author wrote in the brief it writes to the machine logs (#539)", () => {
+    const { run, session } = building();
+
+    run();
+
+    const written = readFileSync(join(session, ".git", "machine-logs", "brief-724.md"), "utf8");
+    expect(written).toContain("### src/ticket-shape.test.ts");
+    expect(written).toContain('1  import { it } from "vitest";');
+  });
+
+  it("refuses a claim over the cap before spending any model, naming the cap (#539)", () => {
+    const { run, calls } = building({ claimed: { "src/ticket-shape.ts": "export const filler = 1;\n".repeat(9000) } });
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("over 204800");
+    expect(calls()).toBe(0);
+  });
+
   it("hands the model a permission mode that lets it write a path under .claude/, so a ticket claiming one is built instead of refused", () => {
     const { run, argv } = building();
 

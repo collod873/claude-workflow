@@ -110,21 +110,3 @@ export function authoredTests(): string[] {
   const changed = spawnSync("git", ["diff", "--name-only", "origin/main...HEAD"], { encoding: "utf8" });
   return changed.status === 0 ? changed.stdout.split("\n").filter((path) => AUTHORED.test(path)) : [];
 }
-
-if (import.meta.main) {
-  const ticket = process.argv[2];
-  if (ticket === undefined) throw new Error("no ticket number in the arguments to brief");
-  const asked = spawnSync("gh", ["issue", "view", ticket, "--json", "body", "--jq", ".body"], { encoding: "utf8" });
-  const { text, refusals } =
-    asked.status === 0
-      ? brief({
-          ticket,
-          body: asked.stdout,
-          tests: authoredTests(),
-          read: onDisk,
-        })
-      : { text: "", refusals: [`ticket ${ticket} could not be read, so nothing was briefed`] };
-  for (const refusal of refusals) console.error(refusal);
-  if (text !== "") process.stdout.write(text);
-  process.exit(refusals.length > 0 ? 1 : 0);
-}
