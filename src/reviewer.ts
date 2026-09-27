@@ -23,7 +23,7 @@ const QUOTE_LINE = /^>.*$/gm;
 const DOUBLE_QUOTE = /"[^"\n]+"/g;
 const READBACK_PROMPT = "`readback`: for someone who does not read code, what to try and what should happen, or what it now does and did not before.";
 const DEPTH_PROMPT =
-  "`depth`: each module the diff adds or widens that is shallow or a pass-through, and each place it joins behaviours that change for different reasons, naming the module. Entry points that Actions call and one-line test fixture helpers are not findings; an empty list is valid.";
+  "`depth`: each module the diff adds or widens that is shallow or a pass-through, each place it joins behaviours that change for different reasons, naming the module, and each place the diff writes or reads text that another stage or workflow reads or writes, such as a marker comment, a stop line, a commit subject, or a PR body line, where the writer and reader each spell it rather than share one message owner, naming both sides. Entry points that Actions call and one-line test fixture helpers are not findings; text carried through one module's own exports is not a finding; an empty list is valid.";
 const DEPTH_LINE = /^depth \(meter\):.*$/m;
 
 function ownerQuotes(body: string): string[] {
