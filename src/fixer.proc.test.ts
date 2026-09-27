@@ -113,6 +113,17 @@ describe("the fixer owns a red ticket until it merges (#898)", () => {
     expect(written.saved()).toEqual(["811"]);
   });
 
+  it("rewrites past the criteria when a fixer corrects a wrong claim alongside it, and posts why (#942)", () => {
+    const { body } = fixing();
+    const corrected = body.replace("The fixer clears a red ticket", "The fixer clears a ticket red at any stage").replace("- src/ticket-shape.ts", "- src/post.ts");
+    const { run, edits, ticketComments, saved } = fixing({ answer: { outcome: "ticket", reason: "the criterion named src/ticket-shape.ts, but the fault it names sits in src/post.ts", body: corrected } });
+
+    expect(run().status).toBe(0);
+    expect(edits()).toEqual([corrected]);
+    expect(ticketComments().at(-1)).toContain("the fault it names sits in src/post.ts");
+    expect(saved()).toEqual(["811"]);
+  });
+
   it("closes the ticket and its PR unbuilt with the reason, calling the owner by name, keeping the branch, and runs no check", () => {
     const reason = "the ticket asks for a stage the ruling has since dropped";
     const { run, closes, ticketComments, labelled, saved, handed } = fixing({ answer: { outcome: "close", reason }, check: "touch ../checked\nexit 1\n" });
