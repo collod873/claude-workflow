@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { cloned, fileDiff, git, JUDGEMENT, plant, reviewing, scratch } from "./scenarios.ts";
+import { PLAIN_WORDS } from "./reviewer.ts";
 import { claims, ticketRefusals } from "./ticket-shape.ts";
 
 const WORKFLOW = join(import.meta.dirname, "..", ".github", "workflows", "check.yml");
@@ -25,11 +26,12 @@ describe("bin/review reads a green ticket PR against its Why before it merges (#
     expect(result.stdout + result.stderr).toContain(JUDGEMENT);
   });
 
-  it("passes a match and posts nothing", () => {
+  it("passes a match and posts its readback", () => {
     const { run, comments, handed } = reviewing();
 
     expect(run().status).toBe(0);
-    expect(comments()).toEqual([]);
+    expect(comments()).toHaveLength(1);
+    expect(comments()[0]).toContain("It now reads a green build against what was meant before it merges.");
     expect(handed()).toContain("a green build is read against what was meant before it merges");
     expect(handed()).toContain("A drift verdict posts every gap");
     expect(handed()).toContain("+export const reviewed = 1;");
@@ -70,6 +72,74 @@ describe("bin/review reads a green ticket PR against its Why before it merges (#
     expect(run().status).toBe(0);
     expect(spent()).toBe(false);
     expect(comments()).toEqual([]);
+  });
+});
+
+const READBACK_TICKET = [
+  "## Why",
+  "",
+  "The owner, in session:",
+  "",
+  "> keep the fixer honest about drift",
+  "> never touch the reviewer's own prompt",
+  "",
+  "## Acceptance criteria",
+  "",
+  "- [ ] A drift verdict posts every gap - check: `npx vitest run --config vitest.config.ts reviewer`",
+  "",
+  "## Files claimed",
+  "",
+  "- src/reviewer.ts",
+  "",
+].join("\n");
+
+describe("bin/review reads back the owner's own words on a match, then a plain-words account, then asks yes or no (#918)", () => {
+  it("posts one readback comment on a match, quoting the Why's `>` lines (or its \"...\" quotes) byte for byte and in order before the plain-words account and a yes or no question; a drift posts none, and a refused post never stops the merge", () => {
+    const account = "It now checks the ticket branch before it hires a model.";
+
+    const quoted = reviewing({ body: READBACK_TICKET, verdict: { verdict: "match", gaps: [], readback: account } });
+    expect(quoted.run().status).toBe(0);
+    expect(quoted.comments()).toHaveLength(1);
+    const [said] = quoted.comments();
+    if (said === undefined) throw new Error("no comment posted");
+    const first = said.indexOf("> keep the fixer honest about drift");
+    const second = said.indexOf("> never touch the reviewer's own prompt");
+    const at = said.indexOf(account);
+    expect(first).toBeGreaterThanOrEqual(0);
+    expect(second).toBeGreaterThan(first);
+    expect(at).toBeGreaterThan(second);
+    expect(said.trim()).toMatch(/\?$/);
+    expect(said).toMatch(/\byes\b.*\bno\b|\bno\b.*\byes\b/is);
+
+    const fallback = reviewing({ verdict: { verdict: "match", gaps: [], readback: account } });
+    expect(fallback.run().status).toBe(0);
+    expect(fallback.comments()[0]).toContain('"a green build is read against what was meant before it merges"');
+
+    const drift = reviewing({ body: READBACK_TICKET, verdict: { verdict: "drift", gaps: ["the fixer never runs on a `drift`"], readback: "should never be posted" } });
+    expect(drift.run().status).toBe(1);
+    expect(drift.comments()).toHaveLength(1);
+    expect(drift.comments()[0]).not.toContain("should never be posted");
+
+    const refused = reviewing({ verdict: { verdict: "match", gaps: [], readback: account }, prCommentFails: true });
+    expect(refused.run().status).toBe(0);
+  });
+});
+
+describe("the reviewer's answer schema asks for plain words and refuses an account written in code (#918)", () => {
+  it("refuses a plain words account that carries a backtick, a slash, or a file name with an extension, and its prompt asks for plain words a non-coder can follow", () => {
+    const allowed = (text: string) => new RegExp(PLAIN_WORDS).test(text);
+    expect(allowed("It now checks the ticket branch before it hires a model.")).toBe(true);
+    expect(allowed("It reads the `pr diff` before judging.")).toBe(false);
+    expect(allowed("It reads the docs/README before judging.")).toBe(false);
+    expect(allowed("It reads reviewer.ts before judging.")).toBe(false);
+
+    const { run, handed } = reviewing();
+    expect(run().status).toBe(0);
+    expect(handed()).toMatch(/does not read code/i);
+    expect(handed()).toMatch(/what to try/i);
+    expect(handed()).toMatch(/what should happen/i);
+    expect(handed()).toMatch(/what it now does/i);
+    expect(handed()).toMatch(/did not before/i);
   });
 });
 
@@ -121,7 +191,8 @@ describe("bin/review names every gap in one pass, and after its fixer's repair o
 
     const merged = later.run();
     expect(merged.status).toBe(0);
-    expect(later.comments()).toEqual([]);
+    expect(later.comments()).toHaveLength(1);
+    expect(later.comments()[0]).not.toContain(LATE);
     expect(later.ticketComments()).toEqual([expect.stringContaining(LATE)]);
 
     const [turn] = later.ticketComments();
