@@ -1,12 +1,11 @@
 import { spawnSync } from "node:child_process";
-import { closeSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { join, relative, resolve } from "node:path";
 import { brief, onDisk } from "./brief.ts";
 import { CHECK, GATED, ownerHooks, stageArgv, type Reach, type Registration } from "./fence.ts";
 import { STOPS, type Stop, type Stopped } from "./stops.ts";
 import { checks, quoted } from "./ticket-shape.ts";
 
-const UNTRACKED = "??";
 const STREAM = ["--output-format", "stream-json", "--verbose"];
 const TIMED_OUT = 124;
 const GRACE_SECONDS = "30";
@@ -19,11 +18,9 @@ export interface Opened {
   tests: string[];
   commands: string[];
   briefed: string;
-  aside: string[];
   logs: string;
   wrote: () => string[];
   handBack: <Red>(input: string, judge: (spent: Spent) => Red | undefined, told: (red: Red) => string) => HandedBack<Red>;
-  setAside: (paths: string[]) => void;
 }
 
 interface HandedBack<Red> {
@@ -42,19 +39,18 @@ export interface Stage {
   gated?: boolean;
   answers?: object;
   tests?: { found: () => string[]; missing?: string };
-  keeps: (path: string, opened: Opened) => boolean;
   work: (opened: Opened) => Outcome;
 }
 
 const git = (cwd: string, args: string[]) => spawnSync("git", args, { cwd, encoding: "utf8" });
 
-function changed(cwd: string): Map<string, string> {
+function changed(cwd: string): Set<string> {
   const entries = git(cwd, ["status", "--porcelain", "-z", "-uall"]).stdout.split("\0");
-  const found = new Map<string, string>();
+  const found = new Set<string>();
   for (let at = 0; at < entries.length; at++) {
     const entry = entries[at] ?? "";
     if (entry.length < 4) continue;
-    found.set(entry.slice(3), entry.slice(0, 2));
+    found.add(entry.slice(3));
     if (/^[RC]/.test(entry)) at++;
   }
   return found;
@@ -184,30 +180,15 @@ function open(stage: Stage, ticket: string, cwd: string, logs: string): Opened |
   const runs = stage.gated === true ? [...commands, ...GATED] : commands;
   const spend = hired({ name: stage.name, transcript: join(logs, `${stage.bin}-${ticket}.jsonl`), commands: runs, answers: stage.answers, gated: stage.gated });
   if (typeof spend === "string") return { stop: "modelRun", refusals: [`the owner's hooks could not be read from ${spend}, so ${stage.undone}`] };
-  const kept = join(logs, `${stage.bin}-${ticket}-set-aside`);
-  rmSync(kept, { recursive: true, force: true });
   const before = changed(cwd);
-  const fresh = () => [...changed(cwd)].filter(([path]) => !before.has(path));
-  const aside: string[] = [];
-  const setAside = (paths: string[]) => {
-    for (const [path, status] of fresh().filter(([written]) => paths.includes(written))) {
-      mkdirSync(dirname(join(kept, path)), { recursive: true });
-      if (existsSync(join(cwd, path))) cpSync(join(cwd, path), join(kept, path));
-      if (status === UNTRACKED) rmSync(join(cwd, path), { force: true });
-      else git(cwd, ["checkout", "--quiet", "--", path]);
-      if (!aside.includes(path)) aside.push(path);
-    }
-  };
   const opened: Opened = {
     ticket,
     body,
     tests,
     commands,
     briefed: briefed.text,
-    aside,
     logs,
-    wrote: () => fresh().map(([path]) => path),
-    setAside,
+    wrote: () => [...changed(cwd)].filter((path) => !before.has(path)),
     handBack: (input, judge, told) => {
       let spent = spendOnce(input);
       let session = spent.session;
@@ -225,7 +206,6 @@ function open(stage: Stage, ticket: string, cwd: string, logs: string): Opened |
   };
   const spendOnce = (input: string, resume?: string): Spent => {
     const spent = spend(input, resume);
-    setAside(opened.wrote().filter((path) => !stage.keeps(path, opened)));
     const stray = writtenOutsideRepo(cwd, spent.stdout);
     return stray === undefined ? spent : { stdout: spent.stdout, refusal: `the ${stage.name} wrote outside the repo: ${stray}` };
   };

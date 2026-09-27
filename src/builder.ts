@@ -48,15 +48,11 @@ export const stillRed = (commands: string[]) => [checkRed(), redOutput(commands)
 
 const roundsHandedBack = (rounds: number) => `${rounds} of ${ROUNDS} rounds handed back`;
 
-function withAside(verdict: string, aside: string[]): string {
-  return aside.length === 0 ? verdict : `${verdict}, having set aside ${aside.join(", ")}`;
-}
-
 function build(opened: Opened): Outcome {
-  const { ticket, briefed, commands, aside } = opened;
+  const { ticket, briefed, commands } = opened;
   const commit = { message: `Build #${ticket} against its failing tests` };
-  const red = (stop: Stop, refusal: string): Outcome => ({ stop, refusals: [withAside(refusal, aside)], commit });
-  const green = (verdict: string): Outcome => ({ verdict: withAside(verdict, aside), commit });
+  const red = (stop: Stop, refusal: string): Outcome => ({ stop, refusals: [refusal], commit });
+  const green = (verdict: string): Outcome => ({ verdict, commit });
   const built = opened.handBack(handedOn(briefed, commands), () => stillRed(commands) || undefined, repaired);
   if (built.spent.refusal !== undefined) return red("modelRun", built.spent.refusal);
   if (built.red !== undefined) return red("buildRed", `the checks are still red after ${roundsHandedBack(ROUNDS)}`);
@@ -70,7 +66,6 @@ const BUILDER: Stage = {
   clean: true,
   gated: true,
   tests: { found: authoredTests, missing: "the branch carries no failing test from the author, so there is nothing to build against" },
-  keeps: (path, { tests }) => !tests.includes(path),
   work: build,
 };
 

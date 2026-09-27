@@ -20,8 +20,8 @@ A part of the machine whose worth is the work it does: a step, a script, a stage
 _Avoid_: job, component
 
 **Guard**:
-A part whose worth is the failure it stops, not work it does: a run time cap, a refusal, a hold.
-However rarely it fires, its worth is the same.
+A part whose worth is the failure it stops, however rarely: a run time cap, a refusal, a hold.
+It refuses out loud and never undoes the work.
 _Avoid_: rail, safety net, guardrail
 
 ### Mechanisms

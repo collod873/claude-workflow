@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { type Shell } from "./check-runner.ts";
@@ -34,9 +34,12 @@ const WROTE_A_FIXTURE = [
   'printf \'import { it } from "vitest";\\nit("names the behaviour the criterion asks for", () => {});\\n\' >src/ticket-shape.test.ts',
   "printf 'export const fixture = 1;\\n' >src/scenarios.ts",
 ].join("\n");
-const WROTE_A_SANITY_TEST = [
-  'printf \'import { it } from "vitest";\\nit("names the behaviour the criterion asks for", () => {});\\n\' >src/ticket-shape.test.ts',
-  ": >src/_sanity.test.ts",
+const SANITY_TEST_DELETED_WHEN_RESUMED = [
+  'case "$*" in',
+  "  *--resume*) rm src/_sanity.test.ts ;;",
+  '  *) printf \'import { it } from "vitest";\\nit("names the behaviour the criterion asks for", () => {});\\n\' >src/ticket-shape.test.ts; : >src/_sanity.test.ts ;;',
+  "esac",
+  "",
 ].join("\n");
 const FIXED_WHEN_RESUMED = [
   'case "$*" in',
@@ -98,20 +101,18 @@ describe("the test author writes one failing test per criterion, or ends red (#6
     expect(uncovered(claimingBuilder, written, unimported(written, "builder.ts"))).toEqual([expect.stringContaining("ran no tests")]);
   });
 
-  it("sets aside what the model wrote outside test files before any check runs, and commits only the tests it wrote", () => {
-    const { session, run, committed } = authoring({ claude: PROTOTYPED, npx: GREEN_WITH_PROTOTYPE });
+  it("refuses a prototype by name and hands it back, leaving the owner's own work where it was", () => {
+    const { session, run, stdin, committed } = authoring({ claude: PROTOTYPED, npx: GREEN_WITH_PROTOTYPE });
     plant(session, "notes.txt", "the owner's own work in progress\n");
-    plant(session, "src/unfinished.test.ts", "the owner's own test in progress\n");
-    const setAside = join(session, ".git", "machine-logs", "test-author-723-set-aside");
 
     const result = run();
 
-    expect(heard(result)).toEqual({ status: 0, stderr: "", lines: [expect.stringContaining("set aside 2 files the checks did not judge")] });
-    expect(committed()).toEqual(["src/ticket-shape.test.ts"]);
-    expect(existsSync(join(session, "src", "prototype.ts"))).toBe(false);
-    expect(readFileSync(join(session, "src", "ticket-shape.ts"), "utf8")).toBe("export const shaped = 1;\n");
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("already passes");
+    expect(stdin()[1]).toContain("src/prototype.ts is not a test");
+    expect(stdin()[1]).toContain("src/ticket-shape.ts is not a test");
+    expect(committed()).toEqual([]);
     expect(readFileSync(join(session, "notes.txt"), "utf8")).toBe("the owner's own work in progress\n");
-    expect(readdirSync(join(setAside, "src")).sort()).toEqual(["prototype.ts", "ticket-shape.ts"]);
   });
 
   it("commits one failing test per criterion on the ticket branch", () => {
@@ -177,18 +178,17 @@ describe("the test author writes one failing test per criterion, or ends red (#6
   it("keeps the shared fixtures it adds and commits them with its tests", () => {
     const { run, committed } = authoring({ claude: `${WROTE_A_FIXTURE}\n` });
 
-    const result = run();
-
-    expect(heard(result)).toEqual({ status: 0, stderr: "", lines: [expect.not.stringContaining("set aside")] });
+    expect(run().status).toBe(0);
     expect(committed()).toEqual(["src/scenarios.ts", "src/ticket-shape.test.ts"]);
   });
 
-  it("sets aside a test file the checks did not run, and commits only the tests they judged", () => {
-    const { session, run, committed } = authoring({ claude: `${WROTE_A_SANITY_TEST}\n` });
+  it("refuses a test file the checks did not run by name, and commits once the author deletes it", () => {
+    const { session, run, stdin, committed } = authoring({ claude: SANITY_TEST_DELETED_WHEN_RESUMED });
 
     const result = run();
 
-    expect(heard(result)).toEqual({ status: 0, stderr: "", lines: [expect.stringContaining("set aside 1 files")] });
+    expect(heard(result)).toEqual({ status: 0, stderr: "", lines: [expect.stringContaining("#723")] });
+    expect(stdin()[1]).toContain("src/_sanity.test.ts runs under no check");
     expect(committed()).toEqual(["src/ticket-shape.test.ts"]);
     expect(existsSync(join(session, "src", "_sanity.test.ts"))).toBe(false);
   });
