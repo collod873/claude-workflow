@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { LINE_LIMIT, agedLogs, checkRepo, git, inRepo, script, stubTool } from "./scenarios.ts";
+import { LINE_LIMIT, agedLogs, checkRepo, git, inRepo, plant, script, stubTool } from "./scenarios.ts";
 
 const TYPE_ERROR = "src/a.ts(3,5): error TS2322: Type 'string' is not assignable to type 'number'.\n".repeat(40).trim();
 const TEST_FAILURE = ` FAIL  a.test.ts > adds\n${"AssertionError: expected 1 to be 2\n".repeat(40)} ❯ a.test.ts:4:34`;
@@ -108,5 +108,76 @@ describe("the check a session runs mid-work holds the gates a push refuses on, s
 
     expect(contract.stop).toBe("bin/check static");
     expect(staticGates.split(" ")).toEqual(expect.arrayContaining(["typecheck", "lint", "unused", "clones", "test"]));
+  });
+});
+
+const HOOKS_ON = { AGENT_HOOKS_SETTINGS: "/runner/agent-hooks.json" };
+
+function countedSuite(repo: string, red = false): () => number {
+  const counted = join(git(repo, "rev-parse", "--absolute-git-dir"), "suite-ran");
+  const verdict = red ? "exit 1\n" : "printf '      Tests  305 passed (305)\\n'\n";
+  script(join(repo, "node_modules", ".bin", "vitest"), `printf x >>'${counted}'\n${verdict}`);
+  git(repo, "commit", "--quiet", "-am", "count the suite's runs");
+  return () => (existsSync(counted) ? readFileSync(counted, "utf8").length : 0);
+}
+
+describe("bin/check takes its own pass on the commit in hand, so the machine's check after a builder's repeats no suite (#954)", () => {
+  it("names the test count on a pass, then passes at once on the same clean commit with the same hooks", () => {
+    const { repo, run } = checkRepo();
+    const ran = countedSuite(repo);
+
+    expect(run(repo, [], HOOKS_ON)).toEqual({ status: 0, stdout: "bin/check: passed, 305 tests\n", stderr: "" });
+    const again = run(repo, [], HOOKS_ON);
+
+    expect(again.status).toBe(0);
+    expect(again.stdout).toBe(`bin/check: passed, already at ${git(repo, "rev-parse", "--short", "HEAD")}\n`);
+    expect(ran()).toBe(1);
+  });
+
+  it("runs the suite again under other hooks, where #965's builder turned its hooks off to pass", () => {
+    const { repo, run } = checkRepo();
+    const ran = countedSuite(repo);
+
+    run(repo, [], { AGENT_HOOKS_SETTINGS: "" });
+    run(repo, [], HOOKS_ON);
+
+    expect(ran()).toBe(2);
+  });
+
+  it("runs the suite again on uncommitted work and on a new commit, and takes no pass while the tree is dirty", () => {
+    const { repo, run } = checkRepo();
+    const ran = countedSuite(repo);
+    run(repo, [], HOOKS_ON);
+
+    plant(repo, "src/a.ts", "export const a = 1;\n");
+    run(repo, [], HOOKS_ON);
+    run(repo, [], HOOKS_ON);
+    expect(ran()).toBe(3);
+
+    git(repo, "add", ".");
+    git(repo, "commit", "--quiet", "-m", "commit the work");
+    run(repo, [], HOOKS_ON);
+    expect(ran()).toBe(4);
+  });
+
+  it("takes no pass from a red run", () => {
+    const { repo, run } = checkRepo();
+    const ran = countedSuite(repo, true);
+
+    run(repo, [], HOOKS_ON);
+    run(repo, [], HOOKS_ON);
+
+    expect(ran()).toBe(2);
+  });
+
+  it("neither leaves nor takes a pass on a static run, which runs only the style tests", () => {
+    const { repo, run } = checkRepo();
+    const ran = countedSuite(repo);
+
+    run(repo, ["static"], HOOKS_ON);
+    run(repo, [], HOOKS_ON);
+    run(repo, ["static"], HOOKS_ON);
+
+    expect(ran()).toBe(3);
   });
 });

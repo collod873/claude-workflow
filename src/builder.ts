@@ -8,6 +8,7 @@ import type { Stop } from "./stops.ts";
 export const TAIL_CAP = 8 * 1024;
 const LOGGED = /; log (.+?)\s*$/m;
 export const HANDS_BACK = `When you finish, the machine runs \`${CHECK}\`, shown above, and hands you anything red. Build to pass it.`;
+export const RUN_LAST = `Once your work is committed, run \`${CHECK}\` last: it runs every gate and the whole suite, so running the suite apart only repeats it, and its pass on the commit you hand over is the one the machine takes.`;
 
 export function tailOf(text: string, limit: number): string {
   const bytes = Buffer.from(text);
@@ -21,6 +22,7 @@ export function handedOn(briefed: string, commands: string[]): string {
     `Build what the ticket asks for until the acceptance test passes. ${yourChecks(commands)}`,
     "`bin/check static` runs the gates your code must pass: no comments, no em dash, no copied code, and every export used by a part.",
     "Commit your own work, each message saying why. If the test count drops, give the reason on a line of its own: `Test count drop: <why>`.",
+    RUN_LAST,
     HANDS_BACK,
     "",
   ].join("\n\n");

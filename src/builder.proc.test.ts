@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { HANDS_BACK } from "./builder.ts";
+import { HANDS_BACK, RUN_LAST } from "./builder.ts";
 import { ownerHooks } from "./fence.ts";
 import { building, flagValue, FULL_CHECK_RED_ONCE, heard, plant, scratch, writesOutsideRepo } from "./scenarios.ts";
 
@@ -82,6 +82,14 @@ describe("the builder builds against the brief, and every red is handed back to 
 
     expect(stdin(1)).toContain("### bin/check");
     expect(stdin(1)).toContain(HANDS_BACK);
+  });
+
+  it("tells the builder to run bin/check last on its commit instead of the suite apart, where #954's builder ran the suite three times", () => {
+    const { run, stdin } = building();
+
+    run();
+
+    expect(stdin(1)).toContain(RUN_LAST);
   });
 
   it("carries the test the author wrote in the brief it writes to the machine logs (#539)", () => {
