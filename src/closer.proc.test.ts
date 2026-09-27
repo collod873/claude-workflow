@@ -125,8 +125,8 @@ describe("bin/close brings ticket PRs left behind by a merge up to date, so auto
     expect(tokens()[second]).toBe("app");
   });
 
-  it("names on its ticket the reason a PR that cannot be brought up to date was left, instead of leaving it waiting in silence", () => {
-    const { calls, run } = closing({
+  it("wakes the fixer of the ticket behind the stuck PR, instead of leaving it waiting in silence", () => {
+    const { calls, tokens, run } = closing({
       ticket: "819",
       behindPrs: [{ number: "903", ticket: "822", refused: "GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts." }],
     });
@@ -134,10 +134,11 @@ describe("bin/close brings ticket PRs left behind by a merge up to date, so auto
     const result = run();
 
     expect(result.status).toBe(0);
-    const commented = calls().find((call) => call.startsWith("issue\ncomment\n822\n"));
-    expect(commented, "the ticket behind the stuck PR is told why").toBeDefined();
-    expect(commented).toContain("903");
-    expect(commented).toContain("merge conflicts");
+    const wake = calls().find((call) => call.startsWith("workflow\nrun\nfix.yml") && call.includes("ticket=822"));
+    expect(wake, "the ticket behind the stuck PR is told why, waking its fixer").toBeDefined();
+    expect(wake).toContain("903");
+    expect(wake).toContain("merge conflicts");
+    expect(tokens()[calls().indexOf(wake ?? "")]).toBe("app");
   });
 });
 
@@ -200,6 +201,60 @@ describe("bin/close wakes a ticket its fixer split once every follow-up it split
     expect(result.stdout).toContain("#811 still waits for #813");
     expect(unparked.run().status).toBe(0);
     expect(woken(unparked.calls())).toBe(-1);
+  });
+});
+
+describe("bin/close wakes the ticket's fixer directly, instead of reopening it or leaving it a comment, when it cannot bring the ticket up to date or finds it red on the merge commit (#957)", () => {
+  const woken = (calls: string[], ticket: string) => calls.find((call) => call.startsWith("workflow\nrun\nfix.yml") && call.includes(`ticket=${ticket}`));
+
+  it("wakes the ticket's fixer instead of commenting, when its PR cannot be brought up to date by a merge", () => {
+    const { calls, tokens, run } = closing({
+      ticket: "819",
+      behindPrs: [{ number: "909", ticket: "830", refused: "GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts." }],
+    });
+
+    const result = run();
+
+    expect(result.status).toBe(0);
+    const wake = woken(calls(), "830");
+    expect(wake, "fires the trigger fix.yml starts on, naming the ticket").toBeDefined();
+    expect(wake).toContain("merge conflicts");
+    expect(tokens()[calls().indexOf(wake ?? "")], "runs as the App, so fix.yml actually starts").toBe("app");
+    expect(calls().some((call) => call.startsWith("issue\nreopen\n830"))).toBe(false);
+    expect(calls().some((call) => call.startsWith("issue\ncomment\n830\n"))).toBe(false);
+    expect(calls().some((call) => call.startsWith("pr\ncomment\n909\n"))).toBe(false);
+  });
+
+  it("wakes the ticket's fixer instead of commenting, when its PR cannot be brought up to date on the PR's opening", () => {
+    const { calls, tokens, run } = closing({
+      ticket: "819",
+      behindPrs: [{ number: "910", ticket: "831", mergeStateStatus: "UNKNOWN", refused: "GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts." }],
+      openedPr: "910",
+    });
+
+    const result = run();
+
+    expect(result.status).toBe(0);
+    const wake = woken(calls(), "831");
+    expect(wake, "fires the trigger fix.yml starts on, naming the ticket").toBeDefined();
+    expect(wake).toContain("merge conflicts");
+    expect(tokens()[calls().indexOf(wake ?? "")]).toBe("app");
+    expect(calls().some((call) => call.startsWith("issue\nreopen\n831"))).toBe(false);
+    expect(calls().some((call) => call.startsWith("issue\ncomment\n831\n"))).toBe(false);
+    expect(calls().some((call) => call.startsWith("pr\ncomment\n910\n"))).toBe(false);
+  });
+
+  it("wakes the ticket's fixer instead of reopening it, when a check is red on the merge commit of a ticket already closed", () => {
+    const { calls, tokens, run } = closing({ ticket: "832", fixes: false, closedAs: "COMPLETED" });
+
+    const result = run();
+
+    expect(result.status).toBe(0);
+    const wake = woken(calls(), "832");
+    expect(wake, "fires the trigger fix.yml starts on, naming the ticket").toBeDefined();
+    expect(wake).toContain("red on the merge commit");
+    expect(tokens()[calls().indexOf(wake ?? "")]).toBe("app");
+    expect(calls().some((call) => call.startsWith("issue\nreopen\n832"))).toBe(false);
   });
 });
 

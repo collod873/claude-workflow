@@ -1,6 +1,14 @@
 name: Fix
 
 "on":
+  workflow_dispatch:
+    inputs:
+      ticket:
+        required: true
+        type: string
+      reason:
+        required: true
+        type: string
   workflow_run:
     workflows: [Build, Check]
     types: [completed]
@@ -12,7 +20,7 @@ permissions:
 
 jobs:
   which:
-    if: ${{ (github.event_name == 'workflow_run' && (github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'timed_out') && github.event.workflow_run.head_repository.full_name == github.repository) || (github.event_name == 'issues' && github.event.sender.type == 'Bot' && !contains(github.event.issue.labels.*.name, 'note')) }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && (github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'timed_out') && github.event.workflow_run.head_repository.full_name == github.repository) || (github.event_name == 'issues' && github.event.sender.type == 'Bot' && !contains(github.event.issue.labels.*.name, 'note')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
     outputs:
@@ -21,11 +29,13 @@ jobs:
       - id: which
         env:
           ISSUE: ${{ github.event.issue.number }}
+          DISPATCHED: ${{ github.event.inputs.ticket }}
           RAN: ${{ github.event.workflow_run.path }}
           RAN_ON: ${{ github.event.workflow_run.head_branch }}
           TITLE: ${{ github.event.workflow_run.display_title }}
         run: |
           ticket=$ISSUE
+          [[ -n $DISPATCHED ]] && ticket=$DISPATCHED
           [[ $RAN == .github/workflows/check.yml && $RAN_ON =~ ^ticket/([0-9]+)$ ]] && ticket=${BASH_REMATCH[1]}
           [[ $RAN == .github/workflows/build.yml && $TITLE =~ ^Build\ ticket/([0-9]+): ]] && ticket=${BASH_REMATCH[1]}
           [[ $RAN != .github/workflows/build.yml || -n $ticket ]] || { printf 'which: the red Build run "%s" names no ticket, so no fixer starts\n' "$TITLE" >&2; exit 1; }
@@ -122,6 +132,7 @@ jobs:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           STAGE_MINUTES: 45
           RUN: ${{ github.event.workflow_run.id }}
+          REASON: ${{ github.event.inputs.reason }}
         run: |
           tail --pid=$$ -n +1 -F ".git/machine-logs/fix-$TICKET.jsonl" 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
           bin/fix "$TICKET" $RUN
