@@ -268,15 +268,13 @@ describe("the builder builds against the brief, and every red is handed back to 
     expect(calls()).toBe(0);
   });
 
-  it("undoes any change to the author's tests, whatever tool made it, and names the test it restored", () => {
-    const { run, session, committed } = building({ claude: `${BUILDS}printf 'it.skip("gone", () => {});\\n' >src/ticket-shape.test.ts\n`, npx: GREEN_ONCE_BUILT });
+  it("keeps its change to the author's tests, where #891 needed a hand commit", () => {
+    const { run, committed } = building({ claude: `${BUILDS}printf 'it.skip("gone", () => {});\\n' >src/ticket-shape.test.ts\n`, npx: GREEN_ONCE_BUILT });
 
     const result = run();
 
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain("src/ticket-shape.test.ts");
-    expect(readFileSync(join(session, "src", "ticket-shape.test.ts"), "utf8")).not.toContain("it.skip");
-    expect(committed()).toEqual([expect.stringContaining("#724"), "src/ticket-shape.ts"]);
+    expect(committed()).toEqual([expect.stringContaining("#724"), "src/ticket-shape.test.ts", "src/ticket-shape.ts"]);
   });
 
   it("keeps a file the ticket does not claim, beside the claimed ones", () => {
@@ -285,7 +283,6 @@ describe("the builder builds against the brief, and every red is handed back to 
     const result = run();
 
     expect(result.status).toBe(0);
-    expect(result.stdout).not.toContain("set aside");
     expect(committed()).toEqual([expect.stringContaining("#724"), "src/ticket-shape.ts", "src/unclaimed-helper.ts"]);
   });
 

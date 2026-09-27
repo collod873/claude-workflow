@@ -45,7 +45,7 @@ export function handedOn(briefed: string, commands: string[]): string {
     "## What to write",
     `Write one failing test for each criterion above, and write nothing else. ${yourChecks(commands)}`,
     "Each ends red naming the behaviour its criterion asks for. A check that passes, or runs no tests, is refused and handed back to you.",
-    `Anything you write outside test files and \`${FIXTURES}\`, and any test your check commands do not run, is removed before the checks judge, so a prototype proves nothing; a claimed file not written yet already counts as red.`,
+    `Anything you write outside test files and \`${FIXTURES}\`, and any test your check commands do not run, is refused and handed back to you, so a prototype proves nothing; a claimed file not written yet already counts as red.`,
     `\`${STATIC}\` runs the gates your tests must pass: no comments, no em dash, and no copied code, so build on the helpers in \`src/scenarios.ts\`. Its typecheck and unused gates stay red on a claimed file not written yet; that red is the builder's.`,
     "",
   ].join("\n\n");
@@ -60,16 +60,17 @@ function author(opened: Opened): Outcome {
   const judge = () => {
     if (tests().length === 0) return [WROTE_NOTHING];
     const { refusals, ran } = judged(opened.body, process.cwd());
-    opened.setAside(tests().filter((path) => !ran.has(path)));
-    return refusals.length > 0 ? refusals : undefined;
+    const untested = opened.wrote().filter((path) => !path.endsWith(AUTHORED) && path !== FIXTURES);
+    const unrun = tests().filter((path) => !ran.has(path));
+    const all = [...refusals, ...untested.map((path) => `${path} is not a test, so delete it`), ...unrun.map((path) => `${path} runs under no check, so delete it`)];
+    return all.length > 0 ? all : undefined;
   };
   const { spent, red } = opened.handBack(handedOn(opened.briefed, opened.commands), judge, refused);
   if (spent.refusal !== undefined) return { stop: "modelRun", refusals: [spent.refusal] };
   if (red !== undefined) return { stop: "noTest", refusals: red };
   const branch = `ticket/${opened.ticket}`;
-  const aside = opened.aside.length === 0 ? "" : `; set aside ${opened.aside.length} files the checks did not judge`;
   return {
-    verdict: `has a failing test for each criterion, ${tests().length} written on ${branch}${aside}`,
+    verdict: `has a failing test for each criterion, ${tests().length} written on ${branch}`,
     commit: { message: `Hold #${opened.ticket} to one failing test per criterion`, branch },
   };
 }
@@ -78,7 +79,6 @@ const AUTHOR: Stage = {
   name: STAGE,
   bin: "test-author",
   undone: "no test was authored",
-  keeps: (path) => path.endsWith(AUTHORED) || path === FIXTURES,
   work: author,
 };
 
