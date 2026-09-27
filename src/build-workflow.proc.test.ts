@@ -100,6 +100,15 @@ describe("build.yml builds a ticket the moment it is filed (#826)", () => {
     expect(holds(job.if ?? "true", { sender: "collod873-machine[bot]", body: followUp, labels: ["note"] })).toBe(false);
   });
 
+  it("builds nothing on the App's reopen", () => {
+    const { job } = workflow();
+    const followUp = "## Why\n\nFollow-up of #865: its review found this after the fixer's one turn.\n";
+
+    expect(holds(job.if ?? "true", { sender: "collod873-machine[bot]", body: followUp, action: "opened" })).toBe(true);
+    expect(holds(job.if ?? "true", { sender: "collod873-machine[bot]", body: followUp, action: "reopened" })).toBe(false);
+    expect(holds(job.if ?? "true", { sender: "collod873-machine[bot]", action: "unlabeled", label: "waiting", body: "## Why\n\nThe owner's own words.\n" })).toBe(true);
+  });
+
   it("a ticket split by its fixer builds what waited once `waiting` comes off, and no other label change starts a build (#910)", () => {
     const { on, job } = workflow();
     const starts = (sender: string, label: string) => holds(job.if ?? "true", { sender, action: "unlabeled", label, body: "## Why\n\nThe owner's own words.\n" });
@@ -291,6 +300,14 @@ describe("fix.yml hands every red run of a ticket to its fixer, however the run 
     expect(on.workflow_run?.workflows).toEqual(["Build", "Check"]);
     expect(on.workflow_run?.types).toEqual(["completed"]);
     expect(on.issues?.types).toEqual(["reopened"]);
+  });
+
+  it("starts the fixer on no reopen", () => {
+    const { on } = parse(readFileSync(FIX_WORKFLOW, "utf8")) as { on: Record<string, unknown> };
+
+    expect(on.workflow_run).toBeDefined();
+    expect(on.workflow_dispatch).toBeDefined();
+    expect(on.issues).toBeUndefined();
   });
 
   it("reads the ticket from a Check run's branch, a Build run's name, or the reopened issue, and from nothing else", () => {
