@@ -6,6 +6,8 @@ inputs:
     required: true
   private-key:
     required: true
+  artifact:
+    default: machine-logs
 
 runs:
   using: composite
@@ -43,6 +45,6 @@ runs:
     - if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: machine-logs
+        name: ${{ inputs.artifact }}
         path: .git/machine-logs
         include-hidden-files: true

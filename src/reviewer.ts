@@ -22,9 +22,6 @@ export const repairOf = (ticket: string) => `Repair #${ticket} as its fixer`;
 const QUOTE_LINE = /^>.*$/gm;
 const DOUBLE_QUOTE = /"[^"\n]+"/g;
 const READBACK_PROMPT = "`readback`: for someone who does not read code, what to try and what should happen, or what it now does and did not before.";
-const DEPTH_PROMPT =
-  "`depth`: each module the diff adds or widens that is shallow or a pass-through, each place it joins behaviours that change for different reasons, naming the module, and each place the diff writes or reads text that another stage or workflow reads or writes, such as a marker comment, a stop line, a commit subject, or a PR body line, where the writer and reader each spell it rather than share one message owner, naming both sides. Entry points that Actions call and one-line test fixture helpers are not findings; text carried through one module's own exports is not a finding; an empty list is valid.";
-const DEPTH_LINE = /^depth \(meter\):.*$/m;
 
 function ownerQuotes(body: string): string[] {
   const text = why(body);
@@ -41,7 +38,6 @@ const VERDICT = {
     verdict: { enum: ["match", "drift"] },
     gaps: { type: "array", items: { type: "string", pattern: NO_EM_DASH } },
     readback: { type: "string", pattern: PLAIN_WORDS },
-    depth: { type: "array", items: { type: "string", pattern: NO_EM_DASH } },
     later: {
       type: "array",
       items: {
@@ -57,7 +53,7 @@ const VERDICT = {
       },
     },
   },
-  required: ["verdict", "gaps", "readback", "depth"],
+  required: ["verdict", "gaps", "readback"],
   additionalProperties: false,
 };
 
@@ -73,7 +69,6 @@ interface Verdict {
   gaps: string[];
   later?: Later[];
   readback: string;
-  depth?: string[];
 }
 
 interface AfterTurn {
@@ -129,7 +124,6 @@ export function handedOn(body: string, diff: string, after?: AfterTurn): string 
     "## Your verdict",
     "`match` if the diff builds the Why, else `drift`. Name every gap in one pass, each a fixer can act on.",
     READBACK_PROMPT,
-    DEPTH_PROMPT,
     ...sorted,
     "",
   ].join("\n\n");
@@ -140,13 +134,18 @@ function isVerdict(answer: unknown): answer is Verdict {
   return verdict === "match" || verdict === "drift";
 }
 
-function judged(prompt: string, pr: string): Verdict | string {
+export function answered(hire: { name: string; bin: string; answers: object }, prompt: string, pr: string): { answer: unknown; stdout: string } | string {
   const logs = machineLogs(process.cwd());
   mkdirSync(logs, { recursive: true });
-  const spend = hired({ name: "reviewer", transcript: join(logs, `review-${pr}.jsonl`), tools: TOOLS, answers: VERDICT });
+  const spend = hired({ name: hire.name, transcript: join(logs, `${hire.bin}-${pr}.jsonl`), tools: TOOLS, answers: hire.answers });
   if (typeof spend === "string") return `the owner's hooks could not be read from ${spend}`;
   const spent = spend(prompt);
-  if (spent.refusal !== undefined) return spent.refusal;
+  return spent.refusal ?? { answer: spent.answer, stdout: spent.stdout };
+}
+
+function judged(prompt: string, pr: string): Verdict | string {
+  const spent = answered({ name: "reviewer", bin: "review", answers: VERDICT }, prompt, pr);
+  if (typeof spent === "string") return spent;
   return isVerdict(spent.answer) ? spent.answer : `the reviewer gave no verdict: ${firstLine(spent.stdout)}`;
 }
 
@@ -156,16 +155,6 @@ function judgement(ticket: string, gaps: string[]): string {
 }
 
 const fixDiff = (ticket: string): string => git(["log", "--format=", "-p", "--fixed-strings", `--grep=${repairOf(ticket)}`, "HEAD"]).stdout ?? "";
-
-const depthLine = (findings: string[]): string => (findings.length === 0 ? "depth (meter): would refuse nothing" : `depth (meter): would refuse, ${findings.join("; ")}`);
-
-const withDepthLine = (body: string, line: string): string => (DEPTH_LINE.test(body) ? body.replace(DEPTH_LINE, line) : `${body.trimEnd()}\n\n${line}\n`);
-
-function reportedDepth(pr: string, findings: string[]): void {
-  const got = gh(["pr", "view", pr, "--json", "body", "--jq", ".body"]);
-  if (got.status !== 0) return;
-  gh(["pr", "edit", pr, "--body", withDepthLine(got.stdout, depthLine(findings))]);
-}
 
 const followUp = (ticket: string, { gap, criteria, claimed }: Later): string =>
   followUpBody([`${FOLLOW_UP_OF}${ticket}: its review found this after its fixer's repair, outside the earlier gaps and the fix's own lines.`, "", `> ${gap}`], criteria, claimed);
@@ -202,14 +191,13 @@ function recordedLater(ticket: string, body: string, later: Later[], turns: stri
   return `, ${later.length} later finds posted: ${posted.said}; follow-ups filed: ${filed.map(({ said }) => said).filter((said) => said !== "").join(" ") || "none"}`;
 }
 
-function review(pr: string): Stop | undefined {
-  const said = `review: #${pr}`;
+export function ticketPr(pr: string, said: string): { ticket: string; body: string; diff: string } | Stop | undefined {
   const asked = (args: string[]) => {
     const got = gh(args);
     return got.status === 0 ? got.stdout : undefined;
   };
   const branch = asked(["pr", "view", pr, "--json", "headRefName", "--jq", ".headRefName"]);
-  if (branch === undefined) return stoppedAt("unread", `${said} could not be read, so nothing reviewed it`);
+  if (branch === undefined) return stoppedAt("unread", `${said} could not be read, so nothing read it`);
   const ticket = TICKET_BRANCH.exec(branch.trim())?.[1];
   if (ticket === undefined) {
     console.log(`${said} is not a ticket PR, so there is no Why to read it against`);
@@ -220,6 +208,14 @@ function review(pr: string): Stop | undefined {
   if (body === undefined || diff === undefined) {
     return stoppedAt("unread", `${said} ended red, ${body === undefined ? `ticket #${ticket}` : "its diff"} could not be read, so no model was spent`);
   }
+  return { ticket, body, diff };
+}
+
+function review(pr: string): Stop | undefined {
+  const said = `review: #${pr}`;
+  const read = ticketPr(pr, said);
+  if (typeof read !== "object") return read;
+  const { ticket, body, diff } = read;
   const turns = commentsOn(ticket, gh);
   if (turns === undefined) return stoppedAt("unread", `${said} ended red, the comments on #${ticket} could not be read, so no model was spent`);
   const onPr = commentsOn(pr, gh);
@@ -229,7 +225,6 @@ function review(pr: string): Stop | undefined {
   const after = earlier !== "" && fix !== "" ? { earlier, fix } : undefined;
   const verdict = judged(handedOn(body, diff, after), pr);
   if (typeof verdict === "string") return stoppedAt("modelRun", `${said} ended red, ${verdict}`);
-  reportedDepth(pr, verdict.depth ?? []);
   const blocking = after === undefined ? [...verdict.gaps, ...(verdict.later ?? []).map(({ gap }) => gap)] : verdict.gaps;
   const recorded = recordedLater(ticket, body, after === undefined ? [] : (verdict.later ?? []), turns);
   if (verdict.verdict === "match") {
