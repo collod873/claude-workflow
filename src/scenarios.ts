@@ -739,13 +739,23 @@ export function fileDiff(path: string, added: string): string {
 
 export function reviewing({
   branch = "ticket/810",
-  verdict = { verdict: "match", gaps: [] } as { verdict: string; gaps: string[]; later?: unknown[] },
+  verdict = { verdict: "match", gaps: [] } as { verdict: string; gaps: string[]; later?: unknown[]; readback?: string },
   diff = fileDiff("src/reviewer.ts", "export const reviewed = 1;"),
   turns = [] as Said[],
   onPr = [] as Said[],
   repair = undefined as string | undefined,
   body = REVIEWED_TICKET,
-}: { branch?: string; verdict?: { verdict: string; gaps: string[]; later?: unknown[] }; diff?: string; turns?: Said[]; onPr?: Said[]; repair?: string; body?: string } = {}) {
+  prCommentFails = false,
+}: {
+  branch?: string;
+  verdict?: { verdict: string; gaps: string[]; later?: unknown[]; readback?: string };
+  diff?: string;
+  turns?: Said[];
+  onPr?: Said[];
+  repair?: string;
+  body?: string;
+  prCommentFails?: boolean;
+} = {}) {
   const root = scratch("review-");
   const argvDir = join(root, "gh-argv");
   const handed = join(root, "claude-stdin");
@@ -776,7 +786,7 @@ export function reviewing({
       `  *"pr view"*) printf '%s\\n' '${branch}' ;;`,
       `  *"issue view"*) cat "${join(root, "ticket.md")}" ;;`,
       `  *"pr diff"*) cat "${join(root, "pr.diff")}" ;;`,
-      `  *"pr comment"*) printf '%s\\n' '${JUDGEMENT}' ;;`,
+      prCommentFails ? "  *\"pr comment\"*) printf 'the readback could not be posted\\n' >&2; exit 1 ;;" : `  *"pr comment"*) printf '%s\\n' '${JUDGEMENT}' ;;`,
       `  *"issue comment"*) printf '%s\\n' '${LATER_POSTED}' ;;`,
       `  *"issue create"*) printf '%s\\n' '${FOLLOW_UP_FILED}' ;;`,
       "  *) exit 22 ;;",
