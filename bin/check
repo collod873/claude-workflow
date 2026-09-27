@@ -18,6 +18,18 @@ find "${log%/*}" -maxdepth 1 -type f -name '*.log' -mmin +10080 -delete 2>/dev/n
 rm -f "$log"
 [[ $log == "$repo/"* ]] && shown="${log#"$repo/"}" || shown="$log"
 
+passed_at="$(git rev-parse --absolute-git-dir)/check-passed"
+committed() {
+  [[ -z $(git status --porcelain) ]] && printf '%s\n%s\n' "$(git rev-parse HEAD)" "${AGENT_HOOKS_SETTINGS:-}"
+}
+if [[ -z $mode ]]; then
+  checking=$(committed)
+  if [[ -n $checking && -f $passed_at && $(<"$passed_at") == "$checking" ]]; then
+    printf 'bin/check: passed, already at %s\n' "$(git rev-parse --short HEAD)"
+    exit 0
+  fi
+fi
+
 static_gates=" typecheck lint unused clones test "
 style=""
 [[ $mode == static ]] && style="prose em-dash"
@@ -28,7 +40,9 @@ run() {
   local name=$1 output at
   shift
   [[ $mode == static && $static_gates != *" $name "* ]] && return 0
-  if ! output=$("$@" 2>&1); then
+  if output=$("$@" 2>&1); then
+    [[ $name == test ]] && tests=$(sed 's/\x1b\[[0-9;]*m//g' <<<"$output" | grep -oE 'Tests +[0-9]+ passed' | grep -oE '[0-9]+')
+  else
     output=${output//"$repo/"/}
     printf -- '--- %s ---\n%s\n' "$name" "$output" >>"$log"
     at=$(grep -oE '[A-Za-z0-9_./-]+\.(ts|js|json)(:[0-9]+|\([0-9]+)?' <<<"$output" | grep -m1 -E '[:(][0-9]+$' ||
@@ -48,7 +62,8 @@ run prompts node src/prompt-bytes.ts
 run links node src/part-links.ts
 
 if [ -z "$names" ]; then
-  printf 'bin/check: passed\n'
+  [[ -z $mode && -n $checking && $(committed) == "$checking" ]] && printf '%s\n' "$checking" >"$passed_at"
+  printf 'bin/check: passed%s\n' "${tests:+, $tests tests}"
   exit 0
 fi
 message="bin/check: FAILED$located; log $shown"

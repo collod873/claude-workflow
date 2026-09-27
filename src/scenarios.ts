@@ -136,7 +136,7 @@ export function checkRepo(failing: Partial<Record<Tool, string>> = {}) {
   git(repo, "config", "user.name", "check");
   git(repo, "add", ".");
   git(repo, "commit", "--quiet", "-m", "base");
-  return { repo, run: (cwd = repo, args: string[] = []) => execute(join(cwd, "bin", "check"), cwd, {}, args) };
+  return { repo, run: (cwd = repo, args: string[] = [], extra: Record<string, string> = {}) => execute(join(cwd, "bin", "check"), cwd, extra, args) };
 }
 
 export const wellFormedTicket = [
