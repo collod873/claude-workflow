@@ -123,6 +123,7 @@ export interface Hire {
   answers?: object;
   gated?: boolean;
   reach?: Reach;
+  writeUp?: { minutes: number; told: string };
 }
 
 export interface Spent {
@@ -139,10 +140,11 @@ export function hired(hire: Hire): ((input: string, resume?: string) => Spent) |
   if (typeof hooks === "string") return hooks;
   const argv = [...stageArgv(hire.commands ?? [], ownerHooks(hooks, hire.gated), hire.tools, hire.reach), ...(hire.answers === undefined ? [] : ["--json-schema", JSON.stringify(hire.answers)])];
   rmSync(hire.transcript, { force: true });
-  const attempt = (input: string, resume?: string) => {
+  const readingEnds = deadline - (hire.writeUp?.minutes ?? 0) * 60_000;
+  const attempt = (input: string, resume?: string, ends = readingEnds) => {
     const from = existsSync(hire.transcript) ? statSync(hire.transcript).size : 0;
     const streamed = openSync(hire.transcript, "a");
-    const [command, ...args] = capped([...argv, ...(resume === undefined ? [] : ["--resume", resume]), ...STREAM], minutes, deadline);
+    const [command, ...args] = capped([...argv, ...(resume === undefined ? [] : ["--resume", resume]), ...STREAM], minutes, ends);
     const spent = spawnSync(command, args, { input, stdio: ["pipe", streamed, "pipe"], encoding: "utf8", maxBuffer: Infinity });
     closeSync(streamed);
     const stdout = readFileSync(hire.transcript).subarray(from).toString("utf8");
@@ -159,6 +161,11 @@ export function hired(hire: Hire): ((input: string, resume?: string) => Spent) |
     if (refusal !== undefined && got.status !== TIMED_OUT) {
       spawnSync("sleep", [RETRY_WAIT_SECONDS]);
       got = attempt(input, resume);
+      refusal = refusalFor(got);
+    }
+    const reading = sessionOf(got.stdout);
+    if (got.status === TIMED_OUT && minutes > 0 && hire.writeUp !== undefined && reading !== undefined) {
+      got = attempt(hire.writeUp.told, reading, deadline);
       refusal = refusalFor(got);
     }
     return refusal === undefined ? { stdout: got.stdout, session: sessionOf(got.stdout), answer: answerIn(got.stdout) } : { stdout: got.stdout, refusal };
