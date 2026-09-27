@@ -1,7 +1,11 @@
+import { existsSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { parts } from "./parts.ts";
 import { briefing, heard } from "./scenarios.ts";
 
 const AUTHORED = 'import { it } from "vitest";\nit("refuses a misshapen body", () => {});\n';
+const REPO = resolve(import.meta.dirname, "..");
 
 describe("bin/brief writes the brief a stage is handed (#539)", () => {
   it("says one line naming the brief it wrote and its size", () => {
@@ -39,5 +43,13 @@ describe("bin/brief writes the brief a stage is handed (#539)", () => {
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("#722 refused");
+  });
+});
+
+describe("the machine keeps no brief command (#946)", () => {
+  it("keeps no brief command", () => {
+    expect(parts.map((part) => part.name)).not.toContain("bin/brief");
+    expect(existsSync(join(REPO, "bin", "brief"))).toBe(false);
+    expect(readFileSync(join(REPO, "src", "brief.ts"), "utf8")).not.toContain("import.meta.main");
   });
 });
