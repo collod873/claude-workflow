@@ -52,7 +52,7 @@ describe("src/post.ts is the one way the machine writes text to GitHub (#662)", 
   it("refuses a kind the table does not carry", () => {
     const { gh, calls } = github();
 
-    expect(post(posting({ kind: "spec" }), gh).refusals).toEqual(["spec is not a kind src/post.ts writes: ticket, note, judgement"]);
+    expect(post(posting({ kind: "spec" }), gh).refusals).toEqual(["spec is not a kind src/post.ts writes: ticket, note, research, judgement"]);
     expect(calls).toEqual([]);
   });
 
@@ -67,6 +67,16 @@ describe("src/post.ts is the one way the machine writes text to GitHub (#662)", 
       "the body carries no '## Why', so nothing says why this was worth keeping",
     ]);
     expect(calls).toHaveLength(1);
+  });
+
+  it("labels a research note both note and research, so no build starts and the research workflow does (#902)", () => {
+    const { gh, calls } = github();
+
+    expect(post(posting({ kind: "research", text: NOTE, title: "What does the closer judge" }), gh)).toEqual({ refusals: [], said: URL });
+    expect(calls).toEqual([["issue", "create", "--title", "What does the closer judge", "--label", "note", "--label", "research", "--body", NOTE]]);
+    expect(post(posting({ kind: "research", text: "What does the closer judge?" }), gh).refusals).toEqual([
+      "the body carries no '## Why', so nothing says why this was worth keeping",
+    ]);
   });
 
   it("asks a note for none of what it asks a ticket, so filing one costs no judgement", () => {

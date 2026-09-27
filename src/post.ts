@@ -33,9 +33,12 @@ const filed = (refuses: (text: string) => string[], label: string[], briefed?: b
 
 const judgementRefusals = (text: string): string[] => emDashLines(text).map((line) => `line ${line} carries an em dash`);
 
+export const RESEARCH = "research";
+
 const KINDS: Record<string, Kind> = {
   ticket: filed(ticketRefusals, [], true),
   note: filed(noteRefusals, ["--label", "note"]),
+  research: filed(noteRefusals, ["--label", "note", "--label", RESEARCH]),
   judgement: { refuses: judgementRefusals, on: "pr", args: (pr, text) => ["pr", "comment", pr, "--body", text] },
 };
 

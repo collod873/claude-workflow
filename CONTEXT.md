@@ -54,12 +54,12 @@ _Avoid_: PRD document, requirements doc, brief
 
 **Ticket**:
 The unit the machine builds: an issue carrying `## Why`, acceptance criteria and file claims.
-Filing one starts its build; a note never starts one.
+Filing one starts its build.
 _Avoid_: issue, sub-issue, card, item
 
 **Note**:
-An issue labelled `note`: filed to be kept, never built. It carries a `## Why` saying why it was
-worth keeping, and the build skips it.
+An issue labelled `note`: filed to be kept, never built, with a `## Why` saying why. A research
+note, labelled `research` too, the machine answers and closes.
 _Avoid_: idea, bug, backlog item, memo
 
 **Stage**:

@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parts, type Part } from "./parts.ts";
-import { LINE_LIMIT, MOST_LINES, authoring, briefing, building, checkRepo, checking, closing, closingNote, coveredByCheck, execute, filing, fixing, landSession, launching, marking, misshapenTicket, overLimit, reviewing, saving, scratch, script, starting, wellFormedNote, wellFormedTicket, type Run } from "./scenarios.ts";
+import { LINE_LIMIT, MOST_LINES, authoring, briefing, building, checkRepo, checking, closing, closingNote, coveredByCheck, execute, filing, fixing, landSession, launching, marking, misshapenTicket, overLimit, researching, reviewing, saving, scratch, script, starting, wellFormedNote, wellFormedTicket, type Run } from "./scenarios.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
 const NOISE = "a line a tool prints that nobody needed to read\n".repeat(40).trim();
@@ -69,6 +69,10 @@ const scenarios: Record<string, Scenario[]> = {
   "bin/close-note": [
     { label: "closing a note", run: () => closingNote("note\\n").run("887") },
     { label: "with GitHub refusing the close", run: () => closingNote("note\\n", { gh: `cat >&2 <<'NOISE'\n${NOISE}\nNOISE\nexit 1\n` }).run("887") },
+  ],
+  "bin/research": [
+    { label: "answering a research note", run: () => researching().run() },
+    { label: "refusing a ticket", run: () => researching({ labels: ["2-building"] }).run() },
   ],
   "bin/review": [
     { label: "passing a match", run: () => reviewing().run() },
