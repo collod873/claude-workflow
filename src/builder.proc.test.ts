@@ -1,10 +1,9 @@
-import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { HANDS_BACK } from "./builder.ts";
 import { ownerHooks } from "./fence.ts";
-import { building, FULL_CHECK_RED_ONCE, heard, plant, scratch, writesOutsideRepo } from "./scenarios.ts";
+import { building, flagValue, FULL_CHECK_RED_ONCE, heard, plant, scratch, writesOutsideRepo } from "./scenarios.ts";
 
 const BUILDS = "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n";
 const GREEN_ONCE_BUILT = [
@@ -25,21 +24,7 @@ const RETRIES_ONCE_THEN_BUILDS = [
   "",
 ].join("\n");
 
-function after(argv: string, flag: string): string {
-  const value = argv.split("\n")[argv.split("\n").indexOf(flag) + 1];
-  if (value === undefined) throw new Error(`no value after ${flag} in the argv`);
-  return value;
-}
-
-function fenceSays(argv: string, input: string) {
-  const { hooks } = JSON.parse(after(argv, "--settings")) as { hooks: { PreToolUse: { matcher: string; hooks: { command: string }[] }[] } };
-  const [bash] = hooks.PreToolUse.filter(({ matcher }) => matcher === "Bash");
-  const command = bash?.hooks[0]?.command;
-  if (command === undefined) throw new Error("no Bash hook command in --settings");
-  return spawnSync("bash", ["-c", command], { input, encoding: "utf8" });
-}
-
-const asking = (command: unknown) => JSON.stringify({ tool_name: "Bash", tool_input: { command } });
+const COMMITS_ITS_OWN = `${BUILDS}git add src/ticket-shape.ts\ngit commit --quiet -m 'Shape the ticket so the filing command can refuse it' -m 'Test count drop: the old shape test went with the old shape'\n`;
 
 const WRITES_UNCLAIMED_FILE = [
   "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts",
@@ -137,36 +122,32 @@ describe("the builder builds against the brief, and every red is handed back to 
     expect(result.stderr).toContain(outside);
   });
 
-  it("lets its shell run its check commands and the static gates", () => {
+  it("hands its model an open shell on Sonnet, with no fence and every tool, where #946 rewrote bin/check to delete a file and commit", () => {
     const { run, argv } = building();
+
+    run();
+
+    expect(argv(1)).not.toContain("--tools");
+    expect(flagValue(argv(1), "--settings")).not.toContain("this stage runs only its own commands");
+    expect(flagValue(argv(1), "--model")).toBe("sonnet");
+  });
+
+  it("tells its model to commit its own work saying why, with the reason on its own line when the test count drops", () => {
+    const { run, stdin } = building();
+
+    run();
+
+    expect(stdin(1)).toMatch(/Commit your own work, each message saying why\..*`Test count drop: <why>`/s);
+  });
+
+  it("keeps the commit its model made and adds none of its own when nothing is left uncommitted", () => {
+    const { run, committed, dirty } = building({ claude: COMMITS_ITS_OWN, npx: GREEN_ONCE_BUILT });
 
     const result = run();
 
-    expect(heard(result).status).toBe(1);
-    expect(fenceSays(argv(1), asking("npx vitest run --config vitest.config.ts ticket-shape")).status).toBe(0);
-    expect(fenceSays(argv(1), asking("bin/check static")).status).toBe(0);
-    expect(fenceSays(argv(1), asking("bin/check")).status).toBe(0);
-    expect(fenceSays(argv(1), asking("~/bin/check")).status).toBe(0);
-  });
-
-  it("fences its shell to its own commands, which the permission mode alone would not, and says which ones it may run", () => {
-    const { run, argv } = building();
-
-    run();
-
-    const refused = fenceSays(argv(1), asking("touch unlisted-marker"));
-    expect(refused.status).toBe(2);
-    expect(refused.stderr).toContain("bin/check static");
-    expect(after(argv(1), "--tools")).toBe("Read,Edit,Write,Grep,Glob,Bash");
-  });
-
-  it("refuses a shell command its fence cannot read, rather than let it through", () => {
-    const { run, argv } = building();
-
-    run();
-
-    expect(fenceSays(argv(1), asking(42)).status).toBe(2);
-    expect(fenceSays(argv(1), "what a broken hook call looks like").status).toBe(2);
+    expect(heard(result)).toEqual({ status: 0, stderr: "", lines: [expect.stringContaining("#724 green")] });
+    expect(committed()).toEqual(["Shape the ticket so the filing command can refuse it", "src/ticket-shape.ts"]);
+    expect(dirty()).toBe("");
   });
 
   it("commits what it built on the ticket branch and ends green on one call when the checks pass", () => {
@@ -222,7 +203,7 @@ describe("the builder builds against the brief, and every red is handed back to 
     expect(["gone", "Z"]).toContain(state);
   });
 
-  it("runs the owner's edit-time hooks and check-gate beside its fence, and no other hook that would hold the model from stopping", () => {
+  it("runs the owner's edit-time hooks and check-gate, and no other hook that would hold the model from stopping", () => {
     const registered = (name: string, matcher?: string) => ({ ...(matcher === undefined ? {} : { matcher }), hooks: [{ type: "command", command: `python3 "/agent-hooks/hooks/${name}.py"` }] });
     const settings = join(scratch("agent-hooks-"), "settings.json");
     writeFileSync(settings, JSON.stringify({ hooks: { PreToolUse: [registered("no-prose", "Write|Edit"), registered("background-launch", "Bash")], Stop: [registered("check-gate")], SessionEnd: [registered("session-capture")], PostToolUse: [registered("post-edit-validate", "Edit")] } }));
@@ -230,13 +211,12 @@ describe("the builder builds against the brief, and every red is handed back to 
 
     run();
 
-    const handed = after(argv(1), "--settings");
+    const handed = flagValue(argv(1), "--settings");
     expect(handed).toContain("hooks/no-prose.py");
     expect(handed).toContain("hooks/post-edit-validate.py");
     expect(handed).toContain("hooks/session-capture.py");
     expect(handed).toContain("hooks/check-gate.py");
     expect(handed).not.toContain("background-launch");
-    expect(fenceSays(argv(1), asking("touch unlisted-marker")).status).toBe(2);
   });
 
   it("ends red rather than run without the owner's hooks when their registration cannot be read", () => {

@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { type Shell } from "./check-runner.ts";
-import { authoring, heard, plant, scratch, wellFormedTicket } from "./scenarios.ts";
+import { askingBash, authoring, fenceSays, flagValue, heard, plant, scratch, wellFormedTicket } from "./scenarios.ts";
 import { handedOn as prompted, uncovered } from "./test-author.ts";
 
 const ran = (stdout: string, status: number): Shell => () => ({ status, stdout, stderr: "" });
@@ -173,6 +173,29 @@ describe("the test author writes one failing test per criterion, or ends red (#6
 
     expect(handedOn()).toContain("./bin/check static");
     expect(prompted("", [])).toMatch(/`bin\/check static`.*comments.*em dash.*src\/scenarios\.ts/s);
+  });
+
+  it("fences its shell to its check commands and the static gates, which the permission mode alone would not, and says which ones it may run", () => {
+    const { run, handedOn } = authoring();
+
+    run();
+
+    expect(fenceSays(handedOn(), askingBash("npx vitest run --config vitest.config.ts ticket-shape")).status).toBe(0);
+    expect(fenceSays(handedOn(), askingBash("bin/check static")).status).toBe(0);
+    expect(fenceSays(handedOn(), askingBash("./bin/check static")).status).toBe(0);
+    const refused = fenceSays(handedOn(), askingBash("touch unlisted-marker"));
+    expect(refused.status).toBe(2);
+    expect(refused.stderr).toContain("bin/check static");
+    expect(flagValue(handedOn(), "--tools")).toBe("Read,Edit,Write,Grep,Glob,Bash");
+  });
+
+  it("refuses a shell command its fence cannot read, rather than let it through", () => {
+    const { run, handedOn } = authoring();
+
+    run();
+
+    expect(fenceSays(handedOn(), askingBash(42)).status).toBe(2);
+    expect(fenceSays(handedOn(), "what a broken hook call looks like").status).toBe(2);
   });
 
   it("keeps the shared fixtures it adds and commits them with its tests", () => {

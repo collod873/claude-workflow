@@ -37,6 +37,7 @@ export interface Stage {
   undone: string;
   clean?: boolean;
   gated?: boolean;
+  reach?: Reach;
   answers?: object;
   tests?: { found: () => string[]; missing?: string };
   work: (opened: Opened) => Outcome;
@@ -185,7 +186,7 @@ function open(stage: Stage, ticket: string, cwd: string, logs: string): Opened |
   writeFileSync(join(logs, `brief-${ticket}.md`), briefed.text);
   const commands = checks(body).map(({ command }) => command);
   const runs = stage.gated === true ? [...commands, ...GATED] : commands;
-  const spend = hired({ name: stage.name, transcript: join(logs, `${stage.bin}-${ticket}.jsonl`), commands: runs, answers: stage.answers, gated: stage.gated });
+  const spend = hired({ name: stage.name, transcript: join(logs, `${stage.bin}-${ticket}.jsonl`), commands: runs, answers: stage.answers, gated: stage.gated, reach: stage.reach });
   if (typeof spend === "string") return { stop: "modelRun", refusals: [`the owner's hooks could not be read from ${spend}, so ${stage.undone}`] };
   const before = changed(cwd);
   const opened: Opened = {

@@ -8,7 +8,7 @@ import { handedOn as researcherHandedOn, NOTE_CAP, OUT_OF_TIME } from "./researc
 import { DIFF_CAP, handedOn as reviewerHandedOn, LIST_CAP, TICKET_CAP } from "./reviewer.ts";
 import { handedOn, refused, REFUSALS_CAP } from "./test-author.ts";
 
-export const CEILINGS: Record<string, number> = { "brief": 136, "test author": 869, "test author refused": 94, "builder": 485, "repair": 87, "reviewer": 424, "reviewer after the fixer's repair": 984, "meter reviewer": 1679, "fixer": 1106, "researcher": 821, "researcher out of time": 165 };
+export const CEILINGS: Record<string, number> = { "brief": 136, "test author": 869, "test author refused": 94, "builder": 622, "repair": 87, "reviewer": 424, "reviewer after the fixer's repair": 984, "meter reviewer": 1679, "fixer": 1106, "researcher": 821, "researcher out of time": 165 };
 
 const AUTHORED = "src/planted.test.ts";
 const HIRES = /(spawn|execFile)\w*\(\s*"claude"/;

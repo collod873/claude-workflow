@@ -302,6 +302,22 @@ function claimedSession(session: string, who: string, claimed: Record<string, st
 
 const WROTE_A_TEST = 'printf \'import { it } from "vitest";\\nit("names the behaviour the criterion asks for", () => {});\\n\' >src/ticket-shape.test.ts\n';
 
+export function flagValue(argv: string, flag: string): string {
+  const value = argv.split("\n")[argv.split("\n").indexOf(flag) + 1];
+  if (value === undefined) throw new Error(`no value after ${flag} in the argv`);
+  return value;
+}
+
+export function fenceSays(argv: string, input: string) {
+  const { hooks } = JSON.parse(flagValue(argv, "--settings")) as { hooks: { PreToolUse: { matcher: string; hooks: { command: string }[] }[] } };
+  const [bash] = hooks.PreToolUse.filter(({ matcher }) => matcher === "Bash");
+  const command = bash?.hooks[0]?.command;
+  if (command === undefined) throw new Error("no Bash hook command in --settings");
+  return spawnSync("bash", ["-c", command], { input, encoding: "utf8" });
+}
+
+export const askingBash = (command: unknown) => JSON.stringify({ tool_name: "Bash", tool_input: { command } });
+
 export function writesOutsideRepo(path: string): string {
   const event = { type: "assistant", message: { content: [{ type: "tool_use", name: "Write", input: { file_path: path } }] } };
   return `printf '%s\\n' '${JSON.stringify(event)}'\n`;
