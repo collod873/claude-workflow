@@ -36,4 +36,17 @@ describe("bin/land refuses what must not reach main (#681)", () => {
       (commit) => `land: commit ${commit} carries a closing keyword before #812, so nothing landed; reword it\n`,
     );
   });
+
+  it("lands nothing and says its usage when handed any argument, so a --help probe cannot land", () => {
+    const marker = join(scratch("land-refusals-"), "gh-called");
+    const { remote, run } = landSession({ gh: `touch ${JSON.stringify(marker)}\n` });
+
+    const result = run(["--help"]);
+
+    expect(result.status).toBe(2);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toMatch(/^land: usage: land\b/);
+    expect(git(remote, "for-each-ref", "--format=%(refname)")).toBe("refs/heads/main");
+    expect(existsSync(marker)).toBe(false);
+  });
 });

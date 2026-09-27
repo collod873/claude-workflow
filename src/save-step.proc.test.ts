@@ -121,6 +121,20 @@ describe("bin/save hands reads outside the brief back to the filer when there ar
     expect(ticketComments()).toEqual([]);
     expect(totalOutside(body)).toBe(4);
   });
+
+  it("posts nothing on the ticket when its PR is already open, since the save that opened it already handed back", () => {
+    const { run, ticketComments } = saving({
+      brief,
+      alreadyOpen: true,
+      streams: {
+        "test-author": ["src/a.ts", "src/b.ts", "src/c.ts"],
+        build: ["src/c.ts", "src/d.ts", "src/e.ts"],
+      },
+    });
+
+    expect(run().status).toBe(0);
+    expect(ticketComments()).toEqual([]);
+  });
 });
 
 describe("bin/save's consent-only quote (meter) reads the ticket's last > passage under Why (#906)", () => {

@@ -256,7 +256,7 @@ export function landSession({ gh, remoteRefuses, messages = ["change"] }: { gh: 
   return {
     remote,
     session,
-    run: () => execute(join(BIN, "land"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}`, LAND_WAIT_SECONDS: "0" }),
+    run: (args: string[] = []) => execute(join(BIN, "land"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}`, LAND_WAIT_SECONDS: "0" }, args),
   };
 }
 

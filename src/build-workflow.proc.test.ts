@@ -112,11 +112,11 @@ describe("build.yml builds a ticket the moment it is filed (#826)", () => {
     expect(holds(job.if ?? "true", { sender: "collod873-machine[bot]", action: "unlabeled", label: "waiting", labels: ["note"] })).toBe(false);
   });
 
-  it("the branch is saved when the build ends red and nothing runs after a start refusal", () => {
+  it("the branch is saved when the build ends red, and nothing runs after a start or test author refusal, which leaves no branch", () => {
     const { job } = workflow();
 
     expect(stagesRun(job, "start")).toEqual(["start"]);
-    expect(stagesRun(job, "test-author")).toEqual(["start", "test-author", "save"]);
+    expect(stagesRun(job, "test-author")).toEqual(["start", "test-author"]);
     expect(stagesRun(job, "build")).toEqual(["start", "test-author", "build", "save"]);
     expect(stagesRun(job, undefined)).toEqual(["start", "test-author", "build", "save"]);
     const at = STAGES.map((stage) => job.steps.indexOf(stageStep(job, stage)));

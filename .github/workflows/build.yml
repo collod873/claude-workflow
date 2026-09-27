@@ -91,7 +91,7 @@ jobs:
           bin/build ${{ github.event.issue.number }}
 
       - id: save
-        if: always() && (steps.test-author.outcome != 'skipped' || steps.build.outcome != 'skipped')
+        if: always() && steps.test-author.outcome == 'success'
         timeout-minutes: 10
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
