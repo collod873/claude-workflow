@@ -80,6 +80,14 @@ describe("build.yml builds a ticket the moment it is filed (#826)", () => {
     expect(starts(["ticket", "note"])).toBe(false);
   });
 
+  it("an issue labelled spec starts no build", () => {
+    const { job } = workflow();
+    const starts = (labels: string[]) => holds(job.if ?? "true", { labels });
+
+    expect(starts(["spec"])).toBe(false);
+    expect(starts(["ticket", "spec"])).toBe(false);
+  });
+
   it("an issue anyone but the owner files or reopens starts no build, since its checks run as shell with the App's token", () => {
     const { job } = workflow();
     const starts = (sender: string) => holds(job.if ?? "true", { sender });

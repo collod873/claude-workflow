@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { LINE_LIMIT } from "./scenarios.ts";
-import { noteRefusals, ticketRefusals } from "./ticket-shape.ts";
+import { noteRefusals, specRefusals, ticketRefusals } from "./ticket-shape.ts";
 
 const DASH = "\u2014";
 const TEST_CHECK = "npx vitest run --config vitest.config.ts ticket-shape";
@@ -122,5 +122,126 @@ describe("a note asks for a why and nothing else, so a session at its end can fi
 
   it("refuses an em dash, which no filing may carry whatever its kind", () => {
     expect(noteRefusals(`## Why\n\nA finding ${DASH} worth keeping.\n`)).toEqual(["line 3 carries an em dash"]);
+  });
+});
+
+const SPEC_QUOTE = 'The owner, in session: "a spec is filed once, so the cold read and the slicer share one document".';
+
+function specBody({
+  problem = SPEC_QUOTE,
+  solution = "File a spec kind alongside a ticket, sharing its filing pipeline.",
+  stories = ["1. As the owner, I can file a spec before any ticket exists."],
+  implementation = "Reuse the ticket machinery where it already fits.",
+  testing = "Cover the shape with unit tests.",
+  outOfScope = "The cold read and the slicer.",
+  furtherNotes = "",
+  sharedNames,
+  sentences = [`- [ ] see a spec land as its own issue - check: \`${TEST_CHECK}\``],
+}: {
+  problem?: string;
+  solution?: string;
+  stories?: string[];
+  implementation?: string;
+  testing?: string;
+  outOfScope?: string;
+  furtherNotes?: string;
+  sharedNames?: string;
+  sentences?: string[];
+} = {}): string {
+  const lines = [
+    "## Problem Statement",
+    "",
+    problem,
+    "",
+    "## Solution",
+    "",
+    solution,
+    "",
+    "## User Stories",
+    "",
+    ...stories,
+    "",
+    "## Implementation Decisions",
+    "",
+    implementation,
+    "",
+    "## Testing Decisions",
+    "",
+    testing,
+    "",
+    "## Out of Scope",
+    "",
+    outOfScope,
+    "",
+    "## Further Notes",
+    "",
+  ];
+  if (furtherNotes !== "") lines.push(furtherNotes, "");
+  if (sharedNames !== undefined) lines.push("## Shared names", "", sharedNames, "");
+  lines.push("## I'll know it works when I can", "", ...sentences, "");
+  return lines.join("\n");
+}
+
+const misshapenSpec: [string, string, unknown[]][] = [
+  [
+    "a spec with none of its headings",
+    "nothing shaped like a spec at all",
+    [
+      "the body carries no '## Problem Statement', so nothing says what the owner asked for",
+      "the body carries no '## Solution'",
+      "the body carries no '## User Stories'",
+      "the body carries no '## Implementation Decisions'",
+      "the body carries no '## Testing Decisions'",
+      "the body carries no '## Out of Scope'",
+      "the body carries no '## Further Notes'",
+      "the body carries no '## I'll know it works when I can'",
+    ],
+  ],
+  [
+    "a spec whose '## Problem Statement' quotes no owner words",
+    specBody({ problem: "The session decided this was worth spec'ing." }),
+    ["'## Problem Statement' quotes no owner words: it carries no \"...\" quote and no > quoted line"],
+  ],
+  ["a spec whose '## Solution' says nothing", specBody({ solution: "" }), ["'## Solution' says nothing"]],
+  [
+    "a spec whose '## User Stories' names no numbered item",
+    specBody({ stories: ["As the owner, I can file a spec."] }),
+    ["'## User Stories' carries no numbered item"],
+  ],
+  [
+    "a spec naming a file path in '## Implementation Decisions'",
+    specBody({ implementation: "Change `src/post.ts` to add the kind." }),
+    ["'## Implementation Decisions' names `src/post.ts`, a file path"],
+  ],
+  [
+    "a spec with a heading after \"## I'll know it works when I can\"",
+    `${specBody()}## Extra\n\nsomething after the sentences\n`,
+    ["a heading follows '## I'll know it works when I can', which must be last"],
+  ],
+  [
+    "a spec with no sentence under \"## I'll know it works when I can\"",
+    specBody({ sentences: [] }),
+    ["'## I'll know it works when I can' carries no '- [ ]' item, so the done check has nothing to try"],
+  ],
+  [
+    "a spec whose sentence carries a check: marker that does not parse",
+    specBody({ sentences: ["- [ ] see a spec land - check: npx vitest run"] }),
+    [expect.stringContaining("sentence 1 carries a check: marker that does not parse: see a spec land")],
+  ],
+  [
+    "a spec with an em dash",
+    specBody({ solution: `File a spec kind ${DASH} sharing the ticket pipeline.` }),
+    ["line 7 carries an em dash"],
+  ],
+];
+
+describe("src/ticket-shape refuses a spec body that hides what the owner meant (#965)", () => {
+  it("accepts a well-formed spec, with or without an optional '## Shared names'", () => {
+    expect(specRefusals(specBody())).toEqual([]);
+    expect(specRefusals(specBody({ sharedNames: "`Ticket` refers to any filed issue." }))).toEqual([]);
+  });
+
+  it.each(misshapenSpec)("refuses %s", (_defect, planted, reasons) => {
+    expect(specRefusals(planted)).toEqual(reasons);
   });
 });

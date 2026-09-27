@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { text as read } from "node:stream/consumers";
 import { brief, onDisk } from "./brief.ts";
 import { emDashLines } from "./em-dash.ts";
-import { matchEnd, noteRefusals, rewriteRefusals, ticketRefusals, why } from "./ticket-shape.ts";
+import { matchEnd, noteRefusals, rewriteRefusals, specRefusals, ticketRefusals } from "./ticket-shape.ts";
 
 export interface Posting {
   kind: string;
@@ -39,21 +39,22 @@ const KINDS: Record<string, Kind> = {
   ticket: filed(ticketRefusals, [], true),
   note: filed(noteRefusals, ["--label", "note"]),
   research: filed(noteRefusals, ["--label", "note", "--label", RESEARCH]),
+  spec: filed(specRefusals, ["--label", "spec"]),
   judgement: { refuses: judgementRefusals, on: "pr", args: (pr, text) => ["pr", "comment", pr, "--body", text] },
 };
 
-const WHY_HEADING = /^##[ \t]+Why[ \t]*$/m;
+const FIRST_HEADING = /^##[ \t].*$/m;
 const NEXT_HEADING = /^##[ \t]/m;
 
 function stampedWithSession(text: string, sessionId: string): string {
   const line = `Session: \`${sessionId}\``;
-  if (why(text).includes(line)) return text;
-  const found = WHY_HEADING.exec(text);
+  const found = FIRST_HEADING.exec(text);
   if (found === null) return text;
   const start = matchEnd(found);
   const next = NEXT_HEADING.exec(text.slice(start));
   const end = next === null ? text.length : start + next.index;
   const section = text.slice(start, end).replace(/\s+$/, "");
+  if (section.includes(line)) return text;
   return `${text.slice(0, start)}${section}\n\n${line}\n\n${text.slice(end)}`;
 }
 

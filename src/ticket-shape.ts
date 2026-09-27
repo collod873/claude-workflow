@@ -4,6 +4,14 @@ const WHY = /^##[ \t]+Why[ \t]*$/m;
 const CRITERIA = /^##[ \t]+Acceptance criteria[ \t]*$/m;
 const CLAIMED = /^##[ \t]+Files claimed[ \t]*$/m;
 const TO_READ = /^##[ \t]+Files to read[ \t]*$/m;
+const PROBLEM_STATEMENT = /^##[ \t]+Problem Statement[ \t]*$/m;
+const SOLUTION = /^##[ \t]+Solution[ \t]*$/m;
+const USER_STORIES = /^##[ \t]+User Stories[ \t]*$/m;
+const IMPLEMENTATION_DECISIONS = /^##[ \t]+Implementation Decisions[ \t]*$/m;
+const TESTING_DECISIONS = /^##[ \t]+Testing Decisions[ \t]*$/m;
+const OUT_OF_SCOPE = /^##[ \t]+Out of Scope[ \t]*$/m;
+const FURTHER_NOTES = /^##[ \t]+Further Notes[ \t]*$/m;
+const SENTENCES = /^##[ \t]+I[’']ll know it works when I can[ \t]*$/m;
 const NEXT_HEADING = /^##[ \t]/m;
 const ITEM = /^[ \t]*-[ \t]*\[[ xX]\][ \t]*/;
 const MARKER = /(?:–|(?<=[ \t])-{1,2}(?=[ \t]))[ \t]*check:[ \t]*`([^`\n]+)`[ \t]*$/;
@@ -11,6 +19,8 @@ const ATTEMPT = /check:/gi;
 const RUNS_TESTS = /(?<![A-Za-z])(vitest|pytest|jest|node --test)(?![A-Za-z])/;
 const OWNER_WORDS = /"[^"\n]{4,}"|^>[ \t]*\S/m;
 const GLOB = /[*?[\]]/;
+const FILE_PATH = /[\w.-]+\/[\w./-]+\.[A-Za-z0-9]+/g;
+const NUMBERED_ITEM = /^[ \t]*\d+[.)][ \t]/m;
 const CONFIG_FLAGS = /--config[ \t]+(\S+)/g;
 const FEWEST = 1;
 const MOST = 3;
@@ -30,14 +40,16 @@ function section(body: string, heading: RegExp): string {
   return next === null ? rest : rest.slice(0, next.index);
 }
 
-function criteria(body: string): string[] {
+function itemsUnder(body: string, heading: RegExp): string[] {
   const items: string[] = [];
-  for (const line of section(body, CRITERIA).split("\n")) {
+  for (const line of section(body, heading).split("\n")) {
     if (ITEM.test(line)) items.push(line.replace(ITEM, "").trim());
     else if (items.length > 0 && line.trim() !== "") items[items.length - 1] += ` ${line.trim()}`;
   }
   return items;
 }
+
+const criteria = (body: string): string[] => itemsUnder(body, CRITERIA);
 
 function claimOn(line: string): string {
   const trimmed = line.trim();
@@ -136,5 +148,52 @@ export function ticketRefusals(body: string): string[] {
   if (!CLAIMED.test(text)) refusals.push("the body carries no '## Files claimed'");
   else refusals.push(...globRefusals("Files claimed", claims(text)));
   refusals.push(...globRefusals("Files to read", filesToRead(text)));
+  return [...refusals, ...emDashLines(text).map((line) => `line ${line} carries an em dash`)];
+}
+
+function pathRefusals(text: string): string[] {
+  const found = [...new Set([...text.matchAll(FILE_PATH)].map(([path]) => path))];
+  return found.map((path) => `'## Implementation Decisions' names \`${path}\`, a file path`);
+}
+
+function sentenceRefusals(items: string[]): string[] {
+  const refusals: string[] = [];
+  items.forEach((item, index) => {
+    const attempts = item.match(ATTEMPT)?.length ?? 0;
+    if (attempts === 0) return;
+    const command = MARKER.exec(item)?.[1];
+    const at = `sentence ${index + 1}`;
+    if (attempts > 1) refusals.push(`${at} carries ${attempts} check: markers, not one: ${quoted(item)}`);
+    else if (command === undefined) refusals.push(`${at} carries a check: marker that does not parse: ${quoted(item)}`);
+  });
+  return refusals;
+}
+
+export function specRefusals(body: string): string[] {
+  const text = body.replaceAll(/\r\n?/g, "\n");
+  const refusals: string[] = [];
+  if (!PROBLEM_STATEMENT.test(text)) refusals.push("the body carries no '## Problem Statement', so nothing says what the owner asked for");
+  else if (!OWNER_WORDS.test(section(text, PROBLEM_STATEMENT))) refusals.push('\'## Problem Statement\' quotes no owner words: it carries no "..." quote and no > quoted line');
+  if (!SOLUTION.test(text)) refusals.push("the body carries no '## Solution'");
+  else if (section(text, SOLUTION).trim() === "") refusals.push("'## Solution' says nothing");
+  if (!USER_STORIES.test(text)) refusals.push("the body carries no '## User Stories'");
+  else if (!NUMBERED_ITEM.test(section(text, USER_STORIES))) refusals.push("'## User Stories' carries no numbered item");
+  if (!IMPLEMENTATION_DECISIONS.test(text)) refusals.push("the body carries no '## Implementation Decisions'");
+  else refusals.push(...pathRefusals(section(text, IMPLEMENTATION_DECISIONS)));
+  if (!TESTING_DECISIONS.test(text)) refusals.push("the body carries no '## Testing Decisions'");
+  else if (section(text, TESTING_DECISIONS).trim() === "") refusals.push("'## Testing Decisions' says nothing");
+  if (!OUT_OF_SCOPE.test(text)) refusals.push("the body carries no '## Out of Scope'");
+  else if (section(text, OUT_OF_SCOPE).trim() === "") refusals.push("'## Out of Scope' says nothing");
+  if (!FURTHER_NOTES.test(text)) refusals.push("the body carries no '## Further Notes'");
+  if (!SENTENCES.test(text)) {
+    refusals.push("the body carries no '## I'll know it works when I can'");
+  } else {
+    const found = SENTENCES.exec(text);
+    const after = found === null ? "" : text.slice(matchEnd(found));
+    if (NEXT_HEADING.test(after)) refusals.push("a heading follows '## I'll know it works when I can', which must be last");
+    const sentences = itemsUnder(text, SENTENCES);
+    if (sentences.length === 0) refusals.push("'## I'll know it works when I can' carries no '- [ ]' item, so the done check has nothing to try");
+    else refusals.push(...sentenceRefusals(sentences));
+  }
   return [...refusals, ...emDashLines(text).map((line) => `line ${line} carries an em dash`)];
 }

@@ -19,6 +19,39 @@ const TICKET = [
 
 const NOTE = ["## Why", "", "Three passes over the standards left four proposals nobody can build until the owner weighs them.", ""].join("\n");
 
+const SPEC = [
+  "## Problem Statement",
+  "",
+  'The owner, in session: "a spec is filed once, so the cold read and the slicer share one document".',
+  "",
+  "## Solution",
+  "",
+  "File a spec kind alongside a ticket, sharing its filing pipeline.",
+  "",
+  "## User Stories",
+  "",
+  "1. As the owner, I can file a spec before any ticket exists.",
+  "",
+  "## Implementation Decisions",
+  "",
+  "Reuse the ticket machinery where it already fits.",
+  "",
+  "## Testing Decisions",
+  "",
+  "Cover the shape with unit tests.",
+  "",
+  "## Out of Scope",
+  "",
+  "The cold read and the slicer.",
+  "",
+  "## Further Notes",
+  "",
+  "## I'll know it works when I can",
+  "",
+  "- [ ] see a spec land as its own issue, labelled spec",
+  "",
+].join("\n");
+
 function github(result: { status?: number; stdout?: string; stderr?: string } = {}) {
   const calls: string[][] = [];
   const gh = (args: string[]) => {
@@ -52,8 +85,21 @@ describe("src/post.ts is the one way the machine writes text to GitHub (#662)", 
   it("refuses a kind the table does not carry", () => {
     const { gh, calls } = github();
 
-    expect(post(posting({ kind: "spec" }), gh).refusals).toEqual(["spec is not a kind src/post.ts writes: ticket, note, research, judgement"]);
+    expect(post(posting({ kind: "memo" }), gh).refusals).toEqual(["memo is not a kind src/post.ts writes: ticket, note, research, spec, judgement"]);
     expect(calls).toEqual([]);
+  });
+
+  it("files a spec labelled spec, refusing it by the spec shape rather than the ticket shape", () => {
+    const { gh, calls } = github();
+    const spec = (fields: Partial<Posting>) => post(posting({ kind: "spec", text: SPEC, title: "A spec the cold read can read", ...fields }), gh);
+
+    expect(spec({})).toEqual({ refusals: [], said: URL });
+    expect(calls).toEqual([["issue", "create", "--title", "A spec the cold read can read", "--label", "spec", "--body", SPEC]]);
+    expect(spec({ title: undefined }).refusals).toEqual(["a spec carries no title"]);
+    expect(spec({ text: SPEC.replace("## Problem Statement", "## Background") }).refusals).toEqual([
+      "the body carries no '## Problem Statement', so nothing says what the owner asked for",
+    ]);
+    expect(calls).toHaveLength(1);
   });
 
   it("labels a note, so the stub that starts a build from issues: opened can tell it from a ticket", () => {
