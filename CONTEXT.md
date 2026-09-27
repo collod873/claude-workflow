@@ -33,7 +33,7 @@ _Avoid_: check, validator, guardrail, lint
 
 **Meter**:
 A rule that reports in the PR body what it would have refused, and refuses nothing. Every new rule
-enters as one; run on ten merged PRs, it becomes a gate or is deleted.
+enters as one; run on 30 merged PRs, it becomes a gate or is deleted.
 _Avoid_: soft gate, warning, advisory check
 
 **Refusal**:
