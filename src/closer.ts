@@ -135,12 +135,14 @@ function verdicts(commands: string[], top: string): Verdict[] {
   return gathered;
 }
 
+function notDoneReason(ticket: string, red: Verdict[]): string {
+  return [`#${ticket} is not done: a check is red on the merge commit`, "", ...red.map(({ command, why }) => `- \`${command}\` ${why} on the merge commit`)].join("\n");
+}
+
 function record(ticket: string, gathered: Verdict[], speed: string): string {
   if (gathered.length === 0) return `#${ticket} carries no check, so nothing proves it done on the merge commit; left open\n\n${speed}`;
   const red = gathered.filter((verdict) => !verdict.merge);
-  if (red.length > 0) {
-    return [`#${ticket} is not done: a check is red on the merge commit`, "", ...red.map(({ command, why }) => `- \`${command}\` ${why} on the merge commit`), "", speed].join("\n");
-  }
+  if (red.length > 0) return [notDoneReason(ticket, red), "", speed].join("\n");
   return [
     `#${ticket} is done: every check is green on the merge commit`,
     "",
@@ -164,13 +166,17 @@ function openPrs(): { number: string; headRefName: string; mergeStateStatus: str
   }
 }
 
+function wakeFixer(ticket: string, reason: string): void {
+  gh(["workflow", "run", "fix.yml", "-f", `ticket=${ticket}`, "-f", `reason=${reason}`]);
+}
+
 function updateBranch(number: string, headRefName: string): void {
   const updated = gh(["pr", "update-branch", number]);
   if (updated.status === 0) return;
   const reason = (updated.stderr || updated.stdout).trim().split("\n")[0];
   const ticket = TICKET_BRANCH.exec(headRefName)?.[1];
   if (ticket === undefined) commentOnPr(number, `PR #${number} could not be brought up to date with main: ${reason}`, gh);
-  else commentOnTicket(ticket, `#${ticket}'s PR #${number} could not be brought up to date with main: ${reason}`, gh);
+  else wakeFixer(ticket, `#${ticket}'s PR #${number} could not be brought up to date with main: ${reason}`);
 }
 
 function bringUpToDate(): void {
@@ -227,7 +233,8 @@ function close(): Stop | undefined {
     console.log(`close: #${ticket} closed as completed, every check green on the merge commit${recorded(posted.said)}${wokenFromSplit(ticket, asked.stdout)}`);
     return undefined;
   }
-  if (ticketState(ticket).startsWith("CLOSED")) gh(["issue", "reopen", ticket]);
+  const red = gathered.filter((verdict) => !verdict.merge);
+  if (red.length > 0) wakeFixer(ticket, notDoneReason(ticket, red));
   console.log(`close: #${ticket} left open, a check is red on the merge commit${recorded(posted.said)}`);
   return undefined;
 }

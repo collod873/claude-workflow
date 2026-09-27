@@ -78,7 +78,7 @@ export function handedOn({ ticket, body, failed, diff, gaps }: Handed): string {
     "## Reviewer's gaps",
     capped(gaps, LIST_CAP) || "(none)",
     "## You own it until it merges",
-    "Every red on this ticket comes back to you until it merges. Read its Why first; `gh` reads any run. Answer one outcome:",
+    "Every red on this ticket comes back to you until it merges. Read its Why first; `gh` reads any run. If the reason above names a merge conflict, merge main in and resolve it yourself, keeping the ticket's Why over main's conflicting change. Answer one outcome:",
     "- `code`: fix it, or change nothing on a flake; the machine commits, runs `bin/check` and the ticket's checks, hands back red, pushes green or reruns the red Check.",
     "- `ticket`: a criterion or test is wrong; fix the test, or return the ticket as `body`, Why byte-identical.",
     "- `split`: too big for one build; file `tickets` that build at once, each 1 to 3 `criteria` ending ` - check: `<command>`` and `claimed` files no other claims. What must wait for them stays as `body`, Why byte-identical, and builds once they merge.",
@@ -260,10 +260,11 @@ function ownRedTicket(ticket: string, run: string | undefined): number {
   const spend = hired({ name: "fixer", transcript: join(logs, `fix-${ticket}.jsonl`), answers: ANSWER, gated: true, reach: UNFENCED });
   if (typeof spend === "string") return calledOwner(ticket, `the owner's hooks could not be read from ${spend}`);
   let session = savedSession(ticket);
+  const reason = process.env.REASON;
   const opening = handedOn({
     ticket,
     body,
-    failed: failure(ticket, logs, run),
+    failed: reason === undefined || reason === "" ? failure(ticket, logs, run) : reason,
     diff: git(["diff", "origin/main...HEAD"]).stdout ?? "",
     gaps: earlierDrift(ticket, judged),
   });

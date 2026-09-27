@@ -125,8 +125,8 @@ describe("bin/close brings ticket PRs left behind by a merge up to date, so auto
     expect(tokens()[second]).toBe("app");
   });
 
-  it("names on its ticket the reason a PR that cannot be brought up to date was left, instead of leaving it waiting in silence", () => {
-    const { calls, run } = closing({
+  it("wakes the fixer of the ticket behind the stuck PR, instead of leaving it waiting in silence", () => {
+    const { calls, tokens, run } = closing({
       ticket: "819",
       behindPrs: [{ number: "903", ticket: "822", refused: "GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts." }],
     });
@@ -134,10 +134,11 @@ describe("bin/close brings ticket PRs left behind by a merge up to date, so auto
     const result = run();
 
     expect(result.status).toBe(0);
-    const commented = calls().find((call) => call.startsWith("issue\ncomment\n822\n"));
-    expect(commented, "the ticket behind the stuck PR is told why").toBeDefined();
-    expect(commented).toContain("903");
-    expect(commented).toContain("merge conflicts");
+    const wake = calls().find((call) => call.startsWith("workflow\nrun\nfix.yml") && call.includes("ticket=822"));
+    expect(wake, "the ticket behind the stuck PR is told why, waking its fixer").toBeDefined();
+    expect(wake).toContain("903");
+    expect(wake).toContain("merge conflicts");
+    expect(tokens()[calls().indexOf(wake ?? "")]).toBe("app");
   });
 });
 
