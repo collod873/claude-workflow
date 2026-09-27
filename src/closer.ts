@@ -152,27 +152,34 @@ function record(ticket: string, gathered: Verdict[], speed: string): string {
 
 const recorded = (said: string) => (said === "" ? "" : `; record ${said}`);
 
-function behindPrs(): { number: string; headRefName: string }[] {
+function openPrs(): { number: string; headRefName: string; mergeStateStatus: string }[] {
   const listed = gh(["pr", "list", "--state", "open", "--json", "number,headRefName,mergeStateStatus"]);
   if (listed.status !== 0) return [];
   try {
     return (JSON.parse(listed.stdout) as { number: number; headRefName: string; mergeStateStatus: string }[])
-      .filter((pr) => MACHINE_BRANCH.test(pr.headRefName) && (pr.mergeStateStatus === "BEHIND" || pr.mergeStateStatus === "DIRTY"))
-      .map((pr) => ({ number: String(pr.number), headRefName: pr.headRefName }));
+      .filter((pr) => MACHINE_BRANCH.test(pr.headRefName))
+      .map((pr) => ({ number: String(pr.number), headRefName: pr.headRefName, mergeStateStatus: pr.mergeStateStatus }));
   } catch {
     return [];
   }
 }
 
+function updateBranch(number: string, headRefName: string): void {
+  const updated = gh(["pr", "update-branch", number]);
+  if (updated.status === 0) return;
+  const reason = (updated.stderr || updated.stdout).trim().split("\n")[0];
+  const ticket = TICKET_BRANCH.exec(headRefName)?.[1];
+  if (ticket === undefined) commentOnPr(number, `PR #${number} could not be brought up to date with main: ${reason}`, gh);
+  else commentOnTicket(ticket, `#${ticket}'s PR #${number} could not be brought up to date with main: ${reason}`, gh);
+}
+
 function bringUpToDate(): void {
-  for (const { number, headRefName } of behindPrs()) {
-    const updated = gh(["pr", "update-branch", number]);
-    if (updated.status === 0) continue;
-    const reason = (updated.stderr || updated.stdout).trim().split("\n")[0];
-    const ticket = TICKET_BRANCH.exec(headRefName)?.[1];
-    if (ticket === undefined) commentOnPr(number, `PR #${number} could not be brought up to date with main: ${reason}`, gh);
-    else commentOnTicket(ticket, `#${ticket}'s PR #${number} could not be brought up to date with main: ${reason}`, gh);
-  }
+  for (const pr of openPrs().filter((pr) => pr.mergeStateStatus === "BEHIND" || pr.mergeStateStatus === "DIRTY")) updateBranch(pr.number, pr.headRefName);
+}
+
+function bringOpenedPrUpToDate(number: string): void {
+  const pr = openPrs().find((candidate) => candidate.number === number);
+  if (pr !== undefined) updateBranch(pr.number, pr.headRefName);
 }
 
 function wokenFromSplit(ticket: string, body: string): string {
@@ -190,6 +197,12 @@ function wokenFromSplit(ticket: string, body: string): string {
 
 function close(): Stop | undefined {
   const top = process.cwd();
+  const openedPr = process.env.OPENED_PR;
+  if (openedPr !== undefined && openedPr !== "") {
+    bringOpenedPrUpToDate(openedPr);
+    console.log(`close: PR #${openedPr} opened, checked for being behind main and brought up to date`);
+    return undefined;
+  }
   bringUpToDate();
   const subject = git(["log", "-1", "--format=%s", "HEAD"]).stdout.trim();
   const ticket = ticketBuilt(subject);
