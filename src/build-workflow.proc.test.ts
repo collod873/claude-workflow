@@ -294,12 +294,11 @@ function lookedUp(env: Record<string, string>): ReturnType<typeof ranStep> {
 const ticketNamed = (env: Record<string, string>): string | undefined => lookedUp(env).output.ticket;
 
 describe("fix.yml hands every red run of a ticket to its fixer, however the run died (#898)", () => {
-  it("starts on GitHub's own word that a Build or Check run finished, and on the machine's reopen of a ticket red on main", () => {
+  it("starts on GitHub's own word that a Build or Check run finished", () => {
     const { on } = fixWorkflow();
 
     expect(on.workflow_run?.workflows).toEqual(["Build", "Check"]);
     expect(on.workflow_run?.types).toEqual(["completed"]);
-    expect(on.issues?.types).toEqual(["reopened"]);
   });
 
   it("starts the fixer on no reopen", () => {
@@ -310,14 +309,14 @@ describe("fix.yml hands every red run of a ticket to its fixer, however the run 
     expect(on.issues).toBeUndefined();
   });
 
-  it("reads the ticket from a Check run's branch, a Build run's name, or the reopened issue, and from nothing else", () => {
+  it("reads the ticket from a Check run's branch, a Build run's name, or the closer's dispatch, and from nothing else", () => {
     const buildName = (parse(readFileSync(WORKFLOW, "utf8")) as { "run-name": string })["run-name"]
       .replace("${{ github.event.issue.number }}", "894")
       .replace("${{ github.event.issue.title }}", "Give the Fixer's one turn a single record: ticket/5");
 
     expect(ticketNamed({ RAN: ".github/workflows/check.yml", RAN_ON: "ticket/891", TITLE: "Stamp the session id" })).toBe("891");
     expect(ticketNamed({ RAN: ".github/workflows/build.yml", RAN_ON: "main", TITLE: buildName })).toBe("894");
-    expect(ticketNamed({ ISSUE: "812" })).toBe("812");
+    expect(ticketNamed({ DISPATCHED: "812" })).toBe("812");
     expect(ticketNamed({ RAN: ".github/workflows/check.yml", RAN_ON: "land/4b58f3372b91", TITLE: "Build ticket/7: a land PR's title" })).toBe("");
   });
 
