@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { cloned, fileDiff, git, JUDGEMENT, plant, reviewing, scratch } from "./scenarios.ts";
-import { PLAIN_WORDS } from "./reviewer.ts";
+import { NO_EM_DASH, PLAIN_WORDS } from "./reviewer.ts";
 import { claims, ticketRefusals } from "./ticket-shape.ts";
 
 const WORKFLOW = join(import.meta.dirname, "..", ".github", "workflows", "check.yml");
@@ -293,6 +293,79 @@ describe("bin/review --help prints its usage and exits clean, reading no PR and 
     expect(read()).toBe(false);
     expect(spent()).toBe(false);
     expect(hired()).toEqual([]);
+  });
+});
+
+describe("bin/review's depth (meter) reports the reviewer's depth findings on the PR body it reviews (#920)", () => {
+  it("puts one depth line on the PR body, replaces an earlier depth line rather than adding a second, and leaves the verdict, what is posted, and whether the PR merges the same as without it, even when the PR body cannot be read or edited", () => {
+    const findings = ["src/tangle.ts joins billing and shipping, which change for different reasons"];
+    const matchVerdict = (depth?: string[]) => ({ verdict: "match", gaps: [], readback: "It now reads a green build against what was meant before it merges.", depth });
+    const driftVerdict = (depth?: string[]) => ({ verdict: "drift", gaps: ["a real gap"], readback: "should never be posted", depth });
+
+    const withDepth = reviewing({ verdict: matchVerdict(findings) });
+    expect(withDepth.run().status).toBe(0);
+    const [edit] = withDepth.edited();
+    if (edit === undefined) throw new Error("no pr edit call");
+    expect(edit).toContain(`depth (meter): would refuse, ${findings[0]}`);
+
+    const noFindings = reviewing({ verdict: matchVerdict([]) });
+    expect(noFindings.run().status).toBe(0);
+    const [emptyEdit] = noFindings.edited();
+    if (emptyEdit === undefined) throw new Error("no pr edit call");
+    expect(emptyEdit).toContain("depth (meter): would refuse nothing");
+
+    const already = reviewing({ prBody: "Builds #810\n\ndepth (meter): would refuse, an earlier finding\n", verdict: matchVerdict(findings) });
+    expect(already.run().status).toBe(0);
+    const [replaced] = already.edited();
+    if (replaced === undefined) throw new Error("no pr edit call");
+    expect(replaced.match(/depth \(meter\):/g)).toHaveLength(1);
+    expect(replaced).toContain(findings[0]);
+    expect(replaced).not.toContain("an earlier finding");
+    expect(replaced).toContain("Builds #810");
+
+    const baseline = reviewing({ verdict: driftVerdict(undefined) });
+    const baselineRun = baseline.run();
+    const withDepthDrift = reviewing({ verdict: driftVerdict(findings) });
+    const depthRun = withDepthDrift.run();
+    expect(depthRun.status).toBe(baselineRun.status);
+    expect(withDepthDrift.comments()).toEqual(baseline.comments());
+
+    const unreadable = reviewing({ prBodyUnreadable: true, verdict: matchVerdict(findings) });
+    expect(unreadable.run().status).toBe(0);
+    expect(unreadable.comments()).toHaveLength(1);
+
+    const uneditable = reviewing({ prEditFails: true, verdict: driftVerdict(findings) });
+    const uneditableRun = uneditable.run();
+    expect(uneditableRun.status).toBe(1);
+    expect(uneditable.comments()[0]).toContain("a real gap");
+  });
+});
+
+describe("the reviewer's answer schema and prompt ask for each shallow, pass-through, or tangled module the diff touches (#920)", () => {
+  it("requires a depth finding for each shallow module, pass-through, or tangle the diff adds or widens, allows an empty list, and names entry points Actions call and one-line test fixture helpers as not findings", () => {
+    const { run, hired, handed } = reviewing();
+
+    expect(run().status).toBe(0);
+
+    const argv = hired();
+    const schemaText = argv[argv.indexOf("--json-schema") + 1];
+    if (schemaText === undefined) throw new Error("no --json-schema in the reviewer's argv");
+    const schema = JSON.parse(schemaText) as { required: string[]; properties: { depth?: { type: string; minItems?: number; items?: { type: string; pattern: string } } } };
+    expect(schema.required).toContain("depth");
+    expect(schema.properties.depth?.type).toBe("array");
+    expect(schema.properties.depth?.minItems).toBeUndefined();
+    expect(schema.properties.depth?.items?.type).toBe("string");
+    expect(schema.properties.depth?.items?.pattern).toBe(NO_EM_DASH);
+
+    const prompt = handed();
+    expect(prompt).toContain("each module the diff adds or widens");
+    expect(prompt).toContain("shallow");
+    expect(prompt).toContain("pass-through");
+    expect(prompt).toContain("joins behaviours that change for different reasons");
+    expect(prompt).toContain("naming the module");
+    expect(prompt).toMatch(/entry points[^.]*Actions[^.]*call/i);
+    expect(prompt).toMatch(/one-line test fixture helpers?/i);
+    expect(prompt).toMatch(/not findings/i);
   });
 });
 
