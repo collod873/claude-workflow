@@ -739,22 +739,34 @@ export function fileDiff(path: string, added: string): string {
 
 export function reviewing({
   branch = "ticket/810",
-  verdict = { verdict: "match", gaps: [], readback: "It now reads a green build against what was meant before it merges." } as { verdict: string; gaps: string[]; later?: unknown[]; readback?: string },
+  verdict = { verdict: "match", gaps: [], readback: "It now reads a green build against what was meant before it merges." } as {
+    verdict: string;
+    gaps: string[];
+    later?: unknown[];
+    readback?: string;
+    depth?: string[];
+  },
   diff = fileDiff("src/reviewer.ts", "export const reviewed = 1;"),
   turns = [] as Said[],
   onPr = [] as Said[],
   repair = undefined as string | undefined,
   body = REVIEWED_TICKET,
   prCommentFails = false,
+  prBody = "Builds #810\n",
+  prBodyUnreadable = false,
+  prEditFails = false,
 }: {
   branch?: string;
-  verdict?: { verdict: string; gaps: string[]; later?: unknown[]; readback?: string };
+  verdict?: { verdict: string; gaps: string[]; later?: unknown[]; readback?: string; depth?: string[] };
   diff?: string;
   turns?: Said[];
   onPr?: Said[];
   repair?: string;
   body?: string;
   prCommentFails?: boolean;
+  prBody?: string;
+  prBodyUnreadable?: boolean;
+  prEditFails?: boolean;
 } = {}) {
   const root = scratch("review-");
   const argvDir = join(root, "gh-argv");
@@ -773,6 +785,7 @@ export function reviewing({
   }
   plant(root, "pr.diff", diff);
   plant(root, "ticket.md", body);
+  plant(root, "pr-body.md", prBody);
   plant(root, "turns.json", authored(turns));
   plant(root, "on-pr.json", authored(onPr));
   plant(root, "answer.json", `${JSON.stringify({ type: "result", subtype: "success", is_error: false, structured_output: verdict })}\n`);
@@ -783,6 +796,8 @@ export function reviewing({
       'case "$*" in',
       `  *"api"*"issues/810/comments"*) cat "${join(root, "turns.json")}" ;;`,
       `  *"api"*"/comments"*) cat "${join(root, "on-pr.json")}" ;;`,
+      `  *"pr view"*"--json body"*) ${prBodyUnreadable ? "printf 'the PR body could not be read\\n' >&2; exit 1" : `cat "${join(root, "pr-body.md")}"`} ;;`,
+      `  *"pr edit"*) ${prEditFails ? "printf 'the PR body could not be edited\\n' >&2; exit 1" : "exit 0"} ;;`,
       `  *"pr view"*) printf '%s\\n' '${branch}' ;;`,
       `  *"issue view"*) cat "${join(root, "ticket.md")}" ;;`,
       `  *"pr diff"*) cat "${join(root, "pr.diff")}" ;;`,
@@ -805,6 +820,7 @@ export function reviewing({
     filed: () => calls().filter((args) => args[0] === "issue" && args[1] === "create").map((args) => ({ title: args[args.indexOf("--title") + 1], body: bodyOf(args) })),
     order: () => calls().map((args) => `${args[0]} ${args[1]}`),
     comments: () => calls().filter((args) => args[0] === "pr" && args[1] === "comment").map(bodyOf),
+    edited: () => calls().filter((args) => args[0] === "pr" && args[1] === "edit").map(bodyOf),
     read: () => calls().some((args) => args[0] === "pr" && args[1] === "view"),
     run: (pr = "9810", extra: Record<string, string> = {}) => execute(join(BIN, "review"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}`, ...extra }, [pr]),
   };
