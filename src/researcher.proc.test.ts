@@ -6,8 +6,20 @@ import { FINDINGS_POSTED, heard, holds, researching, wellFormedNote } from "./sc
 
 const WORKFLOWS = join(import.meta.dirname, "..", ".github", "workflows");
 
-const onlyJob = (file: string): { if?: string } => {
-  const { jobs } = parse(readFileSync(join(WORKFLOWS, file), "utf8")) as { jobs: Record<string, { if?: string }> };
+interface Step {
+  run?: string;
+  with?: Record<string, unknown>;
+  env?: Record<string, unknown>;
+}
+
+interface Job {
+  if?: string;
+  permissions?: Record<string, string>;
+  steps: Step[];
+}
+
+const onlyJob = (file: string): Job => {
+  const { jobs } = parse(readFileSync(join(WORKFLOWS, file), "utf8")) as { jobs: Record<string, Job> };
   const [job] = Object.values(jobs);
   if (job === undefined) throw new Error(`no job in ${file}`);
   return job;
@@ -29,6 +41,34 @@ describe("bin/research answers a research note on the note and closes it, with n
 
     expect(run().status).toBe(0);
     expect(hired()[hired().indexOf("--tools") + 1]).toBe("Read,Grep,Glob,WebSearch,WebFetch");
+  });
+
+  it("tells the researcher where the run history and the session captures are, only when the job fetched them (#936, #937)", () => {
+    const fetched = researching({ sources: "/runner/research-sources" });
+    const bare = researching();
+
+    expect(fetched.run().status).toBe(0);
+    expect(bare.run().status).toBe(0);
+    for (const held of ["`/runner/research-sources`", "`runs.jsonl`", "`jobs.jsonl`", "`machine-logs/`", "`git-log.txt`", "`sessions/`"]) {
+      expect(fetched.handed()).toContain(held);
+      expect(bare.handed()).not.toContain(held);
+    }
+  });
+
+  it("research.yml fetches the run history and the machine's session captures before the researcher starts, with tokens that only read (#936, #937)", () => {
+    const { permissions, steps } = onlyJob("research.yml");
+    const minted = steps.findIndex((step) => step.with?.repositories === "Knowledge-Base");
+    const fetched = steps.findIndex((step) => /RESEARCH_SOURCES=.*GITHUB_ENV/.test(step.run ?? ""));
+    const spent = steps.findIndex((step) => step.env?.CLAUDE_CODE_OAUTH_TOKEN !== undefined);
+    const run = steps[fetched]?.run ?? "";
+
+    expect(permissions).toEqual({ contents: "read", issues: "write", actions: "read" });
+    expect(steps[minted]?.with).toMatchObject({ owner: "collod873", "permission-contents": "read" });
+    expect(fetched).toBeGreaterThan(minted);
+    expect(spent).toBeGreaterThan(fetched);
+    expect(steps[spent]?.env).not.toHaveProperty("CAPTURES_TOKEN");
+    expect(run).toContain('rm -rf "$captures"');
+    for (const held of ["runs.jsonl", "jobs.jsonl", "machine-logs", "git-log.txt", "sessions"]) expect(run).toContain(`$sources/${held}`);
   });
 
   it("refuses an issue not labelled research, so it never closes a ticket, and spends no model", () => {
