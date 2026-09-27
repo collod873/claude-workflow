@@ -1,6 +1,11 @@
 #!/bin/bash
 set -uo pipefail
 
+if [[ $# -ne 0 ]]; then
+  printf 'land: usage: land, with no arguments; it lands HEAD on main through a PR\n' >&2
+  exit 2
+fi
+
 head=$(git rev-parse HEAD) || exit 1
 top=$(git rev-parse --show-toplevel)
 log="$(git rev-parse --path-format=absolute --git-common-dir)/machine-logs/land-${head:0:7}-${top##*/}.log"
