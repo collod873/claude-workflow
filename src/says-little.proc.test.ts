@@ -9,6 +9,7 @@ const NOISE = "a line a tool prints that nobody needed to read\n".repeat(40).tri
 const URL = "https://github.com/collod873/claude-workflow/pull/1";
 const FILED = `printf '%s\\n' ${URL}\n`;
 const GREEN = "printf '      Tests  1 passed (1)\\n'\nexit 0\n";
+const NOTHING_METERED = { depth: [], cramming: [], beyond_the_ask: [], hollow_test: [], lost_limit: [] };
 const NOTE_CALL = ["note", "--title", "What the audit found", "--body-file", "body.md"];
 
 interface Scenario {
@@ -77,6 +78,11 @@ const scenarios: Record<string, Scenario[]> = {
   "bin/review": [
     { label: "passing a match", run: () => reviewing().run() },
     { label: "posting a drift", run: () => reviewing({ verdict: { verdict: "drift", gaps: ["the Why asks for more than was built"] } }).run() },
+  ],
+  "bin/meters": [
+    { label: "putting its lines on a PR body", run: () => reviewing({ bin: "meters", verdict: NOTHING_METERED }).run() },
+    { label: "printing its lines", run: () => reviewing({ bin: "meters", verdict: NOTHING_METERED }).run("9810", {}, ["--print"]) },
+    { label: "with the PR body unreadable", run: () => reviewing({ bin: "meters", prBodyUnreadable: true, verdict: NOTHING_METERED }).run() },
   ],
   "bin/fix": [
     { label: "pushing a fix", run: () => fixing({ claude: "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n" }).run() },

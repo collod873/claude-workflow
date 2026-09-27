@@ -113,3 +113,62 @@ jobs:
         with:
           client-id: ${{ vars.CORE_APP_CLIENT_ID }}
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+
+  meters:
+    needs: check
+    if: ${{ startsWith(github.head_ref, 'ticket/') && github.event.pull_request.head.repo.full_name == github.repository }}
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+
+      - id: checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.head_ref }}
+
+      - id: setup-node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - id: npm-ci
+        run: npm ci
+
+      - id: worktree
+        run: |
+          git worktree add --detach "$RUNNER_TEMP/main" origin/main
+          ln -s "$PWD/node_modules" "$RUNNER_TEMP/main/node_modules"
+
+      - id: stage
+        uses: ./.github/actions/stage
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+
+      - id: meters
+        timeout-minutes: 12
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          STAGE_MINUTES: 10
+        run: |
+          tail --pid=$$ -n +1 -F .git/machine-logs/meters-${{ github.event.pull_request.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
+          $RUNNER_TEMP/main/bin/meters ${{ github.event.pull_request.number }}
+
+      - if: always()
+        timeout-minutes: 6
+        uses: ./.github/actions/stage-logs
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          artifact: meter-logs

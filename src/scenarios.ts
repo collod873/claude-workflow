@@ -738,14 +738,9 @@ export function fileDiff(path: string, added: string): string {
 }
 
 export function reviewing({
+  bin = "review",
   branch = "ticket/810",
-  verdict = { verdict: "match", gaps: [], readback: "It now reads a green build against what was meant before it merges." } as {
-    verdict: string;
-    gaps: string[];
-    later?: unknown[];
-    readback?: string;
-    depth?: string[];
-  },
+  verdict = { verdict: "match", gaps: [], readback: "It now reads a green build against what was meant before it merges." } as object,
   diff = fileDiff("src/reviewer.ts", "export const reviewed = 1;"),
   turns = [] as Said[],
   onPr = [] as Said[],
@@ -756,8 +751,9 @@ export function reviewing({
   prBodyUnreadable = false,
   prEditFails = false,
 }: {
+  bin?: string;
   branch?: string;
-  verdict?: { verdict: string; gaps: string[]; later?: unknown[]; readback?: string; depth?: string[] };
+  verdict?: object;
   diff?: string;
   turns?: Said[];
   onPr?: Said[];
@@ -822,7 +818,7 @@ export function reviewing({
     comments: () => calls().filter((args) => args[0] === "pr" && args[1] === "comment").map(bodyOf),
     edited: () => calls().filter((args) => args[0] === "pr" && args[1] === "edit").map(bodyOf),
     read: () => calls().some((args) => args[0] === "pr" && args[1] === "view"),
-    run: (pr = "9810", extra: Record<string, string> = {}) => execute(join(BIN, "review"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}`, ...extra }, [pr]),
+    run: (pr = "9810", extra: Record<string, string> = {}, flags: string[] = []) => execute(join(BIN, bin), root, { PATH: `${join(root, "bin")}:${process.env.PATH}`, ...extra }, [...flags, pr]),
   };
 }
 

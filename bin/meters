@@ -1,0 +1,24 @@
+#!/bin/bash
+set -uo pipefail
+
+usage="meters: usage: meters [--print] <pr number>"
+
+if [[ ${1:-} == "--help" ]]; then
+  printf '%s\n' "$usage"
+  exit 0
+fi
+
+print=()
+if [[ ${1:-} == "--print" ]]; then
+  print=(--print)
+  shift
+fi
+
+pr=${1:-}
+if [[ $# -ne 1 || ! $pr =~ ^[0-9]+$ ]]; then
+  printf '%s\n' "$usage" >&2
+  exit 2
+fi
+
+src="$(cd "${BASH_SOURCE[0]%/*}/../src" && pwd)"
+exec node "$src/meter-reviewer.ts" "${print[@]}" "$pr"
