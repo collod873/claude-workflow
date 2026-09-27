@@ -202,3 +202,44 @@ describe("bin/close wakes a ticket its fixer split once every follow-up it split
     expect(woken(unparked.calls())).toBe(-1);
   });
 });
+
+describe("bin/close catches up a PR the moment it opens behind main, not just after the next merge (#954)", () => {
+  it("brings a PR that opened behind main up to date", () => {
+    const { calls, tokens, run } = closing({
+      ticket: "819",
+      behindPrs: [{ number: "907", ticket: "823", mergeStateStatus: "UNKNOWN" }],
+      openedPr: "907",
+    });
+
+    const result = run();
+
+    expect(result.status).toBe(0);
+    const updated = calls().findIndex((call) => call.startsWith("pr\nupdate-branch\n907"));
+    expect(updated, "the PR that just opened behind main is brought up to date even while GitHub still reads its merge state as unknown").toBeGreaterThanOrEqual(0);
+    expect(tokens()[updated], "runs as the App").toBe("app");
+    expect(calls().some((call) => call.startsWith("issue\ncomment\n819\n")), "posts no closing record for main's last merge").toBe(false);
+  });
+
+  it("names why a PR that opened behind main could not be brought up to date", () => {
+    const { calls, run } = closing({
+      ticket: "819",
+      behindPrs: [
+        {
+          number: "908",
+          ticket: "",
+          branch: "land/deadbeefcafe",
+          mergeStateStatus: "UNKNOWN",
+          refused: "GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts.",
+        },
+      ],
+      openedPr: "908",
+    });
+
+    const result = run();
+
+    expect(result.status).toBe(0);
+    const commented = calls().find((call) => call.startsWith("pr\ncomment\n908\n"));
+    expect(commented, "the land PR that opened behind main is told why, the same as a merge's catch-up leaves").toBeDefined();
+    expect(commented).toContain("merge conflicts");
+  });
+});
