@@ -15,15 +15,29 @@ const FILE_START = /^(?=diff --git )/m;
 const CHANGED_PATH = /^diff --git a\/.+? b\/(.+)$/m;
 const TOOLS = ["Read", "Grep", "Glob"];
 export const NO_EM_DASH = "^[^\\u2014]*$";
+export const PLAIN_WORDS = "^(?:(?!`|/|[\\w-]+\\.[A-Za-z]{1,8}\\b)[\\s\\S])*$";
 const foundDrift = (ticket: string) => `The reviewer read this PR against the Why of #${ticket} and found drift.`;
 export const earlierDrift = (ticket: string, comments: string[]) => comments.filter((comment) => comment.startsWith(foundDrift(ticket))).join("\n\n");
 export const repairOf = (ticket: string) => `Repair #${ticket} as its fixer`;
+const QUOTE_LINE = /^>.*$/gm;
+const DOUBLE_QUOTE = /"[^"\n]+"/g;
+const READBACK_PROMPT = "On match, readback for one who does not read code: what to try and what should happen, or what it now does and did not before.";
+
+function ownerQuotes(body: string): string[] {
+  const text = why(body);
+  return text.match(QUOTE_LINE) ?? text.match(DOUBLE_QUOTE) ?? [];
+}
+
+function readbackText(body: string, account: string): string {
+  return [...ownerQuotes(body), "", account, "", "Did this build what you meant, yes or no?"].join("\n");
+}
 
 const VERDICT = {
   type: "object",
   properties: {
     verdict: { enum: ["match", "drift"] },
     gaps: { type: "array", items: { type: "string", pattern: NO_EM_DASH } },
+    readback: { type: "string", pattern: PLAIN_WORDS },
     later: {
       type: "array",
       items: {
@@ -54,6 +68,7 @@ interface Verdict {
   verdict: "match" | "drift";
   gaps: string[];
   later?: Later[];
+  readback?: string;
 }
 
 interface AfterTurn {
@@ -98,7 +113,7 @@ export function handedOn(body: string, diff: string, after?: AfterTurn): string 
           "Each `later` item becomes its own ticket: the `gap` in one sentence, a `title`, 1 to 3 `criteria` each ending ` - check: `<command>`` with one a vitest run of a test not yet written, and the files it `claimed`.",
         ];
   return [
-    "Review a ticket's pull request against the owner's `## Why` and acceptance criteria. Change nothing. `bin/check`, typecheck and all, is green; read the repo only where the diff leaves a question.",
+    "Review this PR against the `## Why` and its criteria. Change nothing; `bin/check` is green. Read the repo where the diff is unclear.",
     "## Why",
     capped(why(body), TICKET_CAP),
     "## Acceptance criteria",
@@ -107,7 +122,8 @@ export function handedOn(body: string, diff: string, after?: AfterTurn): string 
     handedDiff(diff, claims(body)),
     ...turn,
     "## Your verdict",
-    "`match` if the diff builds what the Why means. `drift` if it builds less, more or something else. Name every gap in this one pass, each one sentence a fixer can act on.",
+    "`match` if the diff builds the Why, else `drift`. Name every gap in one pass, a fixer can act on.",
+    READBACK_PROMPT,
     ...sorted,
     "",
   ].join("\n\n");
@@ -200,7 +216,13 @@ function review(pr: string): Stop | undefined {
   const blocking = after === undefined ? [...verdict.gaps, ...(verdict.later ?? []).map(({ gap }) => gap)] : verdict.gaps;
   const recorded = recordedLater(ticket, body, after === undefined ? [] : (verdict.later ?? []), turns);
   if (verdict.verdict === "match") {
-    console.log(`${said} matches the Why of #${ticket}${recorded}`);
+    if (typeof verdict.readback !== "string") {
+      console.log(`${said} matches the Why of #${ticket}${recorded}`);
+      return undefined;
+    }
+    const posted = post({ kind: "judgement", pr, text: readbackText(body, verdict.readback) }, gh);
+    const [refusal] = posted.refusals;
+    console.log(`${said} matches the Why of #${ticket}${recorded}, ${refusal === undefined ? `its readback posted: ${posted.said}` : `its readback was refused: ${quoted(refusal)}`}`);
     return undefined;
   }
   const posted = post({ kind: "judgement", pr, text: judgement(ticket, blocking) }, gh);
