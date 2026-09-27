@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { filing, misshapenTicket, wellFormedNote, wellFormedTicket } from "./scenarios.ts";
+import { filing, misshapenTicket, wellFormedNote, wellFormedSpec, wellFormedTicket } from "./scenarios.ts";
 import { why } from "./ticket-shape.ts";
 
 const URL = "https://github.com/collod873/claude-workflow/issues/700";
@@ -125,6 +125,28 @@ describe("bin/file-issue files a ticket, or refuses it and files nothing (#662)"
 
     expect(run(["research", "--title", "What does the closer judge", "--body-file", "body.md"])).toMatchObject({ status: 0, stdout: `${URL}\n` });
     expect(ghSaw(repo)).toEqual([["issue", "create", "--title", "What does the closer judge", "--label", "note", "--label", "research", "--body", wellFormedNote]]);
+  });
+
+  it("files a spec through src/post.ts, labels it spec, and runs no check command (#965)", () => {
+    const { repo, run } = filing({ gh: RECORDS, body: wellFormedSpec, npx: RAN_A_CHECK });
+
+    const result = run(["spec", "--title", "Give the cold read something to read", "--body-file", "body.md"]);
+
+    expect(result).toMatchObject({ status: 0, stdout: `${URL}\n`, stderr: UNSTAMPED });
+    expect(ghSaw(repo)).toEqual([
+      ["issue", "create", "--title", "Give the cold read something to read", "--label", "spec", "--body", wellFormedSpec],
+    ]);
+  });
+
+  it("files a spec, stamping the session id under '## Problem Statement' as a ticket's is stamped under '## Why'", () => {
+    const stamped = filing({ gh: RECORDS, body: wellFormedSpec, sessionId: "sess-abc" });
+
+    const result = stamped.run(["spec", "--title", "A spec", "--body-file", "body.md"]);
+
+    expect(result).toMatchObject({ status: 0, stdout: `${URL}\n`, stderr: "" });
+    const posted = firstBody(stamped.repo);
+    const problemStatement = posted.slice(posted.indexOf("## Problem Statement"), posted.indexOf("## Solution"));
+    expect(problemStatement.trim().split("\n").at(-1)).toBe("Session: `sess-abc`");
   });
 
   it("asks a note for a why and nothing else, so filing one at the end of a session costs no judgement", () => {

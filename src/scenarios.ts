@@ -174,6 +174,39 @@ export const misshapenTicket = [
 
 export const wellFormedNote = ["## Why", "", "Three passes over the standards left four proposals nobody can build until the owner weighs them.", ""].join("\n");
 
+export const wellFormedSpec = [
+  "## Problem Statement",
+  "",
+  'The owner, in session: "a spec is filed once, so the cold read and the slicer share one document".',
+  "",
+  "## Solution",
+  "",
+  "File a spec kind alongside a ticket, sharing its filing pipeline.",
+  "",
+  "## User Stories",
+  "",
+  "1. As the owner, I can file a spec before any ticket exists.",
+  "",
+  "## Implementation Decisions",
+  "",
+  "Reuse the ticket machinery where it already fits.",
+  "",
+  "## Testing Decisions",
+  "",
+  "Cover the shape with unit tests.",
+  "",
+  "## Out of Scope",
+  "",
+  "The cold read and the slicer.",
+  "",
+  "## Further Notes",
+  "",
+  "## I'll know it works when I can",
+  "",
+  "- [ ] see a spec land as its own issue, labelled spec",
+  "",
+].join("\n");
+
 export function filing({
   gh,
   body,
