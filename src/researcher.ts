@@ -11,6 +11,8 @@ export const NOTE_CAP = 16 * 1024;
 const COMMENT_CAP = 60_000;
 const SOURCES_CAP = 256;
 const TOOLS = ["Read", "Grep", "Glob", "WebSearch", "WebFetch"];
+const WRITE_UP_MINUTES = 5;
+export const OUT_OF_TIME = "Your reading time is up. Read nothing more. Give `findings` now from what you have read: the answer as far as it goes, what it rests on, and what you did not reach.\n";
 
 const FINDINGS = {
   type: "object",
@@ -57,7 +59,7 @@ function researched(issue: string): Stop | undefined {
   if (!asked.labels.some(({ name }) => name === RESEARCH)) return stoppedAt("notResearch", `${said} is not a research note, so nothing answered or closed it`);
   const logs = machineLogs(process.cwd());
   mkdirSync(logs, { recursive: true });
-  const spend = hired({ name: "researcher", transcript: join(logs, `research-${issue}.jsonl`), tools: TOOLS, answers: FINDINGS });
+  const spend = hired({ name: "researcher", transcript: join(logs, `research-${issue}.jsonl`), tools: TOOLS, answers: FINDINGS, writeUp: { minutes: WRITE_UP_MINUTES, told: OUT_OF_TIME } });
   if (typeof spend === "string") return stoppedAt("modelRun", `${said} ended red, the owner's hooks could not be read from ${spend}`);
   const spent = spend(handedOn(asked.title, asked.body, process.env.RESEARCH_SOURCES || undefined));
   if (spent.refusal !== undefined) return stoppedAt("modelRun", `${said} ended red, ${spent.refusal}`);

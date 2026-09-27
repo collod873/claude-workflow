@@ -12,7 +12,7 @@ jobs:
   research:
     if: "${{ github.event.sender.login == github.repository_owner && contains(github.event.issue.labels.*.name, 'research') }}"
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
     permissions:
       contents: read
       issues: write
@@ -81,11 +81,11 @@ jobs:
           printf 'RESEARCH_SOURCES=%s\n' "$sources" >>"$GITHUB_ENV"
 
       - id: research
-        timeout-minutes: 22
+        timeout-minutes: 42
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          STAGE_MINUTES: 20
+          STAGE_MINUTES: 40
         run: |
           tail --pid=$$ -n +1 -F .git/machine-logs/research-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
           bin/research ${{ github.event.issue.number }}

@@ -2,7 +2,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { FINDINGS_POSTED, heard, holds, researching, wellFormedNote } from "./scenarios.ts";
+import { OUT_OF_TIME } from "./researcher.ts";
+import { FINDINGS_POSTED, heard, holds, READING_SESSION, researching, wellFormedNote } from "./scenarios.ts";
 
 const WORKFLOWS = join(import.meta.dirname, "..", ".github", "workflows");
 
@@ -53,6 +54,16 @@ describe("bin/research answers a research note on the note and closes it, with n
       expect(fetched.handed()).toContain(held);
       expect(bare.handed()).not.toContain(held);
     }
+  });
+
+  it("a researcher still reading when its reading time ends is told to write up what it has, and those findings post (#940)", () => {
+    const cutOff = researching({ readsPastCap: true });
+
+    expect(heard(cutOff.run())).toEqual({ status: 0, stderr: "", lines: [`research: #902 is answered and closed: ${FINDINGS_POSTED}`] });
+    expect(cutOff.hired()).toContain("--resume");
+    expect(cutOff.hired()[cutOff.hired().indexOf("--resume") + 1]).toBe(READING_SESSION);
+    expect(cutOff.handed()).toBe(OUT_OF_TIME);
+    expect(cutOff.calls()).toEqual(["issue view 902", "issue comment 902", "issue close 902"]);
   });
 
   it("research.yml fetches the run history and the machine's session captures before the researcher starts, with tokens that only read (#936, #937)", () => {

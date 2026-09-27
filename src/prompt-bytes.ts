@@ -4,11 +4,11 @@ import { brief, CAP } from "./brief.ts";
 import { handedOn as builderHandedOn, repaired, TAIL_CAP } from "./builder.ts";
 import { handedOn as fixerHandedOn } from "./fixer.ts";
 import { handedOn as meterReviewerHandedOn } from "./meter-reviewer.ts";
-import { handedOn as researcherHandedOn, NOTE_CAP } from "./researcher.ts";
+import { handedOn as researcherHandedOn, NOTE_CAP, OUT_OF_TIME } from "./researcher.ts";
 import { DIFF_CAP, handedOn as reviewerHandedOn, LIST_CAP, TICKET_CAP } from "./reviewer.ts";
 import { handedOn, refused, REFUSALS_CAP } from "./test-author.ts";
 
-export const CEILINGS: Record<string, number> = { "brief": 136, "test author": 869, "test author refused": 94, "builder": 485, "repair": 87, "reviewer": 424, "reviewer after the fixer's repair": 984, "meter reviewer": 1679, "fixer": 1106, "researcher": 716 };
+export const CEILINGS: Record<string, number> = { "brief": 136, "test author": 869, "test author refused": 94, "builder": 485, "repair": 87, "reviewer": 424, "reviewer after the fixer's repair": 984, "meter reviewer": 1679, "fixer": 1106, "researcher": 716, "researcher out of time": 165 };
 
 const AUTHORED = "src/planted.test.ts";
 const HIRES = /(spawn|execFile)\w*\(\s*"claude"/;
@@ -98,6 +98,7 @@ export const PROMPTS: Prompt[] = [
     slots: ["title", "body", "sources"],
     build: (filled) => researcherHandedOn(filled.title ?? "", filled.body ?? "", filled.sources ?? ""),
   },
+  { name: "researcher out of time", file: "src/researcher.ts", cap: HANDED_ON, slots: [], build: () => OUT_OF_TIME },
 ];
 
 function ownWords(prompt: Prompt): number {
