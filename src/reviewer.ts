@@ -1,3 +1,5 @@
+import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { capped } from "./brief.ts";
@@ -18,6 +20,26 @@ export const NO_EM_DASH = "^[^\\u2014]*$";
 export const PLAIN_WORDS = "^(?:(?!`|/|[\\w-]+\\.[A-Za-z]{1,8}\\b)[\\s\\S])*$";
 const foundDrift = (ticket: string) => `The reviewer read this PR against the Why of #${ticket} and found drift.`;
 export const earlierDrift = (ticket: string, comments: string[]) => comments.filter((comment) => comment.startsWith(foundDrift(ticket))).join("\n\n");
+
+function fingerprintOf(diff: string, body: string): string {
+  const args = ["patch-id", "--stable"];
+  const stdout = spawnSync("git", args, { input: diff, encoding: "utf8", maxBuffer: Infinity }).stdout;
+  const id = (stdout.trim().match(/^\S+/) ?? [""])[0];
+  return `${id}-${createHash("sha256").update(body).digest("hex").slice(0, 12)}`;
+}
+
+const fingerprintLine = (fingerprint: string) => `Fingerprint: \`${fingerprint}\``;
+const FINGERPRINT = /Fingerprint: `([^`]+)`/;
+
+function lastJudgement(ticket: string, comments: string[]): { fingerprint: string; verdict: "match" | "drift" } | undefined {
+  let found: { fingerprint: string; verdict: "match" | "drift" } | undefined;
+  for (const comment of comments) {
+    const fingerprint = FINGERPRINT.exec(comment)?.[1];
+    if (fingerprint === undefined) continue;
+    found = { fingerprint, verdict: comment.startsWith(foundDrift(ticket)) ? "drift" : "match" };
+  }
+  return found;
+}
 export const repairOf = (ticket: string) => `Repair #${ticket} as its fixer`;
 const QUOTE_LINE = /^>.*$/gm;
 const DOUBLE_QUOTE = /"[^"\n]+"/g;
@@ -28,8 +50,8 @@ function ownerQuotes(body: string): string[] {
   return text.match(QUOTE_LINE) ?? text.match(DOUBLE_QUOTE) ?? [];
 }
 
-function readbackText(body: string, account: string): string {
-  return [...ownerQuotes(body), "", account, "", "Did this build what you meant, yes or no?"].join("\n");
+function readbackText(body: string, account: string, fingerprint: string): string {
+  return [fingerprintLine(fingerprint), "", ...ownerQuotes(body), "", account, "", "Did this build what you meant, yes or no?"].join("\n");
 }
 
 const VERDICT = {
@@ -149,9 +171,9 @@ function judged(prompt: string, pr: string): Verdict | string {
   return isVerdict(spent.answer) ? spent.answer : `the reviewer gave no verdict: ${firstLine(spent.stdout)}`;
 }
 
-function judgement(ticket: string, gaps: string[]): string {
+function judgement(ticket: string, gaps: string[], fingerprint: string): string {
   const named = gaps.length === 0 ? ["- the reviewer ruled drift and named no gap"] : gaps.map((gap) => `- ${gap}`);
-  return [foundDrift(ticket), "", ...named, ""].join("\n");
+  return [foundDrift(ticket), "", ...named, "", fingerprintLine(fingerprint), ""].join("\n");
 }
 
 const fixDiff = (ticket: string): string => git(["log", "--format=", "-p", "--fixed-strings", `--grep=${repairOf(ticket)}`, "HEAD"]).stdout ?? "";
@@ -216,10 +238,19 @@ function review(pr: string): Stop | undefined {
   const read = ticketPr(pr, said);
   if (typeof read !== "object") return read;
   const { ticket, body, diff } = read;
-  const turns = commentsOn(ticket, gh);
-  if (turns === undefined) return stoppedAt("unread", `${said} ended red, the comments on #${ticket} could not be read, so no model was spent`);
   const onPr = commentsOn(pr, gh);
   if (onPr === undefined) return stoppedAt("unread", `${said} ended red, the comments on its PR could not be read, so no model was spent`);
+  const fingerprint = fingerprintOf(diff, body);
+  const past = lastJudgement(ticket, onPr);
+  if (past?.fingerprint === fingerprint) {
+    if (past.verdict === "match") {
+      console.log(`${said} reuses its last judgement on #${ticket}, a match, hiring no model`);
+      return undefined;
+    }
+    return stoppedAt("drift", `${said} reuses its last judgement on #${ticket}, a drift, hiring no model`);
+  }
+  const turns = commentsOn(ticket, gh);
+  if (turns === undefined) return stoppedAt("unread", `${said} ended red, the comments on #${ticket} could not be read, so no model was spent`);
   const earlier = earlierDrift(ticket, onPr);
   const fix = fixDiff(ticket);
   const after = earlier !== "" && fix !== "" ? { earlier, fix } : undefined;
@@ -228,12 +259,12 @@ function review(pr: string): Stop | undefined {
   const blocking = after === undefined ? [...verdict.gaps, ...(verdict.later ?? []).map(({ gap }) => gap)] : verdict.gaps;
   const recorded = recordedLater(ticket, body, after === undefined ? [] : (verdict.later ?? []), turns);
   if (verdict.verdict === "match") {
-    const posted = post({ kind: "judgement", pr, text: readbackText(body, verdict.readback) }, gh);
+    const posted = post({ kind: "judgement", pr, text: readbackText(body, verdict.readback, fingerprint) }, gh);
     const [refusal] = posted.refusals;
     console.log(`${said} matches the Why of #${ticket}${recorded}, ${refusal === undefined ? `its readback posted: ${posted.said}` : `its readback was refused: ${quoted(refusal)}`}`);
     return undefined;
   }
-  const posted = post({ kind: "judgement", pr, text: judgement(ticket, blocking) }, gh);
+  const posted = post({ kind: "judgement", pr, text: judgement(ticket, blocking, fingerprint) }, gh);
   const [refusal] = posted.refusals;
   if (refusal !== undefined) return stoppedAt("drift", `${said} drifts from the Why of #${ticket}, and its judgement was refused: ${quoted(refusal)}${recorded}`);
   return stoppedAt("drift", `${said} drifts from the Why of #${ticket}, ${blocking.length} gaps posted: ${posted.said}${recorded}`);
