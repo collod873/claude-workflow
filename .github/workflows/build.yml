@@ -99,15 +99,6 @@ jobs:
           bin/save ${{ github.event.issue.number }}
           bin/mark ${{ github.event.issue.number }} 3-checking || true
 
-      - if: failure() || cancelled()
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          STEPS_JSON: ${{ toJSON(steps) }}
-        run: |
-          step=$(printf '%s' "$STEPS_JSON" | jq -r '[to_entries[] | select(.value.outcome == "failure")] | .[-1].key // "cancelled before any step finished"')
-          gh issue comment ${{ github.event.issue.number }} --body "build: failed at step \`$step\`, see the run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-
       - if: always()
         timeout-minutes: 6
         uses: ./.github/actions/stage-logs

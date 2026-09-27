@@ -233,13 +233,6 @@ describe("every job that spends a model is watched as it goes, read after it end
   });
 });
 
-const CHECK_WORKFLOW = join(WORKFLOWS, "check.yml");
-
-function reviewJob(): Job {
-  const { jobs } = parse(readFileSync(CHECK_WORKFLOW, "utf8")) as { jobs: Record<string, Job> };
-  return namedJob(jobs, "review", CHECK_WORKFLOW);
-}
-
 function namedJob(jobs: Record<string, Job>, name: string, where: string): Job {
   const job = jobs[name];
   if (job === undefined) throw new Error(`no ${name} job in ${where}`);
@@ -257,27 +250,6 @@ function holdsAlone(condition: string, steps: Step[], scope: { failed?: boolean;
   }
 }
 
-describe("build.yml, and check.yml's review job, comment on the ticket whatever ends them (#864)", () => {
-  it("comments on its ticket whenever it fails, naming the step it failed at and linking the run, even when it failed before its checkout", () => {
-    const { jobs: buildJobs } = parse(readFileSync(WORKFLOW, "utf8")) as { jobs: Record<string, Job> };
-    const jobs: [string, Job][] = [...Object.entries(buildJobs), ["review", reviewJob()]];
-
-    for (const [name, job] of jobs) {
-      const steps = expanded(job.steps);
-      const notifying = steps.find(
-        (step) => holdsAlone(step.if ?? "success()", steps, { failed: true }) && holdsAlone(step.if ?? "success()", steps, { cancelled: true }) && /comment/i.test(step.run ?? ""),
-      );
-
-      expect(notifying, `${name}: a step that comments on the ticket whatever ends the job, even before its checkout`).toBeDefined();
-      expect(notifying?.run, name).toMatch(/run_id/i);
-      expect(notifying?.run, name).toMatch(/step/i);
-      expect(notifying?.run, name).toMatch(name === "review" ? /HEAD_REF/ : /github\.event\.issue\.number/);
-      expect(String(notifying?.env?.GH_TOKEN ?? ""), name).not.toMatch(/steps\.\w+\.outputs\.token/);
-    }
-  });
-
-});
-
 const FIX_WORKFLOW = join(WORKFLOWS, "fix.yml");
 const BARE_EXPRESSIONS = /\$\{\{[^}]*\}\}/g;
 
@@ -292,10 +264,12 @@ function ranStep(step: Step, cwd: string, env: Record<string, string>): { status
   return { status: ran.status, stdout: ran.stdout, stderr: ran.stderr, output: parseOutput(output) };
 }
 
-function ticketNamed(env: Record<string, string>): string | undefined {
+function lookedUp(env: Record<string, string>): ReturnType<typeof ranStep> {
   const which = namedJob(fixWorkflow().jobs, "which", FIX_WORKFLOW).steps.find((step) => step.id === "which") as Step;
-  return ranStep(which, scratch("which-"), { ISSUE: "", RAN: "", RAN_ON: "", TITLE: "", ...env }).output.ticket;
+  return ranStep(which, scratch("which-"), { ISSUE: "", RAN: "", RAN_ON: "", TITLE: "", ...env });
 }
+
+const ticketNamed = (env: Record<string, string>): string | undefined => lookedUp(env).output.ticket;
 
 describe("fix.yml hands every red run of a ticket to its fixer, however the run died (#898)", () => {
   it("starts on GitHub's own word that a Build or Check run finished, and on the machine's reopen of a ticket red on main", () => {
@@ -315,6 +289,14 @@ describe("fix.yml hands every red run of a ticket to its fixer, however the run 
     expect(ticketNamed({ RAN: ".github/workflows/build.yml", RAN_ON: "main", TITLE: buildName })).toBe("894");
     expect(ticketNamed({ ISSUE: "812" })).toBe("812");
     expect(ticketNamed({ RAN: ".github/workflows/check.yml", RAN_ON: "land/4b58f3372b91", TITLE: "Build ticket/7: a land PR's title" })).toBe("");
+  });
+
+  it("goes red, rather than skipping green, when a red Build run's name carries no ticket, so a red nobody fixes still shows", () => {
+    const nameless = lookedUp({ RAN: ".github/workflows/build.yml", RAN_ON: "main", TITLE: "Build" });
+
+    expect(nameless.status).not.toBe(0);
+    expect(nameless.stderr).toContain("Build");
+    expect(nameless.output.ticket).toBeUndefined();
   });
 
   it("stands down, spending no model, when the ticket moved on since the run that went red", () => {
