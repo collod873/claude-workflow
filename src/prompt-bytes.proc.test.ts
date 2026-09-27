@@ -1,8 +1,8 @@
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { capped } from "./brief.ts";
-import { CEILINGS, PROMPTS, grown, record, shrunk, uncapped, unlaunched, unmeasured, type Prompt } from "./prompt-bytes.ts";
+import { PROMPTS, sized, uncapped, unlaunched, unmeasured, type Prompt } from "./prompt-bytes.ts";
 import { execute, scratch } from "./scenarios.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
@@ -21,26 +21,47 @@ function planted(name: string, words: string, fill: (filler: string) => string):
 const terse = (name: string, words: string) => planted(name, words, (filler) => capped(filler, 20));
 const leaky = (name: string, words: string) => planted(name, words, (filler) => filler);
 
-describe("every prompt holds a byte ceiling that only ever shrinks (#663)", () => {
-  it("writes no more of its own words than the ceiling recorded for it, with nothing left unpaid", () => {
-    expect(grown(PROMPTS, CEILINGS)).toEqual([]);
-    expect(shrunk(PROMPTS, CEILINGS)).toEqual(CEILINGS);
+function measuredCopy(edits: Record<string, (source: string) => string>): string {
+  const copy = scratch("prompt-bytes-");
+  cpSync(join(REPO, "src"), join(copy, "src"), { recursive: true });
+  symlinkSync(join(REPO, "node_modules"), join(copy, "node_modules"));
+  for (const [file, edit] of Object.entries(edits)) writeFileSync(join(copy, file), edit(readFileSync(join(copy, file), "utf8")));
+  return copy;
+}
+
+const sources = (copy: string) =>
+  Object.fromEntries(readdirSync(join(copy, "src")).map((name) => [name, readFileSync(join(copy, "src", name), "utf8")]));
+
+const GROWN = { "src/researcher.ts": (source: string) => source.replace("Your reading time is up.", `Your reading time is up. ${"More words. ".repeat(300)}`) };
+const SHRUNK = { "src/researcher.ts": (source: string) => source.replace(" Read nothing more.", "") };
+const LINE = /^prompt-bytes: 11 prompts, (\d+) bytes of their own words, the largest the (.+) at (\d+)\n$/;
+
+describe("every prompt's size is reported, never refused (#950)", () => {
+  it("passes a prompt that grew past the size it had, naming the total and the largest", () => {
+    const copy = measuredCopy(GROWN);
+    const { status, stdout, stderr } = execute("node", copy, {}, ["src/prompt-bytes.ts"]);
+    expect(stderr).toBe("");
+    expect(status).toBe(0);
+    const [, total, largest, bytes] = LINE.exec(stdout) ?? [];
+    expect(largest).toBe("researcher out of time");
+    expect(Number(bytes)).toBeGreaterThan(3000);
+    expect(Number(total)).toBeGreaterThan(Number(bytes));
   });
 
-  it("refuses a prompt grown past its ceiling and records the smaller number when one shrinks", () => {
-    expect(grown([terse("wordy", "x".repeat(30))], { wordy: 20 })).toEqual([
-      "the wordy prompt writes 30 bytes of its own words, over its ceiling of 20",
-    ]);
-    expect(grown([terse("kept", "x".repeat(20))], { kept: 20 })).toEqual([]);
-    expect(grown([terse("stranger", "x")], {})).toEqual(["the stranger prompt has no recorded ceiling"]);
+  it("rewrites no source file, whatever size a prompt moves to", () => {
+    for (const edits of [GROWN, SHRUNK]) {
+      const copy = measuredCopy(edits);
+      const before = sources(copy);
+      expect(execute("node", copy, {}, ["src/prompt-bytes.ts"]).status).toBe(0);
+      expect(sources(copy)).toEqual(before);
+    }
+  });
 
-    expect(shrunk([terse("cut", "x".repeat(5))], { cut: 20 })).toEqual({ cut: 5 });
-    expect(shrunk([terse("kept", "x".repeat(20))], { kept: 20 })).toEqual({ kept: 20 });
-
-    const copy = join(scratch("prompt-bytes-"), "prompt-bytes.ts");
-    copyFileSync(join(REPO, "src", "prompt-bytes.ts"), copy);
-    record(copy, { brief: 12, "test author": 34 });
-    expect(readFileSync(copy, "utf8")).toContain('CEILINGS: Record<string, number> = { "brief": 12, "test author": 34 };');
+  it("sums the prompts' own words and names the largest", () => {
+    expect(sized([terse("small", "x".repeat(5)), terse("big", "x".repeat(30))])).toBe(
+      "prompt-bytes: 2 prompts, 35 bytes of their own words, the largest the big at 30",
+    );
+    expect(sized(PROMPTS)).toMatch(/^prompt-bytes: 11 prompts, \d+ bytes of their own words, the largest the .+ at \d+$/);
   });
 
   it("refuses a filled-in value with no cap, and passes a builder that caps what it pastes in", () => {
