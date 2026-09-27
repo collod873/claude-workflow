@@ -23,7 +23,7 @@ const QUOTE_LINE = /^>.*$/gm;
 const DOUBLE_QUOTE = /"[^"\n]+"/g;
 const READBACK_PROMPT = "`readback`: for someone who does not read code, what to try and what should happen, or what it now does and did not before.";
 const DEPTH_PROMPT =
-  "`depth`: each module the diff adds or widens that is shallow or a pass-through, and each place it joins behaviours that change for different reasons, naming the module. entry points that actions call and one-line test fixture helpers are not findings.";
+  "`depth`: each module the diff adds or widens that is shallow or a pass-through, and each place it joins behaviours that change for different reasons, naming the module. Entry points that Actions call and one-line test fixture helpers are not findings; an empty list is valid.";
 const DEPTH_LINE = /^depth \(meter\):.*$/m;
 
 function ownerQuotes(body: string): string[] {
@@ -118,7 +118,7 @@ export function handedOn(body: string, diff: string, after?: AfterTurn): string 
           "Each `later` item becomes its own ticket: the `gap` in one sentence, a `title`, 1 to 3 `criteria` each ending ` - check: `<command>`` with one a vitest run of a test not yet written, and the files it `claimed`.",
         ];
   return [
-    "Review this PR against `## Why`. Change nothing; `bin/check` is green.",
+    "Review this PR against the `## Why` and its criteria. Change nothing; `bin/check` is green. Read the repo if the diff is unclear.",
     "## Why",
     capped(why(body), TICKET_CAP),
     "## Acceptance criteria",
@@ -127,7 +127,7 @@ export function handedOn(body: string, diff: string, after?: AfterTurn): string 
     handedDiff(diff, claims(body)),
     ...turn,
     "## Your verdict",
-    "`match` if the diff builds the Why, else `drift`. Name every gap in one pass.",
+    "`match` if the diff builds the Why, else `drift`. Name every gap in one pass, each a fixer can act on.",
     READBACK_PROMPT,
     DEPTH_PROMPT,
     ...sorted,
