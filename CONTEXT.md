@@ -48,8 +48,8 @@ _Avoid_: mechanic, fresh eyes, repair agent
 ### The work
 
 **Spec**:
-The whole statement of a piece of work, published as a `PRD:` issue. One spec, one issue; a spec
-that lives in a file or a conversation has not been published yet.
+The whole statement of a piece of work, filed as an issue labelled `spec`. One spec, one issue;
+a spec in a file or a conversation has not been published yet.
 _Avoid_: PRD document, requirements doc, brief
 
 **Ticket**:

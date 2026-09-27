@@ -22,7 +22,7 @@ while (( $# > 0 )); do
   esac
 done
 
-if [[ ($kind != ticket && $kind != note && $kind != research) || -z $title || -z $body || ! -f $body || $# -gt 0 ]]; then
+if [[ ($kind != ticket && $kind != note && $kind != research && $kind != spec) || -z $title || -z $body || ! -f $body || $# -gt 0 ]]; then
   printf '%s\n' "$usage" >&2
   exit 2
 fi
