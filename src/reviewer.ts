@@ -21,7 +21,7 @@ export const earlierDrift = (ticket: string, comments: string[]) => comments.fil
 export const repairOf = (ticket: string) => `Repair #${ticket} as its fixer`;
 const QUOTE_LINE = /^>.*$/gm;
 const DOUBLE_QUOTE = /"[^"\n]+"/g;
-const READBACK_PROMPT = "On match, readback for one who does not read code: what to try and what should happen, or what it now does and did not before.";
+const READBACK_PROMPT = "On match, readback for someone who does not read code: what to try and what should happen, or what it now does and did not before.";
 
 function ownerQuotes(body: string): string[] {
   const text = why(body);
@@ -113,7 +113,7 @@ export function handedOn(body: string, diff: string, after?: AfterTurn): string 
           "Each `later` item becomes its own ticket: the `gap` in one sentence, a `title`, 1 to 3 `criteria` each ending ` - check: `<command>`` with one a vitest run of a test not yet written, and the files it `claimed`.",
         ];
   return [
-    "Review this PR against the `## Why` and its criteria. Change nothing; `bin/check` is green. Read the repo where the diff is unclear.",
+    "Review this PR against the `## Why` and its criteria. Change nothing; `bin/check` is green. Read the repo if the diff is unclear.",
     "## Why",
     capped(why(body), TICKET_CAP),
     "## Acceptance criteria",
@@ -122,7 +122,7 @@ export function handedOn(body: string, diff: string, after?: AfterTurn): string 
     handedDiff(diff, claims(body)),
     ...turn,
     "## Your verdict",
-    "`match` if the diff builds the Why, else `drift`. Name every gap in one pass, a fixer can act on.",
+    "`match` if the diff builds the Why, else `drift`. Name every gap in one pass, each a fixer can act on.",
     READBACK_PROMPT,
     ...sorted,
     "",
