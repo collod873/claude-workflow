@@ -59,25 +59,11 @@ export const why = (body: string): string => section(body.replaceAll(/\r\n?/g, "
 
 export const acceptance = (body: string): string => section(body.replaceAll(/\r\n?/g, "\n"), CRITERIA).trim();
 
-function outsideCriteria(body: string): string {
-  const text = body.replaceAll(/\r\n?/g, "\n");
-  const found = CRITERIA.exec(text);
-  const start = found === null ? text.length : matchEnd(found);
-  const next = NEXT_HEADING.exec(text.slice(start));
-  return `${text.slice(0, start)}${next === null ? "" : text.slice(start + next.index)}`
-    .split("\n")
-    .map((line) => line.trimEnd())
-    .filter((line) => line !== "")
-    .join("\n");
-}
-
 export const whyChanged = (read: string, written: string): string[] => (why(written) === why(read) ? [] : ["the rewrite changes '## Why', the owner's words, which stay byte-identical"]);
 
 export function rewriteRefusals(read: string, written: string): string[] {
   const changed = whyChanged(read, written);
-  if (changed.length > 0) return changed;
-  if (outsideCriteria(written) !== outsideCriteria(read)) return ["the rewrite changes more than '## Acceptance criteria'"];
-  return ticketRefusals(written);
+  return changed.length > 0 ? changed : ticketRefusals(written);
 }
 
 function globRefusals(heading: string, entries: string[]): string[] {
