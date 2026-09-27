@@ -234,3 +234,33 @@ describe("the test author writes one failing test per criterion, or ends red (#6
     expect(handedOn()).toBe("");
   });
 });
+
+describe("the test author drops its fence and hands back only a check that already passes (#962)", () => {
+  it("hands back only a check that passes", () => {
+    expect(uncovered(wellFormedTicket, ".", RED)).toEqual([]);
+    expect(uncovered(wellFormedTicket, ".", NO_TESTS)).toEqual([]);
+    expect(uncovered(wellFormedTicket, ".", GREEN)).toEqual([expect.stringContaining("already passes")]);
+  });
+
+  it("runs an open shell", () => {
+    const { run, handedOn } = authoring();
+
+    run();
+
+    const settings = JSON.parse(flagValue(handedOn(), "--settings")) as { hooks: Record<string, unknown> };
+    expect(settings.hooks.PreToolUse).toBeUndefined();
+    expect(handedOn()).not.toContain("--tools");
+  });
+
+  it("asks for tests no lazy build passes", () => {
+    const text = prompted("", []);
+
+    expect(text).toMatch(
+      /Write one failing test for each criterion above, and write nothing else\. Your check commands are[^]*?You are done when every one of them fails; when you finish, the machine runs them again and hands you back any that pass\./,
+    );
+    expect(text).toMatch(/Assert the exact thing the criterion is about: the specific text, value, file or call\. Never a phrase the code prints either way\./);
+    expect(text).toMatch(/When a criterion says "instead of" or "no longer", also assert the old behaviour is gone\./);
+    expect(text).toMatch(/Before you finish, picture the laziest wrong build that would pass each test\. If one exists, tighten the test until it can't\./);
+    expect(text).toMatch(/A claimed file not written yet already counts as red, so don't build it\./);
+  });
+});
