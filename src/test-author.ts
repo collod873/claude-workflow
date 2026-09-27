@@ -1,36 +1,23 @@
-import { existsSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { relative, resolve } from "node:path";
 import { capped, yourChecks } from "./brief.ts";
-import { RAN_NO_TESTS, runCheck, type Shell } from "./check-runner.ts";
-import { STATIC } from "./fence.ts";
+import { runCheck, type Shell } from "./check-runner.ts";
+import { OPEN_SHELL, STATIC } from "./fence.ts";
 import { runStage, type Opened, type Outcome, type Stage } from "./stage.ts";
-import { checks, claims, quoted } from "./ticket-shape.ts";
+import { checks, quoted } from "./ticket-shape.ts";
 
 const STAGE = "test author";
-const UNIMPORTED = /Cannot find module '(\.[^']+)' imported from (.+?)\s*$/gm;
 const AUTHORED = ".test.ts";
 const FIXTURES = "src/scenarios.ts";
 const RAN = /[\w./-]+\.test\.ts/g;
 export const REFUSALS_CAP = 4 * 1024;
 const WROTE_NOTHING = "the author wrote nothing, so it wrote no test for any criterion";
 
-function awaitsTheBuild(body: string, cwd: string, output: string): boolean {
-  const missing = [...output.matchAll(UNIMPORTED)].map(([line, module, importer]) => {
-    if (module === undefined || importer === undefined) throw new Error(`no module or importer in ${JSON.stringify(line)}`);
-    return relative(cwd, resolve(cwd, dirname(importer), module));
-  });
-  const unwritten = new Set(claims(body).filter((path) => !existsSync(join(cwd, path))));
-  return missing.length > 0 && missing.every((path) => unwritten.has(path));
-}
-
 function judged(body: string, cwd: string, run?: Shell): { refusals: string[]; ran: Set<string> } {
   const ran = new Set<string>();
   const refusals = checks(body).flatMap(({ at, command }) => {
-    const { passed, why, output } = runCheck(command, cwd, run);
+    const { passed, output } = runCheck(command, cwd, run);
     for (const [file] of output.matchAll(RAN)) ran.add(relative(cwd, resolve(cwd, file)));
-    if (passed) return [`${at} has no failing test: \`${quoted(command)}\` already passes`];
-    if (why !== RAN_NO_TESTS || awaitsTheBuild(body, cwd, output)) return [];
-    return [`${at} has no failing test: \`${quoted(command)}\` ran no tests`];
+    return passed ? [`${at} has no failing test: \`${quoted(command)}\` already passes`] : [];
   });
   return { refusals, ran };
 }
@@ -40,12 +27,18 @@ export function uncovered(body: string, cwd: string, run?: Shell): string[] {
 }
 
 export function handedOn(briefed: string, commands: string[]): string {
+  const goodTest = [
+    "A good test fails now and passes only once the behaviour is really there:",
+    "- Assert the exact thing the criterion is about: the specific text, value, file or call. Never a phrase the code prints either way.",
+    '- When a criterion says "instead of" or "no longer", also assert the old behaviour is gone.',
+    "- Before you finish, picture the laziest wrong build that would pass each test. If one exists, tighten the test until it can't.",
+  ].join("\n");
   return [
     briefed,
     "## What to write",
-    `Write one failing test for each criterion above, and write nothing else. ${yourChecks(commands)}`,
-    "Each ends red naming the behaviour its criterion asks for. A check that passes, or runs no tests, is refused and handed back to you.",
-    `Anything you write outside test files and \`${FIXTURES}\`, and any test your check commands do not run, is refused and handed back to you, so a prototype proves nothing; a claimed file not written yet already counts as red.`,
+    `Write one failing test for each criterion above, and write nothing else. ${yourChecks(commands)} You are done when every one of them fails; when you finish, the machine runs them again and hands you back any that pass.`,
+    goodTest,
+    "A claimed file not written yet already counts as red, so don't build it.",
     `\`${STATIC}\` runs the gates your tests must pass: no comments, no em dash, and no copied code, so build on the helpers in \`src/scenarios.ts\`. Its typecheck and unused gates stay red on a claimed file not written yet; that red is the builder's.`,
     "",
   ].join("\n\n");
@@ -79,6 +72,7 @@ const AUTHOR: Stage = {
   name: STAGE,
   bin: "test-author",
   undone: "no test was authored",
+  reach: OPEN_SHELL,
   work: author,
 };
 

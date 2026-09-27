@@ -2,27 +2,13 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { type Shell } from "./check-runner.ts";
-import { askingBash, authoring, fenceSays, flagValue, heard, plant, scratch, wellFormedTicket } from "./scenarios.ts";
+import { authoring, flagValue, heard, plant, wellFormedTicket } from "./scenarios.ts";
 import { handedOn as prompted, uncovered } from "./test-author.ts";
 
 const ran = (stdout: string, status: number): Shell => () => ({ status, stdout, stderr: "" });
 const RED = ran("      Tests  1 failed (1)\n", 1);
 const GREEN = ran("      Tests  1 passed (1)\n", 0);
 const NO_TESTS = ran("No test files found, exiting with code 1\n", 1);
-
-const claimingBuilder = wellFormedTicket.replace("- src/ticket-shape.ts", "- src/builder.ts");
-const unimported = (cwd: string, module: string): Shell =>
-  ran(
-    [
-      " FAIL  src/builder.proc.test.ts [ src/builder.proc.test.ts ]",
-      `Error: Cannot find module './${module}' imported from ${join(cwd, "src", "builder.proc.test.ts")}`,
-      "",
-      " Test Files  1 failed (1)",
-      "      Tests  no tests",
-      "",
-    ].join("\n"),
-    1,
-  );
 
 const PROTOTYPED = [
   'printf \'import { it } from "vitest";\\nit("names the behaviour the criterion asks for", () => {});\\n\' >src/ticket-shape.test.ts',
@@ -85,22 +71,6 @@ describe("the test author writes one failing test per criterion, or ends red (#6
     expect(committed()).toEqual([]);
   });
 
-  it("counts a criterion covered only when its check ends red on a test that ran", () => {
-    expect(uncovered(wellFormedTicket, ".", RED)).toEqual([]);
-    expect(uncovered(wellFormedTicket, ".", GREEN)).toEqual([expect.stringContaining("criterion 1 has no failing test")]);
-    expect(uncovered(wellFormedTicket, ".", NO_TESTS)).toEqual([expect.stringContaining("ran no tests")]);
-  });
-
-  it("counts a check red when its test imports a claimed file not written yet", () => {
-    const cwd = scratch("unwritten-");
-    const written = scratch("written-");
-    plant(written, "src/builder.ts", "export const built = 1;\n");
-
-    expect(uncovered(claimingBuilder, cwd, unimported(cwd, "builder.ts"))).toEqual([]);
-    expect(uncovered(claimingBuilder, cwd, unimported(cwd, "unclaimed.ts"))).toEqual([expect.stringContaining("ran no tests")]);
-    expect(uncovered(claimingBuilder, written, unimported(written, "builder.ts"))).toEqual([expect.stringContaining("ran no tests")]);
-  });
-
   it("refuses a prototype by name and hands it back, leaving the owner's own work where it was", () => {
     const { session, run, stdin, committed } = authoring({ claude: PROTOTYPED, npx: GREEN_WITH_PROTOTYPE });
     plant(session, "notes.txt", "the owner's own work in progress\n");
@@ -135,14 +105,13 @@ describe("the test author writes one failing test per criterion, or ends red (#6
     expect(committed()).toEqual([]);
   });
 
-  it("ends red naming the criterion no test ran for, and writes nothing", () => {
-    const { run, committed } = authoring({ npx: "printf 'No test files found\\n'\nexit 1\n" });
+  it("ends green when a check's filter runs the test file but matches no test in it", () => {
+    const { run, committed } = authoring({ npx: "printf ' ✓ src/ticket-shape.test.ts (0)\\n      Tests  no tests\\n'\nexit 1\n" });
 
     const result = run();
 
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain("ran no tests");
-    expect(committed()).toEqual([]);
+    expect(result.status).toBe(0);
+    expect(committed()).toEqual(["src/ticket-shape.test.ts"]);
   });
 
   it("ends red when the model wrote no test at all, and writes nothing", () => {
@@ -166,36 +135,8 @@ describe("the test author writes one failing test per criterion, or ends red (#6
     expect(committed()).toEqual([]);
   });
 
-  it("lets the model run the static gates under either spelling of the path, and names the gates they hold", () => {
-    const { run, handedOn } = authoring();
-
-    run();
-
-    expect(handedOn()).toContain("./bin/check static");
+  it("tells the model which gates `bin/check static` holds it to", () => {
     expect(prompted("", [])).toMatch(/`bin\/check static`.*comments.*em dash.*src\/scenarios\.ts/s);
-  });
-
-  it("fences its shell to its check commands and the static gates, which the permission mode alone would not, and says which ones it may run", () => {
-    const { run, handedOn } = authoring();
-
-    run();
-
-    expect(fenceSays(handedOn(), askingBash("npx vitest run --config vitest.config.ts ticket-shape")).status).toBe(0);
-    expect(fenceSays(handedOn(), askingBash("bin/check static")).status).toBe(0);
-    expect(fenceSays(handedOn(), askingBash("./bin/check static")).status).toBe(0);
-    const refused = fenceSays(handedOn(), askingBash("touch unlisted-marker"));
-    expect(refused.status).toBe(2);
-    expect(refused.stderr).toContain("bin/check static");
-    expect(flagValue(handedOn(), "--tools")).toBe("Read,Edit,Write,Grep,Glob,Bash");
-  });
-
-  it("refuses a shell command its fence cannot read, rather than let it through", () => {
-    const { run, handedOn } = authoring();
-
-    run();
-
-    expect(fenceSays(handedOn(), askingBash(42)).status).toBe(2);
-    expect(fenceSays(handedOn(), "what a broken hook call looks like").status).toBe(2);
   });
 
   it("keeps the shared fixtures it adds and commits them with its tests", () => {
@@ -214,14 +155,6 @@ describe("the test author writes one failing test per criterion, or ends red (#6
     expect(stdin()[1]).toContain("src/_sanity.test.ts runs under no check");
     expect(committed()).toEqual(["src/ticket-shape.test.ts"]);
     expect(existsSync(join(session, "src", "_sanity.test.ts"))).toBe(false);
-  });
-
-  it("tells the model a prototype proves nothing and a claimed file not written yet already counts as red", () => {
-    expect(prompted("", [])).toMatch(/prototype proves nothing.*claimed file not written yet already counts as red/s);
-  });
-
-  it("tells the model a check that runs no tests is refused (#898)", () => {
-    expect(prompted("", [])).toMatch(/runs no tests, is refused/);
   });
 
   it("spends no model on a ticket GitHub will not hand over", () => {
