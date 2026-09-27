@@ -300,22 +300,6 @@ function claimedSession(session: string, who: string, claimed: Record<string, st
   git(session, "commit", "--quiet", "-m", "the author's failing test");
 }
 
-export function briefing({
-  body = wellFormedTicket,
-  claimed = { "src/ticket-shape.ts": "export const shaped = 1;\n" } as Record<string, string>,
-  tests = {} as Record<string, string>,
-  reads = true,
-} = {}) {
-  const root = scratch("brief-");
-  const session = join(root, "session");
-  claimedSession(session, "brief", claimed, tests, "ticket/722");
-  script(join(root, "bin", "gh"), reads ? ghAnswers(body) : "exit 22\n");
-  return {
-    written: () => readFileSync(join(session, ".git", "machine-logs", "brief-722.md"), "utf8"),
-    run: (ticket = "722") => execute(join(BIN, "brief"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, [ticket]),
-  };
-}
-
 const WROTE_A_TEST = 'printf \'import { it } from "vitest";\\nit("names the behaviour the criterion asks for", () => {});\\n\' >src/ticket-shape.test.ts\n';
 
 export function writesOutsideRepo(path: string): string {
