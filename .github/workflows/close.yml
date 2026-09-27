@@ -3,6 +3,8 @@ name: Close
 "on":
   push:
     branches: [main]
+  pull_request_target:
+    types: [opened]
 
 permissions:
   contents: read
@@ -32,4 +34,5 @@ jobs:
       - env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           QUIET_GH_TOKEN: ${{ github.token }}
+          OPENED_PR: ${{ github.event.pull_request.number }}
         run: bin/close
