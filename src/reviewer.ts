@@ -22,6 +22,9 @@ export const repairOf = (ticket: string) => `Repair #${ticket} as its fixer`;
 const QUOTE_LINE = /^>.*$/gm;
 const DOUBLE_QUOTE = /"[^"\n]+"/g;
 const READBACK_PROMPT = "`readback`: for someone who does not read code, what to try and what should happen, or what it now does and did not before.";
+const DEPTH_PROMPT =
+  "`depth`: each module the diff adds or widens that is shallow or a pass-through, and each place it joins behaviours that change for different reasons, naming the module. entry points that actions call and one-line test fixture helpers are not findings.";
+const DEPTH_LINE = /^depth \(meter\):.*$/m;
 
 function ownerQuotes(body: string): string[] {
   const text = why(body);
@@ -38,6 +41,7 @@ const VERDICT = {
     verdict: { enum: ["match", "drift"] },
     gaps: { type: "array", items: { type: "string", pattern: NO_EM_DASH } },
     readback: { type: "string", pattern: PLAIN_WORDS },
+    depth: { type: "array", items: { type: "string", pattern: NO_EM_DASH } },
     later: {
       type: "array",
       items: {
@@ -53,7 +57,7 @@ const VERDICT = {
       },
     },
   },
-  required: ["verdict", "gaps", "readback"],
+  required: ["verdict", "gaps", "readback", "depth"],
   additionalProperties: false,
 };
 
@@ -69,6 +73,7 @@ interface Verdict {
   gaps: string[];
   later?: Later[];
   readback: string;
+  depth?: string[];
 }
 
 interface AfterTurn {
@@ -113,7 +118,7 @@ export function handedOn(body: string, diff: string, after?: AfterTurn): string 
           "Each `later` item becomes its own ticket: the `gap` in one sentence, a `title`, 1 to 3 `criteria` each ending ` - check: `<command>`` with one a vitest run of a test not yet written, and the files it `claimed`.",
         ];
   return [
-    "Review this PR against the `## Why` and its criteria. Change nothing; `bin/check` is green. Read the repo if the diff is unclear.",
+    "Review this PR against `## Why`. Change nothing; `bin/check` is green.",
     "## Why",
     capped(why(body), TICKET_CAP),
     "## Acceptance criteria",
@@ -122,8 +127,9 @@ export function handedOn(body: string, diff: string, after?: AfterTurn): string 
     handedDiff(diff, claims(body)),
     ...turn,
     "## Your verdict",
-    "`match` if the diff builds the Why, else `drift`. Name every gap in one pass, each a fixer can act on.",
+    "`match` if the diff builds the Why, else `drift`. Name every gap in one pass.",
     READBACK_PROMPT,
+    DEPTH_PROMPT,
     ...sorted,
     "",
   ].join("\n\n");
@@ -150,6 +156,16 @@ function judgement(ticket: string, gaps: string[]): string {
 }
 
 const fixDiff = (ticket: string): string => git(["log", "--format=", "-p", "--fixed-strings", `--grep=${repairOf(ticket)}`, "HEAD"]).stdout ?? "";
+
+const depthLine = (findings: string[]): string => (findings.length === 0 ? "depth (meter): would refuse nothing" : `depth (meter): would refuse, ${findings.join("; ")}`);
+
+const withDepthLine = (body: string, line: string): string => (DEPTH_LINE.test(body) ? body.replace(DEPTH_LINE, line) : `${body.trimEnd()}\n\n${line}\n`);
+
+function reportedDepth(pr: string, findings: string[]): void {
+  const got = gh(["pr", "view", pr, "--json", "body", "--jq", ".body"]);
+  if (got.status !== 0) return;
+  gh(["pr", "edit", pr, "--body", withDepthLine(got.stdout, depthLine(findings))]);
+}
 
 const followUp = (ticket: string, { gap, criteria, claimed }: Later): string =>
   followUpBody([`${FOLLOW_UP_OF}${ticket}: its review found this after its fixer's repair, outside the earlier gaps and the fix's own lines.`, "", `> ${gap}`], criteria, claimed);
@@ -213,6 +229,7 @@ function review(pr: string): Stop | undefined {
   const after = earlier !== "" && fix !== "" ? { earlier, fix } : undefined;
   const verdict = judged(handedOn(body, diff, after), pr);
   if (typeof verdict === "string") return stoppedAt("modelRun", `${said} ended red, ${verdict}`);
+  reportedDepth(pr, verdict.depth ?? []);
   const blocking = after === undefined ? [...verdict.gaps, ...(verdict.later ?? []).map(({ gap }) => gap)] : verdict.gaps;
   const recorded = recordedLater(ticket, body, after === undefined ? [] : (verdict.later ?? []), turns);
   if (verdict.verdict === "match") {
