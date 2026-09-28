@@ -30,6 +30,8 @@ function fingerprintOf(diff: string, body: string): string {
 
 const fingerprintLine = (fingerprint: string) => `Fingerprint: \`${fingerprint}\``;
 const FINGERPRINT = /Fingerprint: `([^`]+)`/;
+const headLine = (head: string) => `Head: \`${head}\``;
+const HEAD_LINE = /^Head: `([0-9a-f]{40,64})`$/m;
 
 function lastJudgement(ticket: string, comments: string[]): { fingerprint: string; verdict: "match" | "drift" } | undefined {
   let found: { fingerprint: string; verdict: "match" | "drift" } | undefined;
@@ -171,12 +173,30 @@ function judged(prompt: string, pr: string): Verdict | string {
   return isVerdict(spent.answer) ? spent.answer : `the reviewer gave no verdict: ${firstLine(spent.stdout)}`;
 }
 
-function judgement(ticket: string, gaps: string[], fingerprint: string): string {
+function judgement(ticket: string, gaps: string[], fingerprint: string, head: string | undefined): string {
   const named = gaps.length === 0 ? ["- the reviewer ruled drift and named no gap"] : gaps.map((gap) => `- ${gap}`);
-  return [foundDrift(ticket), "", ...named, "", fingerprintLine(fingerprint), ""].join("\n");
+  return [foundDrift(ticket), "", ...named, "", fingerprintLine(fingerprint), ...(head === undefined ? [] : [headLine(head)]), ""].join("\n");
 }
 
-const fixDiff = (ticket: string): string => git(["log", "--format=", "-p", "--fixed-strings", `--grep=${repairOf(ticket)}`, "HEAD"]).stdout ?? "";
+function headNow(): string | undefined {
+  const got = git(["rev-parse", "HEAD"]);
+  return got.status === 0 ? got.stdout.trim() : undefined;
+}
+
+function judgedHead(ticket: string, comments: string[]): string | undefined {
+  const drifts = comments.filter((comment) => comment.startsWith(foundDrift(ticket)));
+  return HEAD_LINE.exec(drifts.at(-1) ?? "")?.[1];
+}
+
+function fixSince(head: string): string | undefined {
+  const base = git(["merge-base", "origin/main", "HEAD"]);
+  if (base.status !== 0) return undefined;
+  const merged = git(["merge-tree", "--write-tree", head, base.stdout.trim()]);
+  const tree = merged.stdout.split("\n")[0] ?? "";
+  if ((merged.status !== 0 && merged.status !== 1) || tree === "") return undefined;
+  const fix = git(["diff", tree, "HEAD"]);
+  return fix.status === 0 ? fix.stdout : undefined;
+}
 
 const followUp = (ticket: string, { gap, criteria, claimed }: Later): string =>
   followUpBody([`${FOLLOW_UP_OF}${ticket}: its review found this after its fixer's repair, outside the earlier gaps and the fix's own lines.`, "", `> ${gap}`], criteria, claimed);
@@ -257,9 +277,10 @@ function review(pr: string): Stop | undefined {
   }
   const turns = commentsOn(ticket, gh);
   if (turns === undefined) return stoppedAt("unread", `${said} ended red, the comments on #${ticket} could not be read, so no model was spent`);
+  const head = headNow();
   const earlier = earlierDrift(ticket, onPr);
-  const fix = fixDiff(ticket);
-  const after = earlier !== "" && fix !== "" ? { earlier, fix } : undefined;
+  const since = judgedHead(ticket, onPr);
+  const after = earlier === "" ? undefined : { earlier, fix: (since === undefined ? undefined : fixSince(since)) ?? diff };
   const verdict = judged(handedOn(body, diff, after), pr);
   if (typeof verdict === "string") return stoppedAt("modelRun", `${said} ended red, ${verdict}`);
   const now = bodyAndDiff(pr, ticket, said);
@@ -276,7 +297,7 @@ function review(pr: string): Stop | undefined {
     console.log(`${said} matches the Why of #${ticket}${recorded}, ${refusal === undefined ? `its readback posted: ${posted.said}` : `its readback was refused: ${quoted(refusal)}`}`);
     return undefined;
   }
-  const posted = post({ kind: "judgement", pr, text: judgement(ticket, blocking, fingerprint) }, gh);
+  const posted = post({ kind: "judgement", pr, text: judgement(ticket, blocking, fingerprint, head) }, gh);
   const [refusal] = posted.refusals;
   if (refusal !== undefined) return stoppedAt("drift", `${said} drifts from the Why of #${ticket}, and its judgement was refused: ${quoted(refusal)}${recorded}`);
   return stoppedAt("drift", `${said} drifts from the Why of #${ticket}, ${blocking.length} gaps posted: ${posted.said}${recorded}`);

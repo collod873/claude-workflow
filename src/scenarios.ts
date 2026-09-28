@@ -798,6 +798,50 @@ export function fileDiff(path: string, added: string): string {
   return `diff --git a/${path} b/${path}\nindex 0000000..1111111 100644\n--- a/${path}\n+++ b/${path}\n@@ -0,0 +1 @@\n+${added}\n`;
 }
 
+export const JUDGED_GAP = "the fixer is woken on finds that should have been follow-ups";
+export const EARLY_REPAIR = "export const repairedBeforeJudgement = 1;";
+export const FIXER_LINE = "export const repairedAfterJudgement = 1;";
+export const FROM_MAIN = "export const broughtInByMain = 1;";
+export const RESOLVED = "line 3 as ticket A changed it, ticket B's intent kept";
+
+const SHARED = `${Array.from({ length: 6 }, (_, i) => `line ${i + 1}`).join("\n")}\n`;
+
+function judgedHistory(root: string, turn: "merged" | "ticket"): string {
+  const commit = (message: string) => {
+    git(root, "add", ".");
+    git(root, "commit", "--quiet", "-m", message);
+  };
+  plant(root, "src/shared.ts", SHARED);
+  commit("Share lines with main");
+  git(root, "branch", "main");
+  plant(root, "src/shared.ts", SHARED.replace("line 3", "line 3 as ticket B changed it"));
+  commit("Build #810 against its failing tests");
+  plant(root, "src/early.ts", `${EARLY_REPAIR}\n`);
+  commit("Repair #810 as its fixer");
+  const head = git(root, "rev-parse", "HEAD");
+  if (turn === "merged") {
+    git(root, "checkout", "--quiet", "main");
+    plant(root, "src/shared.ts", SHARED.replace("line 3", "line 3 as ticket A changed it"));
+    plant(root, "src/main.ts", `${FROM_MAIN}\n`);
+    commit("Build #800");
+    git(root, "checkout", "--quiet", "ticket/810");
+    plant(root, "src/fixed.ts", `${FIXER_LINE}\n`);
+    commit("Repair #810 as its fixer");
+    try {
+      git(root, "merge", "--quiet", "--no-edit", "main");
+    } catch {
+      plant(root, "src/shared.ts", SHARED.replace("line 3", RESOLVED));
+      git(root, "add", ".");
+      git(root, "commit", "--quiet", "--no-edit");
+    }
+  }
+  git(root, "update-ref", "refs/remotes/origin/main", "main");
+  return head;
+}
+
+const judgedAt = (head: string) =>
+  `The reviewer read this PR against the Why of #810 and found drift.\n\n- ${JUDGED_GAP}\n\nFingerprint: \`judged-before\`\nHead: \`${head}\`\n`;
+
 export function reviewing({
   bin = "review",
   branch = "ticket/810",
@@ -813,6 +857,7 @@ export function reviewing({
   prEditFails = false,
   diffAfter = undefined as string | undefined,
   bodyAfter = undefined as string | undefined,
+  judged = undefined as "merged" | "ticket" | undefined,
 }: {
   bin?: string;
   branch?: string;
@@ -828,6 +873,7 @@ export function reviewing({
   prEditFails?: boolean;
   diffAfter?: string;
   bodyAfter?: string;
+  judged?: "merged" | "ticket";
 } = {}) {
   const root = scratch("review-");
   const argvDir = join(root, "gh-argv");
@@ -845,6 +891,7 @@ export function reviewing({
     git(root, "commit", "--quiet", "-m", "Repair #810 as its fixer");
     git(root, "commit", "--quiet", "--allow-empty", "-m", "Merge branch 'main' into ticket/810");
   }
+  if (judged !== undefined) onPr = [...onPr, judgedAt(judgedHistory(root, judged))];
   plant(root, "pr.diff", diff);
   plant(root, "pr-after.diff", diffAfter ?? diff);
   plant(root, "ticket.md", body);

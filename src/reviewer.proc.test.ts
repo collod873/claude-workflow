@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { askingBash, cloned, fenceSays, fileDiff, flagValue, git, JUDGEMENT, plant, REVIEWED_TICKET, reviewing, scratch } from "./scenarios.ts";
+import { askingBash, cloned, EARLY_REPAIR, fenceSays, fileDiff, FIXER_LINE, flagValue, FROM_MAIN, git, JUDGED_GAP, JUDGEMENT, plant, RESOLVED, REVIEWED_TICKET, reviewing, scratch } from "./scenarios.ts";
 import { NO_EM_DASH, PLAIN_WORDS } from "./reviewer.ts";
 import { claims, ticketRefusals } from "./ticket-shape.ts";
 
@@ -202,23 +202,47 @@ describe("bin/review names every gap in one pass, and after its fixer's repair o
     expect(handed()).not.toContain("## The fixer's repair");
   });
 
-  it("hands the earlier gaps and the fix's own diff once its fixer repaired a drift", () => {
+  it("hands the earlier gaps, and the whole PR diff as the fix after a drift judgement that recorded no head", () => {
     const { run, handed } = reviewing({ onPr: ["a comment nobody needs", EARLIER], repair: "export const repaired = 1;\n" });
 
     expect(run().status).toBe(0);
     const bounded = handed().split("## The fixer's repair")[1] ?? "";
     expect(bounded).toContain("lists only steps that carry an id");
-    expect(bounded).toContain("+export const repaired = 1;");
+    expect(bounded).toContain("+export const reviewed = 1;");
     expect(bounded).not.toContain("a comment nobody needs");
     expect(bounded).toMatch(/later/);
   });
 
-  it("reads a drift with no fixer's repair after it, and a stranger's gaps, as nothing repaired", () => {
-    const unrepaired = reviewing({ onPr: [EARLIER] });
+  it("hands the fix since the judged head: the fixer's lines and its resolved conflict, not main's lines or a repair from before that judgement", () => {
+    const { run, handed, comments } = reviewing({ judged: "merged", verdict: { verdict: "drift", gaps: [JUDGED_GAP] } });
+
+    expect(run().status).toBe(1);
+    const fix = (handed().split("## The fixer's repair")[1] ?? "").split("## Your verdict")[0] ?? "";
+    expect(fix).toContain(JUDGED_GAP);
+    expect(fix).toContain(`+${FIXER_LINE}`);
+    expect(fix).toContain(`+${RESOLVED}`);
+    expect(fix).not.toContain(FROM_MAIN);
+    expect(fix).not.toContain(EARLY_REPAIR);
+    expect(comments()[0]).toMatch(/^Head: `[0-9a-f]{40}`$/m);
+  });
+
+  it("reads a ticket-only turn as repaired: only the earlier gaps block, other finds go to later, and the fix reads as none", () => {
+    const later = reviewing({ judged: "ticket", verdict: { verdict: "match", gaps: [], later: [LATER] } });
+
+    expect(later.run().status).toBe(0);
+    expect(later.handed()).toContain("## The fixer's repair");
+    expect(later.handed()).toContain("(none, the fixer changed the ticket)");
+    expect(later.ticketComments()).toEqual([expect.stringContaining(LATE)]);
+
+    const blocked = reviewing({ judged: "ticket", verdict: { verdict: "drift", gaps: [JUDGED_GAP], later: [LATER] } });
+    expect(blocked.run().status).toBe(1);
+    expect(blocked.comments()).toEqual([expect.stringContaining(JUDGED_GAP)]);
+    expect(blocked.comments()[0]).not.toContain(LATE);
+  });
+
+  it("reads a stranger's gaps as nothing repaired", () => {
     const forged = reviewing({ onPr: [{ author: "stranger", type: "User", body: EARLIER }], repair: REPAIRED });
 
-    expect(unrepaired.run().status).toBe(0);
-    expect(unrepaired.handed()).not.toContain("## The fixer's repair");
     expect(forged.run().status).toBe(0);
     expect(forged.handed()).not.toContain("## The fixer's repair");
   });
@@ -245,8 +269,8 @@ describe("bin/review names every gap in one pass, and after its fixer's repair o
     expect(blocked.comments()[0]).not.toContain(LATE);
   });
 
-  it("blocks on every gap it names before its fixer's repair, later ones included", () => {
-    const { run, comments, filed } = reviewing({ onPr: [EARLIER], verdict: { verdict: "drift", gaps: [STILL_OPEN], later: [LATER] } });
+  it("blocks on every gap it names before any drift judgement, later ones included", () => {
+    const { run, comments, filed } = reviewing({ verdict: { verdict: "drift", gaps: [STILL_OPEN], later: [LATER] } });
 
     expect(run().status).toBe(1);
     expect(comments()[0]).toContain(STILL_OPEN);
