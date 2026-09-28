@@ -173,3 +173,19 @@ describe("check.yml runs the meters beside the review, and a red meter run never
     expect(jobs.review?.needs).toBe("check");
   });
 });
+
+describe("check.yml starts the review and the meters beside the check, not after it, on the ticket branches it already gates on (#970)", () => {
+  it("starts the review and the meters beside the check", () => {
+    const { jobs } = parse(readFileSync(WORKFLOW, "utf8")) as { jobs: Record<string, Job> };
+    const review = jobs.review;
+    const meters = jobs.meters;
+    if (review === undefined || meters === undefined) throw new Error(`no review or meters job in ${WORKFLOW}`);
+
+    expect(review.needs).not.toBe("check");
+    expect(meters.needs).not.toBe("check");
+    expect(review.if).toContain("startsWith(github.head_ref, 'ticket/')");
+    expect(review.if).toContain("github.event.pull_request.head.repo.full_name == github.repository");
+    expect(meters.if).toContain("startsWith(github.head_ref, 'ticket/')");
+    expect(meters.if).toContain("github.event.pull_request.head.repo.full_name == github.repository");
+  });
+});

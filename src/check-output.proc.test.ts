@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { LINE_LIMIT, agedLogs, checkRepo, git, inRepo, plant, script, stubTool } from "./scenarios.ts";
@@ -179,5 +179,45 @@ describe("bin/check takes its own pass on the commit in hand, so the machine's c
     run(repo, ["static"], HOOKS_ON);
 
     expect(ran()).toBe(3);
+  });
+
+  it("takes a pass on uncommitted work once exactly those files are committed", () => {
+    const { repo, run } = checkRepo();
+    const ran = countedSuite(repo);
+
+    plant(repo, "src/a.ts", "export const a = 1;\n");
+    expect(run(repo, [], HOOKS_ON).status).toBe(0);
+    expect(ran()).toBe(1);
+
+    git(repo, "add", ".");
+    git(repo, "commit", "--quiet", "-m", "commit exactly the checked files");
+
+    const result = run(repo, [], HOOKS_ON);
+    expect(result).toEqual({ status: 0, stdout: `bin/check: passed, already at ${git(repo, "rev-parse", "--short", "HEAD")}\n`, stderr: "" });
+    expect(ran()).toBe(1);
+  });
+
+  it("takes a pass on the same uncommitted files, never on changed ones", () => {
+    const { repo, run } = checkRepo();
+    const ran = countedSuite(repo);
+
+    plant(repo, "src/a.ts", "export const a = 1;\n");
+    run(repo, [], HOOKS_ON);
+    expect(ran()).toBe(1);
+
+    expect(run(repo, [], HOOKS_ON).status).toBe(0);
+    expect(ran()).toBe(1);
+
+    plant(repo, "src/a.ts", "export const a = 2;\n");
+    run(repo, [], HOOKS_ON);
+    expect(ran()).toBe(2);
+
+    plant(repo, "src/b.ts", "export const b = 1;\n");
+    run(repo, [], HOOKS_ON);
+    expect(ran()).toBe(3);
+
+    rmSync(join(repo, "src", "b.ts"));
+    run(repo, [], HOOKS_ON);
+    expect(ran()).toBe(4);
   });
 });
