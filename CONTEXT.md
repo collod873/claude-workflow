@@ -57,6 +57,22 @@ The stage that reads a filed spec, says what it would build and where it had to 
 its guesses on the spec as one batch of questions for the owner.
 _Avoid_: critic, spec review, grill
 
+**Slicer**:
+The stage that turns a spec the owner has answered into tickets under it, one wave at a time. It
+settles in the spec the names the wave's tickets share, and when a wave's last ticket closes, it
+slices the next against the spec and what that wave found.
+_Avoid_: splitter, decomposer, to-tickets, planner
+
+**Wave**:
+The tickets under one spec that are open at once and build side by side. Only the current wave is
+tickets; the rest is still the spec.
+_Avoid_: batch, phase, sprint, round
+
+**Done check**:
+The stage that tries each of a spec's "I'll know it works when I can ___" sentences on the running
+system once nothing is left to slice, and closes the spec only when every one held.
+_Avoid_: audit, acceptance test, verification
+
 **Ticket**:
 The unit the machine builds: an issue carrying `## Why`, acceptance criteria and file claims.
 Filing one starts its build.
