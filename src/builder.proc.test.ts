@@ -125,15 +125,15 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(ticketComments().at(-1)).toContain("changed nothing");
   });
 
-  it.each(["builder", "fixer"])("resumes the session saved under `.claude/%s` from the builder's last job on this ticket, and saves the one it ends on under both, since main's workflows before #994 keep `.claude/fixer`", (savedUnder) => {
-    const { run, hired, keptSession } = fixing({ claude: FIXES, savedSession: "sess-earlier", savedUnder });
+  it("resumes the session saved under `.claude/builder` from the builder's last job on this ticket, and saves the one it ends on there alone", () => {
+    const { run, hired, keptSession } = fixing({ claude: FIXES, savedSession: "sess-earlier" });
 
     expect(run().status).toBe(0);
     const [argv] = hired();
     if (argv === undefined) throw new Error("no claude hired");
     expect(argv[argv.indexOf("--resume") + 1]).toBe("sess-earlier");
-    expect(keptSession("builder")).toBe(BUILDER_SESSION);
-    expect(keptSession("fixer")).toBe(BUILDER_SESSION);
+    expect(keptSession()).toBe(BUILDER_SESSION);
+    expect(keptSession("fixer")).toBeUndefined();
   });
 
   it("hands the model the Why, the failed run's log, the machine logs, the diff and only the machine's drift gaps", () => {
