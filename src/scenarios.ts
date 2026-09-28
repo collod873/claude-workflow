@@ -811,6 +811,8 @@ export function reviewing({
   prBody = "Builds #810\n",
   prBodyUnreadable = false,
   prEditFails = false,
+  diffAfter = undefined as string | undefined,
+  bodyAfter = undefined as string | undefined,
 }: {
   bin?: string;
   branch?: string;
@@ -824,11 +826,14 @@ export function reviewing({
   prBody?: string;
   prBodyUnreadable?: boolean;
   prEditFails?: boolean;
+  diffAfter?: string;
+  bodyAfter?: string;
 } = {}) {
   const root = scratch("review-");
   const argvDir = join(root, "gh-argv");
   const handed = join(root, "claude-stdin");
   const hired = join(root, "claude-argv");
+  const judgedOnce = join(root, "model-answered");
   const { setup, calls } = ghArgv(argvDir);
   git(root, "init", "--quiet", "--initial-branch=ticket/810");
   git(root, "config", "user.email", "review@test");
@@ -841,7 +846,9 @@ export function reviewing({
     git(root, "commit", "--quiet", "--allow-empty", "-m", "Merge branch 'main' into ticket/810");
   }
   plant(root, "pr.diff", diff);
+  plant(root, "pr-after.diff", diffAfter ?? diff);
   plant(root, "ticket.md", body);
+  plant(root, "ticket-after.md", bodyAfter ?? body);
   plant(root, "pr-body.md", prBody);
   plant(root, "turns.json", authored(turns));
   plant(root, "on-pr.json", authored(onPr));
@@ -856,8 +863,8 @@ export function reviewing({
       `  *"pr view"*"--json body"*) ${prBodyUnreadable ? "printf 'the PR body could not be read\\n' >&2; exit 1" : `cat "${join(root, "pr-body.md")}"`} ;;`,
       `  *"pr edit"*) ${prEditFails ? "printf 'the PR body could not be edited\\n' >&2; exit 1" : "exit 0"} ;;`,
       `  *"pr view"*) printf '%s\\n' '${branch}' ;;`,
-      `  *"issue view"*) cat "${join(root, "ticket.md")}" ;;`,
-      `  *"pr diff"*) cat "${join(root, "pr.diff")}" ;;`,
+      `  *"issue view"*) [ -f "${judgedOnce}" ] && cat "${join(root, "ticket-after.md")}" || cat "${join(root, "ticket.md")}" ;;`,
+      `  *"pr diff"*) [ -f "${judgedOnce}" ] && cat "${join(root, "pr-after.diff")}" || cat "${join(root, "pr.diff")}" ;;`,
       prCommentFails ? "  *\"pr comment\"*) printf 'the readback could not be posted\\n' >&2; exit 1 ;;" : `  *"pr comment"*) printf '%s\\n' '${JUDGEMENT}' ;;`,
       `  *"issue comment"*) printf '%s\\n' '${LATER_POSTED}' ;;`,
       `  *"issue create"*) printf '%s\\n' '${FOLLOW_UP_FILED}' ;;`,
@@ -866,7 +873,7 @@ export function reviewing({
       "",
     ].join("\n"),
   );
-  script(join(root, "bin", "claude"), `printf '%s\\0' "$@" >"${hired}"\ncat >"${handed}"\ncat "${join(root, "answer.json")}"\n`);
+  script(join(root, "bin", "claude"), `touch "${judgedOnce}"\nprintf '%s\\0' "$@" >"${hired}"\ncat >"${handed}"\ncat "${join(root, "answer.json")}"\n`);
   const bodyOf = (args: string[]) => args[args.indexOf("--body") + 1];
   return {
     root,
