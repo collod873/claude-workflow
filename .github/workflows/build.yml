@@ -84,8 +84,8 @@ jobs:
         with:
           path: |
             ~/.claude/projects
-            ~/.claude/fixer
-          key: fixer-ticket/${{ github.event.issue.number }}-${{ github.run_id }}
+            ~/.claude/builder
+          key: builder-ticket/${{ github.event.issue.number }}-${{ github.run_id }}
 
       - if: always()
         timeout-minutes: 6

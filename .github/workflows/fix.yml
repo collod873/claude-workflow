@@ -38,9 +38,9 @@ jobs:
           ticket=$DISPATCHED
           [[ $RAN == .github/workflows/check.yml && $RAN_ON =~ ^ticket/([0-9]+)$ ]] && ticket=${BASH_REMATCH[1]}
           [[ $RAN == .github/workflows/build.yml && $TITLE =~ ^Build\ ticket/([0-9]+): ]] && ticket=${BASH_REMATCH[1]}
-          [[ $RAN != .github/workflows/build.yml || -n $ticket ]] || { printf 'which: the red Build run "%s" names no ticket, so no fixer starts\n' "$TITLE" >&2; exit 1; }
+          [[ $RAN != .github/workflows/build.yml || -n $ticket ]] || { printf 'which: the red Build run "%s" names no ticket, so no builder starts\n' "$TITLE" >&2; exit 1; }
           if [[ -z $DISPATCHED && -n $ticket ]] && gh issue view "$ticket" --json labels --jq '.labels[].name' | grep -qx needs-human; then
-            printf 'which: #%s is labelled needs-human, so its fixer already called the owner and none starts again\n' "$ticket"
+            printf 'which: #%s is labelled needs-human, so its builder already called the owner and none starts again\n' "$ticket"
             ticket=
           fi
           printf 'ticket=%s\n' "$ticket" >>"$GITHUB_OUTPUT"
@@ -125,9 +125,9 @@ jobs:
         with:
           path: |
             ~/.claude/projects
-            ~/.claude/fixer
-          key: fixer-${{ env.HEAD_REF }}-${{ github.run_id }}
-          restore-keys: fixer-${{ env.HEAD_REF }}-
+            ~/.claude/builder
+          key: builder-${{ env.HEAD_REF }}-${{ github.run_id }}
+          restore-keys: builder-${{ env.HEAD_REF }}-
 
       - id: fix
         if: steps.branch.outputs.stale != 'true'
@@ -147,8 +147,8 @@ jobs:
         with:
           path: |
             ~/.claude/projects
-            ~/.claude/fixer
-          key: fixer-${{ env.HEAD_REF }}-${{ github.run_id }}
+            ~/.claude/builder
+          key: builder-${{ env.HEAD_REF }}-${{ github.run_id }}
 
       - if: failure() || cancelled()
         env:
@@ -157,7 +157,7 @@ jobs:
         run: |
           gh issue view "$TICKET" --json labels --jq '.labels[].name' | grep -qx needs-human && exit 0
           gh issue edit "$TICKET" --add-label needs-human
-          gh issue comment "$TICKET" --body "@${{ github.repository_owner }} the fixer's job ended before the fixer could finish, see the run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          gh issue comment "$TICKET" --body "@${{ github.repository_owner }} the builder's job ended before the builder could finish, see the run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
       - if: always()
         timeout-minutes: 6

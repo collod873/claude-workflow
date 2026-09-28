@@ -39,7 +39,7 @@ describe("the save step pushes the branch before anything can refuse it, and ope
   });
 });
 
-describe("bin/save's red exits name the stop the fixer reads (#835)", () => {
+describe("bin/save's red exits name the stop the builder reads (#835)", () => {
   it("a push is refused leaves a save log whose first line names the push is refused row", () => {
     const { run, log } = saving({ remoteRefuses: "the remote refuses every push" });
 
@@ -59,8 +59,8 @@ describe("bin/save's red exits name the stop the fixer reads (#835)", () => {
   });
 });
 
-describe("bin/save meters what the fixer read outside its brief, from its own stream (#809, #931)", () => {
-  it("reads outside the brief are counted and named, from the fixer's stream", () => {
+describe("bin/save meters what the builder read outside its brief, from its own stream (#809, #931)", () => {
+  it("reads outside the brief are counted and named, from the builder's stream", () => {
     const { run, prBody } = saving({
       brief: ["# Brief for ticket 726", "", "## Claimed files", "", "### src/ticket-shape.ts", "", "1  export const shaped = 2;", ""].join("\n"),
       streams: { fix: ["src/ticket-shape.ts", "src/post.ts"] },

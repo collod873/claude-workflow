@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { splitInto, WAITING } from "./fixer.ts";
+import { splitInto, WAITING } from "./builder.ts";
 import { commentOnPr, commentOnTicket, commentsOn } from "./post.ts";
 import { totalOutside } from "./reads-outside-brief.ts";
 import { FINGERPRINT, FOLLOW_UP_OF } from "./reviewer.ts";
@@ -7,7 +7,7 @@ import { exitFor, stoppedAt, type Stop } from "./stops.ts";
 import { quoted, why } from "./ticket-shape.ts";
 
 const MERGED = /^Merge pull request #(\d+) from \S+?(?:\/ticket\/(\d+))?$/;
-const SPLIT_FROM = new RegExp(`^${FOLLOW_UP_OF}(\\d+): its fixer split it`, "m");
+const SPLIT_FROM = new RegExp(`^${FOLLOW_UP_OF}(\\d+): its builder split it`, "m");
 const NAMED = /^(?:[ ,]*#\d+)+/;
 const BUILDS = /^Builds #(\d+)[ \t]*$/m;
 const STAGE_LABELS = "1-defining,2-building,3-checking,4-reviewing,5-merging,fixing,needs-human";
@@ -137,7 +137,7 @@ function openPrs(): { number: string; headRefName: string; mergeStateStatus: str
   }
 }
 
-function wakeFixer(ticket: string, reason: string): void {
+function wakeBuilder(ticket: string, reason: string): void {
   gh(["workflow", "run", "fix.yml", "-f", `ticket=${ticket}`, "-f", `reason=${reason}`]);
 }
 
@@ -147,7 +147,7 @@ function updateBranch(number: string, headRefName: string): void {
   const reason = (updated.stderr || updated.stdout).trim().split("\n")[0];
   commentOnPr(number, `PR #${number} could not be brought up to date with main: ${reason}`, gh);
   const ticket = TICKET_BRANCH.exec(headRefName)?.[1];
-  if (ticket !== undefined) wakeFixer(ticket, `#${ticket}'s PR #${number} could not be brought up to date with main: ${reason}`);
+  if (ticket !== undefined) wakeBuilder(ticket, `#${ticket}'s PR #${number} could not be brought up to date with main: ${reason}`);
 }
 
 function bringUpToDate(): void {

@@ -71,7 +71,7 @@ describe("bin/close ends a done ticket closed as completed with no stage label (
     expect(reopened, "reopens the ticket before closing it as completed").toBeGreaterThanOrEqual(0);
     expect(closed).toBeGreaterThan(reopened);
     expect(calls()[closed]).toContain("completed");
-    expect(tokens()[reopened], "reopens with the token that fires no workflow, so the fixer never hears of it").toBe("quiet");
+    expect(tokens()[reopened], "reopens with the token that fires no workflow, so the builder never hears of it").toBe("quiet");
     expect(tokens()[closed]).toBe("quiet");
     const stripped = calls().find((call) => call.includes("--remove-label"));
     expect(stripped, "strips its stage label").toBeDefined();
@@ -109,7 +109,7 @@ describe("bin/close brings ticket PRs left behind by a merge up to date, so auto
     expect(tokens()[second]).toBe("app");
   });
 
-  it("wakes the fixer of the ticket behind the stuck PR, instead of leaving it waiting in silence", () => {
+  it("wakes the builder of the ticket behind the stuck PR, instead of leaving it waiting in silence", () => {
     const { calls, tokens, run } = closing({
       ticket: "819",
       behindPrs: [{ number: "903", ticket: "822", refused: "GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts." }],
@@ -119,7 +119,7 @@ describe("bin/close brings ticket PRs left behind by a merge up to date, so auto
 
     expect(result.status).toBe(0);
     const wake = calls().find((call) => call.startsWith("workflow\nrun\nfix.yml") && call.includes("ticket=822"));
-    expect(wake, "the ticket behind the stuck PR is told why, waking its fixer").toBeDefined();
+    expect(wake, "the ticket behind the stuck PR is told why, waking its builder").toBeDefined();
     expect(wake).toContain("903");
     expect(wake).toContain("merge conflicts");
     expect(tokens()[calls().indexOf(wake ?? "")]).toBe("app");
@@ -157,10 +157,10 @@ describe("bin/close brings land PRs left behind by a merge up to date too, since
   });
 });
 
-describe("bin/close wakes a ticket its fixer split once every follow-up it split into has merged (#910)", () => {
+describe("bin/close wakes a ticket its builder split once every follow-up it split into has merged (#910)", () => {
   const piece = (ticket: string) =>
-    ["## Why", "", "Follow-up of #811: its fixer split it, since it does not fit one build.", "", "> The shape rules refuse a missing read by name.", "", "## Done when", "", `- The fix for #${ticket} lands.`, ""].join("\n");
-  const said = "@collod873 the fixer split #811 into #812, #813, which build themselves. #811 keeps what must wait for them, labelled `waiting`, and builds once they all merge: see #889";
+    ["## Why", "", "Follow-up of #811: its builder split it, since it does not fit one build.", "", "> The shape rules refuse a missing read by name.", "", "## Done when", "", `- The fix for #${ticket} lands.`, ""].join("\n");
+  const said = "@collod873 the builder split #811 into #812, #813, which build themselves. #811 keeps what must wait for them, labelled `waiting`, and builds once they all merge: see #889";
   const woken = (calls: string[]) => calls.findIndex((call) => call.trimEnd() === "issue\nedit\n811\n--remove-label\nwaiting");
 
   it("takes `waiting` off the split ticket, as the App so its build starts, when the last follow-up merges", () => {
@@ -188,10 +188,10 @@ describe("bin/close wakes a ticket its fixer split once every follow-up it split
   });
 });
 
-describe("bin/close wakes the ticket's fixer directly, instead of reopening it or leaving it a comment, when it cannot bring the ticket up to date (#957)", () => {
+describe("bin/close wakes the ticket's builder directly, instead of reopening it or leaving it a comment, when it cannot bring the ticket up to date (#957)", () => {
   const woken = (calls: string[], ticket: string) => calls.find((call) => call.startsWith("workflow\nrun\nfix.yml") && call.includes(`ticket=${ticket}`));
 
-  it("wakes the ticket's fixer instead of commenting, when its PR cannot be brought up to date by a merge", () => {
+  it("wakes the ticket's builder instead of commenting, when its PR cannot be brought up to date by a merge", () => {
     const { calls, tokens, run } = closing({
       ticket: "819",
       behindPrs: [{ number: "909", ticket: "830", refused: "GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts." }],
@@ -209,7 +209,7 @@ describe("bin/close wakes the ticket's fixer directly, instead of reopening it o
     expect(calls().some((call) => call.startsWith("pr\ncomment\n909\n")), "leaves the failed branch update comment on the PR (#980)").toBe(true);
   });
 
-  it("wakes the ticket's fixer instead of commenting, when its PR cannot be brought up to date on the PR's opening", () => {
+  it("wakes the ticket's builder instead of commenting, when its PR cannot be brought up to date on the PR's opening", () => {
     const { calls, tokens, run } = closing({
       ticket: "819",
       behindPrs: [{ number: "910", ticket: "831", mergeStateStatus: "UNKNOWN", refused: "GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts." }],
@@ -244,7 +244,7 @@ describe("bin/close counts a ticket PR's collisions in its closing record: faile
     expect(commented).toContain("PR #911 could not be brought up to date with main");
     expect(commented).toContain("merge conflicts");
     const wake = calls().find((call) => call.startsWith("workflow\nrun\nfix.yml") && call.includes("ticket=833"));
-    expect(wake, "still wakes the fixer as today").toBeDefined();
+    expect(wake, "still wakes the builder as today").toBeDefined();
   });
 
   it("counts failed branch updates and re-reviews", () => {

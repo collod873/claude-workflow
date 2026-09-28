@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { askingBash, cloned, EARLY_REPAIR, fenceSays, fileDiff, FIXER_LINE, flagValue, FROM_MAIN, git, JUDGED_GAP, JUDGEMENT, plant, RESOLVED, REVIEWED_TICKET, reviewing, scratch } from "./scenarios.ts";
+import { askingBash, cloned, EARLY_REPAIR, fenceSays, fileDiff, BUILDER_LINE, flagValue, FROM_MAIN, git, JUDGED_GAP, JUDGEMENT, plant, RESOLVED, REVIEWED_TICKET, reviewing, scratch } from "./scenarios.ts";
 import { NO_EM_DASH, PLAIN_WORDS } from "./reviewer.ts";
 import { doneWhen, ticketRefusals } from "./ticket-shape.ts";
 
@@ -117,7 +117,7 @@ const READBACK_TICKET = [
   "",
   "The owner, in session:",
   "",
-  "> keep the fixer honest about drift",
+  "> keep the builder honest about drift",
   "> never touch the reviewer's own prompt",
   "",
   "## Done when",
@@ -135,7 +135,7 @@ describe("bin/review reads back the owner's own words on a match, then a plain-w
     expect(quoted.comments()).toHaveLength(1);
     const [said] = quoted.comments();
     if (said === undefined) throw new Error("no comment posted");
-    const first = said.indexOf("> keep the fixer honest about drift");
+    const first = said.indexOf("> keep the builder honest about drift");
     const second = said.indexOf("> never touch the reviewer's own prompt");
     const at = said.indexOf(account);
     expect(first).toBeGreaterThanOrEqual(0);
@@ -148,7 +148,7 @@ describe("bin/review reads back the owner's own words on a match, then a plain-w
     expect(fallback.run().status).toBe(0);
     expect(fallback.comments()[0]).toContain('"a green build is read against what was meant before it merges"');
 
-    const drift = reviewing({ body: READBACK_TICKET, verdict: { verdict: "drift", gaps: ["the fixer never runs on a `drift`"], readback: "should never be posted" } });
+    const drift = reviewing({ body: READBACK_TICKET, verdict: { verdict: "drift", gaps: ["the builder never runs on a `drift`"], readback: "should never be posted" } });
     expect(drift.run().status).toBe(1);
     expect(drift.comments()).toHaveLength(1);
     expect(drift.comments()[0]).not.toContain("should never be posted");
@@ -188,33 +188,33 @@ const REPAIRED = "export const repaired = 1;\n";
 const afterRepair = (verdict: { verdict: string; gaps: string[]; later?: unknown[] }, extra: { turns?: string[]; body?: string } = {}) =>
   reviewing({ turns: extra.turns ?? [], onPr: [EARLIER], repair: REPAIRED, verdict, body: extra.body });
 
-describe("bin/review names every gap in one pass, and after its fixer's repair only the earlier gaps or the fix's own lines block (#865, #898)", () => {
+describe("bin/review names every gap in one pass, and after its builder's repair only the earlier gaps or the fix's own lines block (#865, #898)", () => {
   it("asks for every gap it finds in one pass, not the first one", () => {
     const { run, handed } = reviewing();
 
     expect(run().status).toBe(0);
     expect(handed().split("## Your verdict")[1]).toMatch(/every gap/i);
-    expect(handed()).not.toContain("## The fixer's repair");
+    expect(handed()).not.toContain("## The builder's repair");
   });
 
   it("hands the earlier gaps, and the whole PR diff as the fix after a drift judgement that recorded no head", () => {
     const { run, handed } = reviewing({ onPr: ["a comment nobody needs", EARLIER], repair: "export const repaired = 1;\n" });
 
     expect(run().status).toBe(0);
-    const bounded = handed().split("## The fixer's repair")[1] ?? "";
+    const bounded = handed().split("## The builder's repair")[1] ?? "";
     expect(bounded).toContain("lists only steps that carry an id");
     expect(bounded).toContain("+export const reviewed = 1;");
     expect(bounded).not.toContain("a comment nobody needs");
     expect(bounded).toMatch(/later/);
   });
 
-  it("hands the fix since the judged head: the fixer's lines and its resolved conflict, not main's lines or a repair from before that judgement", () => {
+  it("hands the fix since the judged head: the builder's lines and its resolved conflict, not main's lines or a repair from before that judgement", () => {
     const { run, handed, comments } = reviewing({ judged: "merged", verdict: { verdict: "drift", gaps: [JUDGED_GAP] } });
 
     expect(run().status).toBe(1);
-    const fix = (handed().split("## The fixer's repair")[1] ?? "").split("## Your verdict")[0] ?? "";
+    const fix = (handed().split("## The builder's repair")[1] ?? "").split("## Your verdict")[0] ?? "";
     expect(fix).toContain(JUDGED_GAP);
-    expect(fix).toContain(`+${FIXER_LINE}`);
+    expect(fix).toContain(`+${BUILDER_LINE}`);
     expect(fix).toContain(`+${RESOLVED}`);
     expect(fix).not.toContain(FROM_MAIN);
     expect(fix).not.toContain(EARLY_REPAIR);
@@ -225,8 +225,8 @@ describe("bin/review names every gap in one pass, and after its fixer's repair o
     const later = reviewing({ judged: "ticket", verdict: { verdict: "match", gaps: [], later: [LATER] } });
 
     expect(later.run().status).toBe(0);
-    expect(later.handed()).toContain("## The fixer's repair");
-    expect(later.handed()).toContain("(none, the fixer changed the ticket)");
+    expect(later.handed()).toContain("## The builder's repair");
+    expect(later.handed()).toContain("(none, the builder changed the ticket)");
     expect(later.ticketComments()).toEqual([expect.stringContaining(LATE)]);
 
     const blocked = reviewing({ judged: "ticket", verdict: { verdict: "drift", gaps: [JUDGED_GAP], later: [LATER] } });
@@ -239,7 +239,7 @@ describe("bin/review names every gap in one pass, and after its fixer's repair o
     const forged = reviewing({ onPr: [{ author: "stranger", type: "User", body: EARLIER }], repair: REPAIRED });
 
     expect(forged.run().status).toBe(0);
-    expect(forged.handed()).not.toContain("## The fixer's repair");
+    expect(forged.handed()).not.toContain("## The builder's repair");
   });
 
   it("merges past a later find, posting it once on the ticket, and ends red only on a blocking gap", () => {
@@ -277,7 +277,7 @@ describe("bin/review names every gap in one pass, and after its fixer's repair o
 const FOLLOW_UP_TICKET = [
   "## Why",
   "",
-  "Follow-up of #700: its review found this after the fixer's one turn.",
+  "Follow-up of #700: its review found this after the builder's one turn.",
   "",
   "> the closer never names the ticket it closed",
   "",

@@ -156,7 +156,7 @@ interface Job {
   steps: { run?: string; uses?: string; with?: Record<string, string> }[];
 }
 
-describe("check.yml runs the meters beside the review, and a red meter run never fails the Check run, so no fixer starts on it", () => {
+describe("check.yml runs the meters beside the review, and a red meter run never fails the Check run, so no builder starts on it", () => {
   it("runs main's bin/meters after the check, on a ticket branch only, as a job whose failure the run carries on past and whose logs never take the review's artifact name", () => {
     const { jobs } = parse(readFileSync(WORKFLOW, "utf8")) as { jobs: Record<string, Job> };
     const meters = jobs.meters;

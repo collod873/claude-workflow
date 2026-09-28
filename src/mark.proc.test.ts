@@ -11,7 +11,7 @@ describe("bin/mark shows the owner which stage a ticket is at, and whether it ne
     expect(marked.calls()).toEqual([`issue edit 811 --add-label 2-building --remove-label needs-human,${OTHER_STAGES}`]);
   });
 
-  it("adds needs-human beside the stage label, so the owner sees where the fixer stopped", () => {
+  it("adds needs-human beside the stage label, so the owner sees where the builder stopped", () => {
     const marked = marking();
 
     expect(heard(marked.run("811", "needs-human")).status).toBe(0);
