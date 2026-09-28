@@ -222,7 +222,7 @@ describe("bin/close wakes the ticket's fixer directly, instead of reopening it o
     expect(tokens()[calls().indexOf(wake ?? "")], "runs as the App, so fix.yml actually starts").toBe("app");
     expect(calls().some((call) => call.startsWith("issue\nreopen\n830"))).toBe(false);
     expect(calls().some((call) => call.startsWith("issue\ncomment\n830\n"))).toBe(false);
-    expect(calls().some((call) => call.startsWith("pr\ncomment\n909\n"))).toBe(false);
+    expect(calls().some((call) => call.startsWith("pr\ncomment\n909\n")), "leaves the failed branch update comment on the PR (#980)").toBe(true);
   });
 
   it("wakes the ticket's fixer instead of commenting, when its PR cannot be brought up to date on the PR's opening", () => {
@@ -241,7 +241,7 @@ describe("bin/close wakes the ticket's fixer directly, instead of reopening it o
     expect(tokens()[calls().indexOf(wake ?? "")]).toBe("app");
     expect(calls().some((call) => call.startsWith("issue\nreopen\n831"))).toBe(false);
     expect(calls().some((call) => call.startsWith("issue\ncomment\n831\n"))).toBe(false);
-    expect(calls().some((call) => call.startsWith("pr\ncomment\n910\n"))).toBe(false);
+    expect(calls().some((call) => call.startsWith("pr\ncomment\n910\n")), "leaves the failed branch update comment on the PR (#980)").toBe(true);
   });
 
   it("wakes the ticket's fixer instead of reopening it, when a check is red on the merge commit of a ticket already closed", () => {
@@ -255,6 +255,60 @@ describe("bin/close wakes the ticket's fixer directly, instead of reopening it o
     expect(wake).toContain("red on the merge commit");
     expect(tokens()[calls().indexOf(wake ?? "")]).toBe("app");
     expect(calls().some((call) => call.startsWith("issue\nreopen\n832"))).toBe(false);
+  });
+});
+
+describe("bin/close counts a ticket PR's collisions in its closing record: failed branch updates and re-reviews (#980)", () => {
+  it("leaves a failed branch update on a ticket PR", () => {
+    const { calls, run } = closing({
+      ticket: "819",
+      behindPrs: [{ number: "911", ticket: "833", refused: "GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts." }],
+    });
+
+    const result = run();
+
+    expect(result.status).toBe(0);
+    const commented = calls().find((call) => call.startsWith("pr\ncomment\n911\n"));
+    expect(commented, "leaves the same comment a non-ticket PR gets").toBeDefined();
+    expect(commented).toContain("PR #911 could not be brought up to date with main");
+    expect(commented).toContain("merge conflicts");
+    const wake = calls().find((call) => call.startsWith("workflow\nrun\nfix.yml") && call.includes("ticket=833"));
+    expect(wake, "still wakes the fixer as today").toBeDefined();
+  });
+
+  it("counts failed branch updates and re-reviews", () => {
+    const { calls, run } = closing({
+      ticket: "836",
+      prComments: [
+        "PR #900 could not be brought up to date with main: GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts.",
+        "The reviewer read this PR against the Why of #836 and found drift.\n\n- a gap\n\nFingerprint: `judged-1`\n",
+        "PR #900 could not be brought up to date with main: GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts.",
+        "Fingerprint: `judged-2`\n\nIt now reads a green build. Did this build what you meant, yes or no?",
+        "Fingerprint: `judged-3`\n\nIt now reads a green build. Did this build what you meant, yes or no?",
+      ],
+    });
+
+    const result = run();
+
+    expect(result.status).toBe(0);
+    const commented = calls().find((call) => call.startsWith("issue\ncomment\n836\n"));
+    expect(commented).toBeDefined();
+    expect(commented).toMatch(/speed report/i);
+    expect(commented).toMatch(/failed branch update[^\n]*2/i);
+    expect(commented).toMatch(/re-review[^\n]*2/i);
+  });
+
+  it("closes with no counts when its PR's comments cannot be read", () => {
+    const { calls, run } = closing({ ticket: "837", prCommentsUnreadable: true });
+
+    const result = run();
+
+    expect(result.status).toBe(0);
+    const commented = calls().find((call) => call.startsWith("issue\ncomment\n837\n"));
+    expect(commented).toBeDefined();
+    expect(commented).toMatch(/failed branch update[^\n]*not available/i);
+    expect(commented).toMatch(/re-review[^\n]*not available/i);
+    expect(calls().some((call) => call.startsWith("issue\nclose\n837"))).toBe(true);
   });
 });
 
