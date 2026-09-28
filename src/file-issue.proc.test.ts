@@ -73,7 +73,7 @@ describe("bin/file-issue files a ticket, or refuses it and files nothing (#662)"
 
     expect(run(["judgement", "--title", "A judgement", "--body-file", "body.md"])).toMatchObject({
       status: 2,
-      stderr: "file-issue: usage: file-issue ticket|note|research --title <title> --body-file <path>\n",
+      stderr: "file-issue: usage: file-issue ticket|note|research|spec --title <title> --body-file <path>\n",
     });
     expect(run(["ticket", "--body-file", "body.md"]).status).toBe(2);
     expect(ghSaw(repo)).toEqual([]);
@@ -162,7 +162,7 @@ describe("bin/file-issue files a ticket, or refuses it and files nothing (#662)"
 
     expect(result).toMatchObject({
       status: 0,
-      stdout: "file-issue: usage: file-issue ticket|note|research --title <title> --body-file <path>\n",
+      stdout: "file-issue: usage: file-issue ticket|note|research|spec --title <title> --body-file <path>\n",
       stderr: "",
     });
     expect(ghSaw(repo)).toEqual([]);
