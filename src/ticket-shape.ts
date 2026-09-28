@@ -1,9 +1,7 @@
 import { emDashLines } from "./em-dash.ts";
 
 const WHY = /^##[ \t]+Why[ \t]*$/m;
-const CRITERIA = /^##[ \t]+Acceptance criteria[ \t]*$/m;
-const CLAIMED = /^##[ \t]+Files claimed[ \t]*$/m;
-const TO_READ = /^##[ \t]+Files to read[ \t]*$/m;
+const DONE_WHEN = /^##[ \t]+Done when[ \t]*$/m;
 const PROBLEM_STATEMENT = /^##[ \t]+Problem Statement[ \t]*$/m;
 const SOLUTION = /^##[ \t]+Solution[ \t]*$/m;
 const USER_STORIES = /^##[ \t]+User Stories[ \t]*$/m;
@@ -14,14 +12,12 @@ const FURTHER_NOTES = /^##[ \t]+Further Notes[ \t]*$/m;
 const SENTENCES = /^##[ \t]+I[’']ll know it works when I can[ \t]*$/m;
 const NEXT_HEADING = /^##[ \t]/m;
 const ITEM = /^[ \t]*-[ \t]*\[[ xX]\][ \t]*/;
+const BULLET = /^[ \t]*-(?:[ \t]*\[[ xX]\])?[ \t]+/;
 const MARKER = /(?:–|(?<=[ \t])-{1,2}(?=[ \t]))[ \t]*check:[ \t]*`([^`\n]+)`[ \t]*$/;
 const ATTEMPT = /check:/gi;
-const RUNS_TESTS = /(?<![A-Za-z])(vitest|pytest|jest|node --test)(?![A-Za-z])/;
 const OWNER_WORDS = /"[^"\n]{4,}"|^>[ \t]*\S/m;
-const GLOB = /[*?[\]]/;
 const FILE_PATH = /[\w.-]+\/[\w./-]+\.[A-Za-z0-9]+/g;
 const NUMBERED_ITEM = /^[ \t]*\d+[.)][ \t]/m;
-const CONFIG_FLAGS = /--config[ \t]+(\S+)/g;
 const FEWEST = 1;
 const MOST = 3;
 const QUOTE = 80;
@@ -40,36 +36,18 @@ function section(body: string, heading: RegExp): string {
   return next === null ? rest : rest.slice(0, next.index);
 }
 
-function itemsUnder(body: string, heading: RegExp): string[] {
+function itemsUnder(body: string, heading: RegExp, item = ITEM): string[] {
   const items: string[] = [];
   for (const line of section(body, heading).split("\n")) {
-    if (ITEM.test(line)) items.push(line.replace(ITEM, "").trim());
+    if (item.test(line)) items.push(line.replace(item, "").trim());
     else if (items.length > 0 && line.trim() !== "") items[items.length - 1] += ` ${line.trim()}`;
   }
   return items;
 }
 
-const criteria = (body: string): string[] => itemsUnder(body, CRITERIA);
-
-function claimOn(line: string): string {
-  const trimmed = line.trim();
-  return trimmed.startsWith("-") ? trimmed.slice(1).replaceAll("`", "").trim() : "";
-}
-
-function listed(body: string, heading: RegExp): string[] {
-  return section(body, heading)
-    .split("\n")
-    .map(claimOn)
-    .filter((entry) => entry !== "");
-}
-
-export const claims = (body: string): string[] => listed(body, CLAIMED);
-
-const filesToRead = (body: string): string[] => listed(body, TO_READ);
-
 export const why = (body: string): string => section(body.replaceAll(/\r\n?/g, "\n"), WHY).trim();
 
-export const acceptance = (body: string): string => section(body.replaceAll(/\r\n?/g, "\n"), CRITERIA).trim();
+export const doneWhen = (body: string): string => section(body.replaceAll(/\r\n?/g, "\n"), DONE_WHEN).trim();
 
 export const whyChanged = (read: string, written: string): string[] => (why(written) === why(read) ? [] : ["the rewrite changes '## Why', the owner's words, which stay byte-identical"]);
 
@@ -78,52 +56,8 @@ export function rewriteRefusals(read: string, written: string): string[] {
   return changed.length > 0 ? changed : ticketRefusals(written);
 }
 
-function globRefusals(heading: string, entries: string[]): string[] {
-  return entries.filter((entry) => GLOB.test(entry)).map((entry) => `'## ${heading}' names \`${quoted(entry)}\`, a glob rather than one file`);
-}
-
-export function withRenamedPath(body: string, from: string, to: string): string {
-  let heading = "";
-  return body
-    .replaceAll(/\r\n?/g, "\n")
-    .split("\n")
-    .map((line) => {
-      if (NEXT_HEADING.test(line)) heading = line;
-      if (CLAIMED.test(heading)) return claimOn(line) === from ? line.replace(from, to) : line;
-      if (!CRITERIA.test(heading)) return line;
-      return line.replace(MARKER, (marker, command: string) =>
-        marker.replace(`\`${command}\``, `\`${command.replace(CONFIG_FLAGS, (flag, path: string) => (path === from ? `${flag.slice(0, -path.length)}${to}` : flag))}\``));
-    })
-    .join("\n");
-}
-
 export function quoted(text: string): string {
   return text.length > QUOTE ? `${text.slice(0, QUOTE - 1)}…` : text;
-}
-
-export function checks(body: string): { at: string; command: string }[] {
-  return criteria(body.replaceAll(/\r\n?/g, "\n")).flatMap((item, index) => {
-    const command = MARKER.exec(item)?.[1];
-    return command === undefined ? [] : [{ at: `criterion ${index + 1}`, command }];
-  });
-}
-
-function checkRefusals(items: string[]): string[] {
-  const refusals: string[] = [];
-  const commands: string[] = [];
-  items.forEach((item, index) => {
-    const attempts = item.match(ATTEMPT)?.length ?? 0;
-    const command = MARKER.exec(item)?.[1];
-    const at = `criterion ${index + 1}`;
-    if (attempts === 0) refusals.push(`${at} carries no check: \`<command>\` marker: ${quoted(item)}`);
-    else if (attempts > 1) refusals.push(`${at} carries ${attempts} check: markers, not one: ${quoted(item)}`);
-    else if (command === undefined) refusals.push(`${at} carries a check: marker that does not parse: ${quoted(item)}`);
-    else commands.push(command);
-  });
-  if (items.length > 0 && !commands.some((command) => RUNS_TESTS.test(command))) {
-    refusals.push("no check runs tests: a grep or file check may sit beside a test check, never alone");
-  }
-  return refusals;
 }
 
 export function noteRefusals(body: string): string[] {
@@ -139,15 +73,11 @@ export function ticketRefusals(body: string): string[] {
   const refusals: string[] = [];
   if (!WHY.test(text)) refusals.push("the body carries no '## Why', so nothing says what the owner asked for");
   else if (!OWNER_WORDS.test(section(text, WHY))) refusals.push('\'## Why\' quotes no owner words: it carries no "..." quote and no > quoted line');
-  if (!CRITERIA.test(text)) refusals.push("the body carries no '## Acceptance criteria'");
+  if (!DONE_WHEN.test(text)) refusals.push("the body carries no '## Done when', so nothing says what done looks like");
   else {
-    const items = criteria(text);
-    if (items.length < FEWEST || items.length > MOST) refusals.push(`'## Acceptance criteria' carries ${items.length} '- [ ]' items, not ${FEWEST} to ${MOST}`);
-    refusals.push(...checkRefusals(items));
+    const said = itemsUnder(text, DONE_WHEN, BULLET).length;
+    if (said < FEWEST || said > MOST) refusals.push(`'## Done when' carries ${said} '- ' sentences, not ${FEWEST} to ${MOST}`);
   }
-  if (!CLAIMED.test(text)) refusals.push("the body carries no '## Files claimed'");
-  else refusals.push(...globRefusals("Files claimed", claims(text)));
-  refusals.push(...globRefusals("Files to read", filesToRead(text)));
   return [...refusals, ...emDashLines(text).map((line) => `line ${line} carries an em dash`)];
 }
 

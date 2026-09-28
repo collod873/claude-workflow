@@ -75,8 +75,9 @@ system once nothing is left to slice, and closes the spec only when every one he
 _Avoid_: audit, acceptance test, verification
 
 **Ticket**:
-The unit the machine builds: an issue carrying `## Why`, acceptance criteria and file claims.
-Filing one starts its build.
+The unit the machine builds: an issue carrying `## Why` in the owner's words and, under
+`## Done when`, 1 to 3 sentences saying what done looks like. Filing one starts its build; its PR
+merging closes it.
 _Avoid_: issue, sub-issue, card, item
 
 **Note**:

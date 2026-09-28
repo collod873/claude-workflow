@@ -1,32 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { closing } from "./scenarios.ts";
 
-describe("bin/close closes a ticket only once its own checks prove it done on main (#808)", () => {
-  it("closes a ticket whose checks pass on the merge commit", () => {
-    const { calls, run } = closing({ ticket: "812", fixes: true });
+describe("bin/close closes a ticket once its PR merges, since the PR's review and bin/check already judged it (#931)", () => {
+  it("closes the ticket as completed, naming in its closing record the PR that merged", () => {
+    const { calls, run } = closing({ ticket: "812" });
 
     const result = run();
 
     expect(result.status).toBe(0);
     const commented = calls().find((call) => call.startsWith("issue\ncomment\n812\n"));
-    expect(commented).toBeDefined();
-    expect(commented).toContain("test -f built.txt");
-    expect(commented).toContain("red at base");
-    expect(commented).toContain("green at merge");
-    expect(calls().some((call) => call.startsWith("issue\nclose\n812\n") || call.startsWith("issue\nclose\n812"))).toBe(true);
-  });
-
-  it("leaves open a ticket with a red check on the merge commit", () => {
-    const { calls, run } = closing({ ticket: "813", fixes: false });
-
-    const result = run();
-
-    expect(result.status).toBe(0);
-    const commented = calls().find((call) => call.startsWith("issue\ncomment\n813\n"));
-    expect(commented).toBeDefined();
-    expect(commented).toContain("test -f built.txt");
-    expect(calls().some((call) => call.startsWith("issue\nclose\n813"))).toBe(false);
-    expect(calls().some((call) => call.startsWith("issue\nreopen\n813"))).toBe(false);
+    expect(commented).toContain("#812 is done: PR #900 merged");
+    expect(calls().some((call) => call.startsWith("issue\nclose\n812\n") && call.includes("completed"))).toBe(true);
+    expect(calls().some((call) => call.startsWith("workflow\nrun\nfix.yml"))).toBe(false);
   });
 });
 
@@ -34,7 +19,6 @@ describe("bin/close names how long filing took to reach merged, and never gates 
   it("carries a speed report from filing to merged, naming the longest wait, and still closes a ticket over an hour late", () => {
     const { calls, run } = closing({
       ticket: "814",
-      fixes: true,
       timing: {
         filed: "2026-01-01T00:00:00Z",
         firstCommit: "2026-01-01T00:10:00Z",
@@ -77,7 +61,7 @@ describe("bin/close names how long filing took to reach merged, and never gates 
 
 describe("bin/close ends a done ticket closed as completed with no stage label (#851)", () => {
   it("re-closes as completed and strips the stage label, even when the merge finds the ticket already closed as not planned", () => {
-    const { calls, tokens, run } = closing({ ticket: "817", fixes: true, closedAs: "NOT_PLANNED" });
+    const { calls, tokens, run } = closing({ ticket: "817", closedAs: "NOT_PLANNED" });
 
     const result = run();
 
@@ -96,7 +80,7 @@ describe("bin/close ends a done ticket closed as completed with no stage label (
   });
 
   it("leaves closed as completed a done ticket the merge already closed, reopening nothing", () => {
-    const { calls, run } = closing({ ticket: "818", fixes: true, closedAs: "COMPLETED" });
+    const { calls, run } = closing({ ticket: "818", closedAs: "COMPLETED" });
 
     expect(run().status).toBe(0);
     expect(calls().some((call) => call.startsWith("issue\nreopen\n818"))).toBe(false);
@@ -175,7 +159,7 @@ describe("bin/close brings land PRs left behind by a merge up to date too, since
 
 describe("bin/close wakes a ticket its fixer split once every follow-up it split into has merged (#910)", () => {
   const piece = (ticket: string) =>
-    ["## Why", "", "Follow-up of #811: its fixer split it, since it does not fit one build.", "", "> The shape rules refuse a missing read by name.", "", "## Acceptance criteria", "", "- [ ] The fix lands - check: `test -f built.txt`", "", "## Files claimed", "", `- src/built-${ticket}.ts`, ""].join("\n");
+    ["## Why", "", "Follow-up of #811: its fixer split it, since it does not fit one build.", "", "> The shape rules refuse a missing read by name.", "", "## Done when", "", `- The fix for #${ticket} lands.`, ""].join("\n");
   const said = "@collod873 the fixer split #811 into #812, #813, which build themselves. #811 keeps what must wait for them, labelled `waiting`, and builds once they all merge: see #889";
   const woken = (calls: string[]) => calls.findIndex((call) => call.trimEnd() === "issue\nedit\n811\n--remove-label\nwaiting");
 
@@ -204,7 +188,7 @@ describe("bin/close wakes a ticket its fixer split once every follow-up it split
   });
 });
 
-describe("bin/close wakes the ticket's fixer directly, instead of reopening it or leaving it a comment, when it cannot bring the ticket up to date or finds it red on the merge commit (#957)", () => {
+describe("bin/close wakes the ticket's fixer directly, instead of reopening it or leaving it a comment, when it cannot bring the ticket up to date (#957)", () => {
   const woken = (calls: string[], ticket: string) => calls.find((call) => call.startsWith("workflow\nrun\nfix.yml") && call.includes(`ticket=${ticket}`));
 
   it("wakes the ticket's fixer instead of commenting, when its PR cannot be brought up to date by a merge", () => {
@@ -242,19 +226,6 @@ describe("bin/close wakes the ticket's fixer directly, instead of reopening it o
     expect(calls().some((call) => call.startsWith("issue\nreopen\n831"))).toBe(false);
     expect(calls().some((call) => call.startsWith("issue\ncomment\n831\n"))).toBe(false);
     expect(calls().some((call) => call.startsWith("pr\ncomment\n910\n")), "leaves the failed branch update comment on the PR (#980)").toBe(true);
-  });
-
-  it("wakes the ticket's fixer instead of reopening it, when a check is red on the merge commit of a ticket already closed", () => {
-    const { calls, tokens, run } = closing({ ticket: "832", fixes: false, closedAs: "COMPLETED" });
-
-    const result = run();
-
-    expect(result.status).toBe(0);
-    const wake = woken(calls(), "832");
-    expect(wake, "fires the trigger fix.yml starts on, naming the ticket").toBeDefined();
-    expect(wake).toContain("red on the merge commit");
-    expect(tokens()[calls().indexOf(wake ?? "")]).toBe("app");
-    expect(calls().some((call) => call.startsWith("issue\nreopen\n832"))).toBe(false);
   });
 });
 

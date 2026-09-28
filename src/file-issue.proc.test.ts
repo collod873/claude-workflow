@@ -7,7 +7,6 @@ import { why } from "./ticket-shape.ts";
 const URL = "https://github.com/collod873/claude-workflow/issues/700";
 const RECORDS = `python3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "$@" >>"$PWD/gh-argv"\nprintf '%s\\n' ${URL}\n`;
 const REFUSES = "printf 'nothing filed\\n' >&2\nexit 1\n";
-const RAN_A_CHECK = "printf 'a note never pays for a check run\\n' >&2\nexit 1\n";
 const UNSTAMPED = "file-issue: CLAUDE_CODE_SESSION_ID is empty, so the filing names no session\n";
 const NOTE_CALL = ["note", "--title", "What the audit found", "--body-file", "body.md"];
 
@@ -81,22 +80,22 @@ describe("bin/file-issue files a ticket, or refuses it and files nothing (#662)"
   });
 
   it("files a note the same body could not file as a ticket, and labels it so nothing has to read it to know", () => {
-    const { repo, run } = filing({ gh: RECORDS, body: wellFormedNote, npx: RAN_A_CHECK });
+    const { repo, run } = filing({ gh: RECORDS, body: wellFormedNote });
 
     expect(run(NOTE_CALL)).toMatchObject({ status: 0, stdout: `${URL}\n`, stderr: UNSTAMPED });
     expect(ghSaw(repo)).toEqual([["issue", "create", "--title", "What the audit found", "--label", "note", "--body", wellFormedNote]]);
-    expect(run().stderr).toContain("the body carries no '## Acceptance criteria'");
+    expect(run().stderr).toContain("the body carries no '## Done when'");
   });
 
-  it("files a research note as a note labelled research, without running a check (#902)", () => {
-    const { repo, run } = filing({ gh: RECORDS, body: wellFormedNote, npx: RAN_A_CHECK });
+  it("files a research note as a note labelled research (#902)", () => {
+    const { repo, run } = filing({ gh: RECORDS, body: wellFormedNote });
 
     expect(run(["research", "--title", "What does the closer judge", "--body-file", "body.md"])).toMatchObject({ status: 0, stdout: `${URL}\n` });
     expect(ghSaw(repo)).toEqual([["issue", "create", "--title", "What does the closer judge", "--label", "note", "--label", "research", "--body", wellFormedNote]]);
   });
 
-  it("files a spec through src/post.ts, labels it spec, and runs no check command (#965)", () => {
-    const { repo, run } = filing({ gh: RECORDS, body: wellFormedSpec, npx: RAN_A_CHECK });
+  it("files a spec through src/post.ts and labels it spec (#965)", () => {
+    const { repo, run } = filing({ gh: RECORDS, body: wellFormedSpec });
 
     const result = run(["spec", "--title", "Give the cold read something to read", "--body-file", "body.md"]);
 

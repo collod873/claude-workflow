@@ -65,7 +65,6 @@ jobs:
             echo rerun=true >>"$GITHUB_OUTPUT"
           else
             bin/mark ${{ github.event.issue.number }} 1-defining || true
-            bin/start ${{ github.event.issue.number }}
           fi
 
       - id: fix

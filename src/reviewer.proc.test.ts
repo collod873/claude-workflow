@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { askingBash, cloned, EARLY_REPAIR, fenceSays, fileDiff, FIXER_LINE, flagValue, FROM_MAIN, git, JUDGED_GAP, JUDGEMENT, plant, RESOLVED, REVIEWED_TICKET, reviewing, scratch } from "./scenarios.ts";
 import { NO_EM_DASH, PLAIN_WORDS } from "./reviewer.ts";
-import { claims, ticketRefusals } from "./ticket-shape.ts";
+import { doneWhen, ticketRefusals } from "./ticket-shape.ts";
 
 const WORKFLOW = join(import.meta.dirname, "..", ".github", "workflows", "check.yml");
 
@@ -38,16 +38,16 @@ describe("bin/review reads a green ticket PR against its Why before it merges (#
     expect(handed()).toContain("+export const reviewed = 1;");
   });
 
-  it("hands the claimed files' diff and the list of every changed file when the whole is over the diff cap", () => {
+  it("hands the diff cut at the cap and the list of every changed file when the whole is over the diff cap", () => {
     const bulk = "y".repeat(40 * 1024);
-    const diff = [fileDiff("src/bulk.ts", bulk), fileDiff("src/reviewer.ts", "export const reviewed = 1;"), fileDiff("docs/notes.md", "a line nobody claimed")].join("");
+    const diff = [fileDiff("src/bulk.ts", bulk), fileDiff("docs/notes.md", "a line past the cap")].join("");
     const { run, handed } = reviewing({ diff });
 
     expect(run().status).toBe(0);
-    expect(handed()).toContain("+export const reviewed = 1;");
-    expect(handed()).not.toContain("y".repeat(1024));
-    expect(handed()).not.toContain("a line nobody claimed");
-    for (const path of ["src/bulk.ts", "src/reviewer.ts", "docs/notes.md"]) expect(handed()).toContain(path);
+    expect(handed()).toContain("y".repeat(1024));
+    expect(handed()).not.toContain(bulk);
+    expect(handed()).not.toContain("a line past the cap");
+    for (const path of ["src/bulk.ts", "docs/notes.md"]) expect(handed()).toContain(path);
   });
 
   it("hires its model through the stage launcher, so it runs under the owner's hooks and leaves its transcript in the machine logs", () => {
@@ -120,13 +120,9 @@ const READBACK_TICKET = [
   "> keep the fixer honest about drift",
   "> never touch the reviewer's own prompt",
   "",
-  "## Acceptance criteria",
+  "## Done when",
   "",
-  "- [ ] A drift verdict posts every gap - check: `npx vitest run --config vitest.config.ts reviewer`",
-  "",
-  "## Files claimed",
-  "",
-  "- src/reviewer.ts",
+  "- A drift verdict posts every gap.",
   "",
 ].join("\n");
 
@@ -186,8 +182,7 @@ const LATE = "the comment step runs gh with no GH_REPO, so it fails before any c
 const LATER = {
   gap: LATE,
   title: "Name the repo on every step that runs gh",
-  criteria: ['Every step that runs gh names its repo - check: `npx vitest run --config vitest.config.ts build-workflow -t "names its repo on every gh step"`'],
-  claimed: [".github/workflows/check.yml", "src/build-workflow.proc.test.ts"],
+  done: ["Every step that runs gh names its repo."],
 };
 const REPAIRED = "export const repaired = 1;\n";
 const afterRepair = (verdict: { verdict: string; gaps: string[]; later?: unknown[] }, extra: { turns?: string[]; body?: string } = {}) =>
@@ -286,13 +281,9 @@ const FOLLOW_UP_TICKET = [
   "",
   "> the closer never names the ticket it closed",
   "",
-  "## Acceptance criteria",
+  "## Done when",
   "",
-  "- [ ] The closer names its ticket - check: `npx vitest run --config vitest.config.ts closer`",
-  "",
-  "## Files claimed",
-  "",
-  "- src/closer.ts",
+  "- The closer names its ticket.",
   "",
 ].join("\n");
 
@@ -310,7 +301,7 @@ describe("a later find becomes a follow-up ticket that builds itself, one genera
     expect(ticketRefusals(body)).toEqual([]);
     expect(body).toContain("Follow-up of #810");
     expect(body).toContain(LATE);
-    expect(claims(body)).toEqual(LATER.claimed);
+    expect(doneWhen(body)).toBe("- Every step that runs gh names its repo.");
     expect(order().indexOf("issue comment")).toBeLessThan(order().indexOf("issue create"));
     expect(ticketComments()[0]).toContain(LATE);
   });
@@ -325,7 +316,7 @@ describe("a later find becomes a follow-up ticket that builds itself, one genera
   });
 
   it("leaves a finding it cannot shape into a ticket as a comment naming why", () => {
-    const { run, filed, ticketComments } = afterRepair({ verdict: "match", gaps: [], later: [{ ...LATER, criteria: [] }] });
+    const { run, filed, ticketComments } = afterRepair({ verdict: "match", gaps: [], later: [{ ...LATER, done: [] }] });
 
     expect(run().status).toBe(0);
     expect(filed()).toEqual([]);

@@ -3,12 +3,11 @@ import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { capped, onDisk } from "./brief.ts";
-import { runCheck } from "./check-runner.ts";
 import { CHECK, UNFENCED } from "./fence.ts";
 import { commentOnTicket, commentsOn, gh, git, OWNER, post, postRefusals, prNumber, rewriteTicket } from "./post.ts";
 import { earlierDrift, FOLLOW_UP_OF, followUpBody, handedDiff, LIST_CAP, NO_EM_DASH, repairOf, TICKET_CAP } from "./reviewer.ts";
 import { hired, machineLogs, type Spent } from "./stage.ts";
-import { checks, claims, quoted, why, whyChanged } from "./ticket-shape.ts";
+import { quoted, why, whyChanged } from "./ticket-shape.ts";
 
 const ANSWER = {
   type: "object",
@@ -23,10 +22,9 @@ const ANSWER = {
         properties: {
           title: { type: "string", pattern: NO_EM_DASH },
           why: { type: "string", pattern: NO_EM_DASH },
-          criteria: { type: "array", items: { type: "string", pattern: NO_EM_DASH } },
-          claimed: { type: "array", items: { type: "string", pattern: NO_EM_DASH } },
+          done: { type: "array", items: { type: "string", pattern: NO_EM_DASH } },
         },
-        required: ["title", "why", "criteria", "claimed"],
+        required: ["title", "why", "done"],
         additionalProperties: false,
       },
     },
@@ -38,8 +36,7 @@ const ANSWER = {
 interface Piece {
   title: string;
   why: string;
-  criteria: string[];
-  claimed: string[];
+  done: string[];
 }
 
 interface Answer {
@@ -72,33 +69,30 @@ function tailOf(text: string, limit: number): string {
 }
 
 export function repaired(output: string): string {
-  return [`Your checks or \`${CHECK}\` are still red. The end of their output:`, tailOf(output, TAIL_CAP), "Make them pass.", ""].join("\n\n");
+  return [`\`${CHECK}\` is still red. The end of its output:`, tailOf(output, TAIL_CAP), "Make it pass.", ""].join("\n\n");
 }
 
 function checkRed(): string {
-  const { passed, output } = runCheck(CHECK, process.cwd());
-  if (passed) return "";
+  const { GITHUB_ACTIONS: _annotating, ...env } = process.env;
+  const { status, stdout, stderr } = spawnSync("bash", ["-c", CHECK], { env, encoding: "utf8" });
+  if (status === 0) return "";
+  const output = `${stdout}${stderr}`;
   const log = LOGGED.exec(output)?.[1];
   return [output.trim(), log === undefined ? "" : (onDisk(resolve(log)) ?? "")].join("\n");
 }
 
-function stillRed(commands: string[]): string {
-  const reds = commands.map((command) => runCheck(command, process.cwd())).filter(({ passed }) => !passed);
-  return [checkRed(), ...reds.map(({ output }) => output)].filter((output) => output !== "").join("\n");
-}
-
 const BUILD_IT = [
   "## Build it",
-  "Build what the ticket asks for, with a test for each criterion that fails without your change and that its check runs.",
+  "Build what the ticket's Why asks for until its `## Done when` holds, with tests that fail without your change.",
   "Commit your own work, each message saying why. If the test count drops, give the reason on a line of its own: `Test count drop: <why>`.",
   `Run \`${CHECK}\` last: it runs every gate and the whole suite, so running the suite apart only repeats it.`,
 ];
 
-const howItFailed = (body: string, { failed, diff, gaps }: NonNullable<Handed["red"]>) => [
+const howItFailed = ({ failed, diff, gaps }: NonNullable<Handed["red"]>) => [
   "## How it failed",
   tailOf(failed, TAIL_CAP) || "(nothing logged)",
   "## Diff from main",
-  handedDiff(diff, claims(body)) || "(none)",
+  handedDiff(diff) || "(none)",
   "## Reviewer's gaps",
   capped(gaps, LIST_CAP) || "(none)",
 ];
@@ -107,12 +101,12 @@ export function handedOn({ ticket, body, red }: Handed): string {
   return [
     `# Ticket #${ticket}`,
     capped(body, TICKET_CAP),
-    ...(red === undefined ? BUILD_IT : howItFailed(body, red)),
+    ...(red === undefined ? BUILD_IT : howItFailed(red)),
     "## You own it until it merges",
     "Every red on this ticket comes back to you until it merges. Read its Why first; `gh` reads any run. If the reason above names a merge conflict, merge main in and resolve it yourself, keeping the ticket's Why over main's conflicting change. Answer one outcome:",
-    "- `code`: build or fix it, or change nothing on a flake; the machine commits, runs `bin/check` and the ticket's checks, hands back red, pushes green or reruns the red Check.",
-    "- `ticket`: a criterion or test is wrong; fix the test, or return the ticket as `body`, Why byte-identical.",
-    "- `split`: too big for one build; file `tickets` that build at once, each 1 to 3 `criteria` ending ` - check: `<command>`` and `claimed` files no other claims. What must wait for them stays as `body`, Why byte-identical, and builds once they merge.",
+    "- `code`: build or fix it, or change nothing on a flake; the machine commits, runs `bin/check`, hands back red, pushes green or reruns the red Check.",
+    "- `ticket`: its `## Done when` is wrong; return the ticket as `body`, Why byte-identical.",
+    "- `split`: too big for one build; file `tickets` that build at once, each with 1 to 3 `done` sentences. What must wait for them stays as `body`, Why byte-identical, and builds once they merge.",
     "- `close`: the ticket should not exist as written, and nothing should replace it.",
     "- `machine`: the machine is at fault, reviewer included; fix it in a worktree off `origin/main`, commit naming this ticket, and `bin/land` it first.",
     "`reason`: one paragraph for the owner. Two rounds in a row that change nothing call them.",
@@ -169,7 +163,7 @@ function closedUnbuilt(ticket: string, said: string): number {
   return 0;
 }
 
-const pieceBody = (ticket: string, parentWhy: string, { why: piece, criteria, claimed }: Piece): string =>
+const pieceBody = (ticket: string, parentWhy: string, { why: piece, done }: Piece): string =>
   followUpBody(
     [
       `${FOLLOW_UP_OF}${ticket}: its fixer split it, since it does not fit one build.`,
@@ -180,17 +174,13 @@ const pieceBody = (ticket: string, parentWhy: string, { why: piece, criteria, cl
       "",
       ...parentWhy.split("\n").map((line) => `> ${line}`.trimEnd()),
     ],
-    criteria,
-    claimed,
+    done,
   );
 
 function splitRefusals(body: string, answer: Answer, postings: { title: string; text: string }[]): string[] {
   if (why(body).includes(FOLLOW_UP_OF)) return ["this ticket is itself a follow-up, so it is not split again"];
   if (postings.length === 0) return ["a split files at least one ticket in `tickets`"];
-  const claimed = (answer.tickets ?? []).flatMap((piece) => piece.claimed);
-  const twice = [...new Set(claimed.filter((path, at) => claimed.indexOf(path) !== at))];
   return [
-    ...twice.map((path) => `\`${path}\` is claimed by more than one ticket, and they build at once`),
     ...(answer.body === undefined ? [] : [...whyChanged(body, answer.body), ...postRefusals({ kind: "ticket", title: "what waits", text: answer.body })].map((refusal) => `the ticket's rewrite: ${refusal}`)),
     ...postings.flatMap((posting) => postRefusals({ kind: "ticket", ...posting }).map((refusal) => `${posting.title}: ${refusal}`)),
   ];
@@ -219,7 +209,7 @@ function rewritten(ticket: string, body: string, answer: Answer): Round {
   const written = rewriteTicket(ticket, body, answer.body, gh);
   const [refusal] = written.refusals;
   if (refusal !== undefined) return { red: `Your rewrite of the ticket was refused: ${quoted(refusal)}` };
-  commentOnTicket(ticket, `The fixer rewrote the criteria of #${ticket}: ${answer.reason}`, gh);
+  commentOnTicket(ticket, `The fixer rewrote #${ticket}: ${answer.reason}`, gh);
   return { body: answer.body };
 }
 
@@ -259,8 +249,8 @@ function saveRefusal(ticket: string, logs: string): string | undefined {
   return `Save could not push this branch or open its PR:\n\n${tailOf(onDisk(join(logs, `save-${ticket}.log`)) ?? save.stderr, TAIL_CAP)}`;
 }
 
-function redOrSaved(ticket: string, body: string, logs: string): string | undefined {
-  const red = stillRed(checks(body).map(({ command }) => command));
+function redOrSaved(ticket: string, logs: string): string | undefined {
+  const red = checkRed();
   return red === "" ? saveRefusal(ticket, logs) : repaired(red);
 }
 
@@ -317,7 +307,7 @@ function ownTicket(ticket: string, run: string | undefined): number {
     body = round.body ?? body;
     committed(failed === undefined ? builtBy(ticket) : repairOf(ticket));
     const changed = head() !== before.head || fetchedMain() !== before.main || round.body !== undefined;
-    const red = round.red ?? redOrSaved(ticket, body, logs);
+    const red = round.red ?? redOrSaved(ticket, logs);
     if (red === undefined) return checkingAgain(ticket, run);
     if (!changed && idle) return calledOwner(ticket, `two rounds in a row changed nothing: ${round.red ?? answer?.reason ?? "it gave no outcome"}`);
     idle = !changed;

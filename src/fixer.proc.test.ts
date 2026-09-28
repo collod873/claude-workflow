@@ -114,7 +114,7 @@ describe("the fixer owns a red ticket until it merges (#898)", () => {
     expect(prompt).not.toContain("delete the fence");
   });
 
-  it("refuses a rewrite that changes one byte of the Why, and writes one that changes only the criteria, then pushes", () => {
+  it("refuses a rewrite that changes one byte of the Why, and writes one that changes only what done looks like, then pushes", () => {
     const { body } = fixing();
     const refused = fixing({ answer: { outcome: "ticket", reason: "the Why reads better this way", body: body.replace("never the owner", "never The owner") } });
 
@@ -122,19 +122,19 @@ describe("the fixer owns a red ticket until it merges (#898)", () => {
     expect(refused.edits()).toEqual([]);
     expect(refused.saved()).toEqual([]);
 
-    const recriteria = body.replace("The fixer clears a red ticket", "The fixer clears a ticket red at any stage");
-    const written = fixing({ answer: { outcome: "ticket", reason: "the criterion named one stage where the Why means every stage", body: recriteria } });
+    const redone = body.replace("The fixer clears a red ticket", "The fixer clears a ticket red at any stage");
+    const written = fixing({ answer: { outcome: "ticket", reason: "Done when named one stage where the Why means every stage", body: redone } });
 
     expect(written.run().status).toBe(0);
-    expect(written.edits()).toEqual([recriteria]);
+    expect(written.edits()).toEqual([redone]);
     expect(written.ticketComments().at(-1)).toContain("every stage");
     expect(written.saved()).toEqual(["811"]);
   });
 
-  it("rewrites past the criteria when a fixer corrects a wrong claim alongside it, and posts why (#942)", () => {
+  it("rewrites past `## Done when` when a fixer corrects the body around it, and posts why (#942)", () => {
     const { body } = fixing();
-    const corrected = body.replace("The fixer clears a red ticket", "The fixer clears a ticket red at any stage").replace("- src/ticket-shape.ts", "- src/post.ts");
-    const { run, edits, ticketComments, saved } = fixing({ answer: { outcome: "ticket", reason: "the criterion named src/ticket-shape.ts, but the fault it names sits in src/post.ts", body: corrected } });
+    const corrected = `${body.replace("The fixer clears a red ticket", "The fixer clears a ticket red at any stage")}\n## Out of scope\n\n- The post door.\n`;
+    const { run, edits, ticketComments, saved } = fixing({ answer: { outcome: "ticket", reason: "the ticket named the shape rules, but the fault it names sits in src/post.ts", body: corrected } });
 
     expect(run().status).toBe(0);
     expect(edits()).toEqual([corrected]);
@@ -159,11 +159,11 @@ describe("the fixer owns a red ticket until it merges (#898)", () => {
 
   it("splits a ticket too big for one build into follow-up tickets that build themselves, and parks what must wait under `waiting`, where #910 was closed in silence", () => {
     const { body } = fixing();
-    const waits = body.replace("The fixer clears a red ticket", "The fixer turns the flag on once its pieces merge").replace("- src/ticket-shape.ts", "- tsconfig.json");
-    const reason = "the claimed files come to more than one brief holds";
+    const waits = body.replace("The fixer clears a red ticket", "The fixer turns the flag on once its pieces merge");
+    const reason = "it is two changes that build apart";
     const tickets = [
-      { title: "Handle the misses in the shape rules", why: "The shape rules refuse a missing read by name.", criteria: ["Shape reads refuse by name - check: `npx vitest run --config vitest.config.ts ticket-shape`"], claimed: ["src/ticket-shape.ts"] },
-      { title: "Handle the misses in the post door", why: "The post door refuses a missing read by name.", criteria: ["Post reads refuse by name - check: `npx vitest run --config vitest.config.ts post`"], claimed: ["src/post.ts"] },
+      { title: "Handle the misses in the shape rules", why: "The shape rules refuse a missing read by name.", done: ["Shape reads refuse by name."] },
+      { title: "Handle the misses in the post door", why: "The post door refuses a missing read by name.", done: ["Post reads refuse by name."] },
     ];
     const { run, filed, edits, labelled, closes, ticketComments, saved, handed } = fixing({ answer: { outcome: "split", reason, tickets, body: waits }, check: "touch ../checked\nexit 1\n" });
 
@@ -175,7 +175,7 @@ describe("the fixer owns a red ticket until it merges (#898)", () => {
       if (ticket === undefined) throw new Error(`no ticket for filed piece ${at}`);
       expect(piece).toContain(`> ${ticket.why}`);
       expect(piece).toContain("> The owner, in session: \"a red ticket stays with its fixer until it merges, never the owner\".");
-      for (const claimed of ticket.claimed) expect(piece).toContain(`- ${claimed}`);
+      for (const sentence of ticket.done) expect(piece).toContain(`## Done when\n\n- ${sentence}`);
     }
     expect(edits()).toEqual([waits]);
     expect(ticketComments().at(-1)).toMatch(new RegExp(`^@collod873 the fixer split #811 into #901, #902, which build themselves\\..*${reason}`));
@@ -186,7 +186,7 @@ describe("the fixer owns a red ticket until it merges (#898)", () => {
   });
 
   it("closes a split ticket with nothing left to wait, once its follow-ups are filed", () => {
-    const tickets = [{ title: "Handle the misses in the shape rules", why: "The shape rules refuse a missing read by name.", criteria: ["Shape reads refuse by name - check: `npx vitest run --config vitest.config.ts ticket-shape`"], claimed: ["src/ticket-shape.ts"] }];
+    const tickets = [{ title: "Handle the misses in the shape rules", why: "The shape rules refuse a missing read by name.", done: ["Shape reads refuse by name."] }];
     const { run, filed, closes, ticketComments } = fixing({ answer: { outcome: "split", reason: "one piece holds all of it", tickets } });
 
     expect(run().status).toBe(0);
@@ -198,23 +198,19 @@ describe("the fixer owns a red ticket until it merges (#898)", () => {
     ]);
   });
 
-  it("files nothing and hands the split back when two follow-ups claim one file, or a follow-up would not fit one brief", () => {
-    const piece = { title: "Handle the misses", why: "The rules refuse a missing read by name.", criteria: ["Reads refuse by name - check: `npx vitest run --config vitest.config.ts ticket-shape`"], claimed: ["src/ticket-shape.ts"] };
-    const overlapping = fixing({ answer: { outcome: "split", reason: "two halves", tickets: [piece, { ...piece, title: "The other half" }] } });
-    const unshaped = fixing({ answer: { outcome: "split", reason: "no criteria", tickets: [{ ...piece, criteria: [] }] } });
+  it("files nothing and hands the split back when a follow-up says nothing about what done looks like", () => {
+    const piece = { title: "Handle the misses", why: "The rules refuse a missing read by name.", done: [] };
+    const unshaped = fixing({ answer: { outcome: "split", reason: "no Done when", tickets: [piece] } });
 
-    expect(overlapping.run().status).toBe(1);
-    expect(overlapping.filed()).toEqual([]);
-    expect(overlapping.handed()[1]).toContain("`src/ticket-shape.ts` is claimed by more than one ticket");
     expect(unshaped.run().status).toBe(1);
     expect(unshaped.filed()).toEqual([]);
-    expect(unshaped.handed()[1]).toContain("Handle the misses: '## Acceptance criteria' carries 0");
+    expect(unshaped.handed()[1]).toContain("Handle the misses: '## Done when' carries 0");
   });
 
   it("will not split a follow-up again, so a chain of splits stops at one generation", () => {
     const { body } = fixing();
     const followUp = body.replace("The owner, in session:", "Follow-up of #700: its fixer split it, since it does not fit one build.\n\n>");
-    const piece = { title: "Handle the misses", why: "The rules refuse a missing read by name.", criteria: ["Reads refuse by name - check: `npx vitest run --config vitest.config.ts ticket-shape`"], claimed: ["src/ticket-shape.ts"] };
+    const piece = { title: "Handle the misses", why: "The rules refuse a missing read by name.", done: ["Reads refuse by name."] };
     const { run, filed, handed } = fixing({ body: followUp, answer: { outcome: "split", reason: "still too big", tickets: [piece] } });
 
     expect(run().status).toBe(1);

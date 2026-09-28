@@ -29,8 +29,6 @@ jobs:
         with:
           node-version: 24
 
-      - run: npm ci
-
       - env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           QUIET_GH_TOKEN: ${{ github.token }}

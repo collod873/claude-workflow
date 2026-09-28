@@ -2,7 +2,7 @@ import { capped } from "./brief.ts";
 import { gh } from "./post.ts";
 import { answered, handedDiff, NO_EM_DASH, TICKET_CAP, ticketPr } from "./reviewer.ts";
 import { exitFor, stoppedAt, type Stop } from "./stops.ts";
-import { acceptance, claims, why } from "./ticket-shape.ts";
+import { doneWhen, why } from "./ticket-shape.ts";
 
 export const METERS = [
   {
@@ -11,11 +11,11 @@ export const METERS = [
   },
   {
     name: "cramming",
-    asks: "each acceptance criterion that asks for more than one behaviour under its one check, quoting the criterion and naming each behaviour it packs in.",
+    asks: "each `## Done when` sentence that asks for more than one behaviour, quoting the sentence and naming each behaviour it packs in.",
   },
   {
     name: "beyond the ask",
-    asks: "each behaviour the diff adds or changes that neither the Why nor the criteria ask for, naming the file. A test, a registration or a rename that the asked change needs is not a finding.",
+    asks: "each behaviour the diff adds or changes that neither the Why nor `## Done when` asks for, naming the file. A test, a registration or a rename that the asked change needs is not a finding.",
   },
   {
     name: "hollow test",
@@ -23,7 +23,7 @@ export const METERS = [
   },
   {
     name: "lost limit",
-    asks: "each limit the owner's own words in the Why set, something not to do or an edge of the scope, that the diff breaks or that no criterion holds it to, quoting those words.",
+    asks: "each limit the owner's own words in the Why set, something not to do or an edge of the scope, that the diff breaks or that no `## Done when` sentence holds it to, quoting those words.",
   },
 ];
 
@@ -43,10 +43,10 @@ export function handedOn(body: string, diff: string): string {
     "Read this ticket PR for each meter below. Change nothing and rule on nothing else: another stage judges whether it builds the Why. Read the repo if the diff is unclear.",
     "## Why",
     capped(why(body), TICKET_CAP),
-    "## Acceptance criteria",
-    capped(acceptance(body), TICKET_CAP),
+    "## Done when",
+    capped(doneWhen(body), TICKET_CAP),
     "## Diff",
-    handedDiff(diff, claims(body)),
+    handedDiff(diff),
     "## Meters",
     "Answer each meter as a list of what it would refuse, one sentence a fixer could act on per finding. An empty list is valid, and a doubt is not a finding.",
     ...METERS.map(({ name, asks }) => `\`${keyOf(name)}\`: ${asks}`),
