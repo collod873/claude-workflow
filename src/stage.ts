@@ -1,61 +1,15 @@
 import { spawnSync } from "node:child_process";
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
-import { brief, onDisk } from "./brief.ts";
-import { CHECK, GATED, ownerHooks, stageArgv, type Reach, type Registration } from "./fence.ts";
-import { STOPS, type Stop, type Stopped } from "./stops.ts";
-import { checks, quoted } from "./ticket-shape.ts";
+import { closeSync, existsSync, openSync, readFileSync, rmSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { ownerHooks, stageArgv, type Reach, type Registration } from "./fence.ts";
+import { quoted } from "./ticket-shape.ts";
 
 const STREAM = ["--output-format", "stream-json", "--verbose"];
 const TIMED_OUT = 124;
 const GRACE_SECONDS = "30";
 const RETRY_WAIT_SECONDS = "5";
-export const ROUNDS = 3;
-
-export interface Opened {
-  ticket: string;
-  body: string;
-  tests: string[];
-  commands: string[];
-  briefed: string;
-  logs: string;
-  wrote: () => string[];
-  handBack: <Red>(input: string, judge: (spent: Spent) => Red | undefined, told: (red: Red) => string) => HandedBack<Red>;
-}
-
-interface HandedBack<Red> {
-  spent: Spent;
-  red?: Red;
-  rounds: number;
-}
-
-export type Outcome = (Stopped | { stop?: undefined; verdict: string }) & { commit?: { message: string; branch?: string } };
-
-export interface Stage {
-  name: string;
-  bin: string;
-  undone: string;
-  clean?: boolean;
-  gated?: boolean;
-  reach?: Reach;
-  answers?: object;
-  tests?: { found: () => string[]; missing?: string };
-  work: (opened: Opened) => Outcome;
-}
 
 const git = (cwd: string, args: string[]) => spawnSync("git", args, { cwd, encoding: "utf8" });
-
-function changed(cwd: string): Set<string> {
-  const entries = git(cwd, ["status", "--porcelain", "-z", "-uall"]).stdout.split("\0");
-  const found = new Set<string>();
-  for (let at = 0; at < entries.length; at++) {
-    const entry = entries[at] ?? "";
-    if (entry.length < 4) continue;
-    found.add(entry.slice(3));
-    if (/^[RC]/.test(entry)) at++;
-  }
-  return found;
-}
 
 function events(stdout: string): unknown[] {
   return stdout
@@ -68,18 +22,6 @@ function events(stdout: string): unknown[] {
         return [];
       }
     });
-}
-
-function writtenOutsideRepo(cwd: string, stdout: string): string | undefined {
-  for (const event of events(stdout)) {
-    const content = (event as { message?: { content?: unknown[] } })?.message?.content;
-    for (const block of content ?? []) {
-      const { type, name, input } = (block ?? {}) as { type?: string; name?: string; input?: { file_path?: unknown } };
-      const path = input?.file_path;
-      if (type === "tool_use" && (name === "Write" || name === "Edit") && typeof path === "string" && relative(cwd, resolve(cwd, path)).startsWith("..")) return path;
-    }
-  }
-  return undefined;
 }
 
 function answerIn(stdout: string): unknown {
@@ -174,89 +116,3 @@ export function hired(hire: Hire): ((input: string, resume?: string) => Spent) |
 }
 
 export const machineLogs = (cwd: string) => join(git(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]).stdout.trim(), "machine-logs");
-
-function open(stage: Stage, ticket: string, cwd: string, logs: string): Opened | Stopped {
-  const asked = spawnSync("gh", ["issue", "view", ticket, "--json", "body", "--jq", ".body"], { encoding: "utf8" });
-  if (asked.status !== 0) return { stop: "unread", refusals: [`ticket ${ticket} could not be read, so ${stage.undone}`] };
-  const body = asked.stdout;
-  const tests = stage.tests?.found() ?? [];
-  if (stage.tests?.missing !== undefined && tests.length === 0) return { stop: "noTest", refusals: [stage.tests.missing] };
-  const briefed = brief({ ticket, body, tests, read: onDisk, also: stage.gated === true ? [CHECK] : [] });
-  if (briefed.refusals.length > 0) return { stop: "overCap", refusals: briefed.refusals };
-  writeFileSync(join(logs, `brief-${ticket}.md`), briefed.text);
-  const commands = checks(body).map(({ command }) => command);
-  const runs = stage.gated === true ? [...commands, ...GATED] : commands;
-  const spend = hired({ name: stage.name, transcript: join(logs, `${stage.bin}-${ticket}.jsonl`), commands: runs, answers: stage.answers, gated: stage.gated, reach: stage.reach });
-  if (typeof spend === "string") return { stop: "modelRun", refusals: [`the owner's hooks could not be read from ${spend}, so ${stage.undone}`] };
-  const before = changed(cwd);
-  const opened: Opened = {
-    ticket,
-    body,
-    tests,
-    commands,
-    briefed: briefed.text,
-    logs,
-    wrote: () => [...changed(cwd)].filter((path) => !before.has(path)),
-    handBack: (input, judge, told) => {
-      let spent = spendOnce(input);
-      let session = spent.session;
-      let rounds = 0;
-      let red = spent.refusal === undefined ? judge(spent) : undefined;
-      while (spent.refusal === undefined && red !== undefined && rounds < ROUNDS) {
-        if (session === undefined) return { spent: { ...spent, refusal: `the ${stage.name} named no session to resume` }, red, rounds };
-        spent = spendOnce(told(red), session);
-        session = spent.session ?? session;
-        rounds++;
-        if (spent.refusal === undefined) red = judge(spent);
-      }
-      return { spent, red, rounds };
-    },
-  };
-  const spendOnce = (input: string, resume?: string): Spent => {
-    const spent = spend(input, resume);
-    const stray = writtenOutsideRepo(cwd, spent.stdout);
-    return stray === undefined ? spent : { stdout: spent.stdout, refusal: `the ${stage.name} wrote outside the repo: ${stray}` };
-  };
-  return opened;
-}
-
-function commit(cwd: string, paths: string[], { message, branch }: { message: string; branch?: string }): string | undefined {
-  const steps = [...(branch === undefined ? [] : [["checkout", "--quiet", "-b", branch]]), ["add", "--", ...paths], ["commit", "--quiet", "-m", message]];
-  for (const step of steps) {
-    const done = git(cwd, step);
-    if (done.status !== 0) return `git ${step[0]} exited ${done.status}: ${done.stderr.trim()}`;
-  }
-  return undefined;
-}
-
-export function runStage(stage: Stage, ticket: string): number {
-  const cwd = process.cwd();
-  const said = `${stage.bin}: #${ticket}`;
-  const logs = machineLogs(cwd);
-  mkdirSync(logs, { recursive: true });
-  const log = join(logs, `${stage.bin}-${ticket}.log`);
-  rmSync(log, { force: true });
-  const shown = relative(cwd, log).startsWith("..") ? log : relative(cwd, log);
-  const ended = ({ stop, refusals }: Stopped, line: string) => {
-    writeFileSync(log, `${refusals.length} refusals, stopped at: ${STOPS[stop]}\n${refusals.join("\n")}\n`);
-    console.error(`${line}; log ${shown}`);
-    return 1;
-  };
-  if (stage.clean === true && changed(cwd).size > 0) {
-    return ended({ stop: "dirtyTree", refusals: ["the tree holds uncommitted work"] }, `${said} refused, the tree holds uncommitted work, so no model was spent`);
-  }
-  const opened = open(stage, ticket, cwd, logs);
-  const outcome: Outcome = "stop" in opened ? opened : stage.work(opened);
-  const written = "stop" in opened ? [] : opened.wrote();
-  const saving = written.length > 0 ? outcome.commit : undefined;
-  const failed = saving === undefined ? undefined : commit(cwd, written, saving);
-  const refused = outcome.stop === undefined ? [] : outcome.refusals;
-  const unsaved: Stopped | undefined = failed === undefined ? undefined : { stop: "uncommitted", refusals: [`the work would not commit${saving?.branch === undefined ? "" : ` on ${saving.branch}`}`, ...refused, failed] };
-  const stopped = unsaved ?? outcome;
-  if (stopped.stop === undefined) {
-    console.log(`${said} ${stopped.verdict}`);
-    return 0;
-  }
-  const kept = saving !== undefined && failed === undefined;
-  return ended(stopped, `${said} ended red, ${stopped.refusals[0]}${kept ? "" : "; nothing written"}`);
-}

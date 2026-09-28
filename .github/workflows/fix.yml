@@ -21,6 +21,8 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && (github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'timed_out') && github.event.workflow_run.head_repository.full_name == github.repository) }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
+    permissions:
+      issues: read
     outputs:
       ticket: ${{ steps.which.outputs.ticket }}
     steps:
@@ -30,11 +32,17 @@ jobs:
           RAN: ${{ github.event.workflow_run.path }}
           RAN_ON: ${{ github.event.workflow_run.head_branch }}
           TITLE: ${{ github.event.workflow_run.display_title }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           ticket=$DISPATCHED
           [[ $RAN == .github/workflows/check.yml && $RAN_ON =~ ^ticket/([0-9]+)$ ]] && ticket=${BASH_REMATCH[1]}
           [[ $RAN == .github/workflows/build.yml && $TITLE =~ ^Build\ ticket/([0-9]+): ]] && ticket=${BASH_REMATCH[1]}
           [[ $RAN != .github/workflows/build.yml || -n $ticket ]] || { printf 'which: the red Build run "%s" names no ticket, so no fixer starts\n' "$TITLE" >&2; exit 1; }
+          if [[ -z $DISPATCHED && -n $ticket ]] && gh issue view "$ticket" --json labels --jq '.labels[].name' | grep -qx needs-human; then
+            printf 'which: #%s is labelled needs-human, so its fixer already called the owner and none starts again\n' "$ticket"
+            ticket=
+          fi
           printf 'ticket=%s\n' "$ticket" >>"$GITHUB_OUTPUT"
 
   fix:

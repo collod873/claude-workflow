@@ -233,21 +233,18 @@ export function filing({
   title = "A ticket the machine can build",
   npx = "exit 1\n",
   sessionId,
-  files = {} as Record<string, string>,
 }: {
   gh: string;
   body: string;
   title?: string;
   npx?: string;
   sessionId?: string;
-  files?: Record<string, string>;
 }) {
   const root = scratch("file-issue-");
   const repo = join(root, "repo");
   mkdirSync(repo, { recursive: true });
   git(repo, "init", "--quiet", "--initial-branch=main");
   writeFileSync(join(repo, "body.md"), body);
-  for (const [path, content] of Object.entries(files)) plant(repo, path, content);
   script(join(root, "bin", "gh"), gh);
   script(join(root, "bin", "npx"), npx);
   return {
@@ -353,8 +350,6 @@ function claimedSession(session: string, who: string, claimed: Record<string, st
   git(session, "commit", "--quiet", "-m", "the author's failing test");
 }
 
-const WROTE_A_TEST = 'printf \'import { it } from "vitest";\\nit("names the behaviour the criterion asks for", () => {});\\n\' >src/ticket-shape.test.ts\n';
-
 export function flagValue(argv: string, flag: string): string {
   const value = argv.split("\n")[argv.split("\n").indexOf(flag) + 1];
   if (value === undefined) throw new Error(`no value after ${flag} in the argv`);
@@ -371,41 +366,6 @@ export function fenceSays(argv: string, input: string) {
 
 export const askingBash = (command: unknown) => JSON.stringify({ tool_name: "Bash", tool_input: { command } });
 
-export function writesOutsideRepo(path: string): string {
-  const event = { type: "assistant", message: { content: [{ type: "tool_use", name: "Write", input: { file_path: path } }] } };
-  return `printf '%s\\n' '${JSON.stringify(event)}'\n`;
-}
-
-export function authoring({ body = wellFormedTicket, claude = WROTE_A_TEST, npx = CHECK_RED, reads = true } = {}) {
-  const root = scratch("test-author-");
-  const session = join(root, "session");
-  const argv = join(root, "claude-argv");
-  const calls = join(root, "claude-calls");
-  mkdirSync(session, { recursive: true });
-  git(session, "init", "--quiet", "--initial-branch=main");
-  git(session, "config", "user.email", "author@test");
-  git(session, "config", "user.name", "author");
-  plant(session, "src/ticket-shape.ts", "export const shaped = 1;\n");
-  git(session, "add", ".");
-  git(session, "commit", "--quiet", "-m", "what the claim stands on");
-  script(join(root, "bin", "gh"), reads ? ghAnswers(body) : "exit 22\n");
-  script(join(root, "bin", "npx"), npx);
-  script(join(root, "bin", "claude"), `printf '%s\\n' "$@" >"${argv}"\ncat >>"${calls}"\nprintf '\\0' >>"${calls}"\n${claude}\nprintf '{"session_id":"sess-author"}\\n'`);
-  return {
-    session,
-    handedOn: () => (existsSync(argv) ? readFileSync(argv, "utf8") : ""),
-    stdin: () => (existsSync(calls) ? readFileSync(calls, "utf8").split("\0").slice(0, -1) : []),
-    committed: (branch = "ticket/723") => {
-      try {
-        return git(session, "show", "--name-only", "--format=", branch).split("\n").filter((path) => path !== "");
-      } catch {
-        return [];
-      }
-    },
-    run: (ticket = "723") => execute(join(BIN, "test-author"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, [ticket]),
-  };
-}
-
 export const FULL_CHECK_RED_ONCE = [
   "if [ -f ../checked ]; then exit 0; fi",
   "touch ../checked",
@@ -417,49 +377,6 @@ export const FULL_CHECK_RED_ONCE = [
 ].join("\n");
 
 const AUTHORED_TEST = 'import { it } from "vitest";\nit("names the behaviour the criterion asks for", () => {});\n';
-
-export function building({
-  body = wellFormedTicket,
-  claimed = { "src/ticket-shape.ts": "export const shaped = 1;\n" } as Record<string, string>,
-  tests = { "src/ticket-shape.test.ts": AUTHORED_TEST } as Record<string, string>,
-  npx = CHECK_RED,
-  sessionId = "sess-42",
-  claude = "",
-  check = "exit 0\n",
-  extra = {} as Record<string, string>,
-} = {}) {
-  const root = scratch("builder-");
-  const session = join(root, "session");
-  const argvDir = join(root, "claude-argv");
-  const stdinDir = join(root, "claude-stdin");
-  mkdirSync(argvDir, { recursive: true });
-  mkdirSync(stdinDir, { recursive: true });
-  script(join(session, "bin", "check"), check);
-  claimedSession(session, "builder", claimed, tests, "ticket/724");
-  script(join(root, "bin", "gh"), ghAnswers(body));
-  script(join(root, "bin", "npx"), npx);
-  script(
-    join(root, "bin", "claude"),
-    [
-      `n=$(( $(ls "${argvDir}" 2>/dev/null | wc -l) + 1 ))`,
-      `printf '%s\\n' "$@" >"${argvDir}/$n"`,
-      `cat >"${stdinDir}/$n"`,
-      claude,
-      `printf '{"session_id":"${sessionId}"}\\n'`,
-      "",
-    ].join("\n"),
-  );
-  return {
-    session,
-    sessionId,
-    calls: () => readdirSync(argvDir).length,
-    argv: (call: number) => readFileSync(join(argvDir, String(call)), "utf8"),
-    stdin: (call: number) => (existsSync(join(stdinDir, String(call))) ? readFileSync(join(stdinDir, String(call)), "utf8") : ""),
-    committed: () => git(session, "show", "--name-only", "--format=%s", "HEAD").split("\n").filter((line) => line !== ""),
-    dirty: () => git(session, "status", "--porcelain"),
-    run: (ticket = "724") => execute(join(BIN, "build"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}`, ...extra }, [ticket]),
-  };
-}
 
 export function renamedAndDeletedHistory(session: string): void {
   plant(session, "vitest.config.ts", "export default {};\n");
@@ -959,6 +876,7 @@ const FIXED_TICKET = [
 ].join("\n");
 
 export const FIXER_SESSION = "sess-fix";
+const RED_RUN = "555";
 
 export function fixing({
   body = FIXED_TICKET,
@@ -1045,7 +963,7 @@ export function fixing({
     keptSession: () => readFileSync(join(home, ".claude", "fixer", "811"), "utf8").trim(),
     log: (...args: string[]) => git(session, "log", ...args),
     run: (...args: string[]) =>
-      execute(join(BIN, "fix"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}`, HOME: home, ...(reason === undefined ? {} : { REASON: reason }) }, args.length === 0 ? ["811"] : args),
+      execute(join(BIN, "fix"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}`, HOME: home, ...(reason === undefined ? {} : { REASON: reason }) }, args.length === 0 ? ["811", RED_RUN] : args),
   };
 }
 

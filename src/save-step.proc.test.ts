@@ -59,14 +59,11 @@ describe("bin/save's red exits name the stop the fixer reads (#835)", () => {
   });
 });
 
-describe("bin/save meters what each stage read outside its brief, from the stage's own stream (#809)", () => {
-  it("reads outside the brief are counted and named per stage, from the stage's stream", () => {
+describe("bin/save meters what the fixer read outside its brief, from its own stream (#809, #931)", () => {
+  it("reads outside the brief are counted and named, from the fixer's stream", () => {
     const { run, prBody } = saving({
       brief: ["# Brief for ticket 726", "", "## Claimed files", "", "### src/ticket-shape.ts", "", "1  export const shaped = 2;", ""].join("\n"),
-      streams: {
-        "test-author": ["src/ticket-shape.ts", "src/post.ts"],
-        build: ["src/ticket-shape.ts"],
-      },
+      streams: { fix: ["src/ticket-shape.ts", "src/post.ts"] },
     });
 
     const result = run();
@@ -74,9 +71,8 @@ describe("bin/save meters what each stage read outside its brief, from the stage
     expect(result.status).toBe(0);
     const body = prBody();
     expect(body).toContain("Builds #726");
-    expect(body).toMatch(/test-author read 1\b[^\n]*outside its brief/);
+    expect(body).toMatch(/fix read 1\b[^\n]*outside its brief/);
     expect(body).toContain("src/post.ts");
-    expect(body).toMatch(/build read 0\b[^\n]*outside its brief/);
     expect(body).not.toContain("ticket-shape");
   });
 });
@@ -87,10 +83,7 @@ describe("bin/save hands reads outside the brief back to the filer when there ar
   it("posts a 'reads back to the filer' line on the PR and the ticket when 5 or more distinct files outside the brief were read", () => {
     const { run, prBody, ticketComments } = saving({
       brief,
-      streams: {
-        "test-author": ["src/a.ts", "src/b.ts", "src/c.ts"],
-        build: ["src/c.ts", "src/d.ts", "src/e.ts"],
-      },
+      streams: { fix: ["src/a.ts", "src/b.ts", "src/c.ts", "src/c.ts", "src/d.ts", "src/e.ts"] },
     });
 
     const result = run();
@@ -101,16 +94,13 @@ describe("bin/save hands reads outside the brief back to the filer when there ar
     expect(line).toMatch(/^reads back to the filer \(meter\): 5\b/);
     for (const file of ["src/a.ts", "src/b.ts", "src/c.ts", "src/d.ts", "src/e.ts"]) expect(line).toContain(file);
     expect(ticketComments()).toEqual([line]);
-    expect(totalOutside(body)).toBe(6);
+    expect(totalOutside(body)).toBe(5);
   });
 
   it("hands nothing back when 4 or fewer distinct files outside the brief were read, and posts no comment on the ticket", () => {
     const { run, prBody, ticketComments } = saving({
       brief,
-      streams: {
-        "test-author": ["src/a.ts", "src/b.ts"],
-        build: ["src/b.ts", "src/c.ts"],
-      },
+      streams: { fix: ["src/a.ts", "src/b.ts", "src/b.ts", "src/c.ts", "src/d.ts"] },
     });
 
     const result = run();
@@ -126,10 +116,7 @@ describe("bin/save hands reads outside the brief back to the filer when there ar
     const { run, ticketComments } = saving({
       brief,
       alreadyOpen: true,
-      streams: {
-        "test-author": ["src/a.ts", "src/b.ts", "src/c.ts"],
-        build: ["src/c.ts", "src/d.ts", "src/e.ts"],
-      },
+      streams: { fix: ["src/a.ts", "src/b.ts", "src/c.ts", "src/d.ts", "src/e.ts"] },
     });
 
     expect(run().status).toBe(0);

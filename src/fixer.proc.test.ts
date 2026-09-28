@@ -23,6 +23,20 @@ describe("the fixer owns a red ticket until it merges (#898)", () => {
     expect(saved()).toEqual(["811"]);
   });
 
+  it("builds a ticket nothing has failed on yet, marked building and committed as a build, and pushes once green (#931)", () => {
+    const { run, handed, marked, saved, log } = fixing({ claude: FIXES });
+
+    const result = run("811");
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(handed()[0]).toContain("## Build it");
+    expect(handed()[0]).toContain("never the owner");
+    expect(handed()[0]).not.toContain("## How it failed");
+    expect(marked()).toEqual(["811 2-building", "811 3-checking"]);
+    expect(log("-1", "--format=%s")).toBe("Build #811 as its fixer");
+    expect(saved()).toEqual(["811"]);
+  });
+
   it("runs on Opus with no fence, the owner's hooks its only guard", () => {
     const { run, hired } = fixing({ claude: FIXES });
 

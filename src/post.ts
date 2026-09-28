@@ -1,6 +1,5 @@
 import { spawnSync } from "node:child_process";
 import { text as read } from "node:stream/consumers";
-import { brief, onDisk } from "./brief.ts";
 import { emDashLines } from "./em-dash.ts";
 import { matchEnd, noteRefusals, rewriteRefusals, specRefusals, ticketRefusals } from "./ticket-shape.ts";
 
@@ -21,14 +20,12 @@ interface Kind {
   refuses: (text: string) => string[];
   on: "title" | "pr";
   args: (on: string, text: string) => string[];
-  briefed?: boolean;
 }
 
-const filed = (refuses: (text: string) => string[], label: string[], briefed?: boolean): Kind => ({
+const filed = (refuses: (text: string) => string[], label: string[]): Kind => ({
   refuses,
   on: "title",
   args: (title, text) => ["issue", "create", "--title", title, ...label, "--body", text],
-  briefed,
 });
 
 const judgementRefusals = (text: string): string[] => emDashLines(text).map((line) => `line ${line} carries an em dash`);
@@ -36,7 +33,7 @@ const judgementRefusals = (text: string): string[] => emDashLines(text).map((lin
 export const RESEARCH = "research";
 
 const KINDS: Record<string, Kind> = {
-  ticket: filed(ticketRefusals, [], true),
+  ticket: filed(ticketRefusals, []),
   note: filed(noteRefusals, ["--label", "note"]),
   research: filed(noteRefusals, ["--label", "note", "--label", RESEARCH]),
   spec: filed(specRefusals, ["--label", "spec"]),
@@ -123,9 +120,7 @@ function prepared(posting: Posting): { refusals: string[]; args: string[] } {
   if (on === undefined) return { refusals: [`a ${kind} carries no ${shape.on}`], args: [] };
   const text = shape.on === "title" && sessionId ? stampedWithSession(posting.text, sessionId) : posting.text;
   const refused = shape.refuses(text);
-  if (refused.length > 0) return { refusals: refused, args: [] };
-  const overCap = shape.briefed === true ? brief({ ticket: on, body: text, tests: [], read: onDisk }).refusals : [];
-  return { refusals: overCap, args: shape.args(on, text) };
+  return refused.length > 0 ? { refusals: refused, args: [] } : { refusals: [], args: shape.args(on, text) };
 }
 
 export const postRefusals = (posting: Posting): string[] => prepared(posting).refusals;

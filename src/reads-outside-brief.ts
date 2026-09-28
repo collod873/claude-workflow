@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 
-const STAGES = ["test-author", "build"];
+const STAGES = ["fix"];
 const CARRIED = /^### (.+)$/gm;
 const METER_LINE = /read (\d+) files? outside its brief/g;
 
