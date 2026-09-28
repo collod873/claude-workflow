@@ -553,9 +553,9 @@ export function fileDiff(path: string, added: string): string {
   return `diff --git a/${path} b/${path}\nindex 0000000..1111111 100644\n--- a/${path}\n+++ b/${path}\n@@ -0,0 +1 @@\n+${added}\n`;
 }
 
-export const JUDGED_GAP = "the fixer is woken on finds that should have been follow-ups";
+export const JUDGED_GAP = "the builder is woken on finds that should have been follow-ups";
 export const EARLY_REPAIR = "export const repairedBeforeJudgement = 1;";
-export const FIXER_LINE = "export const repairedAfterJudgement = 1;";
+export const BUILDER_LINE = "export const repairedAfterJudgement = 1;";
 export const FROM_MAIN = "export const broughtInByMain = 1;";
 export const RESOLVED = "line 3 as ticket A changed it, ticket B's intent kept";
 
@@ -572,7 +572,7 @@ function judgedHistory(root: string, turn: "merged" | "ticket"): string {
   plant(root, "src/shared.ts", SHARED.replace("line 3", "line 3 as ticket B changed it"));
   commit("Build #810 against its failing tests");
   plant(root, "src/early.ts", `${EARLY_REPAIR}\n`);
-  commit("Repair #810 as its fixer");
+  commit("Repair #810 as its builder");
   const head = git(root, "rev-parse", "HEAD");
   if (turn === "merged") {
     git(root, "checkout", "--quiet", "main");
@@ -580,8 +580,8 @@ function judgedHistory(root: string, turn: "merged" | "ticket"): string {
     plant(root, "src/main.ts", `${FROM_MAIN}\n`);
     commit("Build #800");
     git(root, "checkout", "--quiet", "ticket/810");
-    plant(root, "src/fixed.ts", `${FIXER_LINE}\n`);
-    commit("Repair #810 as its fixer");
+    plant(root, "src/fixed.ts", `${BUILDER_LINE}\n`);
+    commit("Repair #810 as its builder");
     try {
       git(root, "merge", "--quiet", "--no-edit", "main");
     } catch {
@@ -643,7 +643,7 @@ export function reviewing({
   if (repair !== undefined) {
     plant(root, "src/repaired.ts", repair);
     git(root, "add", "src/repaired.ts");
-    git(root, "commit", "--quiet", "-m", "Repair #810 as its fixer");
+    git(root, "commit", "--quiet", "-m", "Repair #810 as its builder");
     git(root, "commit", "--quiet", "--allow-empty", "-m", "Merge branch 'main' into ticket/810");
   }
   if (judged !== undefined) onPr = [...onPr, judgedAt(judgedHistory(root, judged))];
@@ -695,15 +695,15 @@ export function reviewing({
 const FIXED_TICKET = [
   "## Why",
   "",
-  'The owner, in session: "a red ticket stays with its fixer until it merges, never the owner".',
+  'The owner, in session: "a red ticket stays with its builder until it merges, never the owner".',
   "",
   "## Done when",
   "",
-  "- The fixer clears a red ticket.",
+  "- The builder clears a red ticket.",
   "",
 ].join("\n");
 
-export const FIXER_SESSION = "sess-fix";
+export const BUILDER_SESSION = "sess-fix";
 const RED_RUN = "555";
 
 export function fixing({
@@ -721,10 +721,11 @@ export function fixing({
   attempt = 1,
   rerun = "exit 0",
   savedSession = undefined as string | undefined,
+  savedUnder = "builder",
   reason = undefined as string | undefined,
   captures = {} as Record<string, string>,
 } = {}) {
-  const root = scratch("fixer-");
+  const root = scratch("builder-");
   const session = join(root, "session");
   const home = join(root, "home");
   const spent = join(root, "claude-calls");
@@ -738,18 +739,18 @@ export function fixing({
   script(join(session, "bin", "check"), check);
   script(join(session, "bin", "mark"), `printf '%s\\n' "$*" >>"${marks}"\n`);
   script(join(session, "bin", "save"), `printf '%s\\n' "$*" >>"${saves}"\n${save}`);
-  branchedSession(session, "fixer", { "src/ticket-shape.ts": "export const shaped = 1;\n" }, { "src/ticket-shape.test.ts": AUTHORED_TEST }, "ticket/811");
+  branchedSession(session, "builder", { "src/ticket-shape.ts": "export const shaped = 1;\n" }, { "src/ticket-shape.test.ts": AUTHORED_TEST }, "ticket/811");
   git(session, "commit", "--quiet", "--allow-empty", "-m", "Build #811 against its failing tests");
   const redAt = git(session, "rev-parse", "HEAD");
   for (const [name, text] of Object.entries(logged)) plant(session, `.git/machine-logs/${name}`, text);
   for (const [path, text] of Object.entries(leftover)) plant(session, path, text);
-  if (savedSession !== undefined) plant(home, ".claude/fixer/811", `${savedSession}\n`);
+  if (savedSession !== undefined) plant(home, `.claude/${savedUnder}/811`, `${savedSession}\n`);
   for (const [name, text] of Object.entries(captures)) plant(root, `captures/${name}`, text);
   plant(root, "ticket.md", body);
   plant(root, "on-pr.json", authored(onPr ?? []));
   plant(root, "failed-run.log", failedRun);
-  const result = { type: "result", subtype: "success", is_error: false, session_id: FIXER_SESSION, structured_output: answer };
-  plant(root, "answer.jsonl", `${JSON.stringify({ type: "system", session_id: FIXER_SESSION })}\n${JSON.stringify(result)}\n`);
+  const result = { type: "result", subtype: "success", is_error: false, session_id: BUILDER_SESSION, structured_output: answer };
+  plant(root, "answer.jsonl", `${JSON.stringify({ type: "system", session_id: BUILDER_SESSION })}\n${JSON.stringify(result)}\n`);
   script(join(root, "bin", "npx"), npx);
   script(
     join(root, "bin", "gh"),
@@ -790,7 +791,7 @@ export function fixing({
     filed: () => calls().filter((args) => args[0] === "issue" && args[1] === "create").map(bodyOf),
     closes: () => calls().filter((args) => (args[0] === "issue" || args[0] === "pr") && args[1] === "close"),
     reruns: () => calls().filter((args) => args[0] === "run" && args[1] === "rerun"),
-    keptSession: () => readFileSync(join(home, ".claude", "fixer", "811"), "utf8").trim(),
+    keptSession: (under = "builder") => readFileSync(join(home, ".claude", under, "811"), "utf8").trim(),
     captured: (name: string) => join(root, "captures", name),
     log: (...args: string[]) => git(session, "log", ...args),
     run: (...args: string[]) =>

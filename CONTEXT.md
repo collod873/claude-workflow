@@ -40,11 +40,11 @@ _Avoid_: soft gate, warning, advisory check
 A gate that fires before a run spends model time, so it is free when it fires.
 _Avoid_: precondition, validation, check
 
-**Fixer**:
+**Builder**:
 The one agent that builds a ticket, and owns it from that build until it merges, one session across
 every red run. It fixes the code, ticket or machine, splits the ticket, or closes it unbuilt; when it
 stops, it marks `needs-human`.
-_Avoid_: mechanic, fresh eyes, repair agent
+_Avoid_: fixer, mechanic, fresh eyes, repair agent
 
 ### The work
 

@@ -101,7 +101,7 @@ describe("build.yml builds a ticket the moment it is filed (#826)", () => {
   it("the App's follow-up ticket builds itself, and nothing else the App or a stranger files does (#865)", () => {
     const { job } = workflow();
     const starts = (sender: string, body: string) => holds(job.if ?? "true", { sender, body });
-    const followUp = "## Why\n\nFollow-up of #865: its review found this after the fixer's one turn.\n";
+    const followUp = "## Why\n\nFollow-up of #865: its review found this after the builder's one turn.\n";
 
     expect(starts("collod873-machine[bot]", followUp)).toBe(true);
     expect(starts("collod873-machine[bot]", "## Why\n\nA ticket the App wrote on its own.\n")).toBe(false);
@@ -111,14 +111,14 @@ describe("build.yml builds a ticket the moment it is filed (#826)", () => {
 
   it("builds nothing on the App's reopen", () => {
     const { job } = workflow();
-    const followUp = "## Why\n\nFollow-up of #865: its review found this after the fixer's one turn.\n";
+    const followUp = "## Why\n\nFollow-up of #865: its review found this after the builder's one turn.\n";
 
     expect(holds(job.if ?? "true", { sender: "collod873-machine[bot]", body: followUp, action: "opened" })).toBe(true);
     expect(holds(job.if ?? "true", { sender: "collod873-machine[bot]", body: followUp, action: "reopened" })).toBe(false);
     expect(holds(job.if ?? "true", { sender: "collod873-machine[bot]", action: "unlabeled", label: "waiting", body: "## Why\n\nThe owner's own words.\n" })).toBe(true);
   });
 
-  it("a ticket split by its fixer builds what waited once `waiting` comes off, and no other label change starts a build (#910)", () => {
+  it("a ticket split by its builder builds what waited once `waiting` comes off, and no other label change starts a build (#910)", () => {
     const { on, job } = workflow();
     const starts = (sender: string, label: string) => holds(job.if ?? "true", { sender, action: "unlabeled", label, body: "## Why\n\nThe owner's own words.\n" });
 
@@ -131,7 +131,7 @@ describe("build.yml builds a ticket the moment it is filed (#826)", () => {
     expect(holds(job.if ?? "true", { sender: "collod873-machine[bot]", action: "unlabeled", label: "waiting", labels: ["note"] })).toBe(false);
   });
 
-  it("hands the ticket to its fixer after start, and nothing runs after start fails", () => {
+  it("hands the ticket to its builder after start, and nothing runs after start fails", () => {
     const { job } = workflow();
 
     expect(stagesRun(job, "start")).toEqual(["start"]);
@@ -141,7 +141,7 @@ describe("build.yml builds a ticket the moment it is filed (#826)", () => {
     expect(at).toEqual([...at].sort((a, b) => a - b));
   });
 
-  it("builds with the fixer alone, acting as the App under its own time cap (#931)", () => {
+  it("builds with the builder alone, acting as the App under its own time cap (#931)", () => {
     const { job } = workflow();
     const minting = job.steps.find((step) => step.uses?.startsWith("actions/create-github-app-token@") === true);
 
@@ -159,7 +159,7 @@ describe("build.yml builds a ticket the moment it is filed (#826)", () => {
     expect(job.steps.some((step) => /(^|\s|\/)bin\/(test-author|build|save)(\s|$)/.test(step.run ?? ""))).toBe(false);
   });
 
-  it("keeps the App's token in the checkout, since the fixer pushes from its own loop and a push by the job's token starts no Check (#931)", () => {
+  it("keeps the App's token in the checkout, since the builder pushes from its own loop and a push by the job's token starts no Check (#931)", () => {
     const { job } = workflow();
     const token = /steps\.app\.outputs\.token/;
     const checkouts = job.steps.filter((step) => step.uses?.startsWith("actions/checkout@") === true);
@@ -171,7 +171,7 @@ describe("build.yml builds a ticket the moment it is filed (#826)", () => {
     }
   });
 
-  it("keeps the session the fixer built in, whatever ended it, so the first red resumes it through fix.yml (#931)", () => {
+  it("keeps the session the builder built in, whatever ended it, so the first red resumes it through fix.yml (#931)", () => {
     const { job } = workflow();
     const fix = namedJob(fixWorkflow().jobs, "fix", FIX_WORKFLOW);
     const saved = job.steps.find((step) => step.uses?.startsWith("actions/cache/save@") === true);
@@ -318,7 +318,7 @@ function lookedUp(env: Record<string, string>, labels = ""): ReturnType<typeof r
 
 const ticketNamed = (env: Record<string, string>, labels = ""): string | undefined => lookedUp(env, labels).output.ticket;
 
-describe("fix.yml hands every red run of a ticket to its fixer, however the run died (#898)", () => {
+describe("fix.yml hands every red run of a ticket to its builder, however the run died (#898)", () => {
   it("starts on GitHub's own word that a Build or Check run finished", () => {
     const { on } = fixWorkflow();
 
@@ -326,7 +326,7 @@ describe("fix.yml hands every red run of a ticket to its fixer, however the run 
     expect(on.workflow_run?.types).toEqual(["completed"]);
   });
 
-  it("starts the fixer on no reopen", () => {
+  it("starts the builder on no reopen", () => {
     const { on } = parse(readFileSync(FIX_WORKFLOW, "utf8")) as { on: Record<string, unknown> };
 
     expect(on.workflow_run).toBeDefined();
@@ -337,7 +337,7 @@ describe("fix.yml hands every red run of a ticket to its fixer, however the run 
   it("reads the ticket from a Check run's branch, a Build run's name, or the closer's dispatch, and from nothing else", () => {
     const buildName = (parse(readFileSync(WORKFLOW, "utf8")) as { "run-name": string })["run-name"]
       .replace("${{ github.event.issue.number }}", "894")
-      .replace("${{ github.event.issue.title }}", "Give the Fixer's one turn a single record: ticket/5");
+      .replace("${{ github.event.issue.title }}", "Give the Builder's one turn a single record: ticket/5");
 
     expect(ticketNamed({ RAN: ".github/workflows/check.yml", RAN_ON: "ticket/891", TITLE: "Stamp the session id" })).toBe("891");
     expect(ticketNamed({ RAN: ".github/workflows/build.yml", RAN_ON: "main", TITLE: buildName })).toBe("894");
@@ -345,9 +345,9 @@ describe("fix.yml hands every red run of a ticket to its fixer, however the run 
     expect(ticketNamed({ RAN: ".github/workflows/check.yml", RAN_ON: "land/4b58f3372b91", TITLE: "Build ticket/7: a land PR's title" })).toBe("");
   });
 
-  it("starts no fixer on a red run of a ticket labelled needs-human, whose fixer already called the owner, but does on the closer's dispatch (#931)", () => {
-    const building = { RAN: ".github/workflows/build.yml", RAN_ON: "main", TITLE: "Build ticket/9: Give the fixer the build" };
-    const checking = { RAN: ".github/workflows/check.yml", RAN_ON: "ticket/9", TITLE: "Give the fixer the build" };
+  it("starts no builder on a red run of a ticket labelled needs-human, whose builder already called the owner, but does on the closer's dispatch (#931)", () => {
+    const building = { RAN: ".github/workflows/build.yml", RAN_ON: "main", TITLE: "Build ticket/9: Give the builder the build" };
+    const checking = { RAN: ".github/workflows/check.yml", RAN_ON: "ticket/9", TITLE: "Give the builder the build" };
 
     expect(ticketNamed(building, "2-building needs-human")).toBe("");
     expect(ticketNamed(checking, "needs-human")).toBe("");
@@ -394,7 +394,7 @@ describe("fix.yml hands every red run of a ticket to its fixer, however the run 
     expect(git(session, "rev-parse", "HEAD")).toBe(git(session, "rev-parse", "origin/main"));
   });
 
-  it("calls the owner by name whatever ends the fixer's job, unless the fixer already did", () => {
+  it("calls the owner by name whatever ends the builder's job, unless the builder already did", () => {
     const job = namedJob(fixWorkflow().jobs, "fix", FIX_WORKFLOW);
     const calling = job.steps.find((step) => /gh issue comment/.test(step.run ?? "")) as Step;
     const labelled = (labels: string) => {
@@ -412,7 +412,7 @@ describe("fix.yml hands every red run of a ticket to its fixer, however the run 
     expect(labelled("fixing needs-human")).not.toMatch(/issue (edit|comment)/);
   });
 
-  it("saves the fixer's session when a finished run woke it, which GitHub otherwise gives a read-only cache", () => {
+  it("saves the builder's session when a finished run woke it, which GitHub otherwise gives a read-only cache", () => {
     const fix = namedJob(fixWorkflow().jobs, "fix", FIX_WORKFLOW);
 
     expect(fix.steps.some((step) => step.uses?.startsWith("actions/cache/save@"))).toBe(true);

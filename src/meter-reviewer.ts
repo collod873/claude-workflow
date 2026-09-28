@@ -48,7 +48,7 @@ export function handedOn(body: string, diff: string): string {
     "## Diff",
     handedDiff(diff),
     "## Meters",
-    "Answer each meter as a list of what it would refuse, one sentence a fixer could act on per finding. An empty list is valid, and a doubt is not a finding.",
+    "Answer each meter as a list of what it would refuse, one sentence a builder could act on per finding. An empty list is valid, and a doubt is not a finding.",
     ...METERS.map(({ name, asks }) => `\`${keyOf(name)}\`: ${asks}`),
     "",
   ].join("\n\n");

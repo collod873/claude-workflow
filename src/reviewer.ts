@@ -42,7 +42,7 @@ function lastJudgement(ticket: string, comments: string[]): { fingerprint: strin
   }
   return found;
 }
-export const repairOf = (ticket: string) => `Repair #${ticket} as its fixer`;
+export const repairOf = (ticket: string) => `Repair #${ticket} as its builder`;
 const QUOTE_LINE = /^>.*$/gm;
 const DOUBLE_QUOTE = /"[^"\n]+"/g;
 const READBACK_PROMPT = "`readback`: for someone who does not read code, what to try and what should happen, or what it now does and did not before.";
@@ -98,7 +98,7 @@ interface AfterTurn {
   fix: string;
 }
 
-const laterFinds = (ticket: string) => `The reviewer found these on #${ticket} after its fixer's repair, outside the earlier gaps and the fix's own lines, so they do not block its merge:`;
+const laterFinds = (ticket: string) => `The reviewer found these on #${ticket} after its builder's repair, outside the earlier gaps and the fix's own lines, so they do not block its merge:`;
 export const FOLLOW_UP_OF = "Follow-up of #";
 
 const firstLine = (text: string) => quoted(text.trim().split("\n")[0] ?? "");
@@ -120,7 +120,7 @@ export function handedOn(body: string, diff: string, after?: AfterTurn): string 
   const turn =
     after === undefined
       ? []
-      : ["## The fixer's repair", "This PR was judged drift, then its fixer repaired it. The earlier judgements:", capped(after.earlier, LIST_CAP), "The fix's own diff:", capped(after.fix, DIFF_CAP) || "(none, the fixer changed the ticket)"];
+      : ["## The builder's repair", "This PR was judged drift, then its builder repaired it. The earlier judgements:", capped(after.earlier, LIST_CAP), "The fix's own diff:", capped(after.fix, DIFF_CAP) || "(none, the builder changed the ticket)"];
   const sorted =
     after === undefined
       ? []
@@ -138,7 +138,7 @@ export function handedOn(body: string, diff: string, after?: AfterTurn): string 
     handedDiff(diff),
     ...turn,
     "## Your verdict",
-    "`match` if the diff builds the Why, else `drift`. Name every gap in one pass, each a fixer can act on.",
+    "`match` if the diff builds the Why, else `drift`. Name every gap in one pass, each a builder can act on.",
     READBACK_PROMPT,
     ...sorted,
     "",
@@ -191,7 +191,7 @@ function fixSince(head: string): string | undefined {
 }
 
 const followUp = (ticket: string, { gap, done }: Later): string =>
-  followUpBody([`${FOLLOW_UP_OF}${ticket}: its review found this after its fixer's repair, outside the earlier gaps and the fix's own lines.`, "", `> ${gap}`], done);
+  followUpBody([`${FOLLOW_UP_OF}${ticket}: its review found this after its builder's repair, outside the earlier gaps and the fix's own lines.`, "", `> ${gap}`], done);
 
 export function followUpBody(whyLines: string[], done: string[]): string {
   return ["## Why", "", ...whyLines, "", "## Done when", "", ...done.map((sentence) => `- ${sentence}`), ""].join("\n");

@@ -47,7 +47,7 @@ interface Answer {
 }
 
 export const WAITING = "waiting";
-export const splitInto = (ticket: string) => `@${OWNER} the fixer split #${ticket} into`;
+export const splitInto = (ticket: string) => `@${OWNER} the builder split #${ticket} into`;
 const FILED = /\/issues\/(\d+)\s*$/;
 
 interface Handed {
@@ -134,10 +134,10 @@ export function handedOn({ ticket, body, red, check = "", capture }: Handed): st
   ].join("\n\n");
 }
 
-const builtBy = (ticket: string) => `Build #${ticket} as its fixer`;
+const builtBy = (ticket: string) => `Build #${ticket} as its builder`;
 const mark = (ticket: string, label: string) => spawnSync(join(process.cwd(), "bin", "mark"), [ticket, label], { stdio: "ignore" });
 const head = () => git(["rev-parse", "HEAD"]).stdout.trim();
-const sessionFile = (ticket: string) => join(homedir(), ".claude", "fixer", ticket);
+const sessionFiles = (ticket: string) => ["builder", "fixer"].map((folder) => join(homedir(), ".claude", folder, ticket));
 
 function fetchedMain(): string {
   git(["fetch", "--quiet", "origin", "main"]);
@@ -145,14 +145,19 @@ function fetchedMain(): string {
 }
 
 function savedSession(ticket: string): string | undefined {
-  const saved = onDisk(sessionFile(ticket))?.trim();
-  return saved === "" ? undefined : saved;
+  for (const file of sessionFiles(ticket)) {
+    const saved = onDisk(file)?.trim();
+    if (saved !== undefined && saved !== "") return saved;
+  }
+  return undefined;
 }
 
 function keepSession(ticket: string, session: string | undefined): void {
   if (session === undefined) return;
-  mkdirSync(dirname(sessionFile(ticket)), { recursive: true });
-  writeFileSync(sessionFile(ticket), `${session}\n`);
+  for (const file of sessionFiles(ticket)) {
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, `${session}\n`);
+  }
 }
 
 function failure(ticket: string, logs: string, run: string): string {
@@ -167,7 +172,7 @@ function failure(ticket: string, logs: string, run: string): string {
 
 function calledOwner(ticket: string, why: string): number {
   mark(ticket, "needs-human");
-  commentOnTicket(ticket, `@${OWNER} the fixer of #${ticket} stopped and needs you: ${why}`, gh);
+  commentOnTicket(ticket, `@${OWNER} the builder of #${ticket} stopped and needs you: ${why}`, gh);
   console.error(`fix: #${ticket} needs the owner, ${why}`);
   return 1;
 }
@@ -186,7 +191,7 @@ function closedUnbuilt(ticket: string, said: string): number {
 const pieceBody = (ticket: string, parentWhy: string, { why: piece, done }: Piece): string =>
   followUpBody(
     [
-      `${FOLLOW_UP_OF}${ticket}: its fixer split it, since it does not fit one build.`,
+      `${FOLLOW_UP_OF}${ticket}: its builder split it, since it does not fit one build.`,
       "",
       `> ${piece}`,
       "",
@@ -229,13 +234,13 @@ function rewritten(ticket: string, body: string, answer: Answer): Round {
   const written = rewriteTicket(ticket, body, answer.body, gh);
   const [refusal] = written.refusals;
   if (refusal !== undefined) return { red: `Your rewrite of the ticket was refused: ${quoted(refusal)}` };
-  commentOnTicket(ticket, `The fixer rewrote #${ticket}: ${answer.reason}`, gh);
+  commentOnTicket(ticket, `The builder rewrote #${ticket}: ${answer.reason}`, gh);
   return { body: answer.body };
 }
 
 function landedOnMain(ticket: string, reason: string, before: string): Round {
   if (fetchedMain() === before) return { red: "You answered `machine` and main has not moved: land the machine fix with `bin/land` before you answer." };
-  commentOnTicket(ticket, `@${OWNER} the fixer of #${ticket} changed the machine: ${reason}`, gh);
+  commentOnTicket(ticket, `@${OWNER} the builder of #${ticket} changed the machine: ${reason}`, gh);
   if (git(["merge", "--quiet", "--no-edit", "origin/main"]).status === 0) return {};
   git(["merge", "--abort"]);
   return { red: "origin/main, with your machine fix, does not merge cleanly into this branch: merge it and resolve the conflict." };
@@ -243,7 +248,7 @@ function landedOnMain(ticket: string, reason: string, before: string): Round {
 
 function answered(ticket: string, body: string, answer: Answer | undefined, mainBefore: string): Round {
   if (answer === undefined) return { red: "You gave no outcome. Answer one." };
-  if (answer.outcome === "close") return { ended: closedUnbuilt(ticket, `@${OWNER} the fixer closed #${ticket} unbuilt and kept its branch: ${answer.reason}`) };
+  if (answer.outcome === "close") return { ended: closedUnbuilt(ticket, `@${OWNER} the builder closed #${ticket} unbuilt and kept its branch: ${answer.reason}`) };
   if (answer.outcome === "split") return split(ticket, body, answer);
   if (answer.outcome === "ticket") return rewritten(ticket, body, answer);
   if (answer.outcome === "machine") return landedOnMain(ticket, answer.reason, mainBefore);
@@ -305,7 +310,7 @@ function ownTicket(ticket: string, run: string | undefined): number {
   let body = asked.stdout;
   const pr = prNumber(`ticket/${ticket}`, gh);
   const judged = pr === undefined ? [] : (commentsOn(pr, gh) ?? []);
-  const spend = hired({ name: "fixer", transcript: join(logs, `fix-${ticket}.jsonl`), answers: ANSWER, gated: true, reach: UNFENCED });
+  const spend = hired({ name: "builder", transcript: join(logs, `fix-${ticket}.jsonl`), answers: ANSWER, gated: true, reach: UNFENCED });
   if (typeof spend === "string") return calledOwner(ticket, `the owner's hooks could not be read from ${spend}`);
   let session = savedSession(ticket);
   const opening = handedOn({

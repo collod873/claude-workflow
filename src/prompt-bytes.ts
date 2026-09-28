@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { handedOn as coldReaderHandedOn, SPEC_CAP } from "./cold-reader.ts";
-import { CHECK_CAP, handedOn as fixerHandedOn, repaired, TAIL_CAP } from "./fixer.ts";
+import { CHECK_CAP, handedOn as builderHandedOn, repaired, TAIL_CAP } from "./builder.ts";
 import { handedOn as meterReviewerHandedOn } from "./meter-reviewer.ts";
 import { handedOn as researcherHandedOn, NOTE_CAP, OUT_OF_TIME } from "./researcher.ts";
 import { DIFF_CAP, handedOn as reviewerHandedOn, LIST_CAP, TICKET_CAP } from "./reviewer.ts";
@@ -28,7 +28,7 @@ export const PROMPTS: Prompt[] = [
     build: (filled) => reviewerHandedOn(filled.body ?? "", filled.diff ?? ""),
   },
   {
-    name: "reviewer after the fixer's repair",
+    name: "reviewer after the builder's repair",
     file: "src/reviewer.ts",
     cap: 2 * TICKET_CAP + 2 * DIFF_CAP + 2 * LIST_CAP + HANDED_ON,
     slots: ["body", "diff", "earlier", "fix"],
@@ -42,22 +42,22 @@ export const PROMPTS: Prompt[] = [
     build: (filled) => meterReviewerHandedOn(filled.body ?? "", filled.diff ?? ""),
   },
   {
-    name: "fixer building",
-    file: "src/fixer.ts",
+    name: "builder building",
+    file: "src/builder.ts",
     cap: TICKET_CAP + CHECK_CAP + 2 * HANDED_ON,
     slots: ["body", "check"],
-    build: (filled) => fixerHandedOn({ ticket: "", body: filled.body ?? "", check: filled.check ?? "" }),
+    build: (filled) => builderHandedOn({ ticket: "", body: filled.body ?? "", check: filled.check ?? "" }),
   },
   {
-    name: "fixer",
-    file: "src/fixer.ts",
+    name: "builder",
+    file: "src/builder.ts",
     cap: TICKET_CAP + TAIL_CAP + DIFF_CAP + 2 * LIST_CAP + HANDED_ON,
     slots: ["body", "failed", "diff", "gaps"],
-    build: (filled) => fixerHandedOn({ ticket: "", body: filled.body ?? "", red: { failed: filled.failed ?? "", diff: filled.diff ?? "", gaps: filled.gaps ?? "" } }),
+    build: (filled) => builderHandedOn({ ticket: "", body: filled.body ?? "", red: { failed: filled.failed ?? "", diff: filled.diff ?? "", gaps: filled.gaps ?? "" } }),
   },
   {
     name: "repair",
-    file: "src/fixer.ts",
+    file: "src/builder.ts",
     cap: TAIL_CAP + HANDED_ON,
     slots: ["output"],
     build: (filled) => repaired(filled.output ?? ""),
