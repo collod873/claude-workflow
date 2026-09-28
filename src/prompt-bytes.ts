@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { handedOn as coldReaderHandedOn, SPEC_CAP } from "./cold-reader.ts";
-import { handedOn as fixerHandedOn, repaired, TAIL_CAP } from "./fixer.ts";
+import { CHECK_CAP, handedOn as fixerHandedOn, repaired, TAIL_CAP } from "./fixer.ts";
 import { handedOn as meterReviewerHandedOn } from "./meter-reviewer.ts";
 import { handedOn as researcherHandedOn, NOTE_CAP, OUT_OF_TIME } from "./researcher.ts";
 import { DIFF_CAP, handedOn as reviewerHandedOn, LIST_CAP, TICKET_CAP } from "./reviewer.ts";
@@ -44,9 +44,9 @@ export const PROMPTS: Prompt[] = [
   {
     name: "fixer building",
     file: "src/fixer.ts",
-    cap: TICKET_CAP + 2 * HANDED_ON,
-    slots: ["body"],
-    build: (filled) => fixerHandedOn({ ticket: "", body: filled.body ?? "" }),
+    cap: TICKET_CAP + CHECK_CAP + 2 * HANDED_ON,
+    slots: ["body", "check"],
+    build: (filled) => fixerHandedOn({ ticket: "", body: filled.body ?? "", check: filled.check ?? "" }),
   },
   {
     name: "fixer",

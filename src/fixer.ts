@@ -54,6 +54,7 @@ interface Handed {
   ticket: string;
   body: string;
   red?: { failed: string; diff: string; gaps: string };
+  check?: string;
 }
 
 type Round = { red?: string; ended?: number; body?: string };
@@ -61,6 +62,7 @@ type Round = { red?: string; ended?: number; body?: string };
 type Spend = (input: string, resume?: string) => Spent;
 
 export const TAIL_CAP = 8 * 1024;
+export const CHECK_CAP = 4 * 1024;
 const LOGGED = /; log (.+?)\s*$/m;
 
 function tailOf(text: string, limit: number): string {
@@ -81,12 +83,13 @@ function checkRed(): string {
   return [output.trim(), log === undefined ? "" : (onDisk(resolve(log)) ?? "")].join("\n");
 }
 
-const BUILD_IT = [
+const buildIt = (check: string) => [
   "## Build it",
   "Build what the ticket's Why asks for until its `## Done when` holds.",
   "Work red before green, one slice at a time: write one failing test, see it fail, write only enough to pass it, repeat.",
   "Commit your own work, each message saying why. If the test count drops, give the reason on a line of its own: `Test count drop: <why>`.",
-  `Run \`${CHECK}\` last: it runs every gate and the whole suite, so running the suite apart only repeats it.`,
+  `Run \`${CHECK}\` last: it runs every gate and the whole suite, so running the suite apart only repeats it. It stands in your tree as:`,
+  ["```bash", capped(check, CHECK_CAP).trimEnd(), "```"].join("\n"),
 ];
 
 const howItFailed = ({ failed, diff, gaps }: NonNullable<Handed["red"]>) => [
@@ -98,11 +101,11 @@ const howItFailed = ({ failed, diff, gaps }: NonNullable<Handed["red"]>) => [
   capped(gaps, LIST_CAP) || "(none)",
 ];
 
-export function handedOn({ ticket, body, red }: Handed): string {
+export function handedOn({ ticket, body, red, check = "" }: Handed): string {
   return [
     `# Ticket #${ticket}`,
     capped(body, TICKET_CAP),
-    ...(red === undefined ? BUILD_IT : howItFailed(red)),
+    ...(red === undefined ? buildIt(check) : howItFailed(red)),
     "## You own it until it merges",
     "Every red on this ticket comes back to you until it merges. Read its Why first; `gh` reads any run. If the reason above names a merge conflict, merge main in and resolve it yourself, keeping the ticket's Why over main's conflicting change. Answer one outcome:",
     "- `code`: build or fix it, or change nothing on a flake; the machine commits, runs `bin/check`, hands back red, pushes green or reruns the red Check.",
@@ -293,6 +296,7 @@ function ownTicket(ticket: string, run: string | undefined): number {
     ticket,
     body,
     red: failed === undefined ? undefined : { failed, diff: git(["diff", "origin/main...HEAD"]).stdout ?? "", gaps: earlierDrift(ticket, judged) },
+    check: onDisk(join(process.cwd(), CHECK)) ?? "",
   });
   let input = opening;
   let idle = false;
