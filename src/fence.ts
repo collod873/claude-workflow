@@ -54,6 +54,7 @@ export interface Reach {
 const FENCED: Reach = { model: "sonnet", fenced: true };
 export const UNFENCED: Reach = { model: "opus", fenced: false };
 export const OPEN_SHELL: Reach = { model: "sonnet", fenced: false };
+export const FENCED_OPUS: Reach = { model: "opus", fenced: true };
 
 export function stageArgv(commands: string[], owned: Registration = {}, tools: string[] = TOOLS, reach: Reach = FENCED): string[] {
   const runs = [...commands, STATIC, `./${STATIC}`];

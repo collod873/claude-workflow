@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { capped } from "./brief.ts";
 import { OPEN_SHELL } from "./fence.ts";
-import { commentOnTicket, gh, RESEARCH } from "./post.ts";
+import { askedIssue, commentOnTicket, gh, RESEARCH } from "./post.ts";
 import { NO_EM_DASH } from "./reviewer.ts";
 import { hired, machineLogs } from "./stage.ts";
 import { exitFor, stoppedAt, type Stop } from "./stops.ts";
@@ -21,12 +21,6 @@ const FINDINGS = {
   additionalProperties: false,
 };
 
-interface Asked {
-  title: string;
-  body: string;
-  labels: { name: string }[];
-}
-
 const fetched = (sources: string) =>
   `\`${capped(sources, SOURCES_CAP)}\` holds what the repo cannot show: \`runs.jsonl\`, a line per Actions run, newest first; \`jobs.jsonl\`, a line per job of the newest runs with its steps; \`machine-logs/\`, the newest runs' logs and transcripts; \`git-log.txt\`; \`sessions/\`, the owner's session captures on the machine, a file per session named by its date. Quote a capture only where the note asks.`;
 
@@ -42,19 +36,10 @@ export function handedOn(title: string, body: string, sources?: string): string 
   ].join("\n\n");
 }
 
-function askedIn(stdout: string): Asked | undefined {
-  try {
-    const asked = JSON.parse(stdout) as Partial<Asked>;
-    return typeof asked.title === "string" && typeof asked.body === "string" && Array.isArray(asked.labels) ? (asked as Asked) : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 function researched(issue: string): Stop | undefined {
   const said = `research: #${issue}`;
   const read = gh(["issue", "view", issue, "--json", "title,body,labels"]);
-  const asked = read.status === 0 ? askedIn(read.stdout) : undefined;
+  const asked = read.status === 0 ? askedIssue(read.stdout) : undefined;
   if (asked === undefined) return stoppedAt("unread", `${said} could not be read, so no model was spent`);
   if (!asked.labels.some(({ name }) => name === RESEARCH)) return stoppedAt("notResearch", `${said} is not a research note, so nothing answered or closed it`);
   const logs = machineLogs(process.cwd());

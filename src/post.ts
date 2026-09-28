@@ -93,6 +93,21 @@ export function prNumber(branch: string, gh: Gh): string | undefined {
   return number === "" ? undefined : number;
 }
 
+export interface Asked {
+  title: string;
+  body: string;
+  labels: { name: string }[];
+}
+
+export function askedIssue(stdout: string): Asked | undefined {
+  try {
+    const asked = JSON.parse(stdout) as Partial<Asked>;
+    return typeof asked.title === "string" && typeof asked.body === "string" && Array.isArray(asked.labels) ? (asked as Asked) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export const commentOnPr = (pr: string, text: string, gh: Gh) => written(gh, ["pr", "comment", pr, "--body", text]);
 
 export function rewriteTicket(ticket: string, read: string, rewrite: string, gh: Gh): { refusals: string[]; said: string } {
