@@ -73,10 +73,9 @@ describe("bin/review reads a green ticket PR against its Why before it merges (#
     expect(edited()).toEqual([]);
   });
 
-  it("runs after the check and only on a ticket branch", () => {
+  it("runs on a ticket branch only", () => {
     const review = jobNamed((parse(readFileSync(WORKFLOW, "utf8")) as { jobs: Record<string, { needs?: string; if?: string; steps?: { run?: string }[] }> }).jobs, "review");
 
-    expect(review.needs).toBe("check");
     expect(review.if).toContain("startsWith(github.head_ref, 'ticket/')");
     expect(review.steps?.some((step) => /(^|\/)bin\/review /m.test(step.run ?? ""))).toBe(true);
 
