@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { capped, onDisk } from "./brief.ts";
@@ -55,6 +55,7 @@ interface Handed {
   body: string;
   red?: { failed: string; diff: string; gaps: string };
   check?: string;
+  capture?: string;
 }
 
 type Round = { red?: string; ended?: number; body?: string };
@@ -64,6 +65,20 @@ type Spend = (input: string, resume?: string) => Spent;
 export const TAIL_CAP = 8 * 1024;
 export const CHECK_CAP = 4 * 1024;
 const LOGGED = /; log (.+?)\s*$/m;
+const FILED_IN = /^Session: `([^`]+)`\s*$/m;
+
+function captureOf(body: string, captures: string | undefined): string | undefined {
+  const session = FILED_IN.exec(body)?.[1];
+  if (session === undefined || captures === undefined || !existsSync(captures)) return undefined;
+  const name = readdirSync(captures)
+    .filter((file) => file.endsWith(`-${session.slice(0, 8)}.md`))
+    .sort()
+    .at(-1);
+  return name === undefined ? undefined : join(captures, name);
+}
+
+const filedIn = (capture: string | undefined) =>
+  capture === undefined ? [] : [`The conversation that filed this ticket is captured at \`${capture}\`: what the owner ruled out, asked twice, or meant by a word, around the quotes in its Why. Read it before you build.`];
 
 function tailOf(text: string, limit: number): string {
   const bytes = Buffer.from(text);
@@ -101,10 +116,11 @@ const howItFailed = ({ failed, diff, gaps }: NonNullable<Handed["red"]>) => [
   capped(gaps, LIST_CAP) || "(none)",
 ];
 
-export function handedOn({ ticket, body, red, check = "" }: Handed): string {
+export function handedOn({ ticket, body, red, check = "", capture }: Handed): string {
   return [
     `# Ticket #${ticket}`,
     capped(body, TICKET_CAP),
+    ...filedIn(capture),
     ...(red === undefined ? buildIt(check) : howItFailed(red)),
     "## You own it until it merges",
     "Every red on this ticket comes back to you until it merges. Read its Why first; `gh` reads any run. If the reason above names a merge conflict, merge main in and resolve it yourself, keeping the ticket's Why over main's conflicting change. Answer one outcome:",
@@ -297,6 +313,7 @@ function ownTicket(ticket: string, run: string | undefined): number {
     body,
     red: failed === undefined ? undefined : { failed, diff: git(["diff", "origin/main...HEAD"]).stdout ?? "", gaps: earlierDrift(ticket, judged) },
     check: onDisk(join(process.cwd(), CHECK)) ?? "",
+    capture: captureOf(body, process.env.SESSION_CAPTURES),
   });
   let input = opening;
   let idle = false;

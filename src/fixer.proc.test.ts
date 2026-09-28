@@ -6,6 +6,7 @@ const FIXES = "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n";
 const RED_FOUR_TIMES = ["n=$(cat ../reds 2>/dev/null || echo 0)", "[ \"$n\" -ge 4 ] && exit 0", "echo $((n + 1)) >../reds", "printf 'bin/check: FAILED test src/stops.test.ts\\n'", "exit 1", ""].join("\n");
 const FIXES_EACH_ROUND = "printf 'export const shaped = %s;\\n' \"$((CALL + 1))\" >src/ticket-shape.ts\n";
 const MOVES_MAIN = 'git update-ref refs/remotes/origin/main "$(git commit-tree -p refs/remotes/origin/main -m "Land the reviewer fix #811 needed" "$(git rev-parse "refs/remotes/origin/main^{tree}")")"\n';
+const FILED_IN_SESSION = "## Why\n\nThe owner: \"read what I said\".\n\nSession: `ca2517b0-5e2d-46e7-a894-7fc3a4b978b2`\n\n## Done when\n\n- The fixer reads it.\n";
 const woken = (reason: string) => {
   const { run, handed } = fixing({ reason, claude: FIXES });
   return { result: run("811"), prompt: handed()[0] };
@@ -51,6 +52,29 @@ describe("the fixer owns a red ticket until it merges (#898)", () => {
 
     expect(run("811").status).toBe(0);
     expect(handed()[0]).not.toContain("gate-only-this-tree");
+  });
+
+  it("opens a build and a red with the path of the capture of the session that filed its ticket, when the job holds it (#992)", () => {
+    const body = FILED_IN_SESSION;
+    const captures = { "2026-09-27-ca2517b0.md": "the owner ruled out a second hook\n", "2026-09-27-deadbeef.md": "another session\n" };
+    const building = fixing({ claude: FIXES, body, captures });
+    const red = fixing({ reason: "the Check went red", claude: FIXES, body, captures });
+
+    expect(building.run("811").status).toBe(0);
+    expect(red.run("811").status).toBe(0);
+    expect(building.handed()[0]).toContain(building.captured("2026-09-27-ca2517b0.md"));
+    expect(red.handed()[0]).toContain(red.captured("2026-09-27-ca2517b0.md"));
+    expect(building.handed()[0]).not.toContain("deadbeef");
+  });
+
+  it("names no capture when its ticket names no session, or the job does not hold the one it names (#992)", () => {
+    const unnamed = fixing({ claude: FIXES, captures: { "2026-09-27-ca2517b0.md": "a capture\n" } });
+    const unheld = fixing({ claude: FIXES, body: FILED_IN_SESSION, captures: { "2026-09-27-deadbeef.md": "another session\n" } });
+
+    expect(unnamed.run("811").status).toBe(0);
+    expect(unheld.run("811").status).toBe(0);
+    expect(unnamed.handed()[0]).not.toContain(unnamed.captured(""));
+    expect(unheld.handed()[0]).not.toContain(unheld.captured(""));
   });
 
   it("runs on Opus with no fence, the owner's hooks its only guard", () => {
