@@ -48,6 +48,7 @@ runs:
         printf 'FEED=%s\n' "$GITHUB_ACTION_PATH/feed.jq" >>"$GITHUB_ENV"
 
     - id: captures-app
+      continue-on-error: true
       uses: actions/create-github-app-token@v3
       with:
         client-id: ${{ inputs.client-id }}
@@ -57,14 +58,15 @@ runs:
         permission-contents: read
 
     - shell: bash
+      continue-on-error: true
       env:
         CAPTURES_TOKEN: ${{ steps.captures-app.outputs.token }}
       run: |
         knowledge="$RUNNER_TEMP/knowledge-base"
         captures="$RUNNER_TEMP/session-captures"
         mkdir -p "$captures"
+        printf 'SESSION_CAPTURES=%s\n' "$captures" >>"$GITHUB_ENV"
         git clone --quiet --depth 1 --filter=blob:none --sparse "https://x-access-token:$CAPTURES_TOKEN@github.com/collod873/Knowledge-Base" "$knowledge"
         git -C "$knowledge" sparse-checkout set raw/sessions
         grep -lE '^project: .*(Workflow|claude-workflow|\.agents)' "$knowledge"/raw/sessions/*.md | xargs -r cp -t "$captures"
         rm -rf "$knowledge"
-        printf 'SESSION_CAPTURES=%s\n' "$captures" >>"$GITHUB_ENV"
