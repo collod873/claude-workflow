@@ -213,24 +213,30 @@ function recordedLater(ticket: string, body: string, later: Later[], turns: stri
   return `, ${later.length} later finds posted: ${posted.said}; follow-ups filed: ${filed.map(({ said }) => said).filter((said) => said !== "").join(" ") || "none"}`;
 }
 
-export function ticketPr(pr: string, said: string): { ticket: string; body: string; diff: string } | Stop | undefined {
+function bodyAndDiff(pr: string, ticket: string, said: string): { body: string; diff: string } | Stop {
   const asked = (args: string[]) => {
     const got = gh(args);
     return got.status === 0 ? got.stdout : undefined;
   };
-  const branch = asked(["pr", "view", pr, "--json", "headRefName", "--jq", ".headRefName"]);
+  const body = asked(["issue", "view", ticket, "--json", "body", "--jq", ".body"]);
+  const diff = asked(["pr", "diff", pr]);
+  if (body === undefined || diff === undefined) {
+    return stoppedAt("unread", `${said} ended red, ${body === undefined ? `ticket #${ticket}` : "its diff"} could not be read, so no model was spent`);
+  }
+  return { body, diff };
+}
+
+export function ticketPr(pr: string, said: string): { ticket: string; body: string; diff: string } | Stop | undefined {
+  const gotBranch = gh(["pr", "view", pr, "--json", "headRefName", "--jq", ".headRefName"]);
+  const branch = gotBranch.status === 0 ? gotBranch.stdout : undefined;
   if (branch === undefined) return stoppedAt("unread", `${said} could not be read, so nothing read it`);
   const ticket = TICKET_BRANCH.exec(branch.trim())?.[1];
   if (ticket === undefined) {
     console.log(`${said} is not a ticket PR, so there is no Why to read it against`);
     return undefined;
   }
-  const body = asked(["issue", "view", ticket, "--json", "body", "--jq", ".body"]);
-  const diff = asked(["pr", "diff", pr]);
-  if (body === undefined || diff === undefined) {
-    return stoppedAt("unread", `${said} ended red, ${body === undefined ? `ticket #${ticket}` : "its diff"} could not be read, so no model was spent`);
-  }
-  return { ticket, body, diff };
+  const found = bodyAndDiff(pr, ticket, said);
+  return typeof found === "object" ? { ticket, ...found } : found;
 }
 
 function review(pr: string): Stop | undefined {
@@ -256,6 +262,12 @@ function review(pr: string): Stop | undefined {
   const after = earlier !== "" && fix !== "" ? { earlier, fix } : undefined;
   const verdict = judged(handedOn(body, diff, after), pr);
   if (typeof verdict === "string") return stoppedAt("modelRun", `${said} ended red, ${verdict}`);
+  const now = bodyAndDiff(pr, ticket, said);
+  if (typeof now !== "object") return now;
+  if (fingerprintOf(now.diff, now.body) !== fingerprint) {
+    console.log(`${said} writes nothing, a newer run judges #${ticket}: the PR moved under it while its model answered`);
+    return undefined;
+  }
   const blocking = after === undefined ? [...verdict.gaps, ...(verdict.later ?? []).map(({ gap }) => gap)] : verdict.gaps;
   const recorded = recordedLater(ticket, body, after === undefined ? [] : (verdict.later ?? []), turns);
   if (verdict.verdict === "match") {
