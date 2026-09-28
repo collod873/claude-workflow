@@ -28,6 +28,7 @@ interface Job {
   needs?: string | string[];
   env?: Record<string, unknown>;
   permissions?: Record<string, string>;
+  "cache-mode"?: string;
   steps: Step[];
 }
 
@@ -382,6 +383,13 @@ describe("fix.yml hands every red run of a ticket to its fixer, however the run 
     expect(labelled("fixing")).toMatch(/issue edit 9 --add-label needs-human/);
     expect(labelled("fixing")).toMatch(/issue comment 9 --body @owner /);
     expect(labelled("fixing needs-human")).not.toMatch(/issue (edit|comment)/);
+  });
+
+  it("saves the fixer's session when a finished run woke it, which GitHub otherwise gives a read-only cache", () => {
+    const fix = namedJob(fixWorkflow().jobs, "fix", FIX_WORKFLOW);
+
+    expect(fix.steps.some((step) => step.uses?.startsWith("actions/cache/save@"))).toBe(true);
+    expect(fix["cache-mode"]).toBe("write");
   });
 });
 
