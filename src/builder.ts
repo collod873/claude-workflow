@@ -137,7 +137,7 @@ export function handedOn({ ticket, body, red, check = "", capture }: Handed): st
 const builtBy = (ticket: string) => `Build #${ticket} as its builder`;
 const mark = (ticket: string, label: string) => spawnSync(join(process.cwd(), "bin", "mark"), [ticket, label], { stdio: "ignore" });
 const head = () => git(["rev-parse", "HEAD"]).stdout.trim();
-const sessionFile = (ticket: string) => join(homedir(), ".claude", "builder", ticket);
+const sessionFiles = (ticket: string) => ["builder", "fixer"].map((folder) => join(homedir(), ".claude", folder, ticket));
 
 function fetchedMain(): string {
   git(["fetch", "--quiet", "origin", "main"]);
@@ -145,14 +145,19 @@ function fetchedMain(): string {
 }
 
 function savedSession(ticket: string): string | undefined {
-  const saved = onDisk(sessionFile(ticket))?.trim();
-  return saved === "" ? undefined : saved;
+  for (const file of sessionFiles(ticket)) {
+    const saved = onDisk(file)?.trim();
+    if (saved !== undefined && saved !== "") return saved;
+  }
+  return undefined;
 }
 
 function keepSession(ticket: string, session: string | undefined): void {
   if (session === undefined) return;
-  mkdirSync(dirname(sessionFile(ticket)), { recursive: true });
-  writeFileSync(sessionFile(ticket), `${session}\n`);
+  for (const file of sessionFiles(ticket)) {
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, `${session}\n`);
+  }
 }
 
 function failure(ticket: string, logs: string, run: string): string {

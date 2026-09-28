@@ -721,6 +721,7 @@ export function fixing({
   attempt = 1,
   rerun = "exit 0",
   savedSession = undefined as string | undefined,
+  savedUnder = "builder",
   reason = undefined as string | undefined,
   captures = {} as Record<string, string>,
 } = {}) {
@@ -743,7 +744,7 @@ export function fixing({
   const redAt = git(session, "rev-parse", "HEAD");
   for (const [name, text] of Object.entries(logged)) plant(session, `.git/machine-logs/${name}`, text);
   for (const [path, text] of Object.entries(leftover)) plant(session, path, text);
-  if (savedSession !== undefined) plant(home, ".claude/builder/811", `${savedSession}\n`);
+  if (savedSession !== undefined) plant(home, `.claude/${savedUnder}/811`, `${savedSession}\n`);
   for (const [name, text] of Object.entries(captures)) plant(root, `captures/${name}`, text);
   plant(root, "ticket.md", body);
   plant(root, "on-pr.json", authored(onPr ?? []));
@@ -790,7 +791,7 @@ export function fixing({
     filed: () => calls().filter((args) => args[0] === "issue" && args[1] === "create").map(bodyOf),
     closes: () => calls().filter((args) => (args[0] === "issue" || args[0] === "pr") && args[1] === "close"),
     reruns: () => calls().filter((args) => args[0] === "run" && args[1] === "rerun"),
-    keptSession: () => readFileSync(join(home, ".claude", "builder", "811"), "utf8").trim(),
+    keptSession: (under = "builder") => readFileSync(join(home, ".claude", under, "811"), "utf8").trim(),
     captured: (name: string) => join(root, "captures", name),
     log: (...args: string[]) => git(session, "log", ...args),
     run: (...args: string[]) =>
