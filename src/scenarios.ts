@@ -698,6 +698,8 @@ export function closing({
   behindPrs = [] as { number: string; ticket: string; branch?: string; refused?: string; mergeStateStatus?: string }[],
   splitFrom,
   openedPr,
+  prComments = [] as Said[],
+  prCommentsUnreadable = false,
 }: {
   ticket?: string;
   ticketBody?: string;
@@ -708,6 +710,8 @@ export function closing({
   behindPrs?: { number: string; ticket: string; branch?: string; refused?: string; mergeStateStatus?: string }[];
   splitFrom?: { parent: string; labels: string; said: string; siblings: Record<string, string> };
   openedPr?: string;
+  prComments?: Said[];
+  prCommentsUnreadable?: boolean;
 } = {}) {
   const root = scratch("closer-");
   const session = join(root, "session");
@@ -728,6 +732,7 @@ export function closing({
   commitAt(session, timing.firstCommit, ["commit", "--quiet", "--allow-empty", "-m", `Build #${ticket} against its failing tests`], timing.rebased);
   git(session, "checkout", "--quiet", "main");
   commitAt(session, timing.merged, ["merge", "--quiet", "--no-ff", "-m", `Merge pull request #900 from collod873/ticket/${ticket}`, `ticket/${ticket}`]);
+  plant(root, "pr-comments.json", authored(prComments));
   script(
     join(root, "bin", "gh"),
     [
@@ -756,6 +761,7 @@ export function closing({
       ),
       `  *"pr view"*) printf '%s\\n' '${timing.prOpened}' ;;`,
       `  *"pr checks"*) printf '%s\\n' '${timing.checksGreen}' ;;`,
+      `  *"issues/900/comments"*) ${prCommentsUnreadable ? "printf 'GraphQL: comments could not be read\\n' >&2; exit 1" : `cat "${join(root, "pr-comments.json")}"`} ;;`,
       "  *) exit 0 ;;",
       "esac",
       "",

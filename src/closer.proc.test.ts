@@ -258,6 +258,60 @@ describe("bin/close wakes the ticket's fixer directly, instead of reopening it o
   });
 });
 
+describe("bin/close counts a ticket PR's collisions in its closing record: failed branch updates and re-reviews (#980)", () => {
+  it("leaves a failed branch update on a ticket PR", () => {
+    const { calls, run } = closing({
+      ticket: "819",
+      behindPrs: [{ number: "911", ticket: "833", refused: "GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts." }],
+    });
+
+    const result = run();
+
+    expect(result.status).toBe(0);
+    const commented = calls().find((call) => call.startsWith("pr\ncomment\n911\n"));
+    expect(commented, "leaves the same comment a non-ticket PR gets").toBeDefined();
+    expect(commented).toContain("PR #911 could not be brought up to date with main");
+    expect(commented).toContain("merge conflicts");
+    const wake = calls().find((call) => call.startsWith("workflow\nrun\nfix.yml") && call.includes("ticket=833"));
+    expect(wake, "still wakes the fixer as today").toBeDefined();
+  });
+
+  it("counts failed branch updates and re-reviews", () => {
+    const { calls, run } = closing({
+      ticket: "836",
+      prComments: [
+        "PR #900 could not be brought up to date with main: GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts.",
+        "The reviewer read this PR against the Why of #836 and found drift.\n\n- a gap\n\nFingerprint: `judged-1`\n",
+        "PR #900 could not be brought up to date with main: GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts.",
+        "Fingerprint: `judged-2`\n\nIt now reads a green build. Did this build what you meant, yes or no?",
+        "Fingerprint: `judged-3`\n\nIt now reads a green build. Did this build what you meant, yes or no?",
+      ],
+    });
+
+    const result = run();
+
+    expect(result.status).toBe(0);
+    const commented = calls().find((call) => call.startsWith("issue\ncomment\n836\n"));
+    expect(commented).toBeDefined();
+    expect(commented).toMatch(/speed report/i);
+    expect(commented).toMatch(/failed branch update[^\n]*2/i);
+    expect(commented).toMatch(/re-review[^\n]*2/i);
+  });
+
+  it("closes with no counts when its PR's comments cannot be read", () => {
+    const { calls, run } = closing({ ticket: "837", prCommentsUnreadable: true });
+
+    const result = run();
+
+    expect(result.status).toBe(0);
+    const commented = calls().find((call) => call.startsWith("issue\ncomment\n837\n"));
+    expect(commented).toBeDefined();
+    expect(commented).toMatch(/failed branch update[^\n]*not available/i);
+    expect(commented).toMatch(/re-review[^\n]*not available/i);
+    expect(calls().some((call) => call.startsWith("issue\nclose\n837"))).toBe(true);
+  });
+});
+
 describe("bin/close catches up a PR the moment it opens behind main, not just after the next merge (#954)", () => {
   it("brings a PR that opened behind main up to date", () => {
     const { calls, tokens, run } = closing({
