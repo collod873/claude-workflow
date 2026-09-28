@@ -722,6 +722,7 @@ export function fixing({
   rerun = "exit 0",
   savedSession = undefined as string | undefined,
   reason = undefined as string | undefined,
+  captures = {} as Record<string, string>,
 } = {}) {
   const root = scratch("fixer-");
   const session = join(root, "session");
@@ -743,6 +744,7 @@ export function fixing({
   for (const [name, text] of Object.entries(logged)) plant(session, `.git/machine-logs/${name}`, text);
   for (const [path, text] of Object.entries(leftover)) plant(session, path, text);
   if (savedSession !== undefined) plant(home, ".claude/fixer/811", `${savedSession}\n`);
+  for (const [name, text] of Object.entries(captures)) plant(root, `captures/${name}`, text);
   plant(root, "ticket.md", body);
   plant(root, "on-pr.json", authored(onPr ?? []));
   plant(root, "failed-run.log", failedRun);
@@ -789,9 +791,10 @@ export function fixing({
     closes: () => calls().filter((args) => (args[0] === "issue" || args[0] === "pr") && args[1] === "close"),
     reruns: () => calls().filter((args) => args[0] === "run" && args[1] === "rerun"),
     keptSession: () => readFileSync(join(home, ".claude", "fixer", "811"), "utf8").trim(),
+    captured: (name: string) => join(root, "captures", name),
     log: (...args: string[]) => git(session, "log", ...args),
     run: (...args: string[]) =>
-      execute(join(BIN, "fix"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}`, HOME: home, ...(reason === undefined ? {} : { REASON: reason }) }, args.length === 0 ? ["811", RED_RUN] : args),
+      execute(join(BIN, "fix"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}`, HOME: home, SESSION_CAPTURES: join(root, "captures"), ...(reason === undefined ? {} : { REASON: reason }) }, args.length === 0 ? ["811", RED_RUN] : args),
   };
 }
 
