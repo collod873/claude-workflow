@@ -37,6 +37,22 @@ describe("the fixer owns a red ticket until it merges (#898)", () => {
     expect(saved()).toEqual(["811"]);
   });
 
+  it("opens a build with the whole of bin/check as it stands in the tree it builds in (#990)", () => {
+    const check = "run typecheck tsc --noEmit\nrun gate-only-this-tree node src/gate.ts\nexit 0\n";
+    const { run, handed } = fixing({ claude: FIXES, check });
+
+    expect(run("811").status).toBe(0);
+    expect(handed()[0]).toContain(check.trim());
+  });
+
+  it("hands a fixer woken on a red no copy of bin/check (#990)", () => {
+    const check = "run gate-only-this-tree node src/gate.ts\nexit 0\n";
+    const { run, handed } = fixing({ reason: "the Check went red", claude: FIXES, check });
+
+    expect(run("811").status).toBe(0);
+    expect(handed()[0]).not.toContain("gate-only-this-tree");
+  });
+
   it("runs on Opus with no fence, the owner's hooks its only guard", () => {
     const { run, hired } = fixing({ claude: FIXES });
 
