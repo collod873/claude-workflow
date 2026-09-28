@@ -1,15 +1,11 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { brief, CAP } from "./brief.ts";
-import { handedOn as builderHandedOn, repaired, TAIL_CAP } from "./builder.ts";
 import { handedOn as coldReaderHandedOn, SPEC_CAP } from "./cold-reader.ts";
-import { handedOn as fixerHandedOn } from "./fixer.ts";
+import { handedOn as fixerHandedOn, repaired, TAIL_CAP } from "./fixer.ts";
 import { handedOn as meterReviewerHandedOn } from "./meter-reviewer.ts";
 import { handedOn as researcherHandedOn, NOTE_CAP, OUT_OF_TIME } from "./researcher.ts";
 import { DIFF_CAP, handedOn as reviewerHandedOn, LIST_CAP, TICKET_CAP } from "./reviewer.ts";
-import { handedOn, refused, REFUSALS_CAP } from "./test-author.ts";
 
-const AUTHORED = "src/planted.test.ts";
 const HIRES = /(spawn|execFile)\w*\(\s*"claude"/;
 const STAGED = /from "\.\/stage\.ts"/;
 const STAGE_MODULE = "src/stage.ts";
@@ -23,45 +19,7 @@ export interface Prompt {
   build: (filled: Record<string, string>) => string;
 }
 
-function briefText(filled: Record<string, string>): string {
-  return brief({
-    ticket: filled.ticket ?? "",
-    body: filled.body ?? "",
-    tests: filled.tests === undefined ? [] : [AUTHORED],
-    read: () => filled.tests,
-  }).text;
-}
-
 export const PROMPTS: Prompt[] = [
-  { name: "brief", file: "src/brief.ts", cap: CAP, slots: ["ticket", "body", "tests"], build: briefText },
-  {
-    name: "test author",
-    file: "src/test-author.ts",
-    cap: CAP + HANDED_ON,
-    slots: ["ticket", "body", "tests", "commands"],
-    build: (filled) => handedOn(briefText(filled), filled.commands === undefined ? [] : [filled.commands]),
-  },
-  {
-    name: "test author refused",
-    file: "src/test-author.ts",
-    cap: REFUSALS_CAP + HANDED_ON,
-    slots: ["refusals"],
-    build: (filled) => refused(filled.refusals === undefined ? [] : [filled.refusals]),
-  },
-  {
-    name: "builder",
-    file: "src/builder.ts",
-    cap: CAP + HANDED_ON,
-    slots: ["ticket", "body", "tests", "commands"],
-    build: (filled) => builderHandedOn(briefText(filled), filled.commands === undefined ? [] : [filled.commands]),
-  },
-  {
-    name: "repair",
-    file: "src/builder.ts",
-    cap: TAIL_CAP + HANDED_ON,
-    slots: ["output"],
-    build: (filled) => repaired(filled.output ?? ""),
-  },
   {
     name: "reviewer",
     file: "src/reviewer.ts",
@@ -84,11 +42,25 @@ export const PROMPTS: Prompt[] = [
     build: (filled) => meterReviewerHandedOn(filled.body ?? "", filled.diff ?? ""),
   },
   {
+    name: "fixer building",
+    file: "src/fixer.ts",
+    cap: TICKET_CAP + 2 * HANDED_ON,
+    slots: ["body"],
+    build: (filled) => fixerHandedOn({ ticket: "", body: filled.body ?? "" }),
+  },
+  {
     name: "fixer",
     file: "src/fixer.ts",
     cap: TICKET_CAP + TAIL_CAP + DIFF_CAP + 2 * LIST_CAP + HANDED_ON,
     slots: ["body", "failed", "diff", "gaps"],
-    build: (filled) => fixerHandedOn({ ticket: "", body: filled.body ?? "", failed: filled.failed ?? "", diff: filled.diff ?? "", gaps: filled.gaps ?? "" }),
+    build: (filled) => fixerHandedOn({ ticket: "", body: filled.body ?? "", red: { failed: filled.failed ?? "", diff: filled.diff ?? "", gaps: filled.gaps ?? "" } }),
+  },
+  {
+    name: "repair",
+    file: "src/fixer.ts",
+    cap: TAIL_CAP + HANDED_ON,
+    slots: ["output"],
+    build: (filled) => repaired(filled.output ?? ""),
   },
   {
     name: "researcher",

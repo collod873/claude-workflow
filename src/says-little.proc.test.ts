@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parts, type Part } from "./parts.ts";
-import { LINE_LIMIT, MOST_LINES, authoring, building, checkRepo, checking, closing, closingNote, coldReading, coveredByCheck, execute, filing, fixing, landSession, launching, marking, misshapenTicket, overLimit, researching, reviewing, saving, scratch, script, starting, wellFormedNote, wellFormedTicket, type Run } from "./scenarios.ts";
+import { LINE_LIMIT, MOST_LINES, checkRepo, checking, closing, closingNote, coldReading, coveredByCheck, execute, filing, fixing, landSession, launching, marking, misshapenTicket, overLimit, researching, reviewing, saving, scratch, script, starting, wellFormedNote, wellFormedTicket, type Run } from "./scenarios.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
 const NOISE = "a line a tool prints that nobody needed to read\n".repeat(40).trim();
@@ -46,11 +46,6 @@ const scenarios: Record<string, Scenario[]> = {
     { label: "filing a note", run: () => filing({ gh: FILED, body: wellFormedNote }).run(NOTE_CALL) },
     { label: "refusing a note that says no why", run: () => filing({ gh: FILED, body: "Four proposals, with no heading over them.\n" }).run(NOTE_CALL) },
   ],
-  "bin/build": [
-    { label: "building to the checks", run: () => building({ npx: GREEN }).run() },
-    { label: "ending red after its rounds handed back", run: () => building().run() },
-    { label: "refusing a claim over the cap", run: () => building({ claimed: { "src/ticket-shape.ts": "export const filler = 1;\n".repeat(9000) } }).run() },
-  ],
   "bin/save": [
     { label: "saving a build", run: () => saving().run() },
     { label: "with the push refused", run: () => saving({ remoteRefuses: NOISE }).run() },
@@ -86,11 +81,8 @@ const scenarios: Record<string, Scenario[]> = {
   ],
   "bin/fix": [
     { label: "pushing a fix", run: () => fixing({ claude: "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n" }).run() },
+    { label: "building a ticket", run: () => fixing({ claude: "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n" }).run("811") },
     { label: "calling the owner when two rounds in a row change nothing", run: () => fixing({ check: "printf 'bin/check: FAILED test\\n'\nexit 1\n" }).run() },
-  ],
-  "bin/test-author": [
-    { label: "writing a failing test for each criterion", run: () => authoring().run() },
-    { label: "refusing a criterion whose check already passes", run: () => authoring({ npx: GREEN }).run() },
   ],
   "bin/start": [
     { label: "starting a build", run: () => starting().run() },

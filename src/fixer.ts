@@ -1,10 +1,10 @@
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { capped, onDisk } from "./brief.ts";
-import { repaired, stillRed, TAIL_CAP, tailOf } from "./builder.ts";
-import { UNFENCED } from "./fence.ts";
+import { runCheck } from "./check-runner.ts";
+import { CHECK, UNFENCED } from "./fence.ts";
 import { commentOnTicket, commentsOn, gh, git, OWNER, post, postRefusals, prNumber, rewriteTicket } from "./post.ts";
 import { earlierDrift, FOLLOW_UP_OF, followUpBody, handedDiff, LIST_CAP, NO_EM_DASH, repairOf, TICKET_CAP } from "./reviewer.ts";
 import { hired, machineLogs, type Spent } from "./stage.ts";
@@ -56,30 +56,61 @@ const FILED = /\/issues\/(\d+)\s*$/;
 interface Handed {
   ticket: string;
   body: string;
-  failed: string;
-  diff: string;
-  gaps: string;
+  red?: { failed: string; diff: string; gaps: string };
 }
 
 type Round = { red?: string; ended?: number; body?: string };
 
 type Spend = (input: string, resume?: string) => Spent;
 
-const REDDENED_ON_MAIN = "It went red on main after its merge; its closing record on the ticket names the check.";
+export const TAIL_CAP = 8 * 1024;
+const LOGGED = /; log (.+?)\s*$/m;
 
-export function handedOn({ ticket, body, failed, diff, gaps }: Handed): string {
+function tailOf(text: string, limit: number): string {
+  const bytes = Buffer.from(text);
+  return bytes.length <= limit ? text : bytes.subarray(bytes.length - limit).toString("utf8").replace(/^\uFFFD+/, "");
+}
+
+export function repaired(output: string): string {
+  return [`Your checks or \`${CHECK}\` are still red. The end of their output:`, tailOf(output, TAIL_CAP), "Make them pass.", ""].join("\n\n");
+}
+
+function checkRed(): string {
+  const { passed, output } = runCheck(CHECK, process.cwd());
+  if (passed) return "";
+  const log = LOGGED.exec(output)?.[1];
+  return [output.trim(), log === undefined ? "" : (onDisk(resolve(log)) ?? "")].join("\n");
+}
+
+function stillRed(commands: string[]): string {
+  const reds = commands.map((command) => runCheck(command, process.cwd())).filter(({ passed }) => !passed);
+  return [checkRed(), ...reds.map(({ output }) => output)].filter((output) => output !== "").join("\n");
+}
+
+const BUILD_IT = [
+  "## Build it",
+  "Build what the ticket asks for, with a test for each criterion that fails without your change and that its check runs.",
+  "Commit your own work, each message saying why. If the test count drops, give the reason on a line of its own: `Test count drop: <why>`.",
+  `Run \`${CHECK}\` last: it runs every gate and the whole suite, so running the suite apart only repeats it.`,
+];
+
+const howItFailed = (body: string, { failed, diff, gaps }: NonNullable<Handed["red"]>) => [
+  "## How it failed",
+  tailOf(failed, TAIL_CAP) || "(nothing logged)",
+  "## Diff from main",
+  handedDiff(diff, claims(body)) || "(none)",
+  "## Reviewer's gaps",
+  capped(gaps, LIST_CAP) || "(none)",
+];
+
+export function handedOn({ ticket, body, red }: Handed): string {
   return [
     `# Ticket #${ticket}`,
     capped(body, TICKET_CAP),
-    "## How it failed",
-    tailOf(failed, TAIL_CAP) || "(nothing logged)",
-    "## Diff from main",
-    handedDiff(diff, claims(body)) || "(none)",
-    "## Reviewer's gaps",
-    capped(gaps, LIST_CAP) || "(none)",
+    ...(red === undefined ? BUILD_IT : howItFailed(body, red)),
     "## You own it until it merges",
     "Every red on this ticket comes back to you until it merges. Read its Why first; `gh` reads any run. If the reason above names a merge conflict, merge main in and resolve it yourself, keeping the ticket's Why over main's conflicting change. Answer one outcome:",
-    "- `code`: fix it, or change nothing on a flake; the machine commits, runs `bin/check` and the ticket's checks, hands back red, pushes green or reruns the red Check.",
+    "- `code`: build or fix it, or change nothing on a flake; the machine commits, runs `bin/check` and the ticket's checks, hands back red, pushes green or reruns the red Check.",
     "- `ticket`: a criterion or test is wrong; fix the test, or return the ticket as `body`, Why byte-identical.",
     "- `split`: too big for one build; file `tickets` that build at once, each 1 to 3 `criteria` ending ` - check: `<command>`` and `claimed` files no other claims. What must wait for them stays as `body`, Why byte-identical, and builds once they merge.",
     "- `close`: the ticket should not exist as written, and nothing should replace it.",
@@ -89,6 +120,7 @@ export function handedOn({ ticket, body, failed, diff, gaps }: Handed): string {
   ].join("\n\n");
 }
 
+const builtBy = (ticket: string) => `Build #${ticket} as its fixer`;
 const mark = (ticket: string, label: string) => spawnSync(join(process.cwd(), "bin", "mark"), [ticket, label], { stdio: "ignore" });
 const head = () => git(["rev-parse", "HEAD"]).stdout.trim();
 const sessionFile = (ticket: string) => join(homedir(), ".claude", "fixer", ticket);
@@ -109,12 +141,11 @@ function keepSession(ticket: string, session: string | undefined): void {
   writeFileSync(sessionFile(ticket), `${session}\n`);
 }
 
-function failure(ticket: string, logs: string, run: string | undefined): string {
+function failure(ticket: string, logs: string, run: string): string {
   const logged = readdirSync(logs)
     .filter((name) => name.endsWith(`-${ticket}.log`))
     .sort()
     .map((name) => `### ${name}\n\n${readFileSync(join(logs, name), "utf8").trim()}`);
-  if (run === undefined) return [...logged, REDDENED_ON_MAIN].join("\n\n");
   const failedRun = gh(["run", "view", run, "--log-failed"]);
   const ranRed = failedRun.status === 0 && failedRun.stdout.trim() !== "" ? [`### run ${run}, its failed steps\n\n${failedRun.stdout.trim()}`] : [];
   return [...logged, ...ranRed].join("\n\n");
@@ -209,10 +240,10 @@ function answered(ticket: string, body: string, answer: Answer | undefined, main
   return {};
 }
 
-function committed(ticket: string): void {
+function committed(message: string): void {
   if (git(["status", "--porcelain"]).stdout.trim() === "") return;
   git(["add", "--all"]);
-  git(["commit", "--quiet", "-m", repairOf(ticket)]);
+  git(["commit", "--quiet", "-m", message]);
 }
 
 function spentOn(spend: Spend, input: string, session: string | undefined, opening: string): Spent {
@@ -248,10 +279,17 @@ function checkingAgain(ticket: string, run: string | undefined): number {
   return 0;
 }
 
-function ownRedTicket(ticket: string, run: string | undefined): number {
-  mark(ticket, "fixing");
+function failedAs(ticket: string, logs: string, run: string | undefined): string | undefined {
+  const reason = process.env.REASON ?? "";
+  if (reason !== "") return reason;
+  return run === undefined ? undefined : failure(ticket, logs, run);
+}
+
+function ownTicket(ticket: string, run: string | undefined): number {
   const logs = machineLogs(process.cwd());
   mkdirSync(logs, { recursive: true });
+  const failed = failedAs(ticket, logs, run);
+  mark(ticket, failed === undefined ? "2-building" : "fixing");
   const asked = gh(["issue", "view", ticket, "--json", "body", "--jq", ".body"]);
   if (asked.status !== 0) return calledOwner(ticket, "its ticket could not be read");
   let body = asked.stdout;
@@ -260,13 +298,10 @@ function ownRedTicket(ticket: string, run: string | undefined): number {
   const spend = hired({ name: "fixer", transcript: join(logs, `fix-${ticket}.jsonl`), answers: ANSWER, gated: true, reach: UNFENCED });
   if (typeof spend === "string") return calledOwner(ticket, `the owner's hooks could not be read from ${spend}`);
   let session = savedSession(ticket);
-  const reason = process.env.REASON;
   const opening = handedOn({
     ticket,
     body,
-    failed: reason === undefined || reason === "" ? failure(ticket, logs, run) : reason,
-    diff: git(["diff", "origin/main...HEAD"]).stdout ?? "",
-    gaps: earlierDrift(ticket, judged),
+    red: failed === undefined ? undefined : { failed, diff: git(["diff", "origin/main...HEAD"]).stdout ?? "", gaps: earlierDrift(ticket, judged) },
   });
   let input = opening;
   let idle = false;
@@ -280,7 +315,7 @@ function ownRedTicket(ticket: string, run: string | undefined): number {
     const round = answered(ticket, body, answer, before.main);
     if (round.ended !== undefined) return round.ended;
     body = round.body ?? body;
-    committed(ticket);
+    committed(failed === undefined ? builtBy(ticket) : repairOf(ticket));
     const changed = head() !== before.head || fetchedMain() !== before.main || round.body !== undefined;
     const red = round.red ?? redOrSaved(ticket, body, logs);
     if (red === undefined) return checkingAgain(ticket, run);
@@ -293,5 +328,5 @@ function ownRedTicket(ticket: string, run: string | undefined): number {
 if (import.meta.main) {
   const [ticket, run] = process.argv.slice(2);
   if (ticket === undefined) throw new Error("no ticket number in the arguments");
-  process.exit(ownRedTicket(ticket, run));
+  process.exit(ownTicket(ticket, run));
 }

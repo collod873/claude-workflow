@@ -12,7 +12,8 @@ jobs:
   build:
     if: "${{ (github.event.action != 'unlabeled' || github.event.label.name == 'waiting') && (github.event.sender.login == github.repository_owner || (github.event.sender.login == 'collod873-machine[bot]' && (github.event.action == 'unlabeled' || (github.event.action == 'opened' && contains(github.event.issue.body, 'Follow-up of #'))))) && !contains(github.event.issue.labels.*.name, 'note') && !contains(github.event.issue.labels.*.name, 'spec') }}"
     runs-on: ubuntu-latest
-    timeout-minutes: 110
+    timeout-minutes: 70
+    cache-mode: write
     permissions:
       contents: read
       issues: read
@@ -29,7 +30,6 @@ jobs:
           ref: main
           fetch-depth: 0
           token: ${{ steps.app.outputs.token }}
-          persist-credentials: false
 
       - id: setup-node
         uses: actions/setup-node@v4
@@ -68,38 +68,25 @@ jobs:
             bin/start ${{ github.event.issue.number }}
           fi
 
-      - id: test-author
+      - id: fix
         if: steps.start.outputs.rerun != 'true'
-        timeout-minutes: 20
+        timeout-minutes: 50
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          STAGE_MINUTES: 17
+          STAGE_MINUTES: 45
         run: |
-          tail --pid=$$ -n +1 -F .git/machine-logs/test-author-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
-          bin/test-author ${{ github.event.issue.number }}
-          bin/mark ${{ github.event.issue.number }} 2-building || true
+          tail --pid=$$ -n +1 -F .git/machine-logs/fix-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
+          git checkout --quiet -b "ticket/${{ github.event.issue.number }}"
+          bin/fix ${{ github.event.issue.number }}
 
-      - id: build
-        if: steps.start.outputs.rerun != 'true'
-        timeout-minutes: 40
-        env:
-          GH_TOKEN: ${{ github.token }}
-          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          STAGE_MINUTES: 27
-        run: |
-          tail --pid=$$ -n +1 -F .git/machine-logs/build-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
-          bin/build ${{ github.event.issue.number }}
-
-      - id: save
-        if: always() && steps.test-author.outcome == 'success'
-        timeout-minutes: 10
-        env:
-          GH_TOKEN: ${{ steps.app.outputs.token }}
-        run: |
-          gh auth setup-git
-          bin/save ${{ github.event.issue.number }}
-          bin/mark ${{ github.event.issue.number }} 3-checking || true
+      - if: always() && steps.fix.outcome != 'skipped'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.claude/projects
+            ~/.claude/fixer
+          key: fixer-ticket/${{ github.event.issue.number }}-${{ github.run_id }}
 
       - if: always()
         timeout-minutes: 6

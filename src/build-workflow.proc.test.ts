@@ -9,7 +9,7 @@ const REPO = join(import.meta.dirname, "..");
 const WORKFLOWS = join(REPO, ".github", "workflows");
 const WORKFLOW = join(WORKFLOWS, "build.yml");
 const FEED = join(REPO, ".github", "actions", "stage", "feed.jq");
-const STAGES = ["start", "test-author", "build", "save"] as const;
+const STAGES = ["start", "fix"] as const;
 type Stage = (typeof STAGES)[number];
 
 interface Step {
@@ -131,18 +131,17 @@ describe("build.yml builds a ticket the moment it is filed (#826)", () => {
     expect(holds(job.if ?? "true", { sender: "collod873-machine[bot]", action: "unlabeled", label: "waiting", labels: ["note"] })).toBe(false);
   });
 
-  it("the branch is saved when the build ends red, and nothing runs after a start or test author refusal, which leaves no branch", () => {
+  it("hands the ticket to its fixer once start passes, and nothing runs after a start refusal", () => {
     const { job } = workflow();
 
     expect(stagesRun(job, "start")).toEqual(["start"]);
-    expect(stagesRun(job, "test-author")).toEqual(["start", "test-author"]);
-    expect(stagesRun(job, "build")).toEqual(["start", "test-author", "build", "save"]);
-    expect(stagesRun(job, undefined)).toEqual(["start", "test-author", "build", "save"]);
+    expect(stagesRun(job, "fix")).toEqual(["start", "fix"]);
+    expect(stagesRun(job, undefined)).toEqual(["start", "fix"]);
     const at = STAGES.map((stage) => job.steps.indexOf(stageStep(job, stage)));
     expect(at).toEqual([...at].sort((a, b) => a - b));
   });
 
-  it("every stage has its own time cap and acts as the App, but the build, whose open shell reads with the job's own token (#946)", () => {
+  it("builds with the fixer alone, acting as the App under its own time cap (#931)", () => {
     const { job } = workflow();
     const minting = job.steps.find((step) => step.uses?.startsWith("actions/create-github-app-token@") === true);
 
@@ -155,23 +154,38 @@ describe("build.yml builds a ticket the moment it is filed (#826)", () => {
       const step = stageStep(job, stage);
       expect(job.steps.indexOf(minting as Step)).toBeLessThan(job.steps.indexOf(step));
       expect(step["timeout-minutes"], `${stage} time cap`).toBeGreaterThan(0);
-      const given = String({ ...job.env, ...step.env }.GH_TOKEN);
-      if (stage === "build") expect(given, `${stage} token`).toBe("${{ github.token }}");
-      else expect(given, `${stage} token`).toMatch(token);
+      expect(String({ ...job.env, ...step.env }.GH_TOKEN), `${stage} token`).toMatch(token);
     }
-    for (const checkout of job.steps.filter((step) => step.uses?.startsWith("actions/checkout@") === true)) {
-      expect(String(checkout.with?.token)).toMatch(token);
-    }
+    expect(job.steps.some((step) => /(^|\s|\/)bin\/(test-author|build|save)(\s|$)/.test(step.run ?? ""))).toBe(false);
   });
 
-  it("leaves the builder's open shell no token that writes: the checkout keeps no credential, the job's own token only reads, and git takes the App's token only to save (#946)", () => {
+  it("keeps the App's token in the checkout, since the fixer pushes from its own loop and a push by the job's token starts no Check (#931)", () => {
     const { job } = workflow();
+    const token = /steps\.app\.outputs\.token/;
     const checkouts = job.steps.filter((step) => step.uses?.startsWith("actions/checkout@") === true);
 
     expect(checkouts.length).toBeGreaterThan(0);
-    for (const checkout of checkouts) expect(checkout.with?.["persist-credentials"]).toBe(false);
-    expect(Object.values(job.permissions ?? { all: "write" })).not.toContain("write");
-    expect(stageStep(job, "save").run).toMatch(/^gh auth setup-git\n.*bin\/save /s);
+    for (const checkout of checkouts) {
+      expect(String(checkout.with?.token)).toMatch(token);
+      expect(checkout.with?.["persist-credentials"]).not.toBe(false);
+    }
+  });
+
+  it("keeps the session the fixer built in, whatever ended it, so the first red resumes it through fix.yml (#931)", () => {
+    const { job } = workflow();
+    const fix = namedJob(fixWorkflow().jobs, "fix", FIX_WORKFLOW);
+    const saved = job.steps.find((step) => step.uses?.startsWith("actions/cache/save@") === true);
+    const restored = fix.steps.find((step) => step.uses?.startsWith("actions/cache/restore@") === true);
+    const key = String(saved?.with?.key).replace("${{ github.event.issue.number }}", "9");
+    const resumedFrom = String(restored?.with?.["restore-keys"]).replace("${{ env.HEAD_REF }}", "ticket/9");
+    const ended = (fixed: string) => holds(saved?.if ?? "success()", { steps: { ...allSkipped(job.steps), fix: outcome(fixed) }, failed: fixed === "failure" });
+
+    expect(job["cache-mode"]).toBe("write");
+    expect(saved?.with?.path).toBe(restored?.with?.path);
+    expect(key.startsWith(resumedFrom), `${key} resumes from ${resumedFrom}`).toBe(true);
+    expect(ended("success")).toBe(true);
+    expect(ended("failure")).toBe(true);
+    expect(ended("skipped")).toBe(false);
   });
 });
 
@@ -295,12 +309,14 @@ function ranStep(step: Step, cwd: string, env: Record<string, string>): { status
   return { status: ran.status, stdout: ran.stdout, stderr: ran.stderr, output: parseOutput(output) };
 }
 
-function lookedUp(env: Record<string, string>): ReturnType<typeof ranStep> {
+function lookedUp(env: Record<string, string>, labels = ""): ReturnType<typeof ranStep> {
   const which = namedJob(fixWorkflow().jobs, "which", FIX_WORKFLOW).steps.find((step) => step.id === "which") as Step;
-  return ranStep(which, scratch("which-"), { ISSUE: "", RAN: "", RAN_ON: "", TITLE: "", ...env });
+  const root = scratch("which-");
+  script(join(root, "bin", "gh"), `printf '%s\\n' ${labels}\n`);
+  return ranStep(which, root, { ISSUE: "", RAN: "", RAN_ON: "", TITLE: "", PATH: `${join(root, "bin")}:${process.env.PATH}`, ...env });
 }
 
-const ticketNamed = (env: Record<string, string>): string | undefined => lookedUp(env).output.ticket;
+const ticketNamed = (env: Record<string, string>, labels = ""): string | undefined => lookedUp(env, labels).output.ticket;
 
 describe("fix.yml hands every red run of a ticket to its fixer, however the run died (#898)", () => {
   it("starts on GitHub's own word that a Build or Check run finished", () => {
@@ -327,6 +343,17 @@ describe("fix.yml hands every red run of a ticket to its fixer, however the run 
     expect(ticketNamed({ RAN: ".github/workflows/build.yml", RAN_ON: "main", TITLE: buildName })).toBe("894");
     expect(ticketNamed({ DISPATCHED: "812" })).toBe("812");
     expect(ticketNamed({ RAN: ".github/workflows/check.yml", RAN_ON: "land/4b58f3372b91", TITLE: "Build ticket/7: a land PR's title" })).toBe("");
+  });
+
+  it("starts no fixer on a red run of a ticket labelled needs-human, whose fixer already called the owner, but does on the closer's dispatch (#931)", () => {
+    const building = { RAN: ".github/workflows/build.yml", RAN_ON: "main", TITLE: "Build ticket/9: Give the fixer the build" };
+    const checking = { RAN: ".github/workflows/check.yml", RAN_ON: "ticket/9", TITLE: "Give the fixer the build" };
+
+    expect(ticketNamed(building, "2-building needs-human")).toBe("");
+    expect(ticketNamed(checking, "needs-human")).toBe("");
+    expect(ticketNamed(building, "2-building")).toBe("9");
+    expect(ticketNamed(checking, "3-checking")).toBe("9");
+    expect(ticketNamed({ DISPATCHED: "9" }, "needs-human")).toBe("9");
   });
 
   it("goes red, rather than skipping green, when a red Build run's name carries no ticket, so a red nobody fixes still shows", () => {
@@ -488,6 +515,6 @@ describe("build.yml re-runs an open PR's failed checks instead of building, when
 
     expect(none.status, none.stderr).toBe(0);
     expect(readFileSync(noCalls, "utf8")).toContain("start called");
-    expect(stagesRun(job, undefined, { start: parseOutput(noOutput) })).toEqual(["start", "test-author", "build", "save"]);
+    expect(stagesRun(job, undefined, { start: parseOutput(noOutput) })).toEqual(["start", "fix"]);
   });
 });

@@ -85,16 +85,6 @@ export const parts: Part[] = [
     stops: "https://github.com/collod873/claude-workflow/issues/809",
   },
   {
-    name: "bin/test-author",
-    file: "bin/test-author",
-    stops: "https://github.com/collod873/claude-workflow/issues/663",
-  },
-  {
-    name: "bin/build",
-    file: "bin/build",
-    stops: "https://github.com/collod873/claude-workflow/issues/652",
-  },
-  {
     name: "bin/save",
     file: "bin/save",
     stops: "https://github.com/collod873/claude-workflow/issues/649",

@@ -67,6 +67,11 @@ const misshapen: [string, string, unknown[]][] = [
     body({ claimed: ["- src/ticket-shape.ts", "- `core/**/*.test.ts`"] }),
     ["'## Files claimed' names `core/**/*.test.ts`, a glob rather than one file"],
   ],
+  [
+    "a glob among the files to read",
+    `${body()}\n## Files to read\n\n- src/*.ts\n`,
+    ["'## Files to read' names `src/*.ts`, a glob rather than one file"],
+  ],
   ["an em dash in the body", body({ why: `The owner, in session: "file a ticket ${DASH} the machine builds it".` }), ["line 3 carries an em dash"]],
 ];
 

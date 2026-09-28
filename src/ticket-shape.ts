@@ -65,7 +65,7 @@ function listed(body: string, heading: RegExp): string[] {
 
 export const claims = (body: string): string[] => listed(body, CLAIMED);
 
-export const filesToRead = (body: string): string[] => listed(body, TO_READ);
+const filesToRead = (body: string): string[] => listed(body, TO_READ);
 
 export const why = (body: string): string => section(body.replaceAll(/\r\n?/g, "\n"), WHY).trim();
 

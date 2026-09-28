@@ -1,6 +1,5 @@
-export const STATIC = "bin/check static";
+const STATIC = "bin/check static";
 export const CHECK = "bin/check";
-export const GATED = [CHECK, `./${CHECK}`, "~/bin/check"];
 
 const TOOLS = ["Read", "Edit", "Write", "Grep", "Glob", "Bash"];
 

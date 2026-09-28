@@ -34,7 +34,7 @@ const sources = (copy: string) =>
 
 const GROWN = { "src/researcher.ts": (source: string) => source.replace("Your reading time is up.", `Your reading time is up. ${"More words. ".repeat(300)}`) };
 const SHRUNK = { "src/researcher.ts": (source: string) => source.replace(" Read nothing more.", "") };
-const LINE = /^prompt-bytes: 12 prompts, (\d+) bytes of their own words, the largest the (.+) at (\d+)\n$/;
+const LINE = /^prompt-bytes: 9 prompts, (\d+) bytes of their own words, the largest the (.+) at (\d+)\n$/;
 
 describe("every prompt's size is reported, never refused (#950)", () => {
   it("passes a prompt that grew past the size it had, naming the total and the largest", () => {
@@ -61,7 +61,7 @@ describe("every prompt's size is reported, never refused (#950)", () => {
     expect(sized([terse("small", "x".repeat(5)), terse("big", "x".repeat(30))])).toBe(
       "prompt-bytes: 2 prompts, 35 bytes of their own words, the largest the big at 30",
     );
-    expect(sized(PROMPTS)).toMatch(/^prompt-bytes: 12 prompts, \d+ bytes of their own words, the largest the .+ at \d+$/);
+    expect(sized(PROMPTS)).toMatch(/^prompt-bytes: 9 prompts, \d+ bytes of their own words, the largest the .+ at \d+$/);
   });
 
   it("refuses a filled-in value with no cap, and passes a builder that caps what it pastes in", () => {
@@ -79,7 +79,7 @@ describe("every prompt's size is reported, never refused (#950)", () => {
     mkdirSync(join(copy, "src"));
     writeFileSync(join(copy, "src", "judge.ts"), 'spawnSync("claude", argv);\n');
     writeFileSync(join(copy, "src", "quiet.ts"), 'spawnSync("gh", argv);\n');
-    writeFileSync(join(copy, "src", "look-back.ts"), 'import { runStage } from "./stage.ts";\n');
+    writeFileSync(join(copy, "src", "look-back.ts"), 'import { hired } from "./stage.ts";\n');
     writeFileSync(join(copy, "src", "stage.ts"), 'spawnSync("claude", argv);\n');
     expect(unmeasured(copy, PROMPTS)).toEqual([
       "src/judge.ts hires a model and no prompt of that name is measured",
