@@ -13,6 +13,7 @@ export const STOPS = {
   drift: "The reviewer finds drift from `## Why`",
   unrecorded: "Close: the closing record is refused, or the ticket will not close",
   notResearch: "Research refused: the issue is not a research note",
+  notSpec: "Cold read refused: the issue is not labelled `spec`",
 } as const;
 
 export type Stop = keyof typeof STOPS;

@@ -32,9 +32,29 @@ export interface Run {
 
 const SRC = import.meta.dirname;
 const BIN = join(SRC, "..", "bin");
+const WORKFLOWS = join(SRC, "..", ".github", "workflows");
 const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_") && !name.startsWith("VITEST") && name !== "AGENT_HOOKS_SETTINGS"));
 const OWNER = "collod873";
 const MACHINE = "collod873-machine[bot]";
+
+interface WorkflowStep {
+  run?: string;
+  with?: Record<string, unknown>;
+  env?: Record<string, unknown>;
+}
+
+export interface WorkflowJob {
+  if?: string;
+  permissions?: Record<string, string>;
+  steps: WorkflowStep[];
+}
+
+export function onlyJob(file: string): WorkflowJob {
+  const { jobs } = parse(readFileSync(join(WORKFLOWS, file), "utf8")) as { jobs: Record<string, WorkflowJob> };
+  const [job] = Object.values(jobs);
+  if (job === undefined) throw new Error(`no job in ${file}`);
+  return job;
+}
 
 export type Said = string | { author: string; type: string; body: string };
 const authored = (comments: Said[]) => comments.map((said) => `${JSON.stringify(typeof said === "string" ? { author: MACHINE, type: "Bot", body: said } : said)}\n`).join("");
@@ -1013,6 +1033,36 @@ export function researching({
     calls: () => calls().map((args) => args.slice(0, 3).join(" ")),
     comments: () => calls().filter((args) => args[1] === "comment").map((args) => args[args.indexOf("--body") + 1]),
     run: (...args: string[]) => execute(join(BIN, "research"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}`, RESEARCH_SOURCES: sources, STAGE_MINUTES: readsPastCap ? "40" : "" }, args.length > 0 ? args : ["902"]),
+  };
+}
+
+export const COLD_READ_POSTED = "https://github.com/collod873/claude-workflow/issues/968#issuecomment-1";
+
+export function coldReading({
+  labels = ["spec"],
+  title = "A spec worth a cold read",
+  body = wellFormedSpec,
+  build = "A cold reader that hires one opus stage to read a filed spec, and posts what it would build.",
+  choices = [] as { guess: string; why: string }[],
+  gh = "",
+}: { labels?: string[]; title?: string; body?: string; build?: string; choices?: { guess: string; why: string }[]; gh?: string } = {}) {
+  const root = scratch("cold-read-");
+  const { setup, calls } = ghArgv(join(root, "gh-argv"));
+  const handed = join(root, "claude-stdin");
+  const hired = join(root, "claude-argv");
+  git(root, "init", "--quiet", "--initial-branch=main");
+  plant(root, "issue.json", JSON.stringify({ title, body, labels: labels.map((name) => ({ name })) }));
+  plant(root, "answer.json", `${JSON.stringify({ type: "result", subtype: "success", is_error: false, structured_output: { build, choices } })}\n`);
+  script(join(root, "bin", "gh"), [setup, gh, 'case "$*" in', `  *"issue view"*) cat "${join(root, "issue.json")}" ;;`, `  *"issue comment"*) printf '%s\\n' '${COLD_READ_POSTED}' ;;`, "esac", ""].join("\n"));
+  script(join(root, "bin", "claude"), `printf '%s\\0' "$@" >"${hired}"\ncat >"${handed}"\ncat "${join(root, "answer.json")}"\n`);
+  return {
+    hired: () => (existsSync(hired) ? readFileSync(hired, "utf8").split("\0") : []),
+    handed: () => (existsSync(handed) ? readFileSync(handed, "utf8") : ""),
+    calls: () => calls().map((args) => args.slice(0, 3).join(" ")),
+    comments: () => calls().filter((args) => args[1] === "comment").map((args) => args[args.indexOf("--body") + 1]),
+    edits: () => calls().filter((args) => args[1] === "edit"),
+    closes: () => calls().filter((args) => args[1] === "close"),
+    run: (...args: string[]) => execute(join(BIN, "cold-read"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, args.length > 0 ? args : ["968"]),
   };
 }
 
