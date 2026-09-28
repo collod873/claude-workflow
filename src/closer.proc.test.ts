@@ -222,7 +222,7 @@ describe("bin/close wakes the ticket's fixer directly, instead of reopening it o
     expect(tokens()[calls().indexOf(wake ?? "")], "runs as the App, so fix.yml actually starts").toBe("app");
     expect(calls().some((call) => call.startsWith("issue\nreopen\n830"))).toBe(false);
     expect(calls().some((call) => call.startsWith("issue\ncomment\n830\n"))).toBe(false);
-    expect(calls().some((call) => call.startsWith("pr\ncomment\n909\n"))).toBe(false);
+    expect(calls().some((call) => call.startsWith("pr\ncomment\n909\n")), "leaves the failed branch update comment on the PR (#980)").toBe(true);
   });
 
   it("wakes the ticket's fixer instead of commenting, when its PR cannot be brought up to date on the PR's opening", () => {
@@ -241,7 +241,7 @@ describe("bin/close wakes the ticket's fixer directly, instead of reopening it o
     expect(tokens()[calls().indexOf(wake ?? "")]).toBe("app");
     expect(calls().some((call) => call.startsWith("issue\nreopen\n831"))).toBe(false);
     expect(calls().some((call) => call.startsWith("issue\ncomment\n831\n"))).toBe(false);
-    expect(calls().some((call) => call.startsWith("pr\ncomment\n910\n"))).toBe(false);
+    expect(calls().some((call) => call.startsWith("pr\ncomment\n910\n")), "leaves the failed branch update comment on the PR (#980)").toBe(true);
   });
 
   it("wakes the ticket's fixer instead of reopening it, when a check is red on the merge commit of a ticket already closed", () => {

@@ -29,7 +29,7 @@ function fingerprintOf(diff: string, body: string): string {
 }
 
 const fingerprintLine = (fingerprint: string) => `Fingerprint: \`${fingerprint}\``;
-const FINGERPRINT = /Fingerprint: `([^`]+)`/;
+export const FINGERPRINT = /Fingerprint: `([^`]+)`/;
 const headLine = (head: string) => `Head: \`${head}\``;
 const HEAD_LINE = /^Head: `([0-9a-f]{40,64})`$/m;
 

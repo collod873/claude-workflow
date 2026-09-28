@@ -6,7 +6,7 @@ import { runCheck } from "./check-runner.ts";
 import { splitInto, WAITING } from "./fixer.ts";
 import { commentOnPr, commentOnTicket, commentsOn } from "./post.ts";
 import { totalOutside } from "./reads-outside-brief.ts";
-import { FOLLOW_UP_OF } from "./reviewer.ts";
+import { FINGERPRINT, FOLLOW_UP_OF } from "./reviewer.ts";
 import { exitFor, stoppedAt, type Stop } from "./stops.ts";
 import { checks, quoted, why } from "./ticket-shape.ts";
 
@@ -42,6 +42,19 @@ interface Marks {
 interface Wait {
   label: string;
   ms: number;
+}
+
+interface Collisions {
+  failedBranchUpdates: number;
+  reReviews: number;
+}
+
+const FAILED_BRANCH_UPDATE = /^PR #\d+ could not be brought up to date with main:/;
+
+function collisions(comments: string[]): Collisions {
+  const failedBranchUpdates = comments.filter((comment) => FAILED_BRANCH_UPDATE.test(comment)).length;
+  const judged = comments.filter((comment) => FINGERPRINT.test(comment)).length;
+  return { failedBranchUpdates, reReviews: Math.max(judged - 1, 0) };
 }
 
 const STEPS: { key: keyof Marks; label: string }[] = [
@@ -101,7 +114,7 @@ function human(ms: number): string {
   return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
 }
 
-function speedReport(marks: Marks, readsOutside: number | undefined): string {
+function speedReport(marks: Marks, readsOutside: number | undefined, collided: Collisions | undefined): string {
   const found = waits(marks);
   const lines = ["Speed report", ""];
   if (found.length === 0) {
@@ -114,6 +127,8 @@ function speedReport(marks: Marks, readsOutside: number | undefined): string {
     lines.push(`- longest wait: ${human(longest.ms)}, ${longest.label}`);
   }
   if (readsOutside !== undefined) lines.push(`- reads outside the brief: ${readsOutside}`);
+  lines.push(`- failed branch updates: ${collided === undefined ? "not available" : collided.failedBranchUpdates}`);
+  lines.push(`- re-reviews: ${collided === undefined ? "not available" : collided.reReviews}`);
   return lines.join("\n");
 }
 
@@ -174,9 +189,9 @@ function updateBranch(number: string, headRefName: string): void {
   const updated = gh(["pr", "update-branch", number]);
   if (updated.status === 0) return;
   const reason = (updated.stderr || updated.stdout).trim().split("\n")[0];
+  commentOnPr(number, `PR #${number} could not be brought up to date with main: ${reason}`, gh);
   const ticket = TICKET_BRANCH.exec(headRefName)?.[1];
-  if (ticket === undefined) commentOnPr(number, `PR #${number} could not be brought up to date with main: ${reason}`, gh);
-  else wakeFixer(ticket, `#${ticket}'s PR #${number} could not be brought up to date with main: ${reason}`);
+  if (ticket !== undefined) wakeFixer(ticket, `#${ticket}'s PR #${number} could not be brought up to date with main: ${reason}`);
 }
 
 function bringUpToDate(): void {
@@ -218,7 +233,8 @@ function close(): Stop | undefined {
   const gathered = verdicts(checks(asked.stdout).map(({ command }) => command), top);
   const pr = prNumber(subject);
   const prBody = pr === undefined ? undefined : ghText(["pr", "view", pr, "--json", "body", "--jq", ".body"]);
-  const speed = speedReport(marksFor(ticket, pr), prBody === undefined ? undefined : totalOutside(prBody));
+  const prComments = pr === undefined ? undefined : commentsOn(pr, gh);
+  const speed = speedReport(marksFor(ticket, pr), prBody === undefined ? undefined : totalOutside(prBody), prComments === undefined ? undefined : collisions(prComments));
   const posted = commentOnTicket(ticket, record(ticket, gathered, speed), gh);
   const [refusal] = posted.refusals;
   if (refusal !== undefined) return stoppedAt("unrecorded", `close: #${ticket} got no closing record: ${quoted(refusal)}`);
