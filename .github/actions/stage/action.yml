@@ -46,3 +46,25 @@ runs:
         python3 "$hooks/hookcheck.py" --root "$hooks" --settings "$RUNNER_TEMP/unregistered.json" --emit-settings >"$RUNNER_TEMP/agent-hooks.json"
         printf 'AGENT_HOOKS_SETTINGS=%s\n' "$RUNNER_TEMP/agent-hooks.json" >>"$GITHUB_ENV"
         printf 'FEED=%s\n' "$GITHUB_ACTION_PATH/feed.jq" >>"$GITHUB_ENV"
+
+    - id: captures-app
+      uses: actions/create-github-app-token@v3
+      with:
+        client-id: ${{ inputs.client-id }}
+        private-key: ${{ inputs.private-key }}
+        owner: collod873
+        repositories: Knowledge-Base
+        permission-contents: read
+
+    - shell: bash
+      env:
+        CAPTURES_TOKEN: ${{ steps.captures-app.outputs.token }}
+      run: |
+        knowledge="$RUNNER_TEMP/knowledge-base"
+        captures="$RUNNER_TEMP/session-captures"
+        mkdir -p "$captures"
+        git clone --quiet --depth 1 --filter=blob:none --sparse "https://x-access-token:$CAPTURES_TOKEN@github.com/collod873/Knowledge-Base" "$knowledge"
+        git -C "$knowledge" sparse-checkout set raw/sessions
+        grep -lE '^project: .*(Workflow|claude-workflow|\.agents)' "$knowledge"/raw/sessions/*.md | xargs -r cp -t "$captures"
+        rm -rf "$knowledge"
+        printf 'SESSION_CAPTURES=%s\n' "$captures" >>"$GITHUB_ENV"

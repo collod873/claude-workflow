@@ -45,27 +45,16 @@ jobs:
           client-id: ${{ vars.CORE_APP_CLIENT_ID }}
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
 
-      - id: captures-app
-        uses: actions/create-github-app-token@v3
-        with:
-          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
-          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
-          owner: collod873
-          repositories: Knowledge-Base
-          permission-contents: read
-
       - id: sources
         timeout-minutes: 6
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          CAPTURES_TOKEN: ${{ steps.captures-app.outputs.token }}
           NEWEST_RUNS: 150
           NEWEST_LOGS: 50
         run: |
           sources="$RUNNER_TEMP/research-sources"
-          captures="$RUNNER_TEMP/captures"
           mkdir -p "$sources/machine-logs" "$sources/sessions"
           git log --date=short --format='commit %h %ad %s' --name-status >"$sources/git-log.txt"
           gh run list --limit 1000 --json databaseId,workflowName,displayTitle,event,headBranch,conclusion,createdAt,url | jq -c '.[]' >"$sources/runs.jsonl"
@@ -75,9 +64,7 @@ jobs:
           gh api "repos/$GH_REPO/actions/artifacts?per_page=$NEWEST_LOGS" --jq '.artifacts[] | select(.expired | not) | "\(.workflow_run.id) \(.name)"' | while read -r run kept; do
             gh run download "$run" --name "$kept" --dir "$sources/machine-logs/$run-$kept"
           done
-          git clone --quiet --depth 1 "https://x-access-token:$CAPTURES_TOKEN@github.com/collod873/Knowledge-Base" "$captures"
-          grep -lE '^project: .*(Workflow|claude-workflow|\.agents)' "$captures"/raw/sessions/*.md | xargs cp -t "$sources/sessions"
-          rm -rf "$captures"
+          cp -r "$SESSION_CAPTURES/." "$sources/sessions"
           printf 'RESEARCH_SOURCES=%s\n' "$sources" >>"$GITHUB_ENV"
 
       - id: research

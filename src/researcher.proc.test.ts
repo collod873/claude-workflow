@@ -6,8 +6,10 @@ import { OUT_OF_TIME } from "./researcher.ts";
 import { FINDINGS_POSTED, heard, holds, READING_SESSION, researching, wellFormedNote } from "./scenarios.ts";
 
 const WORKFLOWS = join(import.meta.dirname, "..", ".github", "workflows");
+const STAGE_ACTION = join(import.meta.dirname, "..", ".github", "actions", "stage", "action.yml");
 
 interface Step {
+  uses?: string;
   run?: string;
   with?: Record<string, unknown>;
   env?: Record<string, unknown>;
@@ -70,20 +72,32 @@ describe("bin/research answers a research note on the note and closes it, with n
     expect(cutOff.calls()).toEqual(["issue view 902", "issue comment 902", "issue close 902"]);
   });
 
-  it("research.yml fetches the run history and the machine's session captures before the researcher starts, with tokens that only read (#936, #937)", () => {
+  it("research.yml fetches the run history and copies in the stage's session captures before the researcher starts, with tokens that only read (#936, #937, #931)", () => {
     const { permissions, steps } = onlyJob("research.yml");
-    const minted = steps.findIndex((step) => step.with?.repositories === "Knowledge-Base");
+    const staged = steps.findIndex((step) => step.uses === "./.github/actions/stage");
     const fetched = steps.findIndex((step) => /RESEARCH_SOURCES=.*GITHUB_ENV/.test(step.run ?? ""));
     const spent = steps.findIndex((step) => step.env?.CLAUDE_CODE_OAUTH_TOKEN !== undefined);
     const run = steps[fetched]?.run ?? "";
 
     expect(permissions).toEqual({ contents: "read", issues: "write", actions: "read" });
+    expect(steps.some((step) => step.with?.repositories === "Knowledge-Base")).toBe(false);
+    expect(fetched).toBeGreaterThan(staged);
+    expect(spent).toBeGreaterThan(fetched);
+    expect(run).toContain('"$SESSION_CAPTURES/."');
+    for (const held of ["runs.jsonl", "jobs.jsonl", "machine-logs", "git-log.txt", "sessions"]) expect(run).toContain(`$sources/${held}`);
+  });
+
+  it("the stage action hands every job the owner's Workflow session captures, fetched with a token that only reads and never held by the model (#931)", () => {
+    const { steps } = (parse(readFileSync(STAGE_ACTION, "utf8")) as { runs: { steps: Step[] } }).runs;
+    const minted = steps.findIndex((step) => step.with?.repositories === "Knowledge-Base");
+    const fetched = steps.findIndex((step) => /SESSION_CAPTURES=.*GITHUB_ENV/.test(step.run ?? ""));
+    const run = steps[fetched]?.run ?? "";
+
     expect(steps[minted]?.with).toMatchObject({ owner: "collod873", "permission-contents": "read" });
     expect(fetched).toBeGreaterThan(minted);
-    expect(spent).toBeGreaterThan(fetched);
-    expect(steps[spent]?.env).not.toHaveProperty("CAPTURES_TOKEN");
-    expect(run).toContain('rm -rf "$captures"');
-    for (const held of ["runs.jsonl", "jobs.jsonl", "machine-logs", "git-log.txt", "sessions"]) expect(run).toContain(`$sources/${held}`);
+    expect(run).toContain("^project: .*(Workflow|claude-workflow|\\.agents)");
+    expect(run).toContain('rm -rf "$knowledge"');
+    expect(run).not.toMatch(/CAPTURES_TOKEN=|GITHUB_ENV.*TOKEN/);
   });
 
   it("refuses an issue not labelled research, so it never closes a ticket, and spends no model", () => {
