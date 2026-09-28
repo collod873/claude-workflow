@@ -6,7 +6,7 @@ import { capped } from "./brief.ts";
 import { commentOnTicket, commentsOn, gh, git, post } from "./post.ts";
 import { hired, machineLogs } from "./stage.ts";
 import { exitFor, stoppedAt, type Stop } from "./stops.ts";
-import { acceptance, claims, quoted, why } from "./ticket-shape.ts";
+import { doneWhen, quoted, why } from "./ticket-shape.ts";
 
 export const DIFF_CAP = 32 * 1024;
 export const TICKET_CAP = 8 * 1024;
@@ -69,10 +69,9 @@ const VERDICT = {
         properties: {
           gap: { type: "string", pattern: NO_EM_DASH },
           title: { type: "string", pattern: NO_EM_DASH },
-          criteria: { type: "array", items: { type: "string", pattern: NO_EM_DASH } },
-          claimed: { type: "array", items: { type: "string", pattern: NO_EM_DASH } },
+          done: { type: "array", items: { type: "string", pattern: NO_EM_DASH } },
         },
-        required: ["gap", "title", "criteria", "claimed"],
+        required: ["gap", "title", "done"],
         additionalProperties: false,
       },
     },
@@ -84,8 +83,7 @@ const VERDICT = {
 interface Later {
   gap: string;
   title: string;
-  criteria: string[];
-  claimed: string[];
+  done: string[];
 }
 
 interface Verdict {
@@ -105,22 +103,16 @@ export const FOLLOW_UP_OF = "Follow-up of #";
 
 const firstLine = (text: string) => quoted(text.trim().split("\n")[0] ?? "");
 
-function changedFiles(diff: string): { path: string; text: string }[] {
-  return diff.split(FILE_START).flatMap((text) => {
-    const path = CHANGED_PATH.exec(text)?.[1];
-    return path === undefined ? [] : [{ path, text }];
-  });
-}
+const changedPaths = (diff: string): string[] => diff.split(FILE_START).flatMap((text) => CHANGED_PATH.exec(text)?.slice(1) ?? []);
 
-export function handedDiff(diff: string, claimed: string[]): string {
+export function handedDiff(diff: string): string {
   const bytes = Buffer.byteLength(diff);
   if (bytes <= DIFF_CAP) return diff;
-  const changed = changedFiles(diff);
   return [
-    `The diff is ${bytes} bytes, over ${DIFF_CAP}, so only the claimed files' diff is here; read any other changed file in the repo.`,
-    capped(changed.filter(({ path }) => claimed.includes(path)).map(({ text }) => text).join(""), DIFF_CAP),
+    `The diff is ${bytes} bytes, over ${DIFF_CAP}, so it is cut here; read any changed file in the repo.`,
+    capped(diff, DIFF_CAP),
     "Every file changed:",
-    capped(changed.map(({ path }) => `- ${path}`).join("\n"), LIST_CAP),
+    capped(changedPaths(diff).map((path) => `- ${path}`).join("\n"), LIST_CAP),
   ].join("\n\n");
 }
 
@@ -134,16 +126,16 @@ export function handedOn(body: string, diff: string, after?: AfterTurn): string 
       ? []
       : [
           "`gaps` holds only an earlier gap still open or a gap in the fix's own lines; these block, and the verdict is `drift` while any remain. Put every other gap in `later`: it never blocks.",
-          "Each `later` item becomes its own ticket: the `gap` in one sentence, a `title`, 1 to 3 `criteria` each ending ` - check: `<command>`` with one a vitest run of a test not yet written, and the files it `claimed`.",
+          "Each `later` item becomes its own ticket: the `gap` in one sentence, a `title`, and 1 to 3 `done` sentences saying what done looks like.",
         ];
   return [
-    "Review this PR against the `## Why` and its criteria. Change nothing; `bin/check` is green. Read the repo if the diff is unclear.",
+    "Review this PR against the `## Why` and its `## Done when`. Change nothing; `bin/check` is green. Read the repo if the diff is unclear.",
     "## Why",
     capped(why(body), TICKET_CAP),
-    "## Acceptance criteria",
-    capped(acceptance(body), TICKET_CAP),
+    "## Done when",
+    capped(doneWhen(body), TICKET_CAP),
     "## Diff",
-    handedDiff(diff, claims(body)),
+    handedDiff(diff),
     ...turn,
     "## Your verdict",
     "`match` if the diff builds the Why, else `drift`. Name every gap in one pass, each a fixer can act on.",
@@ -198,24 +190,11 @@ function fixSince(head: string): string | undefined {
   return fix.status === 0 ? fix.stdout : undefined;
 }
 
-const followUp = (ticket: string, { gap, criteria, claimed }: Later): string =>
-  followUpBody([`${FOLLOW_UP_OF}${ticket}: its review found this after its fixer's repair, outside the earlier gaps and the fix's own lines.`, "", `> ${gap}`], criteria, claimed);
+const followUp = (ticket: string, { gap, done }: Later): string =>
+  followUpBody([`${FOLLOW_UP_OF}${ticket}: its review found this after its fixer's repair, outside the earlier gaps and the fix's own lines.`, "", `> ${gap}`], done);
 
-export function followUpBody(whyLines: string[], criteria: string[], claimed: string[]): string {
-  return [
-    "## Why",
-    "",
-    ...whyLines,
-    "",
-    "## Acceptance criteria",
-    "",
-    ...criteria.map((criterion) => `- [ ] ${criterion}`),
-    "",
-    "## Files claimed",
-    "",
-    ...claimed.map((path) => `- ${path}`),
-    "",
-  ].join("\n");
+export function followUpBody(whyLines: string[], done: string[]): string {
+  return ["## Why", "", ...whyLines, "", "## Done when", "", ...done.map((sentence) => `- ${sentence}`), ""].join("\n");
 }
 
 function recordedLater(ticket: string, body: string, later: Later[], turns: string[]): string {

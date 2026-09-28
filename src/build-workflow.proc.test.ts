@@ -39,16 +39,16 @@ interface Workflow {
 
 function workflow(): { on: Workflow["on"]; job: Job } {
   const { on, jobs } = parse(readFileSync(WORKFLOW, "utf8")) as Workflow;
-  const building = Object.values(jobs).filter(({ steps }) => steps.some((step) => /(^|\s|\/)bin\/start(\s|$)/.test(step.run ?? "")));
+  const building = Object.values(jobs).filter(({ steps }) => steps.some((step) => /(^|\s|\/)bin\/fix(\s|$)/.test(step.run ?? "")));
   expect(building).toHaveLength(1);
   const [job] = building;
-  if (job === undefined) throw new Error(`no job that runs bin/start in ${WORKFLOW}`);
+  if (job === undefined) throw new Error(`no job that runs bin/fix in ${WORKFLOW}`);
   return { on, job };
 }
 
 function stageStep(job: Job, stage: Stage): Step {
-  const step = job.steps.find((candidate) => new RegExp(`(^|\\s|/)bin/${stage}(\\s|$)`).test(candidate.run ?? ""));
-  expect(step, `a step that runs bin/${stage}`).toBeDefined();
+  const step = job.steps.find((candidate) => candidate.id === stage);
+  expect(step, `a step with the id ${stage}`).toBeDefined();
   return step as Step;
 }
 
@@ -131,7 +131,7 @@ describe("build.yml builds a ticket the moment it is filed (#826)", () => {
     expect(holds(job.if ?? "true", { sender: "collod873-machine[bot]", action: "unlabeled", label: "waiting", labels: ["note"] })).toBe(false);
   });
 
-  it("hands the ticket to its fixer once start passes, and nothing runs after a start refusal", () => {
+  it("hands the ticket to its fixer after start, and nothing runs after start fails", () => {
     const { job } = workflow();
 
     expect(stagesRun(job, "start")).toEqual(["start"]);
@@ -470,8 +470,7 @@ describe("build.yml re-runs an open PR's failed checks instead of building, when
     const withOpenPr = scratch("reopen-open-");
     const openCalls = join(withOpenPr, "calls");
     const openOutput = join(withOpenPr, "output");
-    script(join(withOpenPr, "bin", "mark"), "exit 0\n");
-    script(join(withOpenPr, "bin", "start"), `printf 'start called\\n' >>"${openCalls}"\n`);
+    script(join(withOpenPr, "bin", "mark"), `printf 'mark %s\\n' "$*" >>"${openCalls}"\n`);
     script(
       join(withOpenPr, "bin", "gh"),
       [
@@ -492,15 +491,14 @@ describe("build.yml re-runs an open PR's failed checks instead of building, when
 
     expect(opened.status, opened.stderr).toBe(0);
     const openLog = readFileSync(openCalls, "utf8");
-    expect(openLog).not.toContain("start called");
+    expect(openLog).not.toContain("mark 9 1-defining");
     expect(openLog).toMatch(/rerun/i);
     expect(stagesRun(job, undefined, { start: parseOutput(openOutput) })).toEqual(["start"]);
 
     const withNoPr = scratch("reopen-none-");
     const noCalls = join(withNoPr, "calls");
     const noOutput = join(withNoPr, "output");
-    script(join(withNoPr, "bin", "mark"), "exit 0\n");
-    script(join(withNoPr, "bin", "start"), `printf 'start called\\n' >>"${noCalls}"\n`);
+    script(join(withNoPr, "bin", "mark"), `printf 'mark %s\\n' "$*" >>"${noCalls}"\n`);
     script(
       join(withNoPr, "bin", "gh"),
       [`printf '%s\\n' "$*" >>"${noCalls}"`, 'case "$*" in', '  *"pr view ticket/9"*) exit 1 ;;', '  *"pr checks ticket/9"*) exit 1 ;;', "  *) exit 0 ;;", "esac", ""].join(
@@ -514,7 +512,7 @@ describe("build.yml re-runs an open PR's failed checks instead of building, when
     });
 
     expect(none.status, none.stderr).toBe(0);
-    expect(readFileSync(noCalls, "utf8")).toContain("start called");
+    expect(readFileSync(noCalls, "utf8")).toContain("mark 9 1-defining");
     expect(stagesRun(job, undefined, { start: parseOutput(noOutput) })).toEqual(["start", "fix"]);
   });
 });

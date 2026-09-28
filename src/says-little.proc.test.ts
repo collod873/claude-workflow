@@ -2,13 +2,12 @@ import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parts, type Part } from "./parts.ts";
-import { LINE_LIMIT, MOST_LINES, checkRepo, checking, closing, closingNote, coldReading, coveredByCheck, execute, filing, fixing, landSession, launching, marking, misshapenTicket, overLimit, researching, reviewing, saving, scratch, script, starting, wellFormedNote, wellFormedTicket, type Run } from "./scenarios.ts";
+import { LINE_LIMIT, MOST_LINES, checkRepo, closing, closingNote, coldReading, coveredByCheck, execute, filing, fixing, landSession, launching, marking, misshapenTicket, overLimit, researching, reviewing, saving, scratch, script, wellFormedNote, wellFormedTicket, type Run } from "./scenarios.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
 const NOISE = "a line a tool prints that nobody needed to read\n".repeat(40).trim();
 const URL = "https://github.com/collod873/claude-workflow/pull/1";
 const FILED = `printf '%s\\n' ${URL}\n`;
-const GREEN = "printf '      Tests  1 passed (1)\\n'\nexit 0\n";
 const NOTHING_METERED = { depth: [], cramming: [], beyond_the_ask: [], hollow_test: [], lost_limit: [] };
 const NOTE_CALL = ["note", "--title", "What the audit found", "--body-file", "body.md"];
 
@@ -33,16 +32,11 @@ const scenarios: Record<string, Scenario[]> = {
     { label: "with every reminder due", run: () => launching({ diverged: true, left: { "bright-fox": "unlanded" }, gh: `printf '#${"1".repeat(6)}\\n%.0s' {1..40}\nexit 0\n` }).run() },
     { label: "with claude refusing to start", run: () => launching({ claude: "printf 'claude refused to start\\n' >&2\nexit 1\n" }).run() },
   ],
-  "src/check-runner.ts": [
-    { label: "on a ticket whose check is red", run: () => checking("exit 1\n").run() },
-    { label: "on a ticket whose check already passes", run: () => checking(GREEN).run() },
-  ],
   "bin/file-issue": [
     { label: "filing a ticket", run: () => filing({ gh: FILED, body: wellFormedTicket }).run() },
     { label: "refusing a body with one defect", run: () => filing({ gh: FILED, body: wellFormedTicket.replace("## Why", "## Background") }).run() },
     { label: "refusing a body defective more ways than it shows", run: () => filing({ gh: FILED, body: misshapenTicket }).run() },
     { label: "refusing a call it does not file", run: () => filing({ gh: FILED, body: wellFormedTicket }).run(["judgement", "--title", "A judgement"]) },
-    { label: "refusing a ticket whose check already passes", run: () => filing({ gh: FILED, body: wellFormedTicket, npx: GREEN }).run() },
     { label: "filing a note", run: () => filing({ gh: FILED, body: wellFormedNote }).run(NOTE_CALL) },
     { label: "refusing a note that says no why", run: () => filing({ gh: FILED, body: "Four proposals, with no heading over them.\n" }).run(NOTE_CALL) },
   ],
@@ -55,7 +49,7 @@ const scenarios: Record<string, Scenario[]> = {
     { label: "with GitHub refusing the label", run: () => marking({ gh: `cat >&2 <<'NOISE'\n${NOISE}\nNOISE\nexit 1\n` }).run("811", "needs-human") },
   ],
   "bin/close": [
-    { label: "closing a ticket whose checks pass on the merge commit", run: () => closing({ ticket: "814", fixes: true }).run() },
+    { label: "closing a ticket whose PR merged", run: () => closing({ ticket: "814" }).run() },
     { label: "with the ticket unreadable", run: () => closing({ ticket: "815", readable: false }).run() },
   ],
   "bin/close-note": [
@@ -83,11 +77,6 @@ const scenarios: Record<string, Scenario[]> = {
     { label: "pushing a fix", run: () => fixing({ claude: "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n" }).run() },
     { label: "building a ticket", run: () => fixing({ claude: "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n" }).run("811") },
     { label: "calling the owner when two rounds in a row change nothing", run: () => fixing({ check: "printf 'bin/check: FAILED test\\n'\nexit 1\n" }).run() },
-  ],
-  "bin/start": [
-    { label: "starting a build", run: () => starting().run() },
-    { label: "refusing a body defective more ways than it shows", run: () => starting({ body: misshapenTicket }).run() },
-    { label: "refusing a ticket whose checks already pass", run: () => starting({ npx: GREEN }).run() },
   ],
 };
 

@@ -47,11 +47,6 @@ export const parts: Part[] = [
     stops: "https://github.com/collod873/claude-workflow/issues/663",
   },
   {
-    name: "src/check-runner.ts",
-    file: "src/check-runner.ts",
-    stops: "https://github.com/collod873/claude-workflow/issues/657",
-  },
-  {
     name: "src/prose.proc.test.ts",
     file: "src/prose.proc.test.ts",
     stops: "https://github.com/collod873/claude-workflow/issues/335",
@@ -70,12 +65,6 @@ export const parts: Part[] = [
   {
     name: "bin/file-issue",
     file: "bin/file-issue",
-    stops: "https://github.com/collod873/claude-workflow/issues/662",
-    lines: 5,
-  },
-  {
-    name: "bin/start",
-    file: "bin/start",
     stops: "https://github.com/collod873/claude-workflow/issues/662",
     lines: 5,
   },

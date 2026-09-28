@@ -111,11 +111,11 @@ describe("the meter reviewer's schema and prompt ask for each meter as a list th
     }
   });
 
-  it("asks for crammed criteria, behaviour nobody asked for, tests that pass on broken code, and the owner's limits the build drops", () => {
+  it("asks for crammed Done when sentences, behaviour nobody asked for, tests that pass on broken code, and the owner's limits the build drops", () => {
     const { prompt } = asked();
 
     expect(prompt).toMatch(/`cramming`: [^\n]*more than one behaviour/);
-    expect(prompt).toMatch(/`beyond_the_ask`: [^\n]*neither the Why nor the criteria ask for/);
+    expect(prompt).toMatch(/`beyond_the_ask`: [^\n]*neither the Why nor `## Done when` asks for/);
     expect(prompt).toMatch(/`hollow_test`: [^\n]*would still pass if the behaviour it names were broken/);
     expect(prompt).toMatch(/`lost_limit`: [^\n]*owner's own words/);
     expect(prompt).toMatch(/rule on nothing else/);

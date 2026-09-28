@@ -164,31 +164,23 @@ export const wellFormedTicket = [
   "",
   'The owner, in session: "a ticket is the only way in, so its shape is where intent survives".',
   "",
-  "## Acceptance criteria",
+  "## Done when",
   "",
-  "- [ ] The filing command refuses a misshapen body - check: `npx vitest run --config vitest.config.ts ticket-shape`",
-  "",
-  "## Files claimed",
-  "",
-  "- src/ticket-shape.ts",
+  "- Filing a misshapen body files nothing and names each defect.",
   "",
 ].join("\n");
 
 export const misshapenTicket = [
   "## Why",
   "",
-  "The session decided this was worth building.",
+  "The session decided this was worth building \u2014 at once.",
   "",
-  "## Acceptance criteria",
+  "## Done when",
   "",
-  "- [ ] one",
-  "- [ ] two",
-  "- [ ] three",
-  "- [ ] four",
-  "",
-  "## Files claimed",
-  "",
-  "- src/**",
+  "- one \u2014 first",
+  "- two \u2014 second",
+  "- three \u2014 third",
+  "- four \u2014 fourth",
   "",
 ].join("\n");
 
@@ -231,13 +223,11 @@ export function filing({
   gh,
   body,
   title = "A ticket the machine can build",
-  npx = "exit 1\n",
   sessionId,
 }: {
   gh: string;
   body: string;
   title?: string;
-  npx?: string;
   sessionId?: string;
 }) {
   const root = scratch("file-issue-");
@@ -246,27 +236,10 @@ export function filing({
   git(repo, "init", "--quiet", "--initial-branch=main");
   writeFileSync(join(repo, "body.md"), body);
   script(join(root, "bin", "gh"), gh);
-  script(join(root, "bin", "npx"), npx);
   return {
     repo,
     run: (args = ["ticket", "--title", title, "--body-file", "body.md"]) =>
       execute(join(BIN, "file-issue"), repo, { PATH: `${join(root, "bin")}:${process.env.PATH}`, CLAUDE_CODE_SESSION_ID: sessionId ?? "" }, args),
-  };
-}
-
-export function checking(npx: string) {
-  const dir = scratch("check-runner-");
-  script(join(dir, "bin", "npx"), npx);
-  return {
-    run: (): Run => {
-      const { status, stdout, stderr } = spawnSync("node", [join(SRC, "check-runner.ts")], {
-        cwd: dir,
-        input: wellFormedTicket,
-        encoding: "utf8",
-        env: { ...env, PATH: `${join(dir, "bin")}:${process.env.PATH ?? ""}` },
-      });
-      return { status, stdout, stderr };
-    },
   };
 }
 
@@ -310,38 +283,19 @@ export function landSession({ gh, remoteRefuses, messages = ["change"] }: { gh: 
   };
 }
 
-const CHECK_RED = "printf ' FAIL  src/ticket-shape.test.ts > names the behaviour\\n      Tests  1 failed (1)\\n'\nexit 1\n";
-
-type Tree = "fresh" | "behind" | "dirty" | "branch" | "unfetchable";
-
-function ghAnswers(body: string, edited?: string): string {
-  return [
-    'case "$*" in',
-    '  *"issue view"*)',
-    "    cat <<'TICKET'",
-    body,
-    "TICKET",
-    "    ;;",
-    ...(edited === undefined ? [] : [`  *"issue edit"*) printf '%s\\n' "$*" >>"${edited}" ;;`]),
-    "  *) exit 22 ;;",
-    "esac",
-    "",
-  ].join("\n");
-}
-
 export function plant(root: string, path: string, content: string): void {
   mkdirSync(dirname(join(root, path)), { recursive: true });
   writeFileSync(join(root, path), content);
 }
 
-function claimedSession(session: string, who: string, claimed: Record<string, string>, tests: Record<string, string>, branch: string): void {
+function branchedSession(session: string, who: string, onMain: Record<string, string>, tests: Record<string, string>, branch: string): void {
   mkdirSync(session, { recursive: true });
   git(session, "init", "--quiet", "--initial-branch=main");
   git(session, "config", "user.email", `${who}@test`);
   git(session, "config", "user.name", who);
-  for (const [path, content] of Object.entries(claimed)) plant(session, path, content);
+  for (const [path, content] of Object.entries(onMain)) plant(session, path, content);
   git(session, "add", ".");
-  git(session, "commit", "--quiet", "-m", "what the claim stands on");
+  git(session, "commit", "--quiet", "-m", "what the build stands on");
   git(session, "update-ref", "refs/remotes/origin/main", "HEAD");
   if (Object.keys(tests).length === 0) return;
   git(session, "checkout", "--quiet", "-b", branch);
@@ -378,109 +332,6 @@ export const FULL_CHECK_RED_ONCE = [
 
 const AUTHORED_TEST = 'import { it } from "vitest";\nit("names the behaviour the criterion asks for", () => {});\n';
 
-export function renamedAndDeletedHistory(session: string): void {
-  plant(session, "vitest.config.ts", "export default {};\n");
-  plant(session, "src/old-name.ts", "export const shaped = 1;\n");
-  plant(session, "src/soon-deleted.ts", "export const goingAway = 1;\n");
-  plant(session, "old.config.ts", "export default {};\n");
-  git(session, "add", ".");
-  git(session, "commit", "--quiet", "-m", "plant the paths a stale ticket will still claim");
-  git(session, "mv", "src/old-name.ts", "src/new-name.ts");
-  git(session, "mv", "old.config.ts", "new.config.ts");
-  git(session, "rm", "--quiet", "src/soon-deleted.ts");
-  git(session, "commit", "--quiet", "-m", "rename one claimed path and delete another");
-  git(session, "push", "--quiet", "origin", "main");
-}
-
-const OWNER_ON_PATHS = 'The owner, in session: "the flattening a build in flight caught, so paths get checked before a session starts".';
-
-export const RENAMED_CLAIM_TICKET = [
-  "## Why",
-  "",
-  OWNER_ON_PATHS,
-  "",
-  "## Acceptance criteria",
-  "",
-  "- [ ] The renamed path still gets built against - check: `npx vitest run --config vitest.config.ts old-name`",
-  "",
-  "## Files claimed",
-  "",
-  "- src/old-name.ts",
-  "",
-].join("\n");
-
-export const RENAMED_BESIDE_WORDS_TICKET = [
-  "## Why",
-  "",
-  'The owner, in session: "leave src/old-name.ts alone where I said it".',
-  "",
-  "## Acceptance criteria",
-  "",
-  "- [ ] The renamed config still runs - check: `npx vitest run --config old.config.ts old-name`",
-  "",
-  "## Files claimed",
-  "",
-  "- src/old-name.ts",
-  "- src/old-name.tsx",
-  "",
-].join("\n");
-
-export const DELETED_CLAIM_TICKET = [
-  "## Why",
-  "",
-  OWNER_ON_PATHS,
-  "",
-  "## Acceptance criteria",
-  "",
-  "- [ ] The deleted path is caught before a model runs - check: `npx vitest run --config vitest.config.ts soon-deleted`",
-  "",
-  "## Files claimed",
-  "",
-  "- src/soon-deleted.ts",
-  "",
-].join("\n");
-
-export const MISSING_CONFIG_TICKET = [
-  "## Why",
-  "",
-  OWNER_ON_PATHS,
-  "",
-  "## Acceptance criteria",
-  "",
-  "- [ ] The missing config is caught before a model runs - check: `npx vitest run --config missing.config.ts new-name`",
-  "",
-  "## Files claimed",
-  "",
-  "- src/new-name.ts",
-  "",
-].join("\n");
-
-export function starting({
-  body = wellFormedTicket,
-  npx = CHECK_RED,
-  tree = "fresh" as Tree,
-  history = (_session: string) => {},
-} = {}) {
-  const root = scratch("start-");
-  const { session } = cloned(root, "base", "the commit a stale tree has not got");
-  const spent = join(root, "claude-argv");
-  const edited = join(root, "gh-edit");
-  history(session);
-  if (tree === "behind") git(session, "reset", "--quiet", "--hard", "HEAD~1");
-  if (tree === "branch") git(session, "checkout", "--quiet", "-b", "ticket/721");
-  if (tree === "dirty") writeFileSync(join(session, "left-behind.txt"), "work nobody committed\n");
-  if (tree === "unfetchable") git(session, "remote", "set-url", "origin", join(root, "gone.git"));
-  script(join(root, "bin", "gh"), ghAnswers(body, edited));
-  script(join(root, "bin", "npx"), npx);
-  script(join(root, "bin", "claude"), `touch "${spent}"\n`);
-  return {
-    session,
-    spentModel: () => existsSync(spent),
-    edited: () => (existsSync(edited) ? readFileSync(edited, "utf8") : ""),
-    run: (ticket = "721") => execute(join(BIN, "start"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, [ticket]),
-  };
-}
-
 export const SAVED_PR = "https://github.com/collod873/claude-workflow/pull/9726";
 
 function readEvent(path: string): string {
@@ -497,8 +348,6 @@ function ghArgv(dir: string): { setup: string; calls: () => string[][] } {
 
 const CONSENT_ONLY_WHY = 'The owner, in session: "a plan carrying its own intent, spoken plainly, at length, right where it was proposed".';
 
-const TICKET_SHAPE_TEST = ['import { describe, it } from "vitest";', 'import { checkRepo } from "./scenarios.ts";', "", 'describe("ticket-shape", () => {', '  it("runs the shipped code", () => {', "    checkRepo();", "  });", "});", ""].join("\n");
-
 export function saving({
   remoteRefuses,
   brief,
@@ -506,8 +355,6 @@ export function saving({
   alreadyOpen = false,
   autoMergeRefused = false,
   why = CONSENT_ONLY_WHY,
-  criteria = ["- [ ] a fix lands - check: `npx vitest run --config vitest.config.ts ticket-shape`"],
-  files = {} as Record<string, string>,
 }: {
   remoteRefuses?: string;
   brief?: string;
@@ -515,8 +362,6 @@ export function saving({
   alreadyOpen?: boolean;
   autoMergeRefused?: boolean;
   why?: string;
-  criteria?: string[];
-  files?: Record<string, string>;
 } = {}) {
   const root = scratch("save-");
   const { remote, session } = cloned(root, "base");
@@ -524,11 +369,9 @@ export function saving({
   const argvDir = join(root, "gh-argv");
   const judged = join(root, "judged");
   const { setup, calls: argvCalls } = ghArgv(argvDir);
-  const ticketBody = ["## Why", "", why, "", "## Acceptance criteria", "", ...criteria, ""].join("\n");
+  const ticketBody = ["## Why", "", why, "", "## Done when", "", "- a fix lands", ""].join("\n");
   git(session, "checkout", "--quiet", "-b", "ticket/726");
   plant(session, "src/ticket-shape.ts", "export const shaped = 2;\n");
-  plant(session, "src/ticket-shape.test.ts", TICKET_SHAPE_TEST);
-  for (const [path, content] of Object.entries(files)) plant(session, path, content);
   git(session, "add", ".");
   git(session, "commit", "--quiet", "-m", "Build #726 against its failing tests");
   const built = git(session, "rev-parse", "HEAD");
@@ -585,15 +428,11 @@ export function saving({
 const CLOSER_TICKET = [
   "## Why",
   "",
-  'The owner, in session: "a closer proves the ticket is done before closing it".',
+  'The owner, in session: "a ticket closes once its PR merges".',
   "",
-  "## Acceptance criteria",
+  "## Done when",
   "",
-  "- [ ] The fix lands - check: `test -f built.txt`",
-  "",
-  "## Files claimed",
-  "",
-  "- src/built.ts",
+  "- The fix lands.",
   "",
 ].join("\n");
 
@@ -608,7 +447,6 @@ const FAST_TIMING = {
 export function closing({
   ticket = "812",
   ticketBody = CLOSER_TICKET,
-  fixes = true,
   readable = true,
   timing = FAST_TIMING,
   closedAs,
@@ -620,7 +458,6 @@ export function closing({
 }: {
   ticket?: string;
   ticketBody?: string;
-  fixes?: boolean;
   readable?: boolean;
   timing?: { filed: string; firstCommit: string; rebased?: string; prOpened: string; checksGreen: string; merged: string };
   closedAs?: "COMPLETED" | "NOT_PLANNED";
@@ -644,7 +481,6 @@ export function closing({
   git(session, "add", ".");
   git(session, "commit", "--quiet", "-m", "base");
   git(session, "checkout", "--quiet", "-b", `ticket/${ticket}`);
-  if (fixes) plant(session, "built.txt", "done\n");
   git(session, "add", "-A");
   commitAt(session, timing.firstCommit, ["commit", "--quiet", "--allow-empty", "-m", `Build #${ticket} against its failing tests`], timing.rebased);
   git(session, "checkout", "--quiet", "main");
@@ -703,13 +539,9 @@ export const REVIEWED_TICKET = [
   "",
   'The owner, in session: "a green build is read against what was meant before it merges".',
   "",
-  "## Acceptance criteria",
+  "## Done when",
   "",
-  "- [ ] A drift verdict posts every gap - check: `npx vitest run --config vitest.config.ts reviewer`",
-  "",
-  "## Files claimed",
-  "",
-  "- src/reviewer.ts",
+  "- A drift verdict posts every gap.",
   "",
 ].join("\n");
 
@@ -865,13 +697,9 @@ const FIXED_TICKET = [
   "",
   'The owner, in session: "a red ticket stays with its fixer until it merges, never the owner".',
   "",
-  "## Acceptance criteria",
+  "## Done when",
   "",
-  "- [ ] The fixer clears a red ticket - check: `npx vitest run --config vitest.config.ts ticket-shape`",
-  "",
-  "## Files claimed",
-  "",
-  "- src/ticket-shape.ts",
+  "- The fixer clears a red ticket.",
   "",
 ].join("\n");
 
@@ -909,7 +737,7 @@ export function fixing({
   script(join(session, "bin", "check"), check);
   script(join(session, "bin", "mark"), `printf '%s\\n' "$*" >>"${marks}"\n`);
   script(join(session, "bin", "save"), `printf '%s\\n' "$*" >>"${saves}"\n${save}`);
-  claimedSession(session, "fixer", { "src/ticket-shape.ts": "export const shaped = 1;\n" }, { "src/ticket-shape.test.ts": AUTHORED_TEST }, "ticket/811");
+  branchedSession(session, "fixer", { "src/ticket-shape.ts": "export const shaped = 1;\n" }, { "src/ticket-shape.test.ts": AUTHORED_TEST }, "ticket/811");
   git(session, "commit", "--quiet", "--allow-empty", "-m", "Build #811 against its failing tests");
   const redAt = git(session, "rev-parse", "HEAD");
   for (const [name, text] of Object.entries(logged)) plant(session, `.git/machine-logs/${name}`, text);
@@ -988,6 +816,26 @@ export function closingNote(labels: string, { gh = "exit 0\n" }: { gh?: string }
 export const READING_SESSION = "reading-session";
 export const FINDINGS_POSTED ="https://github.com/collod873/claude-workflow/issues/902#issuecomment-1";
 
+function issueStage(prefix: string, issue: object, answer: object, posted: string, gh: string, cutOff = "") {
+  const root = scratch(prefix);
+  const { setup, calls } = ghArgv(join(root, "gh-argv"));
+  const handed = join(root, "claude-stdin");
+  const hired = join(root, "claude-argv");
+  git(root, "init", "--quiet", "--initial-branch=main");
+  plant(root, "issue.json", JSON.stringify(issue));
+  plant(root, "answer.json", `${JSON.stringify({ type: "result", subtype: "success", is_error: false, structured_output: answer })}\n`);
+  script(join(root, "bin", "gh"), [setup, gh, 'case "$*" in', `  *"issue view"*) cat "${join(root, "issue.json")}" ;;`, `  *"issue comment"*) printf '%s\\n' '${posted}' ;;`, "esac", ""].join("\n"));
+  script(join(root, "bin", "claude"), `printf '%s\\0' "$@" >"${hired}"\ncat >"${handed}"\n${cutOff}cat "${join(root, "answer.json")}"\n`);
+  return {
+    root,
+    argv: calls,
+    hired: () => (existsSync(hired) ? readFileSync(hired, "utf8").split("\0") : []),
+    handed: () => (existsSync(handed) ? readFileSync(handed, "utf8") : ""),
+    calls: () => calls().map((args) => args.slice(0, 3).join(" ")),
+    comments: () => calls().filter((args) => args[1] === "comment").map((args) => args[args.indexOf("--body") + 1]),
+  };
+}
+
 export function researching({
   labels = ["note", "research"],
   findings = "The closer judges only an issue with checks, so a note waits on a session.",
@@ -995,21 +843,10 @@ export function researching({
   sources = "",
   readsPastCap = false,
 }: { labels?: string[]; findings?: string; gh?: string; sources?: string; readsPastCap?: boolean } = {}) {
-  const root = scratch("research-");
-  const { setup, calls } = ghArgv(join(root, "gh-argv"));
-  const handed = join(root, "claude-stdin");
-  const hired = join(root, "claude-argv");
-  git(root, "init", "--quiet", "--initial-branch=main");
-  plant(root, "issue.json", JSON.stringify({ title: "What does the closer judge", body: wellFormedNote, labels: labels.map((name) => ({ name })) }));
-  plant(root, "answer.json", `${JSON.stringify({ type: "result", subtype: "success", is_error: false, structured_output: { findings } })}\n`);
-  script(join(root, "bin", "gh"), [setup, gh, 'case "$*" in', `  *"issue view"*) cat "${join(root, "issue.json")}" ;;`, `  *"issue comment"*) printf '%s\\n' '${FINDINGS_POSTED}' ;;`, "esac", ""].join("\n"));
   const cutOff = readsPastCap ? `case "$*" in *--resume*) ;; *) printf '%s\\n' '${JSON.stringify({ type: "system", session_id: READING_SESSION })}'; exit 124 ;; esac\n` : "";
-  script(join(root, "bin", "claude"), `printf '%s\\0' "$@" >"${hired}"\ncat >"${handed}"\n${cutOff}cat "${join(root, "answer.json")}"\n`);
+  const { root, ...stage } = issueStage("research-", { title: "What does the closer judge", body: wellFormedNote, labels: labels.map((name) => ({ name })) }, { findings }, FINDINGS_POSTED, gh, cutOff);
   return {
-    hired: () => (existsSync(hired) ? readFileSync(hired, "utf8").split("\0") : []),
-    handed: () => (existsSync(handed) ? readFileSync(handed, "utf8") : ""),
-    calls: () => calls().map((args) => args.slice(0, 3).join(" ")),
-    comments: () => calls().filter((args) => args[1] === "comment").map((args) => args[args.indexOf("--body") + 1]),
+    ...stage,
     run: (...args: string[]) => execute(join(BIN, "research"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}`, RESEARCH_SOURCES: sources, STAGE_MINUTES: readsPastCap ? "40" : "" }, args.length > 0 ? args : ["902"]),
   };
 }
@@ -1024,22 +861,11 @@ export function coldReading({
   choices = [] as { guess: string; why: string }[],
   gh = "",
 }: { labels?: string[]; title?: string; body?: string; build?: string; choices?: { guess: string; why: string }[]; gh?: string } = {}) {
-  const root = scratch("cold-read-");
-  const { setup, calls } = ghArgv(join(root, "gh-argv"));
-  const handed = join(root, "claude-stdin");
-  const hired = join(root, "claude-argv");
-  git(root, "init", "--quiet", "--initial-branch=main");
-  plant(root, "issue.json", JSON.stringify({ title, body, labels: labels.map((name) => ({ name })) }));
-  plant(root, "answer.json", `${JSON.stringify({ type: "result", subtype: "success", is_error: false, structured_output: { build, choices } })}\n`);
-  script(join(root, "bin", "gh"), [setup, gh, 'case "$*" in', `  *"issue view"*) cat "${join(root, "issue.json")}" ;;`, `  *"issue comment"*) printf '%s\\n' '${COLD_READ_POSTED}' ;;`, "esac", ""].join("\n"));
-  script(join(root, "bin", "claude"), `printf '%s\\0' "$@" >"${hired}"\ncat >"${handed}"\ncat "${join(root, "answer.json")}"\n`);
+  const { root, argv, ...stage } = issueStage("cold-read-", { title, body, labels: labels.map((name) => ({ name })) }, { build, choices }, COLD_READ_POSTED, gh);
   return {
-    hired: () => (existsSync(hired) ? readFileSync(hired, "utf8").split("\0") : []),
-    handed: () => (existsSync(handed) ? readFileSync(handed, "utf8") : ""),
-    calls: () => calls().map((args) => args.slice(0, 3).join(" ")),
-    comments: () => calls().filter((args) => args[1] === "comment").map((args) => args[args.indexOf("--body") + 1]),
-    edits: () => calls().filter((args) => args[1] === "edit"),
-    closes: () => calls().filter((args) => args[1] === "close"),
+    ...stage,
+    edits: () => argv().filter((args) => args[1] === "edit"),
+    closes: () => argv().filter((args) => args[1] === "close"),
     run: (...args: string[]) => execute(join(BIN, "cold-read"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, args.length > 0 ? args : ["968"]),
   };
 }

@@ -1,8 +1,4 @@
-export const STOPS = {
-  shape: "Start refused: shape (a raw filing that skipped `file-issue`)",
-  stale: "Start refused: a claimed file is deleted, or a check names a `--config` that does not exist",
-  alreadyPasses: "Start: the ticket's checks already pass on main",
-  unfreshTree: "Start: the tree is not clean, fresh main",
+const STOPS = {
   unread: "The ticket or its PR cannot be read",
   modelRun: "A stage's model run exits non-zero, or gives no answer",
   drift: "The reviewer finds drift from `## Why`",
@@ -12,11 +8,6 @@ export const STOPS = {
 } as const;
 
 export type Stop = keyof typeof STOPS;
-
-export interface Stopped {
-  stop: Stop;
-  refusals: string[];
-}
 
 export function stoppedAt(stop: Stop, line: string): Stop {
   console.error(line);

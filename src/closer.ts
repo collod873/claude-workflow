@@ -1,14 +1,10 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { runCheck } from "./check-runner.ts";
 import { splitInto, WAITING } from "./fixer.ts";
 import { commentOnPr, commentOnTicket, commentsOn } from "./post.ts";
 import { totalOutside } from "./reads-outside-brief.ts";
 import { FINGERPRINT, FOLLOW_UP_OF } from "./reviewer.ts";
 import { exitFor, stoppedAt, type Stop } from "./stops.ts";
-import { checks, quoted, why } from "./ticket-shape.ts";
+import { quoted, why } from "./ticket-shape.ts";
 
 const MERGED = /^Merge pull request #(\d+) from \S+?(?:\/ticket\/(\d+))?$/;
 const SPLIT_FROM = new RegExp(`^${FOLLOW_UP_OF}(\\d+): its fixer split it`, "m");
@@ -23,13 +19,6 @@ const gh = (args: string[]) => run("gh", args);
 const quietGh = (args: string[]) => spawnSync("gh", args, { encoding: "utf8", env: { ...process.env, GH_TOKEN: process.env.QUIET_GH_TOKEN } });
 const ticketState = (ticket: string) => gh(["issue", "view", ticket, "--json", "state,stateReason", "--jq", '.state + " " + .stateReason']).stdout.trim();
 const git = (args: string[]) => run("git", args);
-
-interface Verdict {
-  command: string;
-  base: boolean;
-  merge: boolean;
-  why: string;
-}
 
 interface Marks {
   filed?: string;
@@ -132,40 +121,7 @@ function speedReport(marks: Marks, readsOutside: number | undefined, collided: C
   return lines.join("\n");
 }
 
-function atBase(top: string): string {
-  const dir = mkdtempSync(join(tmpdir(), "close-base-"));
-  rmSync(dir, { recursive: true, force: true });
-  git(["worktree", "add", "--quiet", "--detach", dir, "HEAD^1"]);
-  if (existsSync(join(top, "node_modules")) && existsSync(dir)) symlinkSync(join(top, "node_modules"), join(dir, "node_modules"));
-  return dir;
-}
-
-function verdicts(commands: string[], top: string): Verdict[] {
-  const base = atBase(top);
-  const gathered = commands.map((command) => {
-    const merged = runCheck(command, top);
-    return { command, base: runCheck(command, base).passed, merge: merged.passed, why: merged.why };
-  });
-  git(["worktree", "remove", "--force", base]);
-  return gathered;
-}
-
-function notDoneReason(ticket: string, red: Verdict[]): string {
-  return [`#${ticket} is not done: a check is red on the merge commit`, "", ...red.map(({ command, why }) => `- \`${command}\` ${why} on the merge commit`)].join("\n");
-}
-
-function record(ticket: string, gathered: Verdict[], speed: string): string {
-  if (gathered.length === 0) return `#${ticket} carries no check, so nothing proves it done on the merge commit; left open\n\n${speed}`;
-  const red = gathered.filter((verdict) => !verdict.merge);
-  if (red.length > 0) return [notDoneReason(ticket, red), "", speed].join("\n");
-  return [
-    `#${ticket} is done: every check is green on the merge commit`,
-    "",
-    ...gathered.map(({ command, base }) => `- \`${command}\` was ${base ? "already green" : "red"} at base, green at merge`),
-    "",
-    speed,
-  ].join("\n");
-}
+const record = (ticket: string, pr: string | undefined, speed: string): string => [`#${ticket} is done: ${pr === undefined ? "its build" : `PR #${pr}`} merged`, "", speed].join("\n");
 
 const recorded = (said: string) => (said === "" ? "" : `; record ${said}`);
 
@@ -217,7 +173,6 @@ function wokenFromSplit(ticket: string, body: string): string {
 }
 
 function close(): Stop | undefined {
-  const top = process.cwd();
   const openedPr = process.env.OPENED_PR;
   if (openedPr !== undefined && openedPr !== "") {
     bringOpenedPrUpToDate(openedPr);
@@ -230,28 +185,20 @@ function close(): Stop | undefined {
   if (ticket === undefined) return undefined;
   const asked = gh(["issue", "view", ticket, "--json", "body", "--jq", ".body"]);
   if (asked.status !== 0) return stoppedAt("unread", `close: ticket ${ticket} could not be read, so nothing judged it`);
-  const gathered = verdicts(checks(asked.stdout).map(({ command }) => command), top);
   const pr = prNumber(subject);
   const prBody = pr === undefined ? undefined : ghText(["pr", "view", pr, "--json", "body", "--jq", ".body"]);
   const prComments = pr === undefined ? undefined : commentsOn(pr, gh);
   const speed = speedReport(marksFor(ticket, pr), prBody === undefined ? undefined : totalOutside(prBody), prComments === undefined ? undefined : collisions(prComments));
-  const posted = commentOnTicket(ticket, record(ticket, gathered, speed), gh);
+  const posted = commentOnTicket(ticket, record(ticket, pr, speed), gh);
   const [refusal] = posted.refusals;
   if (refusal !== undefined) return stoppedAt("unrecorded", `close: #${ticket} got no closing record: ${quoted(refusal)}`);
-  const done = gathered.length > 0 && gathered.every((verdict) => verdict.merge);
-  if (done) {
-    const state = ticketState(ticket);
-    gh(["issue", "edit", ticket, "--remove-label", STAGE_LABELS]);
-    if (state !== "CLOSED COMPLETED") {
-      if (state.startsWith("CLOSED")) quietGh(["issue", "reopen", ticket]);
-      if (quietGh(["issue", "close", ticket, "--reason", "completed"]).status !== 0) return stoppedAt("unrecorded", `close: #${ticket} is done but could not be closed${recorded(posted.said)}`);
-    }
-    console.log(`close: #${ticket} closed as completed, every check green on the merge commit${recorded(posted.said)}${wokenFromSplit(ticket, asked.stdout)}`);
-    return undefined;
+  const state = ticketState(ticket);
+  gh(["issue", "edit", ticket, "--remove-label", STAGE_LABELS]);
+  if (state !== "CLOSED COMPLETED") {
+    if (state.startsWith("CLOSED")) quietGh(["issue", "reopen", ticket]);
+    if (quietGh(["issue", "close", ticket, "--reason", "completed"]).status !== 0) return stoppedAt("unrecorded", `close: #${ticket} is done but could not be closed${recorded(posted.said)}`);
   }
-  const red = gathered.filter((verdict) => !verdict.merge);
-  if (red.length > 0) wakeFixer(ticket, notDoneReason(ticket, red));
-  console.log(`close: #${ticket} left open, a check is red on the merge commit${recorded(posted.said)}`);
+  console.log(`close: #${ticket} closed as completed, its PR merged${recorded(posted.said)}${wokenFromSplit(ticket, asked.stdout)}`);
   return undefined;
 }
 

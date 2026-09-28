@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { post, type Posting } from "./post.ts";
+import { wellFormedNote as NOTE, wellFormedSpec as SPEC } from "./scenarios.ts";
 
 const URL = "https://github.com/collod873/claude-workflow/issues/700";
 const TICKET = [
@@ -7,48 +8,9 @@ const TICKET = [
   "",
   'The owner, in session: "the machine takes a ticket and nothing else".',
   "",
-  "## Acceptance criteria",
+  "## Done when",
   "",
-  "- [ ] The door files a well-formed ticket - check: `npx vitest run --config vitest.config.ts post`",
-  "",
-  "## Files claimed",
-  "",
-  "- src/post.ts",
-  "",
-].join("\n");
-
-const NOTE = ["## Why", "", "Three passes over the standards left four proposals nobody can build until the owner weighs them.", ""].join("\n");
-
-const SPEC = [
-  "## Problem Statement",
-  "",
-  'The owner, in session: "a spec is filed once, so the cold read and the slicer share one document".',
-  "",
-  "## Solution",
-  "",
-  "File a spec kind alongside a ticket, sharing its filing pipeline.",
-  "",
-  "## User Stories",
-  "",
-  "1. As the owner, I can file a spec before any ticket exists.",
-  "",
-  "## Implementation Decisions",
-  "",
-  "Reuse the ticket machinery where it already fits.",
-  "",
-  "## Testing Decisions",
-  "",
-  "Cover the shape with unit tests.",
-  "",
-  "## Out of Scope",
-  "",
-  "The cold read and the slicer.",
-  "",
-  "## Further Notes",
-  "",
-  "## I'll know it works when I can",
-  "",
-  "- [ ] see a spec land as its own issue, labelled spec",
+  "- The door files a well-formed ticket.",
   "",
 ].join("\n");
 
@@ -131,8 +93,7 @@ describe("src/post.ts is the one way the machine writes text to GitHub (#662)", 
     expect(post(posting({ kind: "note", text: NOTE, title: "What the audit found" }), gh).refusals).toEqual([]);
     expect(post(posting({ text: NOTE }), gh).refusals).toEqual([
       "'## Why' quotes no owner words: it carries no \"...\" quote and no > quoted line",
-      "the body carries no '## Acceptance criteria'",
-      "the body carries no '## Files claimed'",
+      "the body carries no '## Done when', so nothing says what done looks like",
     ]);
   });
 
