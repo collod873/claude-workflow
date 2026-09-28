@@ -43,7 +43,6 @@ jobs:
         run: tail -n 60 "$(git rev-parse --git-common-dir)"/machine-logs/check-*.log
 
   review:
-    needs: check
     if: ${{ startsWith(github.head_ref, 'ticket/') && github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -115,7 +114,6 @@ jobs:
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
 
   meters:
-    needs: check
     if: ${{ startsWith(github.head_ref, 'ticket/') && github.event.pull_request.head.repo.full_name == github.repository }}
     continue-on-error: true
     runs-on: ubuntu-latest

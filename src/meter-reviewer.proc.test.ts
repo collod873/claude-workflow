@@ -162,7 +162,6 @@ describe("check.yml runs the meters beside the review, and a red meter run never
     const meters = jobs.meters;
     if (meters === undefined) throw new Error(`no meters job in ${WORKFLOW}`);
 
-    expect(meters.needs).toBe("check");
     expect(meters.if).toContain("startsWith(github.head_ref, 'ticket/')");
     expect(meters.if).toContain("github.event.pull_request.head.repo.full_name == github.repository");
     expect(meters["continue-on-error"]).toBe(true);
@@ -170,7 +169,6 @@ describe("check.yml runs the meters beside the review, and a red meter run never
     const logs = meters.steps.find((step) => (step.uses ?? "").includes("stage-logs"));
     expect(logs?.with?.artifact).toBeDefined();
     expect(logs?.with?.artifact).not.toBe("machine-logs");
-    expect(jobs.review?.needs).toBe("check");
   });
 });
 

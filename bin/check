@@ -19,12 +19,18 @@ rm -f "$log"
 [[ $log == "$repo/"* ]] && shown="${log#"$repo/"}" || shown="$log"
 
 passed_at="$(git rev-parse --absolute-git-dir)/check-passed"
-committed() {
-  [[ -z $(git status --porcelain) ]] && printf '%s\n%s\n' "$(git rev-parse HEAD)" "${AGENT_HOOKS_SETTINGS:-}"
+fingerprint() {
+  local index tree
+  index="$(git rev-parse --absolute-git-dir)/check-index"
+  rm -f "$index"
+  GIT_INDEX_FILE="$index" git add --all >/dev/null 2>&1
+  tree=$(GIT_INDEX_FILE="$index" git write-tree)
+  rm -f "$index"
+  printf '%s\n%s\n' "$tree" "${AGENT_HOOKS_SETTINGS:-}"
 }
 if [[ -z $mode ]]; then
-  checking=$(committed)
-  if [[ -n $checking && -f $passed_at && $(<"$passed_at") == "$checking" ]]; then
+  checking=$(fingerprint)
+  if [[ -f $passed_at && $(<"$passed_at") == "$checking" ]]; then
     printf 'bin/check: passed, already at %s\n' "$(git rev-parse --short HEAD)"
     exit 0
   fi
@@ -62,7 +68,7 @@ run prompts node src/prompt-bytes.ts
 run links node src/part-links.ts
 
 if [ -z "$names" ]; then
-  [[ -z $mode && -n $checking && $(committed) == "$checking" ]] && printf '%s\n' "$checking" >"$passed_at"
+  [[ -z $mode && $(fingerprint) == "$checking" ]] && printf '%s\n' "$checking" >"$passed_at"
   printf 'bin/check: passed%s\n' "${tests:+, $tests tests}"
   exit 0
 fi

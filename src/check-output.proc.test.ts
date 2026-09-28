@@ -144,7 +144,7 @@ describe("bin/check takes its own pass on the commit in hand, so the machine's c
     expect(ran()).toBe(2);
   });
 
-  it("runs the suite again on uncommitted work and on a new commit, and takes no pass while the tree is dirty", () => {
+  it("runs the suite again on uncommitted work, then takes a pass on it at once and after it is committed unchanged", () => {
     const { repo, run } = checkRepo();
     const ran = countedSuite(repo);
     run(repo, [], HOOKS_ON);
@@ -152,12 +152,12 @@ describe("bin/check takes its own pass on the commit in hand, so the machine's c
     plant(repo, "src/a.ts", "export const a = 1;\n");
     run(repo, [], HOOKS_ON);
     run(repo, [], HOOKS_ON);
-    expect(ran()).toBe(3);
+    expect(ran()).toBe(2);
 
     git(repo, "add", ".");
     git(repo, "commit", "--quiet", "-m", "commit the work");
     run(repo, [], HOOKS_ON);
-    expect(ran()).toBe(4);
+    expect(ran()).toBe(2);
   });
 
   it("takes no pass from a red run", () => {
