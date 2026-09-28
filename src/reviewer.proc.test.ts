@@ -406,6 +406,64 @@ describe("bin/review reuses its last judgement on the PR when what it judged has
   });
 });
 
+describe("bin/review runs one review at a time per PR, queued not cancelled (#973)", () => {
+  it("runs one review at a time per PR, in a concurrency group keyed on the PR's number that queues rather than cancels, while check and meters stay outside that group", () => {
+    const { jobs } = parse(readFileSync(WORKFLOW, "utf8")) as {
+      jobs: Record<string, { concurrency?: { group?: string; "cancel-in-progress"?: boolean } }>;
+    };
+    const review = jobNamed(jobs, "review");
+    const check = jobNamed(jobs, "check");
+    const meters = jobNamed(jobs, "meters");
+
+    expect(review.concurrency?.group ?? "").toContain("github.event.pull_request.number");
+    expect(review.concurrency?.["cancel-in-progress"]).not.toBe(true);
+    expect(check.concurrency).toBeUndefined();
+    expect(meters.concurrency).toBeUndefined();
+  });
+});
+
+describe("bin/review writes nothing when the PR moved under it while its model answered (#973)", () => {
+  it("writes nothing when the PR moved under it: a diff or ticket whose fingerprint differs from the one it judged posts no judgement, no later finds and no follow-up, and ends green saying a newer run judges the PR", () => {
+    const diff = fileDiff("src/reviewer.ts", "export const reviewed = 1;");
+    const otherDiff = fileDiff("src/reviewer.ts", "export const reviewed = 2;");
+
+    const diffMoved = reviewing({ diff, diffAfter: otherDiff, verdict: { verdict: "match", gaps: [], readback: "should never be posted, the diff moved" } });
+    const diffMovedResult = diffMoved.run();
+    expect(diffMovedResult.status).toBe(0);
+    expect(diffMoved.hired()).not.toEqual([]);
+    expect(diffMoved.comments()).toEqual([]);
+    expect(diffMoved.ticketComments()).toEqual([]);
+    expect(diffMoved.filed()).toEqual([]);
+    expect(diffMovedResult.stdout + diffMovedResult.stderr).toMatch(/newer run judges/i);
+
+    const otherBody = REVIEWED_TICKET.replace("A drift verdict posts every gap", "A drift verdict posts every gap, sorted");
+    const ticketMoved = reviewing({ diff, bodyAfter: otherBody, verdict: { verdict: "drift", gaps: ["should never be asked, the ticket moved"] } });
+    const ticketMovedResult = ticketMoved.run();
+    expect(ticketMovedResult.status).toBe(0);
+    expect(ticketMoved.hired()).not.toEqual([]);
+    expect(ticketMoved.comments()).toEqual([]);
+    expect(ticketMoved.ticketComments()).toEqual([]);
+    expect(ticketMoved.filed()).toEqual([]);
+    expect(ticketMovedResult.stdout + ticketMovedResult.stderr).toMatch(/newer run judges/i);
+  });
+});
+
+describe("bin/review posts its judgement when only main moved under it while its model answered (#973)", () => {
+  it("posts when only main moved under it: a PR brought up to date with main mid-run, its fingerprint unchanged, posts its judgement as today so the review queued behind it reuses it", () => {
+    const { before, after } = diffsAcrossMerge();
+    expect(before).not.toBe(after);
+
+    const { run, hired, comments, order } = reviewing({ diff: before, diffAfter: after });
+    const result = run();
+
+    expect(result.status).toBe(0);
+    expect(hired()).not.toEqual([]);
+    expect(order().filter((entry) => entry === "pr diff")).toHaveLength(2);
+    expect(comments()).toHaveLength(1);
+    expect(comments()[0]).toContain(`Fingerprint: \`${fingerprintOf(before, REVIEWED_TICKET)}\``);
+  });
+});
+
 describe("bin/review --help prints its usage and exits clean, reading no PR and hiring no model (#842)", () => {
   it("prints its usage line to stdout and exits 0, reading no PR and hiring no model", () => {
     const { run, read, hired, spent } = reviewing();
