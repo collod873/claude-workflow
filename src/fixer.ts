@@ -83,7 +83,8 @@ function checkRed(): string {
 
 const BUILD_IT = [
   "## Build it",
-  "Build what the ticket's Why asks for until its `## Done when` holds, with tests that fail without your change.",
+  "Build what the ticket's Why asks for until its `## Done when` holds.",
+  "Work red before green, one slice at a time: write one failing test, see it fail, write only enough to pass it, repeat.",
   "Commit your own work, each message saying why. If the test count drops, give the reason on a line of its own: `Test count drop: <why>`.",
   `Run \`${CHECK}\` last: it runs every gate and the whole suite, so running the suite apart only repeats it.`,
 ];
