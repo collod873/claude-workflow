@@ -24,7 +24,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           SPEC: ${{ github.event.issue.number }}
         run: |
-          asked=$(gh api --paginate "repos/$GH_REPO/issues/$SPEC/comments" --jq '.[] | select(.body | startswith("## Done check")) | .body | contains("**Put to the owner**")' | tail -n 1)
+          asked=$(gh api --paginate "repos/$GH_REPO/issues/$SPEC/comments" --jq '.[] | select(.body | startswith("## Done check")) | .body | contains("**Put to the owner**") and (contains("<!-- fix-wave -->") | not)' | tail -n 1)
           printf 'asked=%s\n' "${asked:-false}" >>"$GITHUB_OUTPUT"
 
   check:

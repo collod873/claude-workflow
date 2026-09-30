@@ -3,7 +3,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { capped } from "./brief.ts";
 import { UNFENCED } from "./fence.ts";
-import { askedIssue, commentOnTicket, commentsOn, gh, type Asked } from "./post.ts";
+import { askedIssue, authoredOn, commentOnTicket, gh, OWNER, type Asked } from "./post.ts";
 import { NO_EM_DASH } from "./reviewer.ts";
 import { hired, machineLogs } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
@@ -98,6 +98,7 @@ const listing = (missed: [number, string, Try][], between: string) => missed.map
 const WAVE_CHECK = "## Wave check";
 const WAVE_OUTCOMES: Record<Outcome, string> = { ...OUTCOMES, owner: "Waits for the end" };
 const WAVE_MISSED = /^- Sentence (\d+), \*\*Did not hold\*\*/gm;
+const missedIn = (waveCheck: string) => new Set([...waveCheck.matchAll(WAVE_MISSED)].map(([, number]) => Number(number)));
 
 const wavePosted = (tried: [number, string, Try][], repeated: [number, string, Try][]) =>
   [
@@ -108,13 +109,12 @@ const wavePosted = (tried: [number, string, Try][], repeated: [number, string, T
     "",
   ].join("\n");
 
-function triedByModel({ issue, asked, comments }: Read, ran: number[], wave?: number[]): Try[] | string {
+function triedByModel({ issue, asked, replies: owners }: Read, ran: number[], wave?: number[]): Try[] | string {
   const logs = machineLogs(process.cwd());
   mkdirSync(logs, { recursive: true });
   const spend = hired({ name: "done checker", transcript: join(logs, `done-check-${issue}.jsonl`), reach: UNFENCED, answers: TRIES });
   if (typeof spend === "string") return `the owner's hooks could not be read from ${spend}`;
-  const since = comments.map((comment) => comment.startsWith(DONE_CHECK)).lastIndexOf(true);
-  const replies = wave === undefined && since !== -1 ? comments.slice(since + 1).join("\n\n") : "";
+  const replies = wave === undefined ? owners : "";
   const spent = spend(handedOn(asked.title, asked.body, { ran, wave, replies }));
   if (spent.refusal !== undefined) return spent.refusal;
   const given = (spent.answer as { tries?: unknown } | undefined)?.tries;
@@ -126,6 +126,7 @@ interface Read {
   said: string;
   asked: Asked;
   comments: string[];
+  replies: string;
   listed: Sentence[];
 }
 
@@ -137,9 +138,12 @@ function read(issue: string): Read | Stop {
   if (!asked.labels.some(({ name }) => name === SPEC_LABEL)) return stoppedAt("notSpec", `${said} is not a spec, so nothing was tried`);
   const listed = sentences(asked.body);
   if (listed.length === 0) return stoppedAt("notSpec", `${said} carries no sentence to try, so nothing was tried or closed`);
-  const comments = commentsOn(issue, gh);
-  if (comments === undefined) return stoppedAt("unread", `${said} could not read its comments, so nothing was tried`);
-  return { issue, said, asked, comments, listed };
+  const authored = authoredOn(issue, gh);
+  if (authored === undefined) return stoppedAt("unread", `${said} could not read its comments, so nothing was tried`);
+  const comments = authored.map(({ body }) => body);
+  const since = comments.map((comment) => comment.startsWith(DONE_CHECK)).lastIndexOf(true);
+  const replies = since === -1 ? "" : authored.slice(since + 1).flatMap(({ author, body }) => (author === OWNER ? [body] : [])).join("\n\n");
+  return { issue, said, asked, comments, replies, listed };
 }
 
 function tried(spec: Read, numbers: number[], wave?: number[]): [number, string, Try][] | Stop {
@@ -173,8 +177,7 @@ function waveCheck(issue: string, wave: number[]): Stop | undefined {
   if (beyond !== undefined) return stoppedAt("notSpec", `${spec.said} carries no sentence ${beyond}, so nothing was tried`);
   const found = tried(spec, wave, wave);
   if (!Array.isArray(found)) return found;
-  const last = spec.comments.filter((comment) => comment.startsWith(WAVE_CHECK)).at(-1) ?? "";
-  const missedBefore = new Set([...last.matchAll(WAVE_MISSED)].map(([, number]) => Number(number)));
+  const missedBefore = missedIn(spec.comments.filter((comment) => comment.startsWith(WAVE_CHECK)).at(-1) ?? "");
   const missed = found.filter(([, , one]) => one.outcome === "missed");
   const repeated = missed.filter(([number]) => missedBefore.has(number));
   const comment = commented(spec, wavePosted(found, repeated));
@@ -190,8 +193,18 @@ function waveCheck(issue: string, wave: number[]): Stop | undefined {
 }
 
 function fixWave(spec: Read, found: [number, string, Try][], missed: [number, string, Try][]): Stop | undefined {
-  const { issue, said } = spec;
-  if (spec.comments.some((comment) => comment.startsWith(DONE_CHECK) && comment.includes(FIX_WAVE))) {
+  const { issue, said, comments } = spec;
+  const lastWave = comments.map((comment) => comment.startsWith(WAVE_CHECK)).lastIndexOf(true);
+  const lastDone = comments.map((comment) => comment.startsWith(DONE_CHECK)).lastIndexOf(true);
+  const missedAtWave = lastWave > lastDone ? missedIn(comments[lastWave] ?? "") : new Set<number>();
+  const repeated = missed.filter(([number]) => missedAtWave.has(number));
+  if (repeated.length > 0) {
+    const comment = commented(spec, posted(found, calledOwner(repeated, "at the last wave check and again at the end")));
+    if (typeof comment === "string") return comment;
+    gh(["issue", "edit", issue, "--add-label", NEEDS_HUMAN]);
+    return stoppedAt("calledOwner", `${said} marked ${NEEDS_HUMAN}, sentence ${listing(repeated, ", ")} missed at the last wave check and again at the end: ${comment.url}`);
+  }
+  if (comments.some((comment) => comment.startsWith(DONE_CHECK) && comment.includes(FIX_WAVE))) {
     const comment = commented(spec, posted(found, calledOwner(missed, "again after the fix wave")));
     if (typeof comment === "string") return comment;
     gh(["issue", "edit", issue, "--add-label", NEEDS_HUMAN]);

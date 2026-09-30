@@ -74,8 +74,8 @@ _Avoid_: audit, acceptance test, verification
 
 **Wave check**:
 The done check at a wave's end, trying only the sentences that wave should have moved. It skips
-the ones only the owner can try and closes nothing. A sentence that misses at two wave checks in a
-row marks the spec `needs-human`.
+the ones only the owner can try and closes nothing. A sentence that misses at a wave check and
+again at the next wave check or at the end marks the spec `needs-human`.
 _Avoid_: wave review, checkpoint, interim check
 
 **Ticket**:

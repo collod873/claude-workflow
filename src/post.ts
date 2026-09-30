@@ -70,10 +70,17 @@ export const commentOnTicket = (ticket: string, text: string, gh: Gh) => written
 export const OWNER = "collod873";
 const TRUSTED = new Set([`User ${OWNER}`, "Bot collod873-machine[bot]"]);
 
-const trusted = (said: unknown): said is { body: string } =>
-  typeof said === "object" && said !== null && "author" in said && "type" in said && "body" in said && typeof said.body === "string" && TRUSTED.has(`${said.type} ${said.author}`);
+const trusted = (said: unknown): said is { author: string; body: string } =>
+  typeof said === "object" &&
+  said !== null &&
+  "author" in said &&
+  typeof said.author === "string" &&
+  "type" in said &&
+  "body" in said &&
+  typeof said.body === "string" &&
+  TRUSTED.has(`${String(said.type)} ${said.author}`);
 
-export function commentsOn(number: string, gh: Gh): string[] | undefined {
+export function authoredOn(number: string, gh: Gh): { author: string; body: string }[] | undefined {
   const got = gh(["api", "--paginate", `repos/{owner}/{repo}/issues/${number}/comments`, "--jq", ".[] | {author: .user.login, type: .user.type, body}"]);
   if (got.status !== 0) return undefined;
   try {
@@ -82,11 +89,13 @@ export function commentsOn(number: string, gh: Gh): string[] | undefined {
       .filter((line) => line.trim() !== "")
       .map((line): unknown => JSON.parse(line))
       .filter(trusted)
-      .map((said) => said.body);
+      .map(({ author, body }) => ({ author, body }));
   } catch {
     return undefined;
   }
 }
+
+export const commentsOn = (number: string, gh: Gh): string[] | undefined => authoredOn(number, gh)?.map(({ body }) => body);
 
 export function prNumber(branch: string, gh: Gh): string | undefined {
   const got = gh(["pr", "view", branch, "--json", "number", "--jq", ".number"]);

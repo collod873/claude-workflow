@@ -160,7 +160,7 @@ describe("bin/done-check spends the spec's one fix wave on a first miss, and cal
   ];
 
   it("runs bin/slice --fix once for the sentences that missed, and records it on the ## Done check comment", () => {
-    const checked = doneChecking({ body: specWith(SENTENCES), tries: missing, said: ["## Wave check\n\n- Sentence 2, **Did not hold**: a wave miss spends no fix wave"] });
+    const checked = doneChecking({ body: specWith(SENTENCES), tries: missing, said: ["## Wave check\n\n- Sentence 1, **Did not hold**: a wave miss on a sentence that held since spends no fix wave"] });
 
     expect(heard(checked.run())).toEqual({ status: 0, stderr: "", lines: [`done-check: #974 did not hold sentence 2, 3, so bin/slice --fix filed its one fix wave: ${DONE_CHECK_POSTED}`] });
     expect(checked.sliced()).toEqual(["974 --fix 2,3"]);
@@ -182,6 +182,23 @@ describe("bin/done-check spends the spec's one fix wave on a first miss, and cal
     expect(checked.comments()[0]).toContain(`Sentence 3 missed again after the fix wave, so the spec is marked \`needs-human\`: ${SENTENCES[2]}. Why: saw the spec stay open`);
     expect(checked.labelled()).toEqual(["974 --add-label needs-human"]);
     expect(checked.closes()).toEqual([]);
+  });
+
+  it("marks the spec needs-human, spending no fix wave, when a sentence that missed at the last wave check misses again at the end", () => {
+    const checked = doneChecking({ body: specWith(SENTENCES), tries: missing, said: ["## Wave check\n\n- Sentence 3, **Did not hold**: the wave's miss"] });
+
+    expect(checked.run()).toEqual({ status: 1, stdout: "", stderr: `done-check: #974 marked needs-human, sentence 3 missed at the last wave check and again at the end: ${DONE_CHECK_POSTED}\n` });
+    expect(checked.sliced()).toEqual([]);
+    expect(checked.comments()[0]).toContain(`Sentence 3 missed at the last wave check and again at the end, so the spec is marked \`needs-human\`: ${SENTENCES[2]}. Why: saw the spec stay open`);
+    expect(checked.comments()[0]).not.toContain("<!-- fix-wave -->");
+    expect(checked.labelled()).toEqual(["974 --add-label needs-human"]);
+  });
+
+  it("reads a wave check from before the last done check as no miss in a row", () => {
+    const checked = doneChecking({ body: specWith(SENTENCES), tries: missing, said: ["## Wave check\n\n- Sentence 3, **Did not hold**: an old miss", "## Done check\n\n3. **Put to the owner**: three"] });
+
+    expect(checked.run().status).toBe(0);
+    expect(checked.sliced()).toEqual(["974 --fix 2,3"]);
   });
 
   it("records no fix wave and ends red when bin/slice --fix files none, so the next done check can still spend it", () => {
@@ -206,6 +223,7 @@ describe("bin/done-check reads the owner's reply to a sentence it put to him (#1
     const said: Said[] = [
       { author: OWNER, type: "User", body: "an old aside from before the check" },
       `## Done check\n\n3. **Put to the owner**: ${SENTENCES[2]}\n   open it on your phone`,
+      "## Wave 3\n\nthe machine's own note",
       { author: OWNER, type: "User", body: "sentence 3 held on my phone" },
     ];
     const checked = doneChecking({ body: specWith(SENTENCES), tries: SENTENCES.map((_, at) => ({ sentence: at + 1, outcome: "held", tried: "the owner said so" })), said });
@@ -213,6 +231,7 @@ describe("bin/done-check reads the owner's reply to a sentence it put to him (#1
     expect(checked.run().status).toBe(0);
     expect(checked.handed()).toContain("## The owner's replies since the last done check\n\nsentence 3 held on my phone");
     expect(checked.handed()).not.toContain("an old aside");
+    expect(checked.handed()).not.toContain("the machine's own note");
     expect(checked.closes()).toHaveLength(1);
   });
 
@@ -261,6 +280,7 @@ describe("done-check.yml runs the done check again on the owner's reply to a sen
 
     expect(lastAsked([putToOwner, "an aside"])).toBe("true");
     expect(lastAsked([putToOwner, allTried, "an aside"])).toBe("false");
+    expect(lastAsked([`${putToOwner}\n<!-- fix-wave -->\n`, "an aside"])).toBe("false");
     expect(lastAsked(["## Wave check\n\n- Sentence 2, **Waits for the end**: two"])).toBe("false");
     expect(lastAsked([])).toBe("false");
     const { check } = workflow();
