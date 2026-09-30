@@ -88,7 +88,8 @@ export function commentsOn(number: string, gh: Gh): string[] | undefined {
   }
 }
 
-interface Opened {
+export interface Opened {
+  number?: number;
   state?: string;
   user?: { login?: string };
   labels?: { name?: string }[];

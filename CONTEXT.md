@@ -65,6 +65,13 @@ touch different parts, so none edits a file another edits. Only the current wave
 rest is still the spec.
 _Avoid_: batch, phase, sprint, round
 
+**Wave note**:
+The one comment the slicer posts on a spec for each wave it files, starting `## Wave` and its
+number: the owner's words the wave's tickets quote, copied by code, what the wave before it did,
+what comes next, and a `<!-- moves: ... -->` marker naming the sentences the wave should move. It
+is the wave's readback.
+_Avoid_: wave summary, status update, progress report
+
 **Done check**:
 The stage that tries each of a spec's "I'll know it works when I can ___" sentences on the running
 system once nothing is left to slice, and closes the spec only when every one held.

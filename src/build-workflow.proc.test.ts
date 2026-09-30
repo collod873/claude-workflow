@@ -282,7 +282,7 @@ describe("every job that spends a model is watched as it goes, read after it end
 
   it("every step that spends a model shows what its stage's model does in the log as it happens, and ends with the stage's own status", () => {
     for (const step of modelJobs().flatMap(({ steps }) => steps.filter(spendsModel))) {
-      const run = (step.run ?? "").replaceAll(/\$\{\{ github\.event\.(issue|pull_request)\.number \}\}/g, "9");
+      const run = (step.run ?? "").replaceAll(BARE_EXPRESSIONS, "9");
       const transcript = `.git/machine-logs/${transcriptOf(run)}-9.jsonl`;
       const cwd = scratch("feed-");
       mkdirSync(join(cwd, ".git", "machine-logs"), { recursive: true });

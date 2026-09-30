@@ -1,10 +1,11 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { LIST_CAP } from "./reviewer.ts";
-import { BIN, execute, ghArgv, git, plant, scratch, script, wellFormedSpec } from "./scenarios.ts";
-import { handedOn, sentBack } from "./slicer.ts";
+import { authored, BIN, execute, ghArgv, git, plant, type Said, scratch, script, wellFormedSpec } from "./scenarios.ts";
+import { COMMENTS_CAP, handedOn, sentBack } from "./slicer.ts";
 import { declareStage, HANDED_ON } from "./stages.ts";
 import { SPEC_CAP } from "./ticket-shape.ts";
+import { FOUND_CAP } from "./wave.ts";
 
 export const SLICING_SESSION = "slicing-session";
 
@@ -16,22 +17,37 @@ export function slicing({
   body = wellFormedSpec,
   answers = [] as object[],
   gh = "",
-}: { labels?: string[]; title?: string; body?: string; answers?: object[]; gh?: string } = {}) {
+  issues = {} as Record<string, object>,
+  comments = {} as Record<string, Said[]>,
+  open = [] as object[],
+  prs = {} as Record<string, object>,
+}: { labels?: string[]; title?: string; body?: string; answers?: object[]; gh?: string; issues?: Record<string, object>; comments?: Record<string, Said[]>; open?: object[]; prs?: Record<string, object> } = {}) {
   const root = scratch("slice-");
   const { setup, calls } = ghArgv(join(root, "gh-argv"));
   git(root, "init", "--quiet", "--initial-branch=main");
   plant(root, "issue.json", JSON.stringify({ title, body, labels: labels.map((name) => ({ name })) }));
+  for (const [path, issue] of Object.entries(issues)) plant(root, `issues/${path.replace("/", "-")}`, JSON.stringify(issue));
+  for (const [number, said] of Object.entries(comments)) plant(root, `comments/${number}`, authored(said));
+  for (const [number, pr] of Object.entries(prs)) plant(root, `prs/${number}`, JSON.stringify(pr));
+  plant(root, "open.json", JSON.stringify(open));
   answers.forEach((answer, at) => plant(root, `answers/${at + 1}.json`, `${JSON.stringify({ type: "result", subtype: "success", is_error: false, session_id: SLICING_SESSION, structured_output: answer })}\n`));
   script(
     join(root, "bin", "gh"),
     [
       setup,
       gh,
+      "n=$(grep -oE 'issues/[0-9]+' <<<\"$*\" | head -1)",
+      "n=${n#issues/}",
       'case "$*" in',
       `  *"issue view"*) cat "${join(root, "issue.json")}" ;;`,
+      `  "api --paginate "*/sub_issues*) jq -c '.[] | {number, title, state, state_reason}' <<<"$(cat "${join(root, "issues")}/$n-sub_issues" 2>/dev/null || echo '[]')" ;;`,
+      `  "api --paginate "*/comments*) cat "${join(root, "comments")}/$n" 2>/dev/null ;;`,
+      `  "issue list"*) jq -c '.[]' "${join(root, "open.json")}" ;;`,
+      `  "pr view"*) f="${join(root, "prs")}/\${3#ticket/}"; [[ -f $f ]] && cat "$f" || { printf 'no pull requests found for branch "%s"\\n' "$3" >&2; exit 1; } ;;`,
       `  *"issue create"*) mkdir -p "${join(root, "created")}"; n=$(( $(ls "${join(root, "created")}" | wc -l) + 1 )); touch "${join(root, "created")}/$n"; printf '%s%s\\n' '${WAVE_URL}' $((1100 + n)) ;;`,
       "  *sub_issues*) ;;",
-      '  "api repos/{owner}/{repo}/issues/"*) printf \'%s\\n\' $(( ${2##*/} + 900000 )) ;;',
+      '  "api repos/{owner}/{repo}/issues/"*" --jq .id") printf \'%s\\n\' $(( ${2##*/} + 900000 )) ;;',
+      `  "api repos/{owner}/{repo}/issues/"*) p=\${2#*issues/}; f="${join(root, "issues")}/\${p//\\//-}"; [[ -f $f ]] && cat "$f" || { printf 'gh: Not Found (HTTP 404)\\n' >&2; exit 1; } ;;`,
       `  *"issue comment"*) printf '%s\\n' '${WAVE_URL}968#issuecomment-1' ;;`,
       "esac",
       "",
@@ -59,7 +75,7 @@ export function slicing({
     handed: () => each("handed"),
     rewrites: () => calls().filter((args) => args[1] === "edit" && args.includes("--body")).map(bodyOf),
     filed: () => calls().filter((args) => args[1] === "create").map((args) => ({ title: args[args.indexOf("--title") + 1], body: bodyOf(args) })),
-    linked: () => calls().filter((args) => args.some((arg) => arg.includes("sub_issues"))).map((args) => args.filter((arg) => arg.includes("sub_issues") || arg.startsWith("sub_issue_id=")).join(" ")),
+    linked: () => calls().filter((args) => args.includes("POST")).map((args) => args.filter((arg) => arg.includes("sub_issues") || arg.startsWith("sub_issue_id=")).join(" ")),
     comments: () => calls().filter((args) => args[1] === "comment").map(bodyOf),
     run: (...args: string[]) => execute(join(BIN, "slice"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, args.length > 0 ? args : ["968"]),
   };
@@ -76,6 +92,13 @@ declareStage({
       build: (filled) => handedOn(filled.title ?? "", filled.body ?? ""),
     },
     {
+      name: "re-slice",
+      file: "src/slicer.ts",
+      cap: 2 * SPEC_CAP + COMMENTS_CAP + FOUND_CAP + HANDED_ON,
+      slots: ["title", "body", "comments", "tickets"],
+      build: (filled) => handedOn(filled.title ?? "", filled.body ?? "", { comments: [filled.comments ?? ""], tickets: filled.tickets ?? "" }),
+    },
+    {
       name: "slicer sent back",
       file: "src/slicer.ts",
       cap: LIST_CAP + HANDED_ON,
@@ -84,7 +107,8 @@ declareStage({
     },
   ],
   scenarios: [
-    { label: "filing a wave", run: () => slicing({ answers: [{ spec: wellFormedSpec, tickets: [{ title: "File a spec", passages: [1], why: "Wave 1.", done: ["It files."] }] }] }).run() },
+    { label: "filing a wave", run: () => slicing({ answers: [{ spec: wellFormedSpec, tickets: [{ title: "File a spec", passages: [1], why: "Wave 1.", done: ["It files."] }], did: "Settled.", next: "Files it.", moves: [1] }] }).run() },
     { label: "refusing a ticket", run: () => slicing({ labels: ["ticket"] }).run() },
+    { label: "ending no wave for an issue under no spec", run: () => slicing().run("--ended", "1500") },
   ],
 });
