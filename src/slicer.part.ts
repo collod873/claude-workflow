@@ -5,7 +5,7 @@ import { authored, BIN, execute, ghArgv, git, plant, type Said, scratch, script,
 import { COMMENTS_CAP, handedOn, sentBack } from "./slicer.ts";
 import { declareStage, HANDED_ON } from "./stages.ts";
 import { SPEC_CAP } from "./ticket-shape.ts";
-import { FOUND_CAP } from "./wave.ts";
+import { DIFF_CAP, FOUND_CAP } from "./wave.ts";
 
 export const SLICING_SESSION = "slicing-session";
 
@@ -21,7 +21,8 @@ export function slicing({
   comments = {} as Record<string, Said[]>,
   open = [] as object[],
   prs = {} as Record<string, object>,
-}: { labels?: string[]; title?: string; body?: string; answers?: object[]; gh?: string; issues?: Record<string, object>; comments?: Record<string, Said[]>; open?: object[]; prs?: Record<string, object> } = {}) {
+  diffs = {} as Record<string, string>,
+}: { labels?: string[]; title?: string; body?: string; answers?: object[]; gh?: string; issues?: Record<string, object>; comments?: Record<string, Said[]>; open?: object[]; prs?: Record<string, object>; diffs?: Record<string, string> } = {}) {
   const root = scratch("slice-");
   const { setup, calls } = ghArgv(join(root, "gh-argv"));
   git(root, "init", "--quiet", "--initial-branch=main");
@@ -29,6 +30,7 @@ export function slicing({
   for (const [path, issue] of Object.entries(issues)) plant(root, `issues/${path.replace("/", "-")}`, JSON.stringify(issue));
   for (const [number, said] of Object.entries(comments)) plant(root, `comments/${number}`, authored(said));
   for (const [number, pr] of Object.entries(prs)) plant(root, `prs/${number}`, JSON.stringify(pr));
+  for (const [number, diff] of Object.entries(diffs)) plant(root, `diffs/${number}`, diff);
   plant(root, "open.json", JSON.stringify(open));
   answers.forEach((answer, at) => plant(root, `answers/${at + 1}.json`, `${JSON.stringify({ type: "result", subtype: "success", is_error: false, session_id: SLICING_SESSION, structured_output: answer })}\n`));
   script(
@@ -44,6 +46,7 @@ export function slicing({
       `  "api --paginate "*/comments*) cat "${join(root, "comments")}/$n" 2>/dev/null ;;`,
       `  "issue list"*) jq -c '.[]' "${join(root, "open.json")}" ;;`,
       `  "pr view"*) f="${join(root, "prs")}/\${3#ticket/}"; [[ -f $f ]] && cat "$f" || { printf 'no pull requests found for branch "%s"\\n' "$3" >&2; exit 1; } ;;`,
+      `  "pr diff"*) f="${join(root, "diffs")}/\${3#ticket/}"; [[ -f $f ]] && cat "$f" || { printf 'no pull requests found for branch "%s"\\n' "$3" >&2; exit 1; } ;;`,
       `  *"issue create"*) mkdir -p "${join(root, "created")}"; n=$(( $(ls "${join(root, "created")}" | wc -l) + 1 )); touch "${join(root, "created")}/$n"; printf '%s%s\\n' '${WAVE_URL}' $((1100 + n)) ;;`,
       "  *sub_issues*) ;;",
       '  "api repos/{owner}/{repo}/issues/"*" --jq .id") printf \'%s\\n\' $(( ${2##*/} + 900000 )) ;;',
@@ -94,9 +97,16 @@ declareStage({
     {
       name: "re-slice",
       file: "src/slicer.ts",
-      cap: 2 * SPEC_CAP + COMMENTS_CAP + FOUND_CAP + HANDED_ON,
-      slots: ["title", "body", "comments", "tickets"],
-      build: (filled) => handedOn(filled.title ?? "", filled.body ?? "", { comments: [filled.comments ?? ""], tickets: filled.tickets ?? "" }),
+      cap: 2 * SPEC_CAP + COMMENTS_CAP + FOUND_CAP + DIFF_CAP + 2 * HANDED_ON,
+      slots: ["title", "body", "comments", "tickets", "diffs"],
+      build: (filled) => handedOn(filled.title ?? "", filled.body ?? "", { comments: [filled.comments ?? ""], tickets: filled.tickets ?? "", diffs: filled.diffs ?? "", missed: [], fix: false }),
+    },
+    {
+      name: "fix wave",
+      file: "src/slicer.ts",
+      cap: 2 * SPEC_CAP + COMMENTS_CAP + FOUND_CAP + DIFF_CAP + 2 * HANDED_ON,
+      slots: ["title", "body", "comments", "tickets", "diffs"],
+      build: (filled) => handedOn(filled.title ?? "", filled.body ?? "", { comments: [filled.comments ?? ""], tickets: filled.tickets ?? "", diffs: filled.diffs ?? "", missed: [1], fix: true }),
     },
     {
       name: "slicer sent back",

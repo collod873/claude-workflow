@@ -94,10 +94,10 @@ const calledOwner = (missed: [number, string, Try][], when: string) =>
 
 const listing = (missed: [number, string, Try][], between: string) => missed.map(([number]) => number).join(between);
 
-const WAVE_CHECK_HEADING = "## Wave check";
+export const WAVE_CHECK_HEADING = "## Wave check";
 const WAVE_OUTCOMES: Record<Outcome, string> = { ...OUTCOMES, owner: "Waits for the end" };
 const WAVE_MISSED = /^- Sentence (\d+), \*\*Did not hold\*\*/gm;
-const missedIn = (waveCheck: string) => new Set([...waveCheck.matchAll(WAVE_MISSED)].map(([, number]) => Number(number)));
+export const missedIn = (waveCheck: string) => new Set([...waveCheck.matchAll(WAVE_MISSED)].map(([, number]) => Number(number)));
 
 const wavePosted = (tried: [number, string, Try][], repeated: [number, string, Try][]) =>
   [

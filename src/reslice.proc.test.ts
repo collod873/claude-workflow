@@ -2,9 +2,11 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse } from "yaml";
 import { describe, expect, it } from "vitest";
-import { heard, holds, OWNER, wellFormedSpec, type WorkflowStep } from "./scenarios.ts";
+import { heard, holds, OWNER, type Said, wellFormedSpec, type WorkflowStep } from "./scenarios.ts";
 import { closing } from "./closer.part.ts";
 import { slicing } from "./slicer.part.ts";
+import { doneChecking, specWith } from "./done-checker.part.ts";
+import { DIFF_CAP } from "./wave.ts";
 
 const SPEC_ISSUE = { number: 968, state: "open", labels: [{ name: "spec" }], user: { login: OWNER }, body: "" };
 const ticket = (number: number, state = "closed") => ({ number, state, labels: [] as { name: string }[], user: { login: "core-app[bot]" }, body: "## Why\n\n> the owner's words\n\n## Done when\n\n- It lands.\n" });
@@ -75,13 +77,22 @@ const OWNER_SAID = { author: OWNER, type: "User", body: "Keep the done check out
 const piece = { title: "Read the spec kind", passages: [1], why: "Wave 2 of the spec: read it.", done: ["It reads."] };
 const next = (tickets = [piece], moves = [1]) => ({ spec: wellFormedSpec, tickets, did: "Wave 1 filed the spec kind.", next: "Wave 2 reads it back.", moves });
 
-function reslicing({ tickets = [ticket(1001), ticket(1002)], labels = ["spec"], answers = [next()] as object[] } = {}) {
+function reslicing({
+  tickets = [ticket(1001), ticket(1002)],
+  labels = ["spec"],
+  answers = [next()] as object[],
+  said = [OWNER_SAID, NOTE, CHECKED] as Said[],
+  prs = { "1001": { state: "MERGED", files: ["src/slicer.ts"] } } as Record<string, object>,
+  diffs = {} as Record<string, string>,
+  spec = "968",
+} = {}) {
   return slicing({
     labels,
     answers,
-    issues: { "968/sub_issues": tickets.map((one) => ({ ...one, title: `Ticket ${one.number}`, state_reason: "completed" })) },
-    comments: { "968": [OWNER_SAID, NOTE, CHECKED], "1001": ["#1001 is done: PR #2001 merged"], "1002": ["The builder split #1002 into #1003."] },
-    prs: { "1001": { state: "MERGED", files: ["src/slicer.ts"] } },
+    issues: { [`${spec}/sub_issues`]: tickets.map((one) => ({ ...one, title: `Ticket ${one.number}`, state_reason: "completed" })) },
+    comments: { [spec]: said, "1001": ["#1001 is done: PR #2001 merged"], "1002": ["The builder split #1002 into #1003."] },
+    prs,
+    diffs,
   });
 }
 
@@ -129,6 +140,122 @@ describe("bin/slice on a spec with tickets under it slices its next wave against
 
     expect(sliced.run()).toEqual({ status: 0, stdout: "slice: #968 is marked needs-human, so nothing sliced it\n", stderr: "" });
     expect(sliced.hired()).toEqual([]);
+  });
+});
+
+const helper = (file: string) => `diff --git a/src/${file} b/src/${file}\n+export const quotedLine = (line: string) => \`> \${line}\`;\n`;
+const MERGED = { "1001": { state: "MERGED", files: ["src/slicer.ts"] }, "1002": { state: "MERGED", files: ["src/done-checker.ts"] } };
+const merge = { title: "Merge the two quotedLine helpers into one", passages: [1], why: "Wave 1 left two copies of one helper.", done: ["One quotedLine stands."] };
+
+describe("bin/slice hands the re-slice the diff of every PR the wave merged, so it can fold what the wave built into the spec (#1047)", () => {
+  it("hands the slicer each merged PR's diff and asks it to fold shared parts into Names, merge two copies of one helper and hold back what leans on it; a wave that merged two copies yields a merge ticket", () => {
+    const sliced = reslicing({ prs: MERGED, diffs: { "1001": helper("slicer.ts"), "1002": helper("done-checker.ts") }, answers: [next([merge])] });
+
+    expect(heard(sliced.run())).toEqual({ status: 0, stderr: "", lines: ["slice: #968 filed wave 2 under it: #1101"] });
+    const [handed = ""] = sliced.handed();
+    expect(handed).toContain(`### #1002's PR\n\n${helper("done-checker.ts")}`);
+    expect(handed).toContain(`### #1001's PR\n\n${helper("slicer.ts")}`);
+    expect(handed).toContain("fold the helpers, seams and modules the wave built that tickets share into `### Names the tickets share`");
+    expect(handed).toContain("two copies of one helper or a shallow module");
+    expect(handed).toContain("hold the tickets that touch that module back a wave");
+    expect(handed).toContain("`did`");
+    expect(sliced.filed().map(({ title }) => title)).toEqual([merge.title]);
+  });
+
+  it("hands no diff for a ticket whose PR did not merge", () => {
+    const sliced = reslicing({ prs: { "1001": { state: "CLOSED", files: ["src/slicer.ts"] } }, diffs: { "1001": helper("slicer.ts") } });
+
+    expect(sliced.run().status).toBe(0);
+    expect(sliced.handed()[0]).not.toContain(helper("slicer.ts"));
+  });
+
+  it("cuts the diffs at DIFF_CAP and says whose diff was cut and whose were not shown", () => {
+    const big = helper("slicer.ts") + "+x\n".repeat(DIFF_CAP);
+    const sliced = reslicing({ prs: MERGED, diffs: { "1002": big, "1001": helper("done-checker.ts") } });
+
+    expect(sliced.run().status).toBe(0);
+    const [handed = ""] = sliced.handed();
+    expect(handed).toContain(`(cut at the ${DIFF_CAP} byte cap inside #1002's diff; not shown: #1001)`);
+    expect(handed).not.toContain(helper("done-checker.ts"));
+  });
+});
+
+const MISSED = "## Wave check\n\n- Sentence 1, **Did not hold**: see it\n  saw it fail\n";
+
+describe("bin/slice sends back a wave that drops a sentence the last wave check missed (#1047)", () => {
+  it("sends back a wave with no ticket after a wave check that missed, instead of handing off to the done check", () => {
+    const sliced = reslicing({ said: [NOTE, MISSED], answers: [next([], []), next()] });
+
+    expect(heard(sliced.run())).toEqual({ status: 0, stderr: "", lines: ["slice: #968 filed wave 2 under it: #1101"] });
+    const [handed = "", sentBack = ""] = sliced.handed();
+    expect(handed).toContain("The last wave check missed sentence 1: this wave carries at least one ticket, and its `moves` name each of them.");
+    expect(handed).not.toContain("Give no ticket when nothing is left to slice");
+    expect(sentBack).toContain("the wave carries no ticket, and the last wave check missed sentence 1");
+  });
+
+  it("sends back a wave whose moves leave out the missed sentence", () => {
+    const sliced = reslicing({ said: [NOTE, MISSED], answers: [next([piece], []), next()] });
+
+    expect(sliced.run().status).toBe(0);
+    expect(sliced.handed()[1]).toContain("the note leaves out sentence 1, which the last wave check missed");
+    expect(sliced.comments()[0]).toContain("<!-- moves: 1 -->");
+  });
+
+  it("reads a wave check from before the last wave note as already carried", () => {
+    const sliced = reslicing({ said: [MISSED, NOTE], answers: [next([], []), { tries: [{ sentence: 1, outcome: "held", tried: "saw it" }] }] });
+
+    expect(sliced.run().status).toBe(0);
+    expect(sliced.filed()).toEqual([]);
+    expect(sliced.handed()[1]).toContain("Try each sentence");
+  });
+});
+
+describe("bin/slice <spec> --fix <numbers> files the spec's one fix wave for the sentences the done check missed (#1047)", () => {
+  const SENTENCES = ["file a spec and see its first wave under it", "open a ticket and see my own words"];
+  const FIX_SPEC = specWith(SENTENCES);
+  const fixPiece = { ...piece, title: "Carry the owner's words", why: "The fix wave." };
+  const fixing = (answers: object[]) => {
+    const checked = doneChecking({ body: FIX_SPEC, tries: [{ sentence: 1, outcome: "held", tried: "saw it" }, { sentence: 2, outcome: "missed", tried: "saw it fail" }] });
+    expect(checked.run().status).toBe(0);
+    const [args = ""] = checked.sliced();
+    const [spec = ""] = args.split(" ");
+    const sliced = slicing({ body: FIX_SPEC, answers, issues: { [`${spec}/sub_issues`]: [{ ...ticket(1001), title: "Ticket 1001", state_reason: "completed" }] }, comments: { [spec]: [NOTE, "## Done check\n\n2. **Did not hold**: two"] } });
+    return { sliced, ran: sliced.run(...args.split(" ")) };
+  };
+
+  it("files the fix wave under the spec, with every ticket closed, from the arguments the done check passes, and notes it moving exactly those sentences", () => {
+    const { sliced, ran } = fixing([{ ...next([fixPiece], [2]), spec: FIX_SPEC }]);
+
+    expect(heard(ran)).toEqual({ status: 0, stderr: "", lines: ["slice: #974 filed wave 2 under it: #1101"] });
+    expect(sliced.linked()).toEqual(["repos/{owner}/{repo}/issues/974/sub_issues sub_issue_id=901101"]);
+    expect(sliced.handed()[0]).toContain("Slice this spec's one fix wave: the done check found sentence 2 did not hold with every ticket closed.");
+    expect(sliced.comments()[0]).toMatch(/^## Wave 2\n/);
+    expect(sliced.comments()[0]).toContain("<!-- moves: 2 -->");
+  });
+
+  it("sends back a fix wave whose moves are not exactly the named sentences", () => {
+    const { sliced, ran } = fixing([{ ...next([fixPiece], [1, 2]), spec: FIX_SPEC }, { ...next([fixPiece], [2]), spec: FIX_SPEC }]);
+
+    expect(ran.status).toBe(0);
+    expect(sliced.handed()[1]).toContain("the fix wave moves sentence 1, 2, and must move exactly sentence 2");
+  });
+
+  it("ends red and files nothing when the slicer gives no ticket for the fix wave", () => {
+    const { sliced, ran } = fixing([{ ...next([], [2]), spec: FIX_SPEC }]);
+
+    expect(ran).toEqual({ status: 1, stdout: "", stderr: "slice: #974 ended red, the slicer gave no ticket for its fix wave, so nothing was filed\n" });
+    expect(sliced.filed()).toEqual([]);
+    expect(sliced.rewrites()).toEqual([]);
+    expect(sliced.comments()).toEqual([]);
+    expect(sliced.handed()).toHaveLength(1);
+  });
+
+  it("refuses --fix with no sentence numbers, or with --ended", () => {
+    const sliced = slicing();
+    expect(sliced.run("968", "--fix").status).toBe(2);
+    expect(sliced.run("968", "--fix", "two").status).toBe(2);
+    expect(sliced.run("--ended", "968", "--fix", "2").status).toBe(2);
+    expect(sliced.calls()).toEqual([]);
   });
 });
 

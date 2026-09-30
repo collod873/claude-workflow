@@ -25,6 +25,8 @@ interface Pr {
 }
 
 export const FOUND_CAP = 32 * 1024;
+export const DIFF_CAP = 48 * 1024;
+const CUT_NOTE_CAP = 1024;
 const SAID_CAP = 2 * 1024;
 
 interface Found {
@@ -63,15 +65,21 @@ function lines(args: string[]): Listed[] | undefined {
 
 export const underSpec = (spec: string): Listed[] | undefined => lines(["api", "--paginate", `repos/{owner}/{repo}/issues/${spec}/sub_issues`, "--jq", ".[] | {number, title, state, state_reason}"]);
 
-function prOf(ticket: number): string {
+function prRead(ticket: number): Pr | "none" | "unread" {
   const got = gh(["pr", "view", `ticket/${ticket}`, "--json", "state,files", "--jq", "{state, files: [.files[].path]}"]);
-  if (got.status !== 0) return "Its PR: none";
+  if (got.status !== 0) return "none";
   try {
-    const pr = JSON.parse(got.stdout) as Pr;
-    return `Its PR: ${pr.state ?? "unknown"}, touching ${(pr.files ?? []).join(", ") || "no file"}`;
+    return JSON.parse(got.stdout) as Pr;
   } catch {
-    return "Its PR: unread";
+    return "unread";
   }
+}
+
+function prOf(ticket: number): string {
+  const pr = prRead(ticket);
+  if (pr === "none") return "Its PR: none";
+  if (pr === "unread") return "Its PR: unread";
+  return `Its PR: ${pr.state ?? "unknown"}, touching ${(pr.files ?? []).join(", ") || "no file"}`;
 }
 
 function ticketFound(ticket: Listed): string {
@@ -81,12 +89,31 @@ function ticketFound(ticket: Listed): string {
 
 export const waveFound = (tickets: Listed[]): string =>
   capped(
-    [...tickets]
-      .sort((one, other) => other.number - one.number)
+    newestFirst(tickets)
       .map(ticketFound)
       .join("\n\n"),
     FOUND_CAP,
   );
+
+const newestFirst = (tickets: Listed[]): Listed[] => [...tickets].sort((one, other) => other.number - one.number);
+
+export function waveDiffs(tickets: Listed[]): string {
+  const merged = newestFirst(tickets).filter(({ number }) => {
+    const pr = prRead(number);
+    return typeof pr === "object" && pr.state === "MERGED";
+  });
+  const shown = merged.map(({ number }) => {
+    const diff = gh(["pr", "diff", `ticket/${number}`]);
+    return { number, text: `### #${number}'s PR\n\n${diff.status === 0 ? diff.stdout : "(its diff could not be read)"}` };
+  });
+  const all = shown.map(({ text }) => text).join("\n\n");
+  if (Buffer.byteLength(all) <= DIFF_CAP) return all;
+  const kept = DIFF_CAP - CUT_NOTE_CAP;
+  let upTo = 0;
+  const cutAt = shown.findIndex(({ text }) => (upTo += Buffer.byteLength(text) + 2) > kept);
+  const unshown = shown.slice(cutAt + 1).map(({ number }) => `#${number}`);
+  return capped(all, kept) + capped(`\n\n(cut at the ${DIFF_CAP} byte cap inside #${shown[cutAt]?.number ?? ""}'s diff; not shown: ${unshown.join(", ") || "none"})`, CUT_NOTE_CAP);
+}
 
 function openFollowUps(tied: Set<string>): string[] | undefined {
   const listed = lines(["issue", "list", "--state", "open", "--limit", String(LISTED), "--json", "number,body", "--jq", ".[]"]);
