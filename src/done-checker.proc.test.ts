@@ -53,3 +53,30 @@ describe("bin/done-check posts nothing it did not try (#1023)", () => {
     expect(checked.calls()).toEqual(["issue view 974"]);
   });
 });
+
+describe("bin/done-check runs a sentence's own check command itself (#1023)", () => {
+  const checked = (command: string) => `${SENTENCES[0]} – check: \`${command}\``;
+
+  it("spends no model when every sentence carries a command, and holds each on its command's exit", () => {
+    const passing = doneChecking({ body: specWith([checked("true"), checked("test -d .git")]), tries: [] });
+    const failing = doneChecking({ body: specWith([checked("true"), checked("exit 3")]), tries: [] });
+
+    expect(passing.run().status).toBe(0);
+    expect(passing.hired()).toEqual([]);
+    expect(passing.comments()[0]).toContain(`1. **Held**: ${SENTENCES[0]}\n   Ran \`true\`, which exited 0.`);
+    expect(passing.closes()).toHaveLength(1);
+    expect(failing.run().status).toBe(0);
+    expect(failing.hired()).toEqual([]);
+    expect(failing.comments()[0]).toContain(`2. **Did not hold**: ${SENTENCES[0]}\n   Ran \`exit 3\`, which exited 3.`);
+    expect(failing.closes()).toEqual([]);
+  });
+
+  it("hands the model only the sentences with no command, by their number in the spec", () => {
+    const mixed = doneChecking({ body: specWith([checked("true"), SENTENCES[1] ?? ""]), tries: [{ sentence: 2, outcome: "held", tried: "opened a ticket it filed" }] });
+
+    expect(mixed.run().status).toBe(0);
+    expect(mixed.handed()).toContain("Sentence 1 carries a check command the machine ran itself; give no try for it.");
+    expect(mixed.comments()[0]).toContain(`2. **Held**: ${SENTENCES[1]}\n   opened a ticket it filed`);
+    expect(mixed.closes()).toHaveLength(1);
+  });
+});
