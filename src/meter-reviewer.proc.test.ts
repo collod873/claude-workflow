@@ -54,10 +54,10 @@ describe("bin/meters puts one line per meter on a ticket PR's body, beside the r
 
   it("keeps a finding byte for byte, even one that reads like a replacement pattern", () => {
     const odd = "src/cost.ts prints $& and $1 where a price belongs";
-    const { run, edited } = metering({ prBody: "Builds #810\n\ncramming (meter): would refuse nothing\n", verdict: answer({ cramming: [odd] }) });
+    const { run, edited } = metering({ prBody: "Builds #810\n\ndepth (meter): would refuse nothing\n", verdict: answer({ depth: [odd] }) });
 
     expect(run().status).toBe(0);
-    expect(edited()[0]).toContain(`cramming (meter): would refuse, ${odd}`);
+    expect(edited()[0]).toContain(`depth (meter): would refuse, ${odd}`);
   });
 
   it("ends red when the PR body cannot be read or edited, or the model leaves a meter unanswered", () => {
@@ -111,10 +111,11 @@ describe("the meter reviewer's schema and prompt ask for each meter as a list th
     }
   });
 
-  it("asks for crammed Done when sentences, behaviour nobody asked for, tests that pass on broken code, and the owner's limits the build drops", () => {
+  it("asks for Done when sentences the diff does not hold, behaviour nobody asked for, tests that pass on broken code, and the owner's limits the build drops, and no longer for crammed sentences (#1003)", () => {
     const { prompt } = asked();
 
-    expect(prompt).toMatch(/`cramming`: [^\n]*more than one behaviour/);
+    expect(prompt).toMatch(/`done_when`: [^\n]*each `## Done when` sentence the diff does not hold, quoting the sentence/);
+    expect(prompt).not.toMatch(/cramming|more than one behaviour/);
     expect(prompt).toMatch(/`beyond_the_ask`: [^\n]*neither the Why nor `## Done when` asks for/);
     expect(prompt).toMatch(/`hollow_test`: [^\n]*would still pass if the behaviour it names were broken/);
     expect(prompt).toMatch(/`lost_limit`: [^\n]*owner's own words/);
