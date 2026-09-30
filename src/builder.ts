@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { admission, doesNotBuild } from "./admit.ts";
 import { capped, onDisk } from "./brief.ts";
 import { CHECK, UNFENCED } from "./fence.ts";
-import { commentOnTicket, commentsOn, gh, git, OWNER, post, postRefusals, prNumber, rewriteTicket, WAITING } from "./post.ts";
+import { commentOnTicket, commentsOn, gh, git, NEEDS_HUMAN, OWNER, post, postRefusals, prNumber, rewriteTicket, WAITING } from "./post.ts";
 import { earlierDrift, FOLLOW_UP_OF, followUpBody, handedDiff, LIST_CAP, NO_EM_DASH, repairOf, TICKET_CAP } from "./reviewer.ts";
 import { hired, machineLogs, type Spent } from "./stage.ts";
 import { DONE_SENTENCES, quoted, why, whyChanged } from "./ticket-shape.ts";
@@ -167,7 +167,7 @@ function failure(ticket: string, logs: string, run: string): string {
 }
 
 function calledOwner(ticket: string, why: string): number {
-  mark(ticket, "needs-human");
+  mark(ticket, NEEDS_HUMAN);
   commentOnTicket(ticket, `@${OWNER} the builder of #${ticket} stopped and needs you: ${why}`, gh);
   console.error(`fix: #${ticket} needs the owner, ${why}`);
   return 1;
