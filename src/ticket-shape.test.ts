@@ -69,7 +69,7 @@ describe("a note asks for a why and nothing else, so a session at its end can fi
   });
 });
 
-const SPEC_QUOTE = 'The owner, in session: "a spec is filed once, so the cold read and the slicer share one document".';
+const SPEC_QUOTE = 'The owner, in session: "a spec is filed once, so the slicer and the done check share one document".';
 
 function specBody({
   problem = SPEC_QUOTE,
@@ -77,7 +77,7 @@ function specBody({
   stories = ["1. As the owner, I can file a spec before any ticket exists."],
   implementation = "Reuse the ticket machinery where it already fits.",
   testing = "Cover the shape with unit tests.",
-  outOfScope = "The cold read and the slicer.",
+  outOfScope = "The slicer and the done check.",
   furtherNotes = "",
   sharedNames,
   sentences = [`- [ ] see a spec land as its own issue - check: \`${TEST_CHECK}\``],

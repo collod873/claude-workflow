@@ -3,30 +3,9 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { OUT_OF_TIME } from "./researcher.ts";
-import { FINDINGS_POSTED, heard, holds, READING_SESSION, researching, wellFormedNote } from "./scenarios.ts";
+import { FINDINGS_POSTED, heard, holds, onlyJob, READING_SESSION, researching, wellFormedNote, type WorkflowStep } from "./scenarios.ts";
 
-const WORKFLOWS = join(import.meta.dirname, "..", ".github", "workflows");
 const STAGE_ACTION = join(import.meta.dirname, "..", ".github", "actions", "stage", "action.yml");
-
-interface Step {
-  uses?: string;
-  run?: string;
-  with?: Record<string, unknown>;
-  env?: Record<string, unknown>;
-}
-
-interface Job {
-  if?: string;
-  permissions?: Record<string, string>;
-  steps: Step[];
-}
-
-const onlyJob = (file: string): Job => {
-  const { jobs } = parse(readFileSync(join(WORKFLOWS, file), "utf8")) as { jobs: Record<string, Job> };
-  const [job] = Object.values(jobs);
-  if (job === undefined) throw new Error(`no job in ${file}`);
-  return job;
-};
 
 describe("bin/research answers a research note on the note and closes it, with nobody in the loop (#902)", () => {
   it("posts the findings on the note, then closes it as completed", () => {
@@ -88,7 +67,7 @@ describe("bin/research answers a research note on the note and closes it, with n
   });
 
   it("the stage action hands every job the owner's Workflow session captures, fetched with a token that only reads and never held by the model (#931)", () => {
-    const { steps } = (parse(readFileSync(STAGE_ACTION, "utf8")) as { runs: { steps: Step[] } }).runs;
+    const { steps } = (parse(readFileSync(STAGE_ACTION, "utf8")) as { runs: { steps: WorkflowStep[] } }).runs;
     const minted = steps.findIndex((step) => step.with?.repositories === "Knowledge-Base");
     const fetched = steps.findIndex((step) => /SESSION_CAPTURES=.*GITHUB_ENV/.test(step.run ?? ""));
     const run = steps[fetched]?.run ?? "";

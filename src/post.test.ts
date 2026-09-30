@@ -53,10 +53,10 @@ describe("src/post.ts is the one way the machine writes text to GitHub (#662)", 
 
   it("files a spec labelled spec, refusing it by the spec shape rather than the ticket shape", () => {
     const { gh, calls } = github();
-    const spec = (fields: Partial<Posting>) => post(posting({ kind: "spec", text: SPEC, title: "A spec the cold read can read", ...fields }), gh);
+    const spec = (fields: Partial<Posting>) => post(posting({ kind: "spec", text: SPEC, title: "A spec the slicer can read", ...fields }), gh);
 
     expect(spec({})).toEqual({ refusals: [], said: URL });
-    expect(calls).toEqual([["issue", "create", "--title", "A spec the cold read can read", "--label", "spec", "--body", SPEC]]);
+    expect(calls).toEqual([["issue", "create", "--title", "A spec the slicer can read", "--label", "spec", "--body", SPEC]]);
     expect(spec({ title: undefined }).refusals).toEqual(["a spec carries no title"]);
     expect(spec({ text: SPEC.replace("## Problem Statement", "## Background") }).refusals).toEqual([
       "the body carries no '## Problem Statement', so nothing says what the owner asked for",

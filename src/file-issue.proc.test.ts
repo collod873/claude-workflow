@@ -97,11 +97,11 @@ describe("bin/file-issue files a ticket, or refuses it and files nothing (#662)"
   it("files a spec through src/post.ts and labels it spec (#965)", () => {
     const { repo, run } = filing({ gh: RECORDS, body: wellFormedSpec });
 
-    const result = run(["spec", "--title", "Give the cold read something to read", "--body-file", "body.md"]);
+    const result = run(["spec", "--title", "Give the slicer something to read", "--body-file", "body.md"]);
 
     expect(result).toMatchObject({ status: 0, stdout: `${URL}\n`, stderr: UNSTAMPED });
     expect(ghSaw(repo)).toEqual([
-      ["issue", "create", "--title", "Give the cold read something to read", "--label", "spec", "--body", wellFormedSpec],
+      ["issue", "create", "--title", "Give the slicer something to read", "--label", "spec", "--body", wellFormedSpec],
     ]);
   });
 
