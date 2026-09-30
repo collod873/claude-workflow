@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { handedOn } from "./done-checker.ts";
+import { handedOn, REPLIES_CAP } from "./done-checker.ts";
 import { authored, BIN, execute, issueStage, plant, type Said, script, wellFormedSpec } from "./scenarios.ts";
 import { declareStage, HANDED_ON } from "./stages.ts";
 import { SPEC_CAP } from "./ticket-shape.ts";
@@ -40,9 +40,9 @@ declareStage({
     {
       name: "done checker",
       file: "src/done-checker.ts",
-      cap: SPEC_CAP + 2 * HANDED_ON,
-      slots: ["title", "body"],
-      build: (filled) => handedOn(filled.title ?? "", filled.body ?? ""),
+      cap: SPEC_CAP + REPLIES_CAP + 2 * HANDED_ON,
+      slots: ["title", "body", "replies"],
+      build: (filled) => handedOn(filled.title ?? "", filled.body ?? "", { replies: filled.replies ?? "" }),
     },
   ],
   scenarios: [

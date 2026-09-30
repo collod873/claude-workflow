@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { heard } from "./scenarios.ts";
+import { heard, OWNER, type Said } from "./scenarios.ts";
 import { DONE_CHECK_POSTED, doneChecking, specWith } from "./done-checker.part.ts";
 
 const READ_COMMENTS = "api --paginate repos/{owner}/{repo}/issues/974/comments";
@@ -195,5 +195,28 @@ describe("bin/done-check spends the spec's one fix wave on a first miss, and cal
     expect(checked.run().status).toBe(0);
     expect(checked.sliced()).toEqual([]);
     expect(checked.comments()[0]).not.toContain("<!-- fix-wave -->");
+  });
+});
+
+describe("bin/done-check reads the owner's reply to a sentence it put to him (#1038)", () => {
+  it("hands the model the comments since the last ## Done check, and none from before it", () => {
+    const said: Said[] = [
+      { author: OWNER, type: "User", body: "an old aside from before the check" },
+      `## Done check\n\n3. **Put to the owner**: ${SENTENCES[2]}\n   open it on your phone`,
+      { author: OWNER, type: "User", body: "sentence 3 held on my phone" },
+    ];
+    const checked = doneChecking({ body: specWith(SENTENCES), tries: SENTENCES.map((_, at) => ({ sentence: at + 1, outcome: "held", tried: "the owner said so" })), said });
+
+    expect(checked.run().status).toBe(0);
+    expect(checked.handed()).toContain("## The owner's replies since the last done check\n\nsentence 3 held on my phone");
+    expect(checked.handed()).not.toContain("an old aside");
+    expect(checked.closes()).toHaveLength(1);
+  });
+
+  it("hands no replies when no done check ran before", () => {
+    const checked = doneChecking({ body: specWith(SENTENCES), tries: SENTENCES.map((_, at) => ({ sentence: at + 1, outcome: "held", tried: "saw it" })), said: [{ author: OWNER, type: "User", body: "an aside" }] });
+
+    expect(checked.run().status).toBe(0);
+    expect(checked.handed()).not.toContain("## The owner's replies");
   });
 });

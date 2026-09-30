@@ -54,13 +54,19 @@ const numbered = (ran: number[]) => (ran.length === 1 ? `Sentence ${ran.join("")
 const waveOnly = (wave: number[]) =>
   `This is a wave check: try only sentences ${wave.join(", ")}, the ones the wave just closed should have moved, and give no try for any other. Answer \`owner\` for one only the owner can try, without trying it; it waits for the end.`;
 
-export function handedOn(title: string, body: string, { ran = [], wave }: { ran?: number[]; wave?: number[] } = {}): string {
+export const REPLIES_CAP = 8 * 1024;
+
+const answered = (replies: string) =>
+  replies === "" ? [] : ["## The owner's replies since the last done check", capped(replies, REPLIES_CAP), "Where the owner says a sentence held or did not, his word is its try."];
+
+export function handedOn(title: string, body: string, { ran = [], wave, replies = "" }: { ran?: number[]; wave?: number[]; replies?: string } = {}): string {
   return [
     "Try each sentence under `## I'll know it works when I can` in this spec on the running system, not on its tests, and say how each came out. For this repo the running system is its own Actions runs and the issues and PRs they touched, read with `gh`. Read and run what you need, and leave the repo and GitHub as they are.",
     ...(wave === undefined ? [] : [waveOnly(wave)]),
     ...(ran.length === 0 ? [] : [numbered(ran)]),
     "## The spec",
     capped(`# ${title}\n\n${body}`, SPEC_CAP),
+    ...answered(replies),
     "## Your answer",
     "`tries`: one item per sentence, `sentence` its number counting from 1 in the order the spec lists them. `outcome`: `held` when you saw it hold, `missed` when you saw it fail, `owner` when only the owner can try it, needing the owner's phone, eyes or a real customer. `tried`: what you did to try it and what you saw, or for `owner`, what the owner should do to try it.",
     "",
@@ -102,12 +108,14 @@ const wavePosted = (tried: [number, string, Try][], repeated: [number, string, T
     "",
   ].join("\n");
 
-function triedByModel(issue: string, asked: Asked, ran: number[], wave?: number[]): Try[] | string {
+function triedByModel({ issue, asked, comments }: Read, ran: number[], wave?: number[]): Try[] | string {
   const logs = machineLogs(process.cwd());
   mkdirSync(logs, { recursive: true });
   const spend = hired({ name: "done checker", transcript: join(logs, `done-check-${issue}.jsonl`), reach: UNFENCED, answers: TRIES });
   if (typeof spend === "string") return `the owner's hooks could not be read from ${spend}`;
-  const spent = spend(handedOn(asked.title, asked.body, { ran, wave }));
+  const since = comments.map((comment) => comment.startsWith(DONE_CHECK)).lastIndexOf(true);
+  const replies = wave === undefined && since !== -1 ? comments.slice(since + 1).join("\n\n") : "";
+  const spent = spend(handedOn(asked.title, asked.body, { ran, wave, replies }));
   if (spent.refusal !== undefined) return spent.refusal;
   const given = (spent.answer as { tries?: unknown } | undefined)?.tries;
   return Array.isArray(given) ? given.filter(isTry).filter(({ sentence }) => !ran.includes(sentence)) : [];
@@ -134,12 +142,13 @@ function read(issue: string): Read | Stop {
   return { issue, said, asked, comments, listed };
 }
 
-function tried({ issue, said, asked, listed }: Read, numbers: number[], wave?: number[]): [number, string, Try][] | Stop {
+function tried(spec: Read, numbers: number[], wave?: number[]): [number, string, Try][] | Stop {
+  const { said, listed } = spec;
   const ran = numbers.flatMap((number) => {
     const check = listed[number - 1]?.check;
     return check === undefined ? [] : [ranItself(check, number)];
   });
-  const given = ran.length === numbers.length ? [] : triedByModel(issue, asked, ran.map(({ sentence }) => sentence), wave);
+  const given = ran.length === numbers.length ? [] : triedByModel(spec, ran.map(({ sentence }) => sentence), wave);
   if (typeof given === "string") return stoppedAt("modelRun", `${said} ended red, ${given}`);
   const tries = [...ran, ...given];
   const found: [number, string, Try][] = [];
