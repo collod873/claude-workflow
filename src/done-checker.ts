@@ -18,7 +18,7 @@ type Stop = ReturnType<typeof stoppedAt>;
 
 const SPEC_LABEL = "spec";
 const CHECK_MINUTES = 10;
-const OUTCOMES = { held: "Held", missed: "Did not hold", owner: "Put to the owner" } as const;
+const OUTCOMES = { held: "Held", missed: "Did not hold", owner: "Put to the owner", self: "Held" } as const;
 type Outcome = keyof typeof OUTCOMES;
 
 const TRIES = {
@@ -67,7 +67,7 @@ export function handedOn(title: string, body: string, { ran = [], wave, replies 
     capped(`# ${title}\n\n${body}`, SPEC_CAP),
     ...answered(replies),
     "## Your answer",
-    "`tries`: one item per sentence, `sentence` its number counting from 1 in the order the spec lists them. `outcome`: `held` when you saw it hold, `missed` when you saw it fail, `owner` when only the owner can try it, needing the owner's phone, eyes or a real customer. `tried`: what you did to try it and what you saw, or for `owner`, what the owner should do to try it.",
+    "`tries`: one item per sentence, `sentence` its number counting from 1 in the order the spec lists them. `outcome`: `held` when you saw it hold, `missed` when you saw it fail, `owner` when only the owner can try it, needing the owner's phone, eyes or a real customer. `self`, without trying it, for a sentence about the spec closing itself or the owner being told which sentence did not hold: this run is the one that closes the spec or names the miss, so the machine settles it from the other sentences. `tried`: what you did to try it and what you saw, or for `owner`, what the owner should do to try it.",
     "",
   ].join("\n\n");
 }
@@ -95,7 +95,8 @@ const calledOwner = (missed: [number, string, Try][], when: string) =>
 const listing = (missed: [number, string, Try][], between: string) => missed.map(([number]) => number).join(between);
 
 export const WAVE_CHECK_HEADING = "## Wave check";
-const WAVE_OUTCOMES: Record<Outcome, string> = { ...OUTCOMES, owner: "Waits for the end" };
+const WAVE_OUTCOMES: Record<Outcome, string> = { ...OUTCOMES, owner: "Waits for the end", self: "Waits for the end" };
+const waitsForTheEnd = (outcome: Outcome) => outcome === "owner" || outcome === "self";
 const WAVE_MISSED = /^- Sentence (\d+), \*\*Did not hold\*\*/gm;
 export const missedIn = (waveCheck: string) => new Set([...waveCheck.matchAll(WAVE_MISSED)].map(([, number]) => Number(number)));
 
@@ -103,7 +104,7 @@ const wavePosted = (tried: [number, string, Try][], repeated: [number, string, T
   [
     WAVE_CHECK_HEADING,
     "",
-    ...tried.map(([number, sentence, one]) => `- Sentence ${number}, **${WAVE_OUTCOMES[one.outcome]}**: ${sentence}${one.outcome === "owner" ? "" : `\n  ${one.tried}`}`),
+    ...tried.map(([number, sentence, one]) => `- Sentence ${number}, **${WAVE_OUTCOMES[one.outcome]}**: ${sentence}${waitsForTheEnd(one.outcome) ? "" : `\n  ${one.tried}`}`),
     ...calledOwner(repeated, "at this wave check and the last one").flatMap((line) => ["", line]),
     "",
   ].join("\n");
@@ -218,20 +219,33 @@ function fixWave(spec: Read, found: [number, string, Try][], missed: [number, st
   return undefined;
 }
 
+const SELF_SETTLED = {
+  missed: "This run names each other sentence that did not hold, and why.",
+  owner: "This run leaves the spec open while another sentence waits on the owner.",
+  held: "This run closed the spec, since every other sentence held.",
+};
+
+const settled = (found: [number, string, Try][]): [number, string, Try][] => {
+  const others = found.map(([, , one]) => one.outcome);
+  const tried = SELF_SETTLED[others.includes("missed") ? "missed" : others.includes("owner") ? "owner" : "held"];
+  return found.map(([number, sentence, one]) => [number, sentence, one.outcome === "self" ? { ...one, tried } : one]);
+};
+
 function doneCheck(issue: string): Stop | undefined {
   const spec = read(issue);
   if (typeof spec === "string") return spec;
-  const found = tried(
+  const tries = tried(
     spec,
     spec.listed.map((_, at) => at + 1),
   );
-  if (!Array.isArray(found)) return found;
+  if (!Array.isArray(tries)) return tries;
+  const found = settled(tries);
   const missed = found.filter(([, , one]) => one.outcome === "missed");
   if (missed.length > 0) return fixWave(spec, found, missed);
   const comment = commented(spec, posted(found));
   if (typeof comment === "string") return comment;
   const { said } = spec;
-  if (found.some(([, , one]) => one.outcome !== "held")) {
+  if (found.some(([, , one]) => one.outcome === "owner")) {
     console.log(`${said} did not hold every sentence, so it stays open: ${comment.url}`);
     return undefined;
   }
