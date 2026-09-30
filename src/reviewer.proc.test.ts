@@ -301,6 +301,8 @@ describe("a later find becomes a follow-up ticket that builds itself, one genera
     expect(ticketRefusals(body)).toEqual([]);
     expect(body).toContain("Follow-up of #810");
     expect(body).toContain(LATE);
+    expect(body.indexOf("The reviewer, on #810:")).toBeGreaterThanOrEqual(0);
+    expect(body.indexOf("The reviewer, on #810:")).toBeLessThan(body.indexOf(`> ${LATE}`));
     expect(doneWhen(body)).toBe("- Every step that runs gh names its repo.");
     expect(order().indexOf("issue comment")).toBeLessThan(order().indexOf("issue create"));
     expect(ticketComments()[0]).toContain(LATE);
