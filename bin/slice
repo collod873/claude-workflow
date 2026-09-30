@@ -1,0 +1,18 @@
+#!/bin/bash
+set -uo pipefail
+
+usage="slice: usage: slice <issue number>"
+
+if [[ ${1:-} == "--help" ]]; then
+  printf '%s\n' "$usage"
+  exit 0
+fi
+
+issue=${1:-}
+if [[ $# -ne 1 || ! $issue =~ ^[0-9]+$ ]]; then
+  printf '%s\n' "$usage" >&2
+  exit 2
+fi
+
+src="$(cd "${BASH_SOURCE[0]%/*}/../src" && pwd)"
+exec node "$src/slicer.ts" "$issue"

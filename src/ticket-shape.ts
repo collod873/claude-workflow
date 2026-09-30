@@ -70,6 +70,15 @@ export const why = (body: string): string => section(body.replaceAll(/\r\n?/g, "
 
 export const doneWhen = (body: string): string => section(body.replaceAll(/\r\n?/g, "\n"), DONE_WHEN).trim();
 
+export const outOfScope = (body: string): string => section(body.replaceAll(/\r\n?/g, "\n"), OUT_OF_SCOPE).trim();
+
+export const problemStatement = (body: string): string => section(body.replaceAll(/\r\n?/g, "\n"), PROBLEM_STATEMENT).trim();
+
+export const sectionsChanged = (read: string, written: string): string[] => [
+  ...(section(written, PROBLEM_STATEMENT) === section(read, PROBLEM_STATEMENT) ? [] : ["the rewrite changes '## Problem Statement', the owner's words, which stay byte-identical"]),
+  ...(section(written, OUT_OF_SCOPE) === section(read, OUT_OF_SCOPE) ? [] : ["the rewrite changes '## Out of Scope', which every ticket carries byte-identical"]),
+];
+
 export const whyChanged = (read: string, written: string): string[] => (why(written) === why(read) ? [] : ["the rewrite changes '## Why', the owner's words, which stay byte-identical"]);
 
 export function rewriteRefusals(read: string, written: string): string[] {
@@ -160,5 +169,7 @@ export function specRefusals(body: string): string[] {
     if (sentences.length === 0) refusals.push("'## I'll know it works when I can' carries no '- [ ]' item, so the done check has nothing to try");
     else refusals.push(...sentenceRefusals(sentences));
   }
+  const bytes = Buffer.byteLength(text);
+  if (bytes > SPEC_CAP) refusals.push(`the body is ${bytes} bytes, over the spec cap of ${SPEC_CAP}`);
   return [...refusals, ...emDashLines(text).map((line) => `line ${line} carries an em dash`)];
 }
