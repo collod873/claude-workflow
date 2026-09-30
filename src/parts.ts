@@ -99,14 +99,14 @@ export const parts: Part[] = [
     stops: "https://github.com/collod873/claude-workflow/issues/902",
   },
   {
-    name: "bin/done-check",
-    file: "bin/done-check",
-    stops: "https://github.com/collod873/claude-workflow/issues/1023",
-  },
-  {
     name: "bin/slice",
     file: "bin/slice",
     stops: "https://github.com/collod873/claude-workflow/issues/674",
+  },
+  {
+    name: "bin/done-check",
+    file: "bin/done-check",
+    stops: "https://github.com/collod873/claude-workflow/issues/1023",
   },
   {
     name: "bin/review",
@@ -118,6 +118,11 @@ export const parts: Part[] = [
     file: "bin/meters",
     stops: "https://github.com/collod873/claude-workflow/issues/894",
     lines: 5,
+  },
+  {
+    name: "bin/admit",
+    file: "bin/admit",
+    stops: "https://github.com/collod873/claude-workflow/issues/1022",
   },
   {
     name: "bin/fix",

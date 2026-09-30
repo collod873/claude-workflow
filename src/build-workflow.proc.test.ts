@@ -52,7 +52,8 @@ function stageStep(job: Job, stage: Stage): Step {
   return step as Step;
 }
 
-function stagesRun(job: Job, failing: Stage | undefined, outputs: Record<string, Record<string, string>> = {}): Stage[] {
+function stagesRun(job: Job, failing: Stage | undefined, given: Record<string, Record<string, string>> = {}): Stage[] {
+  const outputs: Record<string, Record<string, string>> = { admit: { admitted: "true" }, ...given };
   const outcomes: Record<string, StepOutcome> = {};
   for (const step of job.steps) if (step.id !== undefined) outcomes[step.id] = { outcome: "skipped", conclusion: "skipped", outputs: {} };
   const red = failing === undefined ? undefined : stageStep(job, failing);
@@ -89,22 +90,21 @@ describe("build.yml builds a ticket the moment it is filed (#826)", () => {
     expect(starts(["ticket", "spec"])).toBe(false);
   });
 
-  it("an issue anyone but the owner files or reopens starts no build, since its checks run as shell with the App's token", () => {
+  it("an issue a stranger files or reopens starts no build, since its checks run as shell with the App's token", () => {
     const { job } = workflow();
     const starts = (sender: string) => holds(job.if ?? "true", { sender });
 
     expect(starts("collod873")).toBe(true);
     expect(starts("stranger")).toBe(false);
-    expect(starts("collod873-machine[bot]")).toBe(false);
   });
 
-  it("the App's follow-up ticket builds itself, and nothing else the App or a stranger files does (#865)", () => {
+  it("every ticket the App opens reaches bin/fix, which holds it to a follow-up or an owner's open spec, and nothing a stranger files does (#865, #1022)", () => {
     const { job } = workflow();
     const starts = (sender: string, body: string) => holds(job.if ?? "true", { sender, body });
     const followUp = "## Why\n\nFollow-up of #865: its review found this after the builder's one turn.\n";
 
     expect(starts("collod873-machine[bot]", followUp)).toBe(true);
-    expect(starts("collod873-machine[bot]", "## Why\n\nA ticket the App wrote on its own.\n")).toBe(false);
+    expect(starts("collod873-machine[bot]", "## Why\n\nA ticket the slicer filed under a spec.\n")).toBe(true);
     expect(starts("stranger", followUp)).toBe(false);
     expect(holds(job.if ?? "true", { sender: "collod873-machine[bot]", body: followUp, labels: ["note"] })).toBe(false);
   });
@@ -129,6 +129,16 @@ describe("build.yml builds a ticket the moment it is filed (#826)", () => {
     expect(starts("collod873", "needs-human")).toBe(false);
     expect(starts("stranger", "waiting")).toBe(false);
     expect(holds(job.if ?? "true", { sender: "collod873-machine[bot]", action: "unlabeled", label: "waiting", labels: ["note"] })).toBe(false);
+  });
+
+  it("admits the ticket before start marks it, and a refused ticket runs neither start nor its builder, ending green so no Fix starts (#1022)", () => {
+    const { job } = workflow();
+    const admit = job.steps.find((step) => step.id === "admit");
+
+    expect(admit?.run).toMatch(/bin\/admit \$\{\{ github\.event\.issue\.number \}\} >>"\$GITHUB_OUTPUT"/);
+    expect(String(admit?.env?.GH_TOKEN)).toMatch(/steps\.app\.outputs\.token/);
+    expect(job.steps.indexOf(admit as Step)).toBeLessThan(job.steps.indexOf(stageStep(job, "start")));
+    expect(stagesRun(job, undefined, { admit: { admitted: "false" } })).toEqual([]);
   });
 
   it("hands the ticket to its builder after start, and nothing runs after start fails", () => {

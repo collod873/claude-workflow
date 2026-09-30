@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build:
-    if: "${{ (github.event.action != 'unlabeled' || github.event.label.name == 'waiting') && (github.event.sender.login == github.repository_owner || (github.event.sender.login == 'collod873-machine[bot]' && (github.event.action == 'unlabeled' || (github.event.action == 'opened' && contains(github.event.issue.body, 'Follow-up of #'))))) && !contains(github.event.issue.labels.*.name, 'note') && !contains(github.event.issue.labels.*.name, 'spec') }}"
+    if: "${{ (github.event.action != 'unlabeled' || github.event.label.name == 'waiting') && (github.event.sender.login == github.repository_owner || (github.event.sender.login == 'collod873-machine[bot]' && (github.event.action == 'unlabeled' || github.event.action == 'opened'))) && !contains(github.event.issue.labels.*.name, 'note') && !contains(github.event.issue.labels.*.name, 'spec') }}"
     runs-on: ubuntu-latest
     timeout-minutes: 70
     cache-mode: write
@@ -45,12 +45,19 @@ jobs:
           client-id: ${{ vars.CORE_APP_CLIENT_ID }}
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
 
+      - id: admit
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: bin/admit ${{ github.event.issue.number }} >>"$GITHUB_OUTPUT"
+
       - id: git-config
         run: |
           git config user.name "core-app[bot]"
           git config user.email "core-app[bot]@users.noreply.github.com"
 
       - id: start
+        if: steps.admit.outputs.admitted == 'true'
         timeout-minutes: 10
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
@@ -68,7 +75,7 @@ jobs:
           fi
 
       - id: fix
-        if: steps.start.outputs.rerun != 'true'
+        if: steps.admit.outputs.admitted == 'true' && steps.start.outputs.rerun != 'true'
         timeout-minutes: 50
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}

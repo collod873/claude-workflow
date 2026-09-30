@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { admission, doesNotBuild } from "./admit.ts";
 import { capped, onDisk } from "./brief.ts";
 import { CHECK, UNFENCED } from "./fence.ts";
 import { commentOnTicket, commentsOn, gh, git, OWNER, post, postRefusals, prNumber, rewriteTicket } from "./post.ts";
@@ -297,6 +298,11 @@ function failedAs(ticket: string, logs: string, run: string | undefined): string
 }
 
 function ownTicket(ticket: string, run: string | undefined): number {
+  const { refused, unread } = admission(ticket);
+  if (unread !== undefined || refused !== undefined) {
+    console.error(`fix: ${unread ?? doesNotBuild(ticket, refused ?? "")}`);
+    return 1;
+  }
   const logs = machineLogs(process.cwd());
   mkdirSync(logs, { recursive: true });
   const failed = failedAs(ticket, logs, run);
