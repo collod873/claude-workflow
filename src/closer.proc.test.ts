@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { closing } from "./scenarios.ts";
+import { CLOSE_RUN, closing } from "./scenarios.ts";
 
 const REPO = join(import.meta.dirname, "..");
 
@@ -416,5 +416,49 @@ describe("a finished Check run moves the queue on, and a red one wakes its build
 
     expect(on.workflow_run?.workflows).toContain("Check");
     expect(on.workflow_run?.types).toEqual(["completed"]);
+  });
+});
+
+describe("bin/close writes on the PR and the ticket each run it made, so a merged ticket shows the queue ran on real GitHub (#1015)", () => {
+  it("comments on a PR it brought up to date, linking the Close run that did it", () => {
+    const { calls, tokens, run } = closing({ ticket: "819", openPrs: [{ number: "940", ticket: "860" }] });
+
+    expect(run().status).toBe(0);
+    const commented = calls().findIndex((call) => call.startsWith("pr\ncomment\n940\n"));
+    expect(commented, "the PR is told it was brought up to date").toBeGreaterThanOrEqual(0);
+    expect(calls()[commented]).toContain("PR #940 brought up to date with main");
+    expect(calls()[commented]).toContain(CLOSE_RUN);
+    expect(tokens()[commented]).toBe("app");
+  });
+
+  it("links the Close run in a failed update too", () => {
+    const { calls, run } = closing({ ticket: "819", openPrs: [{ number: "941", ticket: "861", refused: "GraphQL: merge conflicts." }] });
+
+    expect(run().status).toBe(0);
+    expect(calls().find((call) => call.startsWith("pr\ncomment\n941\n"))).toContain(CLOSE_RUN);
+  });
+
+  it("links the Close run that wrote the closing record, and counts the branch updates that worked next to the failed ones", () => {
+    const { calls, run } = closing({
+      ticket: "838",
+      prComments: [
+        `PR #900 brought up to date with main by ${CLOSE_RUN}`,
+        "PR #900 could not be brought up to date with main: GraphQL: merge conflicts.",
+        `PR #900 brought up to date with main by ${CLOSE_RUN}`,
+      ],
+    });
+
+    expect(run().status).toBe(0);
+    const commented = calls().find((call) => call.startsWith("issue\ncomment\n838\n"));
+    expect(commented).toMatch(/^- branch updates: 2$/m);
+    expect(commented).toMatch(/^- failed branch updates: 1$/m);
+    expect(commented).toContain(`Written by ${CLOSE_RUN}`);
+  });
+
+  it("says branch updates are not available when its PR's comments cannot be read", () => {
+    const { calls, run } = closing({ ticket: "839", prCommentsUnreadable: true });
+
+    expect(run().status).toBe(0);
+    expect(calls().find((call) => call.startsWith("issue\ncomment\n839\n"))).toMatch(/^- branch updates: not available$/m);
   });
 });

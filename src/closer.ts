@@ -35,16 +35,21 @@ interface Wait {
 }
 
 interface Collisions {
+  branchUpdates: number;
   failedBranchUpdates: number;
   reReviews: number;
 }
 
 const FAILED_BRANCH_UPDATE = /^PR #\d+ could not be brought up to date with main:/;
+const BRANCH_UPDATE = /^PR #\d+ brought up to date with main by /;
+const { GITHUB_SERVER_URL: server, GITHUB_REPOSITORY: repository, GITHUB_RUN_ID: runId } = process.env;
+const thisRun = server && repository && runId ? `${server}/${repository}/actions/runs/${runId}` : "a run outside Actions";
 
 function collisions(comments: string[]): Collisions {
+  const branchUpdates = comments.filter((comment) => BRANCH_UPDATE.test(comment)).length;
   const failedBranchUpdates = comments.filter((comment) => FAILED_BRANCH_UPDATE.test(comment)).length;
   const judged = comments.filter((comment) => FINGERPRINT.test(comment)).length;
-  return { failedBranchUpdates, reReviews: Math.max(judged - 1, 0) };
+  return { branchUpdates, failedBranchUpdates, reReviews: Math.max(judged - 1, 0) };
 }
 
 const STEPS: { key: keyof Marks; label: string }[] = [
@@ -116,8 +121,10 @@ function speedReport(marks: Marks, collided: Collisions | undefined): string {
     lines.push(`- total, filed to merged: ${human(total)}`);
     lines.push(`- longest wait: ${human(longest.ms)}, ${longest.label}`);
   }
+  lines.push(`- branch updates: ${collided === undefined ? "not available" : collided.branchUpdates}`);
   lines.push(`- failed branch updates: ${collided === undefined ? "not available" : collided.failedBranchUpdates}`);
   lines.push(`- re-reviews: ${collided === undefined ? "not available" : collided.reReviews}`);
+  lines.push("", `Written by ${thisRun}`);
   return lines.join("\n");
 }
 
@@ -166,7 +173,7 @@ function wakeBuilder(ticket: string, reason: string): void {
 const headLine = (oid: string) => `Head: \`${oid}\``;
 
 const conflicts = (pr: QueuedPr, reason: string) =>
-  /merge conflict/i.test(reason) || git(["merge-tree", "--write-tree", "--quiet", "origin/main", `origin/${pr.headRefName}`]).status === 1;
+  /conflict/i.test(reason) || git(["merge-tree", "--write-tree", "--quiet", "origin/main", `origin/${pr.headRefName}`]).status === 1;
 
 function conflictReportedAtHead(pr: QueuedPr): boolean {
   return (commentsOn(pr.number, gh) ?? []).some((said) => FAILED_BRANCH_UPDATE.test(said) && said.includes(headLine(pr.headRefOid)) && conflicts(pr, said));
@@ -175,13 +182,16 @@ function conflictReportedAtHead(pr: QueuedPr): boolean {
 function updateBranch(pr: QueuedPr): boolean {
   const { number, headRefName, headRefOid } = pr;
   const updated = gh(["pr", "update-branch", number]);
-  if (updated.status === 0) return true;
+  if (updated.status === 0) {
+    commentOnPr(number, `PR #${number} brought up to date with main by ${thisRun}`, gh);
+    return true;
+  }
   const reason = (updated.stderr || updated.stdout).trim().split("\n")[0] || "no reason given";
   if (!conflicts(pr, reason)) {
     console.log(`close: PR #${number} could not be brought up to date with main, and will be tried again: ${reason}`);
     return false;
   }
-  commentOnPr(number, `PR #${number} could not be brought up to date with main: ${reason}\n\n${headLine(headRefOid)}`, gh);
+  commentOnPr(number, `PR #${number} could not be brought up to date with main: ${reason}\n\n${headLine(headRefOid)}\n\nRun: ${thisRun}`, gh);
   const ticket = TICKET_BRANCH.exec(headRefName)?.[1];
   if (ticket !== undefined) wakeBuilder(ticket, `#${ticket}'s PR #${number} could not be brought up to date with main: ${reason}`);
   return false;
