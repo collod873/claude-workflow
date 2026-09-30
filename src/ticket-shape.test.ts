@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { NOTE_SHAPE, SPEC_SHAPE, TICKET_SHAPE, noteRefusals, specRefusals, ticketRefusals } from "./ticket-shape.ts";
+import { handedOn as builderBrief } from "./builder.ts";
+import { handedOn as reviewerBrief } from "./reviewer.ts";
+import { DONE_SENTENCES, NOTE_SHAPE, SPEC_SHAPE, TICKET_SHAPE, noteRefusals, specRefusals, ticketRefusals } from "./ticket-shape.ts";
 
 const DASH = "\u2014";
 const TEST_CHECK = "npx vitest run --config vitest.config.ts ticket-shape";
@@ -200,5 +202,16 @@ describe("the shape bin/file-issue --help prints names every heading its kind is
 
     expect(named.length).toBeGreaterThan(0);
     expect(named.filter((name) => !shape.includes(`## ${name}`))).toEqual([]);
+  });
+});
+
+describe("the builder's split, the reviewer's follow-ups and bin/file-issue --help read one Done when phrase, not hand copies (#1004)", () => {
+  it.each([
+    ["bin/file-issue --help", TICKET_SHAPE],
+    ["the builder's split", builderBrief({ ticket: "1", body: body() })],
+    ["the reviewer's follow-ups", reviewerBrief(body(), "", { earlier: "", fix: "" })],
+  ])("%s", (_, text) => {
+    expect(text).toContain(DONE_SENTENCES);
+    expect(text.replace(DONE_SENTENCES, "")).not.toMatch(/\d+ to \d+/);
   });
 });
