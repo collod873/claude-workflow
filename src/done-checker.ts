@@ -76,6 +76,10 @@ function doneCheck(issue: string): Stop | undefined {
   const comment = commentOnTicket(issue, posted(listed, tries), gh);
   const [refusal] = comment.refusals;
   if (refusal !== undefined) return stoppedAt("unrecorded", `${said} ended red, its comment would not post: ${quoted(refusal)}`);
+  if (listed.some((_, at) => !tries.some((one) => one.sentence === at + 1 && one.outcome === "held"))) {
+    console.log(`${said} did not hold every sentence, so it stays open: ${comment.said}`);
+    return undefined;
+  }
   if (gh(["issue", "close", issue, "--reason", "completed"]).status !== 0) return stoppedAt("unrecorded", `${said} held every sentence but would not close: ${comment.said}`);
   console.log(`${said} held every sentence and is closed: ${comment.said}`);
   return undefined;
