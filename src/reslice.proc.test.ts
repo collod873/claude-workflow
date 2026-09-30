@@ -3,10 +3,11 @@ import { join } from "node:path";
 import { parse } from "yaml";
 import { describe, expect, it } from "vitest";
 import { heard, holds, OWNER, wellFormedSpec, type WorkflowStep } from "./scenarios.ts";
+import { closing } from "./closer.part.ts";
 import { slicing } from "./slicer.part.ts";
 
 const SPEC_ISSUE = { number: 968, state: "open", labels: [{ name: "spec" }], user: { login: OWNER }, body: "" };
-const ticket = (number: number, state = "closed") => ({ number, state, labels: [], user: { login: "core-app[bot]" }, body: "## Why\n\n> the owner's words\n\n## Done when\n\n- It lands.\n" });
+const ticket = (number: number, state = "closed") => ({ number, state, labels: [] as { name: string }[], user: { login: "core-app[bot]" }, body: "## Why\n\n> the owner's words\n\n## Done when\n\n- It lands.\n" });
 const followUp = (number: number, of: number, state = "open") => ({ ...ticket(number, state), body: `## Why\n\nFollow-up of #${of}: its review found this after its builder's repair, outside the earlier gaps and the fix's own lines.\n\n> a gap\n\n## Done when\n\n- It lands.\n` });
 const NOTE = "## Wave 1\n\n> the owner's words\n\nSettled.\n\nFiles it.\n\nFiled: #1101, #1102.\n\n<!-- moves: 1, 3 -->\n";
 const CHECKED = "## Wave check\n\n1. **Held**: see it\n";
@@ -59,6 +60,14 @@ describe("bin/slice --ended tells reslice.yml when a closed issue ends its spec'
 
     const shut = ended({ spec: { ...SPEC_ISSUE, state: "closed" } });
     expect(shut.ran).toEqual({ status: 0, stdout: "", stderr: "slice: #1102 is under no open spec, so no wave ended\n" });
+  });
+
+  it("names no spec for a closed note or spec, even one filed under a spec, since the closer's dispatch passes no label filter (#1045)", () => {
+    for (const label of ["note", "spec"]) {
+      const labelled = { ...ticket(1102), labels: [{ name: label }] };
+      const { ran } = ended({ tickets: [ticket(1101), labelled] });
+      expect(ran).toEqual({ status: 0, stdout: "", stderr: `slice: #1102 is a ${label}, so no wave ended\n` });
+    }
   });
 });
 
@@ -131,7 +140,7 @@ interface Job {
   steps: (WorkflowStep & { id?: string; if?: string })[];
 }
 
-const RESLICE = parse(readFileSync(join(import.meta.dirname, "..", ".github", "workflows", "reslice.yml"), "utf8")) as { on: { issues?: { types?: string[] } }; jobs: Record<string, Job> };
+const RESLICE = parse(readFileSync(join(import.meta.dirname, "..", ".github", "workflows", "reslice.yml"), "utf8")) as { on: { issues?: { types?: string[] }; workflow_dispatch?: { inputs?: Record<string, { required?: boolean; type?: string }> } }; jobs: Record<string, Job> };
 const job = (name: string): Job => {
   const found = RESLICE.jobs[name];
   if (found === undefined) throw new Error(`no ${name} job in reslice.yml`);
@@ -148,9 +157,25 @@ describe("reslice.yml runs the wave check, then the re-slice, when a closed issu
     expect(holds(ended.if ?? "true", { labels: [], action: "closed" })).toBe(true);
     expect(holds(ended.if ?? "true", { labels: ["spec"], action: "closed" })).toBe(false);
     expect(holds(ended.if ?? "true", { labels: ["note"], action: "closed" })).toBe(false);
-    expect(ended.steps.find((step) => step.id === "ended")?.run).toBe('bin/slice --ended ${{ github.event.issue.number }} >>"$GITHUB_OUTPUT"');
+    expect(ended.steps.find((step) => step.id === "ended")?.run).toBe('bin/slice --ended "$ISSUE" >>"$GITHUB_OUTPUT"');
     expect(ended.steps.some((step) => step.env?.CLAUDE_CODE_OAUTH_TOKEN !== undefined)).toBe(false);
     expect(ended.outputs?.spec).toBe("${{ steps.ended.outputs.spec }}");
+  });
+
+  it("starts too on a dispatch naming the closed issue, which is how the closer starts it after its quiet close (#1045)", () => {
+    expect(RESLICE.on.workflow_dispatch?.inputs?.issue).toEqual({ required: true, type: "number" });
+    expect(holds(job("ended").if ?? "true", { labels: [], action: "" })).toBe(true);
+    for (const name of ["ended", "reslice"]) expect(job(name).steps.find((step) => step.id === "ended")?.env?.ISSUE).toBe("${{ github.event.issue.number || inputs.issue }}");
+  });
+
+  it("reads the issue the closer dispatches as the one bin/slice --ended is asked about, which names the spec whose last ticket it closed", () => {
+    const { calls, run } = closing({ ticket: "1102" });
+    expect(run().status).toBe(0);
+    const [input = "", number = ""] = /^workflow\nrun\nreslice\.yml\n-f\n(\w+)=(\d+)\n$/m.exec(calls().find((call) => call.startsWith("workflow\nrun\nreslice.yml\n")) ?? "")?.slice(1) ?? [];
+
+    expect(Object.keys(RESLICE.on.workflow_dispatch?.inputs ?? {})).toEqual([input]);
+    expect(job("ended").steps.find((step) => step.id === "ended")?.env?.ISSUE).toBe(`\${{ github.event.issue.number || inputs.${input} }}`);
+    expect(ended({ closed: Number(number) }).ran).toEqual({ status: 0, stdout: "spec=968\nmoves=1,3\n", stderr: "" });
   });
 
   it("re-slices one spec at a time, checking again that the wave ended, then tries the sentences the last note moves before the re-slice", () => {
@@ -160,7 +185,7 @@ describe("reslice.yml runs the wave check, then the re-slice, when a closed issu
     expect(reslice.needs).toBe("ended");
     expect(reslice.if).toBe("${{ needs.ended.outputs.spec != '' }}");
     expect(reslice.concurrency).toEqual({ group: "reslice-${{ needs.ended.outputs.spec }}", "cancel-in-progress": false });
-    expect(steps[stepAt(steps, "ended")]?.run).toBe('bin/slice --ended ${{ github.event.issue.number }} >>"$GITHUB_OUTPUT"');
+    expect(steps[stepAt(steps, "ended")]?.run).toBe('bin/slice --ended "$ISSUE" >>"$GITHUB_OUTPUT"');
     expect(stepAt(steps, "ended")).toBeLessThan(stepAt(steps, "wave-check"));
     expect(stepAt(steps, "wave-check")).toBeLessThan(stepAt(steps, "reslice"));
     const waveCheck = steps[stepAt(steps, "wave-check")];

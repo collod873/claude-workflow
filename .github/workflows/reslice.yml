@@ -1,9 +1,14 @@
 name: Reslice
-run-name: "Reslice after #${{ github.event.issue.number }}: ${{ github.event.issue.title }}"
+run-name: "Reslice after #${{ github.event.issue.number || inputs.issue }}${{ github.event.issue.title && ': ' || '' }}${{ github.event.issue.title }}"
 
 "on":
   issues:
     types: [closed]
+  workflow_dispatch:
+    inputs:
+      issue:
+        required: true
+        type: number
 
 permissions:
   contents: read
@@ -38,7 +43,8 @@ jobs:
         timeout-minutes: 5
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
-        run: bin/slice --ended ${{ github.event.issue.number }} >>"$GITHUB_OUTPUT"
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
+        run: bin/slice --ended "$ISSUE" >>"$GITHUB_OUTPUT"
 
   reslice:
     needs: ended
@@ -83,7 +89,8 @@ jobs:
         timeout-minutes: 5
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
-        run: bin/slice --ended ${{ github.event.issue.number }} >>"$GITHUB_OUTPUT"
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
+        run: bin/slice --ended "$ISSUE" >>"$GITHUB_OUTPUT"
 
       - id: wave-check
         if: steps.ended.outputs.spec != '' && steps.ended.outputs.moves != ''

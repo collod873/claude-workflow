@@ -2,8 +2,11 @@ import { spawnSync } from "node:child_process";
 import { splitInto } from "./builder.ts";
 import { commentOnPr, commentOnTicket, commentsOn, WAITING } from "./post.ts";
 import { FINGERPRINT, REVIEWED_FROM, SPLIT_FROM } from "./reviewer.ts";
-import { exitFor, stoppedAt, type Stop } from "./stops.ts";
+import { exitFor, stopsOf } from "./stops.ts";
 import { quoted, why } from "./ticket-shape.ts";
+
+const stoppedAt = stopsOf({ unresliced: "Close: the re-slice will not start once the ticket is closed" });
+type Stop = ReturnType<typeof stoppedAt>;
 
 const MERGED = /^Merge pull request #(\d+) from \S+?(?:\/ticket\/(\d+))?$/;
 const NAMED = /^(?:[ ,]*#\d+)+/;
@@ -169,6 +172,11 @@ function wakeBuilder(ticket: string, reason: string): void {
   gh(["workflow", "run", "fix.yml", "-f", `ticket=${ticket}`, "-f", `reason=${reason}`]);
 }
 
+function resliced(ticket: string): Stop | undefined {
+  const started = gh(["workflow", "run", "reslice.yml", "-f", `issue=${ticket}`]);
+  return started.status === 0 ? undefined : stoppedAt("unresliced", `close: #${ticket} closed, but the re-slice would not start: ${quoted((started.stderr || started.stdout).trim().split("\n")[0] ?? "")}`);
+}
+
 const headLine = (oid: string) => `Head: \`${oid}\``;
 
 const conflicts = (pr: QueuedPr, reason: string) =>
@@ -264,7 +272,7 @@ function close(): Stop | undefined {
     if (quietGh(["issue", "close", ticket, "--reason", "completed"]).status !== 0) return stoppedAt("unrecorded", `close: #${ticket} is done but could not be closed${recorded(posted.said)}`);
   }
   console.log(`close: #${ticket} closed as completed, its PR merged${recorded(posted.said)}${wokenFromSplit(ticket, asked.stdout)}${wokenAfterParents()}`);
-  return undefined;
+  return resliced(ticket);
 }
 
 if (import.meta.main) process.exit(exitFor(close()));
