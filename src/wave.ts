@@ -5,6 +5,7 @@ import { exitFor, stoppedAt, type Stop } from "./stops.ts";
 import { why } from "./ticket-shape.ts";
 
 const SPEC_LABEL = "spec";
+const UNSLICED_LABELS = [SPEC_LABEL, "note"];
 const WAVE_NOTE = /^## Wave \d+\b/;
 const MOVES = /<!-- moves: ([\d, ]*) -->/;
 const DEEPEST = 20;
@@ -112,6 +113,13 @@ function moved(comments: string[]): string {
 }
 
 function waveEnded(issue: string): Stop | undefined {
+  const closed = opened(issue, gh);
+  if (closed === "unread") return stoppedAt("unread", `slice: #${issue} could not be read`);
+  const label = closed === "missing" ? undefined : UNSLICED_LABELS.find((one) => (closed.labels ?? []).some(({ name }) => name === one));
+  if (label !== undefined) {
+    console.error(`slice: #${issue} is a ${label}, so no wave ended`);
+    return undefined;
+  }
   const found = specOf(issue);
   if (found === "unread") return stoppedAt("unread", `slice: #${issue} or the issue it follows up could not be read`);
   const { spec, chain } = found;

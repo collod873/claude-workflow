@@ -60,6 +60,14 @@ describe("bin/slice --ended tells reslice.yml when a closed issue ends its spec'
     const shut = ended({ spec: { ...SPEC_ISSUE, state: "closed" } });
     expect(shut.ran).toEqual({ status: 0, stdout: "", stderr: "slice: #1102 is under no open spec, so no wave ended\n" });
   });
+
+  it("names no spec for a closed note or spec, even one filed under a spec, since the closer's dispatch passes no label filter (#1045)", () => {
+    for (const label of ["note", "spec"]) {
+      const labelled = { ...ticket(1102), labels: [{ name: label }] };
+      const { ran } = ended({ tickets: [ticket(1101), labelled] });
+      expect(ran).toEqual({ status: 0, stdout: "", stderr: `slice: #1102 is a ${label}, so no wave ended\n` });
+    }
+  });
 });
 
 const OWNER_SAID = { author: OWNER, type: "User", body: "Keep the done check out of the slicer." };
