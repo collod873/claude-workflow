@@ -7,7 +7,8 @@ import { askedIssue, commentOnTicket, commentsOn, gh, NEEDS_HUMAN, post } from "
 import { LIST_CAP, NO_EM_DASH, TICKET_CAP } from "./reviewer.ts";
 import { hired, machineLogs, type Spent } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
-import { ended, FOUND_CAP, underSpec, waveFound, waveNotes } from "./wave.ts";
+import { missedIn, WAVE_CHECK_HEADING } from "./done-checker.ts";
+import { DIFF_CAP, ended, FOUND_CAP, underSpec, waveDiffs, waveFound, waveNotes } from "./wave.ts";
 import { DONE_SENTENCES, filedOutOfScope, filedPassages, type Passage, quoted, restored, sectionsDropped, sentences, SPEC_CAP, specRefusals, ticketRefusals } from "./ticket-shape.ts";
 
 const stoppedAt = stopsOf({
@@ -15,6 +16,7 @@ const stoppedAt = stopsOf({
   unsliced: "Slice: the wave is still refused after two rounds back, so the spec is marked `needs-human`",
   unfiled: "Slice: the spec's rewrite, a ticket of its wave or the wave's note will not post",
   unchecked: "Slice: nothing is left to slice, and the done check it hands the spec to ends red",
+  unfixed: "Slice: the slicer gives no ticket for the spec's fix wave, so nothing is filed",
 });
 type Stop = ReturnType<typeof stoppedAt>;
 
@@ -68,6 +70,9 @@ interface Wave {
 export interface Found {
   comments: string[];
   tickets: string;
+  diffs: string;
+  missed: number[];
+  fix: boolean;
 }
 
 const FIRST = "Slice this filed spec into its first wave of tickets.";
@@ -75,15 +80,39 @@ const NEXT =
   "Slice this spec's next wave: the wave before it has closed. Read what it did below, the owner's comments and the last wave check, and slice the next wave against the spec and what that wave merged, split or noted.";
 const WATCHED = "Read the repo as you need. No one is watching and no one will answer a question: where the spec is silent, pick, and write your pick into the spec.";
 
+const listed = (numbers: number[]) => numbers.join(", ");
+
+const fixing = (missed: number[]) =>
+  `Slice this spec's one fix wave: the done check found sentence ${listed(missed)} did not hold with every ticket closed. Read what the waves did below, and slice the fewest tickets that make ${missed.length === 1 ? "it" : "them"} hold; \`moves\` names exactly ${missed.length === 1 ? "that sentence" : "those sentences"}.`;
+
+const owed = (missed: number[]) => `The last wave check missed sentence ${listed(missed)}: this wave carries at least one ticket, and its \`moves\` name each of them.`;
+
+const FOLDED =
+  "Read the diffs as what the wave built: fold the helpers, seams and modules the wave built that tickets share into `### Names the tickets share`. Where the wave left two copies of one helper or a shallow module, file a ticket to merge or deepen it, and hold the tickets that touch that module back a wave. Say in `did` what you folded in and why.";
+
+function lead(found: Found | undefined): string {
+  if (found === undefined) return FIRST;
+  if (found.fix) return fixing(found.missed);
+  return found.missed.length === 0 ? NEXT : `${NEXT} ${owed(found.missed)}`;
+}
+
 export function handedOn(title: string, body: string, found?: Found): string {
   const spec = capped(`# ${title}\n\n${body}`, SPEC_CAP);
   const read =
     found === undefined
       ? []
-      : ["## Comments on the spec, the owner's and the machine's, newest first", capped([...found.comments].reverse().join("\n\n---\n\n"), COMMENTS_CAP) || "(none)", "## The tickets under it, newest first", capped(found.tickets, FOUND_CAP) || "(none)"];
-  const last = found === undefined ? "" : " Give no ticket when nothing is left to slice: code then files nothing and the done check tries every sentence.";
+      : [
+          "## Comments on the spec, the owner's and the machine's, newest first",
+          capped([...found.comments].reverse().join("\n\n---\n\n"), COMMENTS_CAP) || "(none)",
+          "## The tickets under it, newest first",
+          capped(found.tickets, FOUND_CAP) || "(none)",
+          "## The diff of each PR the wave merged, newest first",
+          capped(found.diffs, DIFF_CAP) || "(none)",
+          FOLDED,
+        ];
+  const last = found === undefined || found.fix || found.missed.length > 0 ? "" : " Give no ticket when nothing is left to slice: code then files nothing and the done check tries every sentence.";
   return [
-    `${found === undefined ? FIRST : NEXT} ${WATCHED}`,
+    `${lead(found)} ${WATCHED}`,
     "## The spec",
     spec,
     "## Its Problem Statement, passage by passage",
@@ -93,7 +122,7 @@ export function handedOn(title: string, body: string, found?: Found): string {
     ...read,
     "## Your answer",
     "`spec`: the spec rewritten in full. Settle under `### Names the tickets share` in `## Implementation Decisions` each name two tickets both need, a label, a command or a key, in the words of the repo's `CONTEXT.md`, and no path, which code refuses there. Write each pick you made where the spec was silent where it belongs. `## Problem Statement` and `## Out of Scope` stay byte for byte: keep both under their headings, and code puts back the owner's bytes as filed.",
-    `\`tickets\`: the ${found === undefined ? "first" : "next"} wave, the fewest tickets that each fit the builder's brief cap of ${TICKET_CAP} bytes, all building at once beside each other. First find which parts each piece touches before you group them: one ticket unless two pieces touch different parts and neither needs the other's code. \`title\`; \`passages\`, the numbers of the Problem Statement passages its \`## Why\` quotes, which code copies in; \`why\`, what this ticket is for in the spec, which follows the quote; \`done\`, ${DONE_SENTENCES}. Code adds the spec's Out of Scope to each. A ticket over the cap comes back to you to split.${last}`,
+    `\`tickets\`: the ${found === undefined ? "first" : found.fix ? "fix" : "next"} wave, the fewest tickets that each fit the builder's brief cap of ${TICKET_CAP} bytes, all building at once beside each other. First find which parts each piece touches before you group them: one ticket unless two pieces touch different parts and neither needs the other's code. \`title\`; \`passages\`, the numbers of the Problem Statement passages its \`## Why\` quotes, which code copies in; \`why\`, what this ticket is for in the spec, which follows the quote; \`done\`, ${DONE_SENTENCES}. Code adds the spec's Out of Scope to each. A ticket over the cap comes back to you to split.${last}`,
     NOTED,
     "",
   ].join("\n\n");
@@ -130,11 +159,12 @@ function isWave(answer: unknown): answer is Wave {
   return typeof given?.spec === "string" && Array.isArray(given.tickets) && typeof given.did === "string" && typeof given.next === "string" && Array.isArray(given.moves);
 }
 
-function waveRefusals(read: string, wave: Wave, first: boolean): string[] {
+function waveRefusals(read: string, wave: Wave, found: Found | undefined): string[] {
   const passages = filedPassages(read);
   const changed = sectionsDropped(read, wave.spec);
   const rewrite = changed.length > 0 ? changed : specRefusals(wave.spec).map((refusal) => `the rewrite: ${refusal}`);
-  const none = first && wave.tickets.length === 0 ? ["the wave carries no ticket"] : [];
+  const missed = found?.missed ?? [];
+  const empty = wave.tickets.length > 0 ? [] : found === undefined ? ["the wave carries no ticket"] : missed.length > 0 ? [`the wave carries no ticket, and the last wave check missed sentence ${listed(missed)}`] : [];
   const tickets = wave.tickets.flatMap((piece, at) => {
     const named = `ticket ${at + 1}, ${JSON.stringify(piece.title)},`;
     const unheld = piece.passages.filter((passage) => !(Number.isInteger(passage) && passage >= 1 && passage <= passages.length));
@@ -145,9 +175,22 @@ function waveRefusals(read: string, wave: Wave, first: boolean): string[] {
     const over = bytes > TICKET_CAP ? [`${named} would be ${bytes} bytes, over the builder's brief cap of ${TICKET_CAP} bytes: split it`] : [];
     return [...over, ...ticketRefusals(body).map((refusal) => `${named} ${refusal}`)];
   });
-  const listed = sentences(read).length;
-  const moves = wave.moves.filter((sentence) => !(Number.isInteger(sentence) && sentence >= 1 && sentence <= listed)).map((sentence) => `the note moves sentence ${sentence}, and the spec lists ${listed}`);
-  return [...rewrite, ...none, ...tickets, ...moves];
+  const tried = sentences(read).length;
+  const moves = wave.moves.filter((sentence) => !(Number.isInteger(sentence) && sentence >= 1 && sentence <= tried)).map((sentence) => `the note moves sentence ${sentence}, and the spec lists ${tried}`);
+  return [...rewrite, ...empty, ...tickets, ...moves, ...owedMoves(wave.moves, found)];
+}
+
+function owedMoves(moves: number[], found: Found | undefined): string[] {
+  if (found === undefined) return [];
+  if (!found.fix) return found.missed.filter((sentence) => !moves.includes(sentence)).map((sentence) => `the note leaves out sentence ${sentence}, which the last wave check missed`);
+  const given = [...new Set(moves)].sort((one, other) => one - other);
+  return listed(given) === listed(found.missed) ? [] : [`the fix wave moves sentence ${listed(moves) || "none"}, and must move exactly sentence ${listed(found.missed)}`];
+}
+
+function missedSinceNote(comments: string[]): number[] {
+  const note = comments.map((said) => waveNotes([said]).length > 0).lastIndexOf(true);
+  const check = comments.map((said) => said.startsWith(WAVE_CHECK_HEADING)).lastIndexOf(true);
+  return check > note ? [...missedIn(comments[check] ?? "")].sort((one, other) => one - other) : [];
 }
 
 function filedWave(issue: string, read: string, wave: Wave, number: number): Stop | undefined {
@@ -188,7 +231,7 @@ function partWave(issue: string, wave: Wave, filed: string[], next: number, sinc
   return stoppedAt("unfiled", `slice: #${issue} filed ${filed.length} of ${wave.tickets.length} tickets, ${stopped}`);
 }
 
-function sliced(issue: string): Stop | undefined {
+function sliced(issue: string, fix?: number[]): Stop | undefined {
   const said = `slice: #${issue}`;
   const read = gh(["issue", "view", issue, "--json", "title,body,labels"]);
   const asked = read.status === 0 ? askedIssue(read.stdout) : undefined;
@@ -204,9 +247,9 @@ function sliced(issue: string): Stop | undefined {
     console.log(`${said}'s wave is not over, #${unclosed.number} is still open, so nothing sliced it`);
     return undefined;
   }
-  const comments = tickets === undefined || tickets.length === 0 ? [] : commentsOn(issue, gh);
+  const comments = tickets === undefined || (tickets.length === 0 && fix === undefined) ? [] : commentsOn(issue, gh);
   if (tickets === undefined || comments === undefined) return stoppedAt("unread", `${said}'s tickets or comments could not be read, so no model was spent`);
-  const found = tickets.length === 0 ? undefined : { comments, tickets: waveFound(tickets) };
+  const found = tickets.length === 0 && fix === undefined ? undefined : { comments, tickets: waveFound(tickets), diffs: waveDiffs(tickets), missed: fix ?? missedSinceNote(comments), fix: fix !== undefined };
   const logs = machineLogs(process.cwd());
   mkdirSync(logs, { recursive: true });
   const spend = hired({ name: "slicer", transcript: join(logs, `slice-${issue}.jsonl`), tools: TOOLS, reach: FENCED_OPUS, answers: ANSWERS });
@@ -215,9 +258,10 @@ function sliced(issue: string): Stop | undefined {
   for (let round = 0; ; round++) {
     if (spent.refusal !== undefined) return stoppedAt("modelRun", `${said} ended red, ${spent.refusal}`);
     if (!isWave(spent.answer)) return stoppedAt("modelRun", `${said} ended red, the slicer gave no wave`);
-    if (found !== undefined && spent.answer.tickets.length === 0) return handedOff(issue);
+    if (found?.fix === true && spent.answer.tickets.length === 0) return stoppedAt("unfixed", `${said} ended red, the slicer gave no ticket for its fix wave, so nothing was filed`);
+    if (found !== undefined && found.missed.length === 0 && spent.answer.tickets.length === 0) return handedOff(issue);
     const wave = { ...spent.answer, spec: restored(asked.body, spent.answer.spec) };
-    const refusals = waveRefusals(asked.body, wave, found === undefined);
+    const refusals = waveRefusals(asked.body, wave, found);
     if (refusals.length === 0) return filedWave(issue, asked.body, wave, waveNotes(comments).length + 1);
     if (round === ROUNDS_BACK) return calledOwner(issue, `its wave still refused after ${ROUNDS_BACK} rounds back: ${quoted(refusals[0] ?? "")}`);
     spent = spend(sentBack(refusals), spent.session);
@@ -237,7 +281,8 @@ function calledOwner(issue: string, why: string): Stop {
 }
 
 if (import.meta.main) {
-  const [first, second] = process.argv.slice(2);
+  const [first, second, numbers] = process.argv.slice(2);
   if (first === undefined) throw new Error("no issue number in the arguments");
-  process.exit(first === "--ended" && second !== undefined ? ended(second) : exitFor(sliced(first)));
+  const fix = second === "--fix" ? (numbers ?? "").split(/[ ,]+/).filter((number) => number !== "").map(Number) : undefined;
+  process.exit(first === "--ended" && second !== undefined ? ended(second) : exitFor(sliced(first, fix)));
 }
