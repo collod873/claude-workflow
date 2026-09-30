@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   asked:
-    if: "${{ github.event.sender.login == github.repository_owner && contains(github.event.issue.labels.*.name, 'spec') }}"
+    if: "${{ github.event.sender.login == github.repository_owner && contains(github.event.issue.labels.*.name, 'spec') && !contains(github.event.issue.labels.*.name, 'needs-human') }}"
     runs-on: ubuntu-latest
     timeout-minutes: 2
     permissions:
