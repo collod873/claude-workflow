@@ -188,8 +188,8 @@ function owedMoves(moves: number[], found: Found | undefined): string[] {
 }
 
 function missedSinceNote(comments: string[]): number[] {
-  const note = comments.findLastIndex((said) => waveNotes([said]).length > 0);
-  const check = comments.findLastIndex((said) => said.startsWith(WAVE_CHECK_HEADING));
+  const note = comments.map((said) => waveNotes([said]).length > 0).lastIndexOf(true);
+  const check = comments.map((said) => said.startsWith(WAVE_CHECK_HEADING)).lastIndexOf(true);
   return check > note ? [...missedIn(comments[check] ?? "")].sort((one, other) => one - other) : [];
 }
 
