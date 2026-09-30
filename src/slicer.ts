@@ -58,14 +58,14 @@ interface Wave {
 export function handedOn(title: string, body: string): string {
   const spec = capped(`# ${title}\n\n${body}`, SPEC_CAP);
   return [
-    "Slice this filed spec into its first wave of tickets. Read the repo as you need; change nothing here. No one is watching and no one will answer a question: where the spec is silent, pick, and write your pick into the spec.",
+    "Slice this filed spec into its first wave of tickets. Read the repo as you need. No one is watching and no one will answer a question: where the spec is silent, pick, and write your pick into the spec.",
     "## The spec",
     spec,
     "## Its Problem Statement, passage by passage",
     filedPassages(spec).map(({ text }, at) => `${at + 1}. ${text}`).join("\n\n") || "(none)",
     "## Your answer",
-    "`spec`: the spec rewritten in full. Settle under `### Names the tickets share` in `## Implementation Decisions` each name two tickets both need, a label, a path, a command or a key, and write each pick you made where the spec was silent where it belongs. Keep `## Problem Statement` and `## Out of Scope` under their headings: code puts back the owner's bytes as filed.",
-    `\`tickets\`: the first wave, each building at once beside the others and none waiting on another. \`title\`; \`passages\`, the numbers of the Problem Statement passages its \`## Why\` quotes, which code copies in; \`why\`, what this ticket is for in the spec, which follows the quote; \`done\`, ${DONE_SENTENCES}. Code adds the spec's Out of Scope to each. A ticket over the builder's brief cap of ${TICKET_CAP} bytes comes back to you to split.`,
+    "`spec`: the spec rewritten in full. Settle under `### Names the tickets share` in `## Implementation Decisions` each name two tickets both need, a label, a command or a key, in the words of the repo's `CONTEXT.md`, and no path, which code refuses there. Write each pick you made where the spec was silent where it belongs. `## Problem Statement` and `## Out of Scope` stay byte for byte: keep both under their headings, and code puts back the owner's bytes as filed.",
+    `\`tickets\`: the first wave, the fewest tickets that each fit the builder's brief cap of ${TICKET_CAP} bytes, all building at once beside each other. First find which parts each piece touches before you group them: one ticket unless two pieces touch different parts and neither needs the other's code. \`title\`; \`passages\`, the numbers of the Problem Statement passages its \`## Why\` quotes, which code copies in; \`why\`, what this ticket is for in the spec, which follows the quote; \`done\`, ${DONE_SENTENCES}. Code adds the spec's Out of Scope to each. A ticket over the cap comes back to you to split.`,
     "",
   ].join("\n\n");
 }

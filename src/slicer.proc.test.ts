@@ -55,6 +55,21 @@ describe("bin/slice turns a filed spec into its first wave of tickets under it, 
     expect(handed).toContain(`3. ${WATCHING}`);
   });
 
+  it("asks for the fewest tickets that fit, split only by the parts they touch, named in CONTEXT.md's words with no path (#1034)", () => {
+    const sliced = slicing({ body: SPEC, answers: [wave()] });
+
+    sliced.run();
+    const [handed = ""] = sliced.handed();
+    expect(handed).toContain("the fewest tickets that each fit the builder's brief cap of 8192 bytes");
+    expect(handed).toContain("one ticket unless two pieces touch different parts and neither needs the other's code");
+    expect(handed).toContain("find which parts each piece touches before you group them");
+    expect(handed).toContain("`## Problem Statement` and `## Out of Scope` stay byte for byte");
+    expect(handed).toContain("in the words of the repo's `CONTEXT.md`");
+    expect(handed).toContain("no path");
+    expect(handed).not.toContain("a path,");
+    expect(handed).not.toContain("change nothing here");
+  });
+
   it("sends a ticket whose brief would pass the brief cap back to the slicer to split, and files the split wave", () => {
     const big = piece("Do it all", [2], ["x".repeat(9000)]);
     const sliced = slicing({ body: SPEC, answers: [wave([big]), wave()] });
