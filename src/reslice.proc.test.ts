@@ -7,7 +7,7 @@ import { closing } from "./closer.part.ts";
 import { slicing } from "./slicer.part.ts";
 
 const SPEC_ISSUE = { number: 968, state: "open", labels: [{ name: "spec" }], user: { login: OWNER }, body: "" };
-const ticket = (number: number, state = "closed") => ({ number, state, labels: [], user: { login: "core-app[bot]" }, body: "## Why\n\n> the owner's words\n\n## Done when\n\n- It lands.\n" });
+const ticket = (number: number, state = "closed") => ({ number, state, labels: [] as { name: string }[], user: { login: "core-app[bot]" }, body: "## Why\n\n> the owner's words\n\n## Done when\n\n- It lands.\n" });
 const followUp = (number: number, of: number, state = "open") => ({ ...ticket(number, state), body: `## Why\n\nFollow-up of #${of}: its review found this after its builder's repair, outside the earlier gaps and the fix's own lines.\n\n> a gap\n\n## Done when\n\n- It lands.\n` });
 const NOTE = "## Wave 1\n\n> the owner's words\n\nSettled.\n\nFiles it.\n\nFiled: #1101, #1102.\n\n<!-- moves: 1, 3 -->\n";
 const CHECKED = "## Wave check\n\n1. **Held**: see it\n";

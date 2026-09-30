@@ -540,7 +540,7 @@ describe("bin/close starts the re-slice itself once it closes a ticket, since it
     expect(status).toBe(1);
     expect(calls().some((call) => call.startsWith("issue\nclose\n822\n"))).toBe(true);
     expect(stdout).toMatch(/^close: #822 closed as completed, its PR merged/);
-    expect(stderr).toBe('close: #822 closed, but the re-slice would not start: HTTP 403: Resource not accessible by integration\n');
+    expect(stderr).toBe("close: #822 closed, but the re-slice would not start: HTTP 403: Resource not accessible by integration\n");
   });
 
   it("dispatches nothing on a queue run, which closes no ticket", () => {
