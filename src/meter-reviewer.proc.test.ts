@@ -4,13 +4,12 @@ import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { METERS } from "./meter-reviewer.ts";
 import { NO_EM_DASH } from "./reviewer.ts";
-import { reviewing } from "./scenarios.ts";
+import { metering } from "./meter-reviewer.part.ts";
 
 const WORKFLOW = join(import.meta.dirname, "..", ".github", "workflows", "check.yml");
 const TANGLE = "src/tangle.ts joins billing and shipping, which change for different reasons";
 const keyOf = (name: string) => name.replaceAll(" ", "_");
 const answer = (found: Record<string, string[]> = {}) => Object.fromEntries(METERS.map(({ name }) => [keyOf(name), found[name] ?? []]));
-const metering = (options: Parameters<typeof reviewing>[0] = {}) => reviewing({ bin: "meters", verdict: answer(), ...options });
 
 function edit(run: ReturnType<typeof metering>): string {
   const [body] = run.edited();

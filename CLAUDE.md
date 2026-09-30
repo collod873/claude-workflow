@@ -5,8 +5,9 @@
 - **Code carries no prose.** No comments, docstrings or headers, in any language, tests included.
   The why goes in the commit message, or `CONTEXT.md` where it is the vocabulary; name things so
   the code says the rest.
-- New code is a part in `src/parts.ts` or reachable from `bin/`. knip runs with no baseline, and
-  a test importing a thing is not a caller: wire it to one or delete it.
+- New code is a part in `src/parts.ts`, a stage in its own `src/<stage>.part.ts`, or reachable from
+  `bin/`. knip runs with no baseline, and a test importing a thing is not a caller: wire it to one
+  or delete it.
 - Fix a failure at its cause before adding a gate.
 - `bin/check` is the full gate: pre-push and every PR. Mid-session, run `~/bin/check`;
   check-gate waits on it.

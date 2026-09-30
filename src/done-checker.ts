@@ -6,8 +6,11 @@ import { UNFENCED } from "./fence.ts";
 import { askedIssue, commentOnTicket, gh, type Asked } from "./post.ts";
 import { NO_EM_DASH } from "./reviewer.ts";
 import { hired, machineLogs } from "./stage.ts";
-import { exitFor, stoppedAt, type Stop } from "./stops.ts";
+import { exitFor, stopsOf } from "./stops.ts";
 import { quoted, sentences, SPEC_CAP } from "./ticket-shape.ts";
+
+const stoppedAt = stopsOf({ notSpec: "Refused: the issue is not labelled `spec`, or the done check finds no sentence to try" });
+type Stop = ReturnType<typeof stoppedAt>;
 
 const SPEC_LABEL = "spec";
 const CHECK_MINUTES = 10;

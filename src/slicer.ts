@@ -5,8 +5,15 @@ import { FENCED_OPUS } from "./fence.ts";
 import { askedIssue, commentOnTicket, gh, post } from "./post.ts";
 import { LIST_CAP, NO_EM_DASH, TICKET_CAP } from "./reviewer.ts";
 import { hired, machineLogs, type Spent } from "./stage.ts";
-import { exitFor, stoppedAt, type Stop } from "./stops.ts";
+import { exitFor, stopsOf } from "./stops.ts";
 import { DONE_SENTENCES, filedOutOfScope, filedPassages, type Passage, quoted, restored, sectionsDropped, SPEC_CAP, specRefusals, ticketRefusals } from "./ticket-shape.ts";
+
+const stoppedAt = stopsOf({
+  notSpec: "Slice refused: the issue is not labelled `spec`",
+  unsliced: "Slice: the wave is still refused after two rounds back, so the spec is marked `needs-human`",
+  unfiled: "Slice: the spec's rewrite or a ticket of its wave will not post",
+});
+type Stop = ReturnType<typeof stoppedAt>;
 
 const SPEC_LABEL = "spec";
 const NEEDS_HUMAN = "needs-human";

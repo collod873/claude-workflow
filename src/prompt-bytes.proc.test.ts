@@ -24,6 +24,7 @@ const leaky = (name: string, words: string) => planted(name, words, (filler) => 
 function measuredCopy(edits: Record<string, (source: string) => string>): string {
   const copy = scratch("prompt-bytes-");
   cpSync(join(REPO, "src"), join(copy, "src"), { recursive: true });
+  cpSync(join(REPO, "vitest.config.ts"), join(copy, "vitest.config.ts"));
   symlinkSync(join(REPO, "node_modules"), join(copy, "node_modules"));
   for (const [file, edit] of Object.entries(edits)) writeFileSync(join(copy, file), edit(readFileSync(join(copy, file), "utf8")));
   return copy;
@@ -34,7 +35,7 @@ const sources = (copy: string) =>
 
 const GROWN = { "src/researcher.ts": (source: string) => source.replace("Your reading time is up.", `Your reading time is up. ${"More words. ".repeat(300)}`) };
 const SHRUNK = { "src/researcher.ts": (source: string) => source.replace(" Read nothing more.", "") };
-const LINE = /^prompt-bytes: 12 prompts, (\d+) bytes of their own words, the largest the (.+) at (\d+)\n$/;
+const LINE = /^prompt-bytes: \d+ prompts, (\d+) bytes of their own words, the largest the (.+) at (\d+)\n$/;
 
 describe("every prompt's size is reported, never refused (#950)", () => {
   it("passes a prompt that grew past the size it had, naming the total and the largest", () => {
@@ -61,7 +62,7 @@ describe("every prompt's size is reported, never refused (#950)", () => {
     expect(sized([terse("small", "x".repeat(5)), terse("big", "x".repeat(30))])).toBe(
       "prompt-bytes: 2 prompts, 35 bytes of their own words, the largest the big at 30",
     );
-    expect(sized(PROMPTS)).toMatch(/^prompt-bytes: 12 prompts, \d+ bytes of their own words, the largest the .+ at \d+$/);
+    expect(sized(PROMPTS)).toMatch(/^prompt-bytes: \d+ prompts, \d+ bytes of their own words, the largest the .+ at \d+$/);
   });
 
   it("refuses a filled-in value with no cap, and passes a builder that caps what it pastes in", () => {

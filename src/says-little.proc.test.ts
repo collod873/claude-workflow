@@ -2,21 +2,16 @@ import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parts, type Part } from "./parts.ts";
-import { LINE_LIMIT, MOST_LINES, admitting, checkRepo, closing, closingNote, coveredByCheck, doneChecking, execute, filing, fixing, landSession, launching, marking, misshapenTicket, overLimit, researching, reviewing, slicing, saving, scratch, script, wellFormedNote, wellFormedSpec, wellFormedTicket, type Run } from "./scenarios.ts";
+import { LINE_LIMIT, MOST_LINES, checkRepo, closingNote, coveredByCheck, execute, filing, landSession, launching, marking, misshapenTicket, overLimit, saving, scratch, script, wellFormedNote, wellFormedTicket } from "./scenarios.ts";
+import { stages, type Scenario } from "./stages.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
 const NOISE = "a line a tool prints that nobody needed to read\n".repeat(40).trim();
 const URL = "https://github.com/collod873/claude-workflow/pull/1";
 const FILED = `printf '%s\\n' ${URL}\n`;
-const NOTHING_METERED = { depth: [], done_when: [], beyond_the_ask: [], hollow_test: [], lost_limit: [] };
 const NOTE_CALL = ["note", "--title", "What the audit found", "--body-file", "body.md"];
 
-interface Scenario {
-  label: string;
-  run: () => Run;
-}
-
-const scenarios: Record<string, Scenario[]> = {
+const listed: Record<string, Scenario[]> = {
   "bin/check": [
     { label: "passing", run: () => checkRepo().run() },
     { label: "with a failing test", run: () => checkRepo({ vitest: NOISE }).run() },
@@ -49,46 +44,13 @@ const scenarios: Record<string, Scenario[]> = {
     { label: "moving a ticket to a stage", run: () => marking().run("811", "2-building") },
     { label: "with GitHub refusing the label", run: () => marking({ gh: `cat >&2 <<'NOISE'\n${NOISE}\nNOISE\nexit 1\n` }).run("811", "needs-human") },
   ],
-  "bin/close": [
-    { label: "closing a ticket whose PR merged", run: () => closing({ ticket: "814" }).run() },
-    { label: "with the ticket unreadable", run: () => closing({ ticket: "815", readable: false }).run() },
-  ],
   "bin/close-note": [
     { label: "closing a note", run: () => closingNote("note\\n").run("887") },
     { label: "with GitHub refusing the close", run: () => closingNote("note\\n", { gh: `cat >&2 <<'NOISE'\n${NOISE}\nNOISE\nexit 1\n` }).run("887") },
   ],
-  "bin/research": [
-    { label: "answering a research note", run: () => researching().run() },
-    { label: "refusing a ticket", run: () => researching({ labels: ["2-building"] }).run() },
-  ],
-  "bin/slice": [
-    { label: "filing a wave", run: () => slicing({ answers: [{ spec: wellFormedSpec, tickets: [{ title: "File a spec", passages: [1], why: "Wave 1.", done: ["It files."] }] }] }).run() },
-    { label: "refusing a ticket", run: () => slicing({ labels: ["ticket"] }).run() },
-  ],
-  "bin/done-check": [
-    { label: "closing a spec whose sentence held", run: () => doneChecking().run() },
-    { label: "refusing a ticket", run: () => doneChecking({ labels: ["ticket"] }).run() },
-  ],
-  "bin/review": [
-    { label: "passing a match", run: () => reviewing().run() },
-    { label: "posting a drift", run: () => reviewing({ verdict: { verdict: "drift", gaps: ["the Why asks for more than was built"] } }).run() },
-  ],
-  "bin/meters": [
-    { label: "putting its lines on a PR body", run: () => reviewing({ bin: "meters", verdict: NOTHING_METERED }).run() },
-    { label: "printing its lines", run: () => reviewing({ bin: "meters", verdict: NOTHING_METERED }).run("9810", {}, ["--print"]) },
-    { label: "with the PR body unreadable", run: () => reviewing({ bin: "meters", prBodyUnreadable: true, verdict: NOTHING_METERED }).run() },
-  ],
-  "bin/admit": [
-    { label: "admitting a ticket", run: () => admitting().run() },
-    { label: "refusing a ticket the App opened under no spec", run: () => admitting({ opener: "collod873-machine[bot]" }).run() },
-    { label: "with the ticket unreadable", run: () => admitting({ unread: true }).run() },
-  ],
-  "bin/fix": [
-    { label: "pushing a fix", run: () => fixing({ claude: "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n" }).run() },
-    { label: "building a ticket", run: () => fixing({ claude: "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n" }).run("811") },
-    { label: "calling the owner when two rounds in a row change nothing", run: () => fixing({ check: "printf 'bin/check: FAILED test\\n'\nexit 1\n" }).run() },
-  ],
 };
+
+const scenarios: Record<string, Scenario[]> = { ...listed, ...Object.fromEntries((await stages()).map((stage) => [stage.part.file, stage.scenarios])) };
 
 function speakers(registry: Part[], check: string): string[] {
   const covered = coveredByCheck(check);

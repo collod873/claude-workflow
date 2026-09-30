@@ -5,6 +5,7 @@ import { parts } from "./src/parts.ts";
 
 const REPO = import.meta.dirname;
 const MODULE = /\.(m|c)?[jt]s$/;
+const PART_FILE = /\.part\.ts$/;
 const RUNS = /(src|bin)\/[\w.-]+(\/[\w.-]+)*\.(m|c)?[jt]s(?!\w)/g;
 
 const read = (file: string): string => (existsSync(join(REPO, file)) ? readFileSync(join(REPO, file), "utf8") : "");
@@ -21,12 +22,13 @@ const under = (dir: string): string[] =>
     found.isDirectory() ? (found.name === "node_modules" ? [] : under(`${dir}/${found.name}`)) : [`${dir}/${found.name}`]);
 
 const roots = [
-  ...new Set(
-    parts
+  ...new Set([
+    ...parts
       .map((part) => part.file)
       .filter((file) => /^(src|bin)\//.test(file))
       .flatMap((file) => (MODULE.test(file) ? [file] : read(file).match(RUNS) ?? [])),
-  ),
+    ...under("src").filter((file) => PART_FILE.test(file)),
+  ]),
 ];
 
 const reached = new Set<string>();

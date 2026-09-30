@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { admitting } from "./scenarios.ts";
+import { admitting } from "./admit.part.ts";
 
 const SPEC = { state: "open", user: { login: "collod873" }, labels: [{ name: "spec" }] };
 const APP = "collod873-machine[bot]";

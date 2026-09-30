@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BUILDER_SESSION, FULL_CHECK_RED_ONCE, fixing } from "./scenarios.ts";
+import { BUILDER_SESSION, FULL_CHECK_RED_ONCE, fixing } from "./builder.part.ts";
 
 const DRIFT = "The reviewer read this PR against the Why of #811 and found drift.\n\n- src/builder.ts never resumes its session\n";
 const FIXES = "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n";
