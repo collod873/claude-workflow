@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { handedOn as builderBrief } from "./builder.ts";
 import { handedOn as reviewerBrief } from "./reviewer.ts";
-import { DONE_SENTENCES, NOTE_SHAPE, SPEC_SHAPE, TICKET_SHAPE, noteRefusals, specRefusals, ticketRefusals } from "./ticket-shape.ts";
+import { DONE_SENTENCES, NOTE_SHAPE, SPEC_CAP, SPEC_SHAPE, TICKET_SHAPE, noteRefusals, specRefusals, ticketRefusals } from "./ticket-shape.ts";
 
 const DASH = "\u2014";
 const TEST_CHECK = "npx vitest run --config vitest.config.ts ticket-shape";
@@ -171,6 +171,11 @@ const misshapenSpec: [string, string, unknown[]][] = [
     "a spec whose sentence carries a check: marker that does not parse",
     specBody({ sentences: ["- [ ] see a spec land - check: npx vitest run"] }),
     [expect.stringContaining("sentence 1 carries a check: marker that does not parse: see a spec land")],
+  ],
+  [
+    "a spec over the spec cap, which no stage cuts",
+    specBody({ furtherNotes: "x".repeat(SPEC_CAP) }),
+    [expect.stringMatching(/^the body is \d+ bytes, over the spec cap of 65536$/)],
   ],
   [
     "a spec with an em dash",

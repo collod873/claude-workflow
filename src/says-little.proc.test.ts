@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parts, type Part } from "./parts.ts";
-import { LINE_LIMIT, MOST_LINES, checkRepo, closing, closingNote, coveredByCheck, doneChecking, execute, filing, fixing, landSession, launching, marking, misshapenTicket, overLimit, researching, reviewing, saving, scratch, script, wellFormedNote, wellFormedTicket, type Run } from "./scenarios.ts";
+import { LINE_LIMIT, MOST_LINES, checkRepo, closing, closingNote, coveredByCheck, doneChecking, execute, filing, fixing, landSession, launching, marking, misshapenTicket, overLimit, researching, reviewing, slicing, saving, scratch, script, wellFormedNote, wellFormedSpec, wellFormedTicket, type Run } from "./scenarios.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
 const NOISE = "a line a tool prints that nobody needed to read\n".repeat(40).trim();
@@ -64,6 +64,10 @@ const scenarios: Record<string, Scenario[]> = {
   "bin/done-check": [
     { label: "closing a spec whose sentence held", run: () => doneChecking().run() },
     { label: "refusing a ticket", run: () => doneChecking({ labels: ["ticket"] }).run() },
+  ],
+  "bin/slice": [
+    { label: "filing a wave", run: () => slicing({ answers: [{ spec: wellFormedSpec, tickets: [{ title: "File a spec", passages: [1], why: "Wave 1.", done: ["It files."] }] }] }).run() },
+    { label: "refusing a ticket", run: () => slicing({ labels: ["ticket"] }).run() },
   ],
   "bin/review": [
     { label: "passing a match", run: () => reviewing().run() },

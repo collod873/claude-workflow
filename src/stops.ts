@@ -4,7 +4,9 @@ const STOPS = {
   drift: "The reviewer finds drift from `## Why`",
   unrecorded: "Close: the closing record is refused, or the ticket will not close",
   notResearch: "Research refused: the issue is not a research note",
-  notSpec: "Done check refused: the issue is not labelled `spec`, or carries no sentence to try",
+  notSpec: "Refused: the issue is not labelled `spec`, or the done check finds no sentence to try",
+  unsliced: "Slice: the wave is still refused after two rounds back, so the spec is marked `needs-human`",
+  unfiled: "Slice: the spec's rewrite or a ticket of its wave will not post",
 } as const;
 
 export type Stop = keyof typeof STOPS;
