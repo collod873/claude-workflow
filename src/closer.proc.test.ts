@@ -184,6 +184,53 @@ describe("bin/close wakes a ticket its builder split once every follow-up it spl
   });
 });
 
+describe("bin/close wakes a reviewer's follow-up once its parent's PR merges or closes, so it builds on a main that holds its parent (#1033)", () => {
+  const woken = (calls: string[], ticket: string) => calls.findIndex((call) => call.trimEnd() === `issue\nedit\n${ticket}\n--remove-label\nwaiting`);
+
+  it("takes `waiting` off a follow-up, as the App so its build starts, once its parent's PR merged", () => {
+    const { calls, tokens, run } = closing({ ticket: "821", followUps: [{ ticket: "830", parent: "821", parentPr: "MERGED" }] });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(woken(calls(), "830")).toBeGreaterThanOrEqual(0);
+    expect(tokens()[woken(calls(), "830")]).toBe("app");
+    expect(result.stdout).toContain("#830 builds now, the PR of #821 merged");
+  });
+
+  it("wakes a follow-up whose parent's PR closed unmerged, so no follow-up waits forever", () => {
+    const { calls, run } = closing({ ticket: "819", afterCheck: true, followUps: [{ ticket: "831", parent: "822", parentPr: "CLOSED" }] });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(woken(calls(), "831")).toBeGreaterThanOrEqual(0);
+    expect(result.stdout).toContain("#831 builds now, the PR of #822 closed");
+  });
+
+  it("leaves waiting a follow-up whose parent's PR is still open, and one its builder split", () => {
+    const { calls, run } = closing({
+      ticket: "819",
+      followUps: [
+        { ticket: "832", parent: "823", parentPr: "OPEN" },
+        { ticket: "833", parent: "824", parentPr: "MERGED", split: true },
+      ],
+    });
+
+    expect(run().status).toBe(0);
+    expect(woken(calls(), "832")).toBe(-1);
+    expect(woken(calls(), "833")).toBe(-1);
+  });
+
+  it("runs as a queue run whenever a PR closes, so a parent closed unmerged wakes its follow-ups at once", () => {
+    const { on, jobs } = parse(readFileSync(join(REPO, ".github", "workflows", "close.yml"), "utf8")) as { on: Record<string, { types?: string[] }>; jobs: Record<string, { steps: { run?: string; env?: Record<string, string> }[] }> };
+    const step = Object.values(jobs).flatMap((job) => job.steps).find((ran) => (ran.run ?? "").startsWith("bin/close"));
+
+    expect(on.pull_request_target).toEqual({ types: ["closed"] });
+    expect(step?.env?.QUEUE_ONLY).toBe("${{ github.event_name != 'push' && 'queue' || '' }}");
+  });
+});
+
 describe("bin/close wakes the ticket's builder directly, instead of reopening it or leaving it a comment, when it cannot bring the ticket up to date (#957)", () => {
   const woken = (calls: string[], ticket: string) => calls.find((call) => call.startsWith("workflow\nrun\nfix.yml") && call.includes(`ticket=${ticket}`));
 
@@ -379,7 +426,7 @@ describe("bin/close merges machine PRs one at a time, bringing only the oldest g
 
     expect(result.status, result.stderr).toBe(0);
     expect(updated(calls())).toEqual(["931"]);
-    expect(calls().some((call) => call.startsWith("issue\n")), "a finished check is not a merge, so no ticket is closed").toBe(false);
+    expect(calls().some((call) => /^issue\n(?!list\n)/.test(call)), "a finished check is not a merge, so no ticket is closed").toBe(false);
   });
 
   it("walks three PRs left behind by one merge through main, one at a time, with no one touching them", () => {
@@ -408,7 +455,7 @@ describe("a finished Check run moves the queue on, and a red one wakes its build
 
     expect(on.workflow_run).toEqual({ workflows: ["Check"], types: ["completed"] });
     expect(step?.run).toContain("$QUEUE_ONLY");
-    expect(step?.env?.QUEUE_ONLY).toBe("${{ github.event_name == 'workflow_run' && 'queue' || '' }}");
+    expect(step?.env?.QUEUE_ONLY).toBe("${{ github.event_name != 'push' && 'queue' || '' }}");
   });
 
   it("wakes the builder of a ticket whose Check run goes red, which is how a PR that fails after its update leaves the line", () => {

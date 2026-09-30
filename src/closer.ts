@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { splitInto } from "./builder.ts";
 import { commentOnPr, commentOnTicket, commentsOn, WAITING } from "./post.ts";
-import { FINGERPRINT, SPLIT_FROM } from "./reviewer.ts";
+import { FINGERPRINT, REVIEWED_FROM, SPLIT_FROM } from "./reviewer.ts";
 import { exitFor, stoppedAt, type Stop } from "./stops.ts";
 import { quoted, why } from "./ticket-shape.ts";
 
@@ -220,12 +220,33 @@ function wokenFromSplit(ticket: string, body: string): string {
   return woke.status === 0 ? `; #${parent} builds now, its split tickets all merged` : `; #${parent} could not be woken: ${quoted((woke.stderr || woke.stdout).trim().split("\n")[0] ?? "")}`;
 }
 
+function wokenAfterParent(ticket: string, body: string): string {
+  const parent = REVIEWED_FROM.exec(why(body))?.[1];
+  if (parent === undefined) return "";
+  const state = ghText(["pr", "view", `ticket/${parent}`, "--json", "state", "--jq", ".state"]);
+  if (state !== "MERGED" && state !== "CLOSED") return "";
+  const comments = commentsOn(ticket, gh);
+  if (comments === undefined || comments.some((said) => said.startsWith(splitInto(ticket)))) return "";
+  const woke = gh(["issue", "edit", ticket, "--remove-label", WAITING]);
+  return woke.status === 0 ? `; #${ticket} builds now, the PR of #${parent} ${state.toLowerCase()}` : `; #${ticket} could not be woken: ${quoted((woke.stderr || woke.stdout).trim().split("\n")[0] ?? "")}`;
+}
+
+function wokenAfterParents(): string {
+  const listed = ghText(["issue", "list", "--state", "open", "--label", WAITING, "--limit", "100", "--json", "number,body"]);
+  try {
+    const waiting = JSON.parse(listed ?? "[]") as { number: number; body: string }[];
+    return waiting.map(({ number, body }) => wokenAfterParent(String(number), body)).join("");
+  } catch {
+    return "";
+  }
+}
+
 function close(): Stop | undefined {
   const queued = queue();
   const subject = git(["log", "-1", "--format=%s", "HEAD"]).stdout.trim();
   const ticket = process.argv[2] === "queue" ? undefined : ticketBuilt(subject);
   if (ticket === undefined) {
-    console.log(`close: ${queued}`);
+    console.log(`close: ${queued}${wokenAfterParents()}`);
     return undefined;
   }
   const asked = gh(["issue", "view", ticket, "--json", "body", "--jq", ".body"]);
@@ -242,7 +263,7 @@ function close(): Stop | undefined {
     if (state.startsWith("CLOSED")) quietGh(["issue", "reopen", ticket]);
     if (quietGh(["issue", "close", ticket, "--reason", "completed"]).status !== 0) return stoppedAt("unrecorded", `close: #${ticket} is done but could not be closed${recorded(posted.said)}`);
   }
-  console.log(`close: #${ticket} closed as completed, its PR merged${recorded(posted.said)}${wokenFromSplit(ticket, asked.stdout)}`);
+  console.log(`close: #${ticket} closed as completed, its PR merged${recorded(posted.said)}${wokenFromSplit(ticket, asked.stdout)}${wokenAfterParents()}`);
   return undefined;
 }
 
