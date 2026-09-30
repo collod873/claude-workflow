@@ -641,6 +641,7 @@ export function reviewing({
   diffAfter = undefined as string | undefined,
   bodyAfter = undefined as string | undefined,
   judged = undefined as "merged" | "ticket" | undefined,
+  parent = undefined as { ticket: string; body?: string } | undefined,
 }: {
   bin?: string;
   branch?: string;
@@ -657,6 +658,7 @@ export function reviewing({
   diffAfter?: string;
   bodyAfter?: string;
   judged?: "merged" | "ticket";
+  parent?: { ticket: string; body?: string };
 } = {}) {
   const root = scratch("review-");
   const argvDir = join(root, "gh-argv");
@@ -680,6 +682,7 @@ export function reviewing({
   plant(root, "ticket.md", body);
   plant(root, "ticket-after.md", bodyAfter ?? body);
   plant(root, "pr-body.md", prBody);
+  plant(root, "parent.md", parent?.body ?? "");
   plant(root, "turns.json", authored(turns));
   plant(root, "on-pr.json", authored(onPr));
   plant(root, "answer.json", `${JSON.stringify({ type: "result", subtype: "success", is_error: false, structured_output: verdict })}\n`);
@@ -693,6 +696,7 @@ export function reviewing({
       `  *"pr view"*"--json body"*) ${prBodyUnreadable ? "printf 'the PR body could not be read\\n' >&2; exit 1" : `cat "${join(root, "pr-body.md")}"`} ;;`,
       `  *"pr edit"*) ${prEditFails ? "printf 'the PR body could not be edited\\n' >&2; exit 1" : "exit 0"} ;;`,
       `  *"pr view"*) printf '%s\\n' '${branch}' ;;`,
+      ...(parent === undefined ? [] : [`  *"issue view ${parent.ticket} "*) ${parent.body === undefined ? "exit 1" : `cat "${join(root, "parent.md")}"`} ;;`]),
       `  *"issue view"*) [ -f "${judgedOnce}" ] && cat "${join(root, "ticket-after.md")}" || cat "${join(root, "ticket.md")}" ;;`,
       `  *"pr diff"*) [ -f "${judgedOnce}" ] && cat "${join(root, "pr-after.diff")}" || cat "${join(root, "pr.diff")}" ;;`,
       prCommentFails ? "  *\"pr comment\"*) printf 'the readback could not be posted\\n' >&2; exit 1 ;;" : `  *"pr comment"*) printf '%s\\n' '${JUDGEMENT}' ;;`,
