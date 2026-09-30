@@ -110,6 +110,11 @@ export const parts: Part[] = [
     lines: 5,
   },
   {
+    name: "bin/admit",
+    file: "bin/admit",
+    stops: "https://github.com/collod873/claude-workflow/issues/1022",
+  },
+  {
     name: "bin/fix",
     file: "bin/fix",
     stops: "https://github.com/collod873/claude-workflow/issues/663",

@@ -52,7 +52,8 @@ function stageStep(job: Job, stage: Stage): Step {
   return step as Step;
 }
 
-function stagesRun(job: Job, failing: Stage | undefined, outputs: Record<string, Record<string, string>> = {}): Stage[] {
+function stagesRun(job: Job, failing: Stage | undefined, given: Record<string, Record<string, string>> = {}): Stage[] {
+  const outputs: Record<string, Record<string, string>> = { admit: { admitted: "true" }, ...given };
   const outcomes: Record<string, StepOutcome> = {};
   for (const step of job.steps) if (step.id !== undefined) outcomes[step.id] = { outcome: "skipped", conclusion: "skipped", outputs: {} };
   const red = failing === undefined ? undefined : stageStep(job, failing);
@@ -128,6 +129,16 @@ describe("build.yml builds a ticket the moment it is filed (#826)", () => {
     expect(starts("collod873", "needs-human")).toBe(false);
     expect(starts("stranger", "waiting")).toBe(false);
     expect(holds(job.if ?? "true", { sender: "collod873-machine[bot]", action: "unlabeled", label: "waiting", labels: ["note"] })).toBe(false);
+  });
+
+  it("admits the ticket before start marks it, and a refused ticket runs neither start nor its builder, ending green so no Fix starts (#1022)", () => {
+    const { job } = workflow();
+    const admit = job.steps.find((step) => step.id === "admit");
+
+    expect(admit?.run).toMatch(/bin\/admit \$\{\{ github\.event\.issue\.number \}\} >>"\$GITHUB_OUTPUT"/);
+    expect(String(admit?.env?.GH_TOKEN)).toMatch(/steps\.app\.outputs\.token/);
+    expect(job.steps.indexOf(admit as Step)).toBeLessThan(job.steps.indexOf(stageStep(job, "start")));
+    expect(stagesRun(job, undefined, { admit: { admitted: "false" } })).toEqual([]);
   });
 
   it("hands the ticket to its builder after start, and nothing runs after start fails", () => {

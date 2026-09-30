@@ -402,6 +402,17 @@ describe("the builder builds an App-opened ticket only under an open spec the ow
     stopped(fixing({ claude: FIXES, opener: APP, body }));
   });
 
+  it("stops a ticket the App opened whose Why has a follow-up line neither the reviewer nor the builder writes", () => {
+    stopped(fixing({ claude: FIXES, opener: APP, body: ticketWhy("Follow-up of #865: its notes.") }));
+  });
+
+  it("stops a ticket the App opened whose parent cannot be read, saying so rather than no spec", () => {
+    const said = stopped(fixing({ claude: FIXES, opener: APP, parent: "unreadable" }));
+
+    expect(said).toContain("could not be read");
+    expect(said).not.toContain("no spec");
+  });
+
   it("builds the reviewer's and the builder's follow-ups under no spec, as before", () => {
     const reviewed = fixing({ claude: FIXES, opener: APP, body: ticketWhy("Follow-up of #865: its review found this after its builder's repair.") });
     const split = fixing({ claude: FIXES, opener: APP, body: ticketWhy("Follow-up of #865: its builder split it, since it does not fit one build.") });

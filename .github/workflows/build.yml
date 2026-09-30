@@ -45,12 +45,19 @@ jobs:
           client-id: ${{ vars.CORE_APP_CLIENT_ID }}
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
 
+      - id: admit
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: bin/admit ${{ github.event.issue.number }} >>"$GITHUB_OUTPUT"
+
       - id: git-config
         run: |
           git config user.name "core-app[bot]"
           git config user.email "core-app[bot]@users.noreply.github.com"
 
       - id: start
+        if: steps.admit.outputs.admitted == 'true'
         timeout-minutes: 10
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
@@ -68,7 +75,7 @@ jobs:
           fi
 
       - id: fix
-        if: steps.start.outputs.rerun != 'true'
+        if: steps.admit.outputs.admitted == 'true' && steps.start.outputs.rerun != 'true'
         timeout-minutes: 50
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
