@@ -396,14 +396,14 @@ export type Parent = object | "unreadable" | undefined;
 
 export function openedCases(root: string, opener: string, body: string, parent: Parent): string[] {
   plant(root, "opened.json", JSON.stringify({ number: 811, user: { login: opener }, body }));
+  return [`  *"api"*"issues/811/parent") ${parentSays(root, parent)} ;;`, `  *"api"*"issues/811") cat "${join(root, "opened.json")}" ;;`];
+}
+
+export function parentSays(root: string, parent: Parent): string {
   plant(root, "parent.json", JSON.stringify(parent ?? {}));
-  const parentSays =
-    parent === undefined
-      ? "printf 'gh: Not Found (HTTP 404)\\n' >&2; exit 1"
-      : parent === "unreadable"
-        ? "printf 'gh: Server Error (HTTP 502)\\n' >&2; exit 1"
-        : `cat "${join(root, "parent.json")}"`;
-  return [`  *"api"*"issues/811/parent") ${parentSays} ;;`, `  *"api"*"issues/811") cat "${join(root, "opened.json")}" ;;`];
+  if (parent === undefined) return "printf 'gh: Not Found (HTTP 404)\\n' >&2; exit 1";
+  if (parent === "unreadable") return "printf 'gh: Server Error (HTTP 502)\\n' >&2; exit 1";
+  return `cat "${join(root, "parent.json")}"`;
 }
 
 function onGh(command: string, gh: string) {

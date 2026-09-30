@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DIFF_CAP, handedOn, handedSince, LIST_CAP, TICKET_CAP } from "./reviewer.ts";
-import { authored, BIN, execute, ghArgv, git, plant, type Said, scratch, script } from "./scenarios.ts";
+import { authored, BIN, execute, ghArgv, git, type Parent, parentSays, plant, type Said, scratch, script } from "./scenarios.ts";
 import { declareStage, HANDED_ON } from "./stages.ts";
 
 export const REVIEWED_TICKET = [
@@ -91,6 +91,7 @@ export function reviewing({
   bodyAfter = undefined as string | undefined,
   judged = undefined as "merged" | "ticket" | undefined,
   parent = undefined as { ticket: string; body?: string } | undefined,
+  spec = undefined as Parent,
 }: {
   bin?: string;
   branch?: string;
@@ -109,6 +110,7 @@ export function reviewing({
   bodyAfter?: string;
   judged?: "merged" | "ticket";
   parent?: { ticket: string; body?: string };
+  spec?: Parent;
 } = {}) {
   const root = scratch("review-");
   const argvDir = join(root, "gh-argv");
@@ -153,6 +155,7 @@ export function reviewing({
       setup,
       'case "$*" in',
       `  *"api"*"issues/810/comments"*) cat "${join(root, "turns.json")}" ;;`,
+      `  *"api"*"issues/810/parent"*) ${parentSays(root, spec)} ;;`,
       `  *"api"*"/comments"*) cat "${join(root, "on-pr.json")}" ;;`,
       `  *"pr view"*"--json body"*) ${prBodyUnreadable ? "printf 'the PR body could not be read\\n' >&2; exit 1" : `cat "${join(root, "pr-body.md")}"`} ;;`,
       `  *"pr edit"*) ${prEditFails ? "printf 'the PR body could not be edited\\n' >&2; exit 1" : "exit 0"} ;;`,

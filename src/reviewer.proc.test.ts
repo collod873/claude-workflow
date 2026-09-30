@@ -173,6 +173,34 @@ describe("bin/review reads back the owner's own words on a match, then a plain-w
   });
 });
 
+const OWNER_SPEC = { state: "open", user: { login: "collod873" }, labels: [{ name: "spec" }] };
+
+describe("bin/review leaves the readback of a ticket under an open spec the owner opened to its wave's one note (#1039)", () => {
+  it("posts a match under such a spec as its judgement, stamped so it is reused, with no readback and no question to the owner", () => {
+    const diff = fileDiff("src/reviewer.ts", "export const reviewed = 1;");
+    const account = "should never be posted, the wave's note reads it back";
+    const { run, comments } = reviewing({ diff, body: READBACK_TICKET, spec: OWNER_SPEC, verdict: { verdict: "match", gaps: [], readback: account } });
+
+    expect(run().status).toBe(0);
+    expect(comments()).toHaveLength(1);
+    expect(comments()[0]).toContain(`Fingerprint: \`${fingerprintOf(diff, READBACK_TICKET)}\``);
+    expect(comments()[0]).not.toContain(account);
+    expect(comments()[0]).not.toContain("> keep the builder honest about drift");
+    expect(comments()[0]).not.toMatch(/yes or no|\?/);
+    expect(earlierDrift("810", [comments()[0] ?? ""])).toBe("");
+  });
+
+  it("keeps the readback of a ticket under no spec, a closed spec, a spec the owner did not open, or a parent it cannot read", () => {
+    const account = "It now checks the ticket branch before it hires a model.";
+    for (const spec of [undefined, { ...OWNER_SPEC, state: "closed" }, { ...OWNER_SPEC, user: { login: "collod873-machine[bot]" } }, { ...OWNER_SPEC, labels: [] }, "unreadable" as const]) {
+      const { run, comments } = reviewing({ spec, verdict: { verdict: "match", gaps: [], readback: account } });
+      expect(run().status).toBe(0);
+      expect(comments()[0], JSON.stringify(spec)).toContain(account);
+      expect(comments()[0]).toContain("yes or no");
+    }
+  });
+});
+
 describe("the reviewer's answer schema asks for plain words and refuses an account written in code (#918)", () => {
   it("refuses a plain words account that carries a backtick, a slash, or a file name with an extension, and its prompt asks for plain words a non-coder can follow", () => {
     const allowed = (text: string) => new RegExp(PLAIN_WORDS).test(text);

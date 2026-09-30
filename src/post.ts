@@ -98,6 +98,39 @@ export function authoredOn(number: string, gh: Gh): { author: string; body: stri
 
 export const commentsOn = (number: string, gh: Gh): string[] | undefined => authoredOn(number, gh)?.map(({ body }) => body);
 
+export interface Opened {
+  number?: number;
+  state?: string;
+  user?: { login?: string };
+  labels?: { name?: string }[];
+  body?: string | null;
+}
+
+export interface Admission {
+  refused?: string;
+  unread?: string;
+}
+
+export function opened(path: string, gh: Gh): Opened | "missing" | "unread" {
+  const got = gh(["api", `repos/{owner}/{repo}/issues/${path}`]);
+  if (got.status !== 0) return /HTTP 404/.test(got.stderr) ? "missing" : "unread";
+  try {
+    return JSON.parse(got.stdout) as Opened;
+  } catch {
+    return "unread";
+  }
+}
+
+export function underOwnerSpec(ticket: string, gh: Gh): Admission {
+  const spec = opened(`${ticket}/parent`, gh);
+  if (spec === "unread") return { unread: `the parent of #${ticket} could not be read` };
+  if (spec === "missing") return { refused: "the App opened it under no spec" };
+  if (!(spec.labels ?? []).some(({ name }) => name === "spec")) return { refused: "the App opened it under an issue not labelled `spec`" };
+  if (spec.user?.login !== OWNER) return { refused: "the App opened it under a spec the owner did not open" };
+  if (spec.state !== "open") return { refused: "the App opened it under a spec that is not open" };
+  return {};
+}
+
 export function prNumber(branch: string, gh: Gh): string | undefined {
   const got = gh(["pr", "view", branch, "--json", "number", "--jq", ".number"]);
   const number = got.status === 0 ? got.stdout.trim() : "";
