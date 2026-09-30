@@ -6,6 +6,7 @@ import { askedIssue, commentOnTicket, gh, post } from "./post.ts";
 import { LIST_CAP, NO_EM_DASH, TICKET_CAP } from "./reviewer.ts";
 import { hired, machineLogs, type Spent } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
+import { ended } from "./wave.ts";
 import { DONE_SENTENCES, filedOutOfScope, filedPassages, type Passage, quoted, restored, sectionsDropped, sentences, SPEC_CAP, specRefusals, ticketRefusals } from "./ticket-shape.ts";
 
 const stoppedAt = stopsOf({
@@ -196,7 +197,7 @@ function calledOwner(issue: string, why: string): Stop {
 }
 
 if (import.meta.main) {
-  const issue = process.argv[2];
-  if (issue === undefined) throw new Error("no issue number in the arguments");
-  process.exit(exitFor(sliced(issue)));
+  const [first, second] = process.argv.slice(2);
+  if (first === undefined) throw new Error("no issue number in the arguments");
+  process.exit(first === "--ended" && second !== undefined ? ended(second) : exitFor(sliced(first)));
 }
