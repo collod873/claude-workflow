@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { admission, doesNotBuild } from "./admit.ts";
 import { capped, onDisk } from "./brief.ts";
 import { CHECK, UNFENCED } from "./fence.ts";
-import { commentOnTicket, commentsOn, gh, git, OWNER, post, postRefusals, prNumber, rewriteTicket } from "./post.ts";
+import { commentOnTicket, commentsOn, gh, git, OWNER, post, postRefusals, prNumber, rewriteTicket, WAITING } from "./post.ts";
 import { earlierDrift, FOLLOW_UP_OF, followUpBody, handedDiff, LIST_CAP, NO_EM_DASH, repairOf, TICKET_CAP } from "./reviewer.ts";
 import { hired, machineLogs, type Spent } from "./stage.ts";
 import { DONE_SENTENCES, quoted, why, whyChanged } from "./ticket-shape.ts";
@@ -47,7 +47,6 @@ interface Answer {
   tickets?: Piece[];
 }
 
-export const WAITING = "waiting";
 export const splitInto = (ticket: string) => `@${OWNER} the builder split #${ticket} into`;
 const FILED = /\/issues\/(\d+)\s*$/;
 

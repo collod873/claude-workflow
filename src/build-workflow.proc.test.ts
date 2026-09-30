@@ -131,6 +131,14 @@ describe("build.yml builds a ticket the moment it is filed (#826)", () => {
     expect(holds(job.if ?? "true", { sender: "collod873-machine[bot]", action: "unlabeled", label: "waiting", labels: ["note"] })).toBe(false);
   });
 
+  it("a follow-up the reviewer files labelled `waiting` starts no build when opened, only once `waiting` comes off (#1033)", () => {
+    const { job } = workflow();
+    const followUp = "## Why\n\nFollow-up of #865: its review found this after its builder's repair.\n";
+
+    expect(holds(job.if ?? "true", { sender: "collod873-machine[bot]", body: followUp, action: "opened", labels: ["waiting"] })).toBe(false);
+    expect(holds(job.if ?? "true", { sender: "collod873-machine[bot]", body: followUp, action: "unlabeled", label: "waiting" })).toBe(true);
+  });
+
   it("admits the ticket before start marks it, and a refused ticket runs neither start nor its builder, ending green so no Fix starts (#1022)", () => {
     const { job } = workflow();
     const admit = job.steps.find((step) => step.id === "admit");

@@ -325,6 +325,14 @@ describe("a later find becomes a follow-up ticket that builds itself, one genera
     expect(ticketComments()[0]).toContain(LATE);
   });
 
+  it("files each follow-up labelled `waiting`, so it builds only once its parent's PR merges or closes, on a main that holds it (#1033)", () => {
+    const { run, filed, ticketComments } = afterRepair({ verdict: "match", gaps: [], later: [LATER] });
+
+    expect(run().status).toBe(0);
+    expect(filed().map(({ labels }) => labels)).toEqual([["waiting"]]);
+    expect(ticketComments()[0]).toMatch(/once this PR merges or closes/);
+  });
+
   it("never files a follow-up of a follow-up; its later finds stay a comment on it", () => {
     const { run, filed, ticketComments } = afterRepair({ verdict: "match", gaps: [], later: [LATER] }, { body: FOLLOW_UP_TICKET });
 

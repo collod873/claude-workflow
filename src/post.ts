@@ -9,6 +9,7 @@ export interface Posting {
   title?: string;
   pr?: string;
   sessionId?: string;
+  labels?: string[];
 }
 
 export type Gh = (args: string[]) => { status: number | null; stdout: string; stderr: string };
@@ -33,6 +34,7 @@ const filed = (refuses: (text: string) => string[], label: string[], shape: stri
 const judgementRefusals = (text: string): string[] => emDashLines(text).map((line) => `line ${line} carries an em dash`);
 
 export const RESEARCH = "research";
+export const WAITING = "waiting";
 
 const KINDS: Record<string, Kind> = {
   ticket: filed(ticketRefusals, [], TICKET_SHAPE),
@@ -122,7 +124,8 @@ function prepared(posting: Posting): { refusals: string[]; args: string[] } {
   if (on === undefined) return { refusals: [`a ${kind} carries no ${shape.on}`], args: [] };
   const text = shape.on === "title" && sessionId ? stampedWithSession(posting.text, sessionId) : posting.text;
   const refused = shape.refuses(text);
-  return refused.length > 0 ? { refusals: refused, args: [] } : { refusals: [], args: shape.args(on, text) };
+  const labelled = (posting.labels ?? []).flatMap((label) => ["--label", label]);
+  return refused.length > 0 ? { refusals: refused, args: [] } : { refusals: [], args: [...shape.args(on, text), ...labelled] };
 }
 
 function shapesFiled(): string[] {

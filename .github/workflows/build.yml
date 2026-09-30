@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build:
-    if: "${{ (github.event.action != 'unlabeled' || github.event.label.name == 'waiting') && (github.event.sender.login == github.repository_owner || (github.event.sender.login == 'collod873-machine[bot]' && (github.event.action == 'unlabeled' || github.event.action == 'opened'))) && !contains(github.event.issue.labels.*.name, 'note') && !contains(github.event.issue.labels.*.name, 'spec') }}"
+    if: "${{ (github.event.action != 'unlabeled' || github.event.label.name == 'waiting') && (github.event.sender.login == github.repository_owner || (github.event.sender.login == 'collod873-machine[bot]' && (github.event.action == 'unlabeled' || github.event.action == 'opened'))) && !contains(github.event.issue.labels.*.name, 'note') && !contains(github.event.issue.labels.*.name, 'spec') && !contains(github.event.issue.labels.*.name, 'waiting') }}"
     runs-on: ubuntu-latest
     timeout-minutes: 70
     cache-mode: write

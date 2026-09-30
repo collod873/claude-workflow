@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { splitInto, WAITING } from "./builder.ts";
-import { commentOnPr, commentOnTicket, commentsOn } from "./post.ts";
+import { splitInto } from "./builder.ts";
+import { commentOnPr, commentOnTicket, commentsOn, WAITING } from "./post.ts";
 import { FINGERPRINT, SPLIT_FROM } from "./reviewer.ts";
 import { exitFor, stoppedAt, type Stop } from "./stops.ts";
 import { quoted, why } from "./ticket-shape.ts";
