@@ -1,3 +1,5 @@
+import { stages } from "./stages.ts";
+
 export interface Part {
   name: string;
   file: string;
@@ -5,7 +7,7 @@ export interface Part {
   lines?: number;
 }
 
-export const parts: Part[] = [
+const FIXED: Part[] = [
   {
     name: "bin/check",
     file: "bin/check",
@@ -84,50 +86,9 @@ export const parts: Part[] = [
     stops: "https://github.com/collod873/claude-workflow/issues/835",
   },
   {
-    name: "bin/close",
-    file: "bin/close",
-    stops: "https://github.com/collod873/claude-workflow/issues/808",
-  },
-  {
     name: "bin/close-note",
     file: "bin/close-note",
     stops: "https://github.com/collod873/claude-workflow/issues/879",
-  },
-  {
-    name: "bin/research",
-    file: "bin/research",
-    stops: "https://github.com/collod873/claude-workflow/issues/902",
-  },
-  {
-    name: "bin/slice",
-    file: "bin/slice",
-    stops: "https://github.com/collod873/claude-workflow/issues/674",
-  },
-  {
-    name: "bin/done-check",
-    file: "bin/done-check",
-    stops: "https://github.com/collod873/claude-workflow/issues/1023",
-  },
-  {
-    name: "bin/review",
-    file: "bin/review",
-    stops: "https://github.com/collod873/claude-workflow/issues/661",
-  },
-  {
-    name: "bin/meters",
-    file: "bin/meters",
-    stops: "https://github.com/collod873/claude-workflow/issues/894",
-    lines: 5,
-  },
-  {
-    name: "bin/admit",
-    file: "bin/admit",
-    stops: "https://github.com/collod873/claude-workflow/issues/1022",
-  },
-  {
-    name: "bin/fix",
-    file: "bin/fix",
-    stops: "https://github.com/collod873/claude-workflow/issues/663",
   },
   {
     name: "fix.yml",
@@ -160,3 +121,5 @@ export const parts: Part[] = [
     stops: "https://github.com/collod873/claude-workflow/issues/681",
   },
 ];
+
+export const parts: Part[] = [...FIXED, ...(await stages()).map((stage) => stage.part)];

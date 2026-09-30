@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { DONE_CHECK_POSTED, doneChecking, heard, specWith } from "./scenarios.ts";
+import { heard } from "./scenarios.ts";
+import { DONE_CHECK_POSTED, doneChecking, specWith } from "./done-checker.part.ts";
 
 const SENTENCES = ["file a spec and see its first wave show up under it", "open any ticket it filed and see my own words copied over", "see the spec close itself once every sentence held"];
 

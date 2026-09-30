@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { heard, holds, onlyJob, slicing, SLICING_SESSION, wellFormedSpec } from "./scenarios.ts";
+import { heard, holds, onlyJob, wellFormedSpec } from "./scenarios.ts";
+import { slicing, SLICING_SESSION } from "./slicer.part.ts";
 import { outOfScope, why } from "./ticket-shape.ts";
 
 const ATTRIBUTION = "The owner, 2026-09-27, ruling the Big jobs layer:";

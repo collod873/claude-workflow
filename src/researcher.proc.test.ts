@@ -3,7 +3,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { OUT_OF_TIME } from "./researcher.ts";
-import { FINDINGS_POSTED, heard, holds, onlyJob, READING_SESSION, researching, wellFormedNote, type WorkflowStep } from "./scenarios.ts";
+import { heard, holds, onlyJob, wellFormedNote, type WorkflowStep } from "./scenarios.ts";
+import { FINDINGS_POSTED, READING_SESSION, researching } from "./researcher.part.ts";
 
 const STAGE_ACTION = join(import.meta.dirname, "..", ".github", "actions", "stage", "action.yml");
 

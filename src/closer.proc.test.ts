@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { CLOSE_RUN, closing } from "./scenarios.ts";
+import { CLOSE_RUN, closing } from "./closer.part.ts";
 
 const REPO = join(import.meta.dirname, "..");
 
