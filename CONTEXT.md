@@ -76,7 +76,7 @@ _Avoid_: audit, acceptance test, verification
 
 **Ticket**:
 The unit the machine builds: an issue carrying `## Why` in the owner's words and, under
-`## Done when`, 1 to 3 sentences saying what done looks like. Filing one starts its build; its PR
+`## Done when`, sentences saying what done looks like. Filing one starts its build; its PR
 merging closes it.
 _Avoid_: issue, sub-issue, card, item
 

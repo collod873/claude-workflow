@@ -6,7 +6,7 @@ import { capped } from "./brief.ts";
 import { commentOnTicket, commentsOn, gh, git, post } from "./post.ts";
 import { hired, machineLogs } from "./stage.ts";
 import { exitFor, stoppedAt, type Stop } from "./stops.ts";
-import { doneWhen, quoted, why } from "./ticket-shape.ts";
+import { DONE_SENTENCES, doneWhen, quoted, why } from "./ticket-shape.ts";
 
 export const DIFF_CAP = 32 * 1024;
 export const TICKET_CAP = 8 * 1024;
@@ -135,7 +135,7 @@ export function handedOn(body: string, diff: string, after?: AfterTurn): string 
       ? []
       : [
           "`gaps` holds only an earlier gap still open or a gap in the fix's own lines; these block, and the verdict is `drift` while any remain. Put every other gap in `later`: it never blocks.",
-          "Each `later` item becomes its own ticket: the `gap` in one sentence, a `title`, and 1 to 3 `done` sentences saying what done looks like.",
+          `Each \`later\` item becomes its own ticket: the \`gap\` in one sentence, a \`title\`, and \`done\` as ${DONE_SENTENCES}.`,
         ];
   return [
     "Review this PR against the `## Why` and its `## Done when`. Change nothing; `bin/check` is green. Read the repo if the diff is unclear.",
