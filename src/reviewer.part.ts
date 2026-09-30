@@ -176,7 +176,7 @@ export function reviewing({
     spent: () => existsSync(handed),
     handed: () => (existsSync(handed) ? readFileSync(handed, "utf8") : ""),
     ticketComments: () => calls().filter((args) => args[0] === "issue" && args[1] === "comment").map(bodyOf),
-    filed: () => calls().filter((args) => args[0] === "issue" && args[1] === "create").map((args) => ({ title: args[args.indexOf("--title") + 1], body: bodyOf(args) })),
+    filed: () => calls().filter((args) => args[0] === "issue" && args[1] === "create").map((args) => ({ title: args[args.indexOf("--title") + 1], body: bodyOf(args), labels: args.flatMap((arg, at) => (args[at - 1] === "--label" ? [arg] : [])) })),
     order: () => calls().map((args) => `${args[0]} ${args[1]}`),
     comments: () => calls().filter((args) => args[0] === "pr" && args[1] === "comment").map(bodyOf),
     edited: () => calls().filter((args) => args[0] === "pr" && args[1] === "edit").map(bodyOf),

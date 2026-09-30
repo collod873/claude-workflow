@@ -6,6 +6,8 @@ name: Close
   workflow_run:
     workflows: [Check]
     types: [completed]
+  pull_request_target:
+    types: [closed]
 
 permissions:
   contents: read
@@ -33,5 +35,5 @@ jobs:
       - env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           QUIET_GH_TOKEN: ${{ github.token }}
-          QUEUE_ONLY: ${{ github.event_name == 'workflow_run' && 'queue' || '' }}
+          QUEUE_ONLY: ${{ github.event_name != 'push' && 'queue' || '' }}
         run: bin/close $QUEUE_ONLY

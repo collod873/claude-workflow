@@ -1,6 +1,7 @@
 import { mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { authored, BIN, commitAt, execute, git, MACHINE, plant, type Said, scratch, script } from "./scenarios.ts";
+import { WAITING } from "./post.ts";
 import { declareStage } from "./stages.ts";
 
 const CLOSER_TICKET = [
@@ -21,6 +22,16 @@ const FAST_TIMING = {
   checksGreen: "2026-01-01T00:00:03Z",
   merged: "2026-01-01T00:00:04Z",
 };
+
+export interface WaitingFollowUp {
+  ticket: string;
+  parent: string;
+  parentPr: "OPEN" | "MERGED" | "CLOSED";
+  split?: boolean;
+}
+
+const followUpBody = ({ ticket, parent }: WaitingFollowUp) =>
+  ["## Why", "", `Follow-up of #${parent}: its review found this after its builder's repair, outside the earlier gaps and the fix's own lines.`, "", `> #${ticket} is still to build.`, "", "## Done when", "", "- It lands.", ""].join("\n");
 
 export interface QueuedPr {
   number: string;
@@ -66,6 +77,7 @@ export function closing({
   afterCheck = false,
   prComments = [] as Said[],
   prCommentsUnreadable = false,
+  followUps = [] as WaitingFollowUp[],
 }: {
   ticket?: string;
   ticketBody?: string;
@@ -77,6 +89,7 @@ export function closing({
   afterCheck?: boolean;
   prComments?: Said[];
   prCommentsUnreadable?: boolean;
+  followUps?: WaitingFollowUp[];
 } = {}) {
   const root = scratch("closer-");
   const session = join(root, "session");
@@ -121,6 +134,9 @@ export function closing({
       `printf '%s\\n' "$@" >"${callsDir}/$n"`,
       `printf '%s' "$GH_TOKEN" >"${tokensDir}/$n"`,
       'case "$*" in',
+      `  *"issue list"*"${WAITING}"*) cat <<'LISTED'\n${JSON.stringify(followUps.map((waiting) => ({ number: Number(waiting.ticket), body: followUpBody(waiting) })))}\nLISTED\n    ;;`,
+      ...followUps.map(({ parent, parentPr }) => `  *"pr view ticket/${parent} "*"state"*) printf '%s\\n' '${parentPr}' ;;`),
+      ...followUps.map(({ ticket, split }) => `  *"api"*"issues/${ticket}/comments"*) ${split === true ? `printf '%s\\n' '${JSON.stringify({ author: MACHINE, type: "Bot", body: `@collod873 the builder split #${ticket} into #990, which build themselves.` })}'` : "exit 0"} ;;`),
       ...(splitFrom === undefined
         ? []
         : [
