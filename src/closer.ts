@@ -12,6 +12,8 @@ const BUILDS = /^Builds #(\d+)[ \t]*$/m;
 const STAGE_LABELS = "1-defining,2-building,3-checking,4-reviewing,5-merging,fixing,needs-human";
 const TICKET_BRANCH = /^ticket\/(\d+)$/;
 const MACHINE_BRANCH = /^(ticket|land)\//;
+const REQUIRED_CHECKS = ["check", "review"];
+const PASSED = new Set(["SUCCESS", "SKIPPED", "NEUTRAL"]);
 
 const run = (command: string, args: string[]) => spawnSync(command, args, { encoding: "utf8", maxBuffer: Infinity });
 const gh = (args: string[]) => run("gh", args);
@@ -123,13 +125,34 @@ const record = (ticket: string, pr: string | undefined, speed: string): string =
 
 const recorded = (said: string) => (said === "" ? "" : `; record ${said}`);
 
-function openPrs(): { number: string; headRefName: string; mergeStateStatus: string }[] {
-  const listed = gh(["pr", "list", "--state", "open", "--json", "number,headRefName,mergeStateStatus"]);
+interface QueuedPr {
+  number: string;
+  headRefName: string;
+  checks: Checks;
+}
+
+type Checks = "green" | "pending" | "red";
+
+interface CheckRun {
+  name?: string;
+  status?: string;
+  conclusion?: string;
+}
+
+function checksOf(rollup: CheckRun[]): Checks {
+  const latest = REQUIRED_CHECKS.map((name) => rollup.filter((ran) => ran.name === name).at(-1));
+  if (latest.some((ran) => ran?.status === "COMPLETED" && !PASSED.has(ran.conclusion ?? ""))) return "red";
+  return latest.every((ran) => ran?.status === "COMPLETED") ? "green" : "pending";
+}
+
+function queuedPrs(): QueuedPr[] {
+  const listed = gh(["pr", "list", "--state", "open", "--json", "number,headRefName,autoMergeRequest,statusCheckRollup"]);
   if (listed.status !== 0) return [];
   try {
-    return (JSON.parse(listed.stdout) as { number: number; headRefName: string; mergeStateStatus: string }[])
-      .filter((pr) => MACHINE_BRANCH.test(pr.headRefName))
-      .map((pr) => ({ number: String(pr.number), headRefName: pr.headRefName, mergeStateStatus: pr.mergeStateStatus }));
+    return (JSON.parse(listed.stdout) as { number: number; headRefName: string; autoMergeRequest: unknown; statusCheckRollup: CheckRun[] | null }[])
+      .filter((pr) => MACHINE_BRANCH.test(pr.headRefName) && pr.autoMergeRequest !== null)
+      .sort((a, b) => a.number - b.number)
+      .map((pr) => ({ number: String(pr.number), headRefName: pr.headRefName, checks: checksOf(pr.statusCheckRollup ?? []) }));
   } catch {
     return [];
   }
@@ -139,22 +162,25 @@ function wakeBuilder(ticket: string, reason: string): void {
   gh(["workflow", "run", "fix.yml", "-f", `ticket=${ticket}`, "-f", `reason=${reason}`]);
 }
 
-function updateBranch(number: string, headRefName: string): void {
+function updateBranch(number: string, headRefName: string): boolean {
   const updated = gh(["pr", "update-branch", number]);
-  if (updated.status === 0) return;
+  if (updated.status === 0) return true;
   const reason = (updated.stderr || updated.stdout).trim().split("\n")[0];
   commentOnPr(number, `PR #${number} could not be brought up to date with main: ${reason}`, gh);
   const ticket = TICKET_BRANCH.exec(headRefName)?.[1];
   if (ticket !== undefined) wakeBuilder(ticket, `#${ticket}'s PR #${number} could not be brought up to date with main: ${reason}`);
+  return false;
 }
 
-function bringUpToDate(): void {
-  for (const pr of openPrs().filter((pr) => pr.mergeStateStatus === "BEHIND" || pr.mergeStateStatus === "DIRTY")) updateBranch(pr.number, pr.headRefName);
-}
+const upToDate = (pr: QueuedPr) => git(["merge-base", "--is-ancestor", "origin/main", `origin/${pr.headRefName}`]).status === 0;
 
-function bringOpenedPrUpToDate(number: string): void {
-  const pr = openPrs().find((candidate) => candidate.number === number);
-  if (pr !== undefined) updateBranch(pr.number, pr.headRefName);
+function queue(): string {
+  git(["fetch", "--quiet", "origin"]);
+  const queued = queuedPrs();
+  const merging = queued.find((pr) => pr.checks !== "red" && upToDate(pr));
+  if (merging !== undefined) return `PR #${merging.number} is up to date with main, so the queue waits for it`;
+  const next = queued.filter((pr) => pr.checks === "green").find((pr) => updateBranch(pr.number, pr.headRefName));
+  return next === undefined ? "no green PR waits behind main" : `PR #${next.number} brought up to date with main`;
 }
 
 function wokenFromSplit(ticket: string, body: string): string {
@@ -171,13 +197,8 @@ function wokenFromSplit(ticket: string, body: string): string {
 }
 
 function close(): Stop | undefined {
-  const openedPr = process.env.OPENED_PR;
-  if (openedPr !== undefined && openedPr !== "") {
-    bringOpenedPrUpToDate(openedPr);
-    console.log(`close: PR #${openedPr} opened, checked for being behind main and brought up to date`);
-    return undefined;
-  }
-  bringUpToDate();
+  console.log(`close: ${queue()}`);
+  if (process.argv[2] === "queue") return undefined;
   const subject = git(["log", "-1", "--format=%s", "HEAD"]).stdout.trim();
   const ticket = ticketBuilt(subject);
   if (ticket === undefined) return undefined;

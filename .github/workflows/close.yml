@@ -3,8 +3,9 @@ name: Close
 "on":
   push:
     branches: [main]
-  pull_request_target:
-    types: [opened]
+  workflow_run:
+    workflows: [Check]
+    types: [completed]
 
 permissions:
   contents: read
@@ -32,5 +33,5 @@ jobs:
       - env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           QUIET_GH_TOKEN: ${{ github.token }}
-          OPENED_PR: ${{ github.event.pull_request.number }}
-        run: bin/close
+          QUEUE_ONLY: ${{ github.event_name == 'workflow_run' && 'queue' || '' }}
+        run: bin/close $QUEUE_ONLY

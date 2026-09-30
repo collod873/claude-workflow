@@ -89,30 +89,21 @@ describe("bin/close ends a done ticket closed as completed with no stage label (
 });
 
 describe("bin/close brings ticket PRs left behind by a merge up to date, so auto-merge is never stuck in silence (#858)", () => {
-  it("brings every open ticket PR up to date, as the App, so its checks run again and auto-merge can finish", () => {
-    const { calls, tokens, run } = closing({
-      ticket: "819",
-      behindPrs: [
-        { number: "901", ticket: "820" },
-        { number: "902", ticket: "821" },
-      ],
-    });
+  it("brings an open ticket PR up to date, as the App, so its checks run again and auto-merge can finish", () => {
+    const { calls, tokens, run } = closing({ ticket: "819", openPrs: [{ number: "901", ticket: "820" }] });
 
     const result = run();
 
     expect(result.status).toBe(0);
-    const first = calls().findIndex((call) => call.startsWith("pr\nupdate-branch\n901"));
-    const second = calls().findIndex((call) => call.startsWith("pr\nupdate-branch\n902"));
-    expect(first, "the first PR left behind by the merge is brought up to date").toBeGreaterThanOrEqual(0);
-    expect(second, "the second PR left behind by the merge is brought up to date").toBeGreaterThanOrEqual(0);
-    expect(tokens()[first], "runs as the App, so its checks run again").toBe("app");
-    expect(tokens()[second]).toBe("app");
+    const updated = calls().findIndex((call) => call.startsWith("pr\nupdate-branch\n901"));
+    expect(updated, "the PR left behind by the merge is brought up to date").toBeGreaterThanOrEqual(0);
+    expect(tokens()[updated], "runs as the App, so its checks run again").toBe("app");
   });
 
   it("wakes the builder of the ticket behind the stuck PR, instead of leaving it waiting in silence", () => {
     const { calls, tokens, run } = closing({
       ticket: "819",
-      behindPrs: [{ number: "903", ticket: "822", refused: "GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts." }],
+      openPrs: [{ number: "903", ticket: "822", refused: "GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts." }],
     });
 
     const result = run();
@@ -128,7 +119,7 @@ describe("bin/close brings ticket PRs left behind by a merge up to date, so auto
 
 describe("bin/close brings land PRs left behind by a merge up to date too, since the ruleset holds them the same way (#869)", () => {
   it("brings an open land PR up to date, as the App", () => {
-    const { calls, tokens, run } = closing({ ticket: "819", behindPrs: [{ number: "904", ticket: "", branch: "land/0123456789ab" }] });
+    const { calls, tokens, run } = closing({ ticket: "819", openPrs: [{ number: "904", ticket: "", branch: "land/0123456789ab" }] });
 
     expect(run().status).toBe(0);
     const updated = calls().findIndex((call) => call.startsWith("pr\nupdate-branch\n904"));
@@ -139,7 +130,7 @@ describe("bin/close brings land PRs left behind by a merge up to date too, since
   it("names on the land PR itself the reason it could not be brought up to date, since it has no ticket", () => {
     const { calls, run } = closing({
       ticket: "819",
-      behindPrs: [{ number: "905", ticket: "", branch: "land/ba9876543210", refused: "GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts." }],
+      openPrs: [{ number: "905", ticket: "", branch: "land/ba9876543210", refused: "GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts." }],
     });
 
     expect(run().status).toBe(0);
@@ -150,7 +141,7 @@ describe("bin/close brings land PRs left behind by a merge up to date too, since
   });
 
   it("leaves alone a PR from a branch the machine did not open", () => {
-    const { calls, run } = closing({ ticket: "819", behindPrs: [{ number: "906", ticket: "", branch: "dependabot/npm_and_yarn/vitest-5.0.0" }] });
+    const { calls, run } = closing({ ticket: "819", openPrs: [{ number: "906", ticket: "", branch: "dependabot/npm_and_yarn/vitest-5.0.0" }] });
 
     expect(run().status).toBe(0);
     expect(calls().some((call) => call.includes("\n906"))).toBe(false);
@@ -194,7 +185,7 @@ describe("bin/close wakes the ticket's builder directly, instead of reopening it
   it("wakes the ticket's builder instead of commenting, when its PR cannot be brought up to date by a merge", () => {
     const { calls, tokens, run } = closing({
       ticket: "819",
-      behindPrs: [{ number: "909", ticket: "830", refused: "GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts." }],
+      openPrs: [{ number: "909", ticket: "830", refused: "GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts." }],
     });
 
     const result = run();
@@ -208,32 +199,13 @@ describe("bin/close wakes the ticket's builder directly, instead of reopening it
     expect(calls().some((call) => call.startsWith("issue\ncomment\n830\n"))).toBe(false);
     expect(calls().some((call) => call.startsWith("pr\ncomment\n909\n")), "leaves the failed branch update comment on the PR (#980)").toBe(true);
   });
-
-  it("wakes the ticket's builder instead of commenting, when its PR cannot be brought up to date on the PR's opening", () => {
-    const { calls, tokens, run } = closing({
-      ticket: "819",
-      behindPrs: [{ number: "910", ticket: "831", mergeStateStatus: "UNKNOWN", refused: "GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts." }],
-      openedPr: "910",
-    });
-
-    const result = run();
-
-    expect(result.status).toBe(0);
-    const wake = woken(calls(), "831");
-    expect(wake, "fires the trigger fix.yml starts on, naming the ticket").toBeDefined();
-    expect(wake).toContain("merge conflicts");
-    expect(tokens()[calls().indexOf(wake ?? "")]).toBe("app");
-    expect(calls().some((call) => call.startsWith("issue\nreopen\n831"))).toBe(false);
-    expect(calls().some((call) => call.startsWith("issue\ncomment\n831\n"))).toBe(false);
-    expect(calls().some((call) => call.startsWith("pr\ncomment\n910\n")), "leaves the failed branch update comment on the PR (#980)").toBe(true);
-  });
 });
 
 describe("bin/close counts a ticket PR's collisions in its closing record: failed branch updates and re-reviews (#980)", () => {
   it("leaves a failed branch update on a ticket PR", () => {
     const { calls, run } = closing({
       ticket: "819",
-      behindPrs: [{ number: "911", ticket: "833", refused: "GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts." }],
+      openPrs: [{ number: "911", ticket: "833", refused: "GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts." }],
     });
 
     const result = run();
@@ -283,43 +255,87 @@ describe("bin/close counts a ticket PR's collisions in its closing record: faile
   });
 });
 
-describe("bin/close catches up a PR the moment it opens behind main, not just after the next merge (#954)", () => {
-  it("brings a PR that opened behind main up to date", () => {
-    const { calls, tokens, run } = closing({
-      ticket: "819",
-      behindPrs: [{ number: "907", ticket: "823", mergeStateStatus: "UNKNOWN" }],
-      openedPr: "907",
-    });
+describe("bin/close merges machine PRs one at a time, bringing only the oldest green one up to date, judged from git (#1011)", () => {
+  const CONFLICT = "GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts.";
+  const updated = (calls: string[]) => calls.filter((call) => call.startsWith("pr\nupdate-branch\n")).map((call) => call.split("\n")[2]);
 
-    const result = run();
-
-    expect(result.status).toBe(0);
-    const updated = calls().findIndex((call) => call.startsWith("pr\nupdate-branch\n907"));
-    expect(updated, "the PR that just opened behind main is brought up to date even while GitHub still reads its merge state as unknown").toBeGreaterThanOrEqual(0);
-    expect(tokens()[updated], "runs as the App").toBe("app");
-    expect(calls().some((call) => call.startsWith("issue\ncomment\n819\n")), "posts no closing record for main's last merge").toBe(false);
-  });
-
-  it("names why a PR that opened behind main could not be brought up to date", () => {
+  it("after a merge, brings up to date only the oldest PR whose checks are green, and leaves the others as they are", () => {
     const { calls, run } = closing({
       ticket: "819",
-      behindPrs: [
-        {
-          number: "908",
-          ticket: "",
-          branch: "land/deadbeefcafe",
-          mergeStateStatus: "UNKNOWN",
-          refused: "GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts.",
-        },
+      openPrs: [
+        { number: "920", ticket: "840", checks: "pending" },
+        { number: "921", ticket: "841", autoMerge: false },
+        { number: "922", ticket: "842" },
+        { number: "923", ticket: "843" },
+        { number: "924", ticket: "844", checks: "red" },
       ],
-      openedPr: "908",
     });
 
     const result = run();
 
-    expect(result.status).toBe(0);
-    const commented = calls().find((call) => call.startsWith("pr\ncomment\n908\n"));
-    expect(commented, "the land PR that opened behind main is told why, the same as a merge's catch-up leaves").toBeDefined();
-    expect(commented).toContain("merge conflicts");
+    expect(result.status, result.stderr).toBe(0);
+    expect(updated(calls())).toEqual(["922"]);
+    expect(calls().some((call) => call.startsWith("issue\ncomment\n819\n")), "still closes the ticket that merged").toBe(true);
+  });
+
+  it("brings nothing up to date while a PR already up to date with main is still being checked", () => {
+    const { calls, run } = closing({
+      ticket: "819",
+      openPrs: [
+        { number: "925", ticket: "845" },
+        { number: "926", ticket: "846", upToDate: true, checks: "pending" },
+      ],
+    });
+
+    expect(run().status).toBe(0);
+    expect(updated(calls())).toEqual([]);
+  });
+
+  it("wakes the builder of a PR whose update conflicts, and brings the next green PR up to date", () => {
+    const { calls, run } = closing({
+      ticket: "819",
+      openPrs: [
+        { number: "927", ticket: "847", refused: CONFLICT },
+        { number: "928", ticket: "848" },
+        { number: "929", ticket: "849" },
+      ],
+    });
+
+    expect(run().status).toBe(0);
+    expect(updated(calls())).toEqual(["927", "928"]);
+    expect(calls().some((call) => call.startsWith("workflow\nrun\nfix.yml") && call.includes("ticket=847"))).toBe(true);
+  });
+
+  it("once the PR at the front goes red, brings the next green PR up to date, and closes no ticket", () => {
+    const { calls, run } = closing({
+      ticket: "819",
+      afterCheck: true,
+      openPrs: [
+        { number: "930", ticket: "850", upToDate: true, checks: "red" },
+        { number: "931", ticket: "851" },
+      ],
+    });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(updated(calls())).toEqual(["931"]);
+    expect(calls().some((call) => call.startsWith("issue\n")), "a finished check is not a merge, so no ticket is closed").toBe(false);
+  });
+
+  it("walks three PRs left behind by one merge through main, one at a time, with no one touching them", () => {
+    const steps = [
+      closing({ ticket: "819", openPrs: [{ number: "932", ticket: "852" }, { number: "933", ticket: "853" }, { number: "934", ticket: "854" }] }),
+      closing({ ticket: "819", afterCheck: true, openPrs: [{ number: "932", ticket: "852", upToDate: true, checks: "pending" }, { number: "933", ticket: "853" }, { number: "934", ticket: "854" }] }),
+      closing({ ticket: "852", openPrs: [{ number: "933", ticket: "853" }, { number: "934", ticket: "854" }] }),
+      closing({ ticket: "853", openPrs: [{ number: "934", ticket: "854" }] }),
+    ];
+
+    const walked = steps.map(({ calls, run }) => {
+      expect(run().status).toBe(0);
+      return updated(calls());
+    });
+
+    expect(walked).toEqual([["932"], [], ["933"], ["934"]]);
   });
 });

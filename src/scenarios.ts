@@ -427,15 +427,41 @@ const FAST_TIMING = {
   merged: "2026-01-01T00:00:04Z",
 };
 
+export interface QueuedPr {
+  number: string;
+  ticket: string;
+  branch?: string;
+  refused?: string;
+  upToDate?: boolean;
+  checks?: "green" | "pending" | "red";
+  autoMerge?: boolean;
+}
+
+const RUNS = { green: ["COMPLETED", "SUCCESS"], pending: ["IN_PROGRESS", ""], red: ["COMPLETED", "FAILURE"] } as const;
+
+function listed(pr: QueuedPr) {
+  const [status, conclusion] = RUNS[pr.checks ?? "green"];
+  return {
+    number: Number(pr.number),
+    headRefName: pr.branch ?? `ticket/${pr.ticket}`,
+    autoMergeRequest: pr.autoMerge === false ? null : { mergeMethod: "MERGE" },
+    statusCheckRollup: [
+      { __typename: "CheckRun", name: "check", status: "COMPLETED", conclusion: "SUCCESS" },
+      { __typename: "CheckRun", name: "meters", status: "COMPLETED", conclusion: "FAILURE" },
+      { __typename: "CheckRun", name: "review", status, conclusion },
+    ],
+  };
+}
+
 export function closing({
   ticket = "812",
   ticketBody = CLOSER_TICKET,
   readable = true,
   timing = FAST_TIMING,
   closedAs,
-  behindPrs = [] as { number: string; ticket: string; branch?: string; refused?: string; mergeStateStatus?: string }[],
+  openPrs = [] as QueuedPr[],
   splitFrom,
-  openedPr,
+  afterCheck = false,
   prComments = [] as Said[],
   prCommentsUnreadable = false,
 }: {
@@ -444,9 +470,9 @@ export function closing({
   readable?: boolean;
   timing?: { filed: string; firstCommit: string; rebased?: string; prOpened: string; checksGreen: string; merged: string };
   closedAs?: "COMPLETED" | "NOT_PLANNED";
-  behindPrs?: { number: string; ticket: string; branch?: string; refused?: string; mergeStateStatus?: string }[];
+  openPrs?: QueuedPr[];
   splitFrom?: { parent: string; labels: string; said: string; siblings: Record<string, string> };
-  openedPr?: string;
+  afterCheck?: boolean;
   prComments?: Said[];
   prCommentsUnreadable?: boolean;
 } = {}) {
@@ -468,6 +494,17 @@ export function closing({
   commitAt(session, timing.firstCommit, ["commit", "--quiet", "--allow-empty", "-m", `Build #${ticket} against its failing tests`], timing.rebased);
   git(session, "checkout", "--quiet", "main");
   commitAt(session, timing.merged, ["merge", "--quiet", "--no-ff", "-m", `Merge pull request #900 from collod873/ticket/${ticket}`, `ticket/${ticket}`]);
+  const origin = join(root, "origin.git");
+  git(root, "init", "--quiet", "--bare", origin);
+  git(session, "remote", "add", "origin", origin);
+  git(session, "push", "--quiet", "origin", "main");
+  for (const pr of openPrs) {
+    const branch = pr.branch ?? `ticket/${pr.ticket}`;
+    git(session, "checkout", "--quiet", "-b", `queued/${pr.number}`, pr.upToDate === true ? "main" : "main^1");
+    git(session, "commit", "--quiet", "--allow-empty", "-m", `Build PR #${pr.number}`);
+    git(session, "push", "--quiet", "origin", `HEAD:refs/heads/${branch}`);
+    git(session, "checkout", "--quiet", "main");
+  }
   plant(root, "pr-comments.json", authored(prComments));
   script(
     join(root, "bin", "gh"),
@@ -491,10 +528,8 @@ export function closing({
       ticketBody,
       "BODY",
       "    ;;",
-      `  *"pr list"*) printf '%s\\n' '${JSON.stringify(behindPrs.map((behind) => ({ number: Number(behind.number), headRefName: behind.branch ?? `ticket/${behind.ticket}`, mergeStateStatus: behind.mergeStateStatus ?? "BEHIND" })))}' ;;`,
-      ...behindPrs.map(
-        (behind) => `  *"pr update-branch ${behind.number}"*) ${behind.refused === undefined ? "exit 0" : `printf '%s\\n' '${behind.refused}' >&2; exit 1`} ;;`,
-      ),
+      `  *"pr list"*) printf '%s\\n' '${JSON.stringify(openPrs.map(listed))}' ;;`,
+      ...openPrs.map((pr) => `  *"pr update-branch ${pr.number}"*) ${pr.refused === undefined ? "exit 0" : `printf '%s\\n' '${pr.refused}' >&2; exit 1`} ;;`),
       `  *"pr view"*) printf '%s\\n' '${timing.prOpened}' ;;`,
       `  *"pr checks"*) printf '%s\\n' '${timing.checksGreen}' ;;`,
       `  *"issues/900/comments"*) ${prCommentsUnreadable ? "printf 'GraphQL: comments could not be read\\n' >&2; exit 1" : `cat "${join(root, "pr-comments.json")}"`} ;;`,
@@ -508,12 +543,16 @@ export function closing({
     calls: () => readdirSync(callsDir).sort((a, b) => Number(a) - Number(b)).map((file) => readFileSync(join(callsDir, file), "utf8")),
     tokens: () => readdirSync(tokensDir).sort((a, b) => Number(a) - Number(b)).map((file) => readFileSync(join(tokensDir, file), "utf8")),
     run: () =>
-      execute(join(BIN, "close"), session, {
-        PATH: `${join(root, "bin")}:${process.env.PATH}`,
-        GH_TOKEN: "app",
-        QUIET_GH_TOKEN: "quiet",
-        ...(openedPr === undefined ? {} : { OPENED_PR: openedPr }),
-      }),
+      execute(
+        join(BIN, "close"),
+        session,
+        {
+          PATH: `${join(root, "bin")}:${process.env.PATH}`,
+          GH_TOKEN: "app",
+          QUIET_GH_TOKEN: "quiet",
+        },
+        afterCheck ? ["queue"] : [],
+      ),
   };
 }
 
