@@ -5,6 +5,7 @@ import { parse } from "yaml";
 import { execute, heard, holds, MACHINE, OWNER, plant, type Said, scratch, script, type WorkflowStep } from "./scenarios.ts";
 import { NEEDS_HUMAN } from "./post.ts";
 import { DONE_CHECK_POSTED, doneChecking, specWith } from "./done-checker.part.ts";
+import { missedIn } from "./done-checker.ts";
 
 const READ_COMMENTS = "api --paginate repos/{owner}/{repo}/issues/974/comments";
 const SENTENCES = ["file a spec and see its first wave show up under it", "open any ticket it filed and see my own words copied over", "see the spec close itself once every sentence held"];
@@ -298,5 +299,58 @@ describe("done-check.yml runs the done check again on the owner's reply to a sen
     const checked = check.steps.find((step) => step.run?.includes("bin/done-check"));
     expect(checked?.run).toContain("bin/done-check ${{ github.event.issue.number }}");
     expect(checked?.env?.GH_TOKEN).toBe("${{ steps.app.outputs.token }}");
+  });
+});
+
+describe("bin/done-check settles a sentence about its own close by what this run does (#1049)", () => {
+  const selfTries = (second: string) => [
+    { sentence: 1, outcome: "held", tried: "saw the first wave under it" },
+    { sentence: 2, outcome: second, tried: "opened a ticket it filed" },
+    { sentence: 3, outcome: "self", tried: "this run closes it" },
+  ];
+
+  it("posts the self sentence as held and closes the spec when every other sentence held", () => {
+    const checked = doneChecking({ body: specWith(SENTENCES), tries: selfTries("held") });
+
+    expect(heard(checked.run())).toEqual({ status: 0, stderr: "", lines: [`done-check: #974 held every sentence and is closed: ${DONE_CHECK_POSTED}`] });
+    expect(checked.comments()[0]).toContain(`3. **Held**: ${SENTENCES[2]}\n   This run closed the spec, since every other sentence held.`);
+    expect(checked.closes()).toHaveLength(1);
+    expect(checked.handed()).toContain("`self`");
+  });
+
+  it("posts the self sentence as held and files the fix wave on the other sentence's miss alone", () => {
+    const checked = doneChecking({ body: specWith(SENTENCES), tries: selfTries("missed") });
+
+    expect(heard(checked.run())).toEqual({ status: 0, stderr: "", lines: [`done-check: #974 did not hold sentence 2, so bin/slice --fix filed its one fix wave: ${DONE_CHECK_POSTED}`] });
+    expect(checked.sliced()).toEqual(["974 --fix 2"]);
+    expect(checked.comments()[0]).toContain(`3. **Held**: ${SENTENCES[2]}\n   This run names each other sentence that did not hold, and why.`);
+    expect(checked.closes()).toEqual([]);
+    expect(checked.labelled()).toEqual([]);
+  });
+
+  it("stops on the other sentence's miss alone after the fix wave, never naming the self sentence", () => {
+    const checked = doneChecking({ body: specWith(SENTENCES), tries: selfTries("missed"), said: ["## Done check\n\n2. **Did not hold**: the first miss\n\n<!-- fix-wave -->"] });
+
+    expect(checked.run()).toEqual({ status: 1, stdout: "", stderr: `done-check: #974 marked needs-human, sentence 2 missed again after the fix wave: ${DONE_CHECK_POSTED}\n` });
+    expect(checked.comments()[0]).toContain(`3. **Held**: ${SENTENCES[2]}\n   This run names each other sentence that did not hold, and why.`);
+    expect(checked.comments()[0]).not.toContain("Sentence 3 missed");
+  });
+
+  it("leaves the spec open with the self sentence held while another waits on the owner", () => {
+    const checked = doneChecking({ body: specWith(SENTENCES), tries: selfTries("owner") });
+
+    expect(heard(checked.run())).toEqual({ status: 0, stderr: "", lines: [`done-check: #974 did not hold every sentence, so it stays open: ${DONE_CHECK_POSTED}`] });
+    expect(checked.comments()[0]).toContain(`3. **Held**: ${SENTENCES[2]}\n   This run leaves the spec open while another sentence waits on the owner.`);
+    expect(checked.closes()).toEqual([]);
+  });
+
+  it("posts a self sentence at a wave check as waiting for the end, which the next re-slice reads as no miss", () => {
+    const checked = doneChecking({ body: specWith(SENTENCES), tries: [{ sentence: 3, outcome: "self", tried: "this run closes it" }] });
+
+    expect(heard(checked.run("974", "--wave", "3"))).toEqual({ status: 0, stderr: "", lines: [`done-check: #974 wave check held every sentence it tried, and closes nothing: ${DONE_CHECK_POSTED}`] });
+    const [comment = ""] = checked.comments();
+    expect(comment).toContain(`- Sentence 3, **Waits for the end**: ${SENTENCES[2]}\n`);
+    expect(comment).not.toContain("this run closes it");
+    expect(missedIn(comment)).toEqual(new Set());
   });
 });
