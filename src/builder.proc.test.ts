@@ -360,3 +360,73 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(prompt).toMatch(/keeping[^.\n]*Why/i);
   });
 });
+
+describe("the builder builds an App-opened ticket only under an open spec the owner opened (#1022)", () => {
+  const SPEC = { state: "open", user: { login: "collod873" }, labels: [{ name: "spec" }] };
+  const APP = "collod873-machine[bot]";
+  const ticketWhy = (line: string) => `## Why\n\n${line}\n\n## Done when\n\n- The builder builds it.\n`;
+  const stopped = (scenario: ReturnType<typeof fixing>) => {
+    const result = scenario.run("811");
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("#811");
+    expect(scenario.handed()).toEqual([]);
+    expect(scenario.marked()).toEqual([]);
+    return result.stderr;
+  };
+
+  it("builds a ticket the App opened under an open spec the owner opened", () => {
+    const { run, handed } = fixing({ claude: FIXES, opener: APP, parent: SPEC });
+
+    expect(run("811").status).toBe(0);
+    expect(handed()).toHaveLength(1);
+  });
+
+  it("stops a ticket the App opened under a spec the App opened, before its builder runs anything", () => {
+    expect(stopped(fixing({ claude: FIXES, opener: APP, parent: { ...SPEC, user: { login: APP } } }))).toContain("the owner");
+  });
+
+  it("stops a ticket the App opened under a closed spec", () => {
+    expect(stopped(fixing({ claude: FIXES, opener: APP, parent: { ...SPEC, state: "closed" } }))).toContain("open");
+  });
+
+  it("stops a ticket the App opened under an issue not labelled spec", () => {
+    expect(stopped(fixing({ claude: FIXES, opener: APP, parent: { ...SPEC, labels: [{ name: "ticket" }] } }))).toContain("spec");
+  });
+
+  it("stops a ticket the App opened under no spec", () => {
+    expect(stopped(fixing({ claude: FIXES, opener: APP }))).toContain("spec");
+  });
+
+  it("stops a ticket the App opened whose Why only quotes a follow-up line", () => {
+    const body = ticketWhy("> Follow-up of #865: its review found this after the builder's one turn.");
+    stopped(fixing({ claude: FIXES, opener: APP, body }));
+  });
+
+  it("stops a ticket the App opened whose Why has a follow-up line neither the reviewer nor the builder writes", () => {
+    stopped(fixing({ claude: FIXES, opener: APP, body: ticketWhy("Follow-up of #865: its notes.") }));
+  });
+
+  it("stops a ticket the App opened whose parent cannot be read, saying so rather than no spec", () => {
+    const said = stopped(fixing({ claude: FIXES, opener: APP, parent: "unreadable" }));
+
+    expect(said).toContain("could not be read");
+    expect(said).not.toContain("no spec");
+  });
+
+  it("builds the reviewer's and the builder's follow-ups under no spec, as before", () => {
+    const reviewed = fixing({ claude: FIXES, opener: APP, body: ticketWhy("Follow-up of #865: its review found this after its builder's repair.") });
+    const split = fixing({ claude: FIXES, opener: APP, body: ticketWhy("Follow-up of #865: its builder split it, since it does not fit one build.") });
+
+    expect(reviewed.run("811").status).toBe(0);
+    expect(split.run("811").status).toBe(0);
+    expect(reviewed.handed()).toHaveLength(1);
+    expect(split.handed()).toHaveLength(1);
+  });
+
+  it("builds the owner's own ticket under no spec, as before", () => {
+    const { run, handed } = fixing({ claude: FIXES });
+
+    expect(run("811").status).toBe(0);
+    expect(handed()).toHaveLength(1);
+  });
+});

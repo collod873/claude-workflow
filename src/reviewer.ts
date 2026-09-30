@@ -144,7 +144,8 @@ interface AfterTurn {
 const laterFinds = (ticket: string) => `The reviewer found these on #${ticket} after its builder's repair, outside the earlier gaps and the fix's own lines, so they do not block its merge:`;
 export const FOLLOW_UP_OF = "Follow-up of #";
 const reviewerOn = (ticket: string) => `The reviewer, on #${ticket}:`;
-const REVIEWED_FROM = new RegExp(`^${FOLLOW_UP_OF}(\\d+): its review found`, "m");
+export const REVIEWED_FROM = new RegExp(`^${FOLLOW_UP_OF}(\\d+): its review found`, "m");
+export const SPLIT_FROM = new RegExp(`^${FOLLOW_UP_OF}(\\d+): its builder split it`, "m");
 
 const firstLine = (text: string) => quoted(text.trim().split("\n")[0] ?? "");
 
