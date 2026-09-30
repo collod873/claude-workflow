@@ -89,22 +89,21 @@ describe("build.yml builds a ticket the moment it is filed (#826)", () => {
     expect(starts(["ticket", "spec"])).toBe(false);
   });
 
-  it("an issue anyone but the owner files or reopens starts no build, since its checks run as shell with the App's token", () => {
+  it("an issue a stranger files or reopens starts no build, since its checks run as shell with the App's token", () => {
     const { job } = workflow();
     const starts = (sender: string) => holds(job.if ?? "true", { sender });
 
     expect(starts("collod873")).toBe(true);
     expect(starts("stranger")).toBe(false);
-    expect(starts("collod873-machine[bot]")).toBe(false);
   });
 
-  it("the App's follow-up ticket builds itself, and nothing else the App or a stranger files does (#865)", () => {
+  it("every ticket the App opens reaches bin/fix, which holds it to a follow-up or an owner's open spec, and nothing a stranger files does (#865, #1022)", () => {
     const { job } = workflow();
     const starts = (sender: string, body: string) => holds(job.if ?? "true", { sender, body });
     const followUp = "## Why\n\nFollow-up of #865: its review found this after the builder's one turn.\n";
 
     expect(starts("collod873-machine[bot]", followUp)).toBe(true);
-    expect(starts("collod873-machine[bot]", "## Why\n\nA ticket the App wrote on its own.\n")).toBe(false);
+    expect(starts("collod873-machine[bot]", "## Why\n\nA ticket the slicer filed under a spec.\n")).toBe(true);
     expect(starts("stranger", followUp)).toBe(false);
     expect(holds(job.if ?? "true", { sender: "collod873-machine[bot]", body: followUp, labels: ["note"] })).toBe(false);
   });

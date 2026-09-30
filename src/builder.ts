@@ -296,7 +296,43 @@ function failedAs(ticket: string, logs: string, run: string | undefined): string
   return run === undefined ? undefined : failure(ticket, logs, run);
 }
 
+const FOLLOWS_UP = new RegExp(`^${FOLLOW_UP_OF}\\d+: its `, "m");
+
+interface Opened {
+  state?: string;
+  user?: { login?: string };
+  labels?: { name?: string }[];
+  body?: string | null;
+}
+
+function openedAs(path: string): Opened | undefined {
+  const got = gh(["api", `repos/{owner}/{repo}/issues/${path}`]);
+  if (got.status !== 0) return undefined;
+  try {
+    return JSON.parse(got.stdout) as Opened;
+  } catch {
+    return undefined;
+  }
+}
+
+function shutOut(ticket: string): string | undefined {
+  const opened = openedAs(ticket);
+  if (opened === undefined) return "it could not be read";
+  if (opened.user?.login === OWNER || FOLLOWS_UP.test(why(opened.body ?? ""))) return undefined;
+  const spec = openedAs(`${ticket}/parent`);
+  if (spec === undefined) return "the App opened it under no spec";
+  if (!(spec.labels ?? []).some(({ name }) => name === "spec")) return "the App opened it under an issue not labelled `spec`";
+  if (spec.user?.login !== OWNER) return "the App opened it under a spec the owner did not open";
+  if (spec.state !== "open") return "the App opened it under a spec that is not open";
+  return undefined;
+}
+
 function ownTicket(ticket: string, run: string | undefined): number {
+  const shut = shutOut(ticket);
+  if (shut !== undefined) {
+    console.error(`fix: #${ticket} does not build, since its checks would run as shell with the App's token and ${shut}`);
+    return 1;
+  }
   const logs = machineLogs(process.cwd());
   mkdirSync(logs, { recursive: true });
   const failed = failedAs(ticket, logs, run);

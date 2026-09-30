@@ -779,6 +779,8 @@ export function fixing({
   savedSession = undefined as string | undefined,
   reason = undefined as string | undefined,
   captures = {} as Record<string, string>,
+  opener = OWNER,
+  parent = undefined as object | undefined,
 } = {}) {
   const root = scratch("builder-");
   const session = join(root, "session");
@@ -802,6 +804,8 @@ export function fixing({
   if (savedSession !== undefined) plant(home, ".claude/builder/811", `${savedSession}\n`);
   for (const [name, text] of Object.entries(captures)) plant(root, `captures/${name}`, text);
   plant(root, "ticket.md", body);
+  plant(root, "opened.json", JSON.stringify({ number: 811, user: { login: opener }, body }));
+  plant(root, "parent.json", JSON.stringify(parent ?? {}));
   plant(root, "on-pr.json", authored(onPr ?? []));
   plant(root, "failed-run.log", failedRun);
   const result = { type: "result", subtype: "success", is_error: false, session_id: BUILDER_SESSION, structured_output: answer };
@@ -813,6 +817,8 @@ export function fixing({
       setup,
       'case "$*" in',
       `  *"api"*"issues/9811/comments"*) cat "${join(root, "on-pr.json")}" ;;`,
+      `  *"api"*"issues/811/parent") ${parent === undefined ? "printf 'gh: Not Found (HTTP 404)\\n' >&2; exit 1" : `cat "${join(root, "parent.json")}"`} ;;`,
+      `  *"api"*"issues/811") cat "${join(root, "opened.json")}" ;;`,
       `  *"issue create"*) n=$(( $(cat "${join(root, "created")}" 2>/dev/null || echo 900) + 1 )); printf '%s\\n' "$n" >"${join(root, "created")}"; printf 'https://github.com/collod873/claude-workflow/issues/%s\\n' "$n" ;;`,
       `  *"issue view"*) cat "${join(root, "ticket.md")}" ;;`,
       `  *"pr view"*"number"*) ${onPr === undefined ? "exit 1" : "printf '9811\\n'"} ;;`,
