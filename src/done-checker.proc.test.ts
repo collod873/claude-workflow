@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { execute, heard, holds, MACHINE, OWNER, plant, type Said, scratch, script, type WorkflowStep } from "./scenarios.ts";
+import { NEEDS_HUMAN } from "./post.ts";
 import { DONE_CHECK_POSTED, doneChecking, specWith } from "./done-checker.part.ts";
 
 const READ_COMMENTS = "api --paginate repos/{owner}/{repo}/issues/974/comments";
@@ -272,6 +273,14 @@ describe("done-check.yml runs the done check again on the owner's reply to a sen
     expect(starts(["spec"], MACHINE)).toBe(false);
     expect(starts(["spec"], "stranger")).toBe(false);
     expect(starts(["ticket"])).toBe(false);
+  });
+
+  it("does not start on the owner's comment once the last done check put a sentence to him and called needs-human (#1043)", () => {
+    const { asked } = workflow();
+    const calledOwner = `## Done check\n\n1. **Did not hold**: one\n   saw it fail\n2. **Put to the owner**: two\n   open it on your phone\n\nSentence 1 missed again after the fix wave, so the spec is marked \`${NEEDS_HUMAN}\`: one. Why: saw it fail\n`;
+
+    expect(lastAsked([calledOwner, "an aside"])).toBe("true");
+    expect(holds(asked.if ?? "true", { labels: ["spec", NEEDS_HUMAN], sender: OWNER, action: "created" })).toBe(false);
   });
 
   it("runs bin/done-check on the spec only when the last ## Done check put a sentence to the owner", () => {
