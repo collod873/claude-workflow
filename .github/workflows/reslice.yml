@@ -1,0 +1,115 @@
+name: Reslice
+run-name: "Reslice after #${{ github.event.issue.number }}: ${{ github.event.issue.title }}"
+
+"on":
+  issues:
+    types: [closed]
+
+permissions:
+  contents: read
+
+jobs:
+  ended:
+    if: "${{ !contains(github.event.issue.labels.*.name, 'spec') && !contains(github.event.issue.labels.*.name, 'note') }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: read
+    outputs:
+      spec: ${{ steps.ended.outputs.spec }}
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - id: ended
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: bin/slice --ended ${{ github.event.issue.number }} >>"$GITHUB_OUTPUT"
+
+  reslice:
+    needs: ended
+    if: ${{ needs.ended.outputs.spec != '' }}
+    concurrency:
+      group: reslice-${{ needs.ended.outputs.spec }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 160
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+
+      - id: checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - id: setup-node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - id: npm-ci
+        run: npm ci
+
+      - id: stage
+        uses: ./.github/actions/stage
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+
+      - id: ended
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: bin/slice --ended ${{ github.event.issue.number }} >>"$GITHUB_OUTPUT"
+
+      - id: wave-check
+        if: steps.ended.outputs.spec != '' && steps.ended.outputs.moves != ''
+        timeout-minutes: 50
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          STAGE_MINUTES: 45
+        run: |
+          tail --pid=$$ -n +1 -F .git/machine-logs/done-check-${{ steps.ended.outputs.spec }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
+          bin/done-check ${{ steps.ended.outputs.spec }} --wave ${{ steps.ended.outputs.moves }}
+
+      - id: reslice
+        if: steps.ended.outputs.spec != ''
+        timeout-minutes: 100
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          STAGE_MINUTES: 45
+        run: |
+          tail --pid=$$ -q -n +1 -F .git/machine-logs/slice-${{ steps.ended.outputs.spec }}.jsonl .git/machine-logs/done-check-${{ steps.ended.outputs.spec }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
+          bin/slice ${{ steps.ended.outputs.spec }}
+
+      - if: always()
+        timeout-minutes: 6
+        uses: ./.github/actions/stage-logs
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
