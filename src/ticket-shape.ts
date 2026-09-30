@@ -120,6 +120,20 @@ function sentenceRefusals(items: string[]): string[] {
   return refusals;
 }
 
+export const SPEC_CAP = 64 * 1024;
+
+export interface Sentence {
+  said: string;
+  check?: string;
+}
+
+export function sentences(body: string): Sentence[] {
+  return itemsUnder(body.replaceAll(/\r\n?/g, "\n"), SENTENCES).map((item) => {
+    const check = MARKER.exec(item);
+    return check === null ? { said: item } : { said: item.slice(0, check.index).trim(), check: check[1] };
+  });
+}
+
 export function specRefusals(body: string): string[] {
   const text = body.replaceAll(/\r\n?/g, "\n");
   const refusals: string[] = [];
