@@ -118,6 +118,10 @@ function filedWave(issue: string, read: string, wave: Wave): Stop | undefined {
     const linked = id?.status === 0 ? gh(["api", "--method", "POST", `repos/{owner}/{repo}/issues/${issue}/sub_issues`, "-F", `sub_issue_id=${id.stdout.trim()}`]) : undefined;
     if (linked?.status !== 0) {
       const why = filed.refusals[0] ?? `#${number} would not go under it`;
+      const left = wave.tickets.slice(numbers.length + (number === undefined ? 0 : 1)).map(({ title }) => JSON.stringify(title));
+      const filedSoFar = number === undefined ? numbers : [...numbers, `#${number}, not under this spec`];
+      const since = number === undefined ? `${JSON.stringify(piece.title)} would not file: ${why}` : why;
+      commentOnTicket(issue, [`The slicer rewrote this spec and filed only part of its wave, since ${since}`, `Filed: ${filedSoFar.join(", ") || "none"}.`, `Not filed: ${left.join(", ") || "none"}.`].join("\n\n"), gh);
       return stoppedAt("unfiled", `${said} filed ${numbers.length} of ${wave.tickets.length} tickets, ${JSON.stringify(piece.title)} would not file: ${quoted(why)}`);
     }
     numbers.push(`#${number}`);

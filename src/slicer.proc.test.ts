@@ -133,6 +133,38 @@ describe("bin/slice turns a filed spec into its first wave of tickets under it, 
     expect(sliced.linked()).toEqual([]);
   });
 
+  it("comments on the spec naming the tickets filed and those not, when a ticket of the wave will not file (#1028)", () => {
+    const third = wave([piece("File the spec kind", [1, 2]), piece("Read the spec kind", [3]), piece("Close the spec kind", [3])]);
+    const sliced = slicing({ body: SPEC, answers: [third], gh: '[[ $2 == create && -e "${0%/bin/gh}/created/1" ]] && { printf \'HTTP 403: Resource not accessible\\n\' >&2; exit 1; }' });
+
+    expect(sliced.run().stderr).toBe('slice: #968 filed 1 of 3 tickets, "Read the spec kind" would not file: gh issue create failed: HTTP 403: Resource not accessible\n');
+    expect(sliced.comments()).toEqual([
+      'The slicer rewrote this spec and filed only part of its wave, since "Read the spec kind" would not file: gh issue create failed: HTTP 403: Resource not accessible\n\nFiled: #1101.\n\nNot filed: "Read the spec kind", "Close the spec kind".',
+    ]);
+  });
+
+  it("names a ticket that filed but would not go under the spec among those filed, and the rest as not filed (#1028)", () => {
+    const sliced = slicing({ body: SPEC, answers: [wave()], gh: "[[ $* == *sub_issues* ]] && exit 1" });
+
+    expect(sliced.run().status).toBe(1);
+    expect(sliced.comments()).toEqual(['The slicer rewrote this spec and filed only part of its wave, since #1101 would not go under it\n\nFiled: #1101, not under this spec.\n\nNot filed: "Read the spec kind".']);
+  });
+
+  it("names no ticket as not filed when the last filed but would not go under the spec (#1028)", () => {
+    const sliced = slicing({ body: SPEC, answers: [wave()], gh: "[[ $* == *sub_issue_id=901102* ]] && exit 1" });
+
+    expect(sliced.run().status).toBe(1);
+    expect(sliced.comments()[0]).toContain("Filed: #1101, #1102, not under this spec.\n\nNot filed: none.");
+  });
+
+  it("names no ticket filed when the first will not file (#1028)", () => {
+    const sliced = slicing({ body: SPEC, answers: [wave()], gh: "[[ $2 == create ]] && exit 1" });
+
+    expect(sliced.run().status).toBe(1);
+    expect(sliced.comments()).toHaveLength(1);
+    expect(sliced.comments()[0]).toContain('Filed: none.\n\nNot filed: "File the spec kind", "Read the spec kind".');
+  });
+
   it("the owner's spec starts slice.yml, which files its wave with the App's token; not a spec, or someone else's, does not", () => {
     const slice = onlyJob("slice.yml");
     const starts = (labels: string[], sender = "collod873") => holds(slice.if ?? "true", { labels, sender, action: "opened" });
