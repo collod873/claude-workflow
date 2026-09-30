@@ -86,6 +86,7 @@ function doneCheck(issue: string): Stop | undefined {
   if (asked === undefined) return stoppedAt("unread", `${said} could not be read, so nothing was tried`);
   if (!asked.labels.some(({ name }) => name === SPEC_LABEL)) return stoppedAt("notSpec", `${said} is not a spec, so nothing was tried`);
   const listed = sentences(asked.body);
+  if (listed.length === 0) return stoppedAt("notSpec", `${said} carries no sentence to try, so nothing was tried or closed`);
   const ran = listed.flatMap(({ check }, at) => (check === undefined ? [] : [ranItself(check, at + 1)]));
   const given = ran.length === listed.length ? [] : triedByModel(issue, asked, ran.map(({ sentence }) => sentence));
   if (typeof given === "string") return stoppedAt("modelRun", `${said} ended red, ${given}`);

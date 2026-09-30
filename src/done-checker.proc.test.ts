@@ -80,3 +80,17 @@ describe("bin/done-check runs a sentence's own check command itself (#1023)", ()
     expect(mixed.closes()).toHaveLength(1);
   });
 });
+
+describe("bin/done-check refuses before spending a model (#1023)", () => {
+  it("refuses an issue not labelled spec, and a spec with no sentence to try, trying nothing and posting nothing", () => {
+    const ticket = doneChecking({ labels: ["ticket"] });
+    const empty = doneChecking({ body: specWith([]) });
+
+    expect(ticket.run()).toEqual({ status: 1, stdout: "", stderr: "done-check: #974 is not a spec, so nothing was tried\n" });
+    expect(ticket.calls()).toEqual(["issue view 974"]);
+    expect(ticket.hired()).toEqual([]);
+    expect(empty.run()).toEqual({ status: 1, stdout: "", stderr: "done-check: #974 carries no sentence to try, so nothing was tried or closed\n" });
+    expect(empty.calls()).toEqual(["issue view 974"]);
+    expect(empty.hired()).toEqual([]);
+  });
+});
