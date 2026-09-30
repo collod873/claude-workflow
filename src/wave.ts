@@ -1,4 +1,5 @@
 import { opened, type Opened } from "./admit.ts";
+import { capped } from "./brief.ts";
 import { commentsOn, gh } from "./post.ts";
 import { REVIEWED_FROM, SPLIT_FROM } from "./reviewer.ts";
 import { exitFor, stoppedAt, type Stop } from "./stops.ts";
@@ -12,16 +13,26 @@ const LISTED = 500;
 
 interface Listed {
   number: number;
+  title?: string;
   state?: string;
+  state_reason?: string | null;
   body?: string;
 }
+
+interface Pr {
+  state?: string;
+  files?: string[];
+}
+
+export const FOUND_CAP = 32 * 1024;
+const SAID_CAP = 2 * 1024;
 
 interface Found {
   spec?: Opened;
   chain: string[];
 }
 
-export const followed = (body: string): string | undefined => {
+const followed = (body: string): string | undefined => {
   const said = why(body);
   return (REVIEWED_FROM.exec(said) ?? SPLIT_FROM.exec(said))?.[1];
 };
@@ -50,7 +61,32 @@ function lines(args: string[]): Listed[] | undefined {
   }
 }
 
-export const underSpec = (spec: string): Listed[] | undefined => lines(["api", "--paginate", `repos/{owner}/{repo}/issues/${spec}/sub_issues`, "--jq", ".[] | {number, state}"]);
+export const underSpec = (spec: string): Listed[] | undefined => lines(["api", "--paginate", `repos/{owner}/{repo}/issues/${spec}/sub_issues`, "--jq", ".[] | {number, title, state, state_reason}"]);
+
+function prOf(ticket: number): string {
+  const got = gh(["pr", "view", `ticket/${ticket}`, "--json", "state,files", "--jq", "{state, files: [.files[].path]}"]);
+  if (got.status !== 0) return "Its PR: none";
+  try {
+    const pr = JSON.parse(got.stdout) as Pr;
+    return `Its PR: ${pr.state ?? "unknown"}, touching ${(pr.files ?? []).join(", ") || "no file"}`;
+  } catch {
+    return "Its PR: unread";
+  }
+}
+
+function ticketFound(ticket: Listed): string {
+  const said = (commentsOn(String(ticket.number), gh) ?? ["(its comments could not be read)"]).map((comment) => capped(comment.trim(), SAID_CAP));
+  return [`### #${ticket.number}, ${ticket.title ?? ""}: ${ticket.state ?? "unknown"}, ${ticket.state_reason ?? "no reason"}`, prOf(ticket.number), ...said].join("\n\n");
+}
+
+export const waveFound = (tickets: Listed[]): string =>
+  capped(
+    [...tickets]
+      .sort((one, other) => other.number - one.number)
+      .map(ticketFound)
+      .join("\n\n"),
+    FOUND_CAP,
+  );
 
 function openFollowUps(tied: Set<string>): string[] | undefined {
   const listed = lines(["issue", "list", "--state", "open", "--limit", String(LISTED), "--json", "number,body", "--jq", ".[]"]);
@@ -71,7 +107,7 @@ function openFollowUps(tied: Set<string>): string[] | undefined {
 
 export const waveNotes = (comments: string[]): string[] => comments.filter((said) => WAVE_NOTE.test(said));
 
-export function moved(comments: string[]): string {
+function moved(comments: string[]): string {
   const marker = MOVES.exec(waveNotes(comments).at(-1) ?? "")?.[1] ?? "";
   return marker.split(/[,\s]+/).filter((number) => number !== "").join(",");
 }

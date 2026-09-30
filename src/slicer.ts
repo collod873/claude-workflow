@@ -1,18 +1,20 @@
+import { spawnSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { capped } from "./brief.ts";
 import { FENCED_OPUS } from "./fence.ts";
-import { askedIssue, commentOnTicket, gh, post } from "./post.ts";
+import { askedIssue, commentOnTicket, commentsOn, gh, post } from "./post.ts";
 import { LIST_CAP, NO_EM_DASH, TICKET_CAP } from "./reviewer.ts";
 import { hired, machineLogs, type Spent } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
-import { ended } from "./wave.ts";
+import { ended, FOUND_CAP, underSpec, waveFound, waveNotes } from "./wave.ts";
 import { DONE_SENTENCES, filedOutOfScope, filedPassages, type Passage, quoted, restored, sectionsDropped, sentences, SPEC_CAP, specRefusals, ticketRefusals } from "./ticket-shape.ts";
 
 const stoppedAt = stopsOf({
   notSpec: "Slice refused: the issue is not labelled `spec`",
   unsliced: "Slice: the wave is still refused after two rounds back, so the spec is marked `needs-human`",
   unfiled: "Slice: the spec's rewrite, a ticket of its wave or the wave's note will not post",
+  unchecked: "Slice: nothing is left to slice, and the done check it hands the spec to ends red",
 });
 type Stop = ReturnType<typeof stoppedAt>;
 
@@ -21,6 +23,8 @@ const NEEDS_HUMAN = "needs-human";
 const TOOLS = ["Read", "Grep", "Glob"];
 const ROUNDS_BACK = 2;
 const FILED = /\/issues\/(\d+)\s*$/;
+export const COMMENTS_CAP = 16 * 1024;
+const DONE_CHECK = join(import.meta.dirname, "..", "bin", "done-check");
 
 const PIECE = {
   type: "object",
@@ -62,19 +66,35 @@ interface Wave {
   moves: number[];
 }
 
-export function handedOn(title: string, body: string): string {
+export interface Found {
+  comments: string[];
+  tickets: string;
+}
+
+const FIRST = "Slice this filed spec into its first wave of tickets.";
+const NEXT =
+  "Slice this spec's next wave: the wave before it has closed. Read what it did below, the owner's comments and the last wave check, and slice the next wave against the spec and what that wave merged, split or noted.";
+const WATCHED = "Read the repo as you need. No one is watching and no one will answer a question: where the spec is silent, pick, and write your pick into the spec.";
+
+export function handedOn(title: string, body: string, found?: Found): string {
   const spec = capped(`# ${title}\n\n${body}`, SPEC_CAP);
+  const read =
+    found === undefined
+      ? []
+      : ["## Comments on the spec, the owner's and the machine's, newest first", capped([...found.comments].reverse().join("\n\n---\n\n"), COMMENTS_CAP) || "(none)", "## The tickets under it, newest first", capped(found.tickets, FOUND_CAP) || "(none)"];
+  const last = found === undefined ? "" : " Give no ticket when nothing is left to slice: code then files nothing and the done check tries every sentence.";
   return [
-    "Slice this filed spec into its first wave of tickets. Read the repo as you need. No one is watching and no one will answer a question: where the spec is silent, pick, and write your pick into the spec.",
+    `${found === undefined ? FIRST : NEXT} ${WATCHED}`,
     "## The spec",
     spec,
     "## Its Problem Statement, passage by passage",
     filedPassages(spec).map(({ text }, at) => `${at + 1}. ${text}`).join("\n\n") || "(none)",
     "## The sentences it will be tried on",
     sentences(spec).map(({ said }, at) => `${at + 1}. ${said}`).join("\n") || "(none)",
+    ...read,
     "## Your answer",
     "`spec`: the spec rewritten in full. Settle under `### Names the tickets share` in `## Implementation Decisions` each name two tickets both need, a label, a command or a key, in the words of the repo's `CONTEXT.md`, and no path, which code refuses there. Write each pick you made where the spec was silent where it belongs. `## Problem Statement` and `## Out of Scope` stay byte for byte: keep both under their headings, and code puts back the owner's bytes as filed.",
-    `\`tickets\`: the first wave, the fewest tickets that each fit the builder's brief cap of ${TICKET_CAP} bytes, all building at once beside each other. First find which parts each piece touches before you group them: one ticket unless two pieces touch different parts and neither needs the other's code. \`title\`; \`passages\`, the numbers of the Problem Statement passages its \`## Why\` quotes, which code copies in; \`why\`, what this ticket is for in the spec, which follows the quote; \`done\`, ${DONE_SENTENCES}. Code adds the spec's Out of Scope to each. A ticket over the cap comes back to you to split.`,
+    `\`tickets\`: the ${found === undefined ? "first" : "next"} wave, the fewest tickets that each fit the builder's brief cap of ${TICKET_CAP} bytes, all building at once beside each other. First find which parts each piece touches before you group them: one ticket unless two pieces touch different parts and neither needs the other's code. \`title\`; \`passages\`, the numbers of the Problem Statement passages its \`## Why\` quotes, which code copies in; \`why\`, what this ticket is for in the spec, which follows the quote; \`done\`, ${DONE_SENTENCES}. Code adds the spec's Out of Scope to each. A ticket over the cap comes back to you to split.${last}`,
     NOTED,
     "",
   ].join("\n\n");
@@ -111,11 +131,11 @@ function isWave(answer: unknown): answer is Wave {
   return typeof given?.spec === "string" && Array.isArray(given.tickets) && typeof given.did === "string" && typeof given.next === "string" && Array.isArray(given.moves);
 }
 
-function waveRefusals(read: string, wave: Wave): string[] {
+function waveRefusals(read: string, wave: Wave, first: boolean): string[] {
   const passages = filedPassages(read);
   const changed = sectionsDropped(read, wave.spec);
   const rewrite = changed.length > 0 ? changed : specRefusals(wave.spec).map((refusal) => `the rewrite: ${refusal}`);
-  const none = wave.tickets.length === 0 ? ["the wave carries no ticket"] : [];
+  const none = first && wave.tickets.length === 0 ? ["the wave carries no ticket"] : [];
   const tickets = wave.tickets.flatMap((piece, at) => {
     const named = `ticket ${at + 1}, ${JSON.stringify(piece.title)},`;
     const unheld = piece.passages.filter((passage) => !(Number.isInteger(passage) && passage >= 1 && passage <= passages.length));
@@ -131,7 +151,7 @@ function waveRefusals(read: string, wave: Wave): string[] {
   return [...rewrite, ...none, ...tickets, ...moves];
 }
 
-function filedWave(issue: string, read: string, wave: Wave): Stop | undefined {
+function filedWave(issue: string, read: string, wave: Wave, number: number): Stop | undefined {
   const said = `slice: #${issue}`;
   const edited = gh(["issue", "edit", issue, "--body", wave.spec]);
   if (edited.status !== 0) return stoppedAt("unfiled", `${said} ended red, its rewrite would not post: ${quoted((edited.stderr || edited.stdout).trim())}`);
@@ -149,9 +169,10 @@ function filedWave(issue: string, read: string, wave: Wave): Stop | undefined {
     if (linked.status !== 0) return partWave(issue, wave, [...numbers, `#${number}, not under this spec`], at + 1, `#${number} would not go under it`);
     numbers.push(`#${number}`);
   }
-  const [unnoted] = commentOnTicket(issue, waveNote(1, passages, wave, numbers), gh).refusals;
-  if (unnoted !== undefined) return stoppedAt("unfiled", `${said} filed its first wave under it, ${numbers.join(", ")}, but its note would not post: ${quoted(unnoted)}`);
-  console.log(`${said} filed its first wave under it: ${numbers.join(", ")}`);
+  const which = number === 1 ? "its first wave" : `wave ${number}`;
+  const [unnoted] = commentOnTicket(issue, waveNote(number, passages, wave, numbers), gh).refusals;
+  if (unnoted !== undefined) return stoppedAt("unfiled", `${said} filed ${which} under it, ${numbers.join(", ")}, but its note would not post: ${quoted(unnoted)}`);
+  console.log(`${said} filed ${which} under it: ${numbers.join(", ")}`);
   return undefined;
 }
 
@@ -174,20 +195,35 @@ function sliced(issue: string): Stop | undefined {
   const asked = read.status === 0 ? askedIssue(read.stdout) : undefined;
   if (asked === undefined) return stoppedAt("unread", `${said} could not be read, so no model was spent`);
   if (!asked.labels.some(({ name }) => name === SPEC_LABEL)) return stoppedAt("notSpec", `${said} is not a spec, so nothing sliced it`);
+  if (asked.labels.some(({ name }) => name === NEEDS_HUMAN)) {
+    console.log(`${said} is marked ${NEEDS_HUMAN}, so nothing sliced it`);
+    return undefined;
+  }
+  const tickets = underSpec(issue);
+  const comments = tickets === undefined || tickets.length === 0 ? [] : commentsOn(issue, gh);
+  if (tickets === undefined || comments === undefined) return stoppedAt("unread", `${said}'s tickets or comments could not be read, so no model was spent`);
+  const found = tickets.length === 0 ? undefined : { comments, tickets: waveFound(tickets) };
   const logs = machineLogs(process.cwd());
   mkdirSync(logs, { recursive: true });
   const spend = hired({ name: "slicer", transcript: join(logs, `slice-${issue}.jsonl`), tools: TOOLS, reach: FENCED_OPUS, answers: ANSWERS });
   if (typeof spend === "string") return stoppedAt("modelRun", `${said} ended red, the owner's hooks could not be read from ${spend}`);
-  let spent: Spent = spend(handedOn(asked.title, asked.body));
+  let spent: Spent = spend(handedOn(asked.title, asked.body, found));
   for (let round = 0; ; round++) {
     if (spent.refusal !== undefined) return stoppedAt("modelRun", `${said} ended red, ${spent.refusal}`);
     if (!isWave(spent.answer)) return stoppedAt("modelRun", `${said} ended red, the slicer gave no wave`);
+    if (found !== undefined && spent.answer.tickets.length === 0) return handedOff(issue);
     const wave = { ...spent.answer, spec: restored(asked.body, spent.answer.spec) };
-    const refusals = waveRefusals(asked.body, wave);
-    if (refusals.length === 0) return filedWave(issue, asked.body, wave);
+    const refusals = waveRefusals(asked.body, wave, found === undefined);
+    if (refusals.length === 0) return filedWave(issue, asked.body, wave, waveNotes(comments).length + 1);
     if (round === ROUNDS_BACK) return calledOwner(issue, `its wave still refused after ${ROUNDS_BACK} rounds back: ${quoted(refusals[0] ?? "")}`);
     spent = spend(sentBack(refusals), spent.session);
   }
+}
+
+function handedOff(issue: string): Stop | undefined {
+  console.log(`slice: #${issue} has nothing left to slice, so the done check tries its sentences`);
+  const checked = spawnSync(DONE_CHECK, [issue], { stdio: "inherit" });
+  return checked.status === 0 ? undefined : stoppedAt("unchecked", `slice: #${issue} has nothing left to slice, and bin/done-check ${issue} ended red`);
 }
 
 function calledOwner(issue: string, why: string): Stop {

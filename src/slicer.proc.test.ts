@@ -212,7 +212,7 @@ describe("bin/slice turns a filed spec into its first wave of tickets under it, 
   });
 
   it("names a ticket that filed but would not go under the spec among those filed, and the rest as not filed (#1028)", () => {
-    const sliced = slicing({ body: SPEC, answers: [wave()], gh: "[[ $* == *sub_issues* ]] && exit 1" });
+    const sliced = slicing({ body: SPEC, answers: [wave()], gh: "[[ $* == *sub_issue_id* ]] && exit 1" });
 
     expect(sliced.run().status).toBe(1);
     expect(sliced.comments()).toEqual(['The slicer rewrote this spec and filed only part of its wave, since #1101 would not go under it\n\nFiled: #1101, not under this spec.\n\nNot filed: "Read the spec kind".']);

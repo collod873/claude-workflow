@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { OWNER } from "./scenarios.ts";
+import { heard, OWNER, wellFormedSpec } from "./scenarios.ts";
 import { slicing } from "./slicer.part.ts";
 
 const SPEC_ISSUE = { number: 968, state: "open", labels: [{ name: "spec" }], user: { login: OWNER }, body: "" };
@@ -56,5 +56,59 @@ describe("bin/slice --ended tells reslice.yml when a closed issue ends its spec'
 
     const shut = ended({ spec: { ...SPEC_ISSUE, state: "closed" } });
     expect(shut.ran).toEqual({ status: 0, stdout: "", stderr: "slice: #1102 is under no open spec, so no wave ended\n" });
+  });
+});
+
+const OWNER_SAID = { author: OWNER, type: "User", body: "Keep the done check out of the slicer." };
+const piece = { title: "Read the spec kind", passages: [1], why: "Wave 2 of the spec: read it.", done: ["It reads."] };
+const next = (tickets = [piece], moves = [1]) => ({ spec: wellFormedSpec, tickets, did: "Wave 1 filed the spec kind.", next: "Wave 2 reads it back.", moves });
+
+function reslicing({ tickets = [ticket(1001), ticket(1002)], labels = ["spec"], answers = [next()] as object[] } = {}) {
+  return slicing({
+    labels,
+    answers,
+    issues: { "968/sub_issues": tickets.map((one) => ({ ...one, title: `Ticket ${one.number}`, state_reason: "completed" })) },
+    comments: { "968": [OWNER_SAID, NOTE, CHECKED], "1001": ["#1001 is done: PR #2001 merged"], "1002": ["The builder split #1002 into #1003."] },
+    prs: { "1001": { state: "MERGED", files: ["src/slicer.ts"] } },
+  });
+}
+
+describe("bin/slice on a spec with tickets under it slices its next wave against the spec, its comments and what the last wave did (#1037)", () => {
+  it("hands the slicer the owner's comments, the last wave check and each ticket's state, comments and PR, then files wave 2 under the spec with its note", () => {
+    const sliced = reslicing();
+
+    expect(heard(sliced.run())).toEqual({ status: 0, stderr: "", lines: ["slice: #968 filed wave 2 under it: #1101"] });
+    const [handed = ""] = sliced.handed();
+    expect(handed).toContain("Slice this spec's next wave");
+    expect(handed).toContain(OWNER_SAID.body);
+    expect(handed).toContain(CHECKED.trim());
+    expect(handed).toContain("#1001, Ticket 1001: closed, completed");
+    expect(handed).toContain("#1001 is done: PR #2001 merged");
+    expect(handed).toContain("Its PR: MERGED, touching src/slicer.ts");
+    expect(handed).toContain("The builder split #1002 into #1003.");
+    expect(handed).toContain("#1002, Ticket 1002: closed, completed\n\nIts PR: none");
+    expect(sliced.linked()).toEqual(["repos/{owner}/{repo}/issues/968/sub_issues sub_issue_id=901101"]);
+    const [note = ""] = sliced.comments();
+    expect(note).toMatch(/^## Wave 2\n\n/);
+    expect(note).toContain("Wave 1 filed the spec kind.\n\nWave 2 reads it back.\n\nFiled: #1101.\n\n<!-- moves: 1 -->\n");
+  });
+
+  it("files nothing and runs bin/done-check on the spec when nothing is left to slice", () => {
+    const sliced = reslicing({ answers: [next([], []), { tries: [{ sentence: 1, outcome: "held", tried: "saw the spec labelled spec" }] }] });
+
+    const ran = heard(sliced.run());
+    expect(ran.lines).toEqual(["slice: #968 has nothing left to slice, so the done check tries its sentences", expect.stringMatching(/^done-check: #968 held every sentence and is closed/)]);
+    expect(sliced.filed()).toEqual([]);
+    expect(sliced.rewrites()).toEqual([]);
+    expect(sliced.handed()[1]).toContain("Try each sentence");
+    expect(sliced.comments()).toEqual([expect.stringMatching(/^## Done check\n/)]);
+    expect(sliced.argv()).toContainEqual(["issue", "close", "968", "--reason", "completed"]);
+  });
+
+  it("slices nothing on a spec marked needs-human, since the job stopped for the owner", () => {
+    const sliced = reslicing({ labels: ["spec", "needs-human"] });
+
+    expect(sliced.run()).toEqual({ status: 0, stdout: "slice: #968 is marked needs-human, so nothing sliced it\n", stderr: "" });
+    expect(sliced.hired()).toEqual([]);
   });
 });
