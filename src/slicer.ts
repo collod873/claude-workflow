@@ -111,19 +111,28 @@ function filedWave(issue: string, read: string, wave: Wave): Stop | undefined {
   if (edited.status !== 0) return stoppedAt("unfiled", `${said} ended red, its rewrite would not post: ${quoted((edited.stderr || edited.stdout).trim())}`);
   const passages = passagesOf(read);
   const numbers: string[] = [];
-  for (const piece of wave.tickets) {
+  for (const [at, piece] of wave.tickets.entries()) {
+    const title = JSON.stringify(piece.title);
     const filed = post({ kind: "ticket", title: piece.title, text: ticketBody(read, passages, piece) }, gh);
+    const [refusal] = filed.refusals;
+    if (refusal !== undefined) return partWave(issue, wave, numbers, at, `${title} would not file: ${quoted(refusal)}`);
     const number = FILED.exec(filed.said)?.[1];
-    const id = number === undefined ? undefined : gh(["api", `repos/{owner}/{repo}/issues/${number}`, "--jq", ".id"]);
-    const linked = id?.status === 0 ? gh(["api", "--method", "POST", `repos/{owner}/{repo}/issues/${issue}/sub_issues`, "-F", `sub_issue_id=${id.stdout.trim()}`]) : undefined;
-    if (linked?.status !== 0) {
-      const why = filed.refusals[0] ?? `#${number} would not go under it`;
-      return stoppedAt("unfiled", `${said} filed ${numbers.length} of ${wave.tickets.length} tickets, ${JSON.stringify(piece.title)} would not file: ${quoted(why)}`);
-    }
+    if (number === undefined) return partWave(issue, wave, [...numbers, `${title}, its number unknown and not under this spec`], at + 1, `${title} filed, but its number could not be read from ${JSON.stringify(quoted(filed.said))}`);
+    const id = gh(["api", `repos/{owner}/{repo}/issues/${number}`, "--jq", ".id"]);
+    const linked = id.status === 0 ? gh(["api", "--method", "POST", `repos/{owner}/{repo}/issues/${issue}/sub_issues`, "-F", `sub_issue_id=${id.stdout.trim()}`]) : id;
+    if (linked.status !== 0) return partWave(issue, wave, [...numbers, `#${number}, not under this spec`], at + 1, `#${number} would not go under it`);
     numbers.push(`#${number}`);
   }
   console.log(`${said} filed its first wave under it: ${numbers.join(", ")}`);
   return undefined;
+}
+
+function partWave(issue: string, wave: Wave, filed: string[], next: number, since: string): Stop {
+  const left = wave.tickets.slice(next).map(({ title }) => JSON.stringify(title));
+  const comment = [`The slicer rewrote this spec and filed only part of its wave, since ${since}`, `Filed: ${filed.join(", ") || "none"}.`, `Not filed: ${left.join(", ") || "none"}.`];
+  const [unposted] = commentOnTicket(issue, comment.join("\n\n"), gh).refusals;
+  const stopped = unposted === undefined ? since : `${quoted(since)}; no comment says so, ${quoted(unposted)}`;
+  return stoppedAt("unfiled", `slice: #${issue} filed ${filed.length} of ${wave.tickets.length} tickets, ${stopped}`);
 }
 
 function sliced(issue: string): Stop | undefined {
