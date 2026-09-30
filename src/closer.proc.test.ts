@@ -326,6 +326,20 @@ describe("bin/close merges machine PRs one at a time, bringing only the oldest g
     expect(calls().some((call) => call.startsWith("pr\ncomment\n935\n"))).toBe(false);
   });
 
+  it("tries again a PR whose update failed at its head for a passing reason, not a conflict, and wakes no builder for it (#1014)", () => {
+    const { calls, run } = closing({
+      ticket: "819",
+      openPrs: [
+        { number: "938", ticket: "858", refused: "Post \"https://api.github.com/graphql\": dial tcp: i/o timeout", refusedBefore: true },
+        { number: "939", ticket: "859" },
+      ],
+    });
+
+    expect(run().status).toBe(0);
+    expect(updated(calls())).toEqual(["938", "939"]);
+    expect(calls().some((call) => call.startsWith("workflow\nrun\nfix.yml")), "a builder cannot fix a network error").toBe(false);
+  });
+
   it("names the PR's head in the conflict it reports, so a later run knows it was already reported", () => {
     const { calls, run } = closing({ ticket: "819", openPrs: [{ number: "937", ticket: "857", refused: CONFLICT }] });
 
