@@ -1,7 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { splitInto, WAITING } from "./builder.ts";
 import { commentOnPr, commentOnTicket, commentsOn } from "./post.ts";
-import { totalOutside } from "./reads-outside-brief.ts";
 import { FINGERPRINT, FOLLOW_UP_OF } from "./reviewer.ts";
 import { exitFor, stoppedAt, type Stop } from "./stops.ts";
 import { quoted, why } from "./ticket-shape.ts";
@@ -103,7 +102,7 @@ function human(ms: number): string {
   return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
 }
 
-function speedReport(marks: Marks, readsOutside: number | undefined, collided: Collisions | undefined): string {
+function speedReport(marks: Marks, collided: Collisions | undefined): string {
   const found = waits(marks);
   const lines = ["Speed report", ""];
   if (found.length === 0) {
@@ -115,7 +114,6 @@ function speedReport(marks: Marks, readsOutside: number | undefined, collided: C
     lines.push(`- total, filed to merged: ${human(total)}`);
     lines.push(`- longest wait: ${human(longest.ms)}, ${longest.label}`);
   }
-  if (readsOutside !== undefined) lines.push(`- reads outside the brief: ${readsOutside}`);
   lines.push(`- failed branch updates: ${collided === undefined ? "not available" : collided.failedBranchUpdates}`);
   lines.push(`- re-reviews: ${collided === undefined ? "not available" : collided.reReviews}`);
   return lines.join("\n");
@@ -186,9 +184,8 @@ function close(): Stop | undefined {
   const asked = gh(["issue", "view", ticket, "--json", "body", "--jq", ".body"]);
   if (asked.status !== 0) return stoppedAt("unread", `close: ticket ${ticket} could not be read, so nothing judged it`);
   const pr = prNumber(subject);
-  const prBody = pr === undefined ? undefined : ghText(["pr", "view", pr, "--json", "body", "--jq", ".body"]);
   const prComments = pr === undefined ? undefined : commentsOn(pr, gh);
-  const speed = speedReport(marksFor(ticket, pr), prBody === undefined ? undefined : totalOutside(prBody), prComments === undefined ? undefined : collisions(prComments));
+  const speed = speedReport(marksFor(ticket, pr), prComments === undefined ? undefined : collisions(prComments));
   const posted = commentOnTicket(ticket, record(ticket, pr, speed), gh);
   const [refusal] = posted.refusals;
   if (refusal !== undefined) return stoppedAt("unrecorded", `close: #${ticket} got no closing record: ${quoted(refusal)}`);

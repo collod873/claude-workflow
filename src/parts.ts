@@ -69,11 +69,6 @@ export const parts: Part[] = [
     lines: 5,
   },
   {
-    name: "bin/save reads outside the brief",
-    file: "bin/save",
-    stops: "https://github.com/collod873/claude-workflow/issues/809",
-  },
-  {
     name: "bin/save",
     file: "bin/save",
     stops: "https://github.com/collod873/claude-workflow/issues/649",

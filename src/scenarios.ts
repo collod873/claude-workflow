@@ -334,10 +334,6 @@ const AUTHORED_TEST = 'import { it } from "vitest";\nit("names the behaviour the
 
 export const SAVED_PR = "https://github.com/collod873/claude-workflow/pull/9726";
 
-function readEvent(path: string): string {
-  return JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", name: "Read", input: { file_path: path } }] } });
-}
-
 function ghArgv(dir: string): { setup: string; calls: () => string[][] } {
   mkdirSync(dir, { recursive: true });
   return {
@@ -350,15 +346,11 @@ const CONSENT_ONLY_WHY = 'The owner, in session: "a plan carrying its own intent
 
 export function saving({
   remoteRefuses,
-  brief,
-  streams = {} as Partial<Record<string, string[]>>,
   alreadyOpen = false,
   autoMergeRefused = false,
   why = CONSENT_ONLY_WHY,
 }: {
   remoteRefuses?: string;
-  brief?: string;
-  streams?: Partial<Record<string, string[]>>;
   alreadyOpen?: boolean;
   autoMergeRefused?: boolean;
   why?: string;
@@ -375,11 +367,6 @@ export function saving({
   git(session, "add", ".");
   git(session, "commit", "--quiet", "-m", "Build #726 against its failing tests");
   const built = git(session, "rev-parse", "HEAD");
-  if (brief !== undefined) plant(session, ".git/machine-logs/brief-726.md", brief);
-  for (const [stage, paths] of Object.entries(streams)) {
-    const lines = (paths ?? []).map((path) => readEvent(join(session, path))).join("\n");
-    plant(session, `.git/machine-logs/${stage}-726.jsonl`, lines === "" ? "" : `${lines}\n`);
-  }
   script(join(session, ".git", "hooks", "pre-push"), `touch "${judged}"\nprintf 'the gate refuses a red build\\n' >&2\nexit 1\n`);
   git(remote, "config", "user.email", "github@test");
   git(remote, "config", "user.name", "github");
@@ -417,10 +404,6 @@ export function saving({
       const at = call?.indexOf("--body") ?? -1;
       return at === -1 ? undefined : call?.[at + 1];
     },
-    ticketComments: () =>
-      argvCalls()
-        .filter((args) => args[0] === "issue" && args[1] === "comment")
-        .map((args) => args[args.indexOf("--body") + 1]),
     run: (ticket = "726") => execute(join(BIN, "save"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, [ticket]),
   };
 }
