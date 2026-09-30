@@ -1,12 +1,11 @@
 import { spawnSync } from "node:child_process";
 import { splitInto, WAITING } from "./builder.ts";
 import { commentOnPr, commentOnTicket, commentsOn } from "./post.ts";
-import { FINGERPRINT, FOLLOW_UP_OF } from "./reviewer.ts";
+import { FINGERPRINT, SPLIT_FROM } from "./reviewer.ts";
 import { exitFor, stoppedAt, type Stop } from "./stops.ts";
 import { quoted, why } from "./ticket-shape.ts";
 
 const MERGED = /^Merge pull request #(\d+) from \S+?(?:\/ticket\/(\d+))?$/;
-const SPLIT_FROM = new RegExp(`^${FOLLOW_UP_OF}(\\d+): its builder split it`, "m");
 const NAMED = /^(?:[ ,]*#\d+)+/;
 const BUILDS = /^Builds #(\d+)[ \t]*$/m;
 const STAGE_LABELS = "1-defining,2-building,3-checking,4-reviewing,5-merging,fixing,needs-human";

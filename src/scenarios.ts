@@ -762,6 +762,32 @@ const FIXED_TICKET = [
 export const BUILDER_SESSION = "sess-fix";
 const RED_RUN = "555";
 
+type Parent = object | "unreadable" | undefined;
+
+function openedCases(root: string, opener: string, body: string, parent: Parent): string[] {
+  plant(root, "opened.json", JSON.stringify({ number: 811, user: { login: opener }, body }));
+  plant(root, "parent.json", JSON.stringify(parent ?? {}));
+  const parentSays =
+    parent === undefined
+      ? "printf 'gh: Not Found (HTTP 404)\\n' >&2; exit 1"
+      : parent === "unreadable"
+        ? "printf 'gh: Server Error (HTTP 502)\\n' >&2; exit 1"
+        : `cat "${join(root, "parent.json")}"`;
+  return [`  *"api"*"issues/811/parent") ${parentSays} ;;`, `  *"api"*"issues/811") cat "${join(root, "opened.json")}" ;;`];
+}
+
+export function admitting({ opener = OWNER, body = FIXED_TICKET, parent = undefined as Parent, unread = false } = {}) {
+  const root = scratch("admit-");
+  const { setup, calls } = ghArgv(join(root, "gh-argv"));
+  const cases = unread ? ["  *\"api\"*) printf 'gh: Server Error (HTTP 502)\\n' >&2; exit 1 ;;"] : openedCases(root, opener, body, parent);
+  script(join(root, "bin", "gh"), [setup, 'case "$*" in', ...cases, "  *\"issue comment\"*) printf 'https://github.com/collod873/claude-workflow/issues/811#issuecomment-1\\n' ;;", "esac", ""].join("\n"));
+  return {
+    calls,
+    comments: () => calls().filter((args) => args[0] === "issue" && args[1] === "comment").map((args) => args[args.indexOf("--body") + 1]),
+    run: (...args: string[]) => execute(join(BIN, "admit"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, args.length === 0 ? ["811"] : args),
+  };
+}
+
 export function fixing({
   body = FIXED_TICKET,
   answer = { outcome: "code", reason: "the export was never renamed" } as { outcome: string; reason: string; body?: string; tickets?: unknown[] },
@@ -779,6 +805,8 @@ export function fixing({
   savedSession = undefined as string | undefined,
   reason = undefined as string | undefined,
   captures = {} as Record<string, string>,
+  opener = OWNER,
+  parent = undefined as Parent,
 } = {}) {
   const root = scratch("builder-");
   const session = join(root, "session");
@@ -813,6 +841,7 @@ export function fixing({
       setup,
       'case "$*" in',
       `  *"api"*"issues/9811/comments"*) cat "${join(root, "on-pr.json")}" ;;`,
+      ...openedCases(root, opener, body, parent),
       `  *"issue create"*) n=$(( $(cat "${join(root, "created")}" 2>/dev/null || echo 900) + 1 )); printf '%s\\n' "$n" >"${join(root, "created")}"; printf 'https://github.com/collod873/claude-workflow/issues/%s\\n' "$n" ;;`,
       `  *"issue view"*) cat "${join(root, "ticket.md")}" ;;`,
       `  *"pr view"*"number"*) ${onPr === undefined ? "exit 1" : "printf '9811\\n'"} ;;`,
