@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { capped } from "./brief.ts";
-import { commentOnTicket, commentsOn, gh, git, post, WAITING } from "./post.ts";
+import { commentOnTicket, commentsOn, gh, git, post, underOwnerSpec, WAITING } from "./post.ts";
 import { hired, machineLogs } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { DONE_SENTENCES, quoted, why } from "./ticket-shape.ts";
@@ -23,6 +23,7 @@ export const NO_EM_DASH = "^[^\\u2014]*$";
 export const PLAIN_WORDS = "^(?:(?!`|/|[\\w-]+\\.[A-Za-z]{1,8}\\b)[\\s\\S])*$";
 const foundDrift = (ticket: string) => `The reviewer read this PR against the Why of #${ticket} and found drift.`;
 const foundOverlap = (ticket: string) => `The reviewer read this PR for #${ticket} against what merged to main since its last judgement and found overlap.`;
+const foundMatchInWave = (ticket: string) => `The reviewer read this PR against the Why of #${ticket} and found it builds it. Its spec's note for this wave reads it back to the owner.`;
 const foundNoOverlap = (ticket: string) => `The reviewer read this PR for #${ticket} against what merged to main since its last judgement and found no overlap.`;
 const drifted = (ticket: string, comment: string) => comment.startsWith(foundDrift(ticket)) || comment.startsWith(foundOverlap(ticket));
 export const earlierDrift = (ticket: string, comments: string[]) => comments.filter((comment) => drifted(ticket, comment)).join("\n\n");
@@ -358,9 +359,12 @@ function review(pr: string): Stop | undefined {
   const blocking = after === undefined ? [...verdict.gaps, ...(verdict.later ?? []).map(({ gap }) => gap)] : verdict.gaps;
   const recorded = recordedLater(ticket, body, after === undefined ? [] : (verdict.later ?? []), turns);
   if (verdict.verdict === "match") {
-    const posted = post({ kind: "judgement", pr, text: readbackText(body, verdict.readback, fingerprint, main) }, gh);
+    const inWave = Object.keys(underOwnerSpec(ticket, gh)).length === 0;
+    const text = inWave ? [foundMatchInWave(ticket), "", ...stamped(fingerprint, main), ""].join("\n") : readbackText(body, verdict.readback, fingerprint, main);
+    const posted = post({ kind: "judgement", pr, text }, gh);
     const [refusal] = posted.refusals;
-    console.log(`${said} matches the Why of #${ticket}${recorded}, ${refusal === undefined ? `its readback posted: ${posted.said}` : `its readback was refused: ${quoted(refusal)}`}`);
+    const kind = inWave ? "judgement, its readback left to its spec's wave note," : "readback";
+    console.log(`${said} matches the Why of #${ticket}${recorded}, ${refusal === undefined ? `its ${kind} posted: ${posted.said}` : `its ${kind} was refused: ${quoted(refusal)}`}`);
     return undefined;
   }
   const posted = post({ kind: "judgement", pr, text: judgement(foundDrift(ticket), blocking, stamped(fingerprint, main, head)) }, gh);
