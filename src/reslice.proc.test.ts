@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { parse } from "yaml";
 import { describe, expect, it } from "vitest";
 import { heard, holds, OWNER, wellFormedSpec, type WorkflowStep } from "./scenarios.ts";
+import { closing } from "./closer.part.ts";
 import { slicing } from "./slicer.part.ts";
 
 const SPEC_ISSUE = { number: 968, state: "open", labels: [{ name: "spec" }], user: { login: OWNER }, body: "" };
@@ -165,6 +166,16 @@ describe("reslice.yml runs the wave check, then the re-slice, when a closed issu
     expect(RESLICE.on.workflow_dispatch?.inputs?.issue).toEqual({ required: true, type: "number" });
     expect(holds(job("ended").if ?? "true", { labels: [], action: "" })).toBe(true);
     for (const name of ["ended", "reslice"]) expect(job(name).steps.find((step) => step.id === "ended")?.env?.ISSUE).toBe("${{ github.event.issue.number || inputs.issue }}");
+  });
+
+  it("reads the issue the closer dispatches as the one bin/slice --ended is asked about, which names the spec whose last ticket it closed", () => {
+    const { calls, run } = closing({ ticket: "1102" });
+    expect(run().status).toBe(0);
+    const [input = "", number = ""] = /^workflow\nrun\nreslice\.yml\n-f\n(\w+)=(\d+)\n$/m.exec(calls().find((call) => call.startsWith("workflow\nrun\nreslice.yml\n")) ?? "")?.slice(1) ?? [];
+
+    expect(Object.keys(RESLICE.on.workflow_dispatch?.inputs ?? {})).toEqual([input]);
+    expect(job("ended").steps.find((step) => step.id === "ended")?.env?.ISSUE).toBe(`\${{ github.event.issue.number || inputs.${input} }}`);
+    expect(ended({ closed: Number(number) }).ran).toEqual({ status: 0, stdout: "spec=968\nmoves=1,3\n", stderr: "" });
   });
 
   it("re-slices one spec at a time, checking again that the wave ended, then tries the sentences the last note moves before the re-slice", () => {
