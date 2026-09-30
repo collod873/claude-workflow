@@ -1,0 +1,83 @@
+name: Done check
+run-name: "Done check #${{ github.event.issue.number }}: ${{ github.event.issue.title }}"
+
+"on":
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+jobs:
+  asked:
+    if: "${{ github.event.sender.login == github.repository_owner && contains(github.event.issue.labels.*.name, 'spec') }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      issues: read
+    outputs:
+      asked: ${{ steps.asked.outputs.asked }}
+    steps:
+      - id: asked
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SPEC: ${{ github.event.issue.number }}
+        run: |
+          asked=$(gh api --paginate "repos/$GH_REPO/issues/$SPEC/comments" --jq '.[] | select(.body | startswith("## Done check")) | .body | contains("**Put to the owner**")' | tail -n 1)
+          printf 'asked=%s\n' "${asked:-false}" >>"$GITHUB_OUTPUT"
+
+  check:
+    needs: asked
+    if: ${{ needs.asked.outputs.asked == 'true' }}
+    concurrency:
+      group: done-check-${{ github.event.issue.number }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+
+      - id: checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - id: setup-node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - id: npm-ci
+        run: npm ci
+
+      - id: stage
+        uses: ./.github/actions/stage
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+
+      - id: done-check
+        timeout-minutes: 50
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          STAGE_MINUTES: 45
+        run: |
+          tail --pid=$$ -n +1 -F .git/machine-logs/done-check-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
+          bin/done-check ${{ github.event.issue.number }}
+
+      - if: always()
+        timeout-minutes: 6
+        uses: ./.github/actions/stage-logs
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}

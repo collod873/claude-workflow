@@ -1,5 +1,8 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { heard, OWNER, type Said } from "./scenarios.ts";
+import { parse } from "yaml";
+import { execute, heard, holds, MACHINE, OWNER, plant, type Said, scratch, script, type WorkflowStep } from "./scenarios.ts";
 import { DONE_CHECK_POSTED, doneChecking, specWith } from "./done-checker.part.ts";
 
 const READ_COMMENTS = "api --paginate repos/{owner}/{repo}/issues/974/comments";
@@ -218,5 +221,53 @@ describe("bin/done-check reads the owner's reply to a sentence it put to him (#1
 
     expect(checked.run().status).toBe(0);
     expect(checked.handed()).not.toContain("## The owner's replies");
+  });
+});
+
+describe("done-check.yml runs the done check again on the owner's reply to a sentence it put to him (#1038)", () => {
+  type Job = { if?: string; needs?: string; steps: WorkflowStep[] };
+  function workflow(): { on: object; asked: Job; check: Job } {
+    const { on, jobs } = parse(readFileSync(join(import.meta.dirname, "..", ".github", "workflows", "done-check.yml"), "utf8")) as { on: object; jobs: Record<string, Job> };
+    const { asked, check } = jobs;
+    if (asked === undefined || check === undefined) throw new Error("done-check.yml carries no asked and check jobs");
+    return { on, asked, check };
+  }
+
+  function lastAsked(comments: string[]): string | undefined {
+    const root = scratch("done-check-yml-");
+    plant(root, "comments.json", JSON.stringify(comments.map((body) => ({ body, user: { login: MACHINE } }))));
+    script(join(root, "bin", "gh"), `while [[ $1 != --jq ]]; do shift; done\njq -r "$2" <"${join(root, "comments.json")}"\n`);
+    const output = join(root, "output");
+    const step = workflow().asked.steps.find((one) => one.run !== undefined);
+    const ran = execute("bash", root, { PATH: `${join(root, "bin")}:${process.env.PATH}`, GITHUB_OUTPUT: output, GH_REPO: "collod873/claude-workflow", SPEC: "974" }, ["-e", "-c", step?.run ?? ""]);
+    if (ran.status !== 0) throw new Error(ran.stderr);
+    return readFileSync(output, "utf8").match(/^asked=(.*)$/m)?.[1];
+  }
+
+  it("starts on the owner's comment on a spec, and on no one else's", () => {
+    const { on, asked } = workflow();
+    const starts = (labels: string[], sender = OWNER) => holds(asked.if ?? "true", { labels, sender, action: "created" });
+
+    expect(on).toEqual({ issue_comment: { types: ["created"] } });
+    expect(starts(["spec"])).toBe(true);
+    expect(starts(["spec"], MACHINE)).toBe(false);
+    expect(starts(["spec"], "stranger")).toBe(false);
+    expect(starts(["ticket"])).toBe(false);
+  });
+
+  it("runs bin/done-check on the spec only when the last ## Done check put a sentence to the owner", () => {
+    const putToOwner = "## Done check\n\n1. **Held**: one\n   saw it\n2. **Put to the owner**: two\n   open it on your phone\n";
+    const allTried = "## Done check\n\n1. **Held**: one\n   saw it\n2. **Did not hold**: two\n   saw it fail\n\n<!-- fix-wave -->\n";
+
+    expect(lastAsked([putToOwner, "an aside"])).toBe("true");
+    expect(lastAsked([putToOwner, allTried, "an aside"])).toBe("false");
+    expect(lastAsked(["## Wave check\n\n- Sentence 2, **Waits for the end**: two"])).toBe("false");
+    expect(lastAsked([])).toBe("false");
+    const { check } = workflow();
+    expect(check.needs).toBe("asked");
+    expect(check.if).toBe("${{ needs.asked.outputs.asked == 'true' }}");
+    const checked = check.steps.find((step) => step.run?.includes("bin/done-check"));
+    expect(checked?.run).toContain("bin/done-check ${{ github.event.issue.number }}");
+    expect(checked?.env?.GH_TOKEN).toBe("${{ steps.app.outputs.token }}");
   });
 });

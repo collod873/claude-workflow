@@ -67,8 +67,16 @@ _Avoid_: batch, phase, sprint, round
 
 **Done check**:
 The stage that tries each of a spec's "I'll know it works when I can ___" sentences on the running
-system once nothing is left to slice, and closes the spec only when every one held.
+system once nothing is left to slice, and closes the spec only when every one held. A first miss
+gets the spec's one fix wave; a second marks the spec `needs-human`. A sentence it puts to the
+owner waits for his reply on the spec, which runs it again.
 _Avoid_: audit, acceptance test, verification
+
+**Wave check**:
+The done check at a wave's end, trying only the sentences that wave should have moved. It skips
+the ones only the owner can try and closes nothing. A sentence that misses at two wave checks in a
+row marks the spec `needs-human`.
+_Avoid_: wave review, checkpoint, interim check
 
 **Ticket**:
 The unit the machine builds: an issue carrying `## Why` in the owner's words and, under
