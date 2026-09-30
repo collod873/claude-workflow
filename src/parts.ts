@@ -99,6 +99,11 @@ export const parts: Part[] = [
     stops: "https://github.com/collod873/claude-workflow/issues/902",
   },
   {
+    name: "bin/slice",
+    file: "bin/slice",
+    stops: "https://github.com/collod873/claude-workflow/issues/674",
+  },
+  {
     name: "bin/review",
     file: "bin/review",
     stops: "https://github.com/collod873/claude-workflow/issues/661",

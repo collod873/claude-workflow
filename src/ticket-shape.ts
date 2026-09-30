@@ -34,6 +34,7 @@ const NUMBERED_ITEM = /^[ \t]*\d+[.)][ \t]/m;
 const FEWEST = 1;
 const MOST = 3;
 const QUOTE = 80;
+export const SPEC_CAP = 64 * 1024;
 
 export const DONE_SENTENCES = `${FEWEST} to ${MOST} sentences saying what done looks like`;
 export const TICKET_SHAPE = `## ${NAMED.why}, quoting the owner in "..." or a > line; ## ${NAMED.doneWhen}, ${DONE_SENTENCES}, each on a '- ' line`;
@@ -69,6 +70,10 @@ function itemsUnder(body: string, heading: RegExp, item = ITEM): string[] {
 export const why = (body: string): string => section(body.replaceAll(/\r\n?/g, "\n"), WHY).trim();
 
 export const doneWhen = (body: string): string => section(body.replaceAll(/\r\n?/g, "\n"), DONE_WHEN).trim();
+
+export const outOfScope = (body: string): string => section(body.replaceAll(/\r\n?/g, "\n"), OUT_OF_SCOPE).trim();
+
+export const problemStatement = (body: string): string => section(body.replaceAll(/\r\n?/g, "\n"), PROBLEM_STATEMENT).trim();
 
 export const whyChanged = (read: string, written: string): string[] => (why(written) === why(read) ? [] : ["the rewrite changes '## Why', the owner's words, which stay byte-identical"]);
 
@@ -146,5 +151,7 @@ export function specRefusals(body: string): string[] {
     if (sentences.length === 0) refusals.push("'## I'll know it works when I can' carries no '- [ ]' item, so the done check has nothing to try");
     else refusals.push(...sentenceRefusals(sentences));
   }
+  const bytes = Buffer.byteLength(text);
+  if (bytes > SPEC_CAP) refusals.push(`the body is ${bytes} bytes, over the spec cap of ${SPEC_CAP}`);
   return [...refusals, ...emDashLines(text).map((line) => `line ${line} carries an em dash`)];
 }

@@ -3,6 +3,8 @@ import { join } from "node:path";
 import { CHECK_CAP, handedOn as builderHandedOn, repaired, TAIL_CAP } from "./builder.ts";
 import { handedOn as meterReviewerHandedOn } from "./meter-reviewer.ts";
 import { handedOn as researcherHandedOn, NOTE_CAP, OUT_OF_TIME } from "./researcher.ts";
+import { handedOn as slicerHandedOn, sentBack } from "./slicer.ts";
+import { SPEC_CAP } from "./ticket-shape.ts";
 import { DIFF_CAP, handedOn as reviewerHandedOn, handedSince, LIST_CAP, TICKET_CAP } from "./reviewer.ts";
 
 const HIRES = /(spawn|execFile)\w*\(\s*"claude"/;
@@ -74,6 +76,20 @@ export const PROMPTS: Prompt[] = [
     cap: NOTE_CAP + HANDED_ON,
     slots: ["title", "body", "sources"],
     build: (filled) => researcherHandedOn(filled.title ?? "", filled.body ?? "", filled.sources ?? ""),
+  },
+  {
+    name: "slicer",
+    file: "src/slicer.ts",
+    cap: 2 * SPEC_CAP + HANDED_ON,
+    slots: ["title", "body"],
+    build: (filled) => slicerHandedOn(filled.title ?? "", filled.body ?? ""),
+  },
+  {
+    name: "slicer sent back",
+    file: "src/slicer.ts",
+    cap: LIST_CAP + HANDED_ON,
+    slots: ["refusals"],
+    build: (filled) => sentBack(filled.refusals === undefined ? [] : [filled.refusals]),
   },
   { name: "researcher out of time", file: "src/researcher.ts", cap: HANDED_ON, slots: [], build: () => OUT_OF_TIME },
 ];
