@@ -2,8 +2,11 @@ import { spawnSync } from "node:child_process";
 import { splitInto } from "./builder.ts";
 import { commentOnPr, commentOnTicket, commentsOn, WAITING } from "./post.ts";
 import { FINGERPRINT, REVIEWED_FROM, SPLIT_FROM } from "./reviewer.ts";
-import { exitFor, stoppedAt, type Stop } from "./stops.ts";
+import { exitFor, stopsOf } from "./stops.ts";
 import { quoted, why } from "./ticket-shape.ts";
+
+const stoppedAt = stopsOf({ unresliced: "Close: the re-slice will not start once the ticket is closed" });
+type Stop = ReturnType<typeof stoppedAt>;
 
 const MERGED = /^Merge pull request #(\d+) from \S+?(?:\/ticket\/(\d+))?$/;
 const NAMED = /^(?:[ ,]*#\d+)+/;
@@ -169,9 +172,9 @@ function wakeBuilder(ticket: string, reason: string): void {
   gh(["workflow", "run", "fix.yml", "-f", `ticket=${ticket}`, "-f", `reason=${reason}`]);
 }
 
-function resliced(ticket: string): string {
+function resliced(ticket: string): Stop | undefined {
   const started = gh(["workflow", "run", "reslice.yml", "-f", `issue=${ticket}`]);
-  return started.status === 0 ? "" : `; the re-slice could not be started: ${quoted((started.stderr || started.stdout).trim().split("\n")[0] ?? "")}`;
+  return started.status === 0 ? undefined : stoppedAt("unresliced", `close: #${ticket} closed, but the re-slice would not start: ${quoted((started.stderr || started.stdout).trim().split("\n")[0] ?? "")}`);
 }
 
 const headLine = (oid: string) => `Head: \`${oid}\``;
@@ -264,14 +267,12 @@ function close(): Stop | undefined {
   if (refusal !== undefined) return stoppedAt("unrecorded", `close: #${ticket} got no closing record: ${quoted(refusal)}`);
   const state = ticketState(ticket);
   gh(["issue", "edit", ticket, "--remove-label", STAGE_LABELS]);
-  let started = "";
   if (state !== "CLOSED COMPLETED") {
     if (state.startsWith("CLOSED")) quietGh(["issue", "reopen", ticket]);
     if (quietGh(["issue", "close", ticket, "--reason", "completed"]).status !== 0) return stoppedAt("unrecorded", `close: #${ticket} is done but could not be closed${recorded(posted.said)}`);
-    started = resliced(ticket);
   }
-  console.log(`close: #${ticket} closed as completed, its PR merged${recorded(posted.said)}${started}${wokenFromSplit(ticket, asked.stdout)}${wokenAfterParents()}`);
-  return undefined;
+  console.log(`close: #${ticket} closed as completed, its PR merged${recorded(posted.said)}${wokenFromSplit(ticket, asked.stdout)}${wokenAfterParents()}`);
+  return resliced(ticket);
 }
 
 if (import.meta.main) process.exit(exitFor(close()));

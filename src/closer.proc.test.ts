@@ -525,11 +525,22 @@ describe("bin/close starts the re-slice itself once it closes a ticket, since it
     expect(tokens()[started], "runs as the App, so reslice.yml actually starts").toBe("app");
   });
 
-  it("dispatches nothing for a ticket the merge already closed, whose close started reslice.yml itself", () => {
+  it("dispatches reslice.yml for a ticket already closed too, so a rerun after a failed dispatch starts the re-slice", () => {
     const { calls, run } = closing({ ticket: "820", closedAs: "COMPLETED" });
 
     expect(run().status).toBe(0);
-    expect(dispatched(calls())).toBe(-1);
+    expect(calls()[dispatched(calls())]).toBe("workflow\nrun\nreslice.yml\n-f\nissue=820\n");
+  });
+
+  it("ends red when the re-slice will not start, so the Close run shows it and can be rerun", () => {
+    const { calls, run } = closing({ ticket: "822", resliceRefused: "HTTP 403: Resource not accessible by integration" });
+
+    const { status, stdout, stderr } = run();
+
+    expect(status).toBe(1);
+    expect(calls().some((call) => call.startsWith("issue\nclose\n822\n"))).toBe(true);
+    expect(stdout).toMatch(/^close: #822 closed as completed, its PR merged/);
+    expect(stderr).toBe('close: #822 closed, but the re-slice would not start: HTTP 403: Resource not accessible by integration\n');
   });
 
   it("dispatches nothing on a queue run, which closes no ticket", () => {

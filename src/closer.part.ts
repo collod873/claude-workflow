@@ -78,6 +78,7 @@ export function closing({
   prComments = [] as Said[],
   prCommentsUnreadable = false,
   followUps = [] as WaitingFollowUp[],
+  resliceRefused,
 }: {
   ticket?: string;
   ticketBody?: string;
@@ -90,6 +91,7 @@ export function closing({
   prComments?: Said[];
   prCommentsUnreadable?: boolean;
   followUps?: WaitingFollowUp[];
+  resliceRefused?: string;
 } = {}) {
   const root = scratch("closer-");
   const session = join(root, "session");
@@ -134,6 +136,7 @@ export function closing({
       `printf '%s\\n' "$@" >"${callsDir}/$n"`,
       `printf '%s' "$GH_TOKEN" >"${tokensDir}/$n"`,
       'case "$*" in',
+      ...(resliceRefused === undefined ? [] : [`  *"workflow run reslice.yml"*) printf '%s\\n' '${resliceRefused}' >&2; exit 1 ;;`]),
       `  *"issue list"*"${WAITING}"*) cat <<'LISTED'\n${JSON.stringify(followUps.map((waiting) => ({ number: Number(waiting.ticket), body: followUpBody(waiting) })))}\nLISTED\n    ;;`,
       ...followUps.map(({ parent, parentPr }) => `  *"pr view ticket/${parent} "*"state"*) printf '%s\\n' '${parentPr}' ;;`),
       ...followUps.map(({ ticket, split }) => `  *"api"*"issues/${ticket}/comments"*) ${split === true ? `printf '%s\\n' '${JSON.stringify({ author: MACHINE, type: "Bot", body: `@collod873 the builder split #${ticket} into #990, which build themselves.` })}'` : "exit 0"} ;;`),
