@@ -84,7 +84,7 @@ declareStage({
     },
   ],
   scenarios: [
-    { label: "filing a wave", run: () => slicing({ answers: [{ spec: wellFormedSpec, tickets: [{ title: "File a spec", passages: [1], why: "Wave 1.", done: ["It files."] }] }] }).run() },
+    { label: "filing a wave", run: () => slicing({ answers: [{ spec: wellFormedSpec, tickets: [{ title: "File a spec", passages: [1], why: "Wave 1.", done: ["It files."] }], did: "Settled.", next: "Files it.", moves: [1] }] }).run() },
     { label: "refusing a ticket", run: () => slicing({ labels: ["ticket"] }).run() },
   ],
 });

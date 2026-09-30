@@ -6,12 +6,12 @@ import { askedIssue, commentOnTicket, gh, post } from "./post.ts";
 import { LIST_CAP, NO_EM_DASH, TICKET_CAP } from "./reviewer.ts";
 import { hired, machineLogs, type Spent } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
-import { DONE_SENTENCES, filedOutOfScope, filedPassages, type Passage, quoted, restored, sectionsDropped, SPEC_CAP, specRefusals, ticketRefusals } from "./ticket-shape.ts";
+import { DONE_SENTENCES, filedOutOfScope, filedPassages, type Passage, quoted, restored, sectionsDropped, sentences, SPEC_CAP, specRefusals, ticketRefusals } from "./ticket-shape.ts";
 
 const stoppedAt = stopsOf({
   notSpec: "Slice refused: the issue is not labelled `spec`",
   unsliced: "Slice: the wave is still refused after two rounds back, so the spec is marked `needs-human`",
-  unfiled: "Slice: the spec's rewrite or a ticket of its wave will not post",
+  unfiled: "Slice: the spec's rewrite, a ticket of its wave or the wave's note will not post",
 });
 type Stop = ReturnType<typeof stoppedAt>;
 
@@ -38,8 +38,11 @@ const ANSWERS = {
   properties: {
     spec: { type: "string", pattern: NO_EM_DASH },
     tickets: { type: "array", items: PIECE },
+    did: { type: "string", pattern: NO_EM_DASH },
+    next: { type: "string", pattern: NO_EM_DASH },
+    moves: { type: "array", items: { type: "integer" } },
   },
-  required: ["spec", "tickets"],
+  required: ["spec", "tickets", "did", "next", "moves"],
   additionalProperties: false,
 };
 
@@ -53,6 +56,9 @@ interface Piece {
 interface Wave {
   spec: string;
   tickets: Piece[];
+  did: string;
+  next: string;
+  moves: number[];
 }
 
 export function handedOn(title: string, body: string): string {
@@ -63,12 +69,18 @@ export function handedOn(title: string, body: string): string {
     spec,
     "## Its Problem Statement, passage by passage",
     filedPassages(spec).map(({ text }, at) => `${at + 1}. ${text}`).join("\n\n") || "(none)",
+    "## The sentences it will be tried on",
+    sentences(spec).map(({ said }, at) => `${at + 1}. ${said}`).join("\n") || "(none)",
     "## Your answer",
     "`spec`: the spec rewritten in full. Settle under `### Names the tickets share` in `## Implementation Decisions` each name two tickets both need, a label, a command or a key, in the words of the repo's `CONTEXT.md`, and no path, which code refuses there. Write each pick you made where the spec was silent where it belongs. `## Problem Statement` and `## Out of Scope` stay byte for byte: keep both under their headings, and code puts back the owner's bytes as filed.",
     `\`tickets\`: the first wave, the fewest tickets that each fit the builder's brief cap of ${TICKET_CAP} bytes, all building at once beside each other. First find which parts each piece touches before you group them: one ticket unless two pieces touch different parts and neither needs the other's code. \`title\`; \`passages\`, the numbers of the Problem Statement passages its \`## Why\` quotes, which code copies in; \`why\`, what this ticket is for in the spec, which follows the quote; \`done\`, ${DONE_SENTENCES}. Code adds the spec's Out of Scope to each. A ticket over the cap comes back to you to split.`,
+    NOTED,
     "",
   ].join("\n\n");
 }
+
+const NOTED =
+  "Code posts one note on the spec for this wave, quoting the passages its tickets quote. `did`: what the wave before it did, or for the first wave what you settled in the spec, in plain words for the owner. `next`: what this wave builds and what comes after it, in plain words. `moves`: the numbers of the sentences this wave should move, which a wave check tries once it closes.";
 
 export const sentBack = (refusals: string[]): string =>
   ["Code refused your wave, so nothing is filed yet:", capped(refusals.map((refusal) => `- ${refusal}`).join("\n"), LIST_CAP), "Answer again in full: the rewritten `spec` and every ticket of the wave.", ""].join("\n\n");
@@ -95,7 +107,7 @@ function ticketBody(spec: string, passages: Passage[], piece: Piece): string {
 
 function isWave(answer: unknown): answer is Wave {
   const given = answer as Partial<Wave> | undefined;
-  return typeof given?.spec === "string" && Array.isArray(given.tickets);
+  return typeof given?.spec === "string" && Array.isArray(given.tickets) && typeof given.did === "string" && typeof given.next === "string" && Array.isArray(given.moves);
 }
 
 function waveRefusals(read: string, wave: Wave): string[] {
@@ -113,7 +125,9 @@ function waveRefusals(read: string, wave: Wave): string[] {
     const over = bytes > TICKET_CAP ? [`${named} would be ${bytes} bytes, over the builder's brief cap of ${TICKET_CAP} bytes: split it`] : [];
     return [...over, ...ticketRefusals(body).map((refusal) => `${named} ${refusal}`)];
   });
-  return [...rewrite, ...none, ...tickets];
+  const listed = sentences(read).length;
+  const moves = wave.moves.filter((sentence) => !(Number.isInteger(sentence) && sentence >= 1 && sentence <= listed)).map((sentence) => `the note moves sentence ${sentence}, and the spec lists ${listed}`);
+  return [...rewrite, ...none, ...tickets, ...moves];
 }
 
 function filedWave(issue: string, read: string, wave: Wave): Stop | undefined {
@@ -134,8 +148,15 @@ function filedWave(issue: string, read: string, wave: Wave): Stop | undefined {
     if (linked.status !== 0) return partWave(issue, wave, [...numbers, `#${number}, not under this spec`], at + 1, `#${number} would not go under it`);
     numbers.push(`#${number}`);
   }
+  const [unnoted] = commentOnTicket(issue, waveNote(1, passages, wave, numbers), gh).refusals;
+  if (unnoted !== undefined) return stoppedAt("unfiled", `${said} filed its first wave under it, ${numbers.join(", ")}, but its note would not post: ${quoted(unnoted)}`);
   console.log(`${said} filed its first wave under it: ${numbers.join(", ")}`);
   return undefined;
+}
+
+function waveNote(number: number, passages: Passage[], wave: Wave, filed: string[]): string {
+  const quoting = [...new Set(wave.tickets.flatMap((piece) => piece.passages))].sort((one, other) => one - other);
+  return `${[`## Wave ${number}`, quote(passages, quoting), wave.did.trim(), wave.next.trim(), `Filed: ${filed.join(", ")}.`, `<!-- moves: ${wave.moves.join(", ")} -->`].join("\n\n")}\n`;
 }
 
 function partWave(issue: string, wave: Wave, filed: string[], next: number, since: string): Stop {

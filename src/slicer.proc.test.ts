@@ -12,8 +12,11 @@ const SPEC = wellFormedSpec
 const SPEC_OUT_OF_SCOPE = "- The done check.\n- Rate limits: the owner, \"only if that ever becomes a problem\".";
 const REWRITE = SPEC.replace("Reuse the ticket machinery where it already fits.", "Reuse the ticket machinery where it already fits.\n\n### Names the tickets share\n\n- `SLICE_LABEL`: the label both tickets read.");
 
+const DID = "The slicer settled the label both tickets read.";
+const NEXT = "Wave 1 files the spec kind and reads it back.";
+
 const piece = (title: string, passages: number[], done = ["It holds."]) => ({ title, passages, why: `Wave 1 of the spec: ${title.toLowerCase()}.`, done });
-const wave = (tickets = [piece("File the spec kind", [1, 2]), piece("Read the spec kind", [3])], spec = REWRITE) => ({ spec, tickets });
+const wave = (tickets = [piece("File the spec kind", [1, 2]), piece("Read the spec kind", [3])], spec = REWRITE, moves = [1]) => ({ spec, tickets, did: DID, next: NEXT, moves });
 
 describe("bin/slice turns a filed spec into its first wave of tickets under it, with no session open (#1021)", () => {
   it("rewrites the spec with the names its tickets share, keeping the Problem Statement, then files the wave as sub-issues of the spec", () => {
@@ -24,7 +27,7 @@ describe("bin/slice turns a filed spec into its first wave of tickets under it, 
     expect(sliced.filed().map(({ title }) => title)).toEqual(["File the spec kind", "Read the spec kind"]);
     expect(sliced.linked()).toEqual(["repos/{owner}/{repo}/issues/968/sub_issues sub_issue_id=901101", "repos/{owner}/{repo}/issues/968/sub_issues sub_issue_id=901102"]);
     expect(sliced.calls().indexOf("issue edit 968")).toBeLessThan(sliced.calls().findIndex((call) => call.startsWith("issue create")));
-    expect(sliced.comments()).toEqual([]);
+    expect(sliced.comments()).toHaveLength(1);
     expect(sliced.handed()).toHaveLength(1);
   });
 
@@ -68,6 +71,24 @@ describe("bin/slice turns a filed spec into its first wave of tickets under it, 
     expect(handed).toContain("no path");
     expect(handed).not.toContain("a path,");
     expect(handed).not.toContain("change nothing here");
+  });
+
+  it("posts one note on the spec starting `## Wave 1`: the passages its tickets quote copied by code, what the wave did, what comes next, and the sentences it moves (#1037)", () => {
+    const sliced = slicing({ body: SPEC, answers: [wave([piece("Read the spec kind", [3]), piece("File the spec kind", [1, 3])])] });
+
+    expect(sliced.run().status).toBe(0);
+    expect(sliced.comments()).toEqual([`## Wave 1\n\n${ATTRIBUTION}\n\n${WATCHING}\n\n${DID}\n\n${NEXT}\n\nFiled: #1101, #1102.\n\n<!-- moves: 1 -->\n`]);
+    expect(sliced.calls().at(-1)).toBe("issue comment 968");
+  });
+
+  it("sends back a wave that moves a sentence the spec does not list, and asks for what the wave did, what comes next and the sentences it moves (#1037)", () => {
+    const sliced = slicing({ body: SPEC, answers: [wave(undefined, undefined, [2]), wave()] });
+
+    expect(sliced.run().status).toBe(0);
+    const [handed = "", sentBack = ""] = sliced.handed();
+    expect(handed).toContain("## The sentences it will be tried on\n\n1. see a spec land as its own issue, labelled spec");
+    expect(handed).toContain("`moves`");
+    expect(sentBack).toContain("the note moves sentence 2, and the spec lists 1");
   });
 
   it("sends a ticket whose brief would pass the brief cap back to the slicer to split, and files the split wave", () => {
