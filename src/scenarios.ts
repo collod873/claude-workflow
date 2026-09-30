@@ -436,6 +436,7 @@ export interface QueuedPr {
   checks?: "green" | "pending" | "red";
   autoMerge?: boolean;
   refusedBefore?: boolean;
+  conflicts?: boolean;
 }
 
 const RUNS = { green: ["COMPLETED", "SUCCESS"], pending: ["IN_PROGRESS", ""], red: ["COMPLETED", "FAILURE"] } as const;
@@ -492,6 +493,7 @@ export function closing({
   git(session, "add", ".");
   git(session, "commit", "--quiet", "-m", "base");
   git(session, "checkout", "--quiet", "-b", `ticket/${ticket}`);
+  if (openPrs.some((pr) => pr.conflicts === true)) plant(session, "src/clash.ts", "export const clash = \"main\";\n");
   git(session, "add", "-A");
   commitAt(session, timing.firstCommit, ["commit", "--quiet", "--allow-empty", "-m", `Build #${ticket} against its failing tests`], timing.rebased);
   git(session, "checkout", "--quiet", "main");
@@ -502,6 +504,8 @@ export function closing({
   git(session, "push", "--quiet", "origin", "main");
   const heads = openPrs.map((pr) => {
     git(session, "checkout", "--quiet", "-b", `queued/${pr.number}`, pr.upToDate === true ? "main" : "main^1");
+    if (pr.conflicts === true) plant(session, "src/clash.ts", `export const clash = "${pr.number}";\n`);
+    git(session, "add", "-A");
     git(session, "commit", "--quiet", "--allow-empty", "-m", `Build PR #${pr.number}`);
     git(session, "push", "--quiet", "origin", `HEAD:refs/heads/${pr.branch ?? `ticket/${pr.ticket}`}`);
     git(session, "checkout", "--quiet", "main");
