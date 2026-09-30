@@ -6,7 +6,7 @@ import { askedIssue, commentOnTicket, gh, post } from "./post.ts";
 import { LIST_CAP, NO_EM_DASH, TICKET_CAP } from "./reviewer.ts";
 import { hired, machineLogs, type Spent } from "./stage.ts";
 import { exitFor, stoppedAt, type Stop } from "./stops.ts";
-import { DONE_SENTENCES, outOfScope, problemStatement, quoted, SPEC_CAP, specRefusals, ticketRefusals } from "./ticket-shape.ts";
+import { DONE_SENTENCES, outOfScope, problemStatement, quoted, sectionsChanged, SPEC_CAP, specRefusals, ticketRefusals } from "./ticket-shape.ts";
 
 const SPEC_LABEL = "spec";
 const NEEDS_HUMAN = "needs-human";
@@ -89,17 +89,15 @@ function isWave(answer: unknown): answer is Wave {
 
 function waveRefusals(read: string, wave: Wave): string[] {
   const passages = passagesOf(read);
-  const rewrite =
-    problemStatement(wave.spec) === problemStatement(read)
-      ? specRefusals(wave.spec).map((refusal) => `the rewrite: ${refusal}`)
-      : ["the rewrite changes '## Problem Statement', the owner's words, which stay byte-identical"];
+  const changed = sectionsChanged(read, wave.spec);
+  const rewrite = changed.length > 0 ? changed : specRefusals(wave.spec).map((refusal) => `the rewrite: ${refusal}`);
   const none = wave.tickets.length === 0 ? ["the wave carries no ticket"] : [];
   const tickets = wave.tickets.flatMap((piece, at) => {
     const named = `ticket ${at + 1}, ${JSON.stringify(piece.title)},`;
     const unheld = piece.passages.filter((passage) => !(Number.isInteger(passage) && passage >= 1 && passage <= passages.length));
     const unquoted = piece.passages.length === 0 ? [`${named} quotes no passage`] : unheld.map((passage) => `${named} quotes passage ${passage}, and the Problem Statement has ${passages.length}`);
     if (unquoted.length > 0) return unquoted;
-    const body = ticketBody(wave.spec, passages, piece);
+    const body = ticketBody(read, passages, piece);
     const bytes = Buffer.byteLength(body);
     const over = bytes > TICKET_CAP ? [`${named} would be ${bytes} bytes, over the builder's brief cap of ${TICKET_CAP} bytes: split it`] : [];
     return [...over, ...ticketRefusals(body).map((refusal) => `${named} ${refusal}`)];
@@ -114,7 +112,7 @@ function filedWave(issue: string, read: string, wave: Wave): Stop | undefined {
   const passages = passagesOf(read);
   const numbers: string[] = [];
   for (const piece of wave.tickets) {
-    const filed = post({ kind: "ticket", title: piece.title, text: ticketBody(wave.spec, passages, piece) }, gh);
+    const filed = post({ kind: "ticket", title: piece.title, text: ticketBody(read, passages, piece) }, gh);
     const number = FILED.exec(filed.said)?.[1];
     const id = number === undefined ? undefined : gh(["api", `repos/{owner}/{repo}/issues/${number}`, "--jq", ".id"]);
     const linked = id?.status === 0 ? gh(["api", "--method", "POST", `repos/{owner}/{repo}/issues/${issue}/sub_issues`, "-F", `sub_issue_id=${id.stdout.trim()}`]) : undefined;
