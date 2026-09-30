@@ -6,14 +6,13 @@ import { askedIssue, commentOnTicket, gh, post } from "./post.ts";
 import { LIST_CAP, NO_EM_DASH, TICKET_CAP } from "./reviewer.ts";
 import { hired, machineLogs, type Spent } from "./stage.ts";
 import { exitFor, stoppedAt, type Stop } from "./stops.ts";
-import { DONE_SENTENCES, outOfScope, problemStatement, quoted, sectionsChanged, SPEC_CAP, specRefusals, ticketRefusals } from "./ticket-shape.ts";
+import { DONE_SENTENCES, filedOutOfScope, filedPassages, type Passage, quoted, restored, sectionsDropped, SPEC_CAP, specRefusals, ticketRefusals } from "./ticket-shape.ts";
 
 const SPEC_LABEL = "spec";
 const NEEDS_HUMAN = "needs-human";
 const TOOLS = ["Read", "Grep", "Glob"];
 const ROUNDS_BACK = 2;
 const FILED = /\/issues\/(\d+)\s*$/;
-const BLANK_LINE = /\n[ \t]*\n/;
 
 const PIECE = {
   type: "object",
@@ -49,8 +48,6 @@ interface Wave {
   tickets: Piece[];
 }
 
-const passagesOf = (body: string): string[] => problemStatement(body).split(BLANK_LINE).filter((passage) => passage.trim() !== "");
-
 export function handedOn(title: string, body: string): string {
   const spec = capped(`# ${title}\n\n${body}`, SPEC_CAP);
   return [
@@ -58,9 +55,9 @@ export function handedOn(title: string, body: string): string {
     "## The spec",
     spec,
     "## Its Problem Statement, passage by passage",
-    passagesOf(spec).map((passage, at) => `${at + 1}. ${passage}`).join("\n\n") || "(none)",
+    filedPassages(spec).map(({ text }, at) => `${at + 1}. ${text}`).join("\n\n") || "(none)",
     "## Your answer",
-    "`spec`: the spec rewritten in full. Settle under `### Names the tickets share` in `## Implementation Decisions` each name two tickets both need, a label, a path, a command or a key, and write each pick you made where the spec was silent where it belongs. `## Problem Statement` stays byte for byte: those are the owner's words.",
+    "`spec`: the spec rewritten in full. Settle under `### Names the tickets share` in `## Implementation Decisions` each name two tickets both need, a label, a path, a command or a key, and write each pick you made where the spec was silent where it belongs. Keep `## Problem Statement` and `## Out of Scope` under their headings: code puts back the owner's bytes as filed.",
     `\`tickets\`: the first wave, each building at once beside the others and none waiting on another. \`title\`; \`passages\`, the numbers of the Problem Statement passages its \`## Why\` quotes, which code copies in; \`why\`, what this ticket is for in the spec, which follows the quote; \`done\`, ${DONE_SENTENCES}. Code adds the spec's Out of Scope to each. A ticket over the builder's brief cap of ${TICKET_CAP} bytes comes back to you to split.`,
     "",
   ].join("\n\n");
@@ -69,15 +66,22 @@ export function handedOn(title: string, body: string): string {
 export const sentBack = (refusals: string[]): string =>
   ["Code refused your wave, so nothing is filed yet:", capped(refusals.map((refusal) => `- ${refusal}`).join("\n"), LIST_CAP), "Answer again in full: the rewritten `spec` and every ticket of the wave.", ""].join("\n\n");
 
-function ticketBody(spec: string, passages: string[], piece: Piece): string {
+const PASSAGE_BREAK = "\n\n";
+
+function quote(passages: Passage[], picked: number[]): string {
+  const quoted = picked.map((at) => passages[at - 1] ?? { text: "", after: "" });
+  return quoted.map(({ text, after }, at) => (at === quoted.length - 1 ? text : text + (after || PASSAGE_BREAK))).join("");
+}
+
+function ticketBody(spec: string, passages: Passage[], piece: Piece): string {
   return [
     "## Why",
-    ...piece.passages.map((at) => passages[at - 1] ?? ""),
+    quote(passages, piece.passages),
     piece.why.trim(),
     "## Done when",
     piece.done.map((sentence) => `- ${sentence.trim()}`).join("\n"),
     "## Out of Scope",
-    outOfScope(spec),
+    filedOutOfScope(spec),
     "",
   ].join("\n\n");
 }
@@ -88,8 +92,8 @@ function isWave(answer: unknown): answer is Wave {
 }
 
 function waveRefusals(read: string, wave: Wave): string[] {
-  const passages = passagesOf(read);
-  const changed = sectionsChanged(read, wave.spec);
+  const passages = filedPassages(read);
+  const changed = sectionsDropped(read, wave.spec);
   const rewrite = changed.length > 0 ? changed : specRefusals(wave.spec).map((refusal) => `the rewrite: ${refusal}`);
   const none = wave.tickets.length === 0 ? ["the wave carries no ticket"] : [];
   const tickets = wave.tickets.flatMap((piece, at) => {
@@ -109,7 +113,7 @@ function filedWave(issue: string, read: string, wave: Wave): Stop | undefined {
   const said = `slice: #${issue}`;
   const edited = gh(["issue", "edit", issue, "--body", wave.spec]);
   if (edited.status !== 0) return stoppedAt("unfiled", `${said} ended red, its rewrite would not post: ${quoted((edited.stderr || edited.stdout).trim())}`);
-  const passages = passagesOf(read);
+  const passages = filedPassages(read);
   const numbers: string[] = [];
   for (const [at, piece] of wave.tickets.entries()) {
     const title = JSON.stringify(piece.title);
@@ -149,8 +153,9 @@ function sliced(issue: string): Stop | undefined {
   for (let round = 0; ; round++) {
     if (spent.refusal !== undefined) return stoppedAt("modelRun", `${said} ended red, ${spent.refusal}`);
     if (!isWave(spent.answer)) return stoppedAt("modelRun", `${said} ended red, the slicer gave no wave`);
-    const refusals = waveRefusals(asked.body, spent.answer);
-    if (refusals.length === 0) return filedWave(issue, asked.body, spent.answer);
+    const wave = { ...spent.answer, spec: restored(asked.body, spent.answer.spec) };
+    const refusals = waveRefusals(asked.body, wave);
+    if (refusals.length === 0) return filedWave(issue, asked.body, wave);
     if (round === ROUNDS_BACK) return calledOwner(issue, `its wave still refused after ${ROUNDS_BACK} rounds back: ${quoted(refusals[0] ?? "")}`);
     spent = spend(sentBack(refusals), spent.session);
   }

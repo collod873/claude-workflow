@@ -12,7 +12,7 @@ const NAMED = {
   furtherNotes: "Further Notes",
   sentences: "I'll know it works when I can",
 } as const;
-const heading = (name: string): RegExp => new RegExp(`^##[ \\t]+${name.replace("'", "[’']")}[ \\t]*$`, "m");
+const heading = (name: string): RegExp => new RegExp(`^##[ \\t]+${name.replace("'", "[’']")}[ \\t]*(?=\\r?$)`, "m");
 const WHY = heading(NAMED.why);
 const DONE_WHEN = heading(NAMED.doneWhen);
 const PROBLEM_STATEMENT = heading(NAMED.problem);
@@ -72,11 +72,38 @@ export const doneWhen = (body: string): string => section(body.replaceAll(/\r\n?
 
 export const outOfScope = (body: string): string => section(body.replaceAll(/\r\n?/g, "\n"), OUT_OF_SCOPE).trim();
 
-export const problemStatement = (body: string): string => section(body.replaceAll(/\r\n?/g, "\n"), PROBLEM_STATEMENT).trim();
+const blankLinesTrimmed = (text: string): string => text.replace(/^(?:[ \t]*\r?\n)+/, "").replace(/(?:\r?\n[ \t]*)+$/, "");
 
-export const sectionsChanged = (read: string, written: string): string[] => [
-  ...(section(written, PROBLEM_STATEMENT) === section(read, PROBLEM_STATEMENT) ? [] : ["the rewrite changes '## Problem Statement', the owner's words, which stay byte-identical"]),
-  ...(section(written, OUT_OF_SCOPE) === section(read, OUT_OF_SCOPE) ? [] : ["the rewrite changes '## Out of Scope', which every ticket carries byte-identical"]),
+export const filedOutOfScope = (body: string): string => blankLinesTrimmed(section(body, OUT_OF_SCOPE));
+
+export interface Passage {
+  text: string;
+  after: string;
+}
+
+export function filedPassages(body: string): Passage[] {
+  const pieces = section(body, PROBLEM_STATEMENT).split(/(\r?\n(?:[ \t]*\r?\n)+)/);
+  const passages: Passage[] = [];
+  for (let at = 0; at < pieces.length; at += 2) {
+    const text = pieces[at] ?? "";
+    if (text.trim() !== "") passages.push({ text: blankLinesTrimmed(text), after: pieces[at + 1] ?? "" });
+  }
+  return passages;
+}
+
+function restoredSection(read: string, written: string, heading: RegExp): string {
+  const found = heading.exec(written);
+  if (found === null) return written;
+  const start = matchEnd(found);
+  const next = NEXT_HEADING.exec(written.slice(start));
+  return written.slice(0, start) + section(read, heading) + (next === null ? "" : written.slice(start + next.index));
+}
+
+export const restored = (read: string, written: string): string => restoredSection(read, restoredSection(read, written, PROBLEM_STATEMENT), OUT_OF_SCOPE);
+
+export const sectionsDropped = (read: string, written: string): string[] => [
+  ...(section(written, PROBLEM_STATEMENT) === section(read, PROBLEM_STATEMENT) ? [] : ["the rewrite drops '## Problem Statement', the owner's words, which stay byte-identical"]),
+  ...(section(written, OUT_OF_SCOPE) === section(read, OUT_OF_SCOPE) ? [] : ["the rewrite drops '## Out of Scope', which every ticket carries byte-identical"]),
 ];
 
 export const whyChanged = (read: string, written: string): string[] => (why(written) === why(read) ? [] : ["the rewrite changes '## Why', the owner's words, which stay byte-identical"]);
