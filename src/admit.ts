@@ -2,7 +2,8 @@ import { commentOnTicket, gh, OWNER } from "./post.ts";
 import { REVIEWED_FROM, SPLIT_FROM } from "./reviewer.ts";
 import { why } from "./ticket-shape.ts";
 
-interface Opened {
+export interface Opened {
+  number?: number;
   state?: string;
   user?: { login?: string };
   labels?: { name?: string }[];
@@ -14,7 +15,7 @@ interface Admission {
   unread?: string;
 }
 
-function opened(path: string): Opened | "missing" | "unread" {
+export function opened(path: string): Opened | "missing" | "unread" {
   const got = gh(["api", `repos/{owner}/{repo}/issues/${path}`]);
   if (got.status !== 0) return /HTTP 404/.test(got.stderr) ? "missing" : "unread";
   try {

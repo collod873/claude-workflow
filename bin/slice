@@ -1,13 +1,14 @@
 #!/bin/bash
 set -uo pipefail
 
-usage="slice: usage: slice <issue number>"
+usage="slice: usage: slice <issue number> | slice --ended <closed issue number>"
 
 if [[ ${1:-} == "--help" ]]; then
   printf '%s\n' "$usage"
   exit 0
 fi
 
+[[ ${1:-} == --ended ]] && shift && ended=--ended
 issue=${1:-}
 if [[ $# -ne 1 || ! $issue =~ ^[0-9]+$ ]]; then
   printf '%s\n' "$usage" >&2
@@ -15,4 +16,4 @@ if [[ $# -ne 1 || ! $issue =~ ^[0-9]+$ ]]; then
 fi
 
 src="$(cd "${BASH_SOURCE[0]%/*}/../src" && pwd)"
-exec node "$src/slicer.ts" "$issue"
+exec node "$src/slicer.ts" ${ended:-} "$issue"
