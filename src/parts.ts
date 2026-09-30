@@ -104,6 +104,11 @@ export const parts: Part[] = [
     stops: "https://github.com/collod873/claude-workflow/issues/674",
   },
   {
+    name: "bin/done-check",
+    file: "bin/done-check",
+    stops: "https://github.com/collod873/claude-workflow/issues/1023",
+  },
+  {
     name: "bin/review",
     file: "bin/review",
     stops: "https://github.com/collod873/claude-workflow/issues/661",

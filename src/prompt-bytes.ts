@@ -1,10 +1,11 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { CHECK_CAP, handedOn as builderHandedOn, repaired, TAIL_CAP } from "./builder.ts";
+import { handedOn as doneCheckerHandedOn } from "./done-checker.ts";
 import { handedOn as meterReviewerHandedOn } from "./meter-reviewer.ts";
+import { SPEC_CAP } from "./ticket-shape.ts";
 import { handedOn as researcherHandedOn, NOTE_CAP, OUT_OF_TIME } from "./researcher.ts";
 import { handedOn as slicerHandedOn, sentBack } from "./slicer.ts";
-import { SPEC_CAP } from "./ticket-shape.ts";
 import { DIFF_CAP, handedOn as reviewerHandedOn, handedSince, LIST_CAP, TICKET_CAP } from "./reviewer.ts";
 
 const HIRES = /(spawn|execFile)\w*\(\s*"claude"/;
@@ -92,6 +93,13 @@ export const PROMPTS: Prompt[] = [
     build: (filled) => sentBack(filled.refusals === undefined ? [] : [filled.refusals]),
   },
   { name: "researcher out of time", file: "src/researcher.ts", cap: HANDED_ON, slots: [], build: () => OUT_OF_TIME },
+  {
+    name: "done checker",
+    file: "src/done-checker.ts",
+    cap: SPEC_CAP + 2 * HANDED_ON,
+    slots: ["title", "body"],
+    build: (filled) => doneCheckerHandedOn(filled.title ?? "", filled.body ?? ""),
+  },
 ];
 
 function ownWords(prompt: Prompt): number {

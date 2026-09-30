@@ -34,7 +34,6 @@ const NUMBERED_ITEM = /^[ \t]*\d+[.)][ \t]/m;
 const FEWEST = 1;
 const MOST = 3;
 const QUOTE = 80;
-export const SPEC_CAP = 64 * 1024;
 
 export const DONE_SENTENCES = `${FEWEST} to ${MOST} sentences saying what done looks like`;
 export const TICKET_SHAPE = `## ${NAMED.why}, quoting the owner in "..." or a > line; ## ${NAMED.doneWhen}, ${DONE_SENTENCES}, each on a '- ' line`;
@@ -128,6 +127,20 @@ function sentenceRefusals(items: string[]): string[] {
     else if (command === undefined) refusals.push(`${at} carries a check: marker that does not parse: ${quoted(item)}`);
   });
   return refusals;
+}
+
+export const SPEC_CAP = 64 * 1024;
+
+export interface Sentence {
+  said: string;
+  check?: string;
+}
+
+export function sentences(body: string): Sentence[] {
+  return itemsUnder(body.replaceAll(/\r\n?/g, "\n"), SENTENCES).map((item) => {
+    const check = MARKER.exec(item);
+    return check === null ? { said: item } : { said: item.slice(0, check.index).trim(), check: check[1] };
+  });
 }
 
 export function specRefusals(body: string): string[] {
