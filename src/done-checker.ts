@@ -55,8 +55,7 @@ const isTry = (given: unknown): given is Try => {
   return typeof one?.sentence === "number" && typeof one.tried === "string" && typeof one.outcome === "string" && one.outcome in OUTCOMES;
 };
 
-const posted = (said: string[], tries: Try[]) =>
-  ["## Done check", "", ...said.flatMap((sentence, at) => tries.filter((one) => one.sentence === at + 1).map((one) => `${at + 1}. **${OUTCOMES[one.outcome]}**: ${sentence}\n   ${one.tried}`)), ""].join("\n");
+const posted = (tried: [string, Try][]) => ["## Done check", "", ...tried.map(([sentence, one], at) => `${at + 1}. **${OUTCOMES[one.outcome]}**: ${sentence}\n   ${one.tried}`), ""].join("\n");
 
 function doneCheck(issue: string): Stop | undefined {
   const said = `done-check: #${issue}`;
@@ -73,10 +72,16 @@ function doneCheck(issue: string): Stop | undefined {
   if (spent.refusal !== undefined) return stoppedAt("modelRun", `${said} ended red, ${spent.refusal}`);
   const given = (spent.answer as { tries?: unknown } | undefined)?.tries;
   const tries = Array.isArray(given) ? given.filter(isTry) : [];
-  const comment = commentOnTicket(issue, posted(listed, tries), gh);
+  const tried: [string, Try][] = [];
+  for (const [at, sentence] of listed.entries()) {
+    const one = tries.find(({ sentence: number }) => number === at + 1);
+    if (one === undefined) return stoppedAt("modelRun", `${said} ended red, the done checker gave no try for sentence ${at + 1}`);
+    tried.push([sentence, one]);
+  }
+  const comment = commentOnTicket(issue, posted(tried), gh);
   const [refusal] = comment.refusals;
   if (refusal !== undefined) return stoppedAt("unrecorded", `${said} ended red, its comment would not post: ${quoted(refusal)}`);
-  if (listed.some((_, at) => !tries.some((one) => one.sentence === at + 1 && one.outcome === "held"))) {
+  if (tried.some(([, one]) => one.outcome !== "held")) {
     console.log(`${said} did not hold every sentence, so it stays open: ${comment.said}`);
     return undefined;
   }

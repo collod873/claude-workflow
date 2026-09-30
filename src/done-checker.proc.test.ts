@@ -39,3 +39,17 @@ describe("bin/done-check leaves the spec open unless every sentence held (#1023)
     expect(checked.closes()).toEqual([]);
   });
 });
+
+describe("bin/done-check posts nothing it did not try (#1023)", () => {
+  it("ends red with no comment and the spec open when the model gives no try for a sentence", () => {
+    const tries = [
+      { sentence: 1, outcome: "held", tried: "saw the first wave under it" },
+      { sentence: 3, outcome: "held", tried: "saw it close" },
+      { sentence: 3, outcome: "missed", tried: "a second answer for the same sentence" },
+    ];
+    const checked = doneChecking({ body: specWith(SENTENCES), tries });
+
+    expect(checked.run()).toEqual({ status: 1, stdout: "", stderr: "done-check: #974 ended red, the done checker gave no try for sentence 2\n" });
+    expect(checked.calls()).toEqual(["issue view 974"]);
+  });
+});
