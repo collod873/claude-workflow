@@ -5,8 +5,11 @@ import { OPEN_SHELL } from "./fence.ts";
 import { askedIssue, commentOnTicket, gh, RESEARCH } from "./post.ts";
 import { NO_EM_DASH } from "./reviewer.ts";
 import { hired, machineLogs } from "./stage.ts";
-import { exitFor, stoppedAt, type Stop } from "./stops.ts";
+import { exitFor, stopsOf } from "./stops.ts";
 import { quoted } from "./ticket-shape.ts";
+
+const stoppedAt = stopsOf({ notResearch: "Research refused: the issue is not a research note" });
+type Stop = ReturnType<typeof stoppedAt>;
 
 export const NOTE_CAP = 16 * 1024;
 const COMMENT_CAP = 60_000;

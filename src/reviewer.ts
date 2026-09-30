@@ -5,8 +5,11 @@ import { join } from "node:path";
 import { capped } from "./brief.ts";
 import { commentOnTicket, commentsOn, gh, git, post } from "./post.ts";
 import { hired, machineLogs } from "./stage.ts";
-import { exitFor, stoppedAt, type Stop } from "./stops.ts";
+import { exitFor, stopsOf } from "./stops.ts";
 import { DONE_SENTENCES, quoted, why } from "./ticket-shape.ts";
+
+const stoppedAt = stopsOf({ drift: "The reviewer finds drift from `## Why`" });
+export type Stop = ReturnType<typeof stoppedAt>;
 
 export const DIFF_CAP = 32 * 1024;
 export const TICKET_CAP = 8 * 1024;
