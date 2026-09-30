@@ -80,37 +80,58 @@ describe("bin/slice turns a filed spec into its first wave of tickets under it, 
     expect(sliced.linked()).toEqual([]);
   });
 
-  it("sends back a rewrite that changes the Problem Statement, and a ticket naming a passage it does not have", () => {
+  it("restores the owner's Problem Statement over a rewrite that changes it, and sends back a ticket naming a passage it does not have", () => {
     const changed = REWRITE.replace(WATCHING, "> I dont think slice can stop");
-    const sliced = slicing({ body: SPEC, answers: [wave([piece("File the spec kind", [4])], changed), wave()] });
+    const sliced = slicing({ body: SPEC, answers: [wave([piece("File the spec kind", [4])], changed), wave(undefined, changed)] });
 
     expect(sliced.run().status).toBe(0);
     const [, sentBack = ""] = sliced.handed();
-    expect(sentBack).toContain("the rewrite changes '## Problem Statement', the owner's words, which stay byte-identical");
+    expect(sentBack).not.toContain("Problem Statement'");
     expect(sentBack).toContain('ticket 1, "File the spec kind", quotes passage 4, and the Problem Statement has 3');
     expect(sliced.rewrites()).toEqual([REWRITE]);
   });
 
-  it("sends back a rewrite that changes the Out of Scope, and files each ticket with the Out of Scope the owner filed", () => {
-    const dropped = REWRITE.replace("- The done check.\n", "");
-    const sliced = slicing({ body: SPEC, answers: [wave(undefined, dropped), wave()] });
+  it("restores the owner's Out of Scope over a rewrite that drops an item or changes its whitespace, and files each ticket with the Out of Scope the owner filed", () => {
+    const changed = REWRITE.replace("- The done check.\n", "").replace(`${WAVES}\n`, `${WAVES}  \n`);
+    const sliced = slicing({ body: SPEC, answers: [wave(undefined, changed)] });
 
     expect(sliced.run().status).toBe(0);
-    const [, sentBack = ""] = sliced.handed();
-    expect(sentBack).toContain("the rewrite changes '## Out of Scope', which every ticket carries byte-identical");
+    expect(sliced.handed()).toHaveLength(1);
     expect(sliced.rewrites()).toEqual([REWRITE]);
     for (const { body } of sliced.filed()) expect(outOfScope(body)).toBe(SPEC_OUT_OF_SCOPE);
   });
 
-  it("holds the Problem Statement and the Out of Scope to their raw bytes, so a rewrite changing only their whitespace or line endings goes back too", () => {
-    const spaced = REWRITE.replace(`${WAVES}\n`, `${WAVES}  \n`).replace("- The done check.\n", "- The done check.\r\n");
-    const sliced = slicing({ body: SPEC, answers: [wave(undefined, spaced), wave()] });
+  it("sends back a rewrite that drops the Problem Statement or the Out of Scope, since code has nowhere to restore them", () => {
+    const dropped = REWRITE.replace("## Problem Statement", "## Problem").replace("## Out of Scope", "## Out");
+    const sliced = slicing({ body: SPEC, answers: [wave(undefined, dropped), wave()] });
 
     expect(sliced.run().status).toBe(0);
     const [, sentBack = ""] = sliced.handed();
-    expect(sentBack).toContain("the rewrite changes '## Problem Statement'");
-    expect(sentBack).toContain("the rewrite changes '## Out of Scope'");
+    expect(sentBack).toContain("the rewrite drops '## Problem Statement', the owner's words, which stay byte-identical");
+    expect(sentBack).toContain("the rewrite drops '## Out of Scope', which every ticket carries byte-identical");
     expect(sliced.rewrites()).toEqual([REWRITE]);
+  });
+
+  it("slices a spec filed with CRLF line endings when the model answers in LF, restoring the owner's bytes into the rewrite before comparing (#1027)", () => {
+    const sliced = slicing({ body: SPEC.replaceAll("\n", "\r\n"), answers: [wave()] });
+
+    expect(heard(sliced.run())).toEqual({ status: 0, stderr: "", lines: ["slice: #968 filed its first wave under it: #1101, #1102"] });
+    expect(sliced.handed()).toHaveLength(1);
+    const [rewrite = ""] = sliced.rewrites();
+    expect(rewrite).toContain(`## Problem Statement\r\n\r\n${ATTRIBUTION}\r\n\r\n${WAVES}\r\n\r\n${WATCHING}\r\n\r\n## Solution\n`);
+    expect(rewrite).toContain(`## Out of Scope\r\n\r\n${SPEC_OUT_OF_SCOPE.replaceAll("\n", "\r\n")}\r\n\r\n## Further Notes\n`);
+    expect(rewrite).toContain("### Names the tickets share\n");
+  });
+
+  it("carries the spec's raw bytes, line endings included, as each ticket's Why quote and Out of Scope (#1027)", () => {
+    const passage = `${WAVES}\r\n> a second line of the same passage`;
+    const body = SPEC.replace(WAVES, passage.replaceAll("\r\n", "\n")).replaceAll("\n", "\r\n");
+    const sliced = slicing({ body, answers: [wave()] });
+
+    expect(sliced.run().status).toBe(0);
+    const [first = ""] = sliced.filed().map(({ body: filed }) => filed);
+    expect(first).toContain(`## Why\n\n${ATTRIBUTION}\n\n${passage}\n\n`);
+    expect(first).toContain(`## Out of Scope\n\n${SPEC_OUT_OF_SCOPE.replaceAll("\n", "\r\n")}\n`);
   });
 
   it("refuses an issue not labelled spec without spending a model, and anything but one issue number", () => {
