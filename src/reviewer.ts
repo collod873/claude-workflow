@@ -6,7 +6,7 @@ import { capped } from "./brief.ts";
 import { commentOnTicket, commentsOn, gh, git, post } from "./post.ts";
 import { hired, machineLogs } from "./stage.ts";
 import { exitFor, stoppedAt, type Stop } from "./stops.ts";
-import { doneWhen, quoted, why } from "./ticket-shape.ts";
+import { quoted, why } from "./ticket-shape.ts";
 
 export const DIFF_CAP = 32 * 1024;
 export const TICKET_CAP = 8 * 1024;
@@ -130,10 +130,7 @@ export function handedOn(body: string, diff: string, after?: AfterTurn): string 
         ];
   return [
     "Review this PR against the `## Why` and its `## Done when`. Change nothing; `bin/check` is green. Read the repo if the diff is unclear.",
-    "## Why",
-    capped(why(body), TICKET_CAP),
-    "## Done when",
-    capped(doneWhen(body), TICKET_CAP),
+    capped(body, TICKET_CAP),
     "## Diff",
     handedDiff(diff),
     ...turn,
