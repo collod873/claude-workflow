@@ -9,8 +9,8 @@ export const METERS = [
     asks: "each module the diff adds or widens that is shallow or a pass-through, each place it joins behaviours that change for different reasons, naming the module, and each place the diff writes or reads text that another stage or workflow reads or writes, such as a marker comment, a stop line, a commit subject, or a PR body line, where the writer and reader each spell it rather than share one message owner, naming both sides. Entry points that Actions call and one-line test fixture helpers are not findings; text carried through one module's own exports is not a finding.",
   },
   {
-    name: "cramming",
-    asks: "each `## Done when` sentence that asks for more than one behaviour, quoting the sentence and naming each behaviour it packs in.",
+    name: "done when",
+    asks: "each `## Done when` sentence the diff does not hold, quoting the sentence and naming what it still lacks.",
   },
   {
     name: "beyond the ask",

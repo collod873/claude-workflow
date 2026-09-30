@@ -8,7 +8,7 @@ const REPO = resolve(import.meta.dirname, "..");
 const NOISE = "a line a tool prints that nobody needed to read\n".repeat(40).trim();
 const URL = "https://github.com/collod873/claude-workflow/pull/1";
 const FILED = `printf '%s\\n' ${URL}\n`;
-const NOTHING_METERED = { depth: [], cramming: [], beyond_the_ask: [], hollow_test: [], lost_limit: [] };
+const NOTHING_METERED = { depth: [], done_when: [], beyond_the_ask: [], hollow_test: [], lost_limit: [] };
 const NOTE_CALL = ["note", "--title", "What the audit found", "--body-file", "body.md"];
 
 interface Scenario {
