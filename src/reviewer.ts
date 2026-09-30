@@ -19,7 +19,10 @@ const TOOLS = ["Read", "Grep", "Glob"];
 export const NO_EM_DASH = "^[^\\u2014]*$";
 export const PLAIN_WORDS = "^(?:(?!`|/|[\\w-]+\\.[A-Za-z]{1,8}\\b)[\\s\\S])*$";
 const foundDrift = (ticket: string) => `The reviewer read this PR against the Why of #${ticket} and found drift.`;
-export const earlierDrift = (ticket: string, comments: string[]) => comments.filter((comment) => comment.startsWith(foundDrift(ticket))).join("\n\n");
+const foundOverlap = (ticket: string) => `The reviewer read this PR for #${ticket} against what merged to main since its last judgement and found overlap.`;
+const foundNoOverlap = (ticket: string) => `The reviewer read this PR for #${ticket} against what merged to main since its last judgement and found no overlap.`;
+const drifted = (ticket: string, comment: string) => comment.startsWith(foundDrift(ticket)) || comment.startsWith(foundOverlap(ticket));
+export const earlierDrift = (ticket: string, comments: string[]) => comments.filter((comment) => drifted(ticket, comment)).join("\n\n");
 
 function fingerprintOf(diff: string, body: string): string {
   const args = ["patch-id", "--stable"];
@@ -32,13 +35,22 @@ const fingerprintLine = (fingerprint: string) => `Fingerprint: \`${fingerprint}\
 export const FINGERPRINT = /Fingerprint: `([^`]+)`/;
 const headLine = (head: string) => `Head: \`${head}\``;
 const HEAD_LINE = /^Head: `([0-9a-f]{40,64})`$/m;
+const mainLine = (main: string) => `Main: \`${main}\``;
+const MAIN_LINE = /^Main: `([0-9a-f]{40,64})`$/m;
+const stamped = (fingerprint: string, main: string | undefined, head?: string) => [fingerprintLine(fingerprint), ...(main === undefined ? [] : [mainLine(main)]), ...(head === undefined ? [] : [headLine(head)])];
 
-function lastJudgement(ticket: string, comments: string[]): { fingerprint: string; verdict: "match" | "drift" } | undefined {
-  let found: { fingerprint: string; verdict: "match" | "drift" } | undefined;
+interface Judgement {
+  fingerprint: string;
+  verdict: "match" | "drift";
+  main?: string;
+}
+
+function lastJudgement(ticket: string, comments: string[]): Judgement | undefined {
+  let found: Judgement | undefined;
   for (const comment of comments) {
     const fingerprint = FINGERPRINT.exec(comment)?.[1];
     if (fingerprint === undefined) continue;
-    found = { fingerprint, verdict: comment.startsWith(foundDrift(ticket)) ? "drift" : "match" };
+    found = { fingerprint, verdict: drifted(ticket, comment) ? "drift" : "match", main: MAIN_LINE.exec(comment)?.[1] };
   }
   return found;
 }
@@ -59,8 +71,8 @@ function ownerWords(body: string): string[] {
   return read.status === 0 ? ownerQuotes(read.stdout) : [`The owner's words on #${parent} could not be read.`];
 }
 
-function readbackText(body: string, account: string, fingerprint: string): string {
-  return [fingerprintLine(fingerprint), "", ...ownerWords(body), "", account, "", "Did this build what you meant, yes or no?"].join("\n");
+function readbackText(body: string, account: string, fingerprint: string, main: string | undefined): string {
+  return [...stamped(fingerprint, main), "", ...ownerWords(body), "", account, "", "Did this build what you meant, yes or no?"].join("\n");
 }
 
 const VERDICT = {
@@ -86,6 +98,30 @@ const VERDICT = {
   required: ["verdict", "gaps", "readback"],
   additionalProperties: false,
 };
+
+const SINCE = {
+  type: "object",
+  properties: { finds: { type: "array", items: { type: "string", pattern: NO_EM_DASH } } },
+  required: ["finds"],
+  additionalProperties: false,
+};
+
+const isSince = (answer: unknown): answer is { finds: string[] } => Array.isArray((answer as { finds?: unknown } | undefined)?.finds);
+
+export function handedSince(body: string, diff: string, merged: string, landed: string): string {
+  return [
+    "This PR matched the `## Why` below at its last review. Since then main gained what is under `## Merged since`, and the PR was brought up to date with it. Judge only that. Change nothing; read the repo if the diff is unclear.",
+    capped(body, TICKET_CAP),
+    "## This PR's diff",
+    handedDiff(diff),
+    "## Merged since",
+    capped(merged, LIST_CAP),
+    handedDiff(landed),
+    "## Your finds",
+    "`finds`: each place this PR duplicates what merged, gives a second name to one thing, or clashes with it, naming which of the two to keep. Each goes to the PR's builder to act on. None if there is none.",
+    "",
+  ].join("\n\n");
+}
 
 interface Later {
   gap: string;
@@ -171,18 +207,21 @@ function judged(prompt: string, pr: string): Verdict | string {
   return isVerdict(spent.answer) ? spent.answer : `the reviewer gave no verdict: ${firstLine(spent.stdout)}`;
 }
 
-function judgement(ticket: string, gaps: string[], fingerprint: string, head: string | undefined): string {
+function judgement(found: string, gaps: string[], stamp: string[]): string {
   const named = gaps.length === 0 ? ["- the reviewer ruled drift and named no gap"] : gaps.map((gap) => `- ${gap}`);
-  return [foundDrift(ticket), "", ...named, "", fingerprintLine(fingerprint), ...(head === undefined ? [] : [headLine(head)]), ""].join("\n");
+  return [found, "", ...named, "", ...stamp, ""].join("\n");
 }
 
-function headNow(): string | undefined {
-  const got = git(["rev-parse", "HEAD"]);
+function gitLine(args: string[]): string | undefined {
+  const got = git(args);
   return got.status === 0 ? got.stdout.trim() : undefined;
 }
 
+const headNow = () => gitLine(["rev-parse", "HEAD"]);
+const mainNow = () => gitLine(["merge-base", "origin/main", "HEAD"]);
+
 function judgedHead(ticket: string, comments: string[]): string | undefined {
-  const drifts = comments.filter((comment) => comment.startsWith(foundDrift(ticket)));
+  const drifts = comments.filter((comment) => drifted(ticket, comment));
   return HEAD_LINE.exec(drifts.at(-1) ?? "")?.[1];
 }
 
@@ -244,6 +283,43 @@ export function ticketPr(pr: string, said: string): { ticket: string; body: stri
   return typeof found === "object" ? { ticket, ...found } : found;
 }
 
+interface Judging {
+  pr: string;
+  ticket: string;
+  said: string;
+  fingerprint: string;
+}
+
+function movedUnder({ pr, ticket, said, fingerprint }: Judging): { ended: Stop | undefined } | undefined {
+  const now = bodyAndDiff(pr, ticket, said);
+  if (typeof now !== "object") return { ended: now };
+  if (fingerprintOf(now.diff, now.body) === fingerprint) return undefined;
+  console.log(`${said} writes nothing, a newer run judges #${ticket}: the PR moved under it while its model answered`);
+  return { ended: undefined };
+}
+
+function reviewedSince(judging: Judging & { body: string; diff: string }, from: string, to: string): Stop | undefined {
+  const { pr, ticket, said, fingerprint } = judging;
+  const merged = gitLine(["log", "--first-parent", "--format=- %s", `${from}..${to}`]);
+  const landed = gitLine(["diff", from, to]);
+  if (merged === undefined || landed === undefined) return stoppedAt("unread", `${said} ended red, what merged to main since its last judgement could not be read, so no model was spent`);
+  const spent = answered({ name: "reviewer", bin: "review", answers: SINCE }, handedSince(judging.body, judging.diff, merged, landed), pr);
+  if (typeof spent === "string") return stoppedAt("modelRun", `${said} ended red, ${spent}`);
+  if (!isSince(spent.answer)) return stoppedAt("modelRun", `${said} ended red, the reviewer gave no finds: ${firstLine(spent.stdout)}`);
+  const moved = movedUnder(judging);
+  if (moved !== undefined) return moved.ended;
+  const { finds } = spent.answer;
+  if (finds.length === 0) {
+    const posted = post({ kind: "judgement", pr, text: [foundNoOverlap(ticket), "", ...stamped(fingerprint, to), ""].join("\n") }, gh);
+    console.log(`${said} overlaps nothing merged to main since its last judgement on #${ticket}: ${posted.said || quoted(posted.refusals[0] ?? "")}`);
+    return undefined;
+  }
+  const posted = post({ kind: "judgement", pr, text: judgement(foundOverlap(ticket), finds, stamped(fingerprint, to, headNow())) }, gh);
+  const [refusal] = posted.refusals;
+  if (refusal !== undefined) return stoppedAt("drift", `${said} overlaps what merged to main since its last judgement on #${ticket}, and its judgement was refused: ${quoted(refusal)}`);
+  return stoppedAt("drift", `${said} overlaps what merged to main since its last judgement on #${ticket}, ${finds.length} finds posted: ${posted.said}`);
+}
+
 function review(pr: string): Stop | undefined {
   const said = `review: #${pr}`;
   const read = ticketPr(pr, said);
@@ -254,6 +330,10 @@ function review(pr: string): Stop | undefined {
   const fingerprint = fingerprintOf(diff, body);
   const past = lastJudgement(ticket, onPr);
   if (past?.fingerprint === fingerprint) {
+    const main = mainNow();
+    if (past.verdict === "match" && past.main !== undefined && main !== undefined && past.main !== main) {
+      return reviewedSince({ pr, ticket, body, diff, said, fingerprint }, past.main, main);
+    }
     if (past.verdict === "match") {
       console.log(`${said} reuses its last judgement on #${ticket}, a match, hiring no model`);
       return undefined;
@@ -263,26 +343,23 @@ function review(pr: string): Stop | undefined {
   const turns = commentsOn(ticket, gh);
   if (turns === undefined) return stoppedAt("unread", `${said} ended red, the comments on #${ticket} could not be read, so no model was spent`);
   const head = headNow();
+  const main = mainNow();
   const earlier = earlierDrift(ticket, onPr);
   const since = judgedHead(ticket, onPr);
   const after = earlier === "" ? undefined : { earlier, fix: (since === undefined ? undefined : fixSince(since)) ?? diff };
   const verdict = judged(handedOn(body, diff, after), pr);
   if (typeof verdict === "string") return stoppedAt("modelRun", `${said} ended red, ${verdict}`);
-  const now = bodyAndDiff(pr, ticket, said);
-  if (typeof now !== "object") return now;
-  if (fingerprintOf(now.diff, now.body) !== fingerprint) {
-    console.log(`${said} writes nothing, a newer run judges #${ticket}: the PR moved under it while its model answered`);
-    return undefined;
-  }
+  const moved = movedUnder({ pr, ticket, said, fingerprint });
+  if (moved !== undefined) return moved.ended;
   const blocking = after === undefined ? [...verdict.gaps, ...(verdict.later ?? []).map(({ gap }) => gap)] : verdict.gaps;
   const recorded = recordedLater(ticket, body, after === undefined ? [] : (verdict.later ?? []), turns);
   if (verdict.verdict === "match") {
-    const posted = post({ kind: "judgement", pr, text: readbackText(body, verdict.readback, fingerprint) }, gh);
+    const posted = post({ kind: "judgement", pr, text: readbackText(body, verdict.readback, fingerprint, main) }, gh);
     const [refusal] = posted.refusals;
     console.log(`${said} matches the Why of #${ticket}${recorded}, ${refusal === undefined ? `its readback posted: ${posted.said}` : `its readback was refused: ${quoted(refusal)}`}`);
     return undefined;
   }
-  const posted = post({ kind: "judgement", pr, text: judgement(ticket, blocking, fingerprint, head) }, gh);
+  const posted = post({ kind: "judgement", pr, text: judgement(foundDrift(ticket), blocking, stamped(fingerprint, main, head)) }, gh);
   const [refusal] = posted.refusals;
   if (refusal !== undefined) return stoppedAt("drift", `${said} drifts from the Why of #${ticket}, and its judgement was refused: ${quoted(refusal)}${recorded}`);
   return stoppedAt("drift", `${said} drifts from the Why of #${ticket}, ${blocking.length} gaps posted: ${posted.said}${recorded}`);

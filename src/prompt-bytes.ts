@@ -4,7 +4,7 @@ import { handedOn as coldReaderHandedOn, SPEC_CAP } from "./cold-reader.ts";
 import { CHECK_CAP, handedOn as builderHandedOn, repaired, TAIL_CAP } from "./builder.ts";
 import { handedOn as meterReviewerHandedOn } from "./meter-reviewer.ts";
 import { handedOn as researcherHandedOn, NOTE_CAP, OUT_OF_TIME } from "./researcher.ts";
-import { DIFF_CAP, handedOn as reviewerHandedOn, LIST_CAP, TICKET_CAP } from "./reviewer.ts";
+import { DIFF_CAP, handedOn as reviewerHandedOn, handedSince, LIST_CAP, TICKET_CAP } from "./reviewer.ts";
 
 const HIRES = /(spawn|execFile)\w*\(\s*"claude"/;
 const STAGED = /from "\.\/stage\.ts"/;
@@ -33,6 +33,13 @@ export const PROMPTS: Prompt[] = [
     cap: 2 * TICKET_CAP + 2 * DIFF_CAP + 2 * LIST_CAP + HANDED_ON,
     slots: ["body", "diff", "earlier", "fix"],
     build: (filled) => reviewerHandedOn(filled.body ?? "", filled.diff ?? "", { earlier: filled.earlier ?? "", fix: filled.fix ?? "" }),
+  },
+  {
+    name: "reviewer since main moved",
+    file: "src/reviewer.ts",
+    cap: TICKET_CAP + 2 * DIFF_CAP + 3 * LIST_CAP + HANDED_ON,
+    slots: ["body", "diff", "merged", "landed"],
+    build: (filled) => handedSince(filled.body ?? "", filled.diff ?? "", filled.merged ?? "", filled.landed ?? ""),
   },
   {
     name: "meter reviewer",
