@@ -53,13 +53,8 @@ The whole statement of a piece of work, filed as an issue labelled `spec`. One s
 a spec in a file or a conversation has not been published yet.
 _Avoid_: PRD document, requirements doc, brief
 
-**Cold read**:
-The stage that reads a filed spec, says what it would build and where it had to choose, and posts
-its guesses on the spec as one batch of questions for the owner.
-_Avoid_: critic, spec review, grill
-
 **Slicer**:
-The stage that turns a spec the owner has answered into tickets under it, one wave at a time. It
+The stage that turns a filed spec into tickets under it, one wave at a time. It
 settles in the spec the names the wave's tickets share, and when a wave's last ticket closes, it
 slices the next against the spec and what that wave found.
 _Avoid_: splitter, decomposer, to-tickets, planner

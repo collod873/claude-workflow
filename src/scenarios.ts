@@ -37,13 +37,14 @@ const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !n
 const OWNER = "collod873";
 const MACHINE = "collod873-machine[bot]";
 
-interface WorkflowStep {
+export interface WorkflowStep {
+  uses?: string;
   run?: string;
   with?: Record<string, unknown>;
   env?: Record<string, unknown>;
 }
 
-export interface WorkflowJob {
+interface WorkflowJob {
   if?: string;
   permissions?: Record<string, string>;
   steps: WorkflowStep[];
@@ -189,7 +190,7 @@ export const wellFormedNote = ["## Why", "", "Three passes over the standards le
 export const wellFormedSpec = [
   "## Problem Statement",
   "",
-  'The owner, in session: "a spec is filed once, so the cold read and the slicer share one document".',
+  'The owner, in session: "a spec is filed once, so the slicer and the done check share one document".',
   "",
   "## Solution",
   "",
@@ -209,7 +210,7 @@ export const wellFormedSpec = [
   "",
   "## Out of Scope",
   "",
-  "The cold read and the slicer.",
+  "The slicer and the done check.",
   "",
   "## Further Notes",
   "",
@@ -909,25 +910,6 @@ export function researching({
   return {
     ...stage,
     run: (...args: string[]) => execute(join(BIN, "research"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}`, RESEARCH_SOURCES: sources, STAGE_MINUTES: readsPastCap ? "40" : "" }, args.length > 0 ? args : ["902"]),
-  };
-}
-
-export const COLD_READ_POSTED = "https://github.com/collod873/claude-workflow/issues/968#issuecomment-1";
-
-export function coldReading({
-  labels = ["spec"],
-  title = "A spec worth a cold read",
-  body = wellFormedSpec,
-  build = "A cold reader that hires one opus stage to read a filed spec, and posts what it would build.",
-  choices = [] as { guess: string; why: string }[],
-  gh = "",
-}: { labels?: string[]; title?: string; body?: string; build?: string; choices?: { guess: string; why: string }[]; gh?: string } = {}) {
-  const { root, argv, ...stage } = issueStage("cold-read-", { title, body, labels: labels.map((name) => ({ name })) }, { build, choices }, COLD_READ_POSTED, gh);
-  return {
-    ...stage,
-    edits: () => argv().filter((args) => args[1] === "edit"),
-    closes: () => argv().filter((args) => args[1] === "close"),
-    run: (...args: string[]) => execute(join(BIN, "cold-read"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, args.length > 0 ? args : ["968"]),
   };
 }
 

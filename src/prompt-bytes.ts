@@ -1,6 +1,5 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { handedOn as coldReaderHandedOn, SPEC_CAP } from "./cold-reader.ts";
 import { CHECK_CAP, handedOn as builderHandedOn, repaired, TAIL_CAP } from "./builder.ts";
 import { handedOn as meterReviewerHandedOn } from "./meter-reviewer.ts";
 import { handedOn as researcherHandedOn, NOTE_CAP, OUT_OF_TIME } from "./researcher.ts";
@@ -77,13 +76,6 @@ export const PROMPTS: Prompt[] = [
     build: (filled) => researcherHandedOn(filled.title ?? "", filled.body ?? "", filled.sources ?? ""),
   },
   { name: "researcher out of time", file: "src/researcher.ts", cap: HANDED_ON, slots: [], build: () => OUT_OF_TIME },
-  {
-    name: "cold reader",
-    file: "src/cold-reader.ts",
-    cap: SPEC_CAP + HANDED_ON,
-    slots: ["title", "body"],
-    build: (filled) => coldReaderHandedOn(filled.title ?? "", filled.body ?? ""),
-  },
 ];
 
 function ownWords(prompt: Prompt): number {
