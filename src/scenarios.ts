@@ -455,6 +455,9 @@ function listed(pr: QueuedPr, head: string) {
   };
 }
 
+const CLOSE_RUN_ID = "36740874094";
+export const CLOSE_RUN = `https://github.com/collod873/claude-workflow/actions/runs/${CLOSE_RUN_ID}`;
+
 export function closing({
   ticket = "812",
   ticketBody = CLOSER_TICKET,
@@ -556,6 +559,9 @@ export function closing({
           PATH: `${join(root, "bin")}:${process.env.PATH}`,
           GH_TOKEN: "app",
           QUIET_GH_TOKEN: "quiet",
+          GITHUB_SERVER_URL: "https://github.com",
+          GITHUB_REPOSITORY: "collod873/claude-workflow",
+          GITHUB_RUN_ID: CLOSE_RUN_ID,
         },
         afterCheck ? ["queue"] : [],
       ),
