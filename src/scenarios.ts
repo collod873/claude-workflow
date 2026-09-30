@@ -33,7 +33,7 @@ export interface Run {
 const SRC = import.meta.dirname;
 const BIN = join(SRC, "..", "bin");
 const WORKFLOWS = join(SRC, "..", ".github", "workflows");
-const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_") && !name.startsWith("VITEST") && name !== "AGENT_HOOKS_SETTINGS"));
+const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_") && !name.startsWith("VITEST") && name !== "AGENT_HOOKS_SETTINGS" && name !== "REASON"));
 const OWNER = "collod873";
 const MACHINE = "collod873-machine[bot]";
 
