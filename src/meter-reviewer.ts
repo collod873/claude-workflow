@@ -2,7 +2,6 @@ import { capped } from "./brief.ts";
 import { gh } from "./post.ts";
 import { answered, handedDiff, NO_EM_DASH, TICKET_CAP, ticketPr } from "./reviewer.ts";
 import { exitFor, stoppedAt, type Stop } from "./stops.ts";
-import { doneWhen, why } from "./ticket-shape.ts";
 
 export const METERS = [
   {
@@ -41,10 +40,7 @@ const ANSWERS = {
 export function handedOn(body: string, diff: string): string {
   return [
     "Read this ticket PR for each meter below. Change nothing and rule on nothing else: another stage judges whether it builds the Why. Read the repo if the diff is unclear.",
-    "## Why",
-    capped(why(body), TICKET_CAP),
-    "## Done when",
-    capped(doneWhen(body), TICKET_CAP),
+    capped(body, TICKET_CAP),
     "## Diff",
     handedDiff(diff),
     "## Meters",

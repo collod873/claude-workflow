@@ -5,7 +5,9 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { askingBash, cloned, EARLY_REPAIR, fenceSays, fileDiff, BUILDER_LINE, flagValue, FROM_MAIN, git, JUDGED_GAP, JUDGEMENT, plant, RESOLVED, REVIEWED_TICKET, reviewing, scratch } from "./scenarios.ts";
-import { NO_EM_DASH, PLAIN_WORDS } from "./reviewer.ts";
+import { capped } from "./brief.ts";
+import { METERS } from "./meter-reviewer.ts";
+import { NO_EM_DASH, PLAIN_WORDS, TICKET_CAP } from "./reviewer.ts";
 import { doneWhen, ticketRefusals } from "./ticket-shape.ts";
 
 const WORKFLOW = join(import.meta.dirname, "..", ".github", "workflows", "check.yml");
@@ -36,6 +38,18 @@ describe("bin/review reads a green ticket PR against its Why before it merges (#
     expect(handed()).toContain("a green build is read against what was meant before it merges");
     expect(handed()).toContain("A drift verdict posts every gap");
     expect(handed()).toContain("+export const reviewed = 1;");
+  });
+
+  it("hands the reviewer and the meter reviewer the whole ticket body, a heading past its Why and Done when included, cut at the builder's cap (#1006)", () => {
+    const body = `${REVIEWED_TICKET}\n## Context\n\nthe filer's note under its own heading\n\n${"z".repeat(TICKET_CAP)}a line past the cap\n`;
+    for (const bin of ["review", "meters"] as const) {
+      const { run, handed } = bin === "review" ? reviewing({ body }) : reviewing({ bin, body, verdict: Object.fromEntries(METERS.map(({ name }) => [name.replaceAll(" ", "_"), []])) });
+
+      expect(run().status).toBe(0);
+      expect(handed()).toContain(capped(body, TICKET_CAP));
+      expect(handed()).toContain("the filer's note under its own heading");
+      expect(handed()).not.toContain("a line past the cap");
+    }
   });
 
   it("hands the diff cut at the cap and the list of every changed file when the whole is over the diff cap", () => {
