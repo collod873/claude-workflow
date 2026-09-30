@@ -76,11 +76,20 @@ const blankLinesTrimmed = (text: string): string => text.replace(/^(?:[ \t]*\r?\
 
 export const filedOutOfScope = (body: string): string => blankLinesTrimmed(section(body, OUT_OF_SCOPE));
 
-export const filedPassages = (body: string): string[] =>
-  section(body, PROBLEM_STATEMENT)
-    .split(/\r?\n[ \t]*\r?\n/)
-    .filter((passage) => passage.trim() !== "")
-    .map(blankLinesTrimmed);
+export interface Passage {
+  text: string;
+  after: string;
+}
+
+export function filedPassages(body: string): Passage[] {
+  const pieces = section(body, PROBLEM_STATEMENT).split(/(\r?\n(?:[ \t]*\r?\n)+)/);
+  const passages: Passage[] = [];
+  for (let at = 0; at < pieces.length; at += 2) {
+    const text = pieces[at] ?? "";
+    if (text.trim() !== "") passages.push({ text: blankLinesTrimmed(text), after: pieces[at + 1] ?? "" });
+  }
+  return passages;
+}
 
 function restoredSection(read: string, written: string, heading: RegExp): string {
   const found = heading.exec(written);

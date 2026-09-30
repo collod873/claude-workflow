@@ -6,7 +6,7 @@ import { askedIssue, commentOnTicket, gh, post } from "./post.ts";
 import { LIST_CAP, NO_EM_DASH, TICKET_CAP } from "./reviewer.ts";
 import { hired, machineLogs, type Spent } from "./stage.ts";
 import { exitFor, stoppedAt, type Stop } from "./stops.ts";
-import { DONE_SENTENCES, filedOutOfScope, filedPassages, quoted, restored, sectionsDropped, SPEC_CAP, specRefusals, ticketRefusals } from "./ticket-shape.ts";
+import { DONE_SENTENCES, filedOutOfScope, filedPassages, type Passage, quoted, restored, sectionsDropped, SPEC_CAP, specRefusals, ticketRefusals } from "./ticket-shape.ts";
 
 const SPEC_LABEL = "spec";
 const NEEDS_HUMAN = "needs-human";
@@ -55,7 +55,7 @@ export function handedOn(title: string, body: string): string {
     "## The spec",
     spec,
     "## Its Problem Statement, passage by passage",
-    filedPassages(spec).map((passage, at) => `${at + 1}. ${passage}`).join("\n\n") || "(none)",
+    filedPassages(spec).map(({ text }, at) => `${at + 1}. ${text}`).join("\n\n") || "(none)",
     "## Your answer",
     "`spec`: the spec rewritten in full. Settle under `### Names the tickets share` in `## Implementation Decisions` each name two tickets both need, a label, a path, a command or a key, and write each pick you made where the spec was silent where it belongs. Keep `## Problem Statement` and `## Out of Scope` under their headings: code puts back the owner's bytes as filed.",
     `\`tickets\`: the first wave, each building at once beside the others and none waiting on another. \`title\`; \`passages\`, the numbers of the Problem Statement passages its \`## Why\` quotes, which code copies in; \`why\`, what this ticket is for in the spec, which follows the quote; \`done\`, ${DONE_SENTENCES}. Code adds the spec's Out of Scope to each. A ticket over the builder's brief cap of ${TICKET_CAP} bytes comes back to you to split.`,
@@ -66,10 +66,17 @@ export function handedOn(title: string, body: string): string {
 export const sentBack = (refusals: string[]): string =>
   ["Code refused your wave, so nothing is filed yet:", capped(refusals.map((refusal) => `- ${refusal}`).join("\n"), LIST_CAP), "Answer again in full: the rewritten `spec` and every ticket of the wave.", ""].join("\n\n");
 
-function ticketBody(spec: string, passages: string[], piece: Piece): string {
+const PASSAGE_BREAK = "\n\n";
+
+function quote(passages: Passage[], picked: number[]): string {
+  const quoted = picked.map((at) => passages[at - 1] ?? { text: "", after: "" });
+  return quoted.map(({ text, after }, at) => (at === quoted.length - 1 ? text : text + (after || PASSAGE_BREAK))).join("");
+}
+
+function ticketBody(spec: string, passages: Passage[], piece: Piece): string {
   return [
     "## Why",
-    ...piece.passages.map((at) => passages[at - 1] ?? ""),
+    quote(passages, piece.passages),
     piece.why.trim(),
     "## Done when",
     piece.done.map((sentence) => `- ${sentence.trim()}`).join("\n"),

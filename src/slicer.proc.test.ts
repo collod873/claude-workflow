@@ -130,8 +130,18 @@ describe("bin/slice turns a filed spec into its first wave of tickets under it, 
 
     expect(sliced.run().status).toBe(0);
     const [first = ""] = sliced.filed().map(({ body: filed }) => filed);
-    expect(first).toContain(`## Why\n\n${ATTRIBUTION}\n\n${passage}\n\n`);
+    expect(first).toContain(`## Why\n\n${ATTRIBUTION}\r\n\r\n${passage}\n\n`);
     expect(first).toContain(`## Out of Scope\n\n${SPEC_OUT_OF_SCOPE.replaceAll("\n", "\r\n")}\n`);
+  });
+
+  it("joins the passages a ticket quotes with the separator the owner filed after each, CRLF and a blank line holding spaces included (#1027)", () => {
+    const body = SPEC.replace(`${ATTRIBUTION}\n\n${WAVES}\n\n`, `${ATTRIBUTION}\n \t\n${WAVES}\n\n\n`).replaceAll("\n", "\r\n");
+    const sliced = slicing({ body, answers: [wave([piece("File the spec kind", [1, 2]), piece("Read the spec kind", [1, 3])])] });
+
+    expect(sliced.run().status).toBe(0);
+    const [adjacent = "", apart = ""] = sliced.filed().map(({ body: filed }) => filed);
+    expect(adjacent).toContain(`## Why\n\n${ATTRIBUTION}\r\n \t\r\n${WAVES}\n\nWave 1`);
+    expect(apart).toContain(`## Why\n\n${ATTRIBUTION}\r\n \t\r\n${WATCHING}\n\nWave 1`);
   });
 
   it("refuses an issue not labelled spec without spending a model, and anything but one issue number", () => {
