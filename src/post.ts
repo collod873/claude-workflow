@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { text as read } from "node:stream/consumers";
 import { emDashLines } from "./em-dash.ts";
-import { matchEnd, noteRefusals, rewriteRefusals, specRefusals, ticketRefusals } from "./ticket-shape.ts";
+import { NOTE_SHAPE, SPEC_SHAPE, TICKET_SHAPE, matchEnd, noteRefusals, rewriteRefusals, specRefusals, ticketRefusals } from "./ticket-shape.ts";
 
 export interface Posting {
   kind: string;
@@ -20,10 +20,12 @@ interface Kind {
   refuses: (text: string) => string[];
   on: "title" | "pr";
   args: (on: string, text: string) => string[];
+  shape?: string;
 }
 
-const filed = (refuses: (text: string) => string[], label: string[]): Kind => ({
+const filed = (refuses: (text: string) => string[], label: string[], shape: string): Kind => ({
   refuses,
+  shape,
   on: "title",
   args: (title, text) => ["issue", "create", "--title", title, ...label, "--body", text],
 });
@@ -33,10 +35,10 @@ const judgementRefusals = (text: string): string[] => emDashLines(text).map((lin
 export const RESEARCH = "research";
 
 const KINDS: Record<string, Kind> = {
-  ticket: filed(ticketRefusals, []),
-  note: filed(noteRefusals, ["--label", "note"]),
-  research: filed(noteRefusals, ["--label", "note", "--label", RESEARCH]),
-  spec: filed(specRefusals, ["--label", "spec"]),
+  ticket: filed(ticketRefusals, [], TICKET_SHAPE),
+  note: filed(noteRefusals, ["--label", "note"], NOTE_SHAPE),
+  research: filed(noteRefusals, ["--label", "note", "--label", RESEARCH], NOTE_SHAPE),
+  spec: filed(specRefusals, ["--label", "spec"], SPEC_SHAPE),
   judgement: { refuses: judgementRefusals, on: "pr", args: (pr, text) => ["pr", "comment", pr, "--body", text] },
 };
 
@@ -123,6 +125,12 @@ function prepared(posting: Posting): { refusals: string[]; args: string[] } {
   return refused.length > 0 ? { refusals: refused, args: [] } : { refusals: [], args: shape.args(on, text) };
 }
 
+function shapesFiled(): string[] {
+  const kindsOf = new Map<string, string[]>();
+  for (const [kind, { shape }] of Object.entries(KINDS)) if (shape !== undefined) kindsOf.set(shape, [...(kindsOf.get(shape) ?? []), kind]);
+  return [...kindsOf].map(([shape, kinds]) => `${kinds.join(", ")}: ${shape}`);
+}
+
 export const postRefusals = (posting: Posting): string[] => prepared(posting).refusals;
 
 export function post(posting: Posting, gh: Gh): { refusals: string[]; said: string } {
@@ -133,6 +141,10 @@ export function post(posting: Posting, gh: Gh): { refusals: string[]; said: stri
 if (import.meta.main) {
   const [kind, title, sessionId] = process.argv.slice(2);
   if (kind === undefined) throw new Error("no kind of posting in the arguments to post");
+  if (kind === "--help") {
+    console.log(shapesFiled().join("\n"));
+    process.exit(0);
+  }
   const { refusals, said } = post({ kind, text: await read(process.stdin), title, sessionId }, gh);
   for (const refusal of refusals) console.error(refusal);
   if (said !== "") console.log(said);

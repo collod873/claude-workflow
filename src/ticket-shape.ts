@@ -1,15 +1,28 @@
 import { emDashLines } from "./em-dash.ts";
 
-const WHY = /^##[ \t]+Why[ \t]*$/m;
-const DONE_WHEN = /^##[ \t]+Done when[ \t]*$/m;
-const PROBLEM_STATEMENT = /^##[ \t]+Problem Statement[ \t]*$/m;
-const SOLUTION = /^##[ \t]+Solution[ \t]*$/m;
-const USER_STORIES = /^##[ \t]+User Stories[ \t]*$/m;
-const IMPLEMENTATION_DECISIONS = /^##[ \t]+Implementation Decisions[ \t]*$/m;
-const TESTING_DECISIONS = /^##[ \t]+Testing Decisions[ \t]*$/m;
-const OUT_OF_SCOPE = /^##[ \t]+Out of Scope[ \t]*$/m;
-const FURTHER_NOTES = /^##[ \t]+Further Notes[ \t]*$/m;
-const SENTENCES = /^##[ \t]+I[’']ll know it works when I can[ \t]*$/m;
+const NAMED = {
+  why: "Why",
+  doneWhen: "Done when",
+  problem: "Problem Statement",
+  solution: "Solution",
+  stories: "User Stories",
+  decisions: "Implementation Decisions",
+  testing: "Testing Decisions",
+  outOfScope: "Out of Scope",
+  furtherNotes: "Further Notes",
+  sentences: "I'll know it works when I can",
+} as const;
+const heading = (name: string): RegExp => new RegExp(`^##[ \\t]+${name.replace("'", "[’']")}[ \\t]*$`, "m");
+const WHY = heading(NAMED.why);
+const DONE_WHEN = heading(NAMED.doneWhen);
+const PROBLEM_STATEMENT = heading(NAMED.problem);
+const SOLUTION = heading(NAMED.solution);
+const USER_STORIES = heading(NAMED.stories);
+const IMPLEMENTATION_DECISIONS = heading(NAMED.decisions);
+const TESTING_DECISIONS = heading(NAMED.testing);
+const OUT_OF_SCOPE = heading(NAMED.outOfScope);
+const FURTHER_NOTES = heading(NAMED.furtherNotes);
+const SENTENCES = heading(NAMED.sentences);
 const NEXT_HEADING = /^##[ \t]/m;
 const ITEM = /^[ \t]*-[ \t]*\[[ xX]\][ \t]*/;
 const BULLET = /^[ \t]*-(?:[ \t]*\[[ xX]\])?[ \t]+/;
@@ -21,6 +34,13 @@ const NUMBERED_ITEM = /^[ \t]*\d+[.)][ \t]/m;
 const FEWEST = 1;
 const MOST = 3;
 const QUOTE = 80;
+
+export const TICKET_SHAPE = `## ${NAMED.why}, quoting the owner in "..." or a > line; ## ${NAMED.doneWhen}, ${FEWEST} to ${MOST} '- ' sentences saying what done looks like`;
+export const NOTE_SHAPE = `## ${NAMED.why}, saying why it is worth keeping`;
+export const SPEC_SHAPE = [
+  `## ${NAMED.problem} quoting the owner, ## ${NAMED.solution}, ## ${NAMED.stories} numbered, ## ${NAMED.decisions} naming no file paths,`,
+  `  ## ${NAMED.testing}, ## ${NAMED.outOfScope}, ## ${NAMED.furtherNotes}, and last ## ${NAMED.sentences}, as '- [ ]' items`,
+].join("\n");
 
 export function matchEnd(found: RegExpMatchArray): number {
   const [whole] = found;
