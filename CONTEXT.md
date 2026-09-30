@@ -60,8 +60,9 @@ slices the next against the spec and what that wave found.
 _Avoid_: splitter, decomposer, to-tickets, planner
 
 **Wave**:
-The tickets under one spec that are open at once and build side by side. Only the current wave is
-tickets; the rest is still the spec.
+The tickets under one spec that are open at once and build side by side. The tickets in one wave
+touch different parts, so none edits a file another edits. Only the current wave is tickets; the
+rest is still the spec.
 _Avoid_: batch, phase, sprint, round
 
 **Done check**:
@@ -82,5 +83,7 @@ _Avoid_: idea, bug, backlog item, memo
 
 **Stage**:
 One agent process in a pipeline run, with no memory of other stages. Not an Actions job or step: a
-stage is a context boundary and they are not.
+stage is a context boundary and they are not. Each stage declares its part row, prompt caps and
+quiet-output scenarios in its own part file, `src/<stage>.part.ts`, and its own stops in its own
+code; every growth limit finds them by scanning, so no two stages share a list.
 _Avoid_: phase, pass, step, job
