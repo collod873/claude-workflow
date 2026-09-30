@@ -326,6 +326,38 @@ describe("bin/close merges machine PRs one at a time, bringing only the oldest g
     expect(calls().some((call) => call.startsWith("pr\ncomment\n935\n"))).toBe(false);
   });
 
+  it("tries again a PR whose update failed at its head for a passing reason, not a conflict, and wakes no builder for it (#1014)", () => {
+    const { calls, run } = closing({
+      ticket: "819",
+      openPrs: [
+        { number: "938", ticket: "858", refused: "Post \"https://api.github.com/graphql\": dial tcp: i/o timeout", refusedBefore: true },
+        { number: "939", ticket: "859" },
+      ],
+    });
+
+    expect(run().status).toBe(0);
+    expect(updated(calls())).toEqual(["938", "939"]);
+    expect(calls().some((call) => call.startsWith("workflow\nrun\nfix.yml")), "a builder cannot fix a network error").toBe(false);
+    expect(calls().some((call) => call.startsWith("pr\ncomment\n938\n")), "leaves no comment to pile up or count as a failed branch update").toBe(false);
+  });
+
+  it("judges a conflict from git, whatever GitHub's wording, so it wakes the builder and is skipped at its head after (#1014)", () => {
+    const first = closing({ ticket: "819", openPrs: [{ number: "940", ticket: "860", refused: "GraphQL: Something went wrong.", conflicts: true }] });
+    const again = closing({
+      ticket: "819",
+      openPrs: [
+        { number: "941", ticket: "861", refused: "GraphQL: Something went wrong.", conflicts: true, refusedBefore: true },
+        { number: "942", ticket: "862" },
+      ],
+    });
+
+    expect(first.run().status).toBe(0);
+    expect(first.calls().some((call) => call.startsWith("workflow\nrun\nfix.yml") && call.includes("ticket=860"))).toBe(true);
+    expect(first.calls().find((call) => call.startsWith("pr\ncomment\n940\n"))).toMatch(/Head: `[0-9a-f]{40}`/);
+    expect(again.run().status).toBe(0);
+    expect(updated(again.calls())).toEqual(["942"]);
+  });
+
   it("names the PR's head in the conflict it reports, so a later run knows it was already reported", () => {
     const { calls, run } = closing({ ticket: "819", openPrs: [{ number: "937", ticket: "857", refused: CONFLICT }] });
 

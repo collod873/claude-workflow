@@ -172,17 +172,25 @@ function wakeBuilder(ticket: string, reason: string): void {
 
 const headLine = (oid: string) => `Head: \`${oid}\``;
 
-function reportedAtHead(pr: QueuedPr): boolean {
-  return (commentsOn(pr.number, gh) ?? []).some((said) => FAILED_BRANCH_UPDATE.test(said) && said.includes(headLine(pr.headRefOid)));
+const conflicts = (pr: QueuedPr, reason: string) =>
+  /conflict/i.test(reason) || git(["merge-tree", "--write-tree", "--quiet", "origin/main", `origin/${pr.headRefName}`]).status === 1;
+
+function conflictReportedAtHead(pr: QueuedPr): boolean {
+  return (commentsOn(pr.number, gh) ?? []).some((said) => FAILED_BRANCH_UPDATE.test(said) && said.includes(headLine(pr.headRefOid)) && conflicts(pr, said));
 }
 
-function updateBranch({ number, headRefName, headRefOid }: QueuedPr): boolean {
+function updateBranch(pr: QueuedPr): boolean {
+  const { number, headRefName, headRefOid } = pr;
   const updated = gh(["pr", "update-branch", number]);
   if (updated.status === 0) {
     commentOnPr(number, `PR #${number} brought up to date with main by ${thisRun}`, gh);
     return true;
   }
-  const reason = (updated.stderr || updated.stdout).trim().split("\n")[0];
+  const reason = (updated.stderr || updated.stdout).trim().split("\n")[0] || "no reason given";
+  if (!conflicts(pr, reason)) {
+    console.log(`close: PR #${number} could not be brought up to date with main, and will be tried again: ${reason}`);
+    return false;
+  }
   commentOnPr(number, `PR #${number} could not be brought up to date with main: ${reason}\n\n${headLine(headRefOid)}\n\nRun: ${thisRun}`, gh);
   const ticket = TICKET_BRANCH.exec(headRefName)?.[1];
   if (ticket !== undefined) wakeBuilder(ticket, `#${ticket}'s PR #${number} could not be brought up to date with main: ${reason}`);
@@ -196,7 +204,7 @@ function queue(): string {
   const queued = queuedPrs();
   const merging = queued.find((pr) => pr.checks !== "red" && upToDate(pr));
   if (merging !== undefined) return `PR #${merging.number} is up to date with main, so the queue waits for it`;
-  const next = queued.filter((pr) => pr.checks === "green").find((pr) => !reportedAtHead(pr) && updateBranch(pr));
+  const next = queued.filter((pr) => pr.checks === "green").find((pr) => !conflictReportedAtHead(pr) && updateBranch(pr));
   return next === undefined ? "no green PR waits behind main" : `PR #${next.number} brought up to date with main`;
 }
 
