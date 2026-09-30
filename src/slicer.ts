@@ -3,7 +3,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { capped } from "./brief.ts";
 import { FENCED_OPUS } from "./fence.ts";
-import { askedIssue, commentOnTicket, commentsOn, gh, post } from "./post.ts";
+import { askedIssue, commentOnTicket, commentsOn, gh, NEEDS_HUMAN, post } from "./post.ts";
 import { LIST_CAP, NO_EM_DASH, TICKET_CAP } from "./reviewer.ts";
 import { hired, machineLogs, type Spent } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
@@ -19,7 +19,6 @@ const stoppedAt = stopsOf({
 type Stop = ReturnType<typeof stoppedAt>;
 
 const SPEC_LABEL = "spec";
-const NEEDS_HUMAN = "needs-human";
 const TOOLS = ["Read", "Grep", "Glob"];
 const ROUNDS_BACK = 2;
 const FILED = /\/issues\/(\d+)\s*$/;

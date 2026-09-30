@@ -35,6 +35,7 @@ const judgementRefusals = (text: string): string[] => emDashLines(text).map((lin
 
 export const RESEARCH = "research";
 export const WAITING = "waiting";
+export const NEEDS_HUMAN = "needs-human";
 
 const KINDS: Record<string, Kind> = {
   ticket: filed(ticketRefusals, [], TICKET_SHAPE),
