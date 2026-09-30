@@ -197,11 +197,13 @@ function wokenFromSplit(ticket: string, body: string): string {
 }
 
 function close(): Stop | undefined {
-  console.log(`close: ${queue()}`);
-  if (process.argv[2] === "queue") return undefined;
+  const queued = queue();
   const subject = git(["log", "-1", "--format=%s", "HEAD"]).stdout.trim();
-  const ticket = ticketBuilt(subject);
-  if (ticket === undefined) return undefined;
+  const ticket = process.argv[2] === "queue" ? undefined : ticketBuilt(subject);
+  if (ticket === undefined) {
+    console.log(`close: ${queued}`);
+    return undefined;
+  }
   const asked = gh(["issue", "view", ticket, "--json", "body", "--jq", ".body"]);
   if (asked.status !== 0) return stoppedAt("unread", `close: ticket ${ticket} could not be read, so nothing judged it`);
   const pr = prNumber(subject);
