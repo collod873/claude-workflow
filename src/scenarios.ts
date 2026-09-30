@@ -641,8 +641,9 @@ export function reviewing({
   verdict = { verdict: "match", gaps: [], readback: "It now reads a green build against what was meant before it merges." } as object,
   diff = fileDiff("src/reviewer.ts", "export const reviewed = 1;"),
   turns = [] as Said[],
-  onPr = [] as Said[],
+  onPr = [] as Said[] | ((main: { before: string; now: string }) => Said[]),
   repair = undefined as string | undefined,
+  landed = undefined as string | undefined,
   body = REVIEWED_TICKET,
   prCommentFails = false,
   prBody = "Builds #810\n",
@@ -658,8 +659,9 @@ export function reviewing({
   verdict?: object;
   diff?: string;
   turns?: Said[];
-  onPr?: Said[];
+  onPr?: Said[] | ((main: { before: string; now: string }) => Said[]);
   repair?: string;
+  landed?: string;
   body?: string;
   prCommentFails?: boolean;
   prBody?: string;
@@ -686,7 +688,18 @@ export function reviewing({
     git(root, "commit", "--quiet", "-m", "Repair #810 as its builder");
     git(root, "commit", "--quiet", "--allow-empty", "-m", "Merge branch 'main' into ticket/810");
   }
-  if (judged !== undefined) onPr = [...onPr, judgedAt(judgedHistory(root, judged))];
+  const mainBefore = git(root, "rev-parse", "HEAD");
+  if (landed !== undefined) {
+    git(root, "checkout", "--quiet", "-b", "main");
+    plant(root, "src/landed.ts", `${landed}\n`);
+    git(root, "add", "src/landed.ts");
+    git(root, "commit", "--quiet", "-m", "Merge pull request #800 from collod873/ticket/800");
+    git(root, "checkout", "--quiet", "ticket/810");
+    git(root, "merge", "--quiet", "--no-edit", "--no-ff", "main");
+    git(root, "update-ref", "refs/remotes/origin/main", "main");
+  }
+  const said = typeof onPr === "function" ? onPr({ before: mainBefore, now: git(root, "rev-parse", "main") }) : onPr;
+  const judgedSaid = judged === undefined ? said : [...said, judgedAt(judgedHistory(root, judged))];
   plant(root, "pr.diff", diff);
   plant(root, "pr-after.diff", diffAfter ?? diff);
   plant(root, "ticket.md", body);
@@ -694,7 +707,7 @@ export function reviewing({
   plant(root, "pr-body.md", prBody);
   plant(root, "parent.md", parent?.body ?? "");
   plant(root, "turns.json", authored(turns));
-  plant(root, "on-pr.json", authored(onPr));
+  plant(root, "on-pr.json", authored(judgedSaid));
   plant(root, "answer.json", `${JSON.stringify({ type: "result", subtype: "success", is_error: false, structured_output: verdict })}\n`);
   script(
     join(root, "bin", "gh"),

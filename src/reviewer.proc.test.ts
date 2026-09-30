@@ -7,7 +7,7 @@ import { parse } from "yaml";
 import { askingBash, cloned, EARLY_REPAIR, fenceSays, fileDiff, BUILDER_LINE, flagValue, FROM_MAIN, git, JUDGED_GAP, JUDGEMENT, plant, RESOLVED, REVIEWED_TICKET, reviewing, scratch } from "./scenarios.ts";
 import { capped } from "./brief.ts";
 import { METERS } from "./meter-reviewer.ts";
-import { NO_EM_DASH, PLAIN_WORDS, TICKET_CAP } from "./reviewer.ts";
+import { earlierDrift, NO_EM_DASH, PLAIN_WORDS, TICKET_CAP } from "./reviewer.ts";
 import { doneWhen, ticketRefusals } from "./ticket-shape.ts";
 
 const WORKFLOW = join(import.meta.dirname, "..", ".github", "workflows", "check.yml");
@@ -452,6 +452,56 @@ describe("bin/review reuses its last judgement on the PR when what it judged has
     expect(merged.run().status).toBe(0);
     expect(merged.hired()).toEqual([]);
     expect(merged.comments()).toEqual([]);
+  });
+});
+
+const LANDED = "export const parseDoneWhen = (body: string) => body.split(\"## Done when\")[1];";
+const matchedAt = (fingerprint: string, main: string) => `${matchComment(fingerprint)}Main: \`${main}\`\n`;
+
+describe("bin/review judges a PR brought up to date against what merged to main since its last judgement (#1016)", () => {
+  const diff = fileDiff("src/done-when.ts", "export const doneWhenOf = (body: string) => body.split(\"## Done when\")[1];");
+
+  it("records the main it judged against on a fresh judgement", () => {
+    const { run, root, comments } = reviewing({ diff, landed: LANDED });
+
+    expect(run().status).toBe(0);
+    expect(comments()[0]).toContain(`Main: \`${git(root, "rev-parse", "origin/main")}\``);
+  });
+
+  it("hands the reviewer only the PR and what merged since its last match, and sends each find to the builder as a red judgement", () => {
+    const finds = ["src/done-when.ts doneWhenOf does what parseDoneWhen, merged in #800, already does; keep one"];
+    const { run, root, hired, handed, comments } = reviewing({ diff, landed: LANDED, onPr: ({ before }) => [matchedAt(fingerprintOf(diff, REVIEWED_TICKET), before)], verdict: { finds } });
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(hired()).not.toEqual([]);
+    expect(handed()).toContain(LANDED);
+    expect(handed()).toContain("Merge pull request #800");
+    expect(handed()).toContain("+export const doneWhenOf");
+    expect(handed()).toMatch(/duplicate/i);
+    expect(comments()).toHaveLength(1);
+    expect(comments()[0]).toContain(finds[0]);
+    expect(comments()[0]).toContain(`Main: \`${git(root, "rev-parse", "origin/main")}\``);
+    expect(earlierDrift("810", [comments()[0] ?? ""])).toContain(finds[0]);
+  });
+
+  it("records a clean second judgement against the new main and stays green, posting no readback", () => {
+    const { run, root, comments } = reviewing({ diff, landed: LANDED, onPr: ({ before }) => [matchedAt(fingerprintOf(diff, REVIEWED_TICKET), before)], verdict: { finds: [] } });
+
+    expect(run().status).toBe(0);
+    expect(comments()).toHaveLength(1);
+    expect(comments()[0]).not.toContain("yes or no");
+    expect(comments()[0]).toContain(`Main: \`${git(root, "rev-parse", "origin/main")}\``);
+    expect(comments()[0]).toContain(`Fingerprint: \`${fingerprintOf(diff, REVIEWED_TICKET)}\``);
+  });
+
+  it("gives no second review when nothing merged to main since its last judgement", () => {
+    const { run, hired, comments } = reviewing({ diff, landed: LANDED, onPr: ({ now }) => [matchedAt(fingerprintOf(diff, REVIEWED_TICKET), now)], verdict: { finds: ["should never be asked, nothing merged"] } });
+
+    expect(run().status).toBe(0);
+    expect(hired()).toEqual([]);
+    expect(comments()).toEqual([]);
   });
 });
 
