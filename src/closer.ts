@@ -128,6 +128,7 @@ const recorded = (said: string) => (said === "" ? "" : `; record ${said}`);
 interface QueuedPr {
   number: string;
   headRefName: string;
+  headRefOid: string;
   checks: Checks;
 }
 
@@ -146,13 +147,13 @@ function checksOf(rollup: CheckRun[]): Checks {
 }
 
 function queuedPrs(): QueuedPr[] {
-  const listed = gh(["pr", "list", "--state", "open", "--json", "number,headRefName,autoMergeRequest,statusCheckRollup"]);
+  const listed = gh(["pr", "list", "--state", "open", "--json", "number,headRefName,headRefOid,autoMergeRequest,statusCheckRollup"]);
   if (listed.status !== 0) return [];
   try {
-    return (JSON.parse(listed.stdout) as { number: number; headRefName: string; autoMergeRequest: unknown; statusCheckRollup: CheckRun[] | null }[])
+    return (JSON.parse(listed.stdout) as { number: number; headRefName: string; headRefOid: string; autoMergeRequest: unknown; statusCheckRollup: CheckRun[] | null }[])
       .filter((pr) => MACHINE_BRANCH.test(pr.headRefName) && pr.autoMergeRequest !== null)
       .sort((a, b) => a.number - b.number)
-      .map((pr) => ({ number: String(pr.number), headRefName: pr.headRefName, checks: checksOf(pr.statusCheckRollup ?? []) }));
+      .map((pr) => ({ number: String(pr.number), headRefName: pr.headRefName, headRefOid: pr.headRefOid, checks: checksOf(pr.statusCheckRollup ?? []) }));
   } catch {
     return [];
   }
@@ -162,11 +163,17 @@ function wakeBuilder(ticket: string, reason: string): void {
   gh(["workflow", "run", "fix.yml", "-f", `ticket=${ticket}`, "-f", `reason=${reason}`]);
 }
 
-function updateBranch(number: string, headRefName: string): boolean {
+const headLine = (oid: string) => `Head: \`${oid}\``;
+
+function reportedAtHead(pr: QueuedPr): boolean {
+  return (commentsOn(pr.number, gh) ?? []).some((said) => FAILED_BRANCH_UPDATE.test(said) && said.includes(headLine(pr.headRefOid)));
+}
+
+function updateBranch({ number, headRefName, headRefOid }: QueuedPr): boolean {
   const updated = gh(["pr", "update-branch", number]);
   if (updated.status === 0) return true;
   const reason = (updated.stderr || updated.stdout).trim().split("\n")[0];
-  commentOnPr(number, `PR #${number} could not be brought up to date with main: ${reason}`, gh);
+  commentOnPr(number, `PR #${number} could not be brought up to date with main: ${reason}\n\n${headLine(headRefOid)}`, gh);
   const ticket = TICKET_BRANCH.exec(headRefName)?.[1];
   if (ticket !== undefined) wakeBuilder(ticket, `#${ticket}'s PR #${number} could not be brought up to date with main: ${reason}`);
   return false;
@@ -179,7 +186,7 @@ function queue(): string {
   const queued = queuedPrs();
   const merging = queued.find((pr) => pr.checks !== "red" && upToDate(pr));
   if (merging !== undefined) return `PR #${merging.number} is up to date with main, so the queue waits for it`;
-  const next = queued.filter((pr) => pr.checks === "green").find((pr) => updateBranch(pr.number, pr.headRefName));
+  const next = queued.filter((pr) => pr.checks === "green").find((pr) => !reportedAtHead(pr) && updateBranch(pr));
   return next === undefined ? "no green PR waits behind main" : `PR #${next.number} brought up to date with main`;
 }
 

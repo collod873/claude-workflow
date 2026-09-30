@@ -1,5 +1,10 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { parse } from "yaml";
 import { closing } from "./scenarios.ts";
+
+const REPO = join(import.meta.dirname, "..");
 
 describe("bin/close closes a ticket once its PR merges, since the PR's review and bin/check already judged it (#931)", () => {
   it("closes the ticket as completed, naming in its closing record the PR that merged", () => {
@@ -306,6 +311,28 @@ describe("bin/close merges machine PRs one at a time, bringing only the oldest g
     expect(calls().some((call) => call.startsWith("workflow\nrun\nfix.yml") && call.includes("ticket=847"))).toBe(true);
   });
 
+  it("wakes no builder again for a conflict it already reported at the PR's head, and brings the next green PR up to date", () => {
+    const { calls, run } = closing({
+      ticket: "819",
+      openPrs: [
+        { number: "935", ticket: "855", refused: CONFLICT, refusedBefore: true },
+        { number: "936", ticket: "856" },
+      ],
+    });
+
+    expect(run().status).toBe(0);
+    expect(updated(calls())).toEqual(["936"]);
+    expect(calls().some((call) => call.startsWith("workflow\nrun\nfix.yml"))).toBe(false);
+    expect(calls().some((call) => call.startsWith("pr\ncomment\n935\n"))).toBe(false);
+  });
+
+  it("names the PR's head in the conflict it reports, so a later run knows it was already reported", () => {
+    const { calls, run } = closing({ ticket: "819", openPrs: [{ number: "937", ticket: "857", refused: CONFLICT }] });
+
+    expect(run().status).toBe(0);
+    expect(calls().find((call) => call.startsWith("pr\ncomment\n937\n"))).toMatch(/Head: `[0-9a-f]{40}`/);
+  });
+
   it("once the PR at the front goes red, brings the next green PR up to date, and closes no ticket", () => {
     const { calls, run } = closing({
       ticket: "819",
@@ -337,5 +364,25 @@ describe("bin/close merges machine PRs one at a time, bringing only the oldest g
     });
 
     expect(walked).toEqual([["932"], [], ["933"], ["934"]]);
+  });
+});
+
+describe("a finished Check run moves the queue on, and a red one wakes its builder, so a red PR never holds the queue (#1011)", () => {
+  const workflow = (name: string) => parse(readFileSync(join(REPO, ".github", "workflows", name), "utf8")) as { on: Record<string, { workflows?: string[]; types?: string[] }>; jobs: Record<string, { steps: { run?: string; env?: Record<string, string> }[] }> };
+
+  it("runs the closer's queue, closing no ticket, whenever a Check run completes, red or green", () => {
+    const { on, jobs } = workflow("close.yml");
+    const step = Object.values(jobs).flatMap((job) => job.steps).find((ran) => (ran.run ?? "").startsWith("bin/close"));
+
+    expect(on.workflow_run).toEqual({ workflows: ["Check"], types: ["completed"] });
+    expect(step?.run).toContain("$QUEUE_ONLY");
+    expect(step?.env?.QUEUE_ONLY).toBe("${{ github.event_name == 'workflow_run' && 'queue' || '' }}");
+  });
+
+  it("wakes the builder of a ticket whose Check run goes red, which is how a PR that fails after its update leaves the line", () => {
+    const { on } = workflow("fix.yml");
+
+    expect(on.workflow_run?.workflows).toContain("Check");
+    expect(on.workflow_run?.types).toEqual(["completed"]);
   });
 });

@@ -435,15 +435,17 @@ export interface QueuedPr {
   upToDate?: boolean;
   checks?: "green" | "pending" | "red";
   autoMerge?: boolean;
+  refusedBefore?: boolean;
 }
 
 const RUNS = { green: ["COMPLETED", "SUCCESS"], pending: ["IN_PROGRESS", ""], red: ["COMPLETED", "FAILURE"] } as const;
 
-function listed(pr: QueuedPr) {
+function listed(pr: QueuedPr, head: string) {
   const [status, conclusion] = RUNS[pr.checks ?? "green"];
   return {
     number: Number(pr.number),
     headRefName: pr.branch ?? `ticket/${pr.ticket}`,
+    headRefOid: head,
     autoMergeRequest: pr.autoMerge === false ? null : { mergeMethod: "MERGE" },
     statusCheckRollup: [
       { __typename: "CheckRun", name: "check", status: "COMPLETED", conclusion: "SUCCESS" },
@@ -498,13 +500,16 @@ export function closing({
   git(root, "init", "--quiet", "--bare", origin);
   git(session, "remote", "add", "origin", origin);
   git(session, "push", "--quiet", "origin", "main");
-  for (const pr of openPrs) {
-    const branch = pr.branch ?? `ticket/${pr.ticket}`;
+  const heads = openPrs.map((pr) => {
     git(session, "checkout", "--quiet", "-b", `queued/${pr.number}`, pr.upToDate === true ? "main" : "main^1");
     git(session, "commit", "--quiet", "--allow-empty", "-m", `Build PR #${pr.number}`);
-    git(session, "push", "--quiet", "origin", `HEAD:refs/heads/${branch}`);
+    git(session, "push", "--quiet", "origin", `HEAD:refs/heads/${pr.branch ?? `ticket/${pr.ticket}`}`);
     git(session, "checkout", "--quiet", "main");
-  }
+    return git(session, "rev-parse", `queued/${pr.number}`);
+  });
+  openPrs.forEach((pr, at) => {
+    if (pr.refusedBefore === true) plant(root, `pr-${pr.number}-comments.json`, authored([`PR #${pr.number} could not be brought up to date with main: ${pr.refused ?? ""}\n\nHead: \`${heads[at] ?? ""}\``]));
+  });
   plant(root, "pr-comments.json", authored(prComments));
   script(
     join(root, "bin", "gh"),
@@ -528,7 +533,8 @@ export function closing({
       ticketBody,
       "BODY",
       "    ;;",
-      `  *"pr list"*) printf '%s\\n' '${JSON.stringify(openPrs.map(listed))}' ;;`,
+      `  *"pr list"*) printf '%s\\n' '${JSON.stringify(openPrs.map((pr, at) => listed(pr, heads[at] ?? "")))}' ;;`,
+      ...openPrs.filter((pr) => pr.refusedBefore === true).map((pr) => `  *"issues/${pr.number}/comments"*) cat "${join(root, `pr-${pr.number}-comments.json`)}" ;;`),
       ...openPrs.map((pr) => `  *"pr update-branch ${pr.number}"*) ${pr.refused === undefined ? "exit 0" : `printf '%s\\n' '${pr.refused}' >&2; exit 1`} ;;`),
       `  *"pr view"*) printf '%s\\n' '${timing.prOpened}' ;;`,
       `  *"pr checks"*) printf '%s\\n' '${timing.checksGreen}' ;;`,
