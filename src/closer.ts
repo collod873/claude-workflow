@@ -169,6 +169,11 @@ function wakeBuilder(ticket: string, reason: string): void {
   gh(["workflow", "run", "fix.yml", "-f", `ticket=${ticket}`, "-f", `reason=${reason}`]);
 }
 
+function resliced(ticket: string): string {
+  const started = gh(["workflow", "run", "reslice.yml", "-f", `issue=${ticket}`]);
+  return started.status === 0 ? "" : `; the re-slice could not be started: ${quoted((started.stderr || started.stdout).trim().split("\n")[0] ?? "")}`;
+}
+
 const headLine = (oid: string) => `Head: \`${oid}\``;
 
 const conflicts = (pr: QueuedPr, reason: string) =>
@@ -259,11 +264,13 @@ function close(): Stop | undefined {
   if (refusal !== undefined) return stoppedAt("unrecorded", `close: #${ticket} got no closing record: ${quoted(refusal)}`);
   const state = ticketState(ticket);
   gh(["issue", "edit", ticket, "--remove-label", STAGE_LABELS]);
+  let started = "";
   if (state !== "CLOSED COMPLETED") {
     if (state.startsWith("CLOSED")) quietGh(["issue", "reopen", ticket]);
     if (quietGh(["issue", "close", ticket, "--reason", "completed"]).status !== 0) return stoppedAt("unrecorded", `close: #${ticket} is done but could not be closed${recorded(posted.said)}`);
+    started = resliced(ticket);
   }
-  console.log(`close: #${ticket} closed as completed, its PR merged${recorded(posted.said)}${wokenFromSplit(ticket, asked.stdout)}${wokenAfterParents()}`);
+  console.log(`close: #${ticket} closed as completed, its PR merged${recorded(posted.said)}${started}${wokenFromSplit(ticket, asked.stdout)}${wokenAfterParents()}`);
   return undefined;
 }
 

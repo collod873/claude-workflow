@@ -509,3 +509,33 @@ describe("bin/close writes on the PR and the ticket each run it made, so a merge
     expect(calls().find((call) => call.startsWith("issue\ncomment\n839\n"))).toMatch(/^- branch updates: not available$/m);
   });
 });
+
+describe("bin/close starts the re-slice itself once it closes a ticket, since its quiet close starts no workflow (#1045)", () => {
+  const dispatched = (calls: string[]) => calls.findIndex((call) => call.startsWith("workflow\nrun\nreslice.yml\n"));
+
+  it("dispatches reslice.yml for the ticket as the App, after closing it with the quiet token", () => {
+    const { calls, tokens, run } = closing({ ticket: "819" });
+
+    expect(run().status).toBe(0);
+    const closed = calls().findIndex((call) => call.startsWith("issue\nclose\n819\n"));
+    const started = dispatched(calls());
+    expect(tokens()[closed], "the close stays quiet, so the builder never hears of it").toBe("quiet");
+    expect(started).toBeGreaterThan(closed);
+    expect(calls()[started]).toBe("workflow\nrun\nreslice.yml\n-f\nissue=819\n");
+    expect(tokens()[started], "runs as the App, so reslice.yml actually starts").toBe("app");
+  });
+
+  it("dispatches nothing for a ticket the merge already closed, whose close started reslice.yml itself", () => {
+    const { calls, run } = closing({ ticket: "820", closedAs: "COMPLETED" });
+
+    expect(run().status).toBe(0);
+    expect(dispatched(calls())).toBe(-1);
+  });
+
+  it("dispatches nothing on a queue run, which closes no ticket", () => {
+    const { calls, run } = closing({ ticket: "821", afterCheck: true });
+
+    expect(run().status).toBe(0);
+    expect(dispatched(calls())).toBe(-1);
+  });
+});
