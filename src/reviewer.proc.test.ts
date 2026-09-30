@@ -293,6 +293,8 @@ const FOLLOW_UP_TICKET = [
   "",
   "Follow-up of #700: its review found this after the builder's one turn.",
   "",
+  "The reviewer, on #700:",
+  "",
   "> the closer never names the ticket it closed",
   "",
   "## Done when",
@@ -315,6 +317,8 @@ describe("a later find becomes a follow-up ticket that builds itself, one genera
     expect(ticketRefusals(body)).toEqual([]);
     expect(body).toContain("Follow-up of #810");
     expect(body).toContain(LATE);
+    expect(body.indexOf("The reviewer, on #810:")).toBeGreaterThanOrEqual(0);
+    expect(body.indexOf("The reviewer, on #810:")).toBeLessThan(body.indexOf(`> ${LATE}`));
     expect(doneWhen(body)).toBe("- Every step that runs gh names its repo.");
     expect(order().indexOf("issue comment")).toBeLessThan(order().indexOf("issue create"));
     expect(ticketComments()[0]).toContain(LATE);
@@ -327,6 +331,22 @@ describe("a later find becomes a follow-up ticket that builds itself, one genera
     expect(filed()).toEqual([]);
     expect(ticketComments()).toEqual([expect.stringContaining(LATE)]);
     expect(ticketComments()[0]).toMatch(/not filed/i);
+  });
+
+  it("reads back the owner's words from the ticket a follow-up follows up, never the reviewer's gap (#1005)", () => {
+    const parent = { ticket: "700", body: READBACK_TICKET };
+    const { run, comments } = reviewing({ body: FOLLOW_UP_TICKET, parent });
+
+    expect(run().status).toBe(0);
+    expect(comments()).toHaveLength(1);
+    expect(comments()[0]).toContain("> keep the builder honest about drift");
+    expect(comments()[0]).toContain("> never touch the reviewer's own prompt");
+    expect(comments()[0]).not.toContain("the closer never names the ticket it closed");
+
+    const unread = reviewing({ body: FOLLOW_UP_TICKET, parent: { ticket: "700" } });
+    expect(unread.run().status).toBe(0);
+    expect(unread.comments()[0]).toContain("The owner's words on #700 could not be read.");
+    expect(unread.comments()[0]).not.toContain("the closer never names the ticket it closed");
   });
 
   it("leaves a finding it cannot shape into a ticket as a comment naming why", () => {

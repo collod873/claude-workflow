@@ -52,8 +52,15 @@ function ownerQuotes(body: string): string[] {
   return text.match(QUOTE_LINE) ?? text.match(DOUBLE_QUOTE) ?? [];
 }
 
+function ownerWords(body: string): string[] {
+  const parent = REVIEWED_FROM.exec(why(body))?.[1];
+  if (parent === undefined) return ownerQuotes(body);
+  const read = gh(["issue", "view", parent, "--json", "body", "--jq", ".body"]);
+  return read.status === 0 ? ownerQuotes(read.stdout) : [`The owner's words on #${parent} could not be read.`];
+}
+
 function readbackText(body: string, account: string, fingerprint: string): string {
-  return [fingerprintLine(fingerprint), "", ...ownerQuotes(body), "", account, "", "Did this build what you meant, yes or no?"].join("\n");
+  return [fingerprintLine(fingerprint), "", ...ownerWords(body), "", account, "", "Did this build what you meant, yes or no?"].join("\n");
 }
 
 const VERDICT = {
@@ -100,6 +107,8 @@ interface AfterTurn {
 
 const laterFinds = (ticket: string) => `The reviewer found these on #${ticket} after its builder's repair, outside the earlier gaps and the fix's own lines, so they do not block its merge:`;
 export const FOLLOW_UP_OF = "Follow-up of #";
+const reviewerOn = (ticket: string) => `The reviewer, on #${ticket}:`;
+const REVIEWED_FROM = new RegExp(`^${FOLLOW_UP_OF}(\\d+): its review found`, "m");
 
 const firstLine = (text: string) => quoted(text.trim().split("\n")[0] ?? "");
 
@@ -188,7 +197,7 @@ function fixSince(head: string): string | undefined {
 }
 
 const followUp = (ticket: string, { gap, done }: Later): string =>
-  followUpBody([`${FOLLOW_UP_OF}${ticket}: its review found this after its builder's repair, outside the earlier gaps and the fix's own lines.`, "", `> ${gap}`], done);
+  followUpBody([`${FOLLOW_UP_OF}${ticket}: its review found this after its builder's repair, outside the earlier gaps and the fix's own lines.`, "", reviewerOn(ticket), "", `> ${gap}`], done);
 
 export function followUpBody(whyLines: string[], done: string[]): string {
   return ["## Why", "", ...whyLines, "", "## Done when", "", ...done.map((sentence) => `- ${sentence}`), ""].join("\n");
