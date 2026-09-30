@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { noteRefusals, specRefusals, ticketRefusals } from "./ticket-shape.ts";
+import { NOTE_SHAPE, SPEC_SHAPE, TICKET_SHAPE, noteRefusals, specRefusals, ticketRefusals } from "./ticket-shape.ts";
 
 const DASH = "\u2014";
 const TEST_CHECK = "npx vitest run --config vitest.config.ts ticket-shape";
@@ -185,5 +185,20 @@ describe("src/ticket-shape refuses a spec body that hides what the owner meant (
 
   it.each(misshapenSpec)("refuses %s", (_defect, planted, reasons) => {
     expect(specRefusals(planted)).toEqual(reasons);
+  });
+});
+
+describe("the shape bin/file-issue --help prints names every heading its kind is refused without", () => {
+  const HEADING_NAMED = /'## (.+?)'(?=[,\s]|$)/g;
+
+  it.each([
+    ["ticket", TICKET_SHAPE, ticketRefusals],
+    ["note", NOTE_SHAPE, noteRefusals],
+    ["spec", SPEC_SHAPE, specRefusals],
+  ])("%s", (_, shape, refusals) => {
+    const named = refusals("").flatMap((refusal) => [...refusal.matchAll(HEADING_NAMED)].map(([, name]) => name ?? ""));
+
+    expect(named.length).toBeGreaterThan(0);
+    expect(named.filter((name) => !shape.includes(`## ${name}`))).toEqual([]);
   });
 });

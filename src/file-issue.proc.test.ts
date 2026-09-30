@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { filing, misshapenTicket, wellFormedNote, wellFormedSpec, wellFormedTicket } from "./scenarios.ts";
-import { why } from "./ticket-shape.ts";
+import { NOTE_SHAPE, SPEC_SHAPE, TICKET_SHAPE, why } from "./ticket-shape.ts";
 
 const URL = "https://github.com/collod873/claude-workflow/issues/700";
 const RECORDS = `python3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "$@" >>"$PWD/gh-argv"\nprintf '%s\\n' ${URL}\n`;
@@ -155,14 +155,14 @@ describe("bin/file-issue files a ticket, or refuses it and files nothing (#662)"
     expect(emptyResult.stderr).toMatch(/names no session/);
   });
 
-  it("prints its usage line to stdout and exits 0 for help, filing nothing", () => {
+  it("prints its usage line and the body each kind files, to stdout, and exits 0 for help, filing nothing", () => {
     const { repo, run } = filing({ gh: RECORDS, body: wellFormedTicket });
 
     const result = run(["--help"]);
 
     expect(result).toMatchObject({
       status: 0,
-      stdout: "file-issue: usage: file-issue ticket|note|research|spec --title <title> --body-file <path>\n",
+      stdout: ["file-issue: usage: file-issue ticket|note|research|spec --title <title> --body-file <path>", `ticket: ${TICKET_SHAPE}`, `note, research: ${NOTE_SHAPE}`, `spec: ${SPEC_SHAPE}`, ""].join("\n"),
       stderr: "",
     });
     expect(ghSaw(repo)).toEqual([]);
