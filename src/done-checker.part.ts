@@ -1,6 +1,7 @@
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { handedOn } from "./done-checker.ts";
-import { BIN, execute, issueStage, wellFormedSpec } from "./scenarios.ts";
+import { authored, BIN, execute, issueStage, plant, type Said, script, wellFormedSpec } from "./scenarios.ts";
 import { declareStage, HANDED_ON } from "./stages.ts";
 import { SPEC_CAP } from "./ticket-shape.ts";
 
@@ -16,11 +17,19 @@ export function doneChecking({
   body = wellFormedSpec,
   tries = [{ sentence: 1, outcome: "held", tried: "read the spec issue and saw the spec label on it" }] as { sentence: number; outcome: string; tried: string }[],
   gh = "",
-}: { labels?: string[]; body?: string; tries?: { sentence: number; outcome: string; tried: string }[]; gh?: string } = {}) {
-  const { root, argv, ...stage } = issueStage("done-check-", { title: "A spec worth trying", body, labels: labels.map((name) => ({ name })) }, { tries }, DONE_CHECK_POSTED, gh);
+  said = [] as Said[],
+  slice = "exit 0\n",
+}: { labels?: string[]; body?: string; tries?: { sentence: number; outcome: string; tried: string }[]; gh?: string; said?: Said[]; slice?: string } = {}) {
+  const comments = '[[ $1 == api ]] && { cat "$(dirname "$0")/../comments.json"; exit 0; }';
+  const { root, argv, ...stage } = issueStage("done-check-", { title: "A spec worth trying", body, labels: labels.map((name) => ({ name })) }, { tries }, DONE_CHECK_POSTED, `${gh}\n${comments}\n`);
+  plant(root, "comments.json", authored(said));
+  const sliced = join(root, "sliced");
+  script(join(root, "bin", "slice"), `printf '%s\\n' "$*" >>"${sliced}"\n${slice}`);
   return {
     ...stage,
     closes: () => argv().filter((args) => args[1] === "close"),
+    labelled: () => argv().filter((args) => args[1] === "edit").map((args) => args.slice(2).join(" ")),
+    sliced: () => (existsSync(sliced) ? readFileSync(sliced, "utf8").trimEnd().split("\n") : []),
     run: (...args: string[]) => execute(join(BIN, "done-check"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, args.length > 0 ? args : ["974"]),
   };
 }

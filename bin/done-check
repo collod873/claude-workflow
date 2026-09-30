@@ -1,7 +1,7 @@
 #!/bin/bash
 set -uo pipefail
 
-usage="done-check: usage: done-check <issue number>"
+usage="done-check: usage: done-check <issue number> [--wave <sentence numbers>]"
 
 if [[ ${1:-} == "--help" ]]; then
   printf '%s\n' "$usage"
@@ -9,10 +9,11 @@ if [[ ${1:-} == "--help" ]]; then
 fi
 
 issue=${1:-}
-if [[ $# -ne 1 || ! $issue =~ ^[0-9]+$ ]]; then
+numbers="${*:3}"
+if [[ ! $issue =~ ^[0-9]+$ ]] || { (($# != 1)) && [[ ${2:-} != --wave || ! $numbers =~ ^[0-9]+([\ ,]+[0-9]+)*$ ]]; }; then
   printf '%s\n' "$usage" >&2
   exit 2
 fi
 
 src="$(cd "${BASH_SOURCE[0]%/*}/../src" && pwd)"
-exec node "$src/done-checker.ts" "$issue"
+exec node "$src/done-checker.ts" "$issue" ${2:+"$2" "$numbers"}
