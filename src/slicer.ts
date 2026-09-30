@@ -200,6 +200,11 @@ function sliced(issue: string): Stop | undefined {
     return undefined;
   }
   const tickets = underSpec(issue);
+  const [unclosed] = (tickets ?? []).filter(({ state }) => state === "open");
+  if (unclosed !== undefined) {
+    console.log(`${said}'s wave is not over, #${unclosed.number} is still open, so nothing sliced it`);
+    return undefined;
+  }
   const comments = tickets === undefined || tickets.length === 0 ? [] : commentsOn(issue, gh);
   if (tickets === undefined || comments === undefined) return stoppedAt("unread", `${said}'s tickets or comments could not be read, so no model was spent`);
   const found = tickets.length === 0 ? undefined : { comments, tickets: waveFound(tickets) };

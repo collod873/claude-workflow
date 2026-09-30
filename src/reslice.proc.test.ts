@@ -1,5 +1,8 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { parse } from "yaml";
 import { describe, expect, it } from "vitest";
-import { heard, OWNER, wellFormedSpec } from "./scenarios.ts";
+import { heard, holds, OWNER, wellFormedSpec, type WorkflowStep } from "./scenarios.ts";
 import { slicing } from "./slicer.part.ts";
 
 const SPEC_ISSUE = { number: 968, state: "open", labels: [{ name: "spec" }], user: { login: OWNER }, body: "" };
@@ -105,10 +108,69 @@ describe("bin/slice on a spec with tickets under it slices its next wave against
     expect(sliced.argv()).toContainEqual(["issue", "close", "968", "--reason", "completed"]);
   });
 
+  it("slices nothing while a ticket under the spec is still open, so a second run for one wave's end files no second wave", () => {
+    const sliced = reslicing({ tickets: [ticket(1001), ticket(1002, "open")] });
+
+    expect(sliced.run()).toEqual({ status: 0, stdout: "slice: #968's wave is not over, #1002 is still open, so nothing sliced it\n", stderr: "" });
+    expect(sliced.hired()).toEqual([]);
+  });
+
   it("slices nothing on a spec marked needs-human, since the job stopped for the owner", () => {
     const sliced = reslicing({ labels: ["spec", "needs-human"] });
 
     expect(sliced.run()).toEqual({ status: 0, stdout: "slice: #968 is marked needs-human, so nothing sliced it\n", stderr: "" });
     expect(sliced.hired()).toEqual([]);
+  });
+});
+
+interface Job {
+  if?: string;
+  needs?: string;
+  concurrency?: { group?: string; "cancel-in-progress"?: boolean };
+  outputs?: Record<string, string>;
+  steps: (WorkflowStep & { id?: string; if?: string })[];
+}
+
+const RESLICE = parse(readFileSync(join(import.meta.dirname, "..", ".github", "workflows", "reslice.yml"), "utf8")) as { on: { issues?: { types?: string[] } }; jobs: Record<string, Job> };
+const job = (name: string): Job => {
+  const found = RESLICE.jobs[name];
+  if (found === undefined) throw new Error(`no ${name} job in reslice.yml`);
+  return found;
+};
+const stepAt = (steps: Job["steps"], id: string) => steps.findIndex((step) => step.id === id);
+const endedWith = (outputs: Record<string, string>) => ({ steps: { ended: { outcome: "success", conclusion: "success", outputs } } });
+
+describe("reslice.yml runs the wave check, then the re-slice, when a closed issue ends its spec's wave (#1037)", () => {
+  it("starts on every closed issue but a spec or a note, and finds whether it ended a wave spending no model", () => {
+    const ended = job("ended");
+
+    expect(RESLICE.on.issues?.types).toEqual(["closed"]);
+    expect(holds(ended.if ?? "true", { labels: [], action: "closed" })).toBe(true);
+    expect(holds(ended.if ?? "true", { labels: ["spec"], action: "closed" })).toBe(false);
+    expect(holds(ended.if ?? "true", { labels: ["note"], action: "closed" })).toBe(false);
+    expect(ended.steps.find((step) => step.id === "ended")?.run).toBe('bin/slice --ended ${{ github.event.issue.number }} >>"$GITHUB_OUTPUT"');
+    expect(ended.steps.some((step) => step.env?.CLAUDE_CODE_OAUTH_TOKEN !== undefined)).toBe(false);
+    expect(ended.outputs?.spec).toBe("${{ steps.ended.outputs.spec }}");
+  });
+
+  it("re-slices one spec at a time, checking again that the wave ended, then tries the sentences the last note moves before the re-slice", () => {
+    const reslice = job("reslice");
+    const { steps } = reslice;
+
+    expect(reslice.needs).toBe("ended");
+    expect(reslice.if).toBe("${{ needs.ended.outputs.spec != '' }}");
+    expect(reslice.concurrency).toEqual({ group: "reslice-${{ needs.ended.outputs.spec }}", "cancel-in-progress": false });
+    expect(steps[stepAt(steps, "ended")]?.run).toBe('bin/slice --ended ${{ github.event.issue.number }} >>"$GITHUB_OUTPUT"');
+    expect(stepAt(steps, "ended")).toBeLessThan(stepAt(steps, "wave-check"));
+    expect(stepAt(steps, "wave-check")).toBeLessThan(stepAt(steps, "reslice"));
+    const waveCheck = steps[stepAt(steps, "wave-check")];
+    const resliced = steps[stepAt(steps, "reslice")];
+    expect(waveCheck?.run).toContain("bin/done-check ${{ steps.ended.outputs.spec }} --wave ${{ steps.ended.outputs.moves }}");
+    expect(resliced?.run).toContain("bin/slice ${{ steps.ended.outputs.spec }}");
+    expect(holds(waveCheck?.if ?? "true", endedWith({ spec: "968", moves: "1,3" }))).toBe(true);
+    expect(holds(waveCheck?.if ?? "true", endedWith({ spec: "968", moves: "" }))).toBe(false);
+    expect(holds(resliced?.if ?? "true", endedWith({ spec: "968", moves: "" }))).toBe(true);
+    expect(holds(resliced?.if ?? "true", endedWith({ spec: "", moves: "" }))).toBe(false);
+    for (const step of [waveCheck, resliced]) expect(step?.env?.GH_TOKEN).toBe("${{ steps.app.outputs.token }}");
   });
 });
