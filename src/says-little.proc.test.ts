@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parts, type Part } from "./parts.ts";
-import { LINE_LIMIT, MOST_LINES, checkRepo, closing, closingNote, coveredByCheck, doneChecking, execute, filing, fixing, landSession, launching, marking, misshapenTicket, overLimit, researching, reviewing, slicing, saving, scratch, script, wellFormedNote, wellFormedSpec, wellFormedTicket, type Run } from "./scenarios.ts";
+import { LINE_LIMIT, MOST_LINES, admitting, checkRepo, closing, closingNote, coveredByCheck, doneChecking, execute, filing, fixing, landSession, launching, marking, misshapenTicket, overLimit, researching, reviewing, slicing, saving, scratch, script, wellFormedNote, wellFormedSpec, wellFormedTicket, type Run } from "./scenarios.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
 const NOISE = "a line a tool prints that nobody needed to read\n".repeat(40).trim();
@@ -77,6 +77,11 @@ const scenarios: Record<string, Scenario[]> = {
     { label: "putting its lines on a PR body", run: () => reviewing({ bin: "meters", verdict: NOTHING_METERED }).run() },
     { label: "printing its lines", run: () => reviewing({ bin: "meters", verdict: NOTHING_METERED }).run("9810", {}, ["--print"]) },
     { label: "with the PR body unreadable", run: () => reviewing({ bin: "meters", prBodyUnreadable: true, verdict: NOTHING_METERED }).run() },
+  ],
+  "bin/admit": [
+    { label: "admitting a ticket", run: () => admitting().run() },
+    { label: "refusing a ticket the App opened under no spec", run: () => admitting({ opener: "collod873-machine[bot]" }).run() },
+    { label: "with the ticket unreadable", run: () => admitting({ unread: true }).run() },
   ],
   "bin/fix": [
     { label: "pushing a fix", run: () => fixing({ claude: "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n" }).run() },
