@@ -34,7 +34,6 @@ const NUMBERED_ITEM = /^[ \t]*\d+[.)][ \t]/m;
 const FEWEST = 1;
 const MOST = 3;
 const QUOTE = 80;
-export const SPEC_CAP = 64 * 1024;
 
 export const DONE_SENTENCES = `${FEWEST} to ${MOST} sentences saying what done looks like`;
 export const TICKET_SHAPE = `## ${NAMED.why}, quoting the owner in "..." or a > line; ## ${NAMED.doneWhen}, ${DONE_SENTENCES}, each on a '- ' line`;
@@ -147,6 +146,8 @@ function sentenceRefusals(items: string[]): string[] {
   });
   return refusals;
 }
+
+export const SPEC_CAP = 64 * 1024;
 
 export interface Sentence {
   said: string;

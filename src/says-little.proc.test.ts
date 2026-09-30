@@ -61,13 +61,13 @@ const scenarios: Record<string, Scenario[]> = {
     { label: "answering a research note", run: () => researching().run() },
     { label: "refusing a ticket", run: () => researching({ labels: ["2-building"] }).run() },
   ],
-  "bin/done-check": [
-    { label: "closing a spec whose sentence held", run: () => doneChecking().run() },
-    { label: "refusing a ticket", run: () => doneChecking({ labels: ["ticket"] }).run() },
-  ],
   "bin/slice": [
     { label: "filing a wave", run: () => slicing({ answers: [{ spec: wellFormedSpec, tickets: [{ title: "File a spec", passages: [1], why: "Wave 1.", done: ["It files."] }] }] }).run() },
     { label: "refusing a ticket", run: () => slicing({ labels: ["ticket"] }).run() },
+  ],
+  "bin/done-check": [
+    { label: "closing a spec whose sentence held", run: () => doneChecking().run() },
+    { label: "refusing a ticket", run: () => doneChecking({ labels: ["ticket"] }).run() },
   ],
   "bin/review": [
     { label: "passing a match", run: () => reviewing().run() },

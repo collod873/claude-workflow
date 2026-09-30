@@ -942,27 +942,6 @@ export function researching({
   };
 }
 
-export const DONE_CHECK_POSTED = "https://github.com/collod873/claude-workflow/issues/974#issuecomment-1";
-
-export function specWith(sentences: string[]): string {
-  const [head] = wellFormedSpec.split("## I'll know it works when I can");
-  return `${head}## I'll know it works when I can\n\n${sentences.map((sentence) => `- [ ] ${sentence}`).join("\n")}\n`;
-}
-
-export function doneChecking({
-  labels = ["spec"],
-  body = wellFormedSpec,
-  tries = [{ sentence: 1, outcome: "held", tried: "read the spec issue and saw the spec label on it" }] as { sentence: number; outcome: string; tried: string }[],
-  gh = "",
-}: { labels?: string[]; body?: string; tries?: { sentence: number; outcome: string; tried: string }[]; gh?: string } = {}) {
-  const { root, argv, ...stage } = issueStage("done-check-", { title: "A spec worth trying", body, labels: labels.map((name) => ({ name })) }, { tries }, DONE_CHECK_POSTED, gh);
-  return {
-    ...stage,
-    closes: () => argv().filter((args) => args[1] === "close"),
-    run: (...args: string[]) => execute(join(BIN, "done-check"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, args.length > 0 ? args : ["974"]),
-  };
-}
-
 export const SLICING_SESSION = "slicing-session";
 const WAVE_URL = "https://github.com/collod873/claude-workflow/issues/";
 
@@ -1018,6 +997,27 @@ export function slicing({
     linked: () => calls().filter((args) => args.some((arg) => arg.includes("sub_issues"))).map((args) => args.filter((arg) => arg.includes("sub_issues") || arg.startsWith("sub_issue_id=")).join(" ")),
     comments: () => calls().filter((args) => args[1] === "comment").map(bodyOf),
     run: (...args: string[]) => execute(join(BIN, "slice"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, args.length > 0 ? args : ["968"]),
+  };
+}
+
+export const DONE_CHECK_POSTED = "https://github.com/collod873/claude-workflow/issues/974#issuecomment-1";
+
+export function specWith(sentences: string[]): string {
+  const [head] = wellFormedSpec.split("## I'll know it works when I can");
+  return `${head}## I'll know it works when I can\n\n${sentences.map((sentence) => `- [ ] ${sentence}`).join("\n")}\n`;
+}
+
+export function doneChecking({
+  labels = ["spec"],
+  body = wellFormedSpec,
+  tries = [{ sentence: 1, outcome: "held", tried: "read the spec issue and saw the spec label on it" }] as { sentence: number; outcome: string; tried: string }[],
+  gh = "",
+}: { labels?: string[]; body?: string; tries?: { sentence: number; outcome: string; tried: string }[]; gh?: string } = {}) {
+  const { root, argv, ...stage } = issueStage("done-check-", { title: "A spec worth trying", body, labels: labels.map((name) => ({ name })) }, { tries }, DONE_CHECK_POSTED, gh);
+  return {
+    ...stage,
+    closes: () => argv().filter((args) => args[1] === "close"),
+    run: (...args: string[]) => execute(join(BIN, "done-check"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, args.length > 0 ? args : ["974"]),
   };
 }
 
