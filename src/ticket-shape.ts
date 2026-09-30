@@ -35,7 +35,8 @@ const FEWEST = 1;
 const MOST = 3;
 const QUOTE = 80;
 
-export const TICKET_SHAPE = `## ${NAMED.why}, quoting the owner in "..." or a > line; ## ${NAMED.doneWhen}, ${FEWEST} to ${MOST} '- ' sentences saying what done looks like`;
+export const DONE_SENTENCES = `${FEWEST} to ${MOST} sentences saying what done looks like`;
+export const TICKET_SHAPE = `## ${NAMED.why}, quoting the owner in "..." or a > line; ## ${NAMED.doneWhen}, ${DONE_SENTENCES}, each on a '- ' line`;
 export const NOTE_SHAPE = `## ${NAMED.why}, saying why it is worth keeping`;
 export const SPEC_SHAPE = [
   `## ${NAMED.problem} quoting the owner, ## ${NAMED.solution}, ## ${NAMED.stories} numbered, ## ${NAMED.decisions} naming no file paths,`,

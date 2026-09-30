@@ -7,7 +7,7 @@ import { CHECK, UNFENCED } from "./fence.ts";
 import { commentOnTicket, commentsOn, gh, git, OWNER, post, postRefusals, prNumber, rewriteTicket } from "./post.ts";
 import { earlierDrift, FOLLOW_UP_OF, followUpBody, handedDiff, LIST_CAP, NO_EM_DASH, repairOf, TICKET_CAP } from "./reviewer.ts";
 import { hired, machineLogs, type Spent } from "./stage.ts";
-import { quoted, why, whyChanged } from "./ticket-shape.ts";
+import { DONE_SENTENCES, quoted, why, whyChanged } from "./ticket-shape.ts";
 
 const ANSWER = {
   type: "object",
@@ -126,7 +126,7 @@ export function handedOn({ ticket, body, red, check = "", capture }: Handed): st
     "Every red on this ticket comes back to you until it merges. Read its Why first; `gh` reads any run. If the reason above names a merge conflict, merge main in and resolve it yourself, keeping the ticket's Why over main's conflicting change. Answer one outcome:",
     "- `code`: build or fix it, or change nothing on a flake; the machine commits, runs `bin/check`, hands back red, pushes green or reruns the red Check.",
     "- `ticket`: its `## Done when` is wrong; return the ticket as `body`, Why byte-identical.",
-    "- `split`: too big for one build; file `tickets` that build at once, each with 1 to 3 `done` sentences. What must wait for them stays as `body`, Why byte-identical, and builds once they merge.",
+    `- \`split\`: too big for one build; file \`tickets\` that build at once, each with \`done\` as ${DONE_SENTENCES}. What must wait for them stays as \`body\`, Why byte-identical, and builds once they merge.`,
     "- `close`: the ticket should not exist as written, and nothing should replace it.",
     "- `machine`: the machine is at fault, reviewer included; fix it in a worktree off `origin/main`, commit naming this ticket, and `bin/land` it first.",
     "`reason`: one paragraph for the owner. Two rounds in a row that change nothing call them.",
