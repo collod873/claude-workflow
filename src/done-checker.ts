@@ -12,6 +12,7 @@ import { quoted, type Sentence, sentences, SPEC_CAP } from "./ticket-shape.ts";
 const stoppedAt = stopsOf({
   notSpec: "Refused: the issue is not labelled `spec`, or the done check finds no sentence to try",
   calledOwner: "Done check: a sentence missed twice, so the spec is marked `needs-human`",
+  unfixed: "Done check: `bin/slice --fix` files no fix wave for the sentences that missed",
 });
 type Stop = ReturnType<typeof stoppedAt>;
 
@@ -77,7 +78,16 @@ const isTry = (given: unknown): given is Try => {
   return typeof one?.sentence === "number" && typeof one.tried === "string" && typeof one.outcome === "string" && one.outcome in OUTCOMES;
 };
 
-const posted = (tried: [string, Try][]) => ["## Done check", "", ...tried.map(([sentence, one], at) => `${at + 1}. **${OUTCOMES[one.outcome]}**: ${sentence}\n   ${one.tried}`), ""].join("\n");
+const DONE_CHECK = "## Done check";
+const FIX_WAVE = "<!-- fix-wave -->";
+
+const posted = (tried: [number, string, Try][], after: string[] = []) =>
+  [DONE_CHECK, "", ...tried.map(([number, sentence, one]) => `${number}. **${OUTCOMES[one.outcome]}**: ${sentence}\n   ${one.tried}`), ...after.flatMap((line) => ["", line]), ""].join("\n");
+
+const calledOwner = (missed: [number, string, Try][], when: string) =>
+  missed.map(([number, sentence, one]) => `Sentence ${number} missed ${when}, so the spec is marked \`${NEEDS_HUMAN}\`: ${sentence}. Why: ${one.tried}`);
+
+const listing = (missed: [number, string, Try][], between: string) => missed.map(([number]) => number).join(between);
 
 const WAVE_CHECK = "## Wave check";
 const WAVE_OUTCOMES: Record<Outcome, string> = { ...OUTCOMES, owner: "Waits for the end" };
@@ -88,7 +98,7 @@ const wavePosted = (tried: [number, string, Try][], repeated: [number, string, T
     WAVE_CHECK,
     "",
     ...tried.map(([number, sentence, one]) => `- Sentence ${number}, **${WAVE_OUTCOMES[one.outcome]}**: ${sentence}${one.outcome === "owner" ? "" : `\n  ${one.tried}`}`),
-    ...repeated.flatMap(([number, sentence, one]) => ["", `Sentence ${number} missed at this wave check and the last one, so the spec is marked \`${NEEDS_HUMAN}\`: ${sentence}. Why: ${one.tried}`]),
+    ...calledOwner(repeated, "at this wave check and the last one").flatMap((line) => ["", line]),
     "",
   ].join("\n");
 
@@ -163,10 +173,27 @@ function waveCheck(issue: string, wave: number[]): Stop | undefined {
   const posted = comment.url;
   if (repeated.length > 0) {
     gh(["issue", "edit", issue, "--add-label", NEEDS_HUMAN]);
-    return stoppedAt("calledOwner", `${spec.said} marked ${NEEDS_HUMAN}, sentence ${repeated.map(([number]) => number).join(", ")} missed at two wave checks in a row: ${posted}`);
+    return stoppedAt("calledOwner", `${spec.said} marked ${NEEDS_HUMAN}, sentence ${listing(repeated, ", ")} missed at two wave checks in a row: ${posted}`);
   }
-  const outcome = missed.length === 0 ? "held every sentence it tried" : `missed sentence ${missed.map(([number]) => number).join(", ")}`;
+  const outcome = missed.length === 0 ? "held every sentence it tried" : `missed sentence ${listing(missed, ", ")}`;
   console.log(`${spec.said} wave check ${outcome}, and closes nothing: ${posted}`);
+  return undefined;
+}
+
+function fixWave(spec: Read, found: [number, string, Try][], missed: [number, string, Try][]): Stop | undefined {
+  const { issue, said } = spec;
+  if (spec.comments.some((comment) => comment.startsWith(DONE_CHECK) && comment.includes(FIX_WAVE))) {
+    const comment = commented(spec, posted(found, calledOwner(missed, "again after the fix wave")));
+    if (typeof comment === "string") return comment;
+    gh(["issue", "edit", issue, "--add-label", NEEDS_HUMAN]);
+    return stoppedAt("calledOwner", `${said} marked ${NEEDS_HUMAN}, sentence ${listing(missed, ", ")} missed again after the fix wave: ${comment.url}`);
+  }
+  const fixed = spawnSync(join(process.cwd(), "bin", "slice"), [issue, "--fix", listing(missed, ",")], { encoding: "utf8" });
+  const comment = commented(spec, posted(found, fixed.status === 0 ? [FIX_WAVE] : []));
+  if (typeof comment === "string") return comment;
+  const [why = ""] = `${fixed.stderr}${fixed.stdout}`.trim().split("\n");
+  if (fixed.status !== 0) return stoppedAt("unfixed", `${said} did not hold sentence ${listing(missed, ", ")}, and bin/slice --fix filed no fix wave: ${JSON.stringify(quoted(why))}: ${comment.url}`);
+  console.log(`${said} did not hold sentence ${listing(missed, ", ")}, so bin/slice --fix filed its one fix wave: ${comment.url}`);
   return undefined;
 }
 
@@ -178,17 +205,17 @@ function doneCheck(issue: string): Stop | undefined {
     spec.listed.map((_, at) => at + 1),
   );
   if (!Array.isArray(found)) return found;
-  const posting = posted(found.map(([, sentence, one]) => [sentence, one]));
-  const commentedOn = commented(spec, posting);
-  if (typeof commentedOn === "string") return commentedOn;
+  const missed = found.filter(([, , one]) => one.outcome === "missed");
+  if (missed.length > 0) return fixWave(spec, found, missed);
+  const comment = commented(spec, posted(found));
+  if (typeof comment === "string") return comment;
   const { said } = spec;
-  const comment = commentedOn.url;
   if (found.some(([, , one]) => one.outcome !== "held")) {
-    console.log(`${said} did not hold every sentence, so it stays open: ${comment}`);
+    console.log(`${said} did not hold every sentence, so it stays open: ${comment.url}`);
     return undefined;
   }
-  if (gh(["issue", "close", issue, "--reason", "completed"]).status !== 0) return stoppedAt("unrecorded", `${said} held every sentence but would not close: ${comment}`);
-  console.log(`${said} held every sentence and is closed: ${comment}`);
+  if (gh(["issue", "close", issue, "--reason", "completed"]).status !== 0) return stoppedAt("unrecorded", `${said} held every sentence but would not close: ${comment.url}`);
+  console.log(`${said} held every sentence and is closed: ${comment.url}`);
   return undefined;
 }
 
