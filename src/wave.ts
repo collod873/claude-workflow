@@ -1,6 +1,5 @@
-import { opened, type Opened } from "./admit.ts";
 import { capped } from "./brief.ts";
-import { commentsOn, gh } from "./post.ts";
+import { commentsOn, gh, opened, type Opened } from "./post.ts";
 import { REVIEWED_FROM, SPLIT_FROM } from "./reviewer.ts";
 import { exitFor, stoppedAt, type Stop } from "./stops.ts";
 import { why } from "./ticket-shape.ts";
@@ -38,11 +37,11 @@ const followed = (body: string): string | undefined => {
 };
 
 function specOf(issue: string, chain: string[] = []): Found | "unread" {
-  const parent = opened(`${issue}/parent`);
+  const parent = opened(`${issue}/parent`, gh);
   if (parent === "unread") return "unread";
   if (parent !== "missing") return (parent.labels ?? []).some(({ name }) => name === SPEC_LABEL) ? { spec: parent, chain } : { chain };
   if (chain.length === DEEPEST) return { chain };
-  const asked = opened(issue);
+  const asked = opened(issue, gh);
   if (asked === "unread") return "unread";
   const of = asked === "missing" ? undefined : followed(asked.body ?? "");
   return of === undefined ? { chain } : specOf(of, [...chain, issue]);
