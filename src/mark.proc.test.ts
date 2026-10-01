@@ -69,6 +69,15 @@ describe("bin/mark leaves one state on a ticket and its open PR, so one look at 
     expect(marked.labels("900")).toEqual(["building"]);
   });
 
+  it("a research note reads researching while the researcher runs, and only its kind once it closes (#1065)", () => {
+    const marked = marking({ labels: { "902": ["note", "research"] } });
+
+    expect(marked.run("902", "researching").status).toBe(0);
+    expect(marked.labels("902")).toEqual(["note", "research", "researching"]);
+    expect(marked.run("902", "--closed").status).toBe(0);
+    expect(marked.labels("902")).toEqual(["note", "research"]);
+  });
+
   it("makes a label the repo lacks with its group's colour, and leaves one the repo has", () => {
     const marked = marking({ labels: { "811": ["ticket", "try-2"] }, repo: ["building"] });
 
