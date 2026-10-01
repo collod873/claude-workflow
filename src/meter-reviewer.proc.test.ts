@@ -66,7 +66,7 @@ describe("bin/meters puts one line per meter on a ticket PR's body, beside the r
 
     const unanswered = metering({ verdict: { depth: [] } });
     expect(unanswered.run().status).toBe(1);
-    expect(unanswered.edited()).toEqual([]);
+    expect(unanswered.edited().join("\n")).not.toMatch(new RegExp(METERS.map(({ name }) => `${name} \\(meter\\)`).join("|")));
   });
 
   it("prints its lines and edits nothing with --print, so a merged PR can be read back", () => {
@@ -129,9 +129,44 @@ describe("bin/meters puts a discard (meter) line on the PR body, read by code fr
     );
   });
 
+  it("reads a call wrapped over several added lines, a shell call continued with a backslash and a spawn whose stdio sits on its own line, and a single-quoted stdio", () => {
+    const wrapped = [
+      'gh pr view "$pr" \\',
+      "  --json body \\",
+      "  --jq .body 2>/dev/null",
+      "const listed = spawnSync(",
+      '  "git",',
+      '  ["ls-files"],',
+      '  { stdio: ["ignore", "pipe", "ignore"] },',
+      ");",
+      "spawnSync('gh', ['auth', 'status'], { stdio: 'ignore' });",
+      'gh pr view "$pr"',
+      "count=$((count + 1)) || true",
+    ].join("\n+");
+
+    expect(discardLine(fileDiff("bin/close", wrapped).replace("@@ -0,0 +1 @@", "@@ -0,0 +1,11 @@"))).toBe(
+      [
+        "discard (meter): would refuse, bin/close:1 sends a gh call's stderr to /dev/null",
+        "bin/close:4 spawns a git call with its stderr ignored",
+        "bin/close:9 spawns a gh call with its stderr ignored",
+      ].join("; "),
+    );
+  });
+
+  it("still puts the discard line on the PR body when the model leaves a meter unanswered, and the run stays red", () => {
+    const unanswered = metering({ diff: fileDiff("bin/mark", "gh label create landing || true"), verdict: { depth: [] } });
+
+    expect(unanswered.run().status).toBe(1);
+    const body = edit(unanswered);
+    expect(body).toContain("discard (meter): would refuse, bin/mark:1 puts || true on a gh call");
+    expect(body).not.toContain("depth (meter)");
+  });
+
   it("puts the discard line on the PR body beside the model's meter lines, which stay as they were", () => {
     const found = metering({ diff: fileDiff("bin/mark", "bin/mark landing 2>/dev/null"), verdict: answer({ depth: [TANGLE] }) });
-    expect(found.run().status).toBe(0);
+    const ran = found.run();
+    expect(ran.status).toBe(0);
+    expect(ran.stdout).toContain(`put ${METERS.length + 1} meter lines on its PR body, 2 would refuse`);
     const body = edit(found);
     expect(body).toContain("discard (meter): would refuse, bin/mark:1 sends a bin/mark call's stderr to /dev/null");
     expect(body).toContain(`depth (meter): would refuse, ${TANGLE}`);
