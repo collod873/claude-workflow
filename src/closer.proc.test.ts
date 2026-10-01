@@ -629,11 +629,11 @@ describe("bin/close marks what the queue does to each ticket, so waiting its tur
     expect(touched(calls(), "870").some((call) => call.includes("try-3"))).toBe(false);
   });
 
-  it("marks checking once it brings a branch up to date cleanly, and adds no try", () => {
+  it("marks landing once it brings a branch up to date cleanly, since auto-merge can fire before any later run, and adds no try (#1073)", () => {
     const { calls, run } = closing({ ticket: "819", openPrs: [{ number: "951", ticket: "871", labels: ["queued", "try-2"] }] });
 
     expect(run().status).toBe(0);
-    expect(labelled(calls(), "871").map(({ labels }) => labels)).toEqual([["labels[]=checking"]]);
+    expect(labelled(calls(), "871").map(({ labels }) => labels)).toEqual([["labels[]=landing"]]);
     expect(touched(calls(), "871").some((call) => call.includes("try-3"))).toBe(false);
   });
 
@@ -710,7 +710,24 @@ describe("bin/close marks what the queue does to each ticket, so waiting its tur
 
     expect(run().status).toBe(0);
     expect(touched(calls(), "878")).toEqual([]);
-    expect(labelled(calls(), "879").map(({ labels }) => labels)).toEqual([["labels[]=checking"]]);
+    expect(labelled(calls(), "879").map(({ labels }) => labels)).toEqual([["labels[]=landing"]]);
     expect(labelled(calls(), "880").map(({ labels }) => labels)).toEqual([["labels[]=queued"]]);
+  });
+
+  it("keeps landing on the PR next to merge while its checks rerun, takes it off one that stops being next, and marks queued the green one behind (#1073)", () => {
+    const { calls, run } = closing({
+      ticket: "819",
+      afterCheck: true,
+      openPrs: [
+        { number: "967", ticket: "887", upToDate: true, checks: "pending", labels: ["landing"] },
+        { number: "968", ticket: "888", upToDate: true, checks: "pending", labels: ["landing"] },
+        { number: "969", ticket: "889", labels: ["queued"] },
+      ],
+    });
+
+    expect(run().status).toBe(0);
+    expect(touched(calls(), "887")).toEqual([]);
+    expect(labelled(calls(), "888").map(({ labels }) => labels)).toEqual([["labels[]=checking"]]);
+    expect(touched(calls(), "889")).toEqual([]);
   });
 });

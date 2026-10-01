@@ -18,6 +18,10 @@ export type Gh = (args: string[]) => { status: number | null; stdout: string; st
 export const gh: Gh = (args) => spawnSync("gh", args, { encoding: "utf8", maxBuffer: Infinity });
 export const markWith = (env: NodeJS.ProcessEnv) => (issue: string, ...label: string[]) => spawnSync(join(process.cwd(), "bin", "mark"), [issue, ...label], { stdio: "ignore", env });
 export const mark = markWith(process.env);
+export function labelsOf(issue: string, gh: Gh): string[] {
+  const got = gh(["issue", "view", issue, "--json", "labels", "--jq", ".labels[].name"]);
+  return got.status === 0 ? got.stdout.split("\n").filter((label) => label !== "") : [];
+}
 export const git = (args: string[]) => spawnSync("git", args, { encoding: "utf8", maxBuffer: Infinity });
 
 interface Kind {
