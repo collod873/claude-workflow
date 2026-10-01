@@ -6,6 +6,11 @@ import { CLOSE_RUN, closing } from "./closer.part.ts";
 
 const REPO = join(import.meta.dirname, "..");
 
+function closeWorkflow() {
+  const { on, jobs } = parse(readFileSync(join(REPO, ".github", "workflows", "close.yml"), "utf8")) as { on: Record<string, { types?: string[] }>; jobs: Record<string, { steps: { run?: string; env?: Record<string, string> }[] }> };
+  return { on, step: Object.values(jobs).flatMap((job) => job.steps).find((ran) => (ran.run ?? "").startsWith("bin/close")) };
+}
+
 describe("bin/close closes a ticket once its PR merges, since the PR's review and bin/check already judged it (#931)", () => {
   it("closes the ticket as completed, naming in its closing record the PR that merged", () => {
     const { calls, run } = closing({ ticket: "812" });
@@ -184,6 +189,46 @@ describe("bin/close wakes a ticket its builder split once every follow-up it spl
   });
 });
 
+describe("bin/close wakes a split ticket once every piece has closed, however each closed, and names how each ended (#1058)", () => {
+  const said = "@collod873 the builder split #811 into #812, #813, which build themselves. #811 keeps what must wait for them, labelled `waiting`, and builds once they all close: see #889";
+  const woken = (calls: string[]) => calls.findIndex((call) => call.trimEnd() === "issue\nedit\n811\n--remove-label\nwaiting");
+  const told = (calls: string[]) => calls.find((call) => call.startsWith("issue\ncomment\n811\n"));
+
+  it("wakes the split ticket when its last open piece closes unbuilt, naming each piece and how it ended", () => {
+    const { calls, run } = closing({ ticket: "819", afterCheck: true, splitFrom: { parent: "811", labels: "waiting\n", said, siblings: { "812": "CLOSED COMPLETED", "813": "CLOSED NOT_PLANNED" } } });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(woken(calls())).toBeGreaterThanOrEqual(0);
+    expect(told(calls())).toContain("#812 merged");
+    expect(told(calls())).toContain("#813 closed unbuilt");
+    expect(calls().indexOf(told(calls()) ?? ""), "tells the split ticket before its build starts").toBeLessThan(woken(calls()));
+  });
+
+  it("names the piece that just merged as merged, and wakes nothing and says nothing while a piece is still open", () => {
+    const last = closing({ ticket: "812", splitFrom: { parent: "811", labels: "waiting\n", said, siblings: { "813": "CLOSED NOT_PLANNED" } } });
+    const early = closing({ ticket: "819", afterCheck: true, splitFrom: { parent: "811", labels: "waiting\n", said, siblings: { "812": "CLOSED NOT_PLANNED", "813": "OPEN " } } });
+
+    expect(last.run().status).toBe(0);
+    expect(told(last.calls())).toContain("#812 merged");
+    expect(told(last.calls())).toContain("#813 closed unbuilt");
+    expect(woken(last.calls())).toBeGreaterThanOrEqual(0);
+    const result = early.run();
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("#811 still waits for #813");
+    expect(woken(early.calls())).toBe(-1);
+    expect(told(early.calls())).toBeUndefined();
+  });
+
+  it("runs as a queue run whenever an issue closes, so a piece closed with no PR still wakes its split ticket", () => {
+    const { on, step } = closeWorkflow();
+
+    expect(on.issues).toEqual({ types: ["closed"] });
+    expect(step?.env?.QUEUE_ONLY).toBe("${{ github.event_name != 'push' && 'queue' || '' }}");
+  });
+});
+
 describe("bin/close wakes a reviewer's follow-up once its parent's PR merges or closes, so it builds on a main that holds its parent (#1033)", () => {
   const woken = (calls: string[], ticket: string) => calls.findIndex((call) => call.trimEnd() === `issue\nedit\n${ticket}\n--remove-label\nwaiting`);
 
@@ -223,8 +268,7 @@ describe("bin/close wakes a reviewer's follow-up once its parent's PR merges or 
   });
 
   it("runs as a queue run whenever a PR closes, so a parent closed unmerged wakes its follow-ups at once", () => {
-    const { on, jobs } = parse(readFileSync(join(REPO, ".github", "workflows", "close.yml"), "utf8")) as { on: Record<string, { types?: string[] }>; jobs: Record<string, { steps: { run?: string; env?: Record<string, string> }[] }> };
-    const step = Object.values(jobs).flatMap((job) => job.steps).find((ran) => (ran.run ?? "").startsWith("bin/close"));
+    const { on, step } = closeWorkflow();
 
     expect(on.pull_request_target).toEqual({ types: ["closed"] });
     expect(step?.env?.QUEUE_ONLY).toBe("${{ github.event_name != 'push' && 'queue' || '' }}");
@@ -250,6 +294,22 @@ describe("bin/close wakes the ticket's builder directly, instead of reopening it
     expect(calls().some((call) => call.startsWith("issue\nreopen\n830"))).toBe(false);
     expect(calls().some((call) => call.startsWith("issue\ncomment\n830\n"))).toBe(false);
     expect(calls().some((call) => call.startsWith("pr\ncomment\n909\n")), "leaves the failed branch update comment on the PR (#980)").toBe(true);
+  });
+});
+
+describe("bin/close wakes no builder for a conflict on a ticket the owner was called for (#1058)", () => {
+  it("leaves the failed branch update on the PR but starts no builder when the ticket carries needs-human", () => {
+    const { calls, run } = closing({
+      ticket: "819",
+      openPrs: [{ number: "912", ticket: "834", needsHuman: true, refused: "GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts." }],
+    });
+
+    const result = run();
+
+    expect(result.status).toBe(0);
+    expect(calls().some((call) => call.startsWith("pr\ncomment\n912\n"))).toBe(true);
+    expect(calls().some((call) => call.startsWith("workflow\nrun\nfix.yml"))).toBe(false);
+    expect(result.stdout).toContain("#834 is labelled needs-human");
   });
 });
 
