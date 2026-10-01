@@ -39,7 +39,7 @@ export const WAITING = "waiting";
 export const NEEDS_HUMAN = "needs-human";
 
 const KINDS: Record<string, Kind> = {
-  ticket: filed(ticketRefusals, [], TICKET_SHAPE),
+  ticket: filed(ticketRefusals, ["--label", "ticket"], TICKET_SHAPE),
   note: filed(noteRefusals, ["--label", "note"], NOTE_SHAPE),
   research: filed(noteRefusals, ["--label", "note", "--label", RESEARCH], NOTE_SHAPE),
   spec: filed(specRefusals, ["--label", "spec"], SPEC_SHAPE),
