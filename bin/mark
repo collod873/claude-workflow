@@ -1,32 +1,110 @@
 #!/bin/bash
 set -uo pipefail
 
-usage="mark: usage: mark <ticket number> <1-defining|2-building|3-checking|4-reviewing|5-merging|fixing|needs-human>"
-stages=(1-defining 2-building 3-checking 4-reviewing 5-merging fixing)
+states=(building checking queued resolving landing waiting slicing researching)
+owners=(asked needs-human)
+usage="mark: usage: mark <number> <$(IFS='|'; printf '%s' "${states[*]}")> [--try|--untry] | mark <number> <asked|needs-human> | mark <number> --closed"
 
-ticket=${1:-}
+number=${1:-}
 label=${2:-}
-if [[ $# -ne 2 || ! $ticket =~ ^[0-9]+$ ]]; then
+count=${3:-}
+refused() {
   printf '%s\n' "$usage" >&2
   exit 2
-fi
-
-if [[ $label == needs-human ]]; then
-  cleared=()
-elif [[ " ${stages[*]} " == *" $label "* ]]; then
-  cleared=(needs-human)
-  for stage in "${stages[@]}"; do
-    [[ $stage == "$label" ]] || cleared+=("$stage")
-  done
+}
+[[ $number =~ ^[0-9]+$ ]] || refused
+if [[ " ${states[*]} " == *" $label "* && $label != waiting ]]; then
+  (($# == 2)) || [[ $# -eq 3 && ($count == --try || $count == --untry) ]] || refused
+elif [[ " ${states[*]} ${owners[*]} --closed " == *" $label "* ]]; then
+  (($# == 2)) || refused
 else
-  printf '%s\n' "$usage" >&2
-  exit 2
+  refused
 fi
 
-removing=()
-((${#cleared[@]})) && removing=(--remove-label "$(IFS=,; printf '%s' "${cleared[*]}")")
-if ! said=$(gh issue edit "$ticket" --add-label "$label" "${removing[@]}" 2>&1); then
-  printf 'mark: #%s not labelled %s: %s\n' "$ticket" "$label" "$(printf '%s' "$said" | head -n 1 | cut -c 1-120)" >&2
+machine() { [[ " ${states[*]} ${owners[*]} " == *" $1 "* || $1 =~ ^try-[0-9]+$ ]]; }
+
+colour() {
+  case $1 in
+    waiting) printf fbca04 ;;
+    try-*) printf f66a0a ;;
+    asked) printf 5319e7 ;;
+    needs-human) printf b60205 ;;
+    *) printf 1d76db ;;
+  esac
+}
+
+described() {
+  case $1 in
+    building) printf "The builder is writing the ticket's code" ;;
+    checking) printf 'bin/check and the reviewer are judging the head' ;;
+    queued) printf "Check and the review passed; it waits in the closer's queue" ;;
+    resolving) printf 'The builder is resolving a merge conflict' ;;
+    landing) printf 'Up to date and green; auto-merge is about to fire' ;;
+    waiting) printf 'Waits for other tickets before it builds' ;;
+    slicing) printf 'The slicer is writing the next wave' ;;
+    researching) printf 'The researcher is answering this note' ;;
+    try-*) printf 'Builder run %s, woken again after a failure' "${1#try-}" ;;
+    asked) printf "The machine put the owner a question and resumes on the owner's reply" ;;
+    needs-human) printf 'The machine stopped and needs the owner' ;;
+  esac
+}
+
+said=""
+failed() {
+  printf 'mark: #%s not labelled %s: %s\n' "$1" "$label" "$(printf '%s' "$said" | head -n 1 | cut -c 1-120)" >&2
   exit 1
+}
+
+held=()
+read_labels() {
+  said=$(gh api "repos/{owner}/{repo}/issues/$1" --jq '.labels[].name' 2>&1) || failed "$1"
+  mapfile -t held < <(printf '%s' "$said" | grep -v '^$')
+}
+
+apply() {
+  local on=$1 name
+  shift
+  read_labels "$on"
+  local adding=()
+  for name in "$@"; do
+    [[ " ${held[*]} " == *" $name "* ]] && continue
+    gh label create "$name" --color "$(colour "$name")" --description "$(described "$name")" >/dev/null 2>&1
+    adding+=(-f "labels[]=$name")
+  done
+  if ((${#adding[@]})); then
+    said=$(gh api -X POST "repos/{owner}/{repo}/issues/$on/labels" "${adding[@]}" 2>&1 >/dev/null) || failed "$on"
+  fi
+  for name in "${held[@]}"; do
+    machine "$name" && [[ " $* " != *" $name "* ]] || continue
+    said=$(gh api -X DELETE "repos/{owner}/{repo}/issues/$on/labels/$name" 2>&1 >/dev/null) || failed "$on"
+  done
+}
+
+read_labels "$number"
+target=()
+if [[ $label == --closed ]]; then
+  apply "$number"
+  printf 'mark: #%s is closed, so it keeps only its kind\n' "$number"
+  exit 0
+elif [[ " ${owners[*]} " == *" $label "* ]]; then
+  for name in "${held[@]}"; do
+    machine "$name" && [[ $name != "$label" ]] && target+=("$name")
+  done
+  target+=("$label")
+else
+  tries=1
+  for name in "${held[@]}"; do
+    [[ $name =~ ^try-([0-9]+)$ ]] && ((BASH_REMATCH[1] > tries)) && tries=${BASH_REMATCH[1]}
+  done
+  [[ $count == --try ]] && ((tries++))
+  [[ $count == --untry ]] && ((tries > 1)) && ((tries--))
+  [[ $label == waiting ]] && tries=1
+  target=("$label")
+  ((tries > 1)) && target+=("try-$tries")
 fi
-printf 'mark: #%s is at %s\n' "$ticket" "$label"
+
+apply "$number" "${target[@]}"
+said=$(gh pr list --head "ticket/$number" --state open --json number --jq '.[0].number // empty' 2>&1) || failed "$number"
+pr=$said
+[[ -n $pr ]] && apply "$pr" "${target[@]}"
+printf 'mark: #%s is at %s%s\n' "$number" "$(IFS=,; printf '%s' "${target[*]}" | sed 's/,/, /g')" "${pr:+, and so is PR #$pr}"
