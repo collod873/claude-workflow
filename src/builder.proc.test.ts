@@ -77,6 +77,28 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(unheld.handed()[0]).not.toContain(unheld.captured(""));
   });
 
+  it("opens a woken split ticket with the newest closer comment naming how each piece ended, under its body (#1066)", () => {
+    const older = "Every ticket #811 was split into has closed: #901 merged. #811 builds now.\n\nRun: 1";
+    const newest = "Every ticket #811 was split into has closed: #901 merged, #902 closed unbuilt. #811 builds now.\n\nRun: 2";
+    const { run, handed, body } = fixing({ claude: FIXES, onTicket: [older, "the split left #902 open", newest, { author: "stranger", type: "User", body: newest.replace("#902 closed unbuilt", "#903 merged") }] });
+
+    expect(run("811").status).toBe(0);
+    const opening = handed()[0] ?? "";
+    expect(opening).toContain(newest);
+    expect(opening).not.toContain(older);
+    expect(opening).not.toContain("#903 merged");
+    expect(opening.indexOf(newest)).toBeGreaterThan(opening.indexOf(body.trim()));
+    expect(opening.indexOf(newest)).toBeLessThan(opening.indexOf("## Build it"));
+  });
+
+  it("opens a ticket no split woke as before (#1066)", () => {
+    const { run, handed } = fixing({ claude: FIXES, onTicket: ["the owner says hello"] });
+
+    expect(run("811").status).toBe(0);
+    expect(handed()[0]).not.toContain("the owner says hello");
+    expect(handed()[0]).not.toContain("split into has closed");
+  });
+
   it("runs on Opus with no fence, the owner's hooks its only guard", () => {
     const { run, hired } = fixing({ claude: FIXES });
 
