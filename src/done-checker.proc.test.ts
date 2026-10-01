@@ -388,3 +388,55 @@ describe("bin/done-check marks the spec checking while it runs, and asked once i
     expect(stopped.marked()).toEqual([]);
   });
 });
+
+describe("bin/done-check --wave gives a sentence nothing on main could show yet as not tried yet, and never as a miss (#1082)", () => {
+  const unexercised = { sentence: 2, outcome: "unexercised", tried: "a spec would have to be filed after the ticket label exists" };
+
+  it("lists it as not tried yet with what would have to happen for it to be seen, counting no miss", () => {
+    const checked = doneChecking({ body: specWith(SENTENCES), tries: [unexercised] });
+
+    expect(checked.run("974", "--wave", "2").status).toBe(0);
+    const [comment = ""] = checked.comments();
+    expect(comment).toContain(`- Sentence 2, **Not tried yet**: ${SENTENCES[1]}\n  a spec would have to be filed after the ticket label exists`);
+    expect(missedIn(comment)).toEqual(new Set());
+    expect(checked.handed()).toContain("`unexercised`");
+    expect(checked.hired()[checked.hired().indexOf("--json-schema") + 1]).toContain("unexercised");
+  });
+
+  it.each([
+    ["not tried yet at the last wave check and again now", "Not tried yet", unexercised],
+    ["missed at the last wave check and not tried yet now", "Did not hold", unexercised],
+    ["not tried yet at the last wave check and missed now", "Not tried yet", { ...unexercised, outcome: "missed" }],
+  ])("marks the spec nothing when a sentence was %s", (_, before, now) => {
+    const checked = doneChecking({ body: specWith(SENTENCES), tries: [now], said: [`## Wave check\n\n- Sentence 2, **${before}**: ${SENTENCES[1]}`] });
+
+    expect(checked.run("974", "--wave", "2").status).toBe(0);
+    expect(checked.labelled()).toEqual([]);
+  });
+
+  it("tries again a sentence the last wave check gave not tried yet, beside the ones this wave moved", () => {
+    const tries = [
+      { sentence: 1, outcome: "held", tried: "saw the first wave under it" },
+      { sentence: 2, outcome: "held", tried: "opened a ticket filed since" },
+    ];
+    const checked = doneChecking({ body: specWith(SENTENCES), tries, said: [`## Wave check\n\n- Sentence 2, **Not tried yet**: ${SENTENCES[1]}\n  a ticket would have to be filed`] });
+
+    expect(checked.run("974", "--wave", "1").status).toBe(0);
+    expect(checked.handed()).toContain("try only sentences 1, 2");
+    expect(checked.comments()[0]).toContain(`- Sentence 2, **Held**: ${SENTENCES[1]}`);
+  });
+});
+
+describe("bin/done-check's final check may not give a sentence not tried yet (#1082)", () => {
+  it("offers no unexercised, and ends red naming the sentence without posting or closing when one is given anyway", () => {
+    const tries = SENTENCES.map((_, at) => ({ sentence: at + 1, outcome: at === 1 ? "unexercised" : "held", tried: "saw it" }));
+    const checked = doneChecking({ body: specWith(SENTENCES), tries });
+
+    expect(checked.run()).toEqual({ status: 1, stdout: "", stderr: "done-check: #974 ended red, the done checker gave sentence 2 as not tried yet, which only a wave check may give\n" });
+    expect(checked.hired()[checked.hired().indexOf("--json-schema") + 1]).not.toContain("unexercised");
+    expect(checked.handed()).not.toContain("`unexercised`");
+    expect(checked.comments()).toEqual([]);
+    expect(checked.closes()).toEqual([]);
+    expect(checked.sliced()).toEqual([]);
+  });
+});
