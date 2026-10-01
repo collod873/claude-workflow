@@ -41,7 +41,7 @@ const listed: Record<string, Scenario[]> = {
     { label: "with the push refused", run: () => saving({ remoteRefuses: NOISE }).run() },
   ],
   "bin/mark": [
-    { label: "moving a ticket to a stage", run: () => marking().run("811", "2-building") },
+    { label: "moving a ticket to a state", run: () => marking({ labels: { "811": ["ticket", "checking", "try-2"] }, pr: "900" }).run("811", "building", "--try") },
     { label: "with GitHub refusing the label", run: () => marking({ gh: `cat >&2 <<'NOISE'\n${NOISE}\nNOISE\nexit 1\n` }).run("811", "needs-human") },
   ],
   "bin/close-note": [

@@ -90,23 +90,15 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - id: mark-reviewing
-        env:
-          GH_TOKEN: ${{ github.token }}
-          HEAD_REF: ${{ github.head_ref }}
-        run: bin/mark "${HEAD_REF#ticket/}" 4-reviewing || true
-
       - id: review
         timeout-minutes: 12
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           STAGE_MINUTES: 10
-          HEAD_REF: ${{ github.head_ref }}
         run: |
           tail --pid=$$ -n +1 -F .git/machine-logs/review-${{ github.event.pull_request.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
           $RUNNER_TEMP/main/bin/review ${{ github.event.pull_request.number }}
-          bin/mark "${HEAD_REF#ticket/}" 5-merging || true
 
       - if: always()
         timeout-minutes: 6

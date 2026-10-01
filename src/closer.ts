@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { join } from "node:path";
 import { splitInto } from "./builder.ts";
 import { commentOnPr, commentOnTicket, commentsOn, NEEDS_HUMAN, WAITING } from "./post.ts";
 import { FINGERPRINT, REVIEWED_FROM, TICKET_BRANCH } from "./reviewer.ts";
@@ -11,14 +12,14 @@ type Stop = ReturnType<typeof stoppedAt>;
 const MERGED = /^Merge pull request #(\d+) from \S+?(?:\/ticket\/(\d+))?$/;
 const NAMED = /^(?:[ ,]*#\d+)+/;
 const BUILDS = /^Builds #(\d+)[ \t]*$/m;
-const STAGE_LABELS = "1-defining,2-building,3-checking,4-reviewing,5-merging,fixing,needs-human";
 const MACHINE_BRANCH = /^(ticket|land)\//;
 const REQUIRED_CHECKS = ["check", "review"];
 const PASSED = new Set(["SUCCESS", "SKIPPED", "NEUTRAL"]);
 
 const run = (command: string, args: string[]) => spawnSync(command, args, { encoding: "utf8", maxBuffer: Infinity });
 const gh = (args: string[]) => run("gh", args);
-const quietGh = (args: string[]) => spawnSync("gh", args, { encoding: "utf8", env: { ...process.env, GH_TOKEN: process.env.QUIET_GH_TOKEN } });
+const quietly = { ...process.env, GH_TOKEN: process.env.QUIET_GH_TOKEN };
+const quietGh = (args: string[]) => spawnSync("gh", args, { encoding: "utf8", env: quietly });
 const ticketState = (ticket: string) => gh(["issue", "view", ticket, "--json", "state,stateReason", "--jq", '.state + " " + .stateReason']).stdout.trim();
 const git = (args: string[]) => run("git", args);
 
@@ -276,7 +277,7 @@ function close(): Stop | undefined {
   const [refusal] = posted.refusals;
   if (refusal !== undefined) return stoppedAt("unrecorded", `close: #${ticket} got no closing record: ${quoted(refusal)}`);
   const state = ticketState(ticket);
-  gh(["issue", "edit", ticket, "--remove-label", STAGE_LABELS]);
+  spawnSync(join(import.meta.dirname, "..", "bin", "mark"), [ticket, "--closed"], { stdio: "ignore", env: quietly });
   if (state !== "CLOSED COMPLETED") {
     if (state.startsWith("CLOSED")) quietGh(["issue", "reopen", ticket]);
     if (quietGh(["issue", "close", ticket, "--reason", "completed"]).status !== 0) return stoppedAt("unrecorded", `close: #${ticket} is done but could not be closed${recorded(posted.said)}`);

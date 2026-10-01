@@ -149,6 +149,7 @@ export function closing({
       `printf '%s\\n' "$@" >"${callsDir}/$n"`,
       `printf '%s' "$GH_TOKEN" >"${tokensDir}/$n"`,
       'case "$*" in',
+      `  "api repos/{owner}/{repo}/issues/${ticket} --jq"*) printf 'ticket\\nbuilding\\ntry-2\\nwayfinder:map\\n' ;;`,
       ...(resliceRefused === undefined ? [] : [`  *"workflow run reslice.yml"*) printf '%s\\n' '${resliceRefused}' >&2; exit 1 ;;`]),
       `  *"issue list"*"${WAITING}"*) cat <<'LISTED'\n${JSON.stringify(waitingListed(followUps, splitFrom))}\nLISTED\n    ;;`,
       ...openPrs.filter((pr) => pr.needsHuman === true).map((pr) => `  *"issue view ${pr.ticket} "*"labels"*) printf '%s\\n' '${NEEDS_HUMAN}' ;;`),

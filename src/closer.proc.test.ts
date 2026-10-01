@@ -69,8 +69,8 @@ describe("bin/close names how long filing took to reach merged, and never gates 
   });
 });
 
-describe("bin/close ends a done ticket closed as completed with no stage label (#851)", () => {
-  it("re-closes as completed and strips the stage label, even when the merge finds the ticket already closed as not planned", () => {
+describe("bin/close ends a done ticket closed as completed with no state label (#851, #1055)", () => {
+  it("re-closes as completed and strips the state label, even when the merge finds the ticket already closed as not planned", () => {
     const { calls, tokens, run } = closing({ ticket: "817", closedAs: "NOT_PLANNED" });
 
     const result = run();
@@ -83,10 +83,11 @@ describe("bin/close ends a done ticket closed as completed with no stage label (
     expect(calls()[closed]).toContain("completed");
     expect(tokens()[reopened], "reopens with the token that fires no workflow, so the builder never hears of it").toBe("quiet");
     expect(tokens()[closed]).toBe("quiet");
-    const stripped = calls().find((call) => call.includes("--remove-label"));
-    expect(stripped, "strips its stage label").toBeDefined();
-    const args = (stripped ?? "").split("\n");
-    expect(args[args.indexOf("--remove-label") + 1]).not.toBe("");
+    const stripped = calls().flatMap((call, at) => (call.startsWith("api\n-X\nDELETE\n") ? [`${call.split("\n")[3] ?? ""} ${tokens()[at] ?? ""}`] : []));
+    expect(stripped, "strips its state and try labels through bin/mark, quietly, since its quiet close fires no close handler").toEqual([
+      "repos/{owner}/{repo}/issues/817/labels/building quiet",
+      "repos/{owner}/{repo}/issues/817/labels/try-2 quiet",
+    ]);
   });
 
   it("leaves closed as completed a done ticket the merge already closed, reopening nothing", () => {
@@ -94,7 +95,7 @@ describe("bin/close ends a done ticket closed as completed with no stage label (
 
     expect(run().status).toBe(0);
     expect(calls().some((call) => call.startsWith("issue\nreopen\n818"))).toBe(false);
-    expect(calls().some((call) => call.includes("--remove-label"))).toBe(true);
+    expect(calls().some((call) => call.startsWith("api\n-X\nDELETE\nrepos/{owner}/{repo}/issues/818/labels/building"))).toBe(true);
   });
 });
 
@@ -177,7 +178,7 @@ describe("bin/close wakes a ticket its builder split once every follow-up it spl
 
   it("leaves the split ticket waiting while a follow-up is still open, and never wakes one that is not waiting", () => {
     const early = closing({ ticket: "812", ticketBody: piece("812"), splitFrom: { parent: "811", labels: "waiting\n", said, siblings: { "813": "OPEN " } } });
-    const unparked = closing({ ticket: "812", ticketBody: piece("812"), splitFrom: { parent: "811", labels: "fixing\n", said, siblings: { "813": "CLOSED COMPLETED" } } });
+    const unparked = closing({ ticket: "812", ticketBody: piece("812"), splitFrom: { parent: "811", labels: "building\n", said, siblings: { "813": "CLOSED COMPLETED" } } });
 
     const result = early.run();
 
