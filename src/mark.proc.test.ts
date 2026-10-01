@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { heard, marking } from "./scenarios.ts";
 
 const STATE_BLUE = "1d76db";
+const LANDING = "Up to date with main and next to merge; auto-merge fires once its checks pass";
 
 describe("bin/mark leaves one state on a ticket and its open PR, so one look at either says where it is (#1055)", () => {
   it("sets the state, takes every other state, asked and needs-human off, and leaves the kind and wayfinder labels alone", () => {
@@ -104,6 +105,13 @@ describe("bin/mark leaves one state on a ticket and its open PR, so one look at 
     expect(marked.run("975", "waiting").status).toBe(0);
     expect(marked.run("976", "slicing").status).toBe(0);
     expect(marked.made()).toEqual(["building ededed", "try-3 f66a0a", "needs-human b60205", "asked 5319e7", "waiting fbca04", `slicing ${STATE_BLUE}`]);
+  });
+
+  it("describes landing as next to merge while its checks still run, since it shows before the PR is green (#1074)", () => {
+    const marked = marking();
+
+    expect(marked.run("811", "landing").status).toBe(0);
+    expect(marked.calls()).toContain(`label create landing --color ${STATE_BLUE} --description ${LANDING}`);
   });
 
   it("refuses the old stage labels and anything outside the set, and asks GitHub for nothing", () => {

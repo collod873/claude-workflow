@@ -39,7 +39,7 @@ described() {
     checking) printf "bin/check and the reviewer judge the head, or the done check tries a spec's sentences" ;;
     queued) printf "Check and the review passed; it waits in the closer's queue" ;;
     resolving) printf 'The builder is resolving a merge conflict' ;;
-    landing) printf 'Up to date and green; auto-merge is about to fire' ;;
+    landing) printf 'Up to date with main and next to merge; auto-merge fires once its checks pass' ;;
     waiting) printf 'Waits for other tickets before it builds' ;;
     slicing) printf 'The slicer is writing the next wave' ;;
     researching) printf 'The researcher is answering this note' ;;
