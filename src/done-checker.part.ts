@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { handedOn, REPLIES_CAP } from "./done-checker.ts";
-import { authored, BIN, execute, issueStage, plant, type Said, script, wellFormedSpec } from "./scenarios.ts";
+import { authored, BIN, execute, issueStage, plant, type Said, script, stubbedMark, wellFormedSpec } from "./scenarios.ts";
 import { declareStage, HANDED_ON } from "./stages.ts";
 import { SPEC_CAP } from "./ticket-shape.ts";
 
@@ -24,11 +24,13 @@ export function doneChecking({
   const { root, argv, ...stage } = issueStage("done-check-", { title: "A spec worth trying", body, labels: labels.map((name) => ({ name })) }, { tries }, DONE_CHECK_POSTED, `${gh}\n${comments}\n`);
   plant(root, "comments.json", authored(said));
   const sliced = join(root, "sliced");
+  const marked = stubbedMark(root);
   script(join(root, "bin", "slice"), `printf '%s\\n' "$*" >>"${sliced}"\n${slice}`);
   return {
     ...stage,
     closes: () => argv().filter((args) => args[1] === "close"),
     labelled: () => argv().filter((args) => args[1] === "edit").map((args) => args.slice(2).join(" ")),
+    marked,
     sliced: () => (existsSync(sliced) ? readFileSync(sliced, "utf8").trimEnd().split("\n") : []),
     run: (...args: string[]) => execute(join(BIN, "done-check"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, args.length > 0 ? args : ["974"]),
   };

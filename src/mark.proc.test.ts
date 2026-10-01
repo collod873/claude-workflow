@@ -61,6 +61,22 @@ describe("bin/mark leaves one state on a ticket and its open PR, so one look at 
     expect(asked.labels("974")).toEqual(["asked", "checking", "spec"]);
   });
 
+  it("keeps a spec's try-2 from its fix wave's slicing through building, checking and asked, and clears asked once it checks again (#1064)", () => {
+    const marked = marking({ labels: { "974": ["spec", "checking"] } });
+
+    const steps: [string[], string[]][] = [
+      [["slicing", "--try"], ["slicing", "spec", "try-2"]],
+      [["building"], ["building", "spec", "try-2"]],
+      [["checking"], ["checking", "spec", "try-2"]],
+      [["asked"], ["asked", "checking", "spec", "try-2"]],
+      [["checking"], ["checking", "spec", "try-2"]],
+    ];
+    for (const [label, held] of steps) {
+      expect(marked.run("974", ...label).status).toBe(0);
+      expect(marked.labels("974"), label.join(" ")).toEqual(held);
+    }
+  });
+
   it("with --closed strips every state, try and owner label from that issue or PR, and nothing else", () => {
     const marked = marking({ labels: { "811": ["ticket", "spec", "note", "research", "building", "try-3", "asked", "needs-human", "wayfinder:map"], "900": ["building"] }, pr: "900" });
 

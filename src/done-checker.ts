@@ -3,7 +3,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { capped } from "./brief.ts";
 import { UNFENCED } from "./fence.ts";
-import { askedIssue, authoredOn, commentOnTicket, gh, NEEDS_HUMAN, OWNER, type Asked } from "./post.ts";
+import { askedIssue, authoredOn, commentOnTicket, gh, mark, NEEDS_HUMAN, OWNER, type Asked } from "./post.ts";
 import { NO_EM_DASH } from "./reviewer.ts";
 import { hired, machineLogs } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
@@ -141,6 +141,7 @@ function read(issue: string): Read | Stop {
   if (listed.length === 0) return stoppedAt("notSpec", `${said} carries no sentence to try, so nothing was tried or closed`);
   const authored = authoredOn(issue, gh);
   if (authored === undefined) return stoppedAt("unread", `${said} could not read its comments, so nothing was tried`);
+  if (!asked.labels.some(({ name }) => name === NEEDS_HUMAN)) mark(issue, "checking");
   const comments = authored.map(({ body }) => body);
   const since = comments.map((comment) => comment.startsWith(DONE_CHECK_HEADING)).lastIndexOf(true);
   const replies = since === -1 ? "" : authored.slice(since + 1).flatMap(({ author, body }) => (author === OWNER ? [body] : [])).join("\n\n");
@@ -247,6 +248,7 @@ function doneCheck(issue: string): Stop | undefined {
   if (typeof comment === "string") return comment;
   const { said } = spec;
   if (found.some(([, , one]) => one.outcome === "owner")) {
+    mark(issue, "asked");
     console.log(`${said} did not hold every sentence, so it stays open: ${comment.url}`);
     return undefined;
   }

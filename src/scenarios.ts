@@ -133,6 +133,12 @@ export function script(path: string, body: string): void {
   chmodSync(path, 0o755);
 }
 
+export function stubbedMark(root: string): () => string[] {
+  const marks = join(root, "mark-calls");
+  script(join(root, "bin", "mark"), `printf '%s\\n' "$*" >>"${marks}"\n`);
+  return () => (existsSync(marks) ? readFileSync(marks, "utf8").trimEnd().split("\n") : []);
+}
+
 export function execute(file: string, cwd: string, extra: Record<string, string> = {}, args: string[] = []): Run {
   const { status, stdout, stderr } = spawnSync(file, args, { cwd, env: { ...env, ...extra }, encoding: "utf8" });
   return { status, stdout, stderr };

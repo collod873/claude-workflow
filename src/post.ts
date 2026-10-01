@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { join } from "node:path";
 import { text as read } from "node:stream/consumers";
 import { emDashLines } from "./em-dash.ts";
 import { NEXT_HEADING, NOTE_SHAPE, SPEC_SHAPE, TICKET_SHAPE, matchEnd, noteRefusals, rewriteRefusals, specRefusals, ticketRefusals } from "./ticket-shape.ts";
@@ -15,6 +16,7 @@ export interface Posting {
 export type Gh = (args: string[]) => { status: number | null; stdout: string; stderr: string };
 
 export const gh: Gh = (args) => spawnSync("gh", args, { encoding: "utf8", maxBuffer: Infinity });
+export const mark = (issue: string, ...label: string[]) => spawnSync(join(process.cwd(), "bin", "mark"), [issue, ...label], { stdio: "ignore" });
 export const git = (args: string[]) => spawnSync("git", args, { encoding: "utf8", maxBuffer: Infinity });
 
 interface Kind {

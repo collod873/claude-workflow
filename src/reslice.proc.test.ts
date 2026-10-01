@@ -326,3 +326,36 @@ describe("reslice.yml runs the wave check, then the re-slice, when a closed issu
     for (const step of [waveCheck, resliced]) expect(step?.env?.GH_TOKEN).toBe("${{ steps.app.outputs.token }}");
   });
 });
+
+describe("bin/slice marks a spec's next wave and its fix wave as they are sliced, and nothing when it slices nothing (#1064)", () => {
+  it("marks slicing then building for the next wave", () => {
+    const sliced = reslicing();
+
+    expect(sliced.run().status).toBe(0);
+    expect(sliced.marked()).toEqual(["968 slicing", "968 building"]);
+  });
+
+  it("marks slicing then checking, and no building, when nothing is left to slice and the done check runs", () => {
+    const sliced = reslicing({ answers: [next([], []), { tries: [{ sentence: 1, outcome: "held", tried: "saw the spec labelled spec" }] }] });
+
+    expect(sliced.run().status).toBe(0);
+    expect(sliced.marked()).toEqual(["968 slicing", "968 checking"]);
+  });
+
+  it("marks nothing while the wave is not over, or on a spec marked needs-human", () => {
+    const open = reslicing({ tickets: [ticket(1001), ticket(1002, "open")] });
+    const stopped = reslicing({ labels: ["spec", "needs-human"] });
+
+    expect(open.run().status).toBe(0);
+    expect(open.marked()).toEqual([]);
+    expect(stopped.run().status).toBe(0);
+    expect(stopped.marked()).toEqual([]);
+  });
+
+  it("marks the fix wave's slicing with --try, so the spec carries try-2 from then on", () => {
+    const sliced = slicing({ body: specWith(["one", "two"]), answers: [{ ...next([piece], [2]), spec: specWith(["one", "two"]) }], issues: { "974/sub_issues": [{ ...ticket(1001), title: "Ticket 1001", state_reason: "completed" }] }, comments: { "974": [NOTE] } });
+
+    expect(sliced.run("974", "--fix", "2").status).toBe(0);
+    expect(sliced.marked()).toEqual(["974 slicing --try", "974 building"]);
+  });
+});
