@@ -86,12 +86,12 @@ function metered(pr: string, print: boolean): Stop | undefined {
   const unanswered = typeof spent === "string" ? [] : METERS.filter(({ name }) => findingsIn(spent.answer, name) === undefined).map(({ name }) => name);
   if (typeof spent === "string" || unanswered.length > 0) {
     const why = typeof spent === "string" ? spent : `the meter reviewer answered no ${unanswered.join(", ")}`;
-    if (!print) putOn(pr, said, [discard]);
-    return stoppedAt("modelRun", `${said} ended red, ${why}`);
+    const unput = print ? undefined : putOn(pr, said, [discard]);
+    return stoppedAt("modelRun", `${said} ended red, ${why}${unput === undefined ? "" : ", and its PR body could not be read or edited, so its discard line is not on it"}`);
   }
   const judged = METERS.map(({ name }) => ({ name, findings: findingsIn(spent.answer, name) ?? [] }));
   if (print) {
-    console.log(judged.map((meter) => lineFor(meter).line).join("\n"));
+    console.log([...judged, discard].map((meter) => lineFor(meter).line).join("\n"));
     return undefined;
   }
   const found = [...judged, discard];

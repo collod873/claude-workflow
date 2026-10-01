@@ -7,7 +7,7 @@ import { onTestFinished } from "vitest";
 import vitest from "../vitest.config.ts";
 
 export const LINE_LIMIT = 200;
-export const MOST_LINES = 5;
+export const MOST_LINES = 6;
 
 export function overLimit(said: string, allowed: number): string[] {
   const spoken = said.replace(/\n$/, "").split("\n");

@@ -74,7 +74,7 @@ describe("bin/meters puts one line per meter on a ticket PR's body, beside the r
 
     const printed = run("9810", {}, ["--print"]);
     expect(printed.status).toBe(0);
-    expect(printed.stdout.trim().split("\n")).toHaveLength(METERS.length);
+    expect(printed.stdout.trim().split("\n")).toHaveLength(METERS.length + 1);
     expect(printed.stdout).toContain("hollow test (meter): would refuse, the test for the cap passes with the cap removed");
     expect(edited()).toEqual([]);
   });
@@ -160,6 +160,26 @@ describe("bin/meters puts a discard (meter) line on the PR body, read by code fr
     const body = edit(unanswered);
     expect(body).toContain("discard (meter): would refuse, bin/mark:1 puts || true on a gh call");
     expect(body).not.toContain("depth (meter)");
+  });
+
+  it("prints the discard line beside the model's lines with --print, for a refusing diff and a clean one, and edits nothing", () => {
+    const refusing = metering({ diff: fileDiff("bin/mark", "gh label create landing 2>/dev/null") });
+    const printed = refusing.run("9810", {}, ["--print"]);
+    expect(printed.status).toBe(0);
+    expect(printed.stdout).toContain("discard (meter): would refuse, bin/mark:1 sends a gh call's stderr to /dev/null");
+    expect(printed.stdout).toContain("depth (meter): would refuse nothing");
+    expect(refusing.edited()).toEqual([]);
+
+    const clean = metering({ diff: fileDiff("bin/mark", "gh label create landing") });
+    expect(clean.run("9810", {}, ["--print"]).stdout).toContain("discard (meter): would refuse nothing");
+  });
+
+  it("names a PR body it could not edit in its red stop when the model also failed, rather than dropping that error", () => {
+    const both = metering({ diff: fileDiff("bin/mark", "gh label create landing || true"), verdict: { depth: [] }, prEditFails: true });
+
+    const ran = both.run();
+    expect(ran.status).toBe(1);
+    expect(ran.stdout + ran.stderr).toMatch(/answered no done when[^\n]*discard line is not on it/);
   });
 
   it("puts the discard line on the PR body beside the model's meter lines, which stay as they were", () => {
