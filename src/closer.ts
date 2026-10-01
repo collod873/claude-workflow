@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
-import { splitInto } from "./builder.ts";
+import { splitClosed, splitInto } from "./builder.ts";
 import { commentOnPr, commentOnTicket, commentsOn, NEEDS_HUMAN, WAITING } from "./post.ts";
 import { FINGERPRINT, REVIEWED_FROM, TICKET_BRANCH } from "./reviewer.ts";
 import { exitFor, stopsOf } from "./stops.ts";
@@ -229,7 +229,7 @@ function wokenFromSplit(parent: string, split: string, merged: string | undefine
   const open = states.filter(({ state }) => !state.startsWith("CLOSED"));
   if (open.length > 0) return `; #${parent} still waits for ${open.map(({ piece }) => `#${piece}`).join(", ")}`;
   const how = states.map(({ piece, state }) => `#${piece} ${state === "CLOSED COMPLETED" ? "merged" : "closed unbuilt"}`).join(", ");
-  commentOnTicket(parent, `Every ticket #${parent} was split into has closed: ${how}. #${parent} builds now.\n\nRun: ${thisRun}`, gh);
+  commentOnTicket(parent, `${splitClosed(parent)} ${how}. #${parent} builds now.\n\nRun: ${thisRun}`, gh);
   const woke = gh(["issue", "edit", parent, "--remove-label", WAITING]);
   return woke.status === 0 ? `; #${parent} builds now, its split tickets all closed: ${how}` : `; #${parent} could not be woken: ${quoted((woke.stderr || woke.stdout).trim().split("\n")[0] ?? "")}`;
 }
