@@ -85,8 +85,10 @@ function reslicing({
   prs = { "1001": { state: "MERGED", files: ["src/slicer.ts"] } } as Record<string, object>,
   diffs = {} as Record<string, string>,
   spec = "968",
+  markRefusal = undefined as string | undefined,
 } = {}) {
   return slicing({
+    markRefusal,
     labels,
     answers,
     issues: { [`${spec}/sub_issues`]: tickets.map((one) => ({ ...one, title: `Ticket ${one.number}`, state_reason: "completed" })) },
@@ -370,5 +372,17 @@ describe("bin/slice marks a spec's next wave and its fix wave as they are sliced
 
     expect(sliced.run("974", "--fix", "2").status).toBe(0);
     expect(sliced.marked()).toEqual(["974 slicing --try", "974 building"]);
+  });
+});
+
+describe("bin/slice says in its log when a mark fails, so a spec whose labels lag shows why (#1081)", () => {
+  it("passes on bin/mark's refusal and still files the wave", () => {
+    const sliced = reslicing({ markRefusal: "mark: #968 not labelled slicing: HTTP 403: Resource not accessible by integration" });
+
+    const { status, stderr } = sliced.run();
+
+    expect(status).toBe(0);
+    expect(stderr).toContain("mark: #968 not labelled slicing: HTTP 403: Resource not accessible by integration\n");
+    expect(sliced.filed()).toHaveLength(1);
   });
 });

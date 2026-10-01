@@ -133,10 +133,12 @@ export function script(path: string, body: string): void {
   chmodSync(path, 0o755);
 }
 
-export function stubbedMark(root: string, hiredAt?: string): () => string[] {
+export const refusedMark = (refusal: string | undefined): string => (refusal === undefined ? "" : `printf '%s\\n' '${refusal}' >&2\nexit 1\n`);
+
+export function stubbedMark(root: string, hiredAt?: string, refusal?: string): () => string[] {
   const marks = join(root, "mark-calls");
   const when = hiredAt === undefined ? "" : `[[ -e "${hiredAt}" ]] && when=after || when=before\n`;
-  script(join(root, "bin", "mark"), `${when}printf '%s\\n' "$*${hiredAt === undefined ? "" : " $when the model"}" >>"${marks}"\n`);
+  script(join(root, "bin", "mark"), `${when}printf '%s\\n' "$*${hiredAt === undefined ? "" : " $when the model"}" >>"${marks}"\n${refusedMark(refusal)}`);
   return () => (existsSync(marks) ? readFileSync(marks, "utf8").trimEnd().split("\n") : []);
 }
 

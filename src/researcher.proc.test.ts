@@ -123,3 +123,15 @@ describe("bin/research answers a research note on the note and closes it, with n
     expect(holds(build.if ?? "true", { labels: ["note", "research"] })).toBe(false);
   });
 });
+
+describe("bin/research says in its log when a mark fails, so a note whose labels lag shows why (#1081)", () => {
+  it("passes on bin/mark's refusal and still answers the note", () => {
+    const answered = researching({ markRefusal: "mark: #902 not labelled researching: HTTP 403: Resource not accessible by integration" });
+
+    const { status, stderr } = answered.run();
+
+    expect(status).toBe(0);
+    expect(stderr).toContain("mark: #902 not labelled researching: HTTP 403: Resource not accessible by integration\n");
+    expect(answered.calls()).toContain("issue close 902");
+  });
+});

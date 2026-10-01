@@ -440,3 +440,15 @@ describe("bin/done-check's final check may not give a sentence not tried yet (#1
     expect(checked.sliced()).toEqual([]);
   });
 });
+
+describe("bin/done-check says in its log when a mark fails, so a spec whose labels lag shows why (#1081)", () => {
+  it("passes on bin/mark's refusal and still checks the spec", () => {
+    const checked = doneChecking({ markRefusal: "mark: #974 not labelled checking: HTTP 403: Resource not accessible by integration" });
+
+    const { status, stderr } = checked.run();
+
+    expect(status).toBe(0);
+    expect(stderr).toContain("mark: #974 not labelled checking: HTTP 403: Resource not accessible by integration\n");
+    expect(checked.marked()).toEqual(["974 checking"]);
+  });
+});
