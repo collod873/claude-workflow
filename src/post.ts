@@ -16,7 +16,7 @@ export interface Posting {
 export type Gh = (args: string[]) => { status: number | null; stdout: string; stderr: string };
 
 export const gh: Gh = (args) => spawnSync("gh", args, { encoding: "utf8", maxBuffer: Infinity });
-export const markWith = (env: NodeJS.ProcessEnv) => (issue: string, ...label: string[]) => spawnSync(join(process.cwd(), "bin", "mark"), [issue, ...label], { stdio: "ignore", env });
+export const markWith = (env: NodeJS.ProcessEnv) => (issue: string, ...label: string[]) => spawnSync(join(process.cwd(), "bin", "mark"), [issue, ...label], { stdio: ["ignore", "ignore", "inherit"], env });
 export const mark = markWith(process.env);
 export function labelsOf(issue: string, gh: Gh): string[] {
   const got = gh(["issue", "view", issue, "--json", "labels", "--jq", ".labels[].name"]);

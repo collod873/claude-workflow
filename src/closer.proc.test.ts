@@ -7,8 +7,12 @@ import { CLOSE_RUN, closing } from "./closer.part.ts";
 const REPO = join(import.meta.dirname, "..");
 
 function closeWorkflow() {
-  const { on, jobs } = parse(readFileSync(join(REPO, ".github", "workflows", "close.yml"), "utf8")) as { on: Record<string, { types?: string[] }>; jobs: Record<string, { steps: { run?: string; env?: Record<string, string> }[] }> };
-  return { on, step: Object.values(jobs).flatMap((job) => job.steps).find((ran) => (ran.run ?? "").startsWith("bin/close")) };
+  const { on, permissions, jobs } = parse(readFileSync(join(REPO, ".github", "workflows", "close.yml"), "utf8")) as {
+    on: Record<string, { types?: string[] }>;
+    permissions: Record<string, string>;
+    jobs: Record<string, { steps: { run?: string; env?: Record<string, string> }[] }>;
+  };
+  return { on, permissions, step: Object.values(jobs).flatMap((job) => job.steps).find((ran) => (ran.run ?? "").startsWith("bin/close")) };
 }
 
 describe("bin/close closes a ticket once its PR merges, since the PR's review and bin/check already judged it (#931)", () => {
@@ -729,5 +733,21 @@ describe("bin/close marks what the queue does to each ticket, so waiting its tur
     expect(touched(calls(), "887")).toEqual([]);
     expect(labelled(calls(), "888").map(({ labels }) => labels)).toEqual([["labels[]=checking"]]);
     expect(touched(calls(), "889")).toEqual([]);
+  });
+});
+
+describe("bin/close writes each mark on the ticket's open PR too, and says in its log when a mark fails (#1077)", () => {
+  it("grants its token pull-requests write, so bin/mark can find and label the ticket's open PR", () => {
+    expect(closeWorkflow().permissions).toEqual({ contents: "read", issues: "write", "pull-requests": "write" });
+  });
+
+  it("passes on bin/mark's refusal in its log, and still brings the PR up to date", () => {
+    const { calls, run } = closing({ ticket: "823", afterCheck: true, openPrs: [{ number: "973", ticket: "893", labels: ["queued"] }], prLookupRefused: "HTTP 403: Resource not accessible by integration" });
+
+    const { status, stderr } = run();
+
+    expect(status).toBe(0);
+    expect(stderr).toBe("mark: #893's open PR not labelled landing: HTTP 403: Resource not accessible by integration\n");
+    expect(calls().some((call) => call.startsWith("pr\nupdate-branch\n973\n"))).toBe(true);
   });
 });

@@ -93,6 +93,7 @@ export function closing({
   prCommentsUnreadable = false,
   followUps = [] as WaitingFollowUp[],
   resliceRefused,
+  prLookupRefused,
 }: {
   ticket?: string;
   ticketBody?: string;
@@ -106,6 +107,7 @@ export function closing({
   prCommentsUnreadable?: boolean;
   followUps?: WaitingFollowUp[];
   resliceRefused?: string;
+  prLookupRefused?: string;
 } = {}) {
   const root = scratch("closer-");
   const session = join(root, "session");
@@ -157,7 +159,7 @@ export function closing({
         `  *"issue view ${ticket} "*"labels"*) printf '%s\\n' ${labels.map((label) => `'${label}'`).join(" ")} ;;`,
         `  "api repos/{owner}/{repo}/issues/${ticket} --jq"*) printf '%s\\n' ${labels.map((label) => `'${label}'`).join(" ")} ;;`,
       ]),
-      '  *"pr list --head"*) exit 0 ;;',
+      `  *"pr list --head"*) ${prLookupRefused === undefined ? "exit 0" : `printf '%s\\n' '${prLookupRefused}' >&2; exit 1`} ;;`,
       ...followUps.map(({ parent, parentPr }) => `  *"pr view ticket/${parent} "*"state"*) printf '%s\\n' '${parentPr}' ;;`),
       ...followUps.map(({ ticket, split }) => `  *"api"*"issues/${ticket}/comments"*) ${split === true ? `printf '%s\\n' '${JSON.stringify({ author: MACHINE, type: "Bot", body: `@collod873 the builder split #${ticket} into #990, which build themselves.` })}'` : "exit 0"} ;;`),
       ...(splitFrom === undefined
