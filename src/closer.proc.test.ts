@@ -7,8 +7,12 @@ import { CLOSE_RUN, closing } from "./closer.part.ts";
 const REPO = join(import.meta.dirname, "..");
 
 function closeWorkflow() {
-  const { on, jobs } = parse(readFileSync(join(REPO, ".github", "workflows", "close.yml"), "utf8")) as { on: Record<string, { types?: string[] }>; jobs: Record<string, { steps: { run?: string; env?: Record<string, string> }[] }> };
-  return { on, step: Object.values(jobs).flatMap((job) => job.steps).find((ran) => (ran.run ?? "").startsWith("bin/close")) };
+  const { on, permissions, jobs } = parse(readFileSync(join(REPO, ".github", "workflows", "close.yml"), "utf8")) as {
+    on: Record<string, { types?: string[] }>;
+    permissions: Record<string, string>;
+    jobs: Record<string, { steps: { run?: string; env?: Record<string, string> }[] }>;
+  };
+  return { on, permissions, step: Object.values(jobs).flatMap((job) => job.steps).find((ran) => (ran.run ?? "").startsWith("bin/close")) };
 }
 
 describe("bin/close closes a ticket once its PR merges, since the PR's review and bin/check already judged it (#931)", () => {
@@ -729,5 +733,45 @@ describe("bin/close marks what the queue does to each ticket, so waiting its tur
     expect(touched(calls(), "887")).toEqual([]);
     expect(labelled(calls(), "888").map(({ labels }) => labels)).toEqual([["labels[]=checking"]]);
     expect(touched(calls(), "889")).toEqual([]);
+  });
+
+  it("keeps resolving on a ticket whose conflict is reported while another PR is next to merge, so its builder counts no try (#1077)", () => {
+    const { calls, run } = closing({
+      ticket: "819",
+      afterCheck: true,
+      openPrs: [
+        { number: "970", ticket: "890", upToDate: true, checks: "pending", labels: ["landing"] },
+        { number: "971", ticket: "891", refused: CONFLICT, refusedBefore: true, labels: ["resolving"] },
+        { number: "972", ticket: "892", checks: "pending", labels: ["resolving", "try-2"] },
+      ],
+    });
+
+    expect(run().status).toBe(0);
+    expect(touched(calls(), "891")).toEqual([]);
+    expect(touched(calls(), "892")).toEqual([]);
+  });
+
+  it("keeps resolving on a ticket its queue run brings up to date cleanly once main moved past the conflict, so its woken builder counts no try (#1077)", () => {
+    const { calls, run } = closing({ ticket: "819", afterCheck: true, openPrs: [{ number: "974", ticket: "894", labels: ["resolving"] }] });
+
+    expect(run().status).toBe(0);
+    expect(calls().some((call) => call.startsWith("pr\nupdate-branch\n974\n"))).toBe(true);
+    expect(touched(calls(), "894")).toEqual([]);
+  });
+});
+
+describe("bin/close writes each mark on the ticket's open PR too, and says in its log when a mark fails (#1077)", () => {
+  it("grants its token pull-requests write, so bin/mark can find and label the ticket's open PR", () => {
+    expect(closeWorkflow().permissions).toEqual({ contents: "read", issues: "write", "pull-requests": "write" });
+  });
+
+  it("passes on bin/mark's refusal in its log, and still brings the PR up to date", () => {
+    const { calls, run } = closing({ ticket: "823", afterCheck: true, openPrs: [{ number: "973", ticket: "893", labels: ["queued"] }], prLookupRefused: "HTTP 403: Resource not accessible by integration" });
+
+    const { status, stderr } = run();
+
+    expect(status).toBe(0);
+    expect(stderr).toBe("mark: #893's open PR not labelled landing: HTTP 403: Resource not accessible by integration\n");
+    expect(calls().some((call) => call.startsWith("pr\nupdate-branch\n973\n"))).toBe(true);
   });
 });
