@@ -180,10 +180,15 @@ function markOnce(ticket: string, label: string): void {
 
 const LANDING = "landing";
 
-const wantedOn = (pr: QueuedPr, merging: QueuedPr | undefined) => (pr.checks === "green" ? (pr === merging ? LANDING : "queued") : pr.checks === "pending" ? "checking" : undefined);
+function wantedOn(pr: QueuedPr, merging: QueuedPr | undefined, held: string[]): string | undefined {
+  if (pr.checks === "red") return undefined;
+  if (pr === merging && (pr.checks === "green" || held.includes(LANDING))) return LANDING;
+  return pr.checks === "green" ? "queued" : "checking";
+}
 
-function settle(ticket: string, pr: QueuedPr, wanted: string | undefined): void {
+function settle(ticket: string, pr: QueuedPr, merging: QueuedPr | undefined, conflicted: boolean): void {
   const held = labelsOf(ticket);
+  const wanted = conflicted ? undefined : wantedOn(pr, merging, held);
   const writes = wanted !== undefined && !held.includes(NEEDS_HUMAN) && (wanted !== "checking" || held.includes(LANDING));
   if (writes && !held.includes(wanted)) mark(ticket, wanted);
   else if (!writes && held.includes(LANDING)) for (const on of [ticket, pr.number]) quietGh(["api", "-X", "DELETE", `repos/{owner}/{repo}/issues/${on}/labels/${LANDING}`]);
@@ -215,7 +220,7 @@ function updateBranch(pr: QueuedPr): Moved {
   const updated = gh(["pr", "update-branch", number]);
   if (updated.status === 0) {
     commentOnPr(number, `${branchUpdate(number)} ${thisRun}`, gh);
-    if (ticket !== undefined) markOnce(ticket, "checking");
+    if (ticket !== undefined) markOnce(ticket, LANDING);
     return "updated";
   }
   const reason = (updated.stderr || updated.stdout).trim().split("\n")[0] || "no reason given";
@@ -251,7 +256,7 @@ function queue(): string {
       : undefined;
   for (const pr of queued) {
     const ticket = TICKET_BRANCH.exec(pr.headRefName)?.[1];
-    if (ticket !== undefined) settle(ticket, pr, moved.get(pr) === "updated" || moved.get(pr) === "conflicted" ? undefined : wantedOn(pr, merging));
+    if (ticket !== undefined && moved.get(pr) !== "updated") settle(ticket, pr, merging, moved.get(pr) === "conflicted");
   }
   if (merging !== undefined) return `PR #${merging.number} is up to date with main, so the queue waits for it`;
   return next === undefined ? "no green PR waits behind main" : `PR #${next.number} brought up to date with main`;
