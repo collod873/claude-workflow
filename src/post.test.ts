@@ -26,11 +26,18 @@ function github(result: { status?: number; stdout?: string; stderr?: string } = 
 const posting = (fields: Partial<Posting>): Posting => ({ kind: "ticket", text: TICKET, title: "A ticket", ...fields });
 
 describe("src/post.ts is the one way the machine writes text to GitHub (#662)", () => {
-  it("files a well-formed ticket and hands back where it landed", () => {
+  it("files a well-formed ticket labelled ticket, so the owner can filter the issue list by them (#1056)", () => {
     const { gh, calls } = github();
 
     expect(post(posting({}), gh)).toEqual({ refusals: [], said: URL });
-    expect(calls).toEqual([["issue", "create", "--title", "A ticket", "--body", TICKET]]);
+    expect(calls).toEqual([["issue", "create", "--title", "A ticket", "--label", "ticket", "--body", TICKET]]);
+  });
+
+  it("files a follow-up labelled ticket beside waiting (#1056)", () => {
+    const { gh, calls } = github();
+
+    expect(post(posting({ labels: ["waiting"] }), gh)).toEqual({ refusals: [], said: URL });
+    expect(calls).toEqual([["issue", "create", "--title", "A ticket", "--label", "ticket", "--body", TICKET, "--label", "waiting"]]);
   });
 
   it("judges a ticket by the ticket shape rather than by the message limit", () => {
