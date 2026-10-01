@@ -750,6 +750,14 @@ describe("bin/close marks what the queue does to each ticket, so waiting its tur
     expect(touched(calls(), "891")).toEqual([]);
     expect(touched(calls(), "892")).toEqual([]);
   });
+
+  it("keeps resolving on a ticket its queue run brings up to date cleanly once main moved past the conflict, so its woken builder counts no try (#1077)", () => {
+    const { calls, run } = closing({ ticket: "819", afterCheck: true, openPrs: [{ number: "974", ticket: "894", labels: ["resolving"] }] });
+
+    expect(run().status).toBe(0);
+    expect(calls().some((call) => call.startsWith("pr\nupdate-branch\n974\n"))).toBe(true);
+    expect(touched(calls(), "894")).toEqual([]);
+  });
 });
 
 describe("bin/close writes each mark on the ticket's open PR too, and says in its log when a mark fails (#1077)", () => {

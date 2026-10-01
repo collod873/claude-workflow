@@ -170,14 +170,14 @@ function queuedPrs(): QueuedPr[] {
 }
 
 const mark = markWith(quietly);
+const RESOLVING = "resolving";
 
 function markOnce(ticket: string, label: string): void {
   const held = labelsOf(ticket, gh);
-  if (!held.includes(label) && !held.includes(NEEDS_HUMAN)) mark(ticket, label);
+  if (![label, NEEDS_HUMAN, RESOLVING].some((kept) => held.includes(kept))) mark(ticket, label);
 }
 
 const LANDING = "landing";
-const RESOLVING = "resolving";
 
 function wantedOn(pr: QueuedPr, merging: QueuedPr | undefined, held: string[]): string | undefined {
   if (pr.checks === "red") return undefined;
