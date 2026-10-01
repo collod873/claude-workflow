@@ -636,4 +636,18 @@ describe("build.yml and closed.yml say in their logs when a mark fails, so a tic
 
     expect(stderr).toContain(`${refusal("--closed")}\n`);
   });
+
+  it("passes on bin/mark's refusal from the shared owner call, and still labels and comments through gh", () => {
+    const [owned] = (parse(readFileSync(CALLER, "utf8")) as { runs: { steps: Step[] } }).runs.steps;
+    const cwd = refusing("called-refused-", "exit 0\n");
+    const called = join(cwd, "calls");
+    script(join(cwd, "stub", "gh"), `printf '%s\\n' "$*" >>"${called}"\n[[ $2 == view ]] && printf 'spec\\n'\nexit 0\n`);
+
+    const { status, stderr } = ranStep(owned ?? {}, cwd, { PATH: `${join(cwd, "stub")}:${process.env.PATH}`, ISSUE: "9", RAN: "the slice run" });
+
+    expect(status, stderr).toBe(0);
+    expect(stderr).toContain(`${refusal("needs-human")}\n`);
+    expect(readFileSync(called, "utf8")).toContain("issue edit 9 --add-label needs-human\n");
+    expect(readFileSync(called, "utf8")).toMatch(/issue comment 9 --body @owner the slice run ended red/);
+  });
 });

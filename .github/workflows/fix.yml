@@ -84,7 +84,7 @@ jobs:
         run: |
           git config user.name "core-app[bot]"
           git config user.email "core-app[bot]@users.noreply.github.com"
-          if ! git fetch --quiet origin "$HEAD_REF" 2>/dev/null || git merge-base --is-ancestor FETCH_HEAD origin/main; then # quiet: a ticket whose branch was never pushed builds from main
+          if ! git fetch --quiet origin "$HEAD_REF" || git merge-base --is-ancestor FETCH_HEAD origin/main; then
             git checkout --quiet -B "$HEAD_REF" origin/main
             exit 0
           fi
