@@ -1,4 +1,5 @@
 import { capped } from "./brief.ts";
+import { discards } from "./discard.ts";
 import { gh } from "./post.ts";
 import { answered, handedDiff, NO_EM_DASH, type Stop, TICKET_CAP, ticketPr } from "./reviewer.ts";
 import { exitFor, stoppedAt } from "./stops.ts";
@@ -73,12 +74,14 @@ function metered(pr: string, print: boolean): Stop | undefined {
   if (typeof spent === "string") return stoppedAt("modelRun", `${said} ended red, ${spent}`);
   const unanswered = METERS.filter(({ name }) => findingsIn(spent.answer, name) === undefined).map(({ name }) => name);
   if (unanswered.length > 0) return stoppedAt("modelRun", `${said} ended red, the meter reviewer answered no ${unanswered.join(", ")}`);
-  const found = METERS.map(({ name }) => ({ name, findings: findingsIn(spent.answer, name) ?? [] }));
-  const lines = found.map(({ name, findings }) => ({ name, line: meterLine(name, findings) }));
+  const judged = METERS.map(({ name }) => ({ name, findings: findingsIn(spent.answer, name) ?? [] }));
+  const lineFor = ({ name, findings }: { name: string; findings: string[] }) => ({ name, line: meterLine(name, findings) });
   if (print) {
-    console.log(lines.map(({ line }) => line).join("\n"));
+    console.log(judged.map((meter) => lineFor(meter).line).join("\n"));
     return undefined;
   }
+  const found = [...judged, { name: "discard", findings: discards(read.diff) }];
+  const lines = found.map(lineFor);
   const got = gh(["pr", "view", pr, "--json", "body", "--jq", ".body"]);
   if (got.status !== 0 || gh(["pr", "edit", pr, "--body", withLines(got.stdout, lines)]).status !== 0) {
     return stoppedAt("unread", `${said} ended red, its PR body could not be read or edited, so its ${lines.length} meter lines are not on it`);

@@ -5,6 +5,7 @@ import { parse } from "yaml";
 import { METERS } from "./meter-reviewer.ts";
 import { NO_EM_DASH } from "./reviewer.ts";
 import { metering } from "./meter-reviewer.part.ts";
+import { fileDiff } from "./reviewer.part.ts";
 
 const WORKFLOW = join(import.meta.dirname, "..", ".github", "workflows", "check.yml");
 const TANGLE = "src/tangle.ts joins billing and shipping, which change for different reasons";
@@ -95,6 +96,46 @@ describe("bin/meters puts one line per meter on a ticket PR's body, beside the r
 
     expect(run().status).toBe(0);
     expect(readFileSync(join(root, ".git", "machine-logs", "meters-9810.jsonl"), "utf8")).toContain('"structured_output"');
+  });
+});
+
+describe("bin/meters puts a discard (meter) line on the PR body, read by code from the diff, for each added gh, git or bin/mark call whose error is thrown away (#1080)", () => {
+  const discardLine = (diff: string) => {
+    const found = metering({ diff });
+    expect(found.run().status).toBe(0);
+    return edit(found).split("\n").find((line) => line.startsWith("discard (meter):"));
+  };
+
+  it("names the file and line of a gh call that sends its stderr to /dev/null, and refuses nothing when the gh call keeps its stderr", () => {
+    const thrown = `${fileDiff("bin/close", 'gh pr view "$pr" --json body 2>/dev/null')}`.replace("@@ -0,0 +1 @@\n", "@@ -10,2 +10,3 @@\n set -u\n-old\n+kept\n");
+    expect(discardLine(thrown)).toBe("discard (meter): would refuse, bin/close:12 sends a gh call's stderr to /dev/null");
+    expect(discardLine(fileDiff("bin/close", 'gh pr view "$pr" --json body'))).toBe("discard (meter): would refuse nothing");
+  });
+
+  it("names a git call ending in || true and a gh spawn with stderr ignore, and quotes the why a quiet: comment gives", () => {
+    const diff = [
+      fileDiff("bin/land", "git fetch origin main || true"),
+      fileDiff("src/close.ts", "spawnSync(\"gh\", [\"label\", \"create\", name], { stdio: [\"ignore\", \"pipe\", \"ignore\"] });"),
+      fileDiff("bin/mark", "gh label create landing 2>/dev/null # quiet: the label already exists on every repo after the first run"),
+      fileDiff("src/count.ts", "const total = lines.length || true;"),
+    ].join("");
+
+    expect(discardLine(diff)).toBe(
+      [
+        "discard (meter): would refuse, bin/land:1 puts || true on a git call",
+        "src/close.ts:1 spawns a gh call with its stderr ignored",
+        'bin/mark:1 sends a gh call\'s stderr to /dev/null, quiet: "the label already exists on every repo after the first run"',
+      ].join("; "),
+    );
+  });
+
+  it("puts the discard line on the PR body beside the model's meter lines, which stay as they were", () => {
+    const found = metering({ diff: fileDiff("bin/mark", "bin/mark landing 2>/dev/null"), verdict: answer({ depth: [TANGLE] }) });
+    expect(found.run().status).toBe(0);
+    const body = edit(found);
+    expect(body).toContain("discard (meter): would refuse, bin/mark:1 sends a bin/mark call's stderr to /dev/null");
+    expect(body).toContain(`depth (meter): would refuse, ${TANGLE}`);
+    for (const { name } of METERS.filter(({ name }) => name !== "depth")) expect(body).toContain(`${name} (meter): would refuse nothing`);
   });
 });
 
