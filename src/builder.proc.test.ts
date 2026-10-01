@@ -461,3 +461,16 @@ describe("the builder builds an App-opened ticket only under an open spec the ow
     expect(handed()).toHaveLength(1);
   });
 });
+
+describe("bin/fix says in its log when a mark fails, so a ticket whose labels lag shows why (#1081)", () => {
+  it("passes on bin/mark's refusal and still builds the ticket", () => {
+    const { run, marked, log } = fixing({ claude: FIXES, markRefusal: "mark: #811 not labelled building: HTTP 403: Resource not accessible by integration" });
+
+    const { status, stderr } = run("811");
+
+    expect(status).toBe(0);
+    expect(stderr).toContain("mark: #811 not labelled building: HTTP 403: Resource not accessible by integration\n");
+    expect(marked()).toEqual(["811 building", "811 checking"]);
+    expect(log("-1", "--format=%s")).toBe("Build #811 as its builder");
+  });
+});

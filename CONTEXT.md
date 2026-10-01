@@ -76,13 +76,16 @@ _Avoid_: wave summary, status update, progress report
 The stage that tries each of a spec's "I'll know it works when I can ___" sentences on the running
 system once nothing is left to slice, and closes the spec only when every one held. A first miss
 gets the spec's one fix wave; a second marks the spec `needs-human`. A sentence it puts to the
-owner waits for his reply on the spec, which runs it again.
+owner waits for his reply on the spec, which runs it again. It may not give a sentence
+`unexercised`; one it gives anyway ends the run red, posting and closing nothing.
 _Avoid_: audit, acceptance test, verification
 
 **Wave check**:
 The done check at a wave's end, trying only the sentences that wave should have moved. It skips
 the ones only the owner can try and closes nothing. A sentence that misses at a wave check and
-again at the next wave check or at the end marks the spec `needs-human`.
+again at the next wave check or at the end marks the spec `needs-human`. A sentence nothing on
+main could have shown yet it gives `unexercised`, listed as **Not tried yet** with what would have
+to happen for it to be seen; that is never a miss, and the next wave check tries it again.
 _Avoid_: wave review, checkpoint, interim check
 
 **Ticket**:

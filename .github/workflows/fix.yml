@@ -84,7 +84,7 @@ jobs:
         run: |
           git config user.name "core-app[bot]"
           git config user.email "core-app[bot]@users.noreply.github.com"
-          if ! git fetch --quiet origin "$HEAD_REF" 2>/dev/null || git merge-base --is-ancestor FETCH_HEAD origin/main; then
+          if ! git fetch --quiet origin "$HEAD_REF" || git merge-base --is-ancestor FETCH_HEAD origin/main; then
             git checkout --quiet -B "$HEAD_REF" origin/main
             exit 0
           fi
@@ -118,7 +118,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RUN: ${{ github.event.workflow_run.id }}
-        run: gh run download "$RUN" --name machine-logs --dir .git/machine-logs || true
+        run: gh run download "$RUN" --name machine-logs --dir .git/machine-logs || true # quiet: gh names the miss, and a run that died before saving its logs has none to hand on
 
       - id: restore
         if: steps.branch.outputs.stale != 'true'

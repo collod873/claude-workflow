@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { CHECK_CAP, handedOn, repaired, TAIL_CAP } from "./builder.ts";
 import { DIFF_CAP, LIST_CAP, TICKET_CAP } from "./reviewer.ts";
-import { authored, BIN, execute, FIXED_TICKET, ghArgv, git, openedCases, OWNER, type Parent, plant, type Said, scratch, script } from "./scenarios.ts";
+import { authored, BIN, execute, FIXED_TICKET, ghArgv, git, openedCases, OWNER, type Parent, plant, refusedMark, type Said, scratch, script } from "./scenarios.ts";
 import { declareStage, HANDED_ON } from "./stages.ts";
 
 export const FULL_CHECK_RED_ONCE = [
@@ -58,6 +58,7 @@ export function fixing({
   opener = OWNER,
   parent = undefined as Parent,
   labels = ["ticket"],
+  markRefusal = undefined as string | undefined,
 } = {}) {
   const root = scratch("builder-");
   const session = join(root, "session");
@@ -71,7 +72,7 @@ export function fixing({
   mkdirSync(spent, { recursive: true });
   mkdirSync(hires, { recursive: true });
   script(join(session, "bin", "check"), check);
-  script(join(session, "bin", "mark"), `printf '%s\\n' "$*" >>"${marks}"\n`);
+  script(join(session, "bin", "mark"), `printf '%s\\n' "$*" >>"${marks}"\n${refusedMark(markRefusal)}`);
   script(join(session, "bin", "save"), `printf '%s\\n' "$*" >>"${saves}"\n${save}`);
   branchedSession(session, "builder", { "src/ticket-shape.ts": "export const shaped = 1;\n" }, { "src/ticket-shape.test.ts": AUTHORED_TEST }, "ticket/811");
   git(session, "commit", "--quiet", "--allow-empty", "-m", "Build #811 against its failing tests");

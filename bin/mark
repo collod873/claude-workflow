@@ -68,7 +68,7 @@ apply() {
   local adding=()
   for name in "$@"; do
     [[ " ${held[*]} " == *" $name "* ]] && continue
-    gh label create "$name" --color "$(colour "$name")" --description "$(described "$name")" >/dev/null 2>&1
+    gh label create "$name" --color "$(colour "$name")" --description "$(described "$name")" >/dev/null 2>&1 # quiet: the label already exists, and a real refusal fails the labelling call below
     adding+=(-f "labels[]=$name")
   done
   if ((${#adding[@]})); then
