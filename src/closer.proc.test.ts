@@ -660,6 +660,44 @@ describe("bin/close marks what the queue does to each ticket, so waiting its tur
     expect(touched(calls(), "877")).toEqual([]);
   });
 
+  it("marks no landing while the PR the queue waits for is still being checked, and marks queued every green one behind it", () => {
+    const { calls, run } = closing({
+      ticket: "819",
+      afterCheck: true,
+      openPrs: [
+        { number: "961", ticket: "881", upToDate: true, checks: "pending", labels: ["checking"] },
+        { number: "962", ticket: "882", labels: ["checking"] },
+      ],
+    });
+
+    expect(run().status).toBe(0);
+    expect(touched(calls(), "881")).toEqual([]);
+    expect(labelled(calls(), "882").map(({ labels }) => labels)).toEqual([["labels[]=queued"]]);
+  });
+
+  it("takes landing off every ticket the queue no longer waits for, so only one ticket reads landing", () => {
+    const { calls, run } = closing({
+      ticket: "819",
+      afterCheck: true,
+      openPrs: [
+        { number: "963", ticket: "883", checks: "pending", labels: ["landing"] },
+        { number: "964", ticket: "884", checks: "red", labels: ["landing"] },
+        { number: "965", ticket: "885", needsHuman: true, labels: ["landing"] },
+        { number: "966", ticket: "886", upToDate: true, labels: ["queued"] },
+      ],
+    });
+
+    expect(run().status).toBe(0);
+    expect(labelled(calls(), "886").map(({ labels }) => labels)).toEqual([["labels[]=landing"]]);
+    expect(labelled(calls(), "883").map(({ labels }) => labels)).toEqual([["labels[]=checking"]]);
+    const dropped = (ticket: string) => touched(calls(), ticket).filter((call) => call.startsWith("api\n-X\nDELETE\n")).map((call) => call.split("\n")[3]);
+    expect(dropped("884")).toEqual(["repos/{owner}/{repo}/issues/884/labels/landing"]);
+    expect(dropped("964")).toEqual(["repos/{owner}/{repo}/issues/964/labels/landing"]);
+    expect(dropped("885")).toEqual(["repos/{owner}/{repo}/issues/885/labels/landing"]);
+    expect(labelled(calls(), "884")).toEqual([]);
+    expect(labelled(calls(), "885")).toEqual([]);
+  });
+
   it("marks queued every green ticket behind the one it brings up to date, and none whose conflict is already reported", () => {
     const { calls, run } = closing({
       ticket: "819",

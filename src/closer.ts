@@ -179,6 +179,17 @@ function markOnce(ticket: string, label: string): void {
   if (!held.includes(label) && !held.includes(NEEDS_HUMAN)) mark(ticket, label);
 }
 
+const LANDING = "landing";
+
+const wantedOn = (pr: QueuedPr, merging: QueuedPr | undefined) => (pr.checks === "green" ? (pr === merging ? LANDING : "queued") : pr.checks === "pending" ? "checking" : undefined);
+
+function settle(ticket: string, pr: QueuedPr, wanted: string | undefined): void {
+  const held = labelsOf(ticket);
+  const writes = wanted !== undefined && !held.includes(NEEDS_HUMAN) && (wanted !== "checking" || held.includes(LANDING));
+  if (writes && !held.includes(wanted)) mark(ticket, wanted);
+  else if (!writes && held.includes(LANDING)) for (const on of [ticket, pr.number]) quietGh(["api", "-X", "DELETE", `repos/{owner}/{repo}/issues/${on}/labels/${LANDING}`]);
+}
+
 function wakeBuilder(ticket: string, reason: string): void {
   gh(["workflow", "run", "fix.yml", "-f", `ticket=${ticket}`, "-f", `reason=${reason}`]);
 }
@@ -241,7 +252,7 @@ function queue(): string {
       : undefined;
   for (const pr of queued) {
     const ticket = TICKET_BRANCH.exec(pr.headRefName)?.[1];
-    if (ticket !== undefined && pr.checks === "green" && moved.get(pr) !== "updated" && moved.get(pr) !== "conflicted") markOnce(ticket, pr === merging ? "landing" : "queued");
+    if (ticket !== undefined) settle(ticket, pr, moved.get(pr) === "updated" || moved.get(pr) === "conflicted" ? undefined : wantedOn(pr, merging));
   }
   if (merging !== undefined) return `PR #${merging.number} is up to date with main, so the queue waits for it`;
   return next === undefined ? "no green PR waits behind main" : `PR #${next.number} brought up to date with main`;
