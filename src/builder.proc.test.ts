@@ -33,7 +33,7 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(handed()[0]).toContain("## Build it");
     expect(handed()[0]).toContain("never the owner");
     expect(handed()[0]).not.toContain("## How it failed");
-    expect(marked()).toEqual(["811 2-building", "811 3-checking"]);
+    expect(marked()).toEqual(["811 building", "811 checking"]);
     expect(log("-1", "--format=%s")).toBe("Build #811 as its builder");
     expect(saved()).toEqual(["811"]);
   });
@@ -98,7 +98,7 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(handed()[1]).toContain("OTHER-TEST-BROKE in src/stops.test.ts");
     expect(hired()[1]).toContain(BUILDER_SESSION);
     expect(saved()).toEqual(["811"]);
-    expect(marked()).toEqual(["811 fixing", "811 3-checking"]);
+    expect(marked()).toEqual(["811 building --try", "811 checking"]);
   });
 
   it("keeps going past three rounds while every round changes something", () => {
@@ -183,6 +183,13 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(saved()).toEqual(["811"]);
   });
 
+  it("keeps `resolving` with no try when woken on a conflict, since a conflict is not the ticket failing, and marks checking once it pushes", () => {
+    const resolving = fixing({ reason: "PR #9811 conflicts with main", claude: FIXES, labels: ["ticket", "resolving"] });
+
+    expect(resolving.run().status).toBe(0);
+    expect(resolving.marked()).toEqual(["811 checking"]);
+  });
+
   it("closes the ticket and its PR unbuilt with the reason, calling the owner by name, keeping the branch, and runs no check", () => {
     const reason = "the ticket asks for a stage the ruling has since dropped";
     const { run, closes, ticketComments, labelled, saved, handed } = fixing({ answer: { outcome: "close", reason }, check: "touch ../checked\nexit 1\n" });
@@ -193,7 +200,7 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
       ["pr", "close", "ticket/811"],
     ]);
     expect(ticketComments().at(-1)).toMatch(new RegExp(`^@collod873 .*${reason}`));
-    expect(labelled()).toContain("811 --remove-label fixing");
+    expect(labelled(), "leaves its labels to the close handler").toEqual([]);
     expect(saved()).toEqual([]);
     expect(handed()).toHaveLength(1);
   });
@@ -206,7 +213,7 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
       { title: "Handle the misses in the shape rules", why: "The shape rules refuse a missing read by name.", done: ["Shape reads refuse by name."] },
       { title: "Handle the misses in the post door", why: "The post door refuses a missing read by name.", done: ["Post reads refuse by name."] },
     ];
-    const { run, filed, edits, labelled, closes, ticketComments, saved, handed } = fixing({ answer: { outcome: "split", reason, tickets, body: waits }, check: "touch ../checked\nexit 1\n" });
+    const { run, filed, edits, labelled, marked, closes, ticketComments, saved, handed } = fixing({ answer: { outcome: "split", reason, tickets, body: waits }, check: "touch ../checked\nexit 1\n" });
 
     expect(run().status).toBe(0);
     expect(filed()).toHaveLength(2);
@@ -220,7 +227,8 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     }
     expect(edits()).toEqual([waits]);
     expect(ticketComments().at(-1)).toMatch(new RegExp(`^@collod873 the builder split #811 into #901, #902, which build themselves\\..*${reason}`));
-    expect(labelled()).toContain("811 --add-label waiting --remove-label fixing");
+    expect(labelled()).toEqual([]);
+    expect(marked()).toEqual(["811 building --try", "811 waiting"]);
     expect(closes()).toEqual([["pr", "close", "ticket/811", "--delete-branch"]]);
     expect(saved()).toEqual([]);
     expect(handed()).toHaveLength(1);
@@ -287,8 +295,9 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
 
     expect(flake.run("811", "555").status).toBe(0);
     expect(flake.reruns()).toEqual([["run", "rerun", "555", "--failed"]]);
-    expect(flake.marked()).toEqual(["811 fixing", "811 3-checking"]);
+    expect(flake.marked(), "takes back the try a flake was counted").toEqual(["811 building --try", "811 checking --untry"]);
     expect(fixed.run("811", "555").status).toBe(0);
+    expect(fixed.marked()).toEqual(["811 building --try", "811 checking"]);
     expect(fixed.reruns()).toEqual([]);
     expect(built.run("811", "555").status).toBe(0);
     expect(built.reruns()).toEqual([]);

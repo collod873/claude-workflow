@@ -135,7 +135,7 @@ export function handedOn({ ticket, body, red, check = "", capture }: Handed): st
 }
 
 const builtBy = (ticket: string) => `Build #${ticket} as its builder`;
-const mark = (ticket: string, label: string) => spawnSync(join(process.cwd(), "bin", "mark"), [ticket, label], { stdio: "ignore" });
+const mark = (ticket: string, ...label: string[]) => spawnSync(join(process.cwd(), "bin", "mark"), [ticket, ...label], { stdio: "ignore" });
 const head = () => git(["rev-parse", "HEAD"]).stdout.trim();
 const sessionFile = (ticket: string) => join(homedir(), ".claude", "builder", ticket);
 
@@ -178,7 +178,6 @@ function closedUnbuilt(ticket: string, said: string): number {
   const [refusal] = posted.refusals;
   if (refusal !== undefined) return calledOwner(ticket, `its closing reason was refused: ${quoted(refusal)}`);
   if (gh(["issue", "close", ticket, "--reason", "not planned"]).status !== 0) return calledOwner(ticket, "it ruled the ticket closed and the ticket would not close");
-  gh(["issue", "edit", ticket, "--remove-label", "fixing"]);
   gh(["pr", "close", `ticket/${ticket}`]);
   console.log(`fix: #${ticket} closed unbuilt: ${said}`);
   return 0;
@@ -219,7 +218,7 @@ function split(ticket: string, body: string, answer: Answer): Round {
   const written = gh(["issue", "edit", ticket, "--body", answer.body]);
   if (written.status !== 0) return { ended: calledOwner(ticket, `it filed ${named} and its rewrite of what waits would not save: ${quoted((written.stderr || written.stdout).trim().split("\n")[0] ?? "")}`) };
   commentOnTicket(ticket, `${splitInto(ticket)} ${named}, which build themselves. #${ticket} keeps what must wait for them, labelled \`${WAITING}\`, and builds once they all merge: ${answer.reason}`, gh);
-  gh(["issue", "edit", ticket, "--add-label", WAITING, "--remove-label", "fixing"]);
+  mark(ticket, WAITING);
   gh(["pr", "close", `ticket/${ticket}`, "--delete-branch"]);
   console.log(`fix: #${ticket} split into ${named}; it waits for them`);
   return { ended: 0 };
@@ -284,11 +283,13 @@ function checkingAgain(ticket: string, run: string | undefined): number {
     if (ran !== `Check ${head()} 1`) return calledOwner(ticket, "its red Check already reran once, and it is green here unchanged");
     const again = gh(["run", "rerun", String(run), "--failed"]);
     if (again.status !== 0) return calledOwner(ticket, `it is green unchanged and the rerun of its red Check was refused: ${quoted((again.stderr || again.stdout).trim().split("\n")[0] ?? "")}`);
-  }
-  mark(ticket, "3-checking");
+    mark(ticket, "checking", "--untry");
+  } else mark(ticket, "checking");
   console.log(`fix: #${ticket} is green and pushed, so its PR checks run again`);
   return 0;
 }
+
+const labelledOn = (ticket: string) => gh(["issue", "view", ticket, "--json", "labels", "--jq", ".labels[].name"]).stdout.split("\n");
 
 function failedAs(ticket: string, logs: string, run: string | undefined): string | undefined {
   const reason = process.env.REASON ?? "";
@@ -305,7 +306,8 @@ function ownTicket(ticket: string, run: string | undefined): number {
   const logs = machineLogs(process.cwd());
   mkdirSync(logs, { recursive: true });
   const failed = failedAs(ticket, logs, run);
-  mark(ticket, failed === undefined ? "2-building" : "fixing");
+  if (failed === undefined) mark(ticket, "building");
+  else if (!labelledOn(ticket).includes("resolving")) mark(ticket, "building", "--try");
   const asked = gh(["issue", "view", ticket, "--json", "body", "--jq", ".body"]);
   if (asked.status !== 0) return calledOwner(ticket, "its ticket could not be read");
   let body = asked.stdout;
