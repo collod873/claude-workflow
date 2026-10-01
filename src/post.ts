@@ -16,7 +16,8 @@ export interface Posting {
 export type Gh = (args: string[]) => { status: number | null; stdout: string; stderr: string };
 
 export const gh: Gh = (args) => spawnSync("gh", args, { encoding: "utf8", maxBuffer: Infinity });
-export const mark = (issue: string, ...label: string[]) => spawnSync(join(process.cwd(), "bin", "mark"), [issue, ...label], { stdio: "ignore" });
+export const markWith = (env: NodeJS.ProcessEnv) => (issue: string, ...label: string[]) => spawnSync(join(process.cwd(), "bin", "mark"), [issue, ...label], { stdio: "ignore", env });
+export const mark = markWith(process.env);
 export const git = (args: string[]) => spawnSync("git", args, { encoding: "utf8", maxBuffer: Infinity });
 
 interface Kind {

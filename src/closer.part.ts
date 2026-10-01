@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, readFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { authored, BIN, commitAt, execute, git, MACHINE, plant, type Said, scratch, script } from "./scenarios.ts";
 import { NEEDS_HUMAN, WAITING } from "./post.ts";
@@ -185,6 +185,8 @@ export function closing({
       "",
     ].join("\n"),
   );
+  mkdirSync(join(session, "bin"));
+  symlinkSync(join(BIN, "mark"), join(session, "bin", "mark"));
   return {
     session,
     calls: () => readdirSync(callsDir).sort((a, b) => Number(a) - Number(b)).map((file) => readFileSync(join(callsDir, file), "utf8")),

@@ -1,7 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { join } from "node:path";
 import { splitClosed, splitInto } from "./builder.ts";
-import { commentOnPr, commentOnTicket, commentsOn, NEEDS_HUMAN, WAITING } from "./post.ts";
+import { commentOnPr, commentOnTicket, commentsOn, markWith, NEEDS_HUMAN, WAITING } from "./post.ts";
 import { FINGERPRINT, REVIEWED_FROM, TICKET_BRANCH } from "./reviewer.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { quoted, why } from "./ticket-shape.ts";
@@ -172,7 +171,7 @@ function queuedPrs(): QueuedPr[] {
 
 const labelsOf = (issue: string) => (ghText(["issue", "view", issue, "--json", "labels", "--jq", ".labels[].name"]) ?? "").split("\n");
 
-const mark = (ticket: string, label: string) => spawnSync(join(import.meta.dirname, "..", "bin", "mark"), [ticket, label], { stdio: "ignore", env: quietly });
+const mark = markWith(quietly);
 
 function markOnce(ticket: string, label: string): void {
   const held = labelsOf(ticket);
