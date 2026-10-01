@@ -1,4 +1,5 @@
 import { capped } from "./brief.ts";
+import { discards } from "./discard.ts";
 import { gh } from "./post.ts";
 import { answered, handedDiff, NO_EM_DASH, type Stop, TICKET_CAP, ticketPr } from "./reviewer.ts";
 import { exitFor, stoppedAt } from "./stops.ts";
@@ -65,26 +66,39 @@ function findingsIn(answer: unknown, name: string): string[] | undefined {
   return Array.isArray(found) && found.every((finding) => typeof finding === "string") ? found : undefined;
 }
 
-function metered(pr: string, print: boolean): Stop | undefined {
-  const said = `meters: #${pr}`;
-  const read = ticketPr(pr, said);
-  if (typeof read !== "object") return read;
-  const spent = answered({ name: "meter reviewer", bin: "meters", answers: ANSWERS }, handedOn(read.body, read.diff), pr);
-  if (typeof spent === "string") return stoppedAt("modelRun", `${said} ended red, ${spent}`);
-  const unanswered = METERS.filter(({ name }) => findingsIn(spent.answer, name) === undefined).map(({ name }) => name);
-  if (unanswered.length > 0) return stoppedAt("modelRun", `${said} ended red, the meter reviewer answered no ${unanswered.join(", ")}`);
-  const found = METERS.map(({ name }) => ({ name, findings: findingsIn(spent.answer, name) ?? [] }));
-  const lines = found.map(({ name, findings }) => ({ name, line: meterLine(name, findings) }));
-  if (print) {
-    console.log(lines.map(({ line }) => line).join("\n"));
-    return undefined;
-  }
+const lineFor = ({ name, findings }: { name: string; findings: string[] }) => ({ name, line: meterLine(name, findings) });
+
+function putOn(pr: string, said: string, found: { name: string; findings: string[] }[]): Stop | undefined {
+  const lines = found.map(lineFor);
   const got = gh(["pr", "view", pr, "--json", "body", "--jq", ".body"]);
   if (got.status !== 0 || gh(["pr", "edit", pr, "--body", withLines(got.stdout, lines)]).status !== 0) {
     return stoppedAt("unread", `${said} ended red, its PR body could not be read or edited, so its ${lines.length} meter lines are not on it`);
   }
+  return undefined;
+}
+
+function metered(pr: string, print: boolean): Stop | undefined {
+  const said = `meters: #${pr}`;
+  const read = ticketPr(pr, said);
+  if (typeof read !== "object") return read;
+  const discard = { name: "discard", findings: discards(read.diff) };
+  const spent = answered({ name: "meter reviewer", bin: "meters", answers: ANSWERS }, handedOn(read.body, read.diff), pr);
+  const unanswered = typeof spent === "string" ? [] : METERS.filter(({ name }) => findingsIn(spent.answer, name) === undefined).map(({ name }) => name);
+  if (typeof spent === "string" || unanswered.length > 0) {
+    const why = typeof spent === "string" ? spent : `the meter reviewer answered no ${unanswered.join(", ")}`;
+    const unput = print ? undefined : putOn(pr, said, [discard]);
+    return stoppedAt("modelRun", `${said} ended red, ${why}${unput === undefined ? "" : ", and its PR body could not be read or edited, so its discard line is not on it"}`);
+  }
+  const judged = METERS.map(({ name }) => ({ name, findings: findingsIn(spent.answer, name) ?? [] }));
+  if (print) {
+    console.log([...judged, discard].map((meter) => lineFor(meter).line).join("\n"));
+    return undefined;
+  }
+  const found = [...judged, discard];
+  const unput = putOn(pr, said, found);
+  if (unput !== undefined) return unput;
   const refusing = found.filter(({ findings }) => findings.length > 0).length;
-  console.log(`${said} put ${lines.length} meter lines on its PR body, ${refusing} would refuse`);
+  console.log(`${said} put ${found.length} meter lines on its PR body, ${refusing} would refuse`);
   return undefined;
 }
 

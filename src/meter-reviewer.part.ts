@@ -8,7 +8,7 @@ const NOTHING_METERED = Object.fromEntries(METERS.map(({ name }) => [name.replac
 export const metering = (options: Parameters<typeof reviewing>[0] = {}) => reviewing({ bin: "meters", verdict: NOTHING_METERED, ...options });
 
 declareStage({
-  part: { name: "bin/meters", file: "bin/meters", stops: "https://github.com/collod873/claude-workflow/issues/894", lines: 5 },
+  part: { name: "bin/meters", file: "bin/meters", stops: "https://github.com/collod873/claude-workflow/issues/894", lines: 6 },
   prompts: [
     {
       name: "meter reviewer",
