@@ -104,7 +104,6 @@ else
 fi
 
 apply "$number" "${target[@]}"
-said=$(gh pr list --head "ticket/$number" --state open --json number --jq '.[0].number // empty' 2>&1) || failed "$number"
-pr=$said
+pr=$(gh pr list --head "ticket/$number" --state open --json number --jq '.[0].number // empty' 2>/dev/null)
 [[ -n $pr ]] && apply "$pr" "${target[@]}"
 printf 'mark: #%s is at %s%s\n' "$number" "$(IFS=,; printf '%s' "${target[*]}" | sed 's/,/, /g')" "${pr:+, and so is PR #$pr}"

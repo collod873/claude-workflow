@@ -90,6 +90,13 @@ describe("bin/mark leaves one state on a ticket and its open PR, so one look at 
     expect(marked.calls()).toEqual([]);
   });
 
+  it("still marks the issue and succeeds when its token may not read PRs, so a caller's next step still runs", () => {
+    const marked = marking({ labels: { "974": ["spec", "checking"] }, gh: "[[ $1 == pr ]] && { printf 'HTTP 403: Resource not accessible by integration\\n' >&2; exit 1; }\n" });
+
+    expect(heard(marked.run("974", "needs-human"))).toEqual({ status: 0, stderr: "", lines: ["mark: #974 is at checking, needs-human"] });
+    expect(marked.labels("974")).toEqual(["checking", "needs-human", "spec"]);
+  });
+
   it("says in one line why GitHub refused the label", () => {
     const marked = marking({ gh: "printf 'HTTP 403: Resource not accessible by integration\\n' >&2\nexit 1\n" });
 
