@@ -69,9 +69,12 @@ jobs:
               | sed -E 's#.*/runs/([0-9]+)/.*#\1#' \
               | sort -u \
               | while read -r run; do gh run rerun "$run" --failed; done
+            bin/mark ${{ github.event.issue.number }} checking || true
             echo rerun=true >>"$GITHUB_OUTPUT"
+          elif [[ '${{ github.event.action }}' == reopened ]]; then
+            bin/mark ${{ github.event.issue.number }} building --try || true
           else
-            bin/mark ${{ github.event.issue.number }} 1-defining || true
+            bin/mark ${{ github.event.issue.number }} building || true
           fi
 
       - id: fix

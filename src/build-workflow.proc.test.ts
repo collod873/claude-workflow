@@ -125,7 +125,7 @@ describe("build.yml builds a ticket the moment it is filed (#826)", () => {
     expect(on.issues?.types).toContain("unlabeled");
     expect(starts("collod873-machine[bot]", "waiting")).toBe(true);
     expect(starts("collod873", "waiting")).toBe(true);
-    expect(starts("collod873-machine[bot]", "fixing")).toBe(false);
+    expect(starts("collod873-machine[bot]", "building")).toBe(false);
     expect(starts("collod873", "needs-human")).toBe(false);
     expect(starts("stranger", "waiting")).toBe(false);
     expect(holds(job.if ?? "true", { sender: "collod873-machine[bot]", action: "unlabeled", label: "waiting", labels: ["note"] })).toBe(false);
@@ -367,10 +367,10 @@ describe("fix.yml hands every red run of a ticket to its builder, however the ru
     const building = { RAN: ".github/workflows/build.yml", RAN_ON: "main", TITLE: "Build ticket/9: Give the builder the build" };
     const checking = { RAN: ".github/workflows/check.yml", RAN_ON: "ticket/9", TITLE: "Give the builder the build" };
 
-    expect(ticketNamed(building, "2-building needs-human")).toBe("");
+    expect(ticketNamed(building, "building needs-human")).toBe("");
     expect(ticketNamed(checking, "needs-human")).toBe("");
-    expect(ticketNamed(building, "2-building")).toBe("9");
-    expect(ticketNamed(checking, "3-checking")).toBe("9");
+    expect(ticketNamed(building, "building")).toBe("9");
+    expect(ticketNamed(checking, "checking")).toBe("9");
     expect(ticketNamed({ DISPATCHED: "9" }, "needs-human")).toBe("9");
   });
 
@@ -419,15 +419,16 @@ describe("fix.yml hands every red run of a ticket to its builder, however the ru
       const root = scratch("fix-called-");
       const calls = join(root, "calls");
       script(join(root, "bin", "gh"), `printf '%s\\n' "$*" >>"${calls}"\n[[ $2 == view ]] && printf '%s\\n' ${labels}\nexit 0\n`);
+      script(join(root, "bin", "mark"), `printf 'mark %s\\n' "$*" >>"${calls}"\n`);
       ranStep(calling, root, { PATH: `${join(root, "bin")}:${process.env.PATH}`, TICKET: "9" });
       return existsSync(calls) ? readFileSync(calls, "utf8") : "";
     };
 
     expect(holdsAlone(calling.if ?? "success()", job.steps, { failed: true })).toBe(true);
     expect(holdsAlone(calling.if ?? "success()", job.steps, { cancelled: true })).toBe(true);
-    expect(labelled("fixing")).toMatch(/issue edit 9 --add-label needs-human/);
-    expect(labelled("fixing")).toMatch(/issue comment 9 --body @owner /);
-    expect(labelled("fixing needs-human")).not.toMatch(/issue (edit|comment)/);
+    expect(labelled("building")).toMatch(/^mark 9 needs-human$/m);
+    expect(labelled("building")).toMatch(/issue comment 9 --body @owner /);
+    expect(labelled("building needs-human")).not.toMatch(/mark|issue (edit|comment)/);
   });
 
   it("saves the builder's session when a finished run woke it, which GitHub otherwise gives a read-only cache", () => {
@@ -509,7 +510,8 @@ describe("build.yml re-runs an open PR's failed checks instead of building, when
 
     expect(opened.status, opened.stderr).toBe(0);
     const openLog = readFileSync(openCalls, "utf8");
-    expect(openLog).not.toContain("mark 9 1-defining");
+    expect(openLog).toContain("mark 9 checking\n");
+    expect(openLog).not.toContain("mark 9 building");
     expect(openLog).toMatch(/rerun/i);
     expect(stagesRun(job, undefined, { start: parseOutput(openOutput) })).toEqual(["start"]);
 
@@ -530,7 +532,35 @@ describe("build.yml re-runs an open PR's failed checks instead of building, when
     });
 
     expect(none.status, none.stderr).toBe(0);
-    expect(readFileSync(noCalls, "utf8")).toContain("mark 9 1-defining");
+    expect(readFileSync(noCalls, "utf8"), "a reopen with no open PR is a try").toContain("mark 9 building --try\n");
+    const filed = spawnSync("bash", ["-e", "-c", runOf(start, "9", "opened")], {
+      cwd: withNoPr,
+      env: { ...process.env, PATH: `${join(withNoPr, "bin")}:${process.env.PATH}`, GITHUB_OUTPUT: noOutput },
+      encoding: "utf8",
+    });
+    expect(filed.status, filed.stderr).toBe(0);
+    expect(readFileSync(noCalls, "utf8"), "a first build is no try").toMatch(/^mark 9 building$/m);
     expect(stagesRun(job, undefined, { start: parseOutput(noOutput) })).toEqual(["start", "fix"]);
+  });
+});
+
+describe("closed.yml strips the machine's labels from every issue and PR that closes, so nothing is left behind (#1055)", () => {
+  it("runs bin/mark --closed on every issue close and PR close, with the token whose label changes start no workflow", () => {
+    const { on, jobs } = parse(readFileSync(join(WORKFLOWS, "closed.yml"), "utf8")) as { on: { issues?: { types?: string[] }; pull_request_target?: { types?: string[] } }; jobs: Record<string, Job> };
+    const steps = Object.values(jobs).flatMap((job) => job.steps);
+    const strip = steps.find((step) => /bin\/mark .*--closed/.test(step.run ?? "")) as Step;
+    const stripped = (number: Record<string, string>) => {
+      const root = scratch("closed-");
+      const calls = join(root, "calls");
+      script(join(root, "bin", "mark"), `printf '%s\\n' "$*" >>"${calls}"\n`);
+      expect(ranStep(strip, root, number).status).toBe(0);
+      return readFileSync(calls, "utf8");
+    };
+
+    expect(on.issues?.types).toEqual(["closed"]);
+    expect(on.pull_request_target?.types).toEqual(["closed"]);
+    expect(strip.env?.GH_TOKEN).toBe("${{ github.token }}");
+    expect(String(strip.env?.NUMBER)).toMatch(/github\.event\.issue\.number \|\| github\.event\.pull_request\.number/);
+    expect(stripped({ NUMBER: "811" })).toBe("811 --closed\n");
   });
 });

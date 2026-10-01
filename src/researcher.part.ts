@@ -36,6 +36,6 @@ declareStage({
   ],
   scenarios: [
     { label: "answering a research note", run: () => researching().run() },
-    { label: "refusing a ticket", run: () => researching({ labels: ["2-building"] }).run() },
+    { label: "refusing a ticket", run: () => researching({ labels: ["building"] }).run() },
   ],
 });

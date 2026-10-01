@@ -10,7 +10,7 @@ describe("bin/close-note lets a session close a finished note, which no PR ever 
   });
 
   it("refuses a ticket and closes nothing, since a ticket closes when its PR merges", () => {
-    const closing = closingNote("2-building\\n");
+    const closing = closingNote("building\\n");
 
     expect(closing.run("891")).toEqual({
       status: 1,

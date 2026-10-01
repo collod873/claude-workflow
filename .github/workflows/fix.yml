@@ -56,6 +56,7 @@ jobs:
     permissions:
       contents: read
       issues: write
+      pull-requests: write
       actions: read
     env:
       TICKET: ${{ needs.which.outputs.ticket }}
@@ -156,7 +157,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           gh issue view "$TICKET" --json labels --jq '.labels[].name' | grep -qx needs-human && exit 0
-          gh issue edit "$TICKET" --add-label needs-human
+          bin/mark "$TICKET" needs-human || gh issue edit "$TICKET" --add-label needs-human
           gh issue comment "$TICKET" --body "@${{ github.repository_owner }} the builder's job ended before the builder could finish, see the run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
       - if: always()

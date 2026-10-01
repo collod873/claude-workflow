@@ -136,6 +136,7 @@ export function closing({
       `printf '%s\\n' "$@" >"${callsDir}/$n"`,
       `printf '%s' "$GH_TOKEN" >"${tokensDir}/$n"`,
       'case "$*" in',
+      `  "api repos/{owner}/{repo}/issues/${ticket} --jq"*) printf 'ticket\\nbuilding\\ntry-2\\nwayfinder:map\\n' ;;`,
       ...(resliceRefused === undefined ? [] : [`  *"workflow run reslice.yml"*) printf '%s\\n' '${resliceRefused}' >&2; exit 1 ;;`]),
       `  *"issue list"*"${WAITING}"*) cat <<'LISTED'\n${JSON.stringify(followUps.map((waiting) => ({ number: Number(waiting.ticket), body: followUpBody(waiting) })))}\nLISTED\n    ;;`,
       ...followUps.map(({ parent, parentPr }) => `  *"pr view ticket/${parent} "*"state"*) printf '%s\\n' '${parentPr}' ;;`),
