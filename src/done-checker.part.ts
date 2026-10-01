@@ -19,12 +19,13 @@ export function doneChecking({
   gh = "",
   said = [] as Said[],
   slice = "exit 0\n",
-}: { labels?: string[]; body?: string; tries?: { sentence: number; outcome: string; tried: string }[]; gh?: string; said?: Said[]; slice?: string } = {}) {
+  markRefusal,
+}: { labels?: string[]; body?: string; tries?: { sentence: number; outcome: string; tried: string }[]; gh?: string; said?: Said[]; slice?: string; markRefusal?: string } = {}) {
   const comments = '[[ $1 == api ]] && { cat "$(dirname "$0")/../comments.json"; exit 0; }';
   const { root, argv, ...stage } = issueStage("done-check-", { title: "A spec worth trying", body, labels: labels.map((name) => ({ name })) }, { tries }, DONE_CHECK_POSTED, `${gh}\n${comments}\n`);
   plant(root, "comments.json", authored(said));
   const sliced = join(root, "sliced");
-  const marked = stubbedMark(root);
+  const marked = stubbedMark(root, undefined, markRefusal);
   script(join(root, "bin", "slice"), `printf '%s\\n' "$*" >>"${sliced}"\n${slice}`);
   return {
     ...stage,

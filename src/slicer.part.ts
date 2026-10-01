@@ -22,7 +22,8 @@ export function slicing({
   open = [] as object[],
   prs = {} as Record<string, object>,
   diffs = {} as Record<string, string>,
-}: { labels?: string[]; title?: string; body?: string; answers?: object[]; gh?: string; issues?: Record<string, object>; comments?: Record<string, Said[]>; open?: object[]; prs?: Record<string, object>; diffs?: Record<string, string> } = {}) {
+  markRefusal,
+}: { labels?: string[]; title?: string; body?: string; answers?: object[]; gh?: string; issues?: Record<string, object>; comments?: Record<string, Said[]>; open?: object[]; prs?: Record<string, object>; diffs?: Record<string, string>; markRefusal?: string } = {}) {
   const root = scratch("slice-");
   const { setup, calls } = ghArgv(join(root, "gh-argv"));
   git(root, "init", "--quiet", "--initial-branch=main");
@@ -32,7 +33,7 @@ export function slicing({
   for (const [number, pr] of Object.entries(prs)) plant(root, `prs/${number}`, JSON.stringify(pr));
   for (const [number, diff] of Object.entries(diffs)) plant(root, `diffs/${number}`, diff);
   plant(root, "open.json", JSON.stringify(open));
-  const marked = stubbedMark(root);
+  const marked = stubbedMark(root, undefined, markRefusal);
   answers.forEach((answer, at) => plant(root, `answers/${at + 1}.json`, `${JSON.stringify({ type: "result", subtype: "success", is_error: false, session_id: SLICING_SESSION, structured_output: answer })}\n`));
   script(
     join(root, "bin", "gh"),

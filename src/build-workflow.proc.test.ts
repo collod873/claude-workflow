@@ -599,3 +599,41 @@ describe("a fix, research, slice, reslice or done check run that ends red marks 
     expect(holds(calling?.if ?? "false", { steps: unnamed, failed: true })).toBe(false);
   });
 });
+
+describe("build.yml and closed.yml say in their logs when a mark fails, so a ticket whose labels lag shows why (#1081)", () => {
+  const refusal = (label: string) => `mark: #9 not labelled ${label}: HTTP 403: Resource not accessible by integration`;
+  const refusing = (prefix: string, gh: string) => {
+    const root = scratch(prefix);
+    script(join(root, "bin", "mark"), `printf 'mark: #%s not labelled %s: HTTP 403: Resource not accessible by integration\\n' "$1" "$2" >&2\nexit 1\n`);
+    script(join(root, "bin", "gh"), gh);
+    return root;
+  };
+
+  it("passes on bin/mark's refusal from the start step, whether it reruns checks, counts a try or builds, and still goes on", () => {
+    const start = stageStep(workflow().job, "start");
+    const started = (gh: string, action: string) => {
+      const cwd = refusing("start-refused-", gh);
+      return spawnSync("bash", ["-e", "-c", runOf(start, "9", action)], { cwd, env: { ...process.env, PATH: `${join(cwd, "bin")}:${process.env.PATH}`, GITHUB_OUTPUT: join(cwd, "output") }, encoding: "utf8" });
+    };
+
+    for (const [gh, action, label] of [
+      ['case "$*" in *"pr view"*) printf \'OPEN\\n\' ;; *) exit 0 ;; esac\n', "reopened", "checking"],
+      ["exit 1\n", "reopened", "building"],
+      ["exit 1\n", "opened", "building"],
+    ] as const) {
+      const { status, stderr } = started(gh, action);
+      expect(status, stderr).toBe(0);
+      expect(stderr).toContain(`${refusal(label)}\n`);
+    }
+  });
+
+  it("passes on bin/mark's refusal from closed.yml's strip step", () => {
+    const { jobs } = parse(readFileSync(join(WORKFLOWS, "closed.yml"), "utf8")) as { jobs: Record<string, Job> };
+    const strip = Object.values(jobs).flatMap((job) => job.steps).find((step) => /bin\/mark .*--closed/.test(step.run ?? "")) as Step;
+    const cwd = refusing("closed-refused-", "exit 0\n");
+
+    const { stderr } = ranStep(strip, cwd, { NUMBER: "9" });
+
+    expect(stderr).toContain(`${refusal("--closed")}\n`);
+  });
+});

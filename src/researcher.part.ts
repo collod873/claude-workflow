@@ -13,10 +13,11 @@ export function researching({
   gh = "",
   sources = "",
   readsPastCap = false,
-}: { labels?: string[]; findings?: string; gh?: string; sources?: string; readsPastCap?: boolean } = {}) {
+  markRefusal,
+}: { labels?: string[]; findings?: string; gh?: string; sources?: string; readsPastCap?: boolean; markRefusal?: string } = {}) {
   const cutOff = readsPastCap ? `case "$*" in *--resume*) ;; *) printf '%s\\n' '${JSON.stringify({ type: "system", session_id: READING_SESSION })}'; exit 124 ;; esac\n` : "";
   const { root, ...stage } = issueStage("research-", { title: "What does the closer judge", body: wellFormedNote, labels: labels.map((name) => ({ name })) }, { findings }, FINDINGS_POSTED, gh, cutOff);
-  const marked = stubbedMark(root, join(root, "claude-argv"));
+  const marked = stubbedMark(root, join(root, "claude-argv"), markRefusal);
   return {
     ...stage,
     marked,
