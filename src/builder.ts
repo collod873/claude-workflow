@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { admission, doesNotBuild } from "./admit.ts";
 import { capped, onDisk } from "./brief.ts";
 import { CHECK, UNFENCED } from "./fence.ts";
-import { commentOnTicket, commentsOn, gh, git, mark, NEEDS_HUMAN, OWNER, post, postRefusals, prNumber, rewriteTicket, sessionLine, WAITING } from "./post.ts";
+import { commentOnTicket, commentsOn, gh, git, labelsOf, mark, NEEDS_HUMAN, OWNER, post, postRefusals, prNumber, rewriteTicket, sessionLine, WAITING } from "./post.ts";
 import { BUILDER_SPLIT, earlierDrift, FOLLOW_UP_OF, followUpBody, handedDiff, LIST_CAP, NO_EM_DASH, repairOf, TICKET_CAP } from "./reviewer.ts";
 import { hired, machineLogs, type Spent } from "./stage.ts";
 import { DONE_SENTENCES, quoted, why, whyChanged } from "./ticket-shape.ts";
@@ -291,8 +291,6 @@ function checkingAgain(ticket: string, run: string | undefined): number {
   return 0;
 }
 
-const labelledOn = (ticket: string) => gh(["issue", "view", ticket, "--json", "labels", "--jq", ".labels[].name"]).stdout.split("\n");
-
 function failedAs(ticket: string, logs: string, run: string | undefined): string | undefined {
   const reason = process.env.REASON ?? "";
   if (reason !== "") return reason;
@@ -309,7 +307,7 @@ function ownTicket(ticket: string, run: string | undefined): number {
   mkdirSync(logs, { recursive: true });
   const failed = failedAs(ticket, logs, run);
   if (failed === undefined) mark(ticket, "building");
-  else if (!labelledOn(ticket).includes("resolving")) mark(ticket, "building", "--try");
+  else if (!labelsOf(ticket, gh).includes("resolving")) mark(ticket, "building", "--try");
   const asked = gh(["issue", "view", ticket, "--json", "body", "--jq", ".body"]);
   if (asked.status !== 0) return calledOwner(ticket, "its ticket could not be read");
   let body = asked.stdout;
