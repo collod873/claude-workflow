@@ -252,6 +252,19 @@ describe("bin/slice <spec> --fix <numbers> files the spec's one fix wave for the
     expect(sliced.handed()).toHaveLength(1);
   });
 
+  it("tells the slicer of a first, next and fix wave to move only a sentence its own tickets, once merged, show on the running system without another wave (#1083)", () => {
+    const first = slicing({ answers: [next()] });
+    const again = reslicing({ answers: [next()] });
+    const { sliced: fixed } = fixing([{ ...next([fixPiece], [2]), spec: FIX_SPEC }]);
+    expect(first.run().status).toBe(0);
+    expect(again.run().status).toBe(0);
+
+    for (const handed of [first.handed()[0], again.handed()[0], fixed.handed()[0]]) {
+      expect(handed).toContain("Name in `moves` only a sentence this wave's own tickets, once merged, make visible on the running system without another wave");
+      expect(handed).toContain("that needs two PRs in the closer's queue at once may still be named");
+    }
+  });
+
   it("refuses --fix with no sentence numbers, or with --ended", () => {
     const sliced = slicing();
     expect(sliced.run("968", "--fix").status).toBe(2);

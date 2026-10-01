@@ -18,10 +18,11 @@ const stoppedAt = stopsOf({
 type Stop = ReturnType<typeof stoppedAt>;
 
 const CHECK_MINUTES = 10;
-const OUTCOMES = { held: "Held", missed: "Did not hold", owner: "Put to the owner", self: "Held" } as const;
+const OUTCOMES = { held: "Held", missed: "Did not hold", owner: "Put to the owner", self: "Held", unexercised: "Not tried yet" } as const;
 type Outcome = keyof typeof OUTCOMES;
+const DONE_OUTCOMES = Object.keys(OUTCOMES).filter((outcome) => outcome !== "unexercised");
 
-const TRIES = {
+const triesOf = (outcomes: string[]) => ({
   type: "object",
   properties: {
     tries: {
@@ -30,7 +31,7 @@ const TRIES = {
         type: "object",
         properties: {
           sentence: { type: "integer", minimum: 1 },
-          outcome: { type: "string", enum: Object.keys(OUTCOMES) },
+          outcome: { type: "string", enum: outcomes },
           tried: { type: "string", pattern: NO_EM_DASH },
         },
         required: ["sentence", "outcome", "tried"],
@@ -40,7 +41,7 @@ const TRIES = {
   },
   required: ["tries"],
   additionalProperties: false,
-};
+});
 
 interface Try {
   sentence: number;
@@ -51,7 +52,7 @@ interface Try {
 const numbered = (ran: number[]) => (ran.length === 1 ? `Sentence ${ran.join("")} carries a check command the machine ran itself; give no try for it.` : `Sentences ${ran.join(", ")} carry a check command the machine ran itself; give no try for them.`);
 
 const waveOnly = (wave: number[]) =>
-  `This is a wave check: try only sentences ${wave.join(", ")}, the ones the wave just closed should have moved, and give no try for any other. Answer \`owner\` for one only the owner can try, without trying it; it waits for the end.`;
+  `This is a wave check: try only sentences ${wave.join(", ")}, the ones the wave just closed should have moved, and give no try for any other. Answer \`owner\` for one only the owner can try, without trying it; it waits for the end. Answer \`unexercised\` for one nothing on main could have shown yet, since what it needs has not run or merged; \`tried\` then says what would have to happen for it to be seen, and the next wave check tries it again.`;
 
 export const REPLIES_CAP = 8 * 1024;
 
@@ -98,8 +99,12 @@ export const WAVE_CHECK_HEADING = "## Wave check";
 const WAVE_OUTCOMES: Record<Outcome, string> = { ...OUTCOMES, owner: "Waits for the end", self: "Waits for the end" };
 const waitsForTheEnd = (outcome: Outcome) => outcome === "owner" || outcome === "self";
 const waveLine = (number: number | string, outcome: string) => `- Sentence ${number}, **${outcome}**`;
-const WAVE_MISSED = new RegExp(`^${waveLine("(\\d+)", OUTCOMES.missed).replaceAll("*", "\\*")}`, "gm");
-export const missedIn = (waveCheck: string) => new Set([...waveCheck.matchAll(WAVE_MISSED)].map(([, number]) => Number(number)));
+const givenIn = (outcome: string) => {
+  const line = new RegExp(`^${waveLine("(\\d+)", outcome).replaceAll("*", "\\*")}`, "gm");
+  return (waveCheck: string) => new Set([...waveCheck.matchAll(line)].map(([, number]) => Number(number)));
+};
+export const missedIn = givenIn(OUTCOMES.missed);
+const unexercisedIn = givenIn(OUTCOMES.unexercised);
 
 const wavePosted = (tried: [number, string, Try][], repeated: [number, string, Try][]) =>
   [
@@ -113,7 +118,7 @@ const wavePosted = (tried: [number, string, Try][], repeated: [number, string, T
 function triedByModel({ issue, asked, replies: owners }: Read, ran: number[], wave?: number[]): Try[] | string {
   const logs = machineLogs(process.cwd());
   mkdirSync(logs, { recursive: true });
-  const spend = hired({ name: "done checker", transcript: join(logs, `done-check-${issue}.jsonl`), reach: UNFENCED, answers: TRIES });
+  const spend = hired({ name: "done checker", transcript: join(logs, `done-check-${issue}.jsonl`), reach: UNFENCED, answers: triesOf(wave === undefined ? DONE_OUTCOMES : Object.keys(OUTCOMES)) });
   if (typeof spend === "string") return `the owner's hooks could not be read from ${spend}`;
   const replies = wave === undefined ? owners : "";
   const spent = spend(handedOn(asked.title, asked.body, { ran, wave, replies }));
@@ -177,9 +182,11 @@ function waveCheck(issue: string, wave: number[]): Stop | undefined {
   if (typeof spec === "string") return spec;
   const beyond = wave.find((number) => number < 1 || number > spec.listed.length);
   if (beyond !== undefined) return stoppedAt("notSpec", `${spec.said} carries no sentence ${beyond}, so nothing was tried`);
-  const found = tried(spec, wave, wave);
+  const lastWave = spec.comments.filter((comment) => comment.startsWith(WAVE_CHECK_HEADING)).at(-1) ?? "";
+  const trying = [...new Set([...wave, ...unexercisedIn(lastWave)])].sort((one, other) => one - other);
+  const found = tried(spec, trying, trying);
   if (!Array.isArray(found)) return found;
-  const missedBefore = missedIn(spec.comments.filter((comment) => comment.startsWith(WAVE_CHECK_HEADING)).at(-1) ?? "");
+  const missedBefore = missedIn(lastWave);
   const missed = found.filter(([, , one]) => one.outcome === "missed");
   const repeated = missed.filter(([number]) => missedBefore.has(number));
   const comment = commented(spec, wavePosted(found, repeated));
@@ -241,6 +248,8 @@ function doneCheck(issue: string): Stop | undefined {
     spec.listed.map((_, at) => at + 1),
   );
   if (!Array.isArray(tries)) return tries;
+  const unexercised = tries.filter(([, , one]) => one.outcome === "unexercised");
+  if (unexercised.length > 0) return stoppedAt("modelRun", `${spec.said} ended red, the done checker gave sentence ${listing(unexercised, ", ")} as not tried yet, which only a wave check may give`);
   const found = settled(tries);
   const missed = found.filter(([, , one]) => one.outcome === "missed");
   if (missed.length > 0) return fixWave(spec, found, missed);
