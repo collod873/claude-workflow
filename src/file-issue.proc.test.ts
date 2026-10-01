@@ -29,7 +29,7 @@ describe("bin/file-issue files a ticket, or refuses it and files nothing (#662)"
     const result = run();
 
     expect(result).toMatchObject({ status: 0, stdout: `${URL}\n`, stderr: UNSTAMPED });
-    expect(ghSaw(repo)).toEqual([["issue", "create", "--title", "Port the ticket shape into core/", "--body", wellFormedTicket]]);
+    expect(ghSaw(repo)).toEqual([["issue", "create", "--title", "Port the ticket shape into core/", "--label", "ticket", "--body", wellFormedTicket]]);
   });
 
   it("files nothing for a misshapen body and names each defect on its own line", () => {
@@ -145,7 +145,7 @@ describe("bin/file-issue files a ticket, or refuses it and files nothing (#662)"
 
     expect(unsetResult).toMatchObject({ status: 0, stdout: `${URL}\n` });
     expect(unsetResult.stderr).toMatch(/names no session/);
-    expect(ghSaw(unset.repo)).toEqual([["issue", "create", "--title", "A ticket the machine can build", "--body", wellFormedTicket]]);
+    expect(ghSaw(unset.repo)).toEqual([["issue", "create", "--title", "A ticket the machine can build", "--label", "ticket", "--body", wellFormedTicket]]);
 
     const empty = filing({ gh: RECORDS, body: wellFormedTicket, sessionId: "" });
 
