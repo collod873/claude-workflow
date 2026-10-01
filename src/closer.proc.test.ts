@@ -734,6 +734,22 @@ describe("bin/close marks what the queue does to each ticket, so waiting its tur
     expect(labelled(calls(), "888").map(({ labels }) => labels)).toEqual([["labels[]=checking"]]);
     expect(touched(calls(), "889")).toEqual([]);
   });
+
+  it("keeps resolving on a ticket whose conflict is reported while another PR is next to merge, so its builder counts no try (#1077)", () => {
+    const { calls, run } = closing({
+      ticket: "819",
+      afterCheck: true,
+      openPrs: [
+        { number: "970", ticket: "890", upToDate: true, checks: "pending", labels: ["landing"] },
+        { number: "971", ticket: "891", refused: CONFLICT, refusedBefore: true, labels: ["resolving"] },
+        { number: "972", ticket: "892", checks: "pending", labels: ["resolving", "try-2"] },
+      ],
+    });
+
+    expect(run().status).toBe(0);
+    expect(touched(calls(), "891")).toEqual([]);
+    expect(touched(calls(), "892")).toEqual([]);
+  });
 });
 
 describe("bin/close writes each mark on the ticket's open PR too, and says in its log when a mark fails (#1077)", () => {

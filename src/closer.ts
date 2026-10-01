@@ -177,6 +177,7 @@ function markOnce(ticket: string, label: string): void {
 }
 
 const LANDING = "landing";
+const RESOLVING = "resolving";
 
 function wantedOn(pr: QueuedPr, merging: QueuedPr | undefined, held: string[]): string | undefined {
   if (pr.checks === "red") return undefined;
@@ -186,7 +187,7 @@ function wantedOn(pr: QueuedPr, merging: QueuedPr | undefined, held: string[]): 
 
 function settle(ticket: string, pr: QueuedPr, merging: QueuedPr | undefined, conflicted: boolean): void {
   const held = labelsOf(ticket, gh);
-  const wanted = conflicted ? undefined : wantedOn(pr, merging, held);
+  const wanted = conflicted || held.includes(RESOLVING) ? undefined : wantedOn(pr, merging, held);
   const writes = wanted !== undefined && !held.includes(NEEDS_HUMAN) && (wanted !== "checking" || held.includes(LANDING));
   if (writes && !held.includes(wanted)) mark(ticket, wanted);
   else if (!writes && held.includes(LANDING)) for (const on of [ticket, pr.number]) quietGh(["api", "-X", "DELETE", `repos/{owner}/{repo}/issues/${on}/labels/${LANDING}`]);
@@ -229,7 +230,7 @@ function updateBranch(pr: QueuedPr): Moved {
   commentOnPr(number, `${failedBranchUpdate(number)} ${reason}\n\n${headLine(headRefOid)}\n\nRun: ${thisRun}`, gh);
   if (ticket !== undefined && labelsOf(ticket, gh).includes(NEEDS_HUMAN)) console.log(`close: #${ticket} is labelled ${NEEDS_HUMAN}, so the conflict on PR #${number} wakes no builder`);
   else if (ticket !== undefined) {
-    mark(ticket, "resolving");
+    mark(ticket, RESOLVING);
     wakeBuilder(ticket, `#${ticket}'s ${failedBranchUpdate(number)} ${reason}`);
   }
   return "conflicted";
