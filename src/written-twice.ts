@@ -150,7 +150,7 @@ export function writtenTwice(sources: Source[]): string[] {
   return [...readsWritten, ...samePatterns, ...sameConstants];
 }
 
-const machineSource = (dir: string): Source[] =>
+export const machineSource = (dir: string): Source[] =>
   readdirSync(dir, { recursive: true, encoding: "utf8" })
     .filter((name) => name.endsWith(".ts"))
     .map((name) => ({ file: `src/${name}`, text: readFileSync(join(dir, name), "utf8") }));

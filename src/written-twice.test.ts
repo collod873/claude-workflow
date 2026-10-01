@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { writtenTwice } from "./written-twice.ts";
+import { machineSource, writtenTwice } from "./written-twice.ts";
 
 const source = (file: string, ...lines: string[]) => ({ file, text: lines.join("\n") });
 const ASK = "export the text from one owner and build the other side from it";
@@ -62,5 +62,14 @@ describe("written twice refuses text the machine spells in two places, so renami
       source("src/one.ts", 'export const say = "## Wave and **Did not hold** and Session: one";'),
       source("src/two.ts", "export const A = /^## Wa/;", "export const B = /Session:/;", "export const C = /\\*\\*Did not hold\\*\\*/;"),
     ])).toEqual([`written twice: src/two.ts:3 reads "**Did not hold**" that src/one.ts:1 writes; ${ASK}`]);
+  });
+
+  it("passes the machine's own source, and refuses it once a line spells an existing marker a second time", () => {
+    const machine = machineSource(import.meta.dirname);
+
+    expect(writtenTwice(machine)).toEqual([]);
+    expect(writtenTwice([...machine, source("src/planted.ts", "export const MOVED = /<!-- moves: ([\\d, ]*) -->/;")])).toEqual([
+      expect.stringMatching(/^written twice: src\/planted\.ts:1 reads "<!-- moves: " that src\/wave\.ts:\d+ writes; /),
+    ]);
   });
 });
