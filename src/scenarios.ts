@@ -133,9 +133,10 @@ export function script(path: string, body: string): void {
   chmodSync(path, 0o755);
 }
 
-export function stubbedMark(root: string): () => string[] {
+export function stubbedMark(root: string, hiredAt?: string): () => string[] {
   const marks = join(root, "mark-calls");
-  script(join(root, "bin", "mark"), `printf '%s\\n' "$*" >>"${marks}"\n`);
+  const when = hiredAt === undefined ? "" : `[[ -e "${hiredAt}" ]] && when=after || when=before\n`;
+  script(join(root, "bin", "mark"), `${when}printf '%s\\n' "$*${hiredAt === undefined ? "" : " $when the model"}" >>"${marks}"\n`);
   return () => (existsSync(marks) ? readFileSync(marks, "utf8").trimEnd().split("\n") : []);
 }
 

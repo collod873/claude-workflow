@@ -1,7 +1,6 @@
-import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { handedOn, NOTE_CAP, OUT_OF_TIME } from "./researcher.ts";
-import { BIN, execute, issueStage, script, wellFormedNote } from "./scenarios.ts";
+import { BIN, execute, issueStage, stubbedMark, wellFormedNote } from "./scenarios.ts";
 import { declareStage, HANDED_ON } from "./stages.ts";
 
 export const READING_SESSION = "reading-session";
@@ -17,11 +16,10 @@ export function researching({
 }: { labels?: string[]; findings?: string; gh?: string; sources?: string; readsPastCap?: boolean } = {}) {
   const cutOff = readsPastCap ? `case "$*" in *--resume*) ;; *) printf '%s\\n' '${JSON.stringify({ type: "system", session_id: READING_SESSION })}'; exit 124 ;; esac\n` : "";
   const { root, ...stage } = issueStage("research-", { title: "What does the closer judge", body: wellFormedNote, labels: labels.map((name) => ({ name })) }, { findings }, FINDINGS_POSTED, gh, cutOff);
-  const marks = join(root, "mark-calls");
-  script(join(root, "bin", "mark"), `[[ -e "${join(root, "claude-argv")}" ]] && when=after || when=before\nprintf '%s %s the researcher\\n' "$*" "$when" >>"${marks}"\n`);
+  const marked = stubbedMark(root, join(root, "claude-argv"));
   return {
     ...stage,
-    marks: () => (existsSync(marks) ? readFileSync(marks, "utf8").trimEnd().split("\n") : []),
+    marked,
     run: (...args: string[]) => execute(join(BIN, "research"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}`, RESEARCH_SOURCES: sources, STAGE_MINUTES: readsPastCap ? "40" : "" }, args.length > 0 ? args : ["902"]),
   };
 }
