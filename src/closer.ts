@@ -172,6 +172,13 @@ function queuedPrs(): QueuedPr[] {
 
 const labelsOf = (issue: string) => (ghText(["issue", "view", issue, "--json", "labels", "--jq", ".labels[].name"]) ?? "").split("\n");
 
+const mark = (ticket: string, label: string) => spawnSync(join(import.meta.dirname, "..", "bin", "mark"), [ticket, label], { stdio: "ignore", env: quietly });
+
+function markOnce(ticket: string, label: string): void {
+  const held = labelsOf(ticket);
+  if (!held.includes(label) && !held.includes(NEEDS_HUMAN)) mark(ticket, label);
+}
+
 function wakeBuilder(ticket: string, reason: string): void {
   gh(["workflow", "run", "fix.yml", "-f", `ticket=${ticket}`, "-f", `reason=${reason}`]);
 }
@@ -190,23 +197,29 @@ function conflictReportedAtHead(pr: QueuedPr): boolean {
   return (commentsOn(pr.number, gh) ?? []).some((said) => FAILED_BRANCH_UPDATE.test(said) && said.includes(headLine(pr.headRefOid)) && conflicts(pr, said));
 }
 
-function updateBranch(pr: QueuedPr): boolean {
+type Moved = "updated" | "conflicted" | "retried";
+
+function updateBranch(pr: QueuedPr): Moved {
   const { number, headRefName, headRefOid } = pr;
+  const ticket = TICKET_BRANCH.exec(headRefName)?.[1];
   const updated = gh(["pr", "update-branch", number]);
   if (updated.status === 0) {
     commentOnPr(number, `${branchUpdate(number)} ${thisRun}`, gh);
-    return true;
+    if (ticket !== undefined) markOnce(ticket, "checking");
+    return "updated";
   }
   const reason = (updated.stderr || updated.stdout).trim().split("\n")[0] || "no reason given";
   if (!conflicts(pr, reason)) {
     console.log(`close: PR #${number} could not be brought up to date with main, and will be tried again: ${reason}`);
-    return false;
+    return "retried";
   }
   commentOnPr(number, `${failedBranchUpdate(number)} ${reason}\n\n${headLine(headRefOid)}\n\nRun: ${thisRun}`, gh);
-  const ticket = TICKET_BRANCH.exec(headRefName)?.[1];
   if (ticket !== undefined && labelsOf(ticket).includes(NEEDS_HUMAN)) console.log(`close: #${ticket} is labelled ${NEEDS_HUMAN}, so the conflict on PR #${number} wakes no builder`);
-  else if (ticket !== undefined) wakeBuilder(ticket, `#${ticket}'s ${failedBranchUpdate(number)} ${reason}`);
-  return false;
+  else if (ticket !== undefined) {
+    mark(ticket, "resolving");
+    wakeBuilder(ticket, `#${ticket}'s ${failedBranchUpdate(number)} ${reason}`);
+  }
+  return "conflicted";
 }
 
 const upToDate = (pr: QueuedPr) => git(["merge-base", "--is-ancestor", "origin/main", `origin/${pr.headRefName}`]).status === 0;
@@ -215,8 +228,22 @@ function queue(): string {
   git(["fetch", "--quiet", "origin"]);
   const queued = queuedPrs();
   const merging = queued.find((pr) => pr.checks !== "red" && upToDate(pr));
+  const moved = new Map<QueuedPr, Moved>();
+  const next =
+    merging === undefined
+      ? queued
+          .filter((pr) => pr.checks === "green")
+          .find((pr) => {
+            const outcome = conflictReportedAtHead(pr) ? "conflicted" : updateBranch(pr);
+            moved.set(pr, outcome);
+            return outcome === "updated";
+          })
+      : undefined;
+  for (const pr of queued) {
+    const ticket = TICKET_BRANCH.exec(pr.headRefName)?.[1];
+    if (ticket !== undefined && pr.checks === "green" && moved.get(pr) !== "updated" && moved.get(pr) !== "conflicted") markOnce(ticket, pr === merging ? "landing" : "queued");
+  }
   if (merging !== undefined) return `PR #${merging.number} is up to date with main, so the queue waits for it`;
-  const next = queued.filter((pr) => pr.checks === "green").find((pr) => !conflictReportedAtHead(pr) && updateBranch(pr));
   return next === undefined ? "no green PR waits behind main" : `PR #${next.number} brought up to date with main`;
 }
 
@@ -277,7 +304,7 @@ function close(): Stop | undefined {
   const [refusal] = posted.refusals;
   if (refusal !== undefined) return stoppedAt("unrecorded", `close: #${ticket} got no closing record: ${quoted(refusal)}`);
   const state = ticketState(ticket);
-  spawnSync(join(import.meta.dirname, "..", "bin", "mark"), [ticket, "--closed"], { stdio: "ignore", env: quietly });
+  mark(ticket, "--closed");
   if (state !== "CLOSED COMPLETED") {
     if (state.startsWith("CLOSED")) quietGh(["issue", "reopen", ticket]);
     if (quietGh(["issue", "close", ticket, "--reason", "completed"]).status !== 0) return stoppedAt("unrecorded", `close: #${ticket} is done but could not be closed${recorded(posted.said)}`);

@@ -56,6 +56,7 @@ export interface QueuedPr {
   refusedBefore?: boolean;
   conflicts?: boolean;
   needsHuman?: boolean;
+  labels?: string[];
 }
 
 const RUNS = { green: ["COMPLETED", "SUCCESS"], pending: ["IN_PROGRESS", ""], red: ["COMPLETED", "FAILURE"] } as const;
@@ -152,7 +153,11 @@ export function closing({
       `  "api repos/{owner}/{repo}/issues/${ticket} --jq"*) printf 'ticket\\nbuilding\\ntry-2\\nwayfinder:map\\n' ;;`,
       ...(resliceRefused === undefined ? [] : [`  *"workflow run reslice.yml"*) printf '%s\\n' '${resliceRefused}' >&2; exit 1 ;;`]),
       `  *"issue list"*"${WAITING}"*) cat <<'LISTED'\n${JSON.stringify(waitingListed(followUps, splitFrom))}\nLISTED\n    ;;`,
-      ...openPrs.filter((pr) => pr.needsHuman === true).map((pr) => `  *"issue view ${pr.ticket} "*"labels"*) printf '%s\\n' '${NEEDS_HUMAN}' ;;`),
+      ...openPrs.map((pr) => ({ ticket: pr.ticket, labels: [...(pr.labels ?? []), ...(pr.needsHuman === true ? [NEEDS_HUMAN] : [])] })).filter(({ ticket, labels }) => ticket !== "" && labels.length > 0).flatMap(({ ticket, labels }) => [
+        `  *"issue view ${ticket} "*"labels"*) printf '%s\\n' ${labels.map((label) => `'${label}'`).join(" ")} ;;`,
+        `  "api repos/{owner}/{repo}/issues/${ticket} --jq"*) printf '%s\\n' ${labels.map((label) => `'${label}'`).join(" ")} ;;`,
+      ]),
+      '  *"pr list --head"*) exit 0 ;;',
       ...followUps.map(({ parent, parentPr }) => `  *"pr view ticket/${parent} "*"state"*) printf '%s\\n' '${parentPr}' ;;`),
       ...followUps.map(({ ticket, split }) => `  *"api"*"issues/${ticket}/comments"*) ${split === true ? `printf '%s\\n' '${JSON.stringify({ author: MACHINE, type: "Bot", body: `@collod873 the builder split #${ticket} into #990, which build themselves.` })}'` : "exit 0"} ;;`),
       ...(splitFrom === undefined

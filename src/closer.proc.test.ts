@@ -487,7 +487,7 @@ describe("bin/close merges machine PRs one at a time, bringing only the oldest g
 
     expect(result.status, result.stderr).toBe(0);
     expect(updated(calls())).toEqual(["931"]);
-    expect(calls().some((call) => /^issue\n(?!list\n)/.test(call)), "a finished check is not a merge, so no ticket is closed").toBe(false);
+    expect(calls().some((call) => /^issue\n(?!list\n|view\n)/.test(call)), "a finished check is not a merge, so no ticket is closed").toBe(false);
   });
 
   it("walks three PRs left behind by one merge through main, one at a time, with no one touching them", () => {
@@ -609,5 +609,70 @@ describe("bin/close starts the re-slice itself once it closes a ticket, since it
 
     expect(run().status).toBe(0);
     expect(dispatched(calls())).toBe(-1);
+  });
+});
+
+describe("bin/close marks what the queue does to each ticket, so waiting its turn, being landed and having a conflict resolved read apart (#1063)", () => {
+  const CONFLICT = "GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts.";
+  const labelled = (calls: string[], ticket: string) => calls.flatMap((call, at) => (call.startsWith(`api\n-X\nPOST\nrepos/{owner}/{repo}/issues/${ticket}/labels\n`) ? [{ at, labels: call.split("\n").filter((line) => line.startsWith("labels[]=")) }] : []));
+  const touched = (calls: string[], ticket: string) => calls.filter((call) => call.includes(`repos/{owner}/{repo}/issues/${ticket}/labels`));
+
+  it("marks a ticket resolving before it wakes its builder for a conflict, and adds no try", () => {
+    const { calls, tokens, run } = closing({ ticket: "819", openPrs: [{ number: "950", ticket: "870", labels: ["queued", "try-2"], refused: CONFLICT }] });
+
+    expect(run().status).toBe(0);
+    const wake = calls().findIndex((call) => call.startsWith("workflow\nrun\nfix.yml") && call.includes("ticket=870"));
+    const [marked] = labelled(calls(), "870");
+    expect(marked?.labels).toEqual(["labels[]=resolving"]);
+    expect(marked?.at).toBeLessThan(wake);
+    expect(tokens()[marked?.at ?? -1], "marks quietly, so taking a label off starts no build").toBe("quiet");
+    expect(touched(calls(), "870").some((call) => call.includes("try-3"))).toBe(false);
+  });
+
+  it("marks checking once it brings a branch up to date cleanly, and adds no try", () => {
+    const { calls, run } = closing({ ticket: "819", openPrs: [{ number: "951", ticket: "871", labels: ["queued", "try-2"] }] });
+
+    expect(run().status).toBe(0);
+    expect(labelled(calls(), "871").map(({ labels }) => labels)).toEqual([["labels[]=checking"]]);
+    expect(touched(calls(), "871").some((call) => call.includes("try-3"))).toBe(false);
+  });
+
+  it("marks landing on the green ticket the queue waits for and queued on every other green one, writing only where the label differs", () => {
+    const { calls, run } = closing({
+      ticket: "819",
+      afterCheck: true,
+      openPrs: [
+        { number: "952", ticket: "872", labels: ["landing"] },
+        { number: "953", ticket: "873", upToDate: true, labels: ["checking"] },
+        { number: "954", ticket: "874", labels: ["queued"] },
+        { number: "955", ticket: "875", checks: "pending", labels: ["checking"] },
+        { number: "956", ticket: "876", checks: "red", labels: ["checking"] },
+        { number: "957", ticket: "877", needsHuman: true },
+      ],
+    });
+
+    expect(run().status).toBe(0);
+    expect(labelled(calls(), "873").map(({ labels }) => labels)).toEqual([["labels[]=landing"]]);
+    expect(labelled(calls(), "872").map(({ labels }) => labels)).toEqual([["labels[]=queued"]]);
+    expect(touched(calls(), "874")).toEqual([]);
+    expect(touched(calls(), "875")).toEqual([]);
+    expect(touched(calls(), "876")).toEqual([]);
+    expect(touched(calls(), "877")).toEqual([]);
+  });
+
+  it("marks queued every green ticket behind the one it brings up to date, and none whose conflict is already reported", () => {
+    const { calls, run } = closing({
+      ticket: "819",
+      openPrs: [
+        { number: "958", ticket: "878", refused: CONFLICT, refusedBefore: true, labels: ["resolving"] },
+        { number: "959", ticket: "879", labels: ["queued"] },
+        { number: "960", ticket: "880", labels: ["checking"] },
+      ],
+    });
+
+    expect(run().status).toBe(0);
+    expect(touched(calls(), "878")).toEqual([]);
+    expect(labelled(calls(), "879").map(({ labels }) => labels)).toEqual([["labels[]=checking"]]);
+    expect(labelled(calls(), "880").map(({ labels }) => labels)).toEqual([["labels[]=queued"]]);
   });
 });
