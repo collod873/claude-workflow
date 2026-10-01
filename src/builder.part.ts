@@ -41,6 +41,7 @@ export function fixing({
   body = FIXED_TICKET,
   answer = { outcome: "code", reason: "the export was never renamed" } as { outcome: string; reason: string; body?: string; tickets?: unknown[] },
   onPr = [] as Said[] | undefined,
+  onTicket = [] as Said[],
   logged = {} as Record<string, string>,
   leftover = {} as Record<string, string>,
   claude = "",
@@ -81,6 +82,7 @@ export function fixing({
   for (const [name, text] of Object.entries(captures)) plant(root, `captures/${name}`, text);
   plant(root, "ticket.md", body);
   plant(root, "on-pr.json", authored(onPr ?? []));
+  plant(root, "on-ticket.json", authored(onTicket));
   plant(root, "failed-run.log", failedRun);
   const result = { type: "result", subtype: "success", is_error: false, session_id: BUILDER_SESSION, structured_output: answer };
   plant(root, "answer.jsonl", `${JSON.stringify({ type: "system", session_id: BUILDER_SESSION })}\n${JSON.stringify(result)}\n`);
@@ -91,6 +93,7 @@ export function fixing({
       setup,
       'case "$*" in',
       `  *"api"*"issues/9811/comments"*) cat "${join(root, "on-pr.json")}" ;;`,
+      `  *"api"*"issues/811/comments"*) cat "${join(root, "on-ticket.json")}" ;;`,
       ...openedCases(root, opener, body, parent),
       `  *"issue create"*) n=$(( $(cat "${join(root, "created")}" 2>/dev/null || echo 900) + 1 )); printf '%s\\n' "$n" >"${join(root, "created")}"; printf 'https://github.com/collod873/claude-workflow/issues/%s\\n' "$n" ;;`,
       `  *"issue view"*"labels"*) printf '%s\\n' ${labels.join(" ")} ;;`,
@@ -143,16 +146,16 @@ declareStage({
     {
       name: "builder building",
       file: "src/builder.ts",
-      cap: TICKET_CAP + CHECK_CAP + 2 * HANDED_ON,
-      slots: ["body", "check"],
-      build: (filled) => handedOn({ ticket: "", body: filled.body ?? "", check: filled.check ?? "" }),
+      cap: TICKET_CAP + CHECK_CAP + LIST_CAP + 2 * HANDED_ON,
+      slots: ["body", "check", "woken"],
+      build: (filled) => handedOn({ ticket: "", body: filled.body ?? "", check: filled.check ?? "", woken: filled.woken ?? "" }),
     },
     {
       name: "builder",
       file: "src/builder.ts",
-      cap: TICKET_CAP + TAIL_CAP + DIFF_CAP + 2 * LIST_CAP + HANDED_ON,
-      slots: ["body", "failed", "diff", "gaps"],
-      build: (filled) => handedOn({ ticket: "", body: filled.body ?? "", red: { failed: filled.failed ?? "", diff: filled.diff ?? "", gaps: filled.gaps ?? "" } }),
+      cap: TICKET_CAP + TAIL_CAP + DIFF_CAP + 3 * LIST_CAP + HANDED_ON,
+      slots: ["body", "failed", "diff", "gaps", "woken"],
+      build: (filled) => handedOn({ ticket: "", body: filled.body ?? "", red: { failed: filled.failed ?? "", diff: filled.diff ?? "", gaps: filled.gaps ?? "" }, woken: filled.woken ?? "" }),
     },
     {
       name: "repair",

@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { capped } from "./brief.ts";
@@ -45,6 +46,7 @@ function researched(issue: string): Stop | undefined {
   const asked = read.status === 0 ? askedIssue(read.stdout) : undefined;
   if (asked === undefined) return stoppedAt("unread", `${said} could not be read, so no model was spent`);
   if (!asked.labels.some(({ name }) => name === RESEARCH)) return stoppedAt("notResearch", `${said} is not a research note, so nothing answered or closed it`);
+  spawnSync(join(process.cwd(), "bin", "mark"), [issue, "researching"], { stdio: "ignore" });
   const logs = machineLogs(process.cwd());
   mkdirSync(logs, { recursive: true });
   const spend = hired({ name: "researcher", transcript: join(logs, `research-${issue}.jsonl`), reach: OPEN_SHELL, answers: FINDINGS, writeUp: { minutes: WRITE_UP_MINUTES, told: OUT_OF_TIME } });
