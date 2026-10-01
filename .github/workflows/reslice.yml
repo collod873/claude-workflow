@@ -114,6 +114,16 @@ jobs:
           tail --pid=$$ -q -n +1 -F .git/machine-logs/slice-${{ steps.ended.outputs.spec }}.jsonl .git/machine-logs/done-check-${{ steps.ended.outputs.spec }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
           bin/slice ${{ steps.ended.outputs.spec }}
 
+      - if: ${{ (failure() || cancelled()) && steps.ended.outputs.spec != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ISSUE: ${{ steps.ended.outputs.spec }}
+        run: |
+          gh issue view "$ISSUE" --json labels --jq '.labels[].name' | grep -qx needs-human && exit 0
+          bin/mark "$ISSUE" needs-human
+          gh issue comment "$ISSUE" --body "@${{ github.repository_owner }} the wave check or reslice run ended red before it could finish, see the run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
       - if: always()
         timeout-minutes: 6
         uses: ./.github/actions/stage-logs

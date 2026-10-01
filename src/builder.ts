@@ -217,7 +217,7 @@ function split(ticket: string, body: string, answer: Answer): Round {
   if (answer.body === undefined) return { ended: closedUnbuilt(ticket, `${splitInto(ticket)} ${named}, which build themselves, and closed it: ${answer.reason}`) };
   const written = gh(["issue", "edit", ticket, "--body", answer.body]);
   if (written.status !== 0) return { ended: calledOwner(ticket, `it filed ${named} and its rewrite of what waits would not save: ${quoted((written.stderr || written.stdout).trim().split("\n")[0] ?? "")}`) };
-  commentOnTicket(ticket, `${splitInto(ticket)} ${named}, which build themselves. #${ticket} keeps what must wait for them, labelled \`${WAITING}\`, and builds once they all merge: ${answer.reason}`, gh);
+  commentOnTicket(ticket, `${splitInto(ticket)} ${named}, which build themselves. #${ticket} keeps what must wait for them, labelled \`${WAITING}\`, and builds once they all close: ${answer.reason}`, gh);
   mark(ticket, WAITING);
   gh(["pr", "close", `ticket/${ticket}`, "--delete-branch"]);
   console.log(`fix: #${ticket} split into ${named}; it waits for them`);

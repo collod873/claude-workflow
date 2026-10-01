@@ -8,6 +8,8 @@ name: Close
     types: [completed]
   pull_request_target:
     types: [closed]
+  issues:
+    types: [closed]
 
 permissions:
   contents: read

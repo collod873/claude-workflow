@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
@@ -552,5 +552,53 @@ describe("closed.yml strips the machine's labels from every issue and PR that cl
     expect(strip.env?.GH_TOKEN).toBe("${{ github.token }}");
     expect(String(strip.env?.NUMBER)).toMatch(/github\.event\.issue\.number \|\| github\.event\.pull_request\.number/);
     expect(stripped({ NUMBER: "811" })).toBe("811 --closed\n");
+  });
+});
+
+const CALLERS = [
+  { file: "research.yml", job: "research", names: "github.event.issue.number" },
+  { file: "slice.yml", job: "slice", names: "github.event.issue.number" },
+  { file: "reslice.yml", job: "reslice", names: "steps.ended.outputs.spec" },
+  { file: "done-check.yml", job: "check", names: "github.event.issue.number" },
+];
+
+describe("a research, slice, reslice or done check run that ends red marks its issue needs-human and calls the owner, so it leaves a trace (#1057)", () => {
+  for (const caller of CALLERS) {
+    const job = namedJob((parse(readFileSync(join(WORKFLOWS, caller.file), "utf8")) as { jobs: Record<string, Job> }).jobs, caller.job, caller.file);
+    const calling = job.steps.find((step) => /bin\/mark "\$ISSUE" needs-human/.test(step.run ?? ""));
+    const named = { ...allSkipped(job.steps), ended: { outcome: "success", conclusion: "success", outputs: { spec: "9" } } };
+    const calls = (labels: string) => {
+      const root = scratch("called-");
+      const called = join(root, "calls");
+      mkdirSync(join(root, "bin"), { recursive: true });
+      copyFileSync(join(REPO, "bin", "mark"), join(root, "bin", "mark"));
+      script(join(root, "stub", "gh"), `printf '%s\\n' "$*" >>"${called}"\n[[ $2 == view ]] && printf '%s\\n' ${labels}\nexit 0\n`);
+      const ran = ranStep(calling ?? {}, root, { PATH: `${join(root, "stub")}:${process.env.PATH}`, ISSUE: "9" });
+      expect(ran.status, ran.stderr).toBe(0);
+      return existsSync(called) ? readFileSync(called, "utf8") : "";
+    };
+
+    it(`${caller.file} marks its issue and comments to the owner with the run's link when it ends red, and not when it ends green`, () => {
+      expect(calling, `a step in ${caller.file} running bin/mark "$ISSUE" needs-human`).toBeDefined();
+      expect(String(calling?.env?.ISSUE)).toContain(caller.names);
+      expect(holds(calling?.if ?? "success()", { steps: named, failed: true })).toBe(true);
+      expect(holds(calling?.if ?? "success()", { steps: named, cancelled: true })).toBe(true);
+      expect(holds(calling?.if ?? "success()", { steps: named })).toBe(false);
+      expect(job.steps.indexOf(calling ?? {})).toBeLessThan(job.steps.findIndex((step) => step.uses === "./.github/actions/stage-logs"));
+      expect(calls("spec")).toContain("api -X POST repos/{owner}/{repo}/issues/9/labels -f labels[]=needs-human\n");
+      expect(calls("spec")).toMatch(/issue comment 9 --body @owner .*\/actions\/runs\/owner/);
+    });
+
+    it(`${caller.file} does nothing when its issue already carries needs-human`, () => {
+      expect(calls("spec needs-human")).not.toMatch(/issue (edit|comment)/);
+    });
+  }
+
+  it("reslice.yml marks nothing when its run ends red before it names its spec", () => {
+    const job = namedJob((parse(readFileSync(join(WORKFLOWS, "reslice.yml"), "utf8")) as { jobs: Record<string, Job> }).jobs, "reslice", "reslice.yml");
+    const calling = job.steps.find((step) => /bin\/mark "\$ISSUE" needs-human/.test(step.run ?? ""));
+    const unnamed = { ...allSkipped(job.steps), ended: { outcome: "failure", conclusion: "failure", outputs: { spec: "" } } };
+
+    expect(holds(calling?.if ?? "false", { steps: unnamed, failed: true })).toBe(false);
   });
 });

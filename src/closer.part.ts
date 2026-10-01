@@ -1,7 +1,7 @@
 import { mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { authored, BIN, commitAt, execute, git, MACHINE, plant, type Said, scratch, script } from "./scenarios.ts";
-import { WAITING } from "./post.ts";
+import { NEEDS_HUMAN, WAITING } from "./post.ts";
 import { declareStage } from "./stages.ts";
 
 const CLOSER_TICKET = [
@@ -33,6 +33,18 @@ export interface WaitingFollowUp {
 const followUpBody = ({ ticket, parent }: WaitingFollowUp) =>
   ["## Why", "", `Follow-up of #${parent}: its review found this after its builder's repair, outside the earlier gaps and the fix's own lines.`, "", `> #${ticket} is still to build.`, "", "## Done when", "", "- It lands.", ""].join("\n");
 
+interface SplitFrom {
+  parent: string;
+  labels: string;
+  said: string;
+  siblings: Record<string, string>;
+}
+
+const waitingListed = (followUps: WaitingFollowUp[], splitFrom: SplitFrom | undefined) => [
+  ...followUps.map((waiting) => ({ number: Number(waiting.ticket), body: followUpBody(waiting) })),
+  ...(splitFrom !== undefined && splitFrom.labels.split("\n").includes(WAITING) ? [{ number: Number(splitFrom.parent), body: CLOSER_TICKET }] : []),
+];
+
 export interface QueuedPr {
   number: string;
   ticket: string;
@@ -43,6 +55,7 @@ export interface QueuedPr {
   autoMerge?: boolean;
   refusedBefore?: boolean;
   conflicts?: boolean;
+  needsHuman?: boolean;
 }
 
 const RUNS = { green: ["COMPLETED", "SUCCESS"], pending: ["IN_PROGRESS", ""], red: ["COMPLETED", "FAILURE"] } as const;
@@ -86,7 +99,7 @@ export function closing({
   timing?: { filed: string; firstCommit: string; rebased?: string; prOpened: string; checksGreen: string; merged: string };
   closedAs?: "COMPLETED" | "NOT_PLANNED";
   openPrs?: QueuedPr[];
-  splitFrom?: { parent: string; labels: string; said: string; siblings: Record<string, string> };
+  splitFrom?: SplitFrom;
   afterCheck?: boolean;
   prComments?: Said[];
   prCommentsUnreadable?: boolean;
@@ -138,13 +151,13 @@ export function closing({
       'case "$*" in',
       `  "api repos/{owner}/{repo}/issues/${ticket} --jq"*) printf 'ticket\\nbuilding\\ntry-2\\nwayfinder:map\\n' ;;`,
       ...(resliceRefused === undefined ? [] : [`  *"workflow run reslice.yml"*) printf '%s\\n' '${resliceRefused}' >&2; exit 1 ;;`]),
-      `  *"issue list"*"${WAITING}"*) cat <<'LISTED'\n${JSON.stringify(followUps.map((waiting) => ({ number: Number(waiting.ticket), body: followUpBody(waiting) })))}\nLISTED\n    ;;`,
+      `  *"issue list"*"${WAITING}"*) cat <<'LISTED'\n${JSON.stringify(waitingListed(followUps, splitFrom))}\nLISTED\n    ;;`,
+      ...openPrs.filter((pr) => pr.needsHuman === true).map((pr) => `  *"issue view ${pr.ticket} "*"labels"*) printf '%s\\n' '${NEEDS_HUMAN}' ;;`),
       ...followUps.map(({ parent, parentPr }) => `  *"pr view ticket/${parent} "*"state"*) printf '%s\\n' '${parentPr}' ;;`),
       ...followUps.map(({ ticket, split }) => `  *"api"*"issues/${ticket}/comments"*) ${split === true ? `printf '%s\\n' '${JSON.stringify({ author: MACHINE, type: "Bot", body: `@collod873 the builder split #${ticket} into #990, which build themselves.` })}'` : "exit 0"} ;;`),
       ...(splitFrom === undefined
         ? []
         : [
-            `  *"issue view ${splitFrom.parent} "*"labels"*) printf '${splitFrom.labels}' ;;`,
             `  *"api"*"issues/${splitFrom.parent}/comments"*) cat <<'SAID'\n${JSON.stringify({ author: MACHINE, type: "Bot", body: splitFrom.said })}\nSAID\n    ;;`,
             ...Object.entries(splitFrom.siblings).map(([sibling, state]) => `  *"issue view ${sibling} "*"state"*) printf '%s\\n' '${state}' ;;`),
           ]),
