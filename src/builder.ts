@@ -48,6 +48,7 @@ interface Answer {
 }
 
 export const splitInto = (ticket: string) => `@${OWNER} the builder split #${ticket} into`;
+export const splitClosed = (ticket: string) => `Every ticket #${ticket} was split into has closed:`;
 export const FILED = /\/issues\/(\d+)\s*$/;
 
 interface Handed {
@@ -56,6 +57,7 @@ interface Handed {
   red?: { failed: string; diff: string; gaps: string };
   check?: string;
   capture?: string;
+  woken?: string;
 }
 
 type Round = { red?: string; ended?: number; body?: string };
@@ -116,10 +118,11 @@ const howItFailed = ({ failed, diff, gaps }: NonNullable<Handed["red"]>) => [
   capped(gaps, LIST_CAP) || "(none)",
 ];
 
-export function handedOn({ ticket, body, red, check = "", capture }: Handed): string {
+export function handedOn({ ticket, body, red, check = "", capture, woken }: Handed): string {
   return [
     `# Ticket #${ticket}`,
     capped(body, TICKET_CAP),
+    ...(woken === undefined ? [] : ["## How its split ended", "Build what a piece closed unbuilt left, or rule it out:", capped(woken, LIST_CAP)]),
     ...filedIn(capture),
     ...(red === undefined ? buildIt(check) : howItFailed(red)),
     "## You own it until it merges",
@@ -322,6 +325,7 @@ function ownTicket(ticket: string, run: string | undefined): number {
     red: failed === undefined ? undefined : { failed, diff: git(["diff", "origin/main...HEAD"]).stdout ?? "", gaps: earlierDrift(ticket, judged) },
     check: onDisk(join(process.cwd(), CHECK)) ?? "",
     capture: captureOf(body, process.env.SESSION_CAPTURES),
+    woken: commentsOn(ticket, gh)?.filter((said) => said.startsWith(splitClosed(ticket))).at(-1),
   });
   let input = opening;
   let idle = false;
