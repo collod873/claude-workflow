@@ -61,12 +61,37 @@ describe("bin/mark leaves one state on a ticket and its open PR, so one look at 
     expect(asked.labels("974")).toEqual(["asked", "checking", "spec"]);
   });
 
+  it("keeps a spec's try-2 from its fix wave's slicing through building, checking and asked, and clears asked once it checks again (#1064)", () => {
+    const marked = marking({ labels: { "974": ["spec", "checking"] } });
+
+    const steps: [string[], string[]][] = [
+      [["slicing", "--try"], ["slicing", "spec", "try-2"]],
+      [["building"], ["building", "spec", "try-2"]],
+      [["checking"], ["checking", "spec", "try-2"]],
+      [["asked"], ["asked", "checking", "spec", "try-2"]],
+      [["checking"], ["checking", "spec", "try-2"]],
+    ];
+    for (const [label, held] of steps) {
+      expect(marked.run("974", ...label).status).toBe(0);
+      expect(marked.labels("974"), label.join(" ")).toEqual(held);
+    }
+  });
+
   it("with --closed strips every state, try and owner label from that issue or PR, and nothing else", () => {
     const marked = marking({ labels: { "811": ["ticket", "spec", "note", "research", "building", "try-3", "asked", "needs-human", "wayfinder:map"], "900": ["building"] }, pr: "900" });
 
     expect(heard(marked.run("811", "--closed")).lines).toEqual(["mark: #811 is closed, so it keeps only its kind"]);
     expect(marked.labels("811")).toEqual(["note", "research", "spec", "ticket", "wayfinder:map"]);
     expect(marked.labels("900")).toEqual(["building"]);
+  });
+
+  it("a research note reads researching while the researcher runs, and only its kind once it closes (#1065)", () => {
+    const marked = marking({ labels: { "902": ["note", "research"] } });
+
+    expect(marked.run("902", "researching").status).toBe(0);
+    expect(marked.labels("902")).toEqual(["note", "research", "researching"]);
+    expect(marked.run("902", "--closed").status).toBe(0);
+    expect(marked.labels("902")).toEqual(["note", "research"]);
   });
 
   it("makes a label the repo lacks with its group's colour, and leaves one the repo has", () => {

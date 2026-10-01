@@ -35,15 +35,15 @@ colour() {
 
 described() {
   case $1 in
-    building) printf "The builder is writing the ticket's code" ;;
-    checking) printf 'bin/check and the reviewer are judging the head' ;;
+    building) printf "The builder is writing the ticket's code, or a spec's wave is building" ;;
+    checking) printf "bin/check and the reviewer judge the head, or the done check tries a spec's sentences" ;;
     queued) printf "Check and the review passed; it waits in the closer's queue" ;;
     resolving) printf 'The builder is resolving a merge conflict' ;;
     landing) printf 'Up to date and green; auto-merge is about to fire' ;;
     waiting) printf 'Waits for other tickets before it builds' ;;
     slicing) printf 'The slicer is writing the next wave' ;;
     researching) printf 'The researcher is answering this note' ;;
-    try-*) printf 'Builder run %s, woken again after a failure' "${1#try-}" ;;
+    try-*) printf "Builder run %s after a failure, or a spec's fix wave" "${1#try-}" ;;
     asked) printf "The machine put the owner a question and resumes on the owner's reply" ;;
     needs-human) printf 'The machine stopped and needs the owner' ;;
   esac

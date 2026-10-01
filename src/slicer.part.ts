@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { LIST_CAP } from "./reviewer.ts";
-import { authored, BIN, execute, ghArgv, git, plant, type Said, scratch, script, wellFormedSpec } from "./scenarios.ts";
+import { authored, BIN, execute, ghArgv, git, plant, type Said, scratch, script, stubbedMark, wellFormedSpec } from "./scenarios.ts";
 import { COMMENTS_CAP, handedOn, sentBack } from "./slicer.ts";
 import { declareStage, HANDED_ON } from "./stages.ts";
 import { SPEC_CAP } from "./ticket-shape.ts";
@@ -32,6 +32,7 @@ export function slicing({
   for (const [number, pr] of Object.entries(prs)) plant(root, `prs/${number}`, JSON.stringify(pr));
   for (const [number, diff] of Object.entries(diffs)) plant(root, `diffs/${number}`, diff);
   plant(root, "open.json", JSON.stringify(open));
+  const marked = stubbedMark(root);
   answers.forEach((answer, at) => plant(root, `answers/${at + 1}.json`, `${JSON.stringify({ type: "result", subtype: "success", is_error: false, session_id: SLICING_SESSION, structured_output: answer })}\n`));
   script(
     join(root, "bin", "gh"),
@@ -80,6 +81,7 @@ export function slicing({
     filed: () => calls().filter((args) => args[1] === "create").map((args) => ({ title: args[args.indexOf("--title") + 1], body: bodyOf(args) })),
     linked: () => calls().filter((args) => args.includes("POST")).map((args) => args.filter((arg) => arg.includes("sub_issues") || arg.startsWith("sub_issue_id=")).join(" ")),
     comments: () => calls().filter((args) => args[1] === "comment").map(bodyOf),
+    marked,
     run: (...args: string[]) => execute(join(BIN, "slice"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, args.length > 0 ? args : ["968"]),
   };
 }

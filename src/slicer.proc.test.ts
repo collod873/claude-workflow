@@ -267,3 +267,29 @@ describe("bin/slice turns a filed spec into its first wave of tickets under it, 
     expect(sliced?.env?.GH_TOKEN).toBe("${{ steps.app.outputs.token }}");
   });
 });
+
+describe("bin/slice marks the spec slicing while it writes a wave, and building once the wave is filed, so a spec shows where it is (#1064)", () => {
+  it("marks slicing before the slicer is hired, then building once the wave's tickets are filed and its note posted", () => {
+    const sliced = slicing({ body: SPEC, answers: [wave()] });
+
+    expect(sliced.run().status).toBe(0);
+    expect(sliced.marked()).toEqual(["968 slicing", "968 building"]);
+  });
+
+  it("marks no building when the wave's note will not post, or the slicer stops for the owner", () => {
+    const unnoted = slicing({ body: SPEC, answers: [wave()], gh: "[[ $2 == comment ]] && exit 1" });
+    const stopped = slicing({ body: SPEC, answers: [wave([piece("Do it all", [2], ["x".repeat(9000)])])] });
+
+    expect(unnoted.run().status).toBe(1);
+    expect(unnoted.marked()).toEqual(["968 slicing"]);
+    expect(stopped.run().status).toBe(1);
+    expect(stopped.marked()).toEqual(["968 slicing"]);
+  });
+
+  it("marks nothing on an issue that is not a spec", () => {
+    const sliced = slicing({ labels: ["ticket"] });
+
+    expect(sliced.run().status).not.toBe(0);
+    expect(sliced.marked()).toEqual([]);
+  });
+});

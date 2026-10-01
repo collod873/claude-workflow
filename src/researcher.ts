@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { capped } from "./brief.ts";
 import { OPEN_SHELL } from "./fence.ts";
-import { askedIssue, commentOnTicket, gh, RESEARCH } from "./post.ts";
+import { askedIssue, commentOnTicket, gh, mark, RESEARCH } from "./post.ts";
 import { NO_EM_DASH } from "./reviewer.ts";
 import { hired, machineLogs } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
@@ -45,6 +45,7 @@ function researched(issue: string): Stop | undefined {
   const asked = read.status === 0 ? askedIssue(read.stdout) : undefined;
   if (asked === undefined) return stoppedAt("unread", `${said} could not be read, so no model was spent`);
   if (!asked.labels.some(({ name }) => name === RESEARCH)) return stoppedAt("notResearch", `${said} is not a research note, so nothing answered or closed it`);
+  mark(issue, "researching");
   const logs = machineLogs(process.cwd());
   mkdirSync(logs, { recursive: true });
   const spend = hired({ name: "researcher", transcript: join(logs, `research-${issue}.jsonl`), reach: OPEN_SHELL, answers: FINDINGS, writeUp: { minutes: WRITE_UP_MINUTES, told: OUT_OF_TIME } });

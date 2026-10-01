@@ -152,13 +152,10 @@ jobs:
           key: builder-${{ env.HEAD_REF }}-${{ github.run_id }}
 
       - if: failure() || cancelled()
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          gh issue view "$TICKET" --json labels --jq '.labels[].name' | grep -qx needs-human && exit 0
-          bin/mark "$TICKET" needs-human || gh issue edit "$TICKET" --add-label needs-human
-          gh issue comment "$TICKET" --body "@${{ github.repository_owner }} the builder's job ended before the builder could finish, see the run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        uses: ./.github/actions/call-owner
+        with:
+          issue: ${{ needs.which.outputs.ticket }}
+          run: "the builder's job"
 
       - if: always()
         timeout-minutes: 6
