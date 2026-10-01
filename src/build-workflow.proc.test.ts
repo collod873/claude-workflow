@@ -485,6 +485,8 @@ describe("build.yml re-runs an open PR's failed checks instead of building, when
   it("builds nothing and re-runs the failed checks when the owner reopens a ticket whose PR is open, but still builds when it has none", () => {
     const { job } = workflow();
     const start = stageStep(job, "start");
+    const started = (cwd: string, output: string, action: string) =>
+      spawnSync("bash", ["-e", "-c", runOf(start, "9", action)], { cwd, env: { ...process.env, PATH: `${join(cwd, "bin")}:${process.env.PATH}`, GITHUB_OUTPUT: output }, encoding: "utf8" });
 
     const withOpenPr = scratch("reopen-open-");
     const openCalls = join(withOpenPr, "calls");
@@ -502,11 +504,7 @@ describe("build.yml re-runs an open PR's failed checks instead of building, when
         "",
       ].join("\n"),
     );
-    const opened = spawnSync("bash", ["-e", "-c", runOf(start, "9", "reopened")], {
-      cwd: withOpenPr,
-      env: { ...process.env, PATH: `${join(withOpenPr, "bin")}:${process.env.PATH}`, GITHUB_OUTPUT: openOutput },
-      encoding: "utf8",
-    });
+    const opened = started(withOpenPr, openOutput, "reopened");
 
     expect(opened.status, opened.stderr).toBe(0);
     const openLog = readFileSync(openCalls, "utf8");
@@ -525,19 +523,11 @@ describe("build.yml re-runs an open PR's failed checks instead of building, when
         "\n",
       ),
     );
-    const none = spawnSync("bash", ["-e", "-c", runOf(start, "9", "reopened")], {
-      cwd: withNoPr,
-      env: { ...process.env, PATH: `${join(withNoPr, "bin")}:${process.env.PATH}`, GITHUB_OUTPUT: noOutput },
-      encoding: "utf8",
-    });
+    const none = started(withNoPr, noOutput, "reopened");
 
     expect(none.status, none.stderr).toBe(0);
     expect(readFileSync(noCalls, "utf8"), "a reopen with no open PR is a try").toContain("mark 9 building --try\n");
-    const filed = spawnSync("bash", ["-e", "-c", runOf(start, "9", "opened")], {
-      cwd: withNoPr,
-      env: { ...process.env, PATH: `${join(withNoPr, "bin")}:${process.env.PATH}`, GITHUB_OUTPUT: noOutput },
-      encoding: "utf8",
-    });
+    const filed = started(withNoPr, noOutput, "opened");
     expect(filed.status, filed.stderr).toBe(0);
     expect(readFileSync(noCalls, "utf8"), "a first build is no try").toMatch(/^mark 9 building$/m);
     expect(stagesRun(job, undefined, { start: parseOutput(noOutput) })).toEqual(["start", "fix"]);
