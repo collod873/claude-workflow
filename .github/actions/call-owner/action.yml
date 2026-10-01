@@ -1,0 +1,22 @@
+name: Call owner
+description: Marks an issue needs-human and comments to the owner with the link of the run that ended red, unless it already carries needs-human
+
+inputs:
+  issue:
+    required: true
+  run:
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}
+        ISSUE: ${{ inputs.issue }}
+        RAN: ${{ inputs.run }}
+      run: |
+        gh issue view "$ISSUE" --json labels --jq '.labels[].name' | grep -qx needs-human && exit 0
+        bin/mark "$ISSUE" needs-human || gh issue edit "$ISSUE" --add-label needs-human
+        gh issue comment "$ISSUE" --body "@${{ github.repository_owner }} $RAN ended red before it could finish, see the run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
