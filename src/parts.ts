@@ -49,6 +49,11 @@ const FIXED: Part[] = [
     stops: "https://github.com/collod873/claude-workflow/issues/663",
   },
   {
+    name: "bin/check written twice",
+    file: "src/written-twice.ts",
+    stops: "https://github.com/collod873/claude-workflow/issues/912",
+  },
+  {
     name: "src/prose.proc.test.ts",
     file: "src/prose.proc.test.ts",
     stops: "https://github.com/collod873/claude-workflow/issues/335",

@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { parts, type Part } from "./parts.ts";
+import { MISSING } from "./post.ts";
 
 export const FAILURE_LINK = /^https:\/\/github\.com\/(collod873\/[\w.-]+)\/(issues|pull|actions\/runs)\/(\d+)$/;
 const COMMIT_LINK = /^https:\/\/github\.com\/collod873\/[\w.-]+\/commit\/[0-9a-f]{7,40}$/;
@@ -19,7 +20,7 @@ async function problemWith(gh: string, link: string): Promise<string | undefined
     return conclusion === "failure" ? undefined : `a run that did not fail (${conclusion ?? status})`;
   } catch (error) {
     const said = String((error as { stderr?: string }).stderr ?? error).trim().replace(/\n[\s\S]*/, "");
-    return /HTTP 404/.test(said) ? "which does not exist" : `which gh could not read: ${said}`;
+    return MISSING.test(said) ? "which does not exist" : `which gh could not read: ${said}`;
   }
 }
 

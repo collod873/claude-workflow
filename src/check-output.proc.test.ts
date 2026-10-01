@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { LINE_LIMIT, agedLogs, checkRepo, git, inRepo, plant, script, stubTool } from "./scenarios.ts";
 
 const TYPE_ERROR = "src/a.ts(3,5): error TS2322: Type 'string' is not assignable to type 'number'.\n".repeat(40).trim();
+const ASK = "export the text from one owner and build the other side from it";
 const TEST_FAILURE = ` FAIL  a.test.ts > adds\n${"AssertionError: expected 1 to be 2\n".repeat(40)} ❯ a.test.ts:4:34`;
 
 function saidOneLine(stdout: string): { line: string; log: string } {
@@ -83,14 +84,32 @@ describe("bin/check deletes its logs older than 7 days whenever it runs (#693)",
 });
 
 describe("bin/check static runs the gates a stage can meet while it works, never the whole suite (#783)", () => {
-  it("runs typecheck, lint, unused, clones and the style tests, and leaves the suite, prompts and links alone", () => {
-    const { repo, run } = checkRepo({ tsc: TYPE_ERROR, node: "src/prompt-bytes.ts: over its ceiling" });
+  it("runs typecheck, lint, unused, clones, the style tests and written twice, and leaves the suite, prompts and links alone", () => {
+    const { repo, run } = checkRepo({ tsc: TYPE_ERROR });
+    script(join(repo, "node_modules", ".bin", "node"), "[ \"$1\" = src/written-twice.ts ] && exit 0\necho \"$1: over its ceiling\"\nexit 1\n");
     script(join(repo, "node_modules", ".bin", "vitest"), '[ "$*" = "run --config vitest.config.ts prose em-dash" ] && exit 0\necho "the whole suite ran"\nexit 1\n');
 
     const result = run(repo, ["static"]);
 
     expect(result.status).toBe(1);
     expect(saidOneLine(result.stdout).line).toMatch(/^bin\/check: FAILED typecheck src\/a\.ts:3; log /);
+  });
+
+  it("runs written twice, naming both places of its first find", () => {
+    const { repo, run } = checkRepo();
+    const found = [
+      `written twice: src/reader.ts:3 reads "## Wave " that src/writer.ts:12 writes; ${ASK}`,
+      `written twice: src/one.ts:1 and src/two.ts:2 spell the same pattern /HTTP 404/; ${ASK}`,
+    ];
+    script(join(repo, "node_modules", ".bin", "node"), `[ "$1" = src/written-twice.ts ] || exit 0\ncat <<'FOUND'\n${found.join("\n")}\nFOUND\nexit 1\n`);
+
+    const result = run(repo, ["static"]);
+
+    expect(result.status).toBe(1);
+    const { line, log } = saidOneLine(result.stdout);
+    expect(line).toMatch(/^bin\/check: FAILED written twice src\/reader\.ts:3 src\/writer\.ts:12; log /);
+    expect(readFileSync(inRepo(repo, log), "utf8")).toContain(found.join("\n"));
+    expect(saidOneLine(run().stdout).line).toMatch(/^bin\/check: FAILED written twice src\/reader\.ts:3 src\/writer\.ts:12; log /);
   });
 
   it("refuses any other argument before it runs a gate", () => {

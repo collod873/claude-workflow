@@ -15,7 +15,7 @@ export const DIFF_CAP = 32 * 1024;
 export const TICKET_CAP = 8 * 1024;
 export const LIST_CAP = 4 * 1024;
 
-const TICKET_BRANCH = /^ticket\/(\d+)$/;
+export const TICKET_BRANCH = /^ticket\/(\d+)$/;
 const FILE_START = /^(?=diff --git )/m;
 const CHANGED_PATH = /^diff --git a\/.+? b\/(.+)$/m;
 const TOOLS = ["Read", "Grep", "Glob"];
@@ -148,8 +148,10 @@ interface AfterTurn {
 const laterFinds = (ticket: string) => `The reviewer found these on #${ticket} after its builder's repair, outside the earlier gaps and the fix's own lines, so they do not block its merge:`;
 export const FOLLOW_UP_OF = "Follow-up of #";
 const reviewerOn = (ticket: string) => `The reviewer, on #${ticket}:`;
-export const REVIEWED_FROM = new RegExp(`^${FOLLOW_UP_OF}(\\d+): its review found`, "m");
-export const SPLIT_FROM = new RegExp(`^${FOLLOW_UP_OF}(\\d+): its builder split it`, "m");
+const REVIEW_FOUND = ": its review found";
+export const BUILDER_SPLIT = ": its builder split it";
+export const REVIEWED_FROM = new RegExp(`^${FOLLOW_UP_OF}(\\d+)${REVIEW_FOUND}`, "m");
+export const SPLIT_FROM = new RegExp(`^${FOLLOW_UP_OF}(\\d+)${BUILDER_SPLIT}`, "m");
 
 const firstLine = (text: string) => quoted(text.trim().split("\n")[0] ?? "");
 
@@ -241,7 +243,7 @@ function fixSince(head: string): string | undefined {
 }
 
 const followUp = (ticket: string, { gap, done }: Later): string =>
-  followUpBody([`${FOLLOW_UP_OF}${ticket}: its review found this after its builder's repair, outside the earlier gaps and the fix's own lines.`, "", reviewerOn(ticket), "", `> ${gap}`], done);
+  followUpBody([`${FOLLOW_UP_OF}${ticket}${REVIEW_FOUND} this after its builder's repair, outside the earlier gaps and the fix's own lines.`, "", reviewerOn(ticket), "", `> ${gap}`], done);
 
 export function followUpBody(whyLines: string[], done: string[]): string {
   return ["## Why", "", ...whyLines, "", "## Done when", "", ...done.map((sentence) => `- ${sentence}`), ""].join("\n");

@@ -1,8 +1,10 @@
 import { text } from "node:stream/consumers";
+import { meterLine } from "./meter-reviewer.ts";
 import { why } from "./ticket-shape.ts";
 
 const PASSAGE_LINE = /^>[ \t]?(.*)$/;
 const WORD_LIMIT = 5;
+const METER = "consent-only quote";
 
 function passages(section: string): string[] {
   const found: string[] = [];
@@ -21,10 +23,10 @@ function passages(section: string): string[] {
 
 function consentOnlyQuoteLine(body: string): string {
   const last = passages(why(body)).at(-1);
-  if (last === undefined) return "consent-only quote (meter): would refuse nothing";
+  if (last === undefined) return meterLine(METER, []);
   const words = last.split(/\s+/).filter((word) => word !== "");
-  if (words.length > WORD_LIMIT) return "consent-only quote (meter): would refuse nothing";
-  return `consent-only quote (meter): would refuse, quoting "${last}" (${words.length} words)`;
+  if (words.length > WORD_LIMIT) return meterLine(METER, []);
+  return meterLine(METER, [`quoting "${last}" (${words.length} words)`]);
 }
 
 if (import.meta.main) process.stdout.write(`${consentOnlyQuoteLine(await text(process.stdin))}\n`);

@@ -36,7 +36,7 @@ if [[ -z $mode ]]; then
   fi
 fi
 
-static_gates=" typecheck lint unused clones test "
+static_gates=" typecheck lint unused clones test written twice "
 style=""
 [[ $mode == static ]] && style="prose em-dash"
 
@@ -54,6 +54,7 @@ run() {
     at=$(grep -oE '[A-Za-z0-9_./-]+\.(ts|js|json)(:[0-9]+|\([0-9]+)?' <<<"$output" | grep -m1 -E '[:(][0-9]+$' ||
       grep -m1 -oE '[A-Za-z0-9_./-]+\.(ts|js|json)' <<<"$output")
     at="${at/(/:}"
+    [[ $name == "written twice" ]] && at=$(head -n1 <<<"$output" | grep -oE '[A-Za-z0-9_./-]+\.ts:[0-9]+' | paste -sd ' ' -)
     names="$names $name"
     located="$located${located:+,} $name${at:+ $at}"
   fi
@@ -64,6 +65,7 @@ run lint eslint --config eslint.config.js
 run unused knip --config knip.config.ts --no-config-hints
 run clones jscpd src --exitCode 1 --reporters console --min-tokens 50 --min-lines 5 --format typescript,javascript
 run test vitest run --config vitest.config.ts $style
+run "written twice" node src/written-twice.ts
 run prompts node src/prompt-bytes.ts
 run links node src/part-links.ts
 
