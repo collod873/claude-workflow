@@ -357,7 +357,7 @@ describe("a later find becomes a follow-up ticket that builds itself, one genera
     const { run, filed, ticketComments } = afterRepair({ verdict: "match", gaps: [], later: [LATER] });
 
     expect(run().status).toBe(0);
-    expect(filed().map(({ labels }) => labels)).toEqual([["waiting"]]);
+    expect(filed().map(({ labels }) => labels)).toEqual([["ticket", "waiting"]]);
     expect(ticketComments()[0]).toMatch(/once this PR merges or closes/);
   });
 
