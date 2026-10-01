@@ -20,10 +20,10 @@ describe("bin/research answers a research note on the note and closes it, with n
   });
 
   it("marks the note researching before the researcher is hired, so the owner sees it being answered (#1065)", () => {
-    const { run, marks } = researching();
+    const { run, marked } = researching();
 
     expect(run().status).toBe(0);
-    expect(marks()).toEqual(["902 researching before the researcher"]);
+    expect(marked()).toEqual(["902 researching before the model"]);
   });
 
   it("hires a model with the web and an open shell, so a note that counts is answered by a script (#945)", () => {
@@ -88,12 +88,12 @@ describe("bin/research answers a research note on the note and closes it, with n
   });
 
   it("refuses an issue not labelled research, so it never closes a ticket, and spends no model", () => {
-    const { run, calls, hired, marks } = researching({ labels: ["note"] });
+    const { run, calls, hired, marked } = researching({ labels: ["note"] });
 
     expect(run()).toEqual({ status: 1, stdout: "", stderr: "research: #902 is not a research note, so nothing answered or closed it\n" });
     expect(calls()).toEqual(["issue view 902"]);
     expect(hired()).toEqual([]);
-    expect(marks()).toEqual([]);
+    expect(marked()).toEqual([]);
   });
 
   it("leaves the note open when its findings will not post", () => {

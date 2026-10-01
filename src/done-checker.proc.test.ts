@@ -354,3 +354,37 @@ describe("bin/done-check settles a sentence about its own close by what this run
     expect(missedIn(comment)).toEqual(new Set());
   });
 });
+
+describe("bin/done-check marks the spec checking while it runs, and asked once it puts a sentence to the owner (#1064)", () => {
+  const putting = SENTENCES.map((_, at) => ({ sentence: at + 1, outcome: at === 1 ? "owner" : "held", tried: "open it on your phone" }));
+
+  it("marks checking at the start of the done check and of a wave check", () => {
+    const whole = doneChecking();
+    const wave = doneChecking({ body: specWith(SENTENCES), tries: [{ sentence: 1, outcome: "held", tried: "saw it" }] });
+
+    expect(whole.run().status).toBe(0);
+    expect(whole.marked()).toEqual(["974 checking"]);
+    expect(wave.run("974", "--wave", "1").status).toBe(0);
+    expect(wave.marked()).toEqual(["974 checking"]);
+  });
+
+  it("marks asked after its comment puts a sentence to the owner, and not when the comment will not post", () => {
+    const asked = doneChecking({ body: specWith(SENTENCES), tries: putting });
+    const unposted = doneChecking({ body: specWith(SENTENCES), tries: putting, gh: "[[ $2 == comment ]] && exit 1" });
+
+    expect(asked.run().status).toBe(0);
+    expect(asked.marked()).toEqual(["974 checking", "974 asked"]);
+    expect(unposted.run().status).toBe(1);
+    expect(unposted.marked()).toEqual(["974 checking"]);
+  });
+
+  it("marks nothing on an issue that is not a spec, or on a spec marked needs-human", () => {
+    const ticket = doneChecking({ labels: ["ticket"] });
+    const stopped = doneChecking({ labels: ["spec", NEEDS_HUMAN] });
+
+    expect(ticket.run().status).not.toBe(0);
+    expect(ticket.marked()).toEqual([]);
+    expect(stopped.run().status).toBe(0);
+    expect(stopped.marked()).toEqual([]);
+  });
+});

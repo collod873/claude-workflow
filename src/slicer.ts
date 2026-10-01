@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { capped } from "./brief.ts";
 import { FILED } from "./builder.ts";
 import { FENCED_OPUS } from "./fence.ts";
-import { askedIssue, commentOnTicket, commentsOn, gh, NEEDS_HUMAN, post } from "./post.ts";
+import { askedIssue, commentOnTicket, commentsOn, gh, mark, NEEDS_HUMAN, post } from "./post.ts";
 import { LIST_CAP, NO_EM_DASH, TICKET_CAP } from "./reviewer.ts";
 import { hired, machineLogs, type Spent } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
@@ -213,6 +213,7 @@ function filedWave(issue: string, read: string, wave: Wave, number: number): Sto
   const which = number === 1 ? "its first wave" : `wave ${number}`;
   const [unnoted] = commentOnTicket(issue, waveNote(number, passages, wave, numbers), gh).refusals;
   if (unnoted !== undefined) return stoppedAt("unfiled", `${said} filed ${which} under it, ${numbers.join(", ")}, but its note would not post: ${quoted(unnoted)}`);
+  mark(issue, "building");
   console.log(`${said} filed ${which} under it: ${numbers.join(", ")}`);
   return undefined;
 }
@@ -249,6 +250,7 @@ function sliced(issue: string, fix?: number[]): Stop | undefined {
   const comments = tickets === undefined || (tickets.length === 0 && fix === undefined) ? [] : commentsOn(issue, gh);
   if (tickets === undefined || comments === undefined) return stoppedAt("unread", `${said}'s tickets or comments could not be read, so no model was spent`);
   const found = tickets.length === 0 && fix === undefined ? undefined : { comments, tickets: waveFound(tickets), diffs: waveDiffs(tickets), missed: fix ?? missedSinceNote(comments), fix: fix !== undefined };
+  mark(issue, "slicing", ...(fix === undefined ? [] : ["--try"]));
   const logs = machineLogs(process.cwd());
   mkdirSync(logs, { recursive: true });
   const spend = hired({ name: "slicer", transcript: join(logs, `slice-${issue}.jsonl`), tools: TOOLS, reach: FENCED_OPUS, answers: ANSWERS });
