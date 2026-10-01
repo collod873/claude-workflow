@@ -50,7 +50,7 @@ export function handedOn(body: string, diff: string): string {
   ].join("\n\n");
 }
 
-const meterLine = (name: string, findings: string[]) => `${name} (meter): ${findings.length === 0 ? "would refuse nothing" : `would refuse, ${findings.join("; ")}`}`;
+export const meterLine = (name: string, findings: string[]) => `${name} (meter): ${findings.length === 0 ? "would refuse nothing" : `would refuse, ${findings.join("; ")}`}`;
 
 const lineOf = (name: string) => new RegExp(`^${name} \\(meter\\):.*$`, "m");
 

@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { splitInto } from "./builder.ts";
 import { commentOnPr, commentOnTicket, commentsOn, WAITING } from "./post.ts";
-import { FINGERPRINT, REVIEWED_FROM, SPLIT_FROM } from "./reviewer.ts";
+import { FINGERPRINT, REVIEWED_FROM, SPLIT_FROM, TICKET_BRANCH } from "./reviewer.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { quoted, why } from "./ticket-shape.ts";
 
@@ -12,7 +12,6 @@ const MERGED = /^Merge pull request #(\d+) from \S+?(?:\/ticket\/(\d+))?$/;
 const NAMED = /^(?:[ ,]*#\d+)+/;
 const BUILDS = /^Builds #(\d+)[ \t]*$/m;
 const STAGE_LABELS = "1-defining,2-building,3-checking,4-reviewing,5-merging,fixing,needs-human";
-const TICKET_BRANCH = /^ticket\/(\d+)$/;
 const MACHINE_BRANCH = /^(ticket|land)\//;
 const REQUIRED_CHECKS = ["check", "review"];
 const PASSED = new Set(["SUCCESS", "SKIPPED", "NEUTRAL"]);
@@ -42,8 +41,10 @@ interface Collisions {
   reReviews: number;
 }
 
-const FAILED_BRANCH_UPDATE = /^PR #\d+ could not be brought up to date with main:/;
-const BRANCH_UPDATE = /^PR #\d+ brought up to date with main by /;
+const failedBranchUpdate = (pr: string) => `PR #${pr} could not be brought up to date with main:`;
+const branchUpdate = (pr: string) => `PR #${pr} brought up to date with main by`;
+const FAILED_BRANCH_UPDATE = new RegExp(`^${failedBranchUpdate("\\d+")}`);
+const BRANCH_UPDATE = new RegExp(`^${branchUpdate("\\d+")} `);
 const { GITHUB_SERVER_URL: server, GITHUB_REPOSITORY: repository, GITHUB_RUN_ID: runId } = process.env;
 const thisRun = server && repository && runId ? `${server}/${repository}/actions/runs/${runId}` : "a run outside Actions";
 
@@ -190,7 +191,7 @@ function updateBranch(pr: QueuedPr): boolean {
   const { number, headRefName, headRefOid } = pr;
   const updated = gh(["pr", "update-branch", number]);
   if (updated.status === 0) {
-    commentOnPr(number, `PR #${number} brought up to date with main by ${thisRun}`, gh);
+    commentOnPr(number, `${branchUpdate(number)} ${thisRun}`, gh);
     return true;
   }
   const reason = (updated.stderr || updated.stdout).trim().split("\n")[0] || "no reason given";
@@ -198,9 +199,9 @@ function updateBranch(pr: QueuedPr): boolean {
     console.log(`close: PR #${number} could not be brought up to date with main, and will be tried again: ${reason}`);
     return false;
   }
-  commentOnPr(number, `PR #${number} could not be brought up to date with main: ${reason}\n\n${headLine(headRefOid)}\n\nRun: ${thisRun}`, gh);
+  commentOnPr(number, `${failedBranchUpdate(number)} ${reason}\n\n${headLine(headRefOid)}\n\nRun: ${thisRun}`, gh);
   const ticket = TICKET_BRANCH.exec(headRefName)?.[1];
-  if (ticket !== undefined) wakeBuilder(ticket, `#${ticket}'s PR #${number} could not be brought up to date with main: ${reason}`);
+  if (ticket !== undefined) wakeBuilder(ticket, `#${ticket}'s ${failedBranchUpdate(number)} ${reason}`);
   return false;
 }
 

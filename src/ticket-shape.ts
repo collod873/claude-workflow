@@ -23,7 +23,7 @@ const TESTING_DECISIONS = heading(NAMED.testing);
 const OUT_OF_SCOPE = heading(NAMED.outOfScope);
 const FURTHER_NOTES = heading(NAMED.furtherNotes);
 const SENTENCES = heading(NAMED.sentences);
-const NEXT_HEADING = /^##[ \t]/m;
+export const NEXT_HEADING = /^##[ \t]/m;
 const ITEM = /^[ \t]*-[ \t]*\[[ xX]\][ \t]*/;
 const BULLET = /^[ \t]*-(?:[ \t]*\[[ xX]\])?[ \t]+/;
 const MARKER = /(?:–|(?<=[ \t])-{1,2}(?=[ \t]))[ \t]*check:[ \t]*`([^`\n]+)`[ \t]*$/;

@@ -2,13 +2,14 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { capped } from "./brief.ts";
+import { FILED } from "./builder.ts";
 import { FENCED_OPUS } from "./fence.ts";
 import { askedIssue, commentOnTicket, commentsOn, gh, NEEDS_HUMAN, post } from "./post.ts";
 import { LIST_CAP, NO_EM_DASH, TICKET_CAP } from "./reviewer.ts";
 import { hired, machineLogs, type Spent } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { missedIn, WAVE_CHECK_HEADING } from "./done-checker.ts";
-import { DIFF_CAP, ended, FOUND_CAP, underSpec, waveDiffs, waveFound, waveNotes } from "./wave.ts";
+import { DIFF_CAP, ended, FOUND_CAP, movesMarker, SPEC_LABEL, underSpec, waveDiffs, waveFound, waveHeading, waveNotes } from "./wave.ts";
 import { DONE_SENTENCES, filedOutOfScope, filedPassages, type Passage, quoted, restored, sectionsDropped, sentences, SPEC_CAP, specRefusals, ticketRefusals } from "./ticket-shape.ts";
 
 const stoppedAt = stopsOf({
@@ -20,10 +21,8 @@ const stoppedAt = stopsOf({
 });
 type Stop = ReturnType<typeof stoppedAt>;
 
-const SPEC_LABEL = "spec";
 const TOOLS = ["Read", "Grep", "Glob"];
 const ROUNDS_BACK = 2;
-const FILED = /\/issues\/(\d+)\s*$/;
 export const COMMENTS_CAP = 16 * 1024;
 const DONE_CHECK = join(import.meta.dirname, "..", "bin", "done-check");
 
@@ -220,7 +219,7 @@ function filedWave(issue: string, read: string, wave: Wave, number: number): Sto
 
 function waveNote(number: number, passages: Passage[], wave: Wave, filed: string[]): string {
   const quoting = [...new Set(wave.tickets.flatMap((piece) => piece.passages))].sort((one, other) => one - other);
-  return `${[`## Wave ${number}`, quote(passages, quoting), wave.did.trim(), wave.next.trim(), `Filed: ${filed.join(", ")}.`, `<!-- moves: ${wave.moves.join(", ")} -->`].join("\n\n")}\n`;
+  return `${[waveHeading(number), quote(passages, quoting), wave.did.trim(), wave.next.trim(), `Filed: ${filed.join(", ")}.`, movesMarker(wave.moves)].join("\n\n")}\n`;
 }
 
 function partWave(issue: string, wave: Wave, filed: string[], next: number, since: string): Stop {

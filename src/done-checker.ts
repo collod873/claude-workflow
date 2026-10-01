@@ -7,6 +7,7 @@ import { askedIssue, authoredOn, commentOnTicket, gh, NEEDS_HUMAN, OWNER, type A
 import { NO_EM_DASH } from "./reviewer.ts";
 import { hired, machineLogs } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
+import { SPEC_LABEL } from "./wave.ts";
 import { quoted, type Sentence, sentences, SPEC_CAP } from "./ticket-shape.ts";
 
 const stoppedAt = stopsOf({
@@ -16,7 +17,6 @@ const stoppedAt = stopsOf({
 });
 type Stop = ReturnType<typeof stoppedAt>;
 
-const SPEC_LABEL = "spec";
 const CHECK_MINUTES = 10;
 const OUTCOMES = { held: "Held", missed: "Did not hold", owner: "Put to the owner", self: "Held" } as const;
 type Outcome = keyof typeof OUTCOMES;
@@ -97,14 +97,15 @@ const listing = (missed: [number, string, Try][], between: string) => missed.map
 export const WAVE_CHECK_HEADING = "## Wave check";
 const WAVE_OUTCOMES: Record<Outcome, string> = { ...OUTCOMES, owner: "Waits for the end", self: "Waits for the end" };
 const waitsForTheEnd = (outcome: Outcome) => outcome === "owner" || outcome === "self";
-const WAVE_MISSED = /^- Sentence (\d+), \*\*Did not hold\*\*/gm;
+const waveLine = (number: number | string, outcome: string) => `- Sentence ${number}, **${outcome}**`;
+const WAVE_MISSED = new RegExp(`^${waveLine("(\\d+)", OUTCOMES.missed).replaceAll("*", "\\*")}`, "gm");
 export const missedIn = (waveCheck: string) => new Set([...waveCheck.matchAll(WAVE_MISSED)].map(([, number]) => Number(number)));
 
 const wavePosted = (tried: [number, string, Try][], repeated: [number, string, Try][]) =>
   [
     WAVE_CHECK_HEADING,
     "",
-    ...tried.map(([number, sentence, one]) => `- Sentence ${number}, **${WAVE_OUTCOMES[one.outcome]}**: ${sentence}${waitsForTheEnd(one.outcome) ? "" : `\n  ${one.tried}`}`),
+    ...tried.map(([number, sentence, one]) => `${waveLine(number, WAVE_OUTCOMES[one.outcome])}: ${sentence}${waitsForTheEnd(one.outcome) ? "" : `\n  ${one.tried}`}`),
     ...calledOwner(repeated, "at this wave check and the last one").flatMap((line) => ["", line]),
     "",
   ].join("\n");

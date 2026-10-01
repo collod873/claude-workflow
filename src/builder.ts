@@ -5,8 +5,8 @@ import { dirname, join, resolve } from "node:path";
 import { admission, doesNotBuild } from "./admit.ts";
 import { capped, onDisk } from "./brief.ts";
 import { CHECK, UNFENCED } from "./fence.ts";
-import { commentOnTicket, commentsOn, gh, git, NEEDS_HUMAN, OWNER, post, postRefusals, prNumber, rewriteTicket, WAITING } from "./post.ts";
-import { earlierDrift, FOLLOW_UP_OF, followUpBody, handedDiff, LIST_CAP, NO_EM_DASH, repairOf, TICKET_CAP } from "./reviewer.ts";
+import { commentOnTicket, commentsOn, gh, git, NEEDS_HUMAN, OWNER, post, postRefusals, prNumber, rewriteTicket, sessionLine, WAITING } from "./post.ts";
+import { BUILDER_SPLIT, earlierDrift, FOLLOW_UP_OF, followUpBody, handedDiff, LIST_CAP, NO_EM_DASH, repairOf, TICKET_CAP } from "./reviewer.ts";
 import { hired, machineLogs, type Spent } from "./stage.ts";
 import { DONE_SENTENCES, quoted, why, whyChanged } from "./ticket-shape.ts";
 
@@ -48,7 +48,7 @@ interface Answer {
 }
 
 export const splitInto = (ticket: string) => `@${OWNER} the builder split #${ticket} into`;
-const FILED = /\/issues\/(\d+)\s*$/;
+export const FILED = /\/issues\/(\d+)\s*$/;
 
 interface Handed {
   ticket: string;
@@ -65,7 +65,7 @@ type Spend = (input: string, resume?: string) => Spent;
 export const TAIL_CAP = 8 * 1024;
 export const CHECK_CAP = 4 * 1024;
 const LOGGED = /; log (.+?)\s*$/m;
-const FILED_IN = /^Session: `([^`]+)`\s*$/m;
+const FILED_IN = new RegExp(`^${sessionLine("([^`]+)")}\\s*$`, "m");
 
 function captureOf(body: string, captures: string | undefined): string | undefined {
   const session = FILED_IN.exec(body)?.[1];
@@ -187,7 +187,7 @@ function closedUnbuilt(ticket: string, said: string): number {
 const pieceBody = (ticket: string, parentWhy: string, { why: piece, done }: Piece): string =>
   followUpBody(
     [
-      `${FOLLOW_UP_OF}${ticket}: its builder split it, since it does not fit one build.`,
+      `${FOLLOW_UP_OF}${ticket}${BUILDER_SPLIT}, since it does not fit one build.`,
       "",
       `> ${piece}`,
       "",

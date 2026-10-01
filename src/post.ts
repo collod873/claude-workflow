@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { text as read } from "node:stream/consumers";
 import { emDashLines } from "./em-dash.ts";
-import { NOTE_SHAPE, SPEC_SHAPE, TICKET_SHAPE, matchEnd, noteRefusals, rewriteRefusals, specRefusals, ticketRefusals } from "./ticket-shape.ts";
+import { NEXT_HEADING, NOTE_SHAPE, SPEC_SHAPE, TICKET_SHAPE, matchEnd, noteRefusals, rewriteRefusals, specRefusals, ticketRefusals } from "./ticket-shape.ts";
 
 export interface Posting {
   kind: string;
@@ -33,6 +33,7 @@ const filed = (refuses: (text: string) => string[], label: string[], shape: stri
 
 const judgementRefusals = (text: string): string[] => emDashLines(text).map((line) => `line ${line} carries an em dash`);
 
+export const MISSING = /HTTP 404/;
 export const RESEARCH = "research";
 export const WAITING = "waiting";
 export const NEEDS_HUMAN = "needs-human";
@@ -46,10 +47,11 @@ const KINDS: Record<string, Kind> = {
 };
 
 const FIRST_HEADING = /^##[ \t].*$/m;
-const NEXT_HEADING = /^##[ \t]/m;
+
+export const sessionLine = (sessionId: string) => `Session: \`${sessionId}\``;
 
 function stampedWithSession(text: string, sessionId: string): string {
-  const line = `Session: \`${sessionId}\``;
+  const line = sessionLine(sessionId);
   const found = FIRST_HEADING.exec(text);
   if (found === null) return text;
   const start = matchEnd(found);
@@ -113,7 +115,7 @@ export interface Admission {
 
 export function opened(path: string, gh: Gh): Opened | "missing" | "unread" {
   const got = gh(["api", `repos/{owner}/{repo}/issues/${path}`]);
-  if (got.status !== 0) return /HTTP 404/.test(got.stderr) ? "missing" : "unread";
+  if (got.status !== 0) return MISSING.test(got.stderr) ? "missing" : "unread";
   try {
     return JSON.parse(got.stdout) as Opened;
   } catch {

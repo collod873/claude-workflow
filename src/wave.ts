@@ -4,10 +4,15 @@ import { REVIEWED_FROM, SPLIT_FROM } from "./reviewer.ts";
 import { exitFor, stoppedAt, type Stop } from "./stops.ts";
 import { why } from "./ticket-shape.ts";
 
-const SPEC_LABEL = "spec";
+export const SPEC_LABEL = "spec";
 const UNSLICED_LABELS = [SPEC_LABEL, "note"];
-const WAVE_NOTE = /^## Wave \d+\b/;
-const MOVES = /<!-- moves: ([\d, ]*) -->/;
+const WAVE_HEADING = "## Wave ";
+const MOVES_OPEN = "<!-- moves: ";
+const MOVES_CLOSE = " -->";
+const WAVE_NOTE = new RegExp(`^${WAVE_HEADING}\\d+\\b`);
+const MOVES = new RegExp(`${MOVES_OPEN}([\\d, ]*)${MOVES_CLOSE}`);
+export const waveHeading = (number: number) => `${WAVE_HEADING}${number}`;
+export const movesMarker = (moves: number[]) => `${MOVES_OPEN}${moves.join(", ")}${MOVES_CLOSE}`;
 const DEEPEST = 20;
 const LISTED = 500;
 
