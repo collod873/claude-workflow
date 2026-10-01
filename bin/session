@@ -7,7 +7,7 @@ cd "$main" || exit 1
 
 stuck='.[] | select((.headRefName | startswith("land/")) and (.mergeStateStatus == "DIRTY" or any(.statusCheckRollup[]?; (.conclusion // .state) | IN("FAILURE", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE", "ERROR")))) | "#\(.number)"'
 prs=$(mktemp)
-gh pr list --state open --json number,headRefName,mergeStateStatus,statusCheckRollup --jq "$stuck" >"$prs" 2>/dev/null &
+gh pr list --state open --json number,headRefName,mergeStateStatus,statusCheckRollup --jq "$stuck" >"$prs" &
 
 idle=()
 live=0
@@ -31,7 +31,7 @@ while read -r key value; do
 done < <(git worktree list --porcelain; printf '\n')
 
 was=$(git rev-parse HEAD)
-if ! git pull --ff-only --quiet origin main >/dev/null 2>&1; then
+if ! git pull --ff-only --quiet origin main >/dev/null 2>&1; then # quiet: the next line names the failure and where git status shows why
   printf 'session: the main checkout could not fast-forward to origin/main; git -C "%s" status shows why\n' "$main"
 elif ! git diff --quiet "$was" HEAD -- package-lock.json; then
   if (( live > 0 )); then
@@ -43,7 +43,7 @@ fi
 
 left=()
 for at in "${idle[@]}"; do
-  [[ -n $(git -C "$at" status --porcelain 2>/dev/null) || -n $(git -C "$at" rev-list origin/main..HEAD 2>/dev/null) ]] && left+=("${at##*/}")
+  [[ -n $(git -C "$at" status --porcelain 2>/dev/null) || -n $(git -C "$at" rev-list origin/main..HEAD 2>/dev/null) ]] && left+=("${at##*/}") # quiet: a worktree removed since the list was read holds no work
 done
 
 if (( ${#left[@]} > 0 )); then

@@ -23,7 +23,7 @@ fingerprint() {
   local index tree
   index="$(git rev-parse --absolute-git-dir)/check-index"
   rm -f "$index"
-  GIT_INDEX_FILE="$index" git add --all >/dev/null 2>&1
+  GIT_INDEX_FILE="$index" git add --all >/dev/null 2>&1 # quiet: a tree that failed to stage never matches, so the check just runs again
   tree=$(GIT_INDEX_FILE="$index" git write-tree)
   rm -f "$index"
   printf '%s\n%s\n' "$tree" "${AGENT_HOOKS_SETTINGS:-}"

@@ -63,18 +63,18 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
         run: |
           branch="ticket/${{ github.event.issue.number }}"
-          if [[ '${{ github.event.action }}' == reopened ]] && state=$(gh pr view "$branch" --json state --jq .state 2>/dev/null) && [[ $state == OPEN ]]; then
+          if [[ '${{ github.event.action }}' == reopened ]] && state=$(gh pr view "$branch" --json state --jq .state 2>/dev/null) && [[ $state == OPEN ]]; then # quiet: a ticket with no PR yet builds
             gh pr checks "$branch" --json name,bucket,link \
               | jq -r '.[] | select(.bucket == "fail") | .link' \
               | sed -E 's#.*/runs/([0-9]+)/.*#\1#' \
               | sort -u \
               | while read -r run; do gh run rerun "$run" --failed; done
-            bin/mark ${{ github.event.issue.number }} checking || true
+            bin/mark ${{ github.event.issue.number }} checking || true # quiet: bin/mark names its own refusal, and a stale label never stops the build
             echo rerun=true >>"$GITHUB_OUTPUT"
           elif [[ '${{ github.event.action }}' == reopened ]]; then
-            bin/mark ${{ github.event.issue.number }} building --try || true
+            bin/mark ${{ github.event.issue.number }} building --try || true # quiet: bin/mark names its own refusal, and a stale label never stops the build
           else
-            bin/mark ${{ github.event.issue.number }} building || true
+            bin/mark ${{ github.event.issue.number }} building || true # quiet: bin/mark names its own refusal, and a stale label never stops the build
           fi
 
       - id: fix

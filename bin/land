@@ -36,7 +36,7 @@ fi
 if [[ -n $(git rev-list origin/main..HEAD) ]] && ! git merge-base --is-ancestor origin/main HEAD; then
   if ! git rebase --quiet --autostash origin/main >/dev/null 2>"$err"; then
     { printf -- '--- git rebase origin/main ---\n'; cat "$err"; } >>"$log"
-    git rebase --abort >/dev/null 2>&1
+    git rebase --abort >/dev/null 2>&1 # quiet: the rebase's own error is already in the log
     printf 'land: HEAD does not rebase cleanly onto origin/main, so nothing landed; run git rebase origin/main, resolve it, and land again\n' >&2
     exit 1
   fi
@@ -79,7 +79,7 @@ call "gh pr create" gh pr create --base main --head "$branch" \
   --title "$(git log -1 --format=%s HEAD)" \
   --body "$(git log --reverse --format='- %s' origin/main..HEAD)"
 url=$said
-gh pr merge "$branch" --auto --merge --match-head-commit "$head" >/dev/null 2>&1 ||
+gh pr merge "$branch" --auto --merge --match-head-commit "$head" >/dev/null 2>&1 || # quiet: a PR with nothing left to wait on refuses auto-merge, and the plain merge below names its own failure
   call "gh pr merge" gh pr merge "$branch" --merge --match-head-commit "$head"
 
 verdict='if .state == "CLOSED" then "closed" elif .mergeStateStatus == "DIRTY" then "conflicts" else (first(.statusCheckRollup[]? | select((.conclusion // .state) | IN("FAILURE", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE", "ERROR")) | .name // .context) | "failed \(.)") end'
@@ -87,19 +87,19 @@ verdict='if .state == "CLOSED" then "closed" elif .mergeStateStatus == "DIRTY" t
 for (( waited = 0; ; waited += pause )); do
   call "git fetch" git fetch --quiet origin main
   git merge-base --is-ancestor "$head" origin/main && break
-  read -r state check < <(gh pr view "$branch" --json state,mergeStateStatus,statusCheckRollup --jq "$verdict" 2>/dev/null)
+  read -r state check < <(gh pr view "$branch" --json state,mergeStateStatus,statusCheckRollup --jq "$verdict" 2>/dev/null) # quiet: a lookup that fails is read again on the next poll
   case ${state:-} in
     closed)
       printf 'land: %s was closed without merging\n' "$url" >&2
       exit 1
       ;;
     conflicts)
-      gh pr close "$branch" --delete-branch >/dev/null 2>&1
+      gh pr close "$branch" --delete-branch >/dev/null
       printf 'land: %s conflicts with main; closed it, so land again to rebase\n' "$url" >&2
       exit 1
       ;;
     failed)
-      gh pr close "$branch" --delete-branch >/dev/null 2>&1
+      gh pr close "$branch" --delete-branch >/dev/null
       printf 'land: %s failed on %s; closed it, so fix it and land again\n' "$check" "$url" >&2
       exit 1
       ;;
@@ -112,7 +112,7 @@ for (( waited = 0; ; waited += pause )); do
   sleep "$pause"
 done
 
-if [[ $(git rev-parse HEAD) == "$head" ]] && git merge --quiet --ff-only origin/main >/dev/null 2>&1; then
+if [[ $(git rev-parse HEAD) == "$head" ]] && git merge --quiet --ff-only origin/main >/dev/null 2>&1; then # quiet: the else branch says the checkout could not fast-forward
   printf 'Landed %s\n' "$url"
 else
   printf 'Landed %s, but this checkout could not fast-forward; run git pull.\n' "$url"
