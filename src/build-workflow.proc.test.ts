@@ -604,7 +604,7 @@ describe("build.yml and closed.yml say in their logs when a mark fails, so a tic
   const refusal = (label: string) => `mark: #9 not labelled ${label}: HTTP 403: Resource not accessible by integration`;
   const refusing = (prefix: string, gh: string) => {
     const root = scratch(prefix);
-    script(join(root, "bin", "mark"), `printf 'mark: #%s not labelled %s: HTTP 403: Resource not accessible by integration\\n' "$1" "$2" >&2\nexit 1\n`);
+    script(join(root, "bin", "mark"), "printf 'mark: #%s not labelled %s: HTTP 403: Resource not accessible by integration\\n' \"$1\" \"$2\" >&2\nexit 1\n");
     script(join(root, "bin", "gh"), gh);
     return root;
   };

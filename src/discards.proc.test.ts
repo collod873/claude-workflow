@@ -25,7 +25,7 @@ describe("every gh, git or bin/mark call that throws its error away says why tha
     expect(discardsIn("  bin/mark 9 building || true\n")).toHaveLength(1);
     expect(discardsIn("git -C x status --porcelain &>/dev/null\n")).toHaveLength(1);
     expect(discardsIn("gh label create x >/dev/null 2>&1 # quiet: the label already exists\n")).toHaveLength(0);
-    expect(discardsIn('tail -F x 2>/dev/null | jq .\nsaid=$(gh api x 2>&1 >/dev/null) || failed\n')).toHaveLength(0);
+    expect(discardsIn("tail -F x 2>/dev/null | jq .\nsaid=$(gh api x 2>&1 >/dev/null) || failed\n")).toHaveLength(0);
   });
 
   it("holds at none across bin/ and the workflows", () => {
