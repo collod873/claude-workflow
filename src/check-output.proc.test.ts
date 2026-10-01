@@ -86,7 +86,7 @@ describe("bin/check deletes its logs older than 7 days whenever it runs (#693)",
 describe("bin/check static runs the gates a stage can meet while it works, never the whole suite (#783)", () => {
   it("runs typecheck, lint, unused, clones, the style tests and written twice, and leaves the suite, prompts and links alone", () => {
     const { repo, run } = checkRepo({ tsc: TYPE_ERROR });
-    script(join(repo, "node_modules", ".bin", "node"), `[ "$1" = src/written-twice.ts ] && exit 0\necho "$1: over its ceiling"\nexit 1\n`);
+    script(join(repo, "node_modules", ".bin", "node"), "[ \"$1\" = src/written-twice.ts ] && exit 0\necho \"$1: over its ceiling\"\nexit 1\n");
     script(join(repo, "node_modules", ".bin", "vitest"), '[ "$*" = "run --config vitest.config.ts prose em-dash" ] && exit 0\necho "the whole suite ran"\nexit 1\n');
 
     const result = run(repo, ["static"]);
