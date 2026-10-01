@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { splitClosed, splitInto } from "./builder.ts";
-import { commentOnPr, commentOnTicket, commentsOn, markWith, NEEDS_HUMAN, WAITING } from "./post.ts";
+import { commentOnPr, commentOnTicket, commentsOn, labelsOf, markWith, NEEDS_HUMAN, WAITING } from "./post.ts";
 import { FINGERPRINT, REVIEWED_FROM, TICKET_BRANCH } from "./reviewer.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { quoted, why } from "./ticket-shape.ts";
@@ -169,12 +169,10 @@ function queuedPrs(): QueuedPr[] {
   }
 }
 
-const labelsOf = (issue: string) => (ghText(["issue", "view", issue, "--json", "labels", "--jq", ".labels[].name"]) ?? "").split("\n");
-
 const mark = markWith(quietly);
 
 function markOnce(ticket: string, label: string): void {
-  const held = labelsOf(ticket);
+  const held = labelsOf(ticket, gh);
   if (!held.includes(label) && !held.includes(NEEDS_HUMAN)) mark(ticket, label);
 }
 
@@ -187,7 +185,7 @@ function wantedOn(pr: QueuedPr, merging: QueuedPr | undefined, held: string[]): 
 }
 
 function settle(ticket: string, pr: QueuedPr, merging: QueuedPr | undefined, conflicted: boolean): void {
-  const held = labelsOf(ticket);
+  const held = labelsOf(ticket, gh);
   const wanted = conflicted ? undefined : wantedOn(pr, merging, held);
   const writes = wanted !== undefined && !held.includes(NEEDS_HUMAN) && (wanted !== "checking" || held.includes(LANDING));
   if (writes && !held.includes(wanted)) mark(ticket, wanted);
@@ -229,7 +227,7 @@ function updateBranch(pr: QueuedPr): Moved {
     return "retried";
   }
   commentOnPr(number, `${failedBranchUpdate(number)} ${reason}\n\n${headLine(headRefOid)}\n\nRun: ${thisRun}`, gh);
-  if (ticket !== undefined && labelsOf(ticket).includes(NEEDS_HUMAN)) console.log(`close: #${ticket} is labelled ${NEEDS_HUMAN}, so the conflict on PR #${number} wakes no builder`);
+  if (ticket !== undefined && labelsOf(ticket, gh).includes(NEEDS_HUMAN)) console.log(`close: #${ticket} is labelled ${NEEDS_HUMAN}, so the conflict on PR #${number} wakes no builder`);
   else if (ticket !== undefined) {
     mark(ticket, "resolving");
     wakeBuilder(ticket, `#${ticket}'s ${failedBranchUpdate(number)} ${reason}`);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { post, type Posting } from "./post.ts";
+import { labelsOf, post, type Posting } from "./post.ts";
 import { wellFormedNote as NOTE, wellFormedSpec as SPEC } from "./scenarios.ts";
 
 const URL = "https://github.com/collod873/claude-workflow/issues/700";
@@ -120,5 +120,20 @@ describe("src/post.ts is the one way the machine writes text to GitHub (#662)", 
     const { gh } = github({ status: 1, stdout: "", stderr: "GraphQL: Resource not accessible by integration\nsecond line\n" });
 
     expect(post(posting({}), gh).refusals).toEqual(["gh issue create failed: GraphQL: Resource not accessible by integration"]);
+  });
+});
+
+describe("src/post.ts reads an issue's labels for the closer and the builder alike, beside the mark helper (#1073)", () => {
+  it("names each label the issue holds", () => {
+    const { gh, calls } = github({ stdout: "ticket\nlanding\n" });
+
+    expect(labelsOf("873", gh)).toEqual(["ticket", "landing"]);
+    expect(calls).toEqual([["issue", "view", "873", "--json", "labels", "--jq", ".labels[].name"]]);
+  });
+
+  it("names no label when the issue cannot be read", () => {
+    const { gh } = github({ status: 1, stdout: "", stderr: "GraphQL: Could not resolve to an issue" });
+
+    expect(labelsOf("874", gh)).toEqual([]);
   });
 });
