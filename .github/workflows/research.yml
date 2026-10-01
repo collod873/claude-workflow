@@ -77,6 +77,16 @@ jobs:
           tail --pid=$$ -n +1 -F .git/machine-logs/research-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
           bin/research ${{ github.event.issue.number }}
 
+      - if: ${{ failure() || cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          gh issue view "$ISSUE" --json labels --jq '.labels[].name' | grep -qx needs-human && exit 0
+          bin/mark "$ISSUE" needs-human
+          gh issue comment "$ISSUE" --body "@${{ github.repository_owner }} the research run ended red before it could finish, see the run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
       - if: always()
         timeout-minutes: 6
         uses: ./.github/actions/stage-logs
