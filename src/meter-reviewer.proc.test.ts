@@ -153,6 +153,27 @@ describe("bin/meters puts a discard (meter) line on the PR body, read by code fr
     );
   });
 
+  it("does not join added lines across a bracket inside a string or a comment, so each discard is named on its own line (#1088)", () => {
+    const stray = [
+      'echo "usage: close (pr"',
+      "gh pr view 1 2>/dev/null",
+      "# pick the label [first",
+      "git fetch origin || true",
+      'const open = "(";',
+      "spawnSync('gh', ['auth'], { stdio: 'ignore' }); // close ]",
+      "bin/mark 9 building || true",
+    ].join("\n+");
+
+    expect(discardLine(fileDiff("bin/close", stray).replace("@@ -0,0 +1 @@", "@@ -0,0 +1,7 @@"))).toBe(
+      [
+        "discard (meter): would refuse, bin/close:2 sends a gh call's stderr to /dev/null",
+        "bin/close:4 puts || true on a git call",
+        "bin/close:6 spawns a gh call with its stderr ignored",
+        "bin/close:7 puts || true on a bin/mark call",
+      ].join("; "),
+    );
+  });
+
   it("still puts the discard line on the PR body when the model leaves a meter unanswered, and the run stays red", () => {
     const unanswered = metering({ diff: fileDiff("bin/mark", "gh label create landing || true"), verdict: { depth: [] } });
 
