@@ -111,7 +111,9 @@ describe("bin/slice turns a filed spec into its first wave of tickets under it, 
     expect(run.status).toBe(1);
     expect(run.stderr).toMatch(/^slice: #968 marked needs-human, its wave still refused after 2 rounds back: ticket 1, "Do it all", would be/);
     expect(sliced.handed()).toHaveLength(3);
-    expect(sliced.argv()).toContainEqual(["issue", "edit", "968", "--add-label", "needs-human"]);
+    expect(sliced.argv().filter((args) => args.includes("--add-label") || args.includes("--remove-label"))).toEqual([]);
+    expect(sliced.marked()).toEqual(["968 slicing", "968 needs-human"]);
+    expect(sliced.comments()).toEqual([expect.stringMatching(/^The slicer filed nothing: its wave still refused after 2 rounds back: ticket 1, "Do it all", would be/)]);
     expect(sliced.rewrites()).toEqual([]);
     expect(sliced.filed()).toEqual([]);
     expect(sliced.linked()).toEqual([]);
@@ -283,7 +285,7 @@ describe("bin/slice marks the spec slicing while it writes a wave, and building 
     expect(unnoted.run().status).toBe(1);
     expect(unnoted.marked()).toEqual(["968 slicing"]);
     expect(stopped.run().status).toBe(1);
-    expect(stopped.marked()).toEqual(["968 slicing"]);
+    expect(stopped.marked()).toEqual(["968 slicing", "968 needs-human"]);
   });
 
   it("marks nothing on an issue that is not a spec", () => {

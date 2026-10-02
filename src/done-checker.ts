@@ -193,7 +193,7 @@ function waveCheck(issue: string, wave: number[]): Stop | undefined {
   if (typeof comment === "string") return comment;
   const posted = comment.url;
   if (repeated.length > 0) {
-    gh(["issue", "edit", issue, "--add-label", NEEDS_HUMAN]);
+    mark(issue, NEEDS_HUMAN);
     return stoppedAt("calledOwner", `${spec.said} marked ${NEEDS_HUMAN}, sentence ${listing(repeated, ", ")} missed at two wave checks in a row: ${posted}`);
   }
   const outcome = missed.length === 0 ? "held every sentence it tried" : `missed sentence ${listing(missed, ", ")}`;
@@ -210,13 +210,13 @@ function fixWave(spec: Read, found: [number, string, Try][], missed: [number, st
   if (repeated.length > 0) {
     const comment = commented(spec, posted(found, calledOwner(repeated, "at the last wave check and again at the end")));
     if (typeof comment === "string") return comment;
-    gh(["issue", "edit", issue, "--add-label", NEEDS_HUMAN]);
+    mark(issue, NEEDS_HUMAN);
     return stoppedAt("calledOwner", `${said} marked ${NEEDS_HUMAN}, sentence ${listing(repeated, ", ")} missed at the last wave check and again at the end: ${comment.url}`);
   }
   if (comments.some((comment) => comment.startsWith(DONE_CHECK_HEADING) && comment.includes(FIX_WAVE))) {
     const comment = commented(spec, posted(found, calledOwner(missed, "again after the fix wave")));
     if (typeof comment === "string") return comment;
-    gh(["issue", "edit", issue, "--add-label", NEEDS_HUMAN]);
+    mark(issue, NEEDS_HUMAN);
     return stoppedAt("calledOwner", `${said} marked ${NEEDS_HUMAN}, sentence ${listing(missed, ", ")} missed again after the fix wave: ${comment.url}`);
   }
   const fixed = spawnSync(join(process.cwd(), "bin", "slice"), [issue, "--fix", listing(missed, ",")], { encoding: "utf8" });
