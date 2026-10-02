@@ -190,7 +190,7 @@ function settle(ticket: string, pr: QueuedPr, merging: QueuedPr | undefined, con
   const wanted = conflicted || held.includes(RESOLVING) ? undefined : wantedOn(pr, merging, held);
   const writes = wanted !== undefined && !held.includes(NEEDS_HUMAN) && (wanted !== "checking" || held.includes(LANDING));
   if (writes && !held.includes(wanted)) mark(ticket, wanted);
-  else if (!writes && held.includes(LANDING)) for (const on of [ticket, pr.number]) quietGh(["api", "-X", "DELETE", `repos/{owner}/{repo}/issues/${on}/labels/${LANDING}`]);
+  else if (!writes && held.includes(LANDING) && !held.includes(NEEDS_HUMAN)) mark(ticket, "checking");
 }
 
 function wakeBuilder(ticket: string, reason: string): void {
