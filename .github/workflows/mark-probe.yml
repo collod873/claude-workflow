@@ -1,0 +1,35 @@
+name: Mark probe
+run-name: "Make a mark fail on purpose, so a run log shows bin/mark's refusal"
+
+"on":
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if said=$(bin/mark 0 checking 2>&1); then
+            printf '%s\n' "$said"
+            printf 'mark probe: bin/mark 0 checking passed, so a failed mark no longer reaches the log\n' >&2
+            exit 1
+          fi
+          printf '%s\n' "$said"
+          if [[ $said != *"mark: #0 not labelled checking:"* ]]; then
+            printf "mark probe: bin/mark 0 checking failed without its refusal line, so a failed mark no longer reaches the log\n" >&2
+            exit 1
+          fi
