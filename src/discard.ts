@@ -25,7 +25,11 @@ function discardIn(statement: string): Omit<Discard, "at"> | undefined {
   return quiet === undefined ? { says: found.says(call) } : { says: found.says(call), quiet };
 }
 
-const depthAfter = (depth: number, line: string) => Math.max(0, depth + (line.match(/[([]/g)?.length ?? 0) - (line.match(/[)\]]/g)?.length ?? 0));
+const UNCOUNTED = /"(?:[^"\\]|\\.)*"|'[^']*'|`(?:[^`\\]|\\.)*`|(?:^|\s)(?:#|\/\/).*$/g;
+const depthAfter = (depth: number, line: string) => {
+  const code = line.replace(UNCOUNTED, " ");
+  return Math.max(0, depth + (code.match(/[([]/g)?.length ?? 0) - (code.match(/[)\]]/g)?.length ?? 0));
+};
 
 function discardsAmong(lines: { at: number; added?: string }[]): Discard[] {
   const found: Discard[] = [];
