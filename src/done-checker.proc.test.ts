@@ -10,6 +10,11 @@ import { missedIn } from "./done-checker.ts";
 const READ_COMMENTS = "api --paginate repos/{owner}/{repo}/issues/974/comments";
 const SENTENCES = ["file a spec and see its first wave show up under it", "open any ticket it filed and see my own words copied over", "see the spec close itself once every sentence held"];
 
+const expectMarkedNeedsHuman = (checked: ReturnType<typeof doneChecking>) => {
+  expect(checked.labelled()).toEqual([]);
+  expect(checked.marked()).toEqual(["974 checking", "974 needs-human"]);
+};
+
 describe("bin/done-check tries a spec's sentences and closes it only when every one held (#1023)", () => {
   it("posts one comment headed ## Done check, each sentence with how it came out and what was done to try it, then closes the spec", () => {
     const tries = SENTENCES.map((_, at) => ({ sentence: at + 1, outcome: "held", tried: `read run ${at + 1} with gh` }));
@@ -141,8 +146,7 @@ describe("bin/done-check --wave tries only the sentences a wave should have move
     expect(checked.run("974", "--wave", "2")).toEqual({ status: 1, stdout: "", stderr: `done-check: #974 marked needs-human, sentence 2 missed at two wave checks in a row: ${DONE_CHECK_POSTED}\n` });
     expect(checked.comments()).toHaveLength(1);
     expect(checked.comments()[0]).toContain(`Sentence 2 missed at this wave check and the last one, so the spec is marked \`needs-human\`: ${SENTENCES[1]}. Why: opened a ticket and found no Out of Scope`);
-    expect(checked.labelled()).toEqual([]);
-    expect(checked.marked()).toEqual(["974 checking", "974 needs-human"]);
+    expectMarkedNeedsHuman(checked);
     expect(checked.closes()).toEqual([]);
   });
 
@@ -183,8 +187,7 @@ describe("bin/done-check spends the spec's one fix wave on a first miss, and cal
     expect(checked.comments()[0]).not.toContain("<!-- fix-wave -->");
     expect(checked.comments()[0]).toContain(`Sentence 2 missed again after the fix wave, so the spec is marked \`needs-human\`: ${SENTENCES[1]}. Why: opened a ticket and found no Out of Scope`);
     expect(checked.comments()[0]).toContain(`Sentence 3 missed again after the fix wave, so the spec is marked \`needs-human\`: ${SENTENCES[2]}. Why: saw the spec stay open`);
-    expect(checked.labelled()).toEqual([]);
-    expect(checked.marked()).toEqual(["974 checking", "974 needs-human"]);
+    expectMarkedNeedsHuman(checked);
     expect(checked.closes()).toEqual([]);
   });
 
@@ -195,8 +198,7 @@ describe("bin/done-check spends the spec's one fix wave on a first miss, and cal
     expect(checked.sliced()).toEqual([]);
     expect(checked.comments()[0]).toContain(`Sentence 3 missed at the last wave check and again at the end, so the spec is marked \`needs-human\`: ${SENTENCES[2]}. Why: saw the spec stay open`);
     expect(checked.comments()[0]).not.toContain("<!-- fix-wave -->");
-    expect(checked.labelled()).toEqual([]);
-    expect(checked.marked()).toEqual(["974 checking", "974 needs-human"]);
+    expectMarkedNeedsHuman(checked);
   });
 
   it("reads a wave check from before the last done check as no miss in a row", () => {
