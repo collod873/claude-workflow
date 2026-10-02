@@ -276,7 +276,7 @@ function handedOff(issue: string): Stop | undefined {
 }
 
 function calledOwner(issue: string, why: string): Stop {
-  gh(["issue", "edit", issue, "--add-label", NEEDS_HUMAN]);
+  mark(issue, NEEDS_HUMAN);
   commentOnTicket(issue, `The slicer filed nothing: ${why}`, gh);
   return stoppedAt("unsliced", `slice: #${issue} marked ${NEEDS_HUMAN}, ${why}`);
 }
