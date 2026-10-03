@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { labelsOf, post, type Posting } from "./post.ts";
+import { describe, expect, expectTypeOf, it } from "vitest";
+import { labelsOf, NEEDS_HUMAN, post, RESEARCH, RESOLVING, WAITING, type Posting } from "./post.ts";
 import { wellFormedNote as NOTE, wellFormedSpec as SPEC } from "./scenarios.ts";
 
 const URL = "https://github.com/collod873/claude-workflow/issues/700";
@@ -135,5 +135,14 @@ describe("src/post.ts reads an issue's labels for the closer and the builder ali
     const { gh } = github({ status: 1, stdout: "", stderr: "GraphQL: Could not resolve to an issue" });
 
     expect(labelsOf("874", gh)).toBe("unread");
+  });
+});
+
+describe("the label constants keep their own names (#1103)", () => {
+  it("types each one as exactly its label, so one set to another label fails typecheck", () => {
+    expectTypeOf(NEEDS_HUMAN).toEqualTypeOf<"needs-human">();
+    expectTypeOf(WAITING).toEqualTypeOf<"waiting">();
+    expectTypeOf(RESOLVING).toEqualTypeOf<"resolving">();
+    expectTypeOf(RESEARCH).toEqualTypeOf<"research">();
   });
 });

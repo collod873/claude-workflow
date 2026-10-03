@@ -1,4 +1,4 @@
-import { copyFileSync, cpSync, readdirSync, readFileSync, symlinkSync } from "node:fs";
+import { copyFileSync, cpSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
@@ -86,5 +86,20 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
     const { stdout } = execute(join(BIN, "..", "node_modules", ".bin", "tsc"), copy, {}, ["--noEmit", "--pretty", "false", "-p", "tsconfig.json"]);
 
     expect(stdout.split("\n").filter((line) => line.startsWith("src/")).map((line) => /^src\/misspelled\.ts\((\d+),/.exec(line)?.[1])).toEqual(["2", "3", "4"]);
+  });
+
+  it("fails typecheck when a label constant is set to another label the set holds (#1103)", () => {
+    const copy = scratch("spelled-swapped-");
+    for (const kept of ["src", "tsconfig.json", "package.json", "vitest.config.ts"]) cpSync(join(BIN, "..", kept), join(copy, kept), { recursive: true });
+    symlinkSync(join(BIN, "..", "node_modules"), join(copy, "node_modules"));
+    const post = join(copy, "src", "post.ts");
+    const kept = readFileSync(post, "utf8");
+    const swapped = kept.replace(/(export const NEEDS_HUMAN\b[^=]*= )"needs-human"/, '$1"waiting"');
+    expect(swapped).not.toBe(kept);
+    writeFileSync(post, swapped);
+
+    const { stdout } = execute(join(BIN, "..", "node_modules", ".bin", "tsc"), copy, {}, ["--noEmit", "--pretty", "false", "-p", "tsconfig.json"]);
+
+    expect(stdout.split("\n").filter((line) => line.startsWith("src/")).map((line) => /^src\/([\w.]+)\(/.exec(line)?.[1])).toEqual(["post.test.ts"]);
   });
 });
