@@ -28,7 +28,7 @@ export const heldOf = (labels: { name?: string }[] | undefined): Held => new Set
 
 export function labelsOf(issue: string, gh: Gh): Held | "unread" {
   const got = gh(["issue", "view", issue, "--json", "labels", "--jq", ".labels[].name"]);
-  return got.status === 0 ? new Set(got.stdout.split("\n")) : "unread";
+  return got.status === 0 ? new Set(got.stdout.split("\n").filter((label) => label !== "")) : "unread";
 }
 
 export const labelsUnread = (issue: string) => `the labels of #${issue} could not be read, so nothing is marked`;

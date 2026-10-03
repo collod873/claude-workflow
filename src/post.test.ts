@@ -127,7 +127,7 @@ describe("src/post.ts reads an issue's labels for the closer and the builder ali
   it("names each label the issue holds", () => {
     const { gh, calls } = github({ stdout: "ticket\nlanding\n" });
 
-    expect(labelsOf("873", gh)).toEqual(["ticket", "landing"]);
+    expect(labelsOf("873", gh)).toEqual(new Set(["ticket", "landing"]));
     expect(calls).toEqual([["issue", "view", "873", "--json", "labels", "--jq", ".labels[].name"]]);
   });
 
