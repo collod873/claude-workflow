@@ -58,6 +58,7 @@ export function fixing({
   opener = OWNER,
   parent = undefined as Parent,
   labels = ["ticket"],
+  labelsUnreadable = false,
   markRefusal = undefined as string | undefined,
 } = {}) {
   const root = scratch("builder-");
@@ -97,7 +98,7 @@ export function fixing({
       `  *"api"*"issues/811/comments"*) cat "${join(root, "on-ticket.json")}" ;;`,
       ...openedCases(root, opener, body, parent),
       `  *"issue create"*) n=$(( $(cat "${join(root, "created")}" 2>/dev/null || echo 900) + 1 )); printf '%s\\n' "$n" >"${join(root, "created")}"; printf 'https://github.com/collod873/claude-workflow/issues/%s\\n' "$n" ;;`,
-      `  *"issue view"*"labels"*) printf '%s\\n' ${labels.join(" ")} ;;`,
+      `  *"issue view"*"labels"*) ${labelsUnreadable ? "printf 'GraphQL: labels could not be read\\n' >&2; exit 1" : `printf '%s\\n' ${labels.join(" ")}`} ;;`,
       `  *"issue view"*) cat "${join(root, "ticket.md")}" ;;`,
       `  *"pr view"*"number"*) ${onPr === undefined ? "exit 1" : "printf '9811\\n'"} ;;`,
       `  *"run view"*"--json"*) printf '%s %s %s\\n' '${ranAs}' '${redAt}' '${attempt}' ;;`,

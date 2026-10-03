@@ -57,6 +57,7 @@ export interface QueuedPr {
   conflicts?: boolean;
   needsHuman?: boolean;
   labels?: string[];
+  labelsUnreadable?: boolean;
 }
 
 const RUNS = { green: ["COMPLETED", "SUCCESS"], pending: ["IN_PROGRESS", ""], red: ["COMPLETED", "FAILURE"] } as const;
@@ -94,6 +95,8 @@ export function closing({
   followUps = [] as WaitingFollowUp[],
   resliceRefused,
   prLookupRefused,
+  mergedFrom = `collod873/ticket/${ticket}`,
+  prUnreadable = false,
 }: {
   ticket?: string;
   ticketBody?: string;
@@ -108,6 +111,8 @@ export function closing({
   followUps?: WaitingFollowUp[];
   resliceRefused?: string;
   prLookupRefused?: string;
+  mergedFrom?: string;
+  prUnreadable?: boolean;
 } = {}) {
   const root = scratch("closer-");
   const session = join(root, "session");
@@ -127,7 +132,7 @@ export function closing({
   git(session, "add", "-A");
   commitAt(session, timing.firstCommit, ["commit", "--quiet", "--allow-empty", "-m", `Build #${ticket} against its failing tests`], timing.rebased);
   git(session, "checkout", "--quiet", "main");
-  commitAt(session, timing.merged, ["merge", "--quiet", "--no-ff", "-m", `Merge pull request #900 from collod873/ticket/${ticket}`, `ticket/${ticket}`]);
+  commitAt(session, timing.merged, ["merge", "--quiet", "--no-ff", "-m", `Merge pull request #900 from ${mergedFrom}`, `ticket/${ticket}`]);
   const origin = join(root, "origin.git");
   git(root, "init", "--quiet", "--bare", origin);
   git(session, "remote", "add", "origin", origin);
@@ -155,6 +160,7 @@ export function closing({
       `  "api repos/{owner}/{repo}/issues/${ticket} --jq"*) printf 'ticket\\nbuilding\\ntry-2\\nwayfinder:map\\n' ;;`,
       ...(resliceRefused === undefined ? [] : [`  *"workflow run reslice.yml"*) printf '%s\\n' '${resliceRefused}' >&2; exit 1 ;;`]),
       `  *"issue list"*"${WAITING}"*) cat <<'LISTED'\n${JSON.stringify(waitingListed(followUps, splitFrom))}\nLISTED\n    ;;`,
+      ...openPrs.filter((pr) => pr.labelsUnreadable === true).map((pr) => `  *"issue view ${pr.ticket} "*"labels"*) printf 'GraphQL: labels could not be read\\n' >&2; exit 1 ;;`),
       ...openPrs.map((pr) => ({ ticket: pr.ticket, labels: [...(pr.labels ?? []), ...(pr.needsHuman === true ? [NEEDS_HUMAN] : [])] })).filter(({ ticket, labels }) => ticket !== "" && labels.length > 0).flatMap(({ ticket, labels }) => [
         `  *"issue view ${ticket} "*"labels"*) printf '%s\\n' ${labels.map((label) => `'${label}'`).join(" ")} ;;`,
         `  "api repos/{owner}/{repo}/issues/${ticket} --jq"*) printf '%s\\n' ${labels.map((label) => `'${label}'`).join(" ")} ;;`,
@@ -179,6 +185,7 @@ export function closing({
       `  *"pr list"*) printf '%s\\n' '${JSON.stringify(openPrs.map((pr, at) => listed(pr, heads[at] ?? "")))}' ;;`,
       ...openPrs.filter((pr) => pr.refusedBefore === true).map((pr) => `  *"issues/${pr.number}/comments"*) cat "${join(root, `pr-${pr.number}-comments.json`)}" ;;`),
       ...openPrs.map((pr) => `  *"pr update-branch ${pr.number}"*) ${pr.refused === undefined ? "exit 0" : `printf '%s\\n' '${pr.refused}' >&2; exit 1`} ;;`),
+      ...(prUnreadable ? ["  *\"pr view 900 \"*) printf 'GraphQL: Could not resolve to a PullRequest\\n' >&2; exit 1 ;;"] : []),
       `  *"pr view"*) printf '%s\\n' '${timing.prOpened}' ;;`,
       `  *"pr checks"*) printf '%s\\n' '${timing.checksGreen}' ;;`,
       `  *"issues/900/comments"*) ${prCommentsUnreadable ? "printf 'GraphQL: comments could not be read\\n' >&2; exit 1" : `cat "${join(root, "pr-comments.json")}"`} ;;`,
