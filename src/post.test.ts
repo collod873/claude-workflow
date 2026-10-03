@@ -131,9 +131,9 @@ describe("src/post.ts reads an issue's labels for the closer and the builder ali
     expect(calls).toEqual([["issue", "view", "873", "--json", "labels", "--jq", ".labels[].name"]]);
   });
 
-  it("names no label when the issue cannot be read", () => {
+  it("gives the unread stop, never an empty list, when the issue cannot be read (#1099)", () => {
     const { gh } = github({ status: 1, stdout: "", stderr: "GraphQL: Could not resolve to an issue" });
 
-    expect(labelsOf("874", gh)).toEqual([]);
+    expect(labelsOf("874", gh)).toBe("unread");
   });
 });

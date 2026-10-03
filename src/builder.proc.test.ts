@@ -212,6 +212,17 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(resolving.marked()).toEqual(["811 checking"]);
   });
 
+  it("ends red naming the label read and the ticket when its labels cannot be read, marking nothing and hiring no model (#1099)", () => {
+    const unread = fixing({ reason: "PR #9811 conflicts with main", claude: FIXES, labelsUnreadable: true });
+
+    const { status, stderr } = unread.run();
+
+    expect(status).toBe(1);
+    expect(stderr).toBe("fix: the labels of #811 could not be read, so nothing is marked\n");
+    expect(unread.marked()).toEqual([]);
+    expect(unread.handed()).toEqual([]);
+  });
+
   it("closes the ticket and its PR unbuilt with the reason, calling the owner by name, keeping the branch, and runs no check", () => {
     const reason = "the ticket asks for a stage the ruling has since dropped";
     const { run, closes, ticketComments, labelled, saved, handed } = fixing({ answer: { outcome: "close", reason }, check: "touch ../checked\nexit 1\n" });

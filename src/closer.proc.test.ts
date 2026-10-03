@@ -358,17 +358,14 @@ describe("bin/close counts a ticket PR's collisions in its closing record: faile
     expect(commented).toMatch(/re-review[^\n]*2/i);
   });
 
-  it("closes with no counts when its PR's comments cannot be read", () => {
+  it("ends red naming its PR's comments when they cannot be read, and writes no record with counts it never read (#1099)", () => {
     const { calls, run } = closing({ ticket: "837", prCommentsUnreadable: true });
 
-    const result = run();
+    const { status, stderr } = run();
 
-    expect(result.status).toBe(0);
-    const commented = calls().find((call) => call.startsWith("issue\ncomment\n837\n"));
-    expect(commented).toBeDefined();
-    expect(commented).toMatch(/failed branch update[^\n]*not available/i);
-    expect(commented).toMatch(/re-review[^\n]*not available/i);
-    expect(calls().some((call) => call.startsWith("issue\nclose\n837"))).toBe(true);
+    expect(status).toBe(1);
+    expect(stderr).toBe("close: the comments on PR #900 could not be read, so #837 is left as it is\n");
+    expect(calls().some((call) => /^issue\n(comment|close)\n837\n/.test(call))).toBe(false);
   });
 });
 
@@ -565,13 +562,6 @@ describe("bin/close writes on the PR and the ticket each run it made, so a merge
     expect(commented).toMatch(/^- branch updates: 2$/m);
     expect(commented).toMatch(/^- failed branch updates: 1$/m);
     expect(commented).toContain(`Written by ${CLOSE_RUN}`);
-  });
-
-  it("says branch updates are not available when its PR's comments cannot be read", () => {
-    const { calls, run } = closing({ ticket: "839", prCommentsUnreadable: true });
-
-    expect(run().status).toBe(0);
-    expect(calls().find((call) => call.startsWith("issue\ncomment\n839\n"))).toMatch(/^- branch updates: not available$/m);
   });
 });
 
@@ -778,5 +768,47 @@ describe("bin/close writes each mark on the ticket's open PR too, and says in it
     expect(status).toBe(0);
     expect(stderr).toBe("mark: #893's open PR not labelled landing: HTTP 403: Resource not accessible by integration\n");
     expect(calls().some((call) => call.startsWith("pr\nupdate-branch\n973\n"))).toBe(true);
+  });
+});
+
+describe("bin/close stops red at the first read it cannot make, and marks nothing after it (#1099)", () => {
+  const marked = (calls: string[]) => calls.filter((call) => /^api\n-X\n(POST|DELETE)\n/.test(call));
+
+  it("leaves needs-human on a ticket whose labels cannot be read, naming the label read and the ticket", () => {
+    const { calls, run } = closing({ ticket: "819", afterCheck: true, openPrs: [{ number: "975", ticket: "895", needsHuman: true, labelsUnreadable: true }] });
+
+    const { status, stderr } = run();
+
+    expect(status).toBe(1);
+    expect(stderr).toBe("close: the labels of #895 could not be read, so nothing is marked\n");
+    expect(marked(calls())).toEqual([]);
+  });
+
+  it("closes no ticket and wakes no builder once a queued ticket's labels cannot be read", () => {
+    const { calls, run } = closing({ ticket: "819", openPrs: [{ number: "976", ticket: "896", labelsUnreadable: true, refused: "GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts." }] });
+
+    expect(run().status).toBe(1);
+    expect(marked(calls())).toEqual([]);
+    expect(calls().some((call) => /^(issue\nclose|workflow\nrun)\n/.test(call))).toBe(false);
+  });
+
+  it("ends red naming the merged PR when its body cannot be read, instead of exiting green with the ticket open", () => {
+    const { calls, run } = closing({ ticket: "819", mergedFrom: "collod873/land/some-work", prUnreadable: true });
+
+    const { status, stderr } = run();
+
+    expect(status).toBe(1);
+    expect(stderr).toBe("close: the body of the merged PR #900 could not be read, so the ticket it built is left as it is\n");
+    expect(calls().some((call) => call.startsWith("issue\nclose\n"))).toBe(false);
+  });
+
+  it("ends red naming the merged PR when its opening cannot be read, closing nothing", () => {
+    const { calls, run } = closing({ ticket: "838", prUnreadable: true });
+
+    const { status, stderr } = run();
+
+    expect(status).toBe(1);
+    expect(stderr).toBe("close: when PR #900 opened could not be read, so #838 is left as it is\n");
+    expect(calls().some((call) => /^issue\n(comment|close)\n838\n/.test(call))).toBe(false);
   });
 });
