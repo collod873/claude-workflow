@@ -44,6 +44,10 @@ const listed: Record<string, Scenario[]> = {
     { label: "moving a ticket to a state", run: () => marking({ labels: { "811": ["ticket", "checking", "try-2"] }, pr: "900" }).run("811", "building", "--try") },
     { label: "with GitHub refusing the label", run: () => marking({ gh: `cat >&2 <<'NOISE'\n${NOISE}\nNOISE\nexit 1\n` }).run("811", "needs-human") },
   ],
+  "bin/spelled": [
+    { label: "printing the labels", run: () => execute(join(REPO, "bin", "spelled"), scratch("spelled-"), {}, ["labels"]) },
+    { label: "refusing a list it does not hold", run: () => execute(join(REPO, "bin", "spelled"), scratch("spelled-"), {}, ["owners"]) },
+  ],
   "bin/close-note": [
     { label: "closing a note", run: () => closingNote("note\\n").run("887") },
     { label: "with GitHub refusing the close", run: () => closingNote("note\\n", { gh: `cat >&2 <<'NOISE'\n${NOISE}\nNOISE\nexit 1\n` }).run("887") },
@@ -68,10 +72,14 @@ function overAllowed(registry: Part[]): string[] {
   });
 }
 
-function overheard(part: string, runs: Scenario[] = [], lines = 1): string[] {
+function printsData(registry: Part[], file: string): boolean {
+  return registry.some((part) => part.file === file && part.printsData === true);
+}
+
+function overheard(part: string, runs: Scenario[] = [], lines = 1, data = false): string[] {
   const heard = runs.map(({ label, run }) => {
     const { status, stdout, stderr } = run();
-    return { label, status, said: stdout + stderr };
+    return { label, status, said: data && status === 0 ? stderr : stdout + stderr };
   });
   const passing = heard.some(({ status }) => status === 0) ? [] : [`${part} has no passing run`];
   const failing = heard.some(({ status }) => status !== 0) ? [] : [`${part} has no failing run`];
@@ -81,7 +89,7 @@ function overheard(part: string, runs: Scenario[] = [], lines = 1): string[] {
 
 describe(`everything the machine prints is one line of ${LINE_LIMIT} characters, or up to ${MOST_LINES} for a part registered for them (#683)`, () => {
   it.each(speakers(parts, readFileSync(join(REPO, "bin", "check"), "utf8")))("%s stays under the limit on a passing and a failing run", (part) => {
-    expect(overheard(part, scenarios[part], linesAllowed(parts, part))).toEqual([]);
+    expect(overheard(part, scenarios[part], linesAllowed(parts, part), printsData(parts, part))).toEqual([]);
   });
 
   it(`registers no part for more than ${MOST_LINES} lines`, () => {
@@ -92,6 +100,15 @@ describe(`everything the machine prints is one line of ${LINE_LIMIT} characters,
     expect(overAllowed(registry)).toEqual([`bin/talker is registered for ${MOST_LINES + 1} lines, over ${MOST_LINES}`]);
     expect(linesAllowed(registry, "bin/lister")).toBe(MOST_LINES);
     expect(linesAllowed(registry, "bin/check")).toBe(1);
+  });
+
+  it("leaves uncounted only the rows a data part prints on a passing run, never what it says on stderr or when it fails (#1100)", () => {
+    const rows = (status: number, stderr = ""): Scenario => ({ label: `ending ${status}`, run: () => ({ status, stdout: "row\n".repeat(MOST_LINES + 1), stderr }) });
+
+    expect(printsData([{ name: "bin/lister", file: "bin/lister", stops: URL, printsData: true }], "bin/lister")).toBe(true);
+    expect(printsData(parts, "bin/check")).toBe(false);
+    expect(overheard("bin/lister", [rows(0), rows(2)], 1, true)).toEqual([`bin/lister ending 2 said ${MOST_LINES + 1} lines, over 1`]);
+    expect(overheard("bin/lister", [rows(0, "one\ntwo\n")], 1, true)).toEqual(["bin/lister has no failing run", "bin/lister ending 0 said 2 lines, over 1"]);
   });
 
   it("makes every registered part bin/check does not already run prove its own runs, whatever it is written in", () => {

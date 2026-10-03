@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { splitClosed, splitInto } from "./builder.ts";
-import { commentOnPr, commentOnTicket, commentsOn, labelsOf, labelsUnread, markWith, NEEDS_HUMAN, WAITING } from "./post.ts";
+import { commentOnPr, commentOnTicket, commentsOn, labelsOf, labelsUnread, markWith, NEEDS_HUMAN, RESOLVING, WAITING, type MarkedLabel } from "./post.ts";
 import { FINGERPRINT, REVIEWED_FROM, TICKET_BRANCH } from "./reviewer.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { quoted, why } from "./ticket-shape.ts";
@@ -199,16 +199,15 @@ function queuedPrs(): QueuedPr[] {
 }
 
 const mark = markWith(quietly);
-const RESOLVING = "resolving";
 
-function markOnce(ticket: string, label: string): void {
+function markOnce(ticket: string, label: MarkedLabel): void {
   const held = labelsHeld(ticket);
   if (![label, NEEDS_HUMAN, RESOLVING].some((kept) => held.includes(kept))) mark(ticket, label);
 }
 
-const LANDING = "landing";
+const LANDING: MarkedLabel = "landing";
 
-function wantedOn(pr: QueuedPr, merging: QueuedPr | undefined, held: string[]): string | undefined {
+function wantedOn(pr: QueuedPr, merging: QueuedPr | undefined, held: string[]): MarkedLabel | undefined {
   if (pr.checks === "red") return undefined;
   if (pr === merging && (pr.checks === "green" || held.includes(LANDING))) return LANDING;
   return pr.checks === "green" ? "queued" : "checking";

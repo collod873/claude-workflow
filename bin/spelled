@@ -1,0 +1,5 @@
+#!/bin/bash
+set -uo pipefail
+
+src="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../src" && pwd)"
+exec node "$src/spelled.ts" "$@"

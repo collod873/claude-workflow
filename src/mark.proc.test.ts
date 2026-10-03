@@ -123,6 +123,14 @@ describe("bin/mark leaves one state on a ticket and its open PR, so one look at 
     expect(marked.calls()).toEqual([]);
   });
 
+  it("names in its usage line the states and owner labels bin/spelled prints, so the refusal lists what it would take (#1100)", () => {
+    const { stderr } = marking().run("811", "fixing");
+
+    expect(stderr).toBe(
+      "mark: usage: mark <number> <building|checking|queued|resolving|landing|slicing|researching|waiting> [--try|--untry] | mark <number> <asked|needs-human> | mark <number> --closed\n",
+    );
+  });
+
   it("still marks the issue and succeeds when its token may not read PRs, so a caller's next step still runs, and names the refusal (#1077)", () => {
     const marked = marking({ labels: { "974": ["spec", "checking"] }, gh: "[[ $1 == pr ]] && { printf 'HTTP 403: Resource not accessible by integration\\n' >&2; exit 1; }\n" });
 

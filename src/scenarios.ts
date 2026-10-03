@@ -142,6 +142,13 @@ export function stubbedMark(root: string, hiredAt?: string, refusal?: string): (
   return () => (existsSync(marks) ? readFileSync(marks, "utf8").trimEnd().split("\n") : []);
 }
 
+export function copyMark(root: string): void {
+  mkdirSync(join(root, "bin"), { recursive: true });
+  mkdirSync(join(root, "src"), { recursive: true });
+  for (const name of ["mark", "spelled"]) copyFileSync(join(BIN, name), join(root, "bin", name));
+  copyFileSync(join(SRC, "spelled.ts"), join(root, "src", "spelled.ts"));
+}
+
 export function execute(file: string, cwd: string, extra: Record<string, string> = {}, args: string[] = []): Run {
   const { status, stdout, stderr } = spawnSync(file, args, { cwd, env: { ...env, ...extra }, encoding: "utf8" });
   return { status, stdout, stderr };

@@ -1,9 +1,28 @@
 #!/bin/bash
 set -uo pipefail
 
-states=(building checking queued resolving landing waiting slicing researching)
-owners=(asked needs-human)
-usage="mark: usage: mark <number> <$(IFS='|'; printf '%s' "${states[*]}")> [--try|--untry] | mark <number> <asked|needs-human> | mark <number> --closed"
+here="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+if ! spelled=$("$here/spelled" labels 2>&1); then
+  printf 'mark: the labels could not be read: %s\n' "$(printf '%s' "$spelled" | head -n 1 | cut -c 1-120)" >&2
+  exit 1
+fi
+states=()
+parked=()
+owners=()
+try=""
+declare -A colours descriptions
+while IFS=$'\t' read -r name kind colour description; do
+  case $kind in
+    state) states+=("$name") ;;
+    parked) parked+=("$name") ;;
+    owner) owners+=("$name") ;;
+    try) try=$name ;;
+  esac
+  colours[$name]=$colour
+  descriptions[$name]=$description
+done <<<"$spelled"
+steps=("${states[@]}" "${parked[@]}")
+usage="mark: usage: mark <number> <$(IFS='|'; printf '%s' "${steps[*]}")> [--try|--untry] | mark <number> <$(IFS='|'; printf '%s' "${owners[*]}")> | mark <number> --closed"
 
 number=${1:-}
 label=${2:-}
@@ -13,41 +32,17 @@ refused() {
   exit 2
 }
 [[ $number =~ ^[0-9]+$ ]] || refused
-if [[ " ${states[*]} " == *" $label "* && $label != waiting ]]; then
+if [[ " ${states[*]} " == *" $label "* ]]; then
   (($# == 2)) || [[ $# -eq 3 && ($count == --try || $count == --untry) ]] || refused
-elif [[ " ${states[*]} ${owners[*]} --closed " == *" $label "* ]]; then
+elif [[ " ${parked[*]} ${owners[*]} --closed " == *" $label "* ]]; then
   (($# == 2)) || refused
 else
   refused
 fi
 
-machine() { [[ " ${states[*]} ${owners[*]} " == *" $1 "* || $1 =~ ^try-[0-9]+$ ]]; }
+machine() { [[ " ${states[*]} ${parked[*]} ${owners[*]} " == *" $1 "* || $1 =~ ^$try[0-9]+$ ]]; }
 
-colour() {
-  case $1 in
-    waiting) printf fbca04 ;;
-    try-*) printf f66a0a ;;
-    asked) printf 5319e7 ;;
-    needs-human) printf b60205 ;;
-    *) printf 1d76db ;;
-  esac
-}
-
-described() {
-  case $1 in
-    building) printf "The builder is writing the ticket's code, or a spec's wave is building" ;;
-    checking) printf "bin/check and the reviewer judge the head, or the done check tries a spec's sentences" ;;
-    queued) printf "Check and the review passed; it waits in the closer's queue" ;;
-    resolving) printf 'The builder is resolving a merge conflict' ;;
-    landing) printf 'Up to date with main and next to merge; auto-merge fires once its checks pass' ;;
-    waiting) printf 'Waits for other tickets before it builds' ;;
-    slicing) printf 'The slicer is writing the next wave' ;;
-    researching) printf 'The researcher is answering this note' ;;
-    try-*) printf "Builder run %s after a failure, or a spec's fix wave" "${1#try-}" ;;
-    asked) printf "The machine put the owner a question and resumes on the owner's reply" ;;
-    needs-human) printf 'The machine stopped and needs the owner' ;;
-  esac
-}
+spelling() { [[ $1 =~ ^$try[0-9]+$ ]] && printf '%s' "$try" || printf '%s' "$1"; }
 
 said=""
 failed() {
@@ -68,7 +63,7 @@ apply() {
   local adding=()
   for name in "$@"; do
     [[ " ${held[*]} " == *" $name "* ]] && continue
-    gh label create "$name" --color "$(colour "$name")" --description "$(described "$name")" >/dev/null 2>&1 # quiet: the label already exists, and a real refusal fails the labelling call below
+    gh label create "$name" --color "${colours[$(spelling "$name")]}" --description "${descriptions[$(spelling "$name")]}" >/dev/null 2>&1 # quiet: the label already exists, and a real refusal fails the labelling call below
     adding+=(-f "labels[]=$name")
   done
   if ((${#adding[@]})); then
@@ -94,13 +89,13 @@ elif [[ " ${owners[*]} " == *" $label "* ]]; then
 else
   tries=1
   for name in "${held[@]}"; do
-    [[ $name =~ ^try-([0-9]+)$ ]] && ((BASH_REMATCH[1] > tries)) && tries=${BASH_REMATCH[1]}
+    [[ $name =~ ^$try([0-9]+)$ ]] && ((BASH_REMATCH[1] > tries)) && tries=${BASH_REMATCH[1]}
   done
   [[ $count == --try ]] && ((tries++))
   [[ $count == --untry ]] && ((tries > 1)) && ((tries--))
-  [[ $label == waiting ]] && tries=1
+  [[ " ${parked[*]} " == *" $label "* ]] && tries=1
   target=("$label")
-  ((tries > 1)) && target+=("try-$tries")
+  ((tries > 1)) && target+=("$try$tries")
 fi
 
 apply "$number" "${target[@]}"

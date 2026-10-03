@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { admission, doesNotBuild } from "./admit.ts";
 import { capped, onDisk } from "./brief.ts";
 import { CHECK, UNFENCED } from "./fence.ts";
-import { commentOnTicket, commentsOn, gh, git, labelsOf, labelsUnread, mark, NEEDS_HUMAN, OWNER, post, postRefusals, prNumber, rewriteTicket, sessionLine, WAITING } from "./post.ts";
+import { commentOnTicket, commentsOn, gh, git, labelsOf, labelsUnread, mark, NEEDS_HUMAN, OWNER, post, postRefusals, prNumber, RESOLVING, rewriteTicket, sessionLine, WAITING } from "./post.ts";
 import { BUILDER_SPLIT, earlierDrift, FOLLOW_UP_OF, followUpBody, handedDiff, LIST_CAP, NO_EM_DASH, repairOf, TICKET_CAP } from "./reviewer.ts";
 import { hired, machineLogs, type Spent } from "./stage.ts";
 import { DONE_SENTENCES, quoted, why, whyChanged } from "./ticket-shape.ts";
@@ -312,7 +312,7 @@ function ownTicket(ticket: string, run: string | undefined): number {
     return 1;
   }
   if (held === undefined) mark(ticket, "building");
-  else if (!held.includes("resolving")) mark(ticket, "building", "--try");
+  else if (!held.includes(RESOLVING)) mark(ticket, "building", "--try");
   const asked = gh(["issue", "view", ticket, "--json", "body", "--jq", ".body"]);
   if (asked.status !== 0) return calledOwner(ticket, "its ticket could not be read");
   let body = asked.stdout;

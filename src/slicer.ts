@@ -250,7 +250,7 @@ function sliced(issue: string, fix?: number[]): Stop | undefined {
   const comments = tickets === undefined || (tickets.length === 0 && fix === undefined) ? [] : commentsOn(issue, gh);
   if (tickets === undefined || comments === undefined) return stoppedAt("unread", `${said}'s tickets or comments could not be read, so no model was spent`);
   const found = tickets.length === 0 && fix === undefined ? undefined : { comments, tickets: waveFound(tickets), diffs: waveDiffs(tickets), missed: fix ?? missedSinceNote(comments), fix: fix !== undefined };
-  mark(issue, "slicing", ...(fix === undefined ? [] : ["--try"]));
+  mark(issue, "slicing", ...(fix === undefined ? [] : (["--try"] as const)));
   const logs = machineLogs(process.cwd());
   mkdirSync(logs, { recursive: true });
   const spend = hired({ name: "slicer", transcript: join(logs, `slice-${issue}.jsonl`), tools: TOOLS, reach: FENCED_OPUS, answers: ANSWERS });

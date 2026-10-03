@@ -5,6 +5,7 @@ export interface Part {
   file: string;
   stops: string;
   lines?: number;
+  printsData?: true;
 }
 
 const FIXED: Part[] = [
@@ -89,6 +90,12 @@ const FIXED: Part[] = [
     name: "bin/mark",
     file: "bin/mark",
     stops: "https://github.com/collod873/claude-workflow/issues/835",
+  },
+  {
+    name: "bin/spelled",
+    file: "bin/spelled",
+    stops: "https://github.com/collod873/claude-workflow/issues/1100",
+    printsData: true,
   },
   {
     name: "bin/close-note",
