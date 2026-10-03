@@ -6,6 +6,18 @@ import { BIN, execute, heard, plant, scratch, script, type WorkflowStep } from "
 
 const WORKFLOWS = join(BIN, "..", ".github", "workflows");
 
+const ACTIONS = join(BIN, "..", ".github", "actions");
+const ISSUE = String.raw`(?:\$\{\{[^}]*\}\}|"\$\w+"|\d+)`;
+const SPELLINGS = [
+  /labels\.\*\.name\s*,\s*'([^']*)'/g,
+  /github\.event\.label\.name\s*==\s*'([^']*)'/g,
+  new RegExp(String.raw`bin/mark\s+${ISSUE}\s+([a-z][\w-]*)`, "g"),
+  /grep -qx\s+([\w-]+)/g,
+  /--(?:add|remove)-label\s+([\w-]+)/g,
+];
+const spelledIn = (text: string) => SPELLINGS.flatMap((spelling) => [...text.matchAll(spelling)].map(([, name]) => name ?? ""));
+const workflowFiles = () => [...readdirSync(WORKFLOWS).map((file) => join(WORKFLOWS, file)), ...readdirSync(ACTIONS).map((action) => join(ACTIONS, action, "action.yml"))];
+
 const spelled = (...args: string[]) => execute(join(BIN, "spelled"), scratch("spelled-"), {}, args);
 const rows = () => heard(spelled("labels")).lines.map((line) => line.split("\t"));
 
@@ -100,5 +112,20 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
     const { stdout } = execute(join(BIN, "..", "node_modules", ".bin", "tsc"), copy, {}, ["--noEmit", "--pretty", "false", "-p", "tsconfig.json"]);
 
     expect(stdout.split("\n").filter((line) => line.startsWith("src/")).map((line) => /^src\/misspelled\.ts\((\d+),/.exec(line)?.[1])).toEqual(["2", "3", "4", "5", "7", "8"]);
+  });
+
+  it("finds every label a workflow file spells in the set, so a misspelled one fails the check (#1104)", () => {
+    const held = rows().map(([name]) => name);
+    const planted = [
+      "if: contains(github.event.issue.labels.*.name, 'specs')",
+      "if: github.event.label.name == 'waitng'",
+      "bin/mark ${{ github.event.issue.number }} bulding || true # quiet: bin/mark names its own refusal",
+      'bin/mark "$ISSUE" needs-humans',
+      "grep -qx needs-humen",
+      "gh issue edit 1 --add-label asking",
+    ].join("\n");
+
+    expect(spelledIn(planted).filter((name) => !held.includes(name))).toEqual(["specs", "waitng", "bulding", "needs-humans", "needs-humen", "asking"]);
+    for (const file of workflowFiles()) expect(spelledIn(readFileSync(file, "utf8")).filter((name) => !held.includes(name)), file).toEqual([]);
   });
 });
