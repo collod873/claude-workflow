@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { splitClosed, splitInto } from "./builder.ts";
-import { commentOnPr, commentOnTicket, commentsOn, labelsOf, labelsUnread, markWith, NEEDS_HUMAN, RESOLVING, WAITING, type MarkedLabel } from "./post.ts";
+import { commentOnPr, commentOnTicket, commentsOn, labelsOf, labelsUnread, markWith, type Held, NEEDS_HUMAN, RESOLVING, WAITING, type MarkedLabel } from "./post.ts";
 import { FINGERPRINT, REVIEWED_FROM, TICKET_BRANCH } from "./reviewer.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { quoted, why } from "./ticket-shape.ts";
@@ -40,7 +40,7 @@ function answered(got: ReturnType<typeof run>, line: string): boolean {
   return got.status === 0;
 }
 
-function labelsHeld(ticket: string): string[] {
+function labelsHeld(ticket: string): Held {
   const held = labelsOf(ticket, gh);
   return held === "unread" ? unread(labelsUnread(ticket)) : held;
 }
@@ -202,23 +202,23 @@ const mark = markWith(quietly);
 
 function markOnce(ticket: string, label: MarkedLabel): void {
   const held = labelsHeld(ticket);
-  if (![label, NEEDS_HUMAN, RESOLVING].some((kept) => held.includes(kept))) mark(ticket, label);
+  if (![label, NEEDS_HUMAN, RESOLVING].some((kept) => held.has(kept))) mark(ticket, label);
 }
 
 const LANDING: MarkedLabel = "landing";
 
-function wantedOn(pr: QueuedPr, merging: QueuedPr | undefined, held: string[]): MarkedLabel | undefined {
+function wantedOn(pr: QueuedPr, merging: QueuedPr | undefined, held: Held): MarkedLabel | undefined {
   if (pr.checks === "red") return undefined;
-  if (pr === merging && (pr.checks === "green" || held.includes(LANDING))) return LANDING;
+  if (pr === merging && (pr.checks === "green" || held.has(LANDING))) return LANDING;
   return pr.checks === "green" ? "queued" : "checking";
 }
 
 function settle(ticket: string, pr: QueuedPr, merging: QueuedPr | undefined, conflicted: boolean): void {
   const held = labelsHeld(ticket);
-  const wanted = conflicted || held.includes(RESOLVING) ? undefined : wantedOn(pr, merging, held);
-  const writes = wanted !== undefined && !held.includes(NEEDS_HUMAN) && (wanted !== "checking" || held.includes(LANDING));
-  if (writes && !held.includes(wanted)) mark(ticket, wanted);
-  else if (!writes && held.includes(LANDING) && !held.includes(NEEDS_HUMAN)) mark(ticket, "checking");
+  const wanted = conflicted || held.has(RESOLVING) ? undefined : wantedOn(pr, merging, held);
+  const writes = wanted !== undefined && !held.has(NEEDS_HUMAN) && (wanted !== "checking" || held.has(LANDING));
+  if (writes && !held.has(wanted)) mark(ticket, wanted);
+  else if (!writes && held.has(LANDING) && !held.has(NEEDS_HUMAN)) mark(ticket, "checking");
 }
 
 function wakeBuilder(ticket: string, reason: string): void {
@@ -256,7 +256,7 @@ function updateBranch(pr: QueuedPr): Moved {
     return "retried";
   }
   commentOnPr(number, `${failedBranchUpdate(number)} ${reason}\n\n${headLine(headRefOid)}\n\nRun: ${thisRun}`, gh);
-  if (ticket !== undefined && labelsHeld(ticket).includes(NEEDS_HUMAN)) console.log(`close: #${ticket} is labelled ${NEEDS_HUMAN}, so the conflict on PR #${number} wakes no builder`);
+  if (ticket !== undefined && labelsHeld(ticket).has(NEEDS_HUMAN)) console.log(`close: #${ticket} is labelled ${NEEDS_HUMAN}, so the conflict on PR #${number} wakes no builder`);
   else if (ticket !== undefined) {
     mark(ticket, RESOLVING);
     wakeBuilder(ticket, `#${ticket}'s ${failedBranchUpdate(number)} ${reason}`);

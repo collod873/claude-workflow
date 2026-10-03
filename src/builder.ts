@@ -312,7 +312,7 @@ function ownTicket(ticket: string, run: string | undefined): number {
     return 1;
   }
   if (held === undefined) mark(ticket, "building");
-  else if (!held.includes(RESOLVING)) mark(ticket, "building", "--try");
+  else if (!held.has(RESOLVING)) mark(ticket, "building", "--try");
   const asked = gh(["issue", "view", ticket, "--json", "body", "--jq", ".body"]);
   if (asked.status !== 0) return calledOwner(ticket, "its ticket could not be read");
   let body = asked.stdout;

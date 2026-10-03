@@ -81,10 +81,24 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
     const copy = scratch("spelled-typed-");
     for (const kept of ["src", "tsconfig.json", "package.json", "vitest.config.ts"]) cpSync(join(BIN, "..", kept), join(copy, kept), { recursive: true });
     symlinkSync(join(BIN, "..", "node_modules"), join(copy, "node_modules"));
-    plant(copy, "src/misspelled.ts", 'import { mark, NEEDS_HUMAN, type MarkedLabel } from "./post.ts";\nconst held: MarkedLabel = "needs-humans";\nmark("811", "fixing");\nmark("811", NEEDS_HUMAN, held);\n');
+    plant(
+      copy,
+      "src/misspelled.ts",
+      [
+        'import { gh, heldOf, labelsOf, mark, NEEDS_HUMAN, post, type MarkedLabel } from "./post.ts";',
+        'const held: MarkedLabel = "needs-humans";',
+        'mark("811", "fixing");',
+        "mark(\"811\", NEEDS_HUMAN, held);",
+        'post({ kind: "ticket", title: "t", text: "", labels: ["waitin"] }, gh);',
+        'const read = labelsOf("811", gh);',
+        'if (read !== "unread" && read.has("resolve")) mark("811", "building");',
+        'heldOf([{ name: "spec" }]).has("specs");',
+        "",
+      ].join("\n"),
+    );
 
     const { stdout } = execute(join(BIN, "..", "node_modules", ".bin", "tsc"), copy, {}, ["--noEmit", "--pretty", "false", "-p", "tsconfig.json"]);
 
-    expect(stdout.split("\n").filter((line) => line.startsWith("src/")).map((line) => /^src\/misspelled\.ts\((\d+),/.exec(line)?.[1])).toEqual(["2", "3", "4"]);
+    expect(stdout.split("\n").filter((line) => line.startsWith("src/")).map((line) => /^src\/misspelled\.ts\((\d+),/.exec(line)?.[1])).toEqual(["2", "3", "4", "5", "7", "8"]);
   });
 });

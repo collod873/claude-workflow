@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { capped } from "./brief.ts";
 import { FILED } from "./builder.ts";
 import { FENCED_OPUS } from "./fence.ts";
-import { askedIssue, commentOnTicket, commentsOn, gh, mark, NEEDS_HUMAN, post } from "./post.ts";
+import { askedIssue, commentOnTicket, commentsOn, gh, heldOf, mark, NEEDS_HUMAN, post } from "./post.ts";
 import { LIST_CAP, NO_EM_DASH, TICKET_CAP } from "./reviewer.ts";
 import { hired, machineLogs, type Spent } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
@@ -236,7 +236,7 @@ function sliced(issue: string, fix?: number[]): Stop | undefined {
   const read = gh(["issue", "view", issue, "--json", "title,body,labels"]);
   const asked = read.status === 0 ? askedIssue(read.stdout) : undefined;
   if (asked === undefined) return stoppedAt("unread", `${said} could not be read, so no model was spent`);
-  if (!asked.labels.some(({ name }) => name === SPEC_LABEL)) return stoppedAt("notSpec", `${said} is not a spec, so nothing sliced it`);
+  if (!heldOf(asked.labels).has(SPEC_LABEL)) return stoppedAt("notSpec", `${said} is not a spec, so nothing sliced it`);
   if (asked.labels.some(({ name }) => name === NEEDS_HUMAN)) {
     console.log(`${said} is marked ${NEEDS_HUMAN}, so nothing sliced it`);
     return undefined;

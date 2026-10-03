@@ -11,7 +11,7 @@ export interface Posting {
   title?: string;
   pr?: string;
   sessionId?: string;
-  labels?: string[];
+  labels?: LabelName[];
 }
 
 export type Gh = (args: string[]) => { status: number | null; stdout: string; stderr: string };
@@ -20,9 +20,15 @@ export const gh: Gh = (args) => spawnSync("gh", args, { encoding: "utf8", maxBuf
 export const markWith = (env: NodeJS.ProcessEnv) => (issue: string, label: MarkedLabel | "--closed", ...count: ("--try" | "--untry")[]) =>
   spawnSync(join(process.cwd(), "bin", "mark"), [issue, label, ...count], { stdio: ["ignore", "ignore", "inherit"], env });
 export const mark = markWith(process.env);
-export function labelsOf(issue: string, gh: Gh): string[] | "unread" {
+export interface Held {
+  has(label: LabelName): boolean;
+}
+
+export const heldOf = (labels: { name?: string }[] | undefined): Held => new Set((labels ?? []).map(({ name }) => name));
+
+export function labelsOf(issue: string, gh: Gh): Held | "unread" {
   const got = gh(["issue", "view", issue, "--json", "labels", "--jq", ".labels[].name"]);
-  return got.status === 0 ? got.stdout.split("\n").filter((label) => label !== "") : "unread";
+  return got.status === 0 ? new Set(got.stdout.split("\n")) : "unread";
 }
 
 export const labelsUnread = (issue: string) => `the labels of #${issue} could not be read, so nothing is marked`;
@@ -35,11 +41,11 @@ interface Kind {
   shape?: string;
 }
 
-const filed = (refuses: (text: string) => string[], label: string[], shape: string): Kind => ({
+const filed = (refuses: (text: string) => string[], labels: LabelName[], shape: string): Kind => ({
   refuses,
   shape,
   on: "title",
-  args: (title, text) => ["issue", "create", "--title", title, ...label, "--body", text],
+  args: (title, text) => ["issue", "create", "--title", title, ...labels.flatMap((label) => ["--label", label]), "--body", text],
 });
 
 const judgementRefusals = (text: string): string[] => emDashLines(text).map((line) => `line ${line} carries an em dash`);
@@ -52,10 +58,10 @@ export const RESOLVING: MarkedLabel = "resolving";
 export { type MarkedLabel };
 
 const KINDS: Record<string, Kind> = {
-  ticket: filed(ticketRefusals, ["--label", "ticket"], TICKET_SHAPE),
-  note: filed(noteRefusals, ["--label", "note"], NOTE_SHAPE),
-  research: filed(noteRefusals, ["--label", "note", "--label", RESEARCH], NOTE_SHAPE),
-  spec: filed(specRefusals, ["--label", "spec"], SPEC_SHAPE),
+  ticket: filed(ticketRefusals, ["ticket"], TICKET_SHAPE),
+  note: filed(noteRefusals, ["note"], NOTE_SHAPE),
+  research: filed(noteRefusals, ["note", RESEARCH], NOTE_SHAPE),
+  spec: filed(specRefusals, ["spec"], SPEC_SHAPE),
   judgement: { refuses: judgementRefusals, on: "pr", args: (pr, text) => ["pr", "comment", pr, "--body", text] },
 };
 
@@ -140,7 +146,7 @@ export function underOwnerSpec(ticket: string, gh: Gh): Admission {
   const spec = opened(`${ticket}/parent`, gh);
   if (spec === "unread") return { unread: `the parent of #${ticket} could not be read` };
   if (spec === "missing") return { refused: "the App opened it under no spec" };
-  if (!(spec.labels ?? []).some(({ name }) => name === "spec")) return { refused: "the App opened it under an issue not labelled `spec`" };
+  if (!heldOf(spec.labels).has("spec")) return { refused: "the App opened it under an issue not labelled `spec`" };
   if (spec.user?.login !== OWNER) return { refused: "the App opened it under a spec the owner did not open" };
   if (spec.state !== "open") return { refused: "the App opened it under a spec that is not open" };
   return {};
