@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { text as read } from "node:stream/consumers";
 import { emDashLines } from "./em-dash.ts";
 import { NEXT_HEADING, NOTE_SHAPE, SPEC_SHAPE, TICKET_SHAPE, matchEnd, noteRefusals, rewriteRefusals, specRefusals, ticketRefusals } from "./ticket-shape.ts";
+import type { LabelName, MarkedLabel } from "./spelled.ts";
 
 export interface Posting {
   kind: string;
@@ -16,7 +17,8 @@ export interface Posting {
 export type Gh = (args: string[]) => { status: number | null; stdout: string; stderr: string };
 
 export const gh: Gh = (args) => spawnSync("gh", args, { encoding: "utf8", maxBuffer: Infinity });
-export const markWith = (env: NodeJS.ProcessEnv) => (issue: string, ...label: string[]) => spawnSync(join(process.cwd(), "bin", "mark"), [issue, ...label], { stdio: ["ignore", "ignore", "inherit"], env });
+export const markWith = (env: NodeJS.ProcessEnv) => (issue: string, label: MarkedLabel | "--closed", ...count: ("--try" | "--untry")[]) =>
+  spawnSync(join(process.cwd(), "bin", "mark"), [issue, label, ...count], { stdio: ["ignore", "ignore", "inherit"], env });
 export const mark = markWith(process.env);
 export function labelsOf(issue: string, gh: Gh): string[] | "unread" {
   const got = gh(["issue", "view", issue, "--json", "labels", "--jq", ".labels[].name"]);
@@ -43,9 +45,11 @@ const filed = (refuses: (text: string) => string[], label: string[], shape: stri
 const judgementRefusals = (text: string): string[] => emDashLines(text).map((line) => `line ${line} carries an em dash`);
 
 export const MISSING = /HTTP 404/;
-export const RESEARCH = "research";
-export const WAITING = "waiting";
-export const NEEDS_HUMAN = "needs-human";
+export const RESEARCH: LabelName = "research";
+export const WAITING: MarkedLabel = "waiting";
+export const NEEDS_HUMAN: MarkedLabel = "needs-human";
+export const RESOLVING: MarkedLabel = "resolving";
+export { type MarkedLabel };
 
 const KINDS: Record<string, Kind> = {
   ticket: filed(ticketRefusals, ["--label", "ticket"], TICKET_SHAPE),

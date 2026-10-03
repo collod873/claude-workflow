@@ -10,7 +10,7 @@ interface Label {
 const KIND_GREY = "c2c2c2";
 const STATE_BLUE = "1d76db";
 
-const LABELS: readonly Label[] = [
+const LABELS = [
   { name: "ticket", kind: "kind", colour: KIND_GREY, description: "A ticket the machine builds" },
   { name: "spec", kind: "kind", colour: KIND_GREY, description: "A spec: the whole statement of a big job, sliced into tickets, never built itself" },
   { name: "note", kind: "kind", colour: KIND_GREY, description: "Filed to be kept, never built" },
@@ -26,7 +26,10 @@ const LABELS: readonly Label[] = [
   { name: "asked", kind: "owner", colour: "5319e7", description: "The machine put the owner a question and resumes on the owner's reply" },
   { name: "needs-human", kind: "owner", colour: "b60205", description: "The machine stopped and needs the owner" },
   { name: "try-", kind: "try", colour: "f66a0a", description: "A builder run after a failure, or a spec's fix wave" },
-];
+] as const satisfies readonly Label[];
+
+export type LabelName = (typeof LABELS)[number]["name"];
+export type MarkedLabel = Extract<(typeof LABELS)[number], { kind: "state" | "parked" | "owner" }>["name"];
 
 const USAGE = "spelled: usage: spelled labels\n";
 
@@ -36,5 +39,5 @@ if (import.meta.main) {
     process.stderr.write(USAGE);
     process.exit(2);
   }
-  process.stdout.write(LABELS.map(({ name, kind, colour, description }) => `${[name, kind, colour, description].join("\t")}\n`).join(""));
+  process.stdout.write(LABELS.map(({ name, kind, colour, description }: Label) => `${[name, kind, colour, description].join("\t")}\n`).join(""));
 }

@@ -1,8 +1,8 @@
-import { copyFileSync, readdirSync, readFileSync } from "node:fs";
+import { copyFileSync, cpSync, readdirSync, readFileSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { BIN, execute, heard, scratch, script, type WorkflowStep } from "./scenarios.ts";
+import { BIN, execute, heard, plant, scratch, script, type WorkflowStep } from "./scenarios.ts";
 
 const WORKFLOWS = join(BIN, "..", ".github", "workflows");
 
@@ -75,5 +75,16 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
         if (marking >= 0) expect(node, `${file} ${name}`).toBeLessThan(marking);
       }
     }
+  });
+
+  it("lets the stages mark, hold and file only labels the set holds, so a name typed outside it fails typecheck (#1100)", () => {
+    const copy = scratch("spelled-typed-");
+    for (const kept of ["src", "tsconfig.json", "package.json", "vitest.config.ts"]) cpSync(join(BIN, "..", kept), join(copy, kept), { recursive: true });
+    symlinkSync(join(BIN, "..", "node_modules"), join(copy, "node_modules"));
+    plant(copy, "src/misspelled.ts", 'import { mark, NEEDS_HUMAN, type MarkedLabel } from "./post.ts";\nconst held: MarkedLabel = "needs-humans";\nmark("811", "fixing");\nmark("811", NEEDS_HUMAN, held);\n');
+
+    const { stdout } = execute(join(BIN, "..", "node_modules", ".bin", "tsc"), copy, {}, ["--noEmit", "--pretty", "false", "-p", "tsconfig.json"]);
+
+    expect(stdout.split("\n").filter((line) => line.startsWith("src/")).map((line) => /^src\/misspelled\.ts\((\d+),/.exec(line)?.[1])).toEqual(["2", "3", "4"]);
   });
 });
