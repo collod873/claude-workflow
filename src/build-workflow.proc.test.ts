@@ -1,9 +1,9 @@
 import { spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { cloned, git, holds, scratch, script, type StepOutcome } from "./scenarios.ts";
+import { cloned, copyMark, git, holds, scratch, script, type StepOutcome } from "./scenarios.ts";
 
 const REPO = join(import.meta.dirname, "..");
 const WORKFLOWS = join(REPO, ".github", "workflows");
@@ -551,8 +551,7 @@ describe("a fix, research, slice, reslice or done check run that ends red marks 
   const calls = (labels: string, run: string) => {
     const root = scratch("called-");
     const called = join(root, "calls");
-    mkdirSync(join(root, "bin"), { recursive: true });
-    copyFileSync(join(REPO, "bin", "mark"), join(root, "bin", "mark"));
+    copyMark(root);
     script(join(root, "stub", "gh"), `printf '%s\\n' "$*" >>"${called}"\n[[ $2 == view ]] && printf '%s\\n' ${labels}\nexit 0\n`);
     const ran = ranStep(owned ?? {}, root, { PATH: `${join(root, "stub")}:${process.env.PATH}`, ISSUE: "9", RAN: run });
     expect(ran.status, ran.stderr).toBe(0);

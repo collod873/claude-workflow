@@ -47,7 +47,7 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
     const mark = readFileSync(join(BIN, "mark"), "utf8");
 
     for (const [name, , colour, description] of rows()) {
-      for (const spelling of [name, colour, description]) expect(mark, spelling).not.toMatch(new RegExp(`(?<![\\w-])${RegExp.escape(spelling ?? "")}(?![\\w/-])`));
+      for (const spelling of [name, colour, description]) expect(mark, spelling).not.toMatch(new RegExp(`(?<![\\w-])${(spelling ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\w/-])`));
     }
   });
 
