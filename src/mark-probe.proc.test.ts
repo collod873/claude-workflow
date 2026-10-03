@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { copyFileSync, readFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
@@ -22,7 +22,9 @@ function probed(gh: string) {
   expect(step.env).toMatchObject({ GH_TOKEN: expect.any(String), GH_REPO: expect.any(String) });
   const root = scratch("mark-probe-");
   script(join(root, "bin", "gh"), gh);
-  copyFileSync(join(BIN, "mark"), join(root, "bin", "mark"));
+  for (const name of ["mark", "spelled"]) copyFileSync(join(BIN, name), join(root, "bin", name));
+  mkdirSync(join(root, "src"));
+  copyFileSync(join(BIN, "..", "src", "spelled.ts"), join(root, "src", "spelled.ts"));
   const { status, stdout, stderr } = spawnSync("bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", step.run ?? ""], {
     cwd: root,
     env: { ...process.env, PATH: `${join(root, "bin")}:${process.env.PATH}` },

@@ -91,6 +91,11 @@ const FIXED: Part[] = [
     stops: "https://github.com/collod873/claude-workflow/issues/835",
   },
   {
+    name: "bin/spelled",
+    file: "bin/spelled",
+    stops: "https://github.com/collod873/claude-workflow/issues/1100",
+  },
+  {
     name: "bin/close-note",
     file: "bin/close-note",
     stops: "https://github.com/collod873/claude-workflow/issues/879",
