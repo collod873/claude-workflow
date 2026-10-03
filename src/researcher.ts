@@ -44,7 +44,7 @@ function researched(issue: string): Stop | undefined {
   const read = gh(["issue", "view", issue, "--json", "title,body,labels"]);
   const asked = read.status === 0 ? askedIssue(read.stdout) : undefined;
   if (asked === undefined) return stoppedAt("unread", `${said} could not be read, so no model was spent`);
-  if (!asked.labels.some(({ name }) => name === RESEARCH)) return stoppedAt("notResearch", `${said} is not a research note, so nothing answered or closed it`);
+  if (!asked.labels.has(RESEARCH)) return stoppedAt("notResearch", `${said} is not a research note, so nothing answered or closed it`);
   mark(issue, "researching");
   const logs = machineLogs(process.cwd());
   mkdirSync(logs, { recursive: true });

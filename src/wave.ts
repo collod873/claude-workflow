@@ -1,11 +1,12 @@
 import { capped } from "./brief.ts";
-import { commentsOn, gh, opened, type Opened } from "./post.ts";
+import { commentsOn, gh, heldOf, opened, type Opened } from "./post.ts";
 import { REVIEWED_FROM, SPLIT_FROM } from "./reviewer.ts";
+import type { LabelName } from "./spelled.ts";
 import { exitFor, stoppedAt, type Stop } from "./stops.ts";
 import { why } from "./ticket-shape.ts";
 
-export const SPEC_LABEL = "spec";
-const UNSLICED_LABELS = [SPEC_LABEL, "note"];
+export const SPEC_LABEL: LabelName = "spec";
+const UNSLICED_LABELS: LabelName[] = [SPEC_LABEL, "note"];
 const WAVE_HEADING = "## Wave ";
 const MOVES_OPEN = "<!-- moves: ";
 const MOVES_CLOSE = " -->";
@@ -47,7 +48,7 @@ const followed = (body: string): string | undefined => {
 function specOf(issue: string, chain: string[] = []): Found | "unread" {
   const parent = opened(`${issue}/parent`, gh);
   if (parent === "unread") return "unread";
-  if (parent !== "missing") return (parent.labels ?? []).some(({ name }) => name === SPEC_LABEL) ? { spec: parent, chain } : { chain };
+  if (parent !== "missing") return heldOf(parent.labels).has(SPEC_LABEL) ? { spec: parent, chain } : { chain };
   if (chain.length === DEEPEST) return { chain };
   const asked = opened(issue, gh);
   if (asked === "unread") return "unread";
@@ -147,7 +148,7 @@ function moved(comments: string[]): string {
 function waveEnded(issue: string): Stop | undefined {
   const closed = opened(issue, gh);
   if (closed === "unread") return stoppedAt("unread", `slice: #${issue} could not be read`);
-  const label = closed === "missing" ? undefined : UNSLICED_LABELS.find((one) => (closed.labels ?? []).some(({ name }) => name === one));
+  const label = closed === "missing" ? undefined : UNSLICED_LABELS.find((one) => heldOf(closed.labels).has(one));
   if (label !== undefined) {
     console.error(`slice: #${issue} is a ${label}, so no wave ended`);
     return undefined;

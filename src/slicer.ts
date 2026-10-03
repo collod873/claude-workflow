@@ -236,8 +236,8 @@ function sliced(issue: string, fix?: number[]): Stop | undefined {
   const read = gh(["issue", "view", issue, "--json", "title,body,labels"]);
   const asked = read.status === 0 ? askedIssue(read.stdout) : undefined;
   if (asked === undefined) return stoppedAt("unread", `${said} could not be read, so no model was spent`);
-  if (!asked.labels.some(({ name }) => name === SPEC_LABEL)) return stoppedAt("notSpec", `${said} is not a spec, so nothing sliced it`);
-  if (asked.labels.some(({ name }) => name === NEEDS_HUMAN)) {
+  if (!asked.labels.has(SPEC_LABEL)) return stoppedAt("notSpec", `${said} is not a spec, so nothing sliced it`);
+  if (asked.labels.has(NEEDS_HUMAN)) {
     console.log(`${said} is marked ${NEEDS_HUMAN}, so nothing sliced it`);
     return undefined;
   }
