@@ -97,7 +97,7 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
       copy,
       "src/misspelled.ts",
       [
-        'import { gh, heldOf, labelsOf, mark, NEEDS_HUMAN, post, type MarkedLabel } from "./post.ts";',
+        'import { askedIssue, gh, heldOf, labelsOf, mark, NEEDS_HUMAN, post, type MarkedLabel } from "./post.ts";',
         'const held: MarkedLabel = "needs-humans";',
         'mark("811", "fixing");',
         "mark(\"811\", NEEDS_HUMAN, held);",
@@ -105,13 +105,15 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
         'const read = labelsOf("811", gh);',
         'if (read !== "unread" && read.has("resolve")) mark("811", "building");',
         'heldOf([{ name: "spec" }]).has("specs");',
+        'askedIssue("{}")?.labels.some(({ name }) => name === "needs-humen");',
+        'askedIssue("{}")?.labels.has("researh");',
         "",
       ].join("\n"),
     );
 
     const { stdout } = execute(join(BIN, "..", "node_modules", ".bin", "tsc"), copy, {}, ["--noEmit", "--pretty", "false", "-p", "tsconfig.json"]);
 
-    expect(stdout.split("\n").filter((line) => line.startsWith("src/")).map((line) => /^src\/misspelled\.ts\((\d+),/.exec(line)?.[1])).toEqual(["2", "3", "4", "5", "7", "8"]);
+    expect([...new Set(stdout.split("\n").filter((line) => line.startsWith("src/")).map((line) => /^src\/misspelled\.ts\((\d+),/.exec(line)?.[1]))]).toEqual(["2", "3", "4", "5", "7", "8", "9", "10"]);
   });
 
   it("finds every label a workflow file spells in the set, so a misspelled one fails the check (#1104)", () => {

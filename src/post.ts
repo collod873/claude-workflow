@@ -161,13 +161,13 @@ export function prNumber(branch: string, gh: Gh): string | undefined {
 export interface Asked {
   title: string;
   body: string;
-  labels: { name: string }[];
+  labels: Held;
 }
 
 export function askedIssue(stdout: string): Asked | undefined {
   try {
-    const asked = JSON.parse(stdout) as Partial<Asked>;
-    return typeof asked.title === "string" && typeof asked.body === "string" && Array.isArray(asked.labels) ? (asked as Asked) : undefined;
+    const { title, body, labels } = JSON.parse(stdout) as { title?: unknown; body?: unknown; labels?: unknown };
+    return typeof title === "string" && typeof body === "string" && Array.isArray(labels) ? { title, body, labels: heldOf(labels as { name?: string }[]) } : undefined;
   } catch {
     return undefined;
   }
