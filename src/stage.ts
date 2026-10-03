@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { closeSync, existsSync, openSync, readFileSync, rmSync, statSync } from "node:fs";
+import { closeSync, existsSync, mkdtempSync, openSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { ownerHooks, stageArgv, type Reach, type Registration } from "./fence.ts";
 import { quoted } from "./ticket-shape.ts";
@@ -48,14 +49,30 @@ function capped(argv: string[], minutes: number, deadline: number): [string, ...
   return ["timeout", `--kill-after=${GRACE_SECONDS}`, String(left), "claude", ...argv];
 }
 
+function hooksIn(read: () => string, refusal: string): Registration | string {
+  try {
+    return (JSON.parse(read()) as { hooks?: Registration }).hooks ?? {};
+  } catch {
+    return refusal;
+  }
+}
+
+function liveHooks(): Registration | string {
+  const link = join(homedir(), ".agents", "hooks-live");
+  if (!existsSync(link)) return `no owner hooks for this stage: AGENT_HOOKS_SETTINGS is unset and ${link} is missing`;
+  const root = realpathSync(link);
+  const unregistered = mkdtempSync(join(tmpdir(), "agent-hooks-"));
+  const emitted = spawnSync("python3", [join(root, "hookcheck.py"), "--root", root, "--settings", join(unregistered, "unregistered.json"), "--emit-settings"], { encoding: "utf8" });
+  rmSync(unregistered, { recursive: true, force: true });
+  const refusal = `the live release at ${root} emitted no hooks: ${quoted(String(emitted.stderr ?? "").trim().split("\n")[0] ?? "")}`;
+  return emitted.status === 0 ? hooksIn(() => emitted.stdout, refusal) : refusal;
+}
+
 function registered(): Registration | string {
   const path = process.env.AGENT_HOOKS_SETTINGS;
-  if (path === undefined || path === "") return {};
-  try {
-    return (JSON.parse(readFileSync(path, "utf8")) as { hooks?: Registration }).hooks ?? {};
-  } catch {
-    return path;
-  }
+  if (path === "") return {};
+  if (path === undefined) return liveHooks();
+  return hooksIn(() => readFileSync(path, "utf8"), path);
 }
 
 export interface Hire {
