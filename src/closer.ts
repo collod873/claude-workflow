@@ -205,7 +205,7 @@ function markOnce(ticket: string, label: MarkedLabel): void {
   if (![label, NEEDS_HUMAN, RESOLVING].some((kept) => held.has(kept))) mark(ticket, label);
 }
 
-const LANDING: MarkedLabel = "landing";
+const LANDING = "landing" as const satisfies MarkedLabel;
 
 function wantedOn(pr: QueuedPr, merging: QueuedPr | undefined, held: Held): MarkedLabel | undefined {
   if (pr.checks === "red") return undefined;

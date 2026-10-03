@@ -51,10 +51,10 @@ const filed = (refuses: (text: string) => string[], labels: LabelName[], shape: 
 const judgementRefusals = (text: string): string[] => emDashLines(text).map((line) => `line ${line} carries an em dash`);
 
 export const MISSING = /HTTP 404/;
-export const RESEARCH: LabelName = "research";
-export const WAITING: MarkedLabel = "waiting";
-export const NEEDS_HUMAN: MarkedLabel = "needs-human";
-export const RESOLVING: MarkedLabel = "resolving";
+export const RESEARCH = "research" as const satisfies LabelName;
+export const WAITING = "waiting" as const satisfies MarkedLabel;
+export const NEEDS_HUMAN = "needs-human" as const satisfies MarkedLabel;
+export const RESOLVING = "resolving" as const satisfies MarkedLabel;
 export { type MarkedLabel };
 
 const KINDS: Record<string, Kind> = {
