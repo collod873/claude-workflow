@@ -40,10 +40,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          SPEC: ${{ github.event.issue.number }}
         run: |
-          asked=$(gh api --paginate "repos/$GH_REPO/issues/$SPEC/comments" --jq '.[] | select(.body | startswith("## Done check")) | .body | contains("**Put to the owner**") and (contains("<!-- fix-wave -->") | not)' | tail -n 1)
-          printf 'asked=%s\n' "${asked:-false}" >>"$GITHUB_OUTPUT"
+          asked=$(bin/done-check ${{ github.event.issue.number }} --asked)
+          printf 'asked=%s\n' "$asked" >>"$GITHUB_OUTPUT"
 
   check:
     needs: asked

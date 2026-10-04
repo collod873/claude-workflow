@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { text as read } from "node:stream/consumers";
 import { emDashLines } from "./em-dash.ts";
 import { NEXT_HEADING, NOTE_SHAPE, SPEC_SHAPE, TICKET_SHAPE, matchEnd, noteRefusals, rewriteRefusals, specRefusals, ticketRefusals } from "./ticket-shape.ts";
-import { NEEDS_HUMAN, RESEARCH, WAITING, type LabelName, type MarkedLabel } from "./spelled.ts";
+import { NEEDS_HUMAN, NOTE, RESEARCH, RESOLVING, SPEC, TICKET, WAITING, type LabelName, type MarkedLabel } from "./spelled.ts";
 import { type Stop, stoppedAt } from "./stops.ts";
 
 export interface Posting {
@@ -101,14 +101,13 @@ const filed = (refuses: (text: string) => string[], labels: LabelName[], shape: 
 const judgementRefusals = (text: string): string[] => emDashLines(text).map((line) => `line ${line} carries an em dash`);
 
 export const MISSING = /HTTP 404/;
-export const RESOLVING = "resolving" as const satisfies MarkedLabel;
-export { NEEDS_HUMAN, RESEARCH, WAITING, type MarkedLabel };
+export { NEEDS_HUMAN, RESEARCH, RESOLVING, WAITING, type MarkedLabel };
 
 const KINDS: Record<string, Kind> = {
-  ticket: filed(ticketRefusals, ["ticket"], TICKET_SHAPE),
-  note: filed(noteRefusals, ["note"], NOTE_SHAPE),
-  research: filed(noteRefusals, ["note", RESEARCH], NOTE_SHAPE),
-  spec: filed(specRefusals, ["spec"], SPEC_SHAPE),
+  ticket: filed(ticketRefusals, [TICKET], TICKET_SHAPE),
+  note: filed(noteRefusals, [NOTE], NOTE_SHAPE),
+  research: filed(noteRefusals, [NOTE, RESEARCH], NOTE_SHAPE),
+  spec: filed(specRefusals, [SPEC], SPEC_SHAPE),
   judgement: { refuses: judgementRefusals, on: "pr", args: (pr, text) => ["pr", "comment", pr, "--body", text] },
 };
 
@@ -195,7 +194,7 @@ export function underOwnerSpec(ticket: string, gh: Gh): Admission {
   const spec = opened(`${ticket}/parent`, gh);
   if (spec === "unread") return { unread: `the parent of #${ticket} could not be read` };
   if (spec === "missing") return { refused: "the App opened it under no spec" };
-  if (!heldOf(spec.labels).has("spec")) return { refused: "the App opened it under an issue not labelled `spec`" };
+  if (!heldOf(spec.labels).has(SPEC)) return { refused: "the App opened it under an issue not labelled `spec`" };
   if (spec.user?.login !== OWNER) return { refused: "the App opened it under a spec the owner did not open" };
   if (spec.state !== "open") return { refused: "the App opened it under a spec that is not open" };
   return {};
