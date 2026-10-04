@@ -11,11 +11,17 @@ fi
 
 first_line() { printf '%s' "$1" | head -n 1 | cut -c 1-120; }
 
+here="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+if ! kind=$("$here/spelled" NOTE 2>&1); then
+  printf 'close-note: the note label could not be read: %s\n' "$(first_line "$kind")" >&2
+  exit 1
+fi
+
 if ! labels=$(gh issue view "$note" --json labels --jq '.labels[].name' 2>&1); then
   printf 'close-note: #%s not read: %s\n' "$note" "$(first_line "$labels")" >&2
   exit 1
 fi
-if ! grep -qx note <<<"$labels"; then
+if ! grep -qxF "$kind" <<<"$labels"; then
   printf 'close-note: #%s is not a note; a ticket closes when its PR merges\n' "$note" >&2
   exit 1
 fi

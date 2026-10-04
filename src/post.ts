@@ -122,6 +122,8 @@ const KINDS: Record<string, Kind> = {
   judgement: { refuses: judgementRefusals, on: "pr", args: (pr, text) => ["pr", "comment", pr, "--body", text] },
 };
 
+export const POSTING_KINDS = Object.keys(KINDS);
+
 const FIRST_HEADING = /^##[ \t].*$/m;
 
 export const sessionLine = (sessionId: string) => `Session: \`${sessionId}\``;

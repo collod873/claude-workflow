@@ -80,7 +80,7 @@ describe("bin/research answers a research note on the note and closes it, with n
     const fetched = steps.findIndex((step) => /SESSION_CAPTURES=.*GITHUB_ENV/.test(step.run ?? ""));
     const run = steps[fetched]?.run ?? "";
 
-    expect(steps[minted]?.with).toMatchObject({ owner: "collod873", "permission-contents": "read" });
+    expect(steps[minted]?.with).toMatchObject({ owner: "${{ github.repository_owner }}", "permission-contents": "read" });
     expect(fetched).toBeGreaterThan(minted);
     expect(run).toContain("^project: .*(Workflow|claude-workflow|\\.agents)");
     expect(run).toContain('rm -rf "$knowledge"');

@@ -50,6 +50,11 @@ export const OWNER = "collod873";
 export const MACHINE = "collod873-machine[bot]";
 const KEYED: Record<string, string> = { TICKET, SPEC, NOTE, RESEARCH, BUILDING, CHECKING, QUEUED, RESOLVING, LANDING, SLICING, RESEARCHING, WAITING, ASKED, NEEDS_HUMAN, TICKET_PREFIX, OWNER, MACHINE };
 
+export const SPELLINGS: [key: string, spelling: string][] = [
+  ...Object.entries(KEYED),
+  ...LABELS.filter(({ name }) => !Object.values(KEYED).includes(name)).map(({ name }): [string, string] => ["labels", name]),
+];
+
 const USAGE = `spelled: usage: spelled labels | spelled <${Object.keys(KEYED).join("|")}>\n`;
 
 if (import.meta.main) {

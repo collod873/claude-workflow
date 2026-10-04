@@ -59,6 +59,12 @@ function rawLabels(files: string[], names: string[]): string[] {
   }
   return found;
 }
+const REPO = join(BIN, "..");
+const machine = (dir: string): string[] =>
+  readdirSync(join(REPO, dir), { withFileTypes: true, recursive: true })
+    .filter((found) => found.isFile())
+    .map((found) => join(found.parentPath, found.name))
+    .filter((file) => !/\.(test|part)\.ts$|\/scenarios\.ts$/.test(file));
 const rows = () => heard(spelled("labels")).lines.map((line) => line.split("\t"));
 
 describe("bin/spelled prints the machine's labels from one typed set, so no script types its own list (#1100)", () => {
@@ -119,12 +125,6 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
   });
 
   it("prints the ticket branch prefix under TICKET_PREFIX, the one place outside the tests that spells it (#1121)", () => {
-    const REPO = join(BIN, "..");
-    const machine = (dir: string): string[] =>
-      readdirSync(join(REPO, dir), { withFileTypes: true, recursive: true })
-        .filter((found) => found.isFile())
-        .map((found) => join(found.parentPath, found.name))
-        .filter((file) => !/\.(test|part)\.ts$|\/scenarios\.ts$/.test(file));
     const spelling = /ticket\\?\//;
 
     expect(spelled("TICKET_PREFIX")).toEqual({ status: 0, stdout: "ticket/\n", stderr: "" });
@@ -138,12 +138,6 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
   });
 
   it("prints the owner's login under OWNER and the bot's login under MACHINE, the bot's spelled nowhere else the machine runs but build.yml's sender test (#1123)", () => {
-    const REPO = join(BIN, "..");
-    const machine = (dir: string): string[] =>
-      readdirSync(join(REPO, dir), { withFileTypes: true, recursive: true })
-        .filter((found) => found.isFile())
-        .map((found) => join(found.parentPath, found.name))
-        .filter((file) => !/\.(test|part)\.ts$|\/scenarios\.ts$/.test(file));
 
     expect(spelled("OWNER")).toEqual({ status: 0, stdout: "collod873\n", stderr: "" });
     expect(spelled("MACHINE")).toEqual({ status: 0, stdout: "collod873-machine[bot]\n", stderr: "" });

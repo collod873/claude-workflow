@@ -22,7 +22,7 @@ runs:
       with:
         client-id: ${{ inputs.client-id }}
         private-key: ${{ inputs.private-key }}
-        owner: collod873
+        owner: ${{ github.repository_owner }}
         repositories: agent-hooks
         permission-contents: read
 
@@ -32,7 +32,7 @@ runs:
       run: |
         hooks="$RUNNER_TEMP/agent-hooks"
         attempt=1
-        until git clone --quiet --depth 1 "https://x-access-token:$HOOKS_TOKEN@github.com/collod873/agent-hooks" "$hooks" 2>"$RUNNER_TEMP/agent-hooks-clone.log"; do
+        until git clone --quiet --depth 1 "https://x-access-token:$HOOKS_TOKEN@github.com/$GITHUB_REPOSITORY_OWNER/agent-hooks" "$hooks" 2>"$RUNNER_TEMP/agent-hooks-clone.log"; do
           rm -rf "$hooks"
           if [ "$attempt" -ge 3 ]; then
             { printf '%s\n' "A job cannot fetch the owner's hooks after 3 tries"; cat "$RUNNER_TEMP/agent-hooks-clone.log"; } >"$RUNNER_TEMP/agent-hooks-unreachable.log"
@@ -53,7 +53,7 @@ runs:
       with:
         client-id: ${{ inputs.client-id }}
         private-key: ${{ inputs.private-key }}
-        owner: collod873
+        owner: ${{ github.repository_owner }}
         repositories: Knowledge-Base
         permission-contents: read
 
@@ -66,7 +66,7 @@ runs:
         captures="$RUNNER_TEMP/session-captures"
         mkdir -p "$captures"
         printf 'SESSION_CAPTURES=%s\n' "$captures" >>"$GITHUB_ENV"
-        git clone --quiet --depth 1 --filter=blob:none --sparse "https://x-access-token:$CAPTURES_TOKEN@github.com/collod873/Knowledge-Base" "$knowledge"
+        git clone --quiet --depth 1 --filter=blob:none --sparse "https://x-access-token:$CAPTURES_TOKEN@github.com/$GITHUB_REPOSITORY_OWNER/Knowledge-Base" "$knowledge"
         git -C "$knowledge" sparse-checkout set raw/sessions
         grep -lE '^project: .*(Workflow|claude-workflow|\.agents)' "$knowledge"/raw/sessions/*.md | xargs -r cp -t "$captures"
         rm -rf "$knowledge"

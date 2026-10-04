@@ -17,7 +17,7 @@ runs:
       with:
         client-id: ${{ inputs.client-id }}
         private-key: ${{ inputs.private-key }}
-        owner: collod873
+        owner: ${{ github.repository_owner }}
         repositories: Knowledge-Base
         permission-contents: write
 
@@ -32,7 +32,7 @@ runs:
         [ -d "$captured" ] || exit 0
         machine=$(bin/spelled MACHINE) || exit 1
         kb="$RUNNER_TEMP/knowledge-base"
-        git clone --quiet --depth 1 "https://x-access-token:$KB_TOKEN@github.com/collod873/Knowledge-Base" "$kb"
+        git clone --quiet --depth 1 "https://x-access-token:$KB_TOKEN@github.com/$GITHUB_REPOSITORY_OWNER/Knowledge-Base" "$kb"
         git -C "$kb" config user.name "$machine"
         git -C "$kb" config user.email "$machine@users.noreply.github.com"
         cp -r "$captured/." "$kb/raw/"
