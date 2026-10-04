@@ -248,7 +248,7 @@ function sliced(issue: string, fix?: number[]): Stop | undefined {
         return undefined;
       }
       const first = tickets.length === 0 && fix === undefined;
-      const comments = first ? [] : commentsRead(issue, `#${issue}'s comments could not be read, so no model was spent`, gh);
+      const comments = first ? [] : commentsRead(issue, `the comments on #${issue} could not be read, so no model was spent`, gh);
       const found: Found | undefined = first ? undefined : { comments, tickets: waveFound(tickets), diffs: waveDiffs(tickets), missed: fix ?? missedSinceNote(comments), fix: fix !== undefined };
       return { carrying: { comments, found } };
     },
