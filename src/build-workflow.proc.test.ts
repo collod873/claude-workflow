@@ -25,6 +25,7 @@ interface Step {
 
 interface Job {
   if?: string;
+  outputs?: Record<string, string>;
   needs?: string | string[];
   env?: Record<string, unknown>;
   permissions?: Record<string, string>;
@@ -178,8 +179,10 @@ describe("build.yml builds a ticket the moment it is filed (#826)", () => {
     const fix = namedJob(fixWorkflow().jobs, "fix", FIX_WORKFLOW);
     const saved = job.steps.find((step) => step.uses?.startsWith("actions/cache/save@") === true);
     const restored = fix.steps.find((step) => step.uses?.startsWith("actions/cache/restore@") === true);
-    const key = String(saved?.with?.key).replace("${{ github.event.issue.number }}", "9");
+    const key = String(saved?.with?.key).replace("${{ steps.start.outputs.branch }}", "ticket/9");
     const resumedFrom = String(restored?.with?.["restore-keys"]).replace("${{ env.HEAD_REF }}", "ticket/9");
+
+    expect(fix.env?.HEAD_REF).toBe("${{ needs.which.outputs.branch }}");
     const ended = (fixed: string) => holds(saved?.if ?? "success()", { steps: { ...allSkipped(job.steps), fix: outcome(fixed) }, failed: fixed === "failure" });
 
     expect(job["cache-mode"]).toBe("write");
@@ -344,14 +347,23 @@ describe("fix.yml hands every red run of a ticket to its builder, however the ru
       .replace("${{ github.event.issue.number }}", "894")
       .replace("${{ github.event.issue.title }}", "Give the Builder's one turn a single record: ticket/5");
 
+    expect(buildName).toBe("Build #894: Give the Builder's one turn a single record: ticket/5");
     expect(ticketNamed({ RAN: ".github/workflows/check.yml", RAN_ON: "ticket/891", TITLE: "Stamp the session id" })).toBe("891");
     expect(ticketNamed({ RAN: ".github/workflows/build.yml", RAN_ON: "main", TITLE: buildName })).toBe("894");
     expect(ticketNamed({ DISPATCHED: "812" })).toBe("812");
-    expect(ticketNamed({ RAN: ".github/workflows/check.yml", RAN_ON: "land/4b58f3372b91", TITLE: "Build ticket/7: a land PR's title" })).toBe("");
+    expect(ticketNamed({ RAN: ".github/workflows/check.yml", RAN_ON: "land/4b58f3372b91", TITLE: "Build #7: a land PR's title" })).toBe("");
+    expect(ticketNamed({ RAN: ".github/workflows/check.yml", RAN_ON: "ticket/891x", TITLE: "Build #7: a land PR's title" })).toBe("");
+  });
+
+  it("hands the fix job the ticket's branch as spelled builds it, and none when no ticket is named (#1121)", () => {
+    expect(lookedUp({ RAN: ".github/workflows/check.yml", RAN_ON: "ticket/891" }).output.branch).toBe("ticket/891");
+    expect(lookedUp({ DISPATCHED: "812" }).output.branch).toBe("ticket/812");
+    expect(lookedUp({ RAN: ".github/workflows/check.yml", RAN_ON: "land/4b58f3372b91" }).output.branch).toBeUndefined();
+    expect(namedJob(fixWorkflow().jobs, "which", FIX_WORKFLOW)).toMatchObject({ outputs: { branch: "${{ steps.which.outputs.branch }}" } });
   });
 
   it("starts no builder on a red run of a ticket labelled needs-human, whose builder already called the owner, but does on the closer's dispatch (#931)", () => {
-    const building = { RAN: ".github/workflows/build.yml", RAN_ON: "main", TITLE: "Build ticket/9: Give the builder the build" };
+    const building = { RAN: ".github/workflows/build.yml", RAN_ON: "main", TITLE: "Build #9: Give the builder the build" };
     const checking = { RAN: ".github/workflows/check.yml", RAN_ON: "ticket/9", TITLE: "Give the builder the build" };
 
     expect(ticketNamed(building, "building needs-human")).toBe("");
@@ -481,6 +493,7 @@ describe("build.yml re-runs an open PR's failed checks instead of building, when
     expect(openLog).not.toContain("mark 9 building");
     expect(openLog).toMatch(/rerun/i);
     expect(stagesRun(job, undefined, { start: parseOutput(openOutput) })).toEqual(["start"]);
+    expect(parseOutput(openOutput).branch).toBe("ticket/9");
 
     const withNoPr = scratch("reopen-none-");
     const noCalls = join(withNoPr, "calls");
@@ -501,6 +514,9 @@ describe("build.yml re-runs an open PR's failed checks instead of building, when
     expect(filed.status, filed.stderr).toBe(0);
     expect(readFileSync(noCalls, "utf8"), "a first build is no try").toMatch(/^mark 9 building$/m);
     expect(stagesRun(job, undefined, { start: parseOutput(noOutput) })).toEqual(["start", "fix"]);
+    expect(parseOutput(noOutput).branch).toBe("ticket/9");
+    expect(stageStep(job, "fix").env?.BRANCH).toBe("${{ steps.start.outputs.branch }}");
+    expect(stageStep(job, "fix").run).toContain('git checkout --quiet -b "$BRANCH"');
   });
 });
 

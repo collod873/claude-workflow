@@ -36,7 +36,8 @@ const KEYS = [
   ["ASKED", "asked"],
   ["NEEDS_HUMAN", "needs-human"],
 ] as const;
-const USAGE = `spelled: usage: spelled labels | spelled <${KEYS.map(([key]) => key).join("|")}>\n`;
+const SPELLED = [...KEYS, ["TICKET_PREFIX", "ticket/"]] as const;
+const USAGE = `spelled: usage: spelled labels | spelled <${SPELLED.map(([key]) => key).join("|")}>\n`;
 const NAMING = ["post.ts", "slicer.ts", "done-checker.ts", "researcher.ts", "closer.ts", "wave.ts", "builder.ts"].map((file) => join(BIN, "..", "src", file));
 
 function rawLabels(files: string[], names: string[]): string[] {
@@ -92,11 +93,11 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
     for (const [key, name] of KEYS) expect(spelled(key), key).toEqual({ status: 0, stdout: `${name}\n`, stderr: "" });
   });
 
-  it("exports each label the GitHub part and the stages name as the constant spelled prints it under, and nothing else beside the set (#1118)", async () => {
+  it("exports each label the GitHub part and the stages name, and the ticket branch prefix, as the constant spelled prints it under, and nothing else beside the set (#1118, #1121)", async () => {
     const spelledModule: Record<string, unknown> = await import("./spelled.ts");
     const labelled = Object.entries(spelledModule).filter(([, value]) => typeof value === "string");
 
-    expect(labelled).toEqual(KEYS.map(([key, name]) => [key, name]));
+    expect(labelled).toEqual(SPELLED.map(([key, name]) => [key, name]));
   });
 
   it("leaves the GitHub part, the slicer, the done check, the researcher, the closer, the wave reader and the builder no raw string or second constant for a label (#1118)", () => {
@@ -115,6 +116,25 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
 
     expect(rawLabels([join(planted, "src", "raw.ts")], names)).toEqual(['raw.ts:2 "landing"', 'raw.ts:3 "building"', 'raw.ts:3 "spec"']);
     expect(rawLabels(NAMING, names)).toEqual([]);
+  });
+
+  it("prints the ticket branch prefix under TICKET_PREFIX, the one place outside the tests that spells it (#1121)", () => {
+    const REPO = join(BIN, "..");
+    const machine = (dir: string): string[] =>
+      readdirSync(join(REPO, dir), { withFileTypes: true, recursive: true })
+        .filter((found) => found.isFile())
+        .map((found) => join(found.parentPath, found.name))
+        .filter((file) => !/\.(test|part)\.ts$|\/scenarios\.ts$/.test(file));
+    const spelling = /ticket\\?\//;
+
+    expect(spelled("TICKET_PREFIX")).toEqual({ status: 0, stdout: "ticket/\n", stderr: "" });
+    expect(
+      ["src", "bin", ".github"].flatMap(machine).flatMap((file) =>
+        readFileSync(file, "utf8")
+          .split("\n")
+          .flatMap((line, at) => (spelling.test(line) && !line.startsWith("export const TICKET_PREFIX = ") ? [`${file.slice(REPO.length + 1)}:${at + 1}`] : [])),
+      ),
+    ).toEqual([]);
   });
 
   it("refuses anything but labels or a key it holds, naming its usage", () => {

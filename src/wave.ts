@@ -1,6 +1,5 @@
 import { capped } from "./brief.ts";
-import { commentsRead, gh, ghRead, ghWhole, heldOf, opened, type Opened, prOfTicket, readOrStop, unread } from "./post.ts";
-import { REVIEWED_FROM, SPLIT_FROM } from "./reviewer.ts";
+import { commentsRead, gh, ghRead, ghWhole, heldOf, opened, type Opened, prOfTicket, readOrStop, REVIEWED_FROM, SPLIT_FROM, ticketBranch, unread } from "./post.ts";
 import { NOTE, SPEC, type LabelName } from "./spelled.ts";
 import { exitFor, stoppedAt, type Stop } from "./stops.ts";
 import { why } from "./ticket-shape.ts";
@@ -94,7 +93,7 @@ export function waveDiffs(tickets: Listed[]): string {
     return pr !== "none" && pr.state === "MERGED";
   });
   const shown = merged.map(({ number }) => {
-    const diff = ghWhole(["pr", "diff", `ticket/${number}`], `the diff of #${number}'s PR could not be read, ${UNSPENT}`);
+    const diff = ghWhole(["pr", "diff", ticketBranch(String(number))], `the diff of #${number}'s PR could not be read, ${UNSPENT}`);
     return { number, text: `### #${number}'s PR\n\n${diff}` };
   });
   const all = shown.map(({ text }) => text).join("\n\n");

@@ -43,7 +43,7 @@ jobs:
         run: tail -n 60 "$(git rev-parse --git-common-dir)"/machine-logs/check-*.log
 
   review:
-    if: ${{ startsWith(github.head_ref, 'ticket/') && github.event.pull_request.head.repo.full_name == github.repository }}
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     concurrency:
@@ -71,26 +71,37 @@ jobs:
         with:
           node-version: 24
 
+      - id: labelled
+        run: |
+          prefix=$(bin/spelled TICKET_PREFIX)
+          held=$(jq --arg prefix "$prefix" '.pull_request.head.ref | startswith($prefix)' "$GITHUB_EVENT_PATH")
+          printf 'held=%s\n' "$held" | tee -a "$GITHUB_OUTPUT"
+
       - id: npm-ci
+        if: steps.labelled.outputs.held == 'true'
         run: npm ci
 
       - id: worktree
+        if: steps.labelled.outputs.held == 'true'
         run: |
           git worktree add --detach "$RUNNER_TEMP/main" origin/main
           ln -s "$PWD/node_modules" "$RUNNER_TEMP/main/node_modules"
 
       - id: stage
+        if: steps.labelled.outputs.held == 'true'
         uses: ./.github/actions/stage
         with:
           client-id: ${{ vars.CORE_APP_CLIENT_ID }}
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
 
       - id: git-config
+        if: steps.labelled.outputs.held == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - id: review
+        if: steps.labelled.outputs.held == 'true'
         timeout-minutes: 12
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
@@ -100,7 +111,7 @@ jobs:
           tail --pid=$$ -n +1 -F .git/machine-logs/review-${{ github.event.pull_request.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
           $RUNNER_TEMP/main/bin/review ${{ github.event.pull_request.number }}
 
-      - if: always()
+      - if: always() && steps.labelled.outputs.held != 'false'
         timeout-minutes: 6
         uses: ./.github/actions/stage-logs
         with:
@@ -108,7 +119,7 @@ jobs:
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
 
   meters:
-    if: ${{ startsWith(github.head_ref, 'ticket/') && github.event.pull_request.head.repo.full_name == github.repository }}
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
     continue-on-error: true
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -133,21 +144,31 @@ jobs:
         with:
           node-version: 24
 
+      - id: labelled
+        run: |
+          prefix=$(bin/spelled TICKET_PREFIX)
+          held=$(jq --arg prefix "$prefix" '.pull_request.head.ref | startswith($prefix)' "$GITHUB_EVENT_PATH")
+          printf 'held=%s\n' "$held" | tee -a "$GITHUB_OUTPUT"
+
       - id: npm-ci
+        if: steps.labelled.outputs.held == 'true'
         run: npm ci
 
       - id: worktree
+        if: steps.labelled.outputs.held == 'true'
         run: |
           git worktree add --detach "$RUNNER_TEMP/main" origin/main
           ln -s "$PWD/node_modules" "$RUNNER_TEMP/main/node_modules"
 
       - id: stage
+        if: steps.labelled.outputs.held == 'true'
         uses: ./.github/actions/stage
         with:
           client-id: ${{ vars.CORE_APP_CLIENT_ID }}
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
 
       - id: meters
+        if: steps.labelled.outputs.held == 'true'
         timeout-minutes: 12
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
@@ -157,7 +178,7 @@ jobs:
           tail --pid=$$ -n +1 -F .git/machine-logs/meters-${{ github.event.pull_request.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
           $RUNNER_TEMP/main/bin/meters ${{ github.event.pull_request.number }}
 
-      - if: always()
+      - if: always() && steps.labelled.outputs.held != 'false'
         timeout-minutes: 6
         uses: ./.github/actions/stage-logs
         with:

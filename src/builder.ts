@@ -3,10 +3,9 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { admission, doesNotBuild } from "./admit.ts";
-import { capped, onDisk } from "./brief.ts";
+import { capped, handedDiff, LIST_CAP, NO_EM_DASH, onDisk, TICKET_CAP } from "./brief.ts";
 import { CHECK, UNFENCED } from "./fence.ts";
-import { type Asked, commentOnTicket, commentsRead, gh, ghRead, git, gitRead, mark, NEEDS_HUMAN, NOTHING_MARKED, OWNER, post, postRefusals, prOfTicket, readOrStop, RESOLVING, rewriteTicket, sessionLine, unread, WAITING } from "./post.ts";
-import { BUILDER_SPLIT, earlierDrift, FOLLOW_UP_OF, followUpBody, handedDiff, LIST_CAP, NO_EM_DASH, repairOf, TICKET_CAP } from "./reviewer.ts";
+import { type Asked, BUILDER_SPLIT, commentOnTicket, commentsRead, earlierDrift, FOLLOW_UP_OF, followUpBody, gh, ghRead, git, gitRead, mark, NEEDS_HUMAN, NOTHING_MARKED, OWNER, post, postRefusals, prOfTicket, readOrStop, repairOf, RESOLVING, rewriteTicket, sessionLine, ticketBranch, unread, WAITING } from "./post.ts";
 import { machineLogs, opened, type Spent } from "./stage.ts";
 import { BUILDING, CHECKING } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
@@ -184,7 +183,7 @@ function closedUnbuilt(ticket: string, said: string): number {
   const [refusal] = posted.refusals;
   if (refusal !== undefined) return calledOwner(ticket, `its closing reason was refused: ${quoted(refusal)}`);
   if (gh(["issue", "close", ticket, "--reason", "not planned"]).status !== 0) return calledOwner(ticket, "it ruled the ticket closed and the ticket would not close");
-  gh(["pr", "close", `ticket/${ticket}`]);
+  gh(["pr", "close", ticketBranch(ticket)]);
   console.log(`fix: #${ticket} closed unbuilt: ${said}`);
   return 0;
 }
@@ -225,7 +224,7 @@ function split(ticket: string, body: string, answer: Answer): Round {
   if (written.status !== 0) return { ended: calledOwner(ticket, `it filed ${named} and its rewrite of what waits would not save: ${quoted((written.stderr || written.stdout).trim().split("\n")[0] ?? "")}`) };
   commentOnTicket(ticket, `${splitInto(ticket)} ${named}, which build themselves. #${ticket} keeps what must wait for them, labelled \`${WAITING}\`, and builds once they all close: ${answer.reason}`, gh);
   mark(ticket, WAITING);
-  gh(["pr", "close", `ticket/${ticket}`, "--delete-branch"]);
+  gh(["pr", "close", ticketBranch(ticket), "--delete-branch"]);
   console.log(`fix: #${ticket} split into ${named}; it waits for them`);
   return { ended: 0 };
 }

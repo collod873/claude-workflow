@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { capped } from "./brief.ts";
-import { answered as readAnswered, commentOnTicket, commentsRead, gh, ghRead, ghWhole, git, gitRead, post, readOrStop, underOwnerSpec, unread, WAITING } from "./post.ts";
+import { capped, DIFF_CAP, handedDiff, LIST_CAP, NO_EM_DASH, TICKET_CAP } from "./brief.ts";
+import { answered as readAnswered, commentOnTicket, commentsRead, drifted, earlierDrift, FOLLOW_UP_OF, followUpBody, foundDrift, foundOverlap, gh, ghRead, ghWhole, git, gitRead, post, readOrStop, REVIEW_FOUND, REVIEWED_FROM, TICKET_BRANCH, underOwnerSpec, unread, WAITING } from "./post.ts";
 import { hire } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { DONE_SENTENCES, quoted, why } from "./ticket-shape.ts";
@@ -8,22 +8,10 @@ import { DONE_SENTENCES, quoted, why } from "./ticket-shape.ts";
 const stoppedAt = stopsOf({ drift: "The reviewer finds drift from `## Why`" });
 export type Stop = ReturnType<typeof stoppedAt>;
 
-export const DIFF_CAP = 32 * 1024;
-export const TICKET_CAP = 8 * 1024;
-export const LIST_CAP = 4 * 1024;
-
-export const TICKET_BRANCH = /^ticket\/(\d+)$/;
-const FILE_START = /^(?=diff --git )/m;
-const CHANGED_PATH = /^diff --git a\/.+? b\/(.+)$/m;
 const TOOLS = ["Read", "Grep", "Glob"];
-export const NO_EM_DASH = "^[^\\u2014]*$";
 export const PLAIN_WORDS = "^(?:(?!`|/|[\\w-]+\\.[A-Za-z]{1,8}\\b)[\\s\\S])*$";
-const foundDrift = (ticket: string) => `The reviewer read this PR against the Why of #${ticket} and found drift.`;
-const foundOverlap = (ticket: string) => `The reviewer read this PR for #${ticket} against what merged to main since its last judgement and found overlap.`;
 const foundMatchInWave = (ticket: string) => `The reviewer read this PR against the Why of #${ticket} and found it builds it. Its spec's note for this wave reads it back to the owner.`;
 const foundNoOverlap = (ticket: string) => `The reviewer read this PR for #${ticket} against what merged to main since its last judgement and found no overlap.`;
-const drifted = (ticket: string, comment: string) => comment.startsWith(foundDrift(ticket)) || comment.startsWith(foundOverlap(ticket));
-export const earlierDrift = (ticket: string, comments: string[]) => comments.filter((comment) => drifted(ticket, comment)).join("\n\n");
 
 const unspent = (pr: string, read: string) => `#${pr} ended red, ${read} could not be read, so no model was spent`;
 
@@ -55,7 +43,6 @@ function lastJudgement(ticket: string, comments: string[]): Judgement | undefine
   }
   return found;
 }
-export const repairOf = (ticket: string) => `Repair #${ticket} as its builder`;
 const QUOTE_LINE = /^>.*$/gm;
 const DOUBLE_QUOTE = /"[^"\n]+"/g;
 const READBACK_PROMPT = "`readback`: for someone who does not read code, what to try and what should happen, or what it now does and did not before.";
@@ -142,27 +129,9 @@ interface AfterTurn {
 }
 
 const laterFinds = (ticket: string) => `The reviewer found these on #${ticket} after its builder's repair, outside the earlier gaps and the fix's own lines, so they do not block its merge:`;
-export const FOLLOW_UP_OF = "Follow-up of #";
 const reviewerOn = (ticket: string) => `The reviewer, on #${ticket}:`;
-const REVIEW_FOUND = ": its review found";
-export const BUILDER_SPLIT = ": its builder split it";
-export const REVIEWED_FROM = new RegExp(`^${FOLLOW_UP_OF}(\\d+)${REVIEW_FOUND}`, "m");
-export const SPLIT_FROM = new RegExp(`^${FOLLOW_UP_OF}(\\d+)${BUILDER_SPLIT}`, "m");
 
 const firstLine = (text: string) => quoted(text.trim().split("\n")[0] ?? "");
-
-const changedPaths = (diff: string): string[] => diff.split(FILE_START).flatMap((text) => CHANGED_PATH.exec(text)?.slice(1) ?? []);
-
-export function handedDiff(diff: string): string {
-  const bytes = Buffer.byteLength(diff);
-  if (bytes <= DIFF_CAP) return diff;
-  return [
-    `The diff is ${bytes} bytes, over ${DIFF_CAP}, so it is cut here; read any changed file in the repo.`,
-    capped(diff, DIFF_CAP),
-    "Every file changed:",
-    capped(changedPaths(diff).map((path) => `- ${path}`).join("\n"), LIST_CAP),
-  ].join("\n\n");
-}
 
 export function handedOn(body: string, diff: string, after?: AfterTurn): string {
   const turn =
@@ -231,10 +200,6 @@ function fixSince(pr: string, head: string): string {
 
 const followUp = (ticket: string, { gap, done }: Later): string =>
   followUpBody([`${FOLLOW_UP_OF}${ticket}${REVIEW_FOUND} this after its builder's repair, outside the earlier gaps and the fix's own lines.`, "", reviewerOn(ticket), "", `> ${gap}`], done);
-
-export function followUpBody(whyLines: string[], done: string[]): string {
-  return ["## Why", "", ...whyLines, "", "## Done when", "", ...done.map((sentence) => `- ${sentence}`), ""].join("\n");
-}
 
 function recordedLater(ticket: string, body: string, later: Later[], turns: string[]): string {
   if (later.length === 0) return "";

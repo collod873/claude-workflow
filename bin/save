@@ -9,10 +9,14 @@ if [[ $# -ne 1 || ! $ticket =~ ^[0-9]+$ ]]; then
   exit 2
 fi
 
+if ! prefix=$("${BASH_SOURCE[0]%/*}/spelled" TICKET_PREFIX 2>&1); then
+  printf 'save: the branch prefix could not be read: %s\n' "$(printf '%s' "$prefix" | head -n 1 | cut -c 1-120)" >&2
+  exit 1
+fi
 src="$(cd "${BASH_SOURCE[0]%/*}/../src" && pwd)"
 top=$(git rev-parse --show-toplevel) || exit 1
 cd "$top" || exit 1
-branch="ticket/$ticket"
+branch="$prefix$ticket"
 logs="$(git rev-parse --path-format=absolute --git-common-dir)/machine-logs"
 log="$logs/save-$ticket.log"
 mkdir -p "${log%/*}"

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { text as read } from "node:stream/consumers";
 import { emDashLines } from "./em-dash.ts";
 import { NEXT_HEADING, NOTE_SHAPE, SPEC_SHAPE, TICKET_SHAPE, matchEnd, noteRefusals, rewriteRefusals, specRefusals, ticketRefusals } from "./ticket-shape.ts";
-import { NEEDS_HUMAN, NOTE, RESEARCH, RESOLVING, SPEC, TICKET, WAITING, type LabelName, type MarkedLabel } from "./spelled.ts";
+import { NEEDS_HUMAN, NOTE, RESEARCH, RESOLVING, SPEC, TICKET, TICKET_PREFIX, WAITING, type LabelName, type MarkedLabel } from "./spelled.ts";
 import { type Stop, stoppedAt } from "./stops.ts";
 
 export interface Posting {
@@ -101,6 +101,23 @@ const filed = (refuses: (text: string) => string[], labels: LabelName[], shape: 
 const judgementRefusals = (text: string): string[] => emDashLines(text).map((line) => `line ${line} carries an em dash`);
 
 export const MISSING = /HTTP 404/;
+export const ticketBranch = (ticket: string) => `${TICKET_PREFIX}${ticket}`;
+export const TICKET_BRANCH = new RegExp(`^${ticketBranch("(\\d+)")}$`);
+
+export const FOLLOW_UP_OF = "Follow-up of #";
+export const REVIEW_FOUND = ": its review found";
+export const BUILDER_SPLIT = ": its builder split it";
+export const REVIEWED_FROM = new RegExp(`^${FOLLOW_UP_OF}(\\d+)${REVIEW_FOUND}`, "m");
+export const SPLIT_FROM = new RegExp(`^${FOLLOW_UP_OF}(\\d+)${BUILDER_SPLIT}`, "m");
+export function followUpBody(whyLines: string[], done: string[]): string {
+  return ["## Why", "", ...whyLines, "", "## Done when", "", ...done.map((sentence) => `- ${sentence}`), ""].join("\n");
+}
+
+export const foundDrift = (ticket: string) => `The reviewer read this PR against the Why of #${ticket} and found drift.`;
+export const foundOverlap = (ticket: string) => `The reviewer read this PR for #${ticket} against what merged to main since its last judgement and found overlap.`;
+export const drifted = (ticket: string, comment: string) => comment.startsWith(foundDrift(ticket)) || comment.startsWith(foundOverlap(ticket));
+export const earlierDrift = (ticket: string, comments: string[]) => comments.filter((comment) => drifted(ticket, comment)).join("\n\n");
+export const repairOf = (ticket: string) => `Repair #${ticket} as its builder`;
 export { NEEDS_HUMAN, RESEARCH, RESOLVING, WAITING, type MarkedLabel };
 
 const KINDS: Record<string, Kind> = {
@@ -210,7 +227,7 @@ export interface TicketPr {
 
 export function prOfTicket(ticket: string, fields: (keyof TicketPr)[], gh: Gh): TicketPr | "none" {
   const line = `the PR of #${ticket} could not be read`;
-  const got = gh(["pr", "view", `ticket/${ticket}`, "--json", fields.join(",")]);
+  const got = gh(["pr", "view", ticketBranch(ticket), "--json", fields.join(",")]);
   if (got.status !== 0) return NO_PR.test(got.stderr) ? "none" : unread(line);
   try {
     return JSON.parse(got.stdout) as TicketPr;

@@ -1,10 +1,9 @@
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
-import { capped } from "./brief.ts";
+import { capped, LIST_CAP, NO_EM_DASH, TICKET_CAP } from "./brief.ts";
 import { FILED } from "./builder.ts";
 import { FENCED_OPUS } from "./fence.ts";
 import { commentOnTicket, commentsRead, gh, ghRead, mark, NEEDS_HUMAN, post, readOrStop } from "./post.ts";
-import { LIST_CAP, NO_EM_DASH, TICKET_CAP } from "./reviewer.ts";
 import { BUILDING, SLICING, SPEC } from "./spelled.ts";
 import { opened, type Spent } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";

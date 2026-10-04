@@ -1,5 +1,4 @@
-import { type Admission, commentOnTicket, gh, opened, OWNER, underOwnerSpec } from "./post.ts";
-import { REVIEWED_FROM, SPLIT_FROM } from "./reviewer.ts";
+import { type Admission, commentOnTicket, gh, opened, OWNER, REVIEWED_FROM, SPLIT_FROM, underOwnerSpec } from "./post.ts";
 import { why } from "./ticket-shape.ts";
 
 export const doesNotBuild = (ticket: string, refused: string) =>

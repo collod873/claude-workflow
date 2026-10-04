@@ -1,9 +1,8 @@
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
-import { capped } from "./brief.ts";
+import { capped, NO_EM_DASH } from "./brief.ts";
 import { UNFENCED } from "./fence.ts";
 import { authoredOn, commentOnTicket, commentsRead, gh, mark, NEEDS_HUMAN, OWNER, readOrStop, unread, type Asked } from "./post.ts";
-import { NO_EM_DASH } from "./reviewer.ts";
 import { opened, type Spent } from "./stage.ts";
 import { ASKED, CHECKING, SPEC } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
