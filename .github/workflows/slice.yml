@@ -38,7 +38,7 @@ jobs:
       - id: labelled
         run: |
           spec=$(bin/spelled SPEC)
-          held=$(jq --arg spec "$spec" 'any(.issue.labels[]?.name; . == $spec)' "$GITHUB_EVENT_PATH")
+          held=$(jq --arg SPEC "$spec" 'any(.issue.labels[]?.name; . == $SPEC)' "$GITHUB_EVENT_PATH")
           printf 'held=%s\n' "$held" | tee -a "$GITHUB_OUTPUT"
 
       - id: npm-ci

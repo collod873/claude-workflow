@@ -1,6 +1,9 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
+import { isMap, isPair, isScalar, isSeq, LineCounter, parseDocument, Scalar, visit } from "yaml";
+import { POSTING_KINDS } from "./post.ts";
+import { MACHINE, SPELLINGS } from "./spelled.ts";
 
 interface Source {
   file: string;
@@ -150,13 +153,97 @@ export function writtenTwice(sources: Source[]): string[] {
   return [...readsWritten, ...samePatterns, ...sameConstants];
 }
 
+interface Spelling {
+  text: string;
+  owner: string;
+  ask: string;
+}
+
+interface Code {
+  line: number;
+  text: string;
+  shell: boolean;
+}
+
+const ORDINARY = /^[a-z]+$/;
+const KEPT_BY_HAND = ["bin/spelled"];
+const SENDER_TEST = new RegExp(String.raw`sender\.login\s*==\s*'${MACHINE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}'`, "g");
+
+function uncommented(line: string): string {
+  let quote = "";
+  for (let at = 0; at < line.length; at++) {
+    const char = line.charAt(at);
+    if (quote !== "") {
+      if (char === quote) quote = "";
+      else if (char === "\\" && quote === '"') at++;
+    } else if (char === "'" || char === '"') quote = char;
+    else if (char === "\\") at++;
+    else if (char === "#" && (at === 0 || /\s/.test(line.charAt(at - 1)))) return line.slice(0, at);
+  }
+  return line;
+}
+
+const shellWords = (line: string): string[] => (line.match(/(?:"(?:\\.|[^"\\])*"|'[^']*'|[^\s;|&()<>"'])+/g) ?? []).map((word) => word.replace(/"((?:\\.|[^"\\])*)"|'([^']*)'/g, "$1$2"));
+
+function standsIn(code: Code, spelling: string): boolean {
+  if (!ORDINARY.test(spelling)) return code.text.includes(spelling);
+  const quoted = new RegExp(`(["'])${spelling}\\1|--label[= ]["']?${spelling}(?![\\w-])`);
+  return quoted.test(code.text) || (code.shell && shellWords(code.text).includes(spelling));
+}
+
+function yamlCode(text: string): Code[] {
+  const counter = new LineCounter();
+  const document = parseDocument(text, { lineCounter: counter });
+  const found: Code[] = [];
+  visit(document, {
+    Pair(_, pair, path) {
+      if (!isScalar(pair.value) || typeof pair.value.value !== "string" || pair.value.range == null) return;
+      const key = isScalar(pair.key) ? String(pair.key.value) : "";
+      const steps = path.at(-3);
+      const shell = key === "run" && isMap(path.at(-1)) && isSeq(path.at(-2)) && isPair(steps) && isScalar(steps.key) && steps.key.value === "steps";
+      const block = pair.value.type === Scalar.BLOCK_LITERAL || pair.value.type === Scalar.BLOCK_FOLDED;
+      const first = counter.linePos(pair.value.range[0]).line + (block ? 1 : 0);
+      const value = key === "if" ? pair.value.value.replace(SENDER_TEST, "") : pair.value.value;
+      value.split("\n").forEach((line, at) => found.push({ line: first + at, text: shell ? uncommented(line) : line, shell }));
+    },
+  });
+  return found;
+}
+
+const scriptCode = (text: string): Code[] => text.split("\n").map((line, at) => ({ line: at + 1, text: uncommented(line), shell: true }));
+
+export function spelledByHand(scripts: Source[], machine: Source[]): string[] {
+  const declared = machine
+    .filter((source) => !SKIPPED.test(source.file))
+    .flatMap((source) => spotsIn(source).constants)
+    .flatMap(({ pieces: [text = ""], ...at }): Spelling[] => (MARKED.test(text) ? [{ text, owner: `${where({ ...at, pieces: [] })} declares`, ask: ASK }] : []));
+  const spellings = [...SPELLINGS.map(([key, text]) => ({ text, owner: "src/spelled.ts holds", ask: `ask bin/spelled ${key} for it` })), ...declared].sort((one, other) => other.text.length - one.text.length);
+  return scripts
+    .filter(({ file }) => !KEPT_BY_HAND.includes(file))
+    .flatMap(({ file, text }) => {
+      const kept = file === "bin/file-issue" ? POSTING_KINDS : [];
+      const lines = file.endsWith(".yml") ? yamlCode(text) : scriptCode(text);
+      return lines.flatMap((code) =>
+        spellings.filter((spelling) => !kept.includes(spelling.text) && standsIn(code, spelling.text)).map((spelling) => `written twice: ${file}:${code.line} spells ${JSON.stringify(spelling.text)} that ${spelling.owner}; ${spelling.ask}`),
+      );
+    });
+}
+
+export const scriptSource = (repo: string): Source[] =>
+  [
+    ...readdirSync(join(repo, "bin")).map((name) => `bin/${name}`),
+    ...readdirSync(join(repo, ".github", "workflows")).map((name) => `.github/workflows/${name}`),
+    ...readdirSync(join(repo, ".github", "actions")).map((name) => `.github/actions/${name}/action.yml`),
+  ].map((file) => ({ file, text: readFileSync(join(repo, file), "utf8") }));
+
 export const machineSource = (dir: string): Source[] =>
   readdirSync(dir, { recursive: true, encoding: "utf8" })
     .filter((name) => name.endsWith(".ts"))
     .map((name) => ({ file: `src/${name}`, text: readFileSync(join(dir, name), "utf8") }));
 
 if (import.meta.main) {
-  const findings = writtenTwice(machineSource(import.meta.dirname));
+  const machine = machineSource(import.meta.dirname);
+  const findings = [...writtenTwice(machine), ...spelledByHand(scriptSource(join(import.meta.dirname, "..")), machine)];
   for (const finding of findings) console.log(finding);
   process.exit(findings.length > 0 ? 1 : 0);
 }

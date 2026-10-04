@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { machineSource, writtenTwice } from "./written-twice.ts";
+import { join } from "node:path";
+import { machineSource, scriptSource, spelledByHand, writtenTwice } from "./written-twice.ts";
 
 const source = (file: string, ...lines: string[]) => ({ file, text: lines.join("\n") });
 const ASK = "export the text from one owner and build the other side from it";
@@ -71,5 +72,57 @@ describe("written twice refuses text the machine spells in two places, so renami
     expect(writtenTwice([...machine, source("src/planted.ts", "export const MOVED = /<!-- moves: ([\\d, ]*) -->/;")])).toEqual([
       expect.stringMatching(/^written twice: src\/planted\.ts:1 reads "<!-- moves: " that src\/wave\.ts:\d+ writes; /),
     ]);
+  });
+});
+
+describe("written twice refuses a script, workflow or action that spells by hand what spelled or a TypeScript constant holds (#1123)", () => {
+  const machine = machineSource(import.meta.dirname);
+  const asked = (key: string) => `ask bin/spelled ${key} for it`;
+  const refused = (...scripts: { file: string; text: string }[]) => spelledByHand(scripts, machine);
+
+  it("refuses a label planted in a workflow file as a quoted string, a shell word or the argument of --label", () => {
+    expect(refused(source(".github/workflows/planted.yml", "jobs:", "  one:", "    if: contains(github.event.issue.labels.*.name, 'waiting')", "    steps:", "      - run: |", "          bin/mark 1 needs-human", "          gh issue edit 1 --add-label x --label queued", "          grep -qx note <<<\"$labels\""))).toEqual([
+      `written twice: .github/workflows/planted.yml:3 spells "waiting" that src/spelled.ts holds; ${asked("WAITING")}`,
+      `written twice: .github/workflows/planted.yml:6 spells "needs-human" that src/spelled.ts holds; ${asked("NEEDS_HUMAN")}`,
+      `written twice: .github/workflows/planted.yml:7 spells "queued" that src/spelled.ts holds; ${asked("QUEUED")}`,
+      `written twice: .github/workflows/planted.yml:8 spells "note" that src/spelled.ts holds; ${asked("NOTE")}`,
+    ]);
+  });
+
+  it("refuses the ticket branch prefix planted in a script, wherever it stands outside a comment", () => {
+    expect(refused(source("bin/planted", "#!/bin/bash", "# a ticket/ in a comment says nothing", 'git push origin "HEAD:ticket/$n"'))).toEqual([
+      `written twice: bin/planted:3 spells "ticket/" that src/spelled.ts holds; ${asked("TICKET_PREFIX")}`,
+    ]);
+  });
+
+  it("refuses the bot's login planted in an action's committer line, and allows it in a job's if: sender test", () => {
+    const action = source(".github/actions/planted/action.yml", "runs:", "  using: composite", "  steps:", "    - shell: bash", "      run: |", '        git config user.name "collod873-machine[bot]"');
+    const workflow = source(".github/workflows/planted.yml", "jobs:", "  one:", "    if: \"${{ github.event.sender.login == 'collod873-machine[bot]' }}\"");
+
+    expect(refused(action, workflow)).toEqual([
+      `written twice: .github/actions/planted/action.yml:6 spells "collod873-machine[bot]" that src/spelled.ts holds; ${asked("MACHINE")}`,
+      `written twice: .github/actions/planted/action.yml:6 spells "collod873" that src/spelled.ts holds; ${asked("OWNER")}`,
+    ]);
+  });
+
+  it("refuses a heading or marker the TypeScript holds as a constant, naming the constant", () => {
+    expect(refused(source("bin/planted", "#!/bin/bash", "grep -q '<!-- fix-wave -->' <<<\"$said\""))).toEqual([
+      expect.stringMatching(/^written twice: bin\/planted:2 spells "<!-- fix-wave -->" that src\/done-checker\.ts:\d+ declares; /),
+    ]);
+  });
+
+  it("stays quiet on a label inside a sentence, a YAML name or id, the posting kinds in bin/file-issue and bin/spelled itself", () => {
+    expect(
+      refused(
+        source("bin/planted", "#!/bin/bash", "printf 'close-note: #%s is not a note; a ticket closes when its PR merges\\n' \"$n\""),
+        source(".github/workflows/planted.yml", "jobs:", "  research:", "    steps:", "      - id: asked", "        with:", "          run: the research run"),
+        source("bin/file-issue", "#!/bin/bash", "[[ $kind != ticket && $kind != note && $kind != research && $kind != spec ]]"),
+        source("bin/spelled", "#!/bin/bash", "printf 'needs-human'"),
+      ),
+    ).toEqual([]);
+  });
+
+  it("passes every bin/ script, workflow and action as merged", () => {
+    expect(spelledByHand(scriptSource(join(import.meta.dirname, "..")), machine)).toEqual([]);
   });
 });

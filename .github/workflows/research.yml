@@ -39,7 +39,7 @@ jobs:
       - id: labelled
         run: |
           research=$(bin/spelled RESEARCH)
-          held=$(jq --arg research "$research" 'any(.issue.labels[]?.name; . == $research)' "$GITHUB_EVENT_PATH")
+          held=$(jq --arg RESEARCH "$research" 'any(.issue.labels[]?.name; . == $RESEARCH)' "$GITHUB_EVENT_PATH")
           printf 'held=%s\n' "$held" | tee -a "$GITHUB_OUTPUT"
 
       - id: npm-ci

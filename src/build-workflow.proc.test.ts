@@ -238,7 +238,7 @@ describe("every job that spends a model is watched as it goes, read after it end
     for (const { steps } of modelJobs()) {
       const minted = steps.findIndex((step) => step.with?.repositories === "agent-hooks");
       const handed = steps.findIndex((step) => /AGENT_HOOKS_SETTINGS=.*GITHUB_ENV/.test(step.run ?? ""));
-      expect(steps[minted]?.with).toMatchObject({ owner: "collod873", "permission-contents": "read" });
+      expect(steps[minted]?.with).toMatchObject({ owner: "${{ github.repository_owner }}", "permission-contents": "read" });
       expect(minted).toBeGreaterThanOrEqual(0);
       expect(handed).toBeGreaterThan(minted);
       expect(handed).toBeLessThan(steps.findIndex(spendsModel));
@@ -250,7 +250,7 @@ describe("every job that spends a model is watched as it goes, read after it end
       const minted = steps.findIndex((step) => step.with?.repositories === "Knowledge-Base" && step.with["permission-contents"] !== "read");
       const filed = steps.findIndex((step) => /Knowledge-Base\/raw/.test(step.run ?? ""));
       const lastModel = steps.length - 1 - [...steps].reverse().findIndex(spendsModel);
-      expect(steps[minted]?.with).toMatchObject({ owner: "collod873", "permission-contents": "write" });
+      expect(steps[minted]?.with).toMatchObject({ owner: "${{ github.repository_owner }}", "permission-contents": "write" });
       expect(minted).toBeGreaterThan(lastModel);
       expect(filed).toBeGreaterThan(minted);
       for (const ended of [{}, { failed: true }, { cancelled: true }]) {

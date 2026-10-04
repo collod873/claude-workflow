@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { text as read } from "node:stream/consumers";
 import { emDashLines } from "./em-dash.ts";
 import { NEXT_HEADING, NOTE_SHAPE, SPEC_SHAPE, TICKET_SHAPE, matchEnd, noteRefusals, rewriteRefusals, specRefusals, ticketRefusals } from "./ticket-shape.ts";
-import { NEEDS_HUMAN, NOTE, RESEARCH, RESOLVING, SPEC, TICKET, TICKET_PREFIX, WAITING, type LabelName, type MarkedLabel } from "./spelled.ts";
+import { MACHINE, NEEDS_HUMAN, NOTE, OWNER, RESEARCH, RESOLVING, SPEC, TICKET, TICKET_PREFIX, WAITING, type LabelName, type MarkedLabel } from "./spelled.ts";
 import { type Stop, stoppedAt } from "./stops.ts";
 
 export interface Posting {
@@ -71,17 +71,11 @@ export interface Held {
 
 export const heldOf = (labels: { name?: string }[] | undefined): Held => new Set((labels ?? []).map(({ name }) => name));
 
-export function labelsOf(issue: string, gh: Gh): Held | "unread" {
-  const got = gh(["issue", "view", issue, "--json", "labels", "--jq", ".labels[].name"]);
-  return got.status === 0 ? new Set(got.stdout.split("\n").filter((label) => label !== "")) : "unread";
-}
-
 export const NOTHING_MARKED = "so nothing is marked";
-const labelsUnread = (issue: string) => `the labels of #${issue} could not be read, ${NOTHING_MARKED}`;
 
 export function labelsHeld(issue: string, gh: Gh): Held {
-  const held = labelsOf(issue, gh);
-  return held === "unread" ? unread(labelsUnread(issue)) : held;
+  const got = gh(["issue", "view", issue, "--json", "labels", "--jq", ".labels[].name"]);
+  return got.status === 0 ? new Set(got.stdout.split("\n").filter((label) => label !== "")) : unread(`the labels of #${issue} could not be read, ${NOTHING_MARKED}`);
 }
 
 interface Kind {
@@ -118,7 +112,7 @@ export const foundOverlap = (ticket: string) => `The reviewer read this PR for #
 export const drifted = (ticket: string, comment: string) => comment.startsWith(foundDrift(ticket)) || comment.startsWith(foundOverlap(ticket));
 export const earlierDrift = (ticket: string, comments: string[]) => comments.filter((comment) => drifted(ticket, comment)).join("\n\n");
 export const repairOf = (ticket: string) => `Repair #${ticket} as its builder`;
-export { NEEDS_HUMAN, RESEARCH, RESOLVING, WAITING, type MarkedLabel };
+export { NEEDS_HUMAN, OWNER, RESEARCH, RESOLVING, WAITING, type MarkedLabel };
 
 const KINDS: Record<string, Kind> = {
   ticket: filed(ticketRefusals, [TICKET], TICKET_SHAPE),
@@ -127,6 +121,8 @@ const KINDS: Record<string, Kind> = {
   spec: filed(specRefusals, [SPEC], SPEC_SHAPE),
   judgement: { refuses: judgementRefusals, on: "pr", args: (pr, text) => ["pr", "comment", pr, "--body", text] },
 };
+
+export const POSTING_KINDS = Object.keys(KINDS);
 
 const FIRST_HEADING = /^##[ \t].*$/m;
 
@@ -152,8 +148,7 @@ function written(gh: Gh, args: string[]): { refusals: string[]; said: string } {
 
 export const commentOnTicket = (ticket: string, text: string, gh: Gh) => written(gh, ["issue", "comment", ticket, "--body", text]);
 
-export const OWNER = "collod873";
-const TRUSTED = new Set([`User ${OWNER}`, "Bot collod873-machine[bot]"]);
+const TRUSTED = new Set([`User ${OWNER}`, `Bot ${MACHINE}`]);
 
 const trusted = (said: unknown): said is { author: string; body: string } =>
   typeof said === "object" &&
@@ -165,9 +160,9 @@ const trusted = (said: unknown): said is { author: string; body: string } =>
   typeof said.body === "string" &&
   TRUSTED.has(`${String(said.type)} ${said.author}`);
 
-export function authoredOn(number: string, gh: Gh): { author: string; body: string }[] | undefined {
+export function authoredOn(number: string, line: string, gh: Gh): { author: string; body: string }[] {
   const got = gh(["api", "--paginate", `repos/{owner}/{repo}/issues/${number}/comments`, "--jq", ".[] | {author: .user.login, type: .user.type, body}"]);
-  if (got.status !== 0) return undefined;
+  if (got.status !== 0) return unread(line);
   try {
     return got.stdout
       .split("\n")
@@ -176,13 +171,11 @@ export function authoredOn(number: string, gh: Gh): { author: string; body: stri
       .filter(trusted)
       .map(({ author, body }) => ({ author, body }));
   } catch {
-    return undefined;
+    return unread(line);
   }
 }
 
-const commentsOn = (number: string, gh: Gh): string[] | undefined => authoredOn(number, gh)?.map(({ body }) => body);
-
-export const commentsRead = (number: string, line: string, gh: Gh): string[] => commentsOn(number, gh) ?? unread(line);
+export const commentsRead = (number: string, line: string, gh: Gh): string[] => authoredOn(number, line, gh).map(({ body }) => body);
 
 export interface Opened {
   number?: number;
@@ -192,29 +185,25 @@ export interface Opened {
   body?: string | null;
 }
 
-export interface Admission {
-  refused?: string;
-  unread?: string;
-}
+export type Admission = string | undefined;
 
-export function opened(path: string, gh: Gh): Opened | "missing" | "unread" {
+export function opened(path: string, line: string, gh: Gh): Opened | "missing" {
   const got = gh(["api", `repos/{owner}/{repo}/issues/${path}`]);
-  if (got.status !== 0) return MISSING.test(got.stderr) ? "missing" : "unread";
+  if (got.status !== 0) return MISSING.test(got.stderr) ? "missing" : unread(line);
   try {
     return JSON.parse(got.stdout) as Opened;
   } catch {
-    return "unread";
+    return unread(line);
   }
 }
 
-export function underOwnerSpec(ticket: string, gh: Gh): Admission {
-  const spec = opened(`${ticket}/parent`, gh);
-  if (spec === "unread") return { unread: `the parent of #${ticket} could not be read` };
-  if (spec === "missing") return { refused: "the App opened it under no spec" };
-  if (!heldOf(spec.labels).has(SPEC)) return { refused: "the App opened it under an issue not labelled `spec`" };
-  if (spec.user?.login !== OWNER) return { refused: "the App opened it under a spec the owner did not open" };
-  if (spec.state !== "open") return { refused: "the App opened it under a spec that is not open" };
-  return {};
+export function underOwnerSpec(ticket: string, line: string, gh: Gh): Admission {
+  const spec = opened(`${ticket}/parent`, line, gh);
+  if (spec === "missing") return "the App opened it under no spec";
+  if (!heldOf(spec.labels).has(SPEC)) return "the App opened it under an issue not labelled `spec`";
+  if (spec.user?.login !== OWNER) return "the App opened it under a spec the owner did not open";
+  if (spec.state !== "open") return "the App opened it under a spec that is not open";
+  return undefined;
 }
 
 const NO_PR = /^no pull requests found/m;

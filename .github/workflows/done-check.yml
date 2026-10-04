@@ -32,7 +32,7 @@ jobs:
         run: |
           spec=$(bin/spelled SPEC)
           stop=$(bin/spelled NEEDS_HUMAN)
-          held=$(jq --arg spec "$spec" --arg stop "$stop" 'any(.issue.labels[]?.name; . == $spec) and (any(.issue.labels[]?.name; . == $stop) | not)' "$GITHUB_EVENT_PATH")
+          held=$(jq --arg SPEC "$spec" --arg NEEDS_HUMAN "$stop" 'any(.issue.labels[]?.name; . == $SPEC) and (any(.issue.labels[]?.name; . == $NEEDS_HUMAN) | not)' "$GITHUB_EVENT_PATH")
           printf 'held=%s\n' "$held" | tee -a "$GITHUB_OUTPUT"
 
       - id: asked

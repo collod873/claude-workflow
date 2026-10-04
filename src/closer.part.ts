@@ -1,6 +1,7 @@
 import { mkdirSync, readdirSync, readFileSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
-import { authored, BIN, commitAt, execute, git, MACHINE, plant, refusedMark, type Said, scratch, script } from "./scenarios.ts";
+import { authored, BIN, commitAt, execute, git, plant, refusedMark, type Said, scratch, script } from "./scenarios.ts";
+import { MACHINE } from "./spelled.ts";
 import { NEEDS_HUMAN, WAITING } from "./post.ts";
 import { declareStage } from "./stages.ts";
 

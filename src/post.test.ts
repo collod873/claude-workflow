@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
-import { labelsOf, NEEDS_HUMAN, post, RESEARCH, RESOLVING, WAITING, type Posting } from "./post.ts";
+import { authoredOn, labelsHeld, NEEDS_HUMAN, opened, post, readOrStop, RESEARCH, RESOLVING, WAITING, type Posting } from "./post.ts";
 import { wellFormedNote as NOTE, wellFormedSpec as SPEC } from "./scenarios.ts";
 
 const URL = "https://github.com/collod873/claude-workflow/issues/700";
@@ -123,18 +123,36 @@ describe("src/post.ts is the one way the machine writes text to GitHub (#662)", 
   });
 });
 
-describe("src/post.ts reads an issue's labels for the closer and the builder alike, beside the mark helper (#1073)", () => {
+describe("src/post.ts reads what GitHub holds, stopping at unread itself, so no caller converts a stand-in (#1073, #1123)", () => {
+  const failing = github({ status: 1, stdout: "", stderr: "gh: Server Error (HTTP 502)" }).gh;
+
   it("names each label the issue holds", () => {
     const { gh, calls } = github({ stdout: "ticket\nlanding\n" });
 
-    expect(labelsOf("873", gh)).toEqual(new Set(["ticket", "landing"]));
+    expect(labelsHeld("873", gh)).toEqual(new Set(["ticket", "landing"]));
     expect(calls).toEqual([["issue", "view", "873", "--json", "labels", "--jq", ".labels[].name"]]);
   });
 
-  it("gives the unread stop, never an empty list, when the issue cannot be read (#1099)", () => {
-    const { gh } = github({ status: 1, stdout: "", stderr: "GraphQL: Could not resolve to an issue" });
+  it.each([
+    { read: "the labels", run: (): unknown => labelsHeld("874", failing), line: "read: the labels of #874 could not be read, so nothing is marked" },
+    { read: "the comments", run: () => authoredOn("874", "the comments on #874 could not be read", failing), line: "read: the comments on #874 could not be read" },
+    { read: "the issue", run: () => opened("874", "#874 could not be read", failing), line: "read: #874 could not be read" },
+  ])("stops at unread naming the read when GitHub fails $read (#1099)", ({ run, line }) => {
+    const said: string[] = [];
+    const error = console.error;
+    console.error = (text: string) => said.push(text);
+    try {
+      expect(readOrStop("read", run)).toBe("unread");
+    } finally {
+      console.error = error;
+    }
+    expect(said).toEqual([line]);
+  });
 
-    expect(labelsOf("874", gh)).toBe("unread");
+  it("answers missing, never unread, when the issue is not there", () => {
+    const { gh } = github({ status: 1, stdout: "", stderr: "gh: Not Found (HTTP 404)" });
+
+    expect(opened("874/parent", "the parent of #874 could not be read", gh)).toBe("missing");
   });
 });
 

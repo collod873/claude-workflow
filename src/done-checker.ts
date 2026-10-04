@@ -145,7 +145,7 @@ function read(issue: string, wave?: number[]): Read | Stop | undefined {
       if (listed.length === 0) return stoppedAt("notSpec", `${said} carries no sentence to try, so nothing was tried or closed`);
       const beyond = wave?.find((number) => number < 1 || number > listed.length);
       if (beyond !== undefined) return stoppedAt("notSpec", `${said} carries no sentence ${beyond}, so nothing was tried`);
-      return { carrying: { listed, authored: authoredOn(issue, gh) ?? unread(`#${issue} could not read its comments, so nothing was tried`) } };
+      return { carrying: { listed, authored: authoredOn(issue, `#${issue} could not read its comments, so nothing was tried`, gh) } };
     },
   });
   if (typeof opening !== "object") return opening;

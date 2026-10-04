@@ -41,7 +41,7 @@ jobs:
           waiting=$(bin/spelled WAITING)
           note=$(bin/spelled NOTE)
           spec=$(bin/spelled SPEC)
-          held=$(jq --arg waiting "$waiting" --arg note "$note" --arg spec "$spec" '(.action != "unlabeled" or .label.name == $waiting) and (any(.issue.labels[]?.name; IN($note, $spec, $waiting)) | not)' "$GITHUB_EVENT_PATH")
+          held=$(jq --arg WAITING "$waiting" --arg NOTE "$note" --arg SPEC "$spec" '(.action != "unlabeled" or .label.name == $WAITING) and (any(.issue.labels[]?.name; IN($NOTE, $SPEC, $WAITING)) | not)' "$GITHUB_EVENT_PATH")
           printf 'held=%s\n' "$held" | tee -a "$GITHUB_OUTPUT"
 
       - id: npm-ci

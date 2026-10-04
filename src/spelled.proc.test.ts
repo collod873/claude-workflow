@@ -36,7 +36,7 @@ const KEYS = [
   ["ASKED", "asked"],
   ["NEEDS_HUMAN", "needs-human"],
 ] as const;
-const SPELLED = [...KEYS, ["TICKET_PREFIX", "ticket/"]] as const;
+const SPELLED = [...KEYS, ["TICKET_PREFIX", "ticket/"], ["OWNER", "collod873"], ["MACHINE", "collod873-machine[bot]"]] as const;
 const USAGE = `spelled: usage: spelled labels | spelled <${SPELLED.map(([key]) => key).join("|")}>\n`;
 const NAMING = ["post.ts", "slicer.ts", "done-checker.ts", "researcher.ts", "closer.ts", "wave.ts", "builder.ts"].map((file) => join(BIN, "..", "src", file));
 
@@ -59,6 +59,12 @@ function rawLabels(files: string[], names: string[]): string[] {
   }
   return found;
 }
+const REPO = join(BIN, "..");
+const machine = (dir: string): string[] =>
+  readdirSync(join(REPO, dir), { withFileTypes: true, recursive: true })
+    .filter((found) => found.isFile())
+    .map((found) => join(found.parentPath, found.name))
+    .filter((file) => !/\.(test|part)\.ts$|\/scenarios\.ts$/.test(file));
 const rows = () => heard(spelled("labels")).lines.map((line) => line.split("\t"));
 
 describe("bin/spelled prints the machine's labels from one typed set, so no script types its own list (#1100)", () => {
@@ -119,12 +125,6 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
   });
 
   it("prints the ticket branch prefix under TICKET_PREFIX, the one place outside the tests that spells it (#1121)", () => {
-    const REPO = join(BIN, "..");
-    const machine = (dir: string): string[] =>
-      readdirSync(join(REPO, dir), { withFileTypes: true, recursive: true })
-        .filter((found) => found.isFile())
-        .map((found) => join(found.parentPath, found.name))
-        .filter((file) => !/\.(test|part)\.ts$|\/scenarios\.ts$/.test(file));
     const spelling = /ticket\\?\//;
 
     expect(spelled("TICKET_PREFIX")).toEqual({ status: 0, stdout: "ticket/\n", stderr: "" });
@@ -135,6 +135,20 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
           .flatMap((line, at) => (spelling.test(line) && !line.startsWith("export const TICKET_PREFIX = ") ? [`${file.slice(REPO.length + 1)}:${at + 1}`] : [])),
       ),
     ).toEqual([]);
+  });
+
+  it("prints the owner's login under OWNER and the bot's login under MACHINE, the bot's spelled nowhere else the machine runs but build.yml's sender test (#1123)", () => {
+
+    expect(spelled("OWNER")).toEqual({ status: 0, stdout: "collod873\n", stderr: "" });
+    expect(spelled("MACHINE")).toEqual({ status: 0, stdout: "collod873-machine[bot]\n", stderr: "" });
+    expect(
+      ["src", "bin", ".github"].flatMap(machine).flatMap((file) =>
+        readFileSync(file, "utf8")
+          .split("\n")
+          .flatMap((line, at) => (line.includes("collod873-machine") && !line.startsWith("export const MACHINE = ") ? [`${file.slice(REPO.length + 1)}:${at + 1}`] : [])),
+      ),
+    ).toEqual([".github/workflows/build.yml:13"]);
+    expect(readFileSync(join(ACTIONS, "stage-logs", "action.yml"), "utf8")).toMatch(/bin\/spelled MACHINE/);
   });
 
   it("refuses anything but labels or a key it holds, naming its usage", () => {
@@ -185,13 +199,13 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
       copy,
       "src/misspelled.ts",
       [
-        'import { askedIssue, gh, heldOf, labelsOf, mark, NEEDS_HUMAN, post, type MarkedLabel } from "./post.ts";',
+        'import { askedIssue, gh, heldOf, labelsHeld, mark, NEEDS_HUMAN, post, type MarkedLabel } from "./post.ts";',
         'const held: MarkedLabel = "needs-humans";',
         'mark("811", "fixing");',
         "mark(\"811\", NEEDS_HUMAN, held);",
         'post({ kind: "ticket", title: "t", text: "", labels: ["waitin"] }, gh);',
-        'const read = labelsOf("811", gh);',
-        'if (read !== "unread" && read.has("resolve")) mark("811", "building");',
+        'const read = labelsHeld("811", gh);',
+        'if (read.has("resolve")) mark("811", "building");',
         'heldOf([{ name: "spec" }]).has("specs");',
         'askedIssue("{}")?.labels.some(({ name }) => name === "needs-humen");',
         'askedIssue("{}")?.labels.has("researh");',

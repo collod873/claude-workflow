@@ -301,8 +301,7 @@ function failedAs(ticket: string, logs: string, run: string | undefined): string
 }
 
 function owned(ticket: string, run: string | undefined, asked: Asked) {
-  const { refused, unread: unreadable } = admission(ticket);
-  if (unreadable !== undefined) unread(`${unreadable}, ${NOTHING_MARKED}`);
+  const refused = admission(ticket, NOTHING_MARKED);
   if (refused !== undefined) return stoppedAt("unadmitted", `fix: ${doesNotBuild(ticket, refused)}`);
   const logs = machineLogs();
   const failed = failedAs(ticket, logs, run);

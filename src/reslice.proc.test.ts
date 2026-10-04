@@ -2,7 +2,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse } from "yaml";
 import { describe, expect, it } from "vitest";
-import { heard, holds, OWNER, type Said, starts, wellFormedSpec, type WorkflowStep } from "./scenarios.ts";
+import { heard, holds, type Said, starts, wellFormedSpec, type WorkflowStep } from "./scenarios.ts";
+import { OWNER } from "./spelled.ts";
 import { closing } from "./closer.part.ts";
 import { slicing } from "./slicer.part.ts";
 import { doneChecking, specWith } from "./done-checker.part.ts";
@@ -174,6 +175,8 @@ describe("bin/slice --ended ends red at a read of the wave that fails, naming no
     { read: "the tickets under the spec", pattern: '*"issues/968/sub_issues"*', line: "the tickets under #968 could not be read, so no wave ended" },
     { read: "the open issues", pattern: '"issue list"*', line: "the open issues could not be read to find follow-ups of #968's tickets, so no wave ended" },
     { read: "the spec's comments", pattern: '*"issues/968/comments"*', line: "the comments on #968 could not be read, so no wave ended" },
+    { read: "the closed issue (#1123)", pattern: '*"issues/1102"', line: "#1102 could not be read, so no wave ended" },
+    { read: "the closed issue's parent (#1123)", pattern: '*"issues/1102/parent"', line: "the parent of #1102 could not be read, so no wave ended" },
   ])("ends red at unread naming $read", ({ pattern, line }) => {
     const { ran, hired } = ended({ gh: `[[ "$*" == ${pattern} ]] && { printf 'gh: Server Error (HTTP 502)\\n' >&2; exit 1; }` });
 

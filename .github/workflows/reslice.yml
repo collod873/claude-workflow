@@ -42,7 +42,7 @@ jobs:
         run: |
           spec=$(bin/spelled SPEC)
           note=$(bin/spelled NOTE)
-          held=$(jq --arg spec "$spec" --arg note "$note" 'any(.issue.labels[]?.name; IN($spec, $note)) | not' "$GITHUB_EVENT_PATH")
+          held=$(jq --arg SPEC "$spec" --arg NOTE "$note" 'any(.issue.labels[]?.name; IN($SPEC, $NOTE)) | not' "$GITHUB_EVENT_PATH")
           printf 'held=%s\n' "$held" | tee -a "$GITHUB_OUTPUT"
 
       - id: ended

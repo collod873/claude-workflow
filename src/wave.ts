@@ -38,13 +38,11 @@ const followed = (body: string): string | undefined => {
   return (REVIEWED_FROM.exec(said) ?? SPLIT_FROM.exec(said))?.[1];
 };
 
-function specOf(issue: string, chain: string[] = []): Found | "unread" {
-  const parent = opened(`${issue}/parent`, gh);
-  if (parent === "unread") return "unread";
+function specOf(issue: string, chain: string[] = []): Found {
+  const parent = opened(`${issue}/parent`, `the parent of #${issue} could not be read, ${NO_WAVE_ENDED}`, gh);
   if (parent !== "missing") return heldOf(parent.labels).has(SPEC) ? { spec: parent, chain } : { chain };
   if (chain.length === DEEPEST) return { chain };
-  const asked = opened(issue, gh);
-  if (asked === "unread") return "unread";
+  const asked = opened(issue, `#${issue} could not be read, ${NO_WAVE_ENDED}`, gh);
   const of = asked === "missing" ? undefined : followed(asked.body ?? "");
   return of === undefined ? { chain } : specOf(of, [...chain, issue]);
 }
@@ -129,16 +127,13 @@ function moved(comments: string[]): string {
 }
 
 function waveEnded(issue: string): Stop | undefined {
-  const closed = opened(issue, gh);
-  if (closed === "unread") return stoppedAt("unread", `slice: #${issue} could not be read`);
+  const closed = opened(issue, `#${issue} could not be read, ${NO_WAVE_ENDED}`, gh);
   const label = closed === "missing" ? undefined : UNSLICED_LABELS.find((one) => heldOf(closed.labels).has(one));
   if (label !== undefined) {
     console.error(`slice: #${issue} is a ${label}, so no wave ended`);
     return undefined;
   }
-  const found = specOf(issue);
-  if (found === "unread") return stoppedAt("unread", `slice: #${issue} or the issue it follows up could not be read`);
-  const { spec, chain } = found;
+  const { spec, chain } = specOf(issue);
   if (spec?.number === undefined) {
     console.error(`slice: #${issue} is under no spec, so no wave ended`);
     return undefined;

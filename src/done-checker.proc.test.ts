@@ -2,7 +2,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { execute, heard, holds, MACHINE, OWNER, plant, type Said, scratch, script, starts, type WorkflowStep } from "./scenarios.ts";
+import { execute, heard, holds, plant, type Said, scratch, script, starts, type WorkflowStep } from "./scenarios.ts";
+import { MACHINE, OWNER } from "./spelled.ts";
 import { NEEDS_HUMAN } from "./post.ts";
 import { DONE_CHECK_POSTED, doneChecking, specWith } from "./done-checker.part.ts";
 import { missedIn } from "./done-checker.ts";
@@ -314,6 +315,13 @@ describe("bin/done-check --asked answers whether the last ## Done check put a se
 
     expect(checked.run("974", "--asked")).toEqual({ status: 1, stdout: "", stderr: "done-check: #974 could not read its comments, so nothing was asked\n" });
     expect(checked.calls()).toEqual([READ_COMMENTS]);
+    expect(checked.marked()).toEqual([]);
+  });
+
+  it("ends red at unread naming the comments read, marking nothing and hiring no model, when a check cannot read the spec's comments (#1123)", () => {
+    const checked = doneChecking({ gh: "[[ $1 == api ]] && { printf 'HTTP 502\\n' >&2; exit 1; }" });
+
+    expect(checked.run("974")).toEqual({ status: 1, stdout: "", stderr: "done-check: #974 could not read its comments, so nothing was tried\n" });
     expect(checked.marked()).toEqual([]);
   });
 

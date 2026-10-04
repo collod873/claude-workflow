@@ -5,6 +5,7 @@ import { dirname, isAbsolute, join, matchesGlob } from "node:path";
 import { parse } from "yaml";
 import { onTestFinished } from "vitest";
 import vitest from "../vitest.config.ts";
+import { MACHINE, OWNER } from "./spelled.ts";
 
 export const LINE_LIMIT = 200;
 export const MOST_LINES = 6;
@@ -34,8 +35,6 @@ const SRC = import.meta.dirname;
 export const BIN = join(SRC, "..", "bin");
 const WORKFLOWS = join(SRC, "..", ".github", "workflows");
 const env = { ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_") && !name.startsWith("VITEST") && name !== "REASON")), AGENT_HOOKS_SETTINGS: "" };
-export const OWNER = "collod873";
-export const MACHINE = "collod873-machine[bot]";
 
 export interface WorkflowStep {
   id?: string;
