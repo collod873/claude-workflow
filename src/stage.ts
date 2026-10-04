@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { ownerHooks, stageArgv, type Reach, type Registration } from "./fence.ts";
+import { stageArgv, type Reach, type Registration } from "./fence.ts";
 import { type Asked, askedIssue, ghRead, gitRead, mark, NEEDS_HUMAN, unread, type MarkedLabel } from "./post.ts";
 import type { Stop } from "./stops.ts";
 import { quoted } from "./ticket-shape.ts";
@@ -49,30 +49,31 @@ function capped(argv: string[], minutes: number, deadline: number): [string, ...
   return ["timeout", `--kill-after=${GRACE_SECONDS}`, String(left), "claude", ...argv];
 }
 
-function hooksIn(read: () => string, refusal: string): Registration | string {
+function hooksIn(read: () => string, refusal: string, gated: boolean): Registration | string {
   try {
-    return (JSON.parse(read()) as { hooks?: Registration }).hooks ?? {};
+    const stages = JSON.parse(read()) as { hooks?: Registration; gated?: Registration };
+    return (gated ? stages.gated : stages.hooks) ?? {};
   } catch {
     return refusal;
   }
 }
 
-function liveHooks(): Registration | string {
+function liveHooks(gated: boolean): Registration | string {
   const link = join(homedir(), ".agents", "hooks-live");
   if (!existsSync(link)) return `no owner hooks for this stage: AGENT_HOOKS_SETTINGS is unset and ${link} is missing`;
   const root = realpathSync(link);
   const unregistered = mkdtempSync(join(tmpdir(), "agent-hooks-"));
-  const emitted = spawnSync("python3", [join(root, "hookcheck.py"), "--root", root, "--settings", join(unregistered, "unregistered.json"), "--emit-settings"], { encoding: "utf8" });
+  const emitted = spawnSync("python3", [join(root, "hookcheck.py"), "--root", root, "--settings", join(unregistered, "unregistered.json"), "--emit-stages"], { encoding: "utf8" });
   rmSync(unregistered, { recursive: true, force: true });
   const refusal = `the live release at ${root} emitted no hooks: ${quoted(String(emitted.stderr ?? "").trim().split("\n")[0] ?? "")}`;
-  return emitted.status === 0 ? hooksIn(() => emitted.stdout, refusal) : refusal;
+  return emitted.status === 0 ? hooksIn(() => emitted.stdout, refusal, gated) : refusal;
 }
 
-function registered(): Registration | string {
+function registered(gated: boolean): Registration | string {
   const path = process.env.AGENT_HOOKS_SETTINGS;
   if (path === "") return {};
-  if (path === undefined) return liveHooks();
-  return hooksIn(() => readFileSync(path, "utf8"), path);
+  if (path === undefined) return liveHooks(gated);
+  return hooksIn(() => readFileSync(path, "utf8"), path, gated);
 }
 
 export interface Hire {
@@ -96,9 +97,9 @@ export interface Spent {
 export function hired(hire: Hire): ((input: string, resume?: string) => Spent) | string {
   const minutes = Number(process.env.STAGE_MINUTES);
   const deadline = Date.now() + minutes * 60_000;
-  const hooks = registered();
+  const hooks = registered(hire.gated ?? false);
   if (typeof hooks === "string") return hooks;
-  const argv = [...stageArgv(hire.commands ?? [], ownerHooks(hooks, hire.gated), hire.tools, hire.reach), ...(hire.answers === undefined ? [] : ["--json-schema", JSON.stringify(hire.answers)])];
+  const argv = [...stageArgv(hire.commands ?? [], hooks, hire.tools, hire.reach), ...(hire.answers === undefined ? [] : ["--json-schema", JSON.stringify(hire.answers)])];
   rmSync(hire.transcript, { force: true });
   const readingEnds = deadline - (hire.writeUp?.minutes ?? 0) * 60_000;
   const attempt = (input: string, resume?: string, ends = readingEnds) => {

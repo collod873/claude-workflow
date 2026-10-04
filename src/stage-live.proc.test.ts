@@ -1,13 +1,17 @@
-import { chmodSync, existsSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { scratch } from "./scenarios.ts";
 import { hired } from "./stage.ts";
 
 const HOOKCHECK = `import json, sys
+if "--emit-stages" not in sys.argv:
+    sys.exit(1)
 root = sys.argv[sys.argv.index("--root") + 1]
 hook = {"type": "command", "command": f"python3 {root}/hooks/no-prose.py"}
-print(json.dumps({"hooks": {"PreToolUse": [{"matcher": "Write|Edit", "hooks": [hook]}]}}))
+gate = {"type": "command", "command": f"python3 {root}/hooks/check-gate.py"}
+every = {"PreToolUse": [{"matcher": "Write|Edit", "hooks": [hook]}]}
+print(json.dumps({"hooks": every, "gated": {**every, "Stop": [{"hooks": [gate]}]}}))
 `;
 
 const NO_PROSE = `import sys
@@ -21,6 +25,7 @@ const { spawnSync } = require("child_process");
 const { writeFileSync } = require("fs");
 const argv = process.argv.slice(2);
 const { hooks } = JSON.parse(argv[argv.indexOf("--settings") + 1]);
+writeFileSync("stopped-by.txt", JSON.stringify(hooks.Stop ?? []));
 const input = { tool_name: "Write", tool_input: { file_path: "notes.md", content: "A paragraph of prose." } };
 for (const { matcher, hooks: commands } of hooks.PreToolUse ?? []) {
   if (matcher !== undefined && !new RegExp(matcher).test("Write")) continue;
@@ -71,6 +76,25 @@ describe("a stage started on this PC runs under the owner's hooks from the live 
       expect(refusal).toBeUndefined();
       expect(stdout).toContain("blocked: no-prose: say it in code, not prose");
       expect(existsSync(join(root, "notes.md"))).toBe(false);
+    } finally {
+      process.chdir(cwd);
+    }
+  });
+
+  it("gives the gate hooks the release declares gated to a gated stage alone", () => {
+    const root = onThisPc();
+    const cwd = process.cwd();
+    process.chdir(root);
+    try {
+      const stopped = (gated: boolean) => {
+        const stage = hired({ name: "builder", transcript: join(root, "transcript.jsonl"), gated });
+        if (typeof stage === "string") throw new Error(stage);
+        stage("build it");
+        return readFileSync(join(root, "stopped-by.txt"), "utf8");
+      };
+
+      expect(stopped(true)).toContain("/hooks/check-gate.py");
+      expect(stopped(false)).not.toContain("check-gate");
     } finally {
       process.chdir(cwd);
     }
