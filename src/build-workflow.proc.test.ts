@@ -234,7 +234,7 @@ describe("every job that spends a model is watched as it goes, read after it end
     }
   });
 
-  it("every job hands its stages the owner's hooks, read with a token that can only read agent-hooks", () => {
+  it("every job hands its stages the owner's hooks from the live release, read with a token that can only read agent-hooks", () => {
     for (const { steps } of modelJobs()) {
       const minted = steps.findIndex((step) => step.with?.repositories === "agent-hooks");
       const handed = steps.findIndex((step) => /AGENT_HOOKS_SETTINGS=.*GITHUB_ENV/.test(step.run ?? ""));
@@ -242,6 +242,8 @@ describe("every job that spends a model is watched as it goes, read after it end
       expect(minted).toBeGreaterThanOrEqual(0);
       expect(handed).toBeGreaterThan(minted);
       expect(handed).toBeLessThan(steps.findIndex(spendsModel));
+      expect(steps[handed]?.run).toMatch(/git clone [^\n]*--branch live /);
+      expect(steps[handed]?.run).toContain("--emit-stages");
     }
   });
 

@@ -14,30 +14,7 @@ const FENCE = [
 
 const shellQuoted = (text: string) => `'${text.replaceAll("'", "'\\''")}'`;
 
-const OWNER_HOOKS = [
-  "credential-scan",
-  "em-dash",
-  "module-depth",
-  "no-prose",
-  "test-weaken",
-  "context-lint",
-  "post-edit-validate",
-  "stale-ref",
-  "dead-path",
-  "log-stop-failure",
-  "session-capture",
-];
-
-const GATE_HOOKS = ["check-gate"];
-
 export type Registration = Record<string, { matcher?: string; hooks: { command: string }[] }[]>;
-
-const isOwnerHook = (command: string, gated: boolean) => [...OWNER_HOOKS, ...(gated ? GATE_HOOKS : [])].some((name) => command.includes(`/hooks/${name}.py`));
-
-export function ownerHooks(registered: Registration, gated = false): Registration {
-  const kept = Object.entries(registered).map(([event, entries]) => [event, entries.filter(({ hooks }) => hooks.every(({ command }) => isOwnerHook(command, gated)))] as const);
-  return Object.fromEntries(kept.filter(([, entries]) => entries.length > 0));
-}
 
 function fenced(runs: string[], owned: Registration): string {
   const command = ["node", "-e", FENCE, JSON.stringify(runs)].map(shellQuoted).join(" ");

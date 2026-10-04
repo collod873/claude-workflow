@@ -32,7 +32,7 @@ runs:
       run: |
         hooks="$RUNNER_TEMP/agent-hooks"
         attempt=1
-        until git clone --quiet --depth 1 "https://x-access-token:$HOOKS_TOKEN@github.com/$GITHUB_REPOSITORY_OWNER/agent-hooks" "$hooks" 2>"$RUNNER_TEMP/agent-hooks-clone.log"; do
+        until git clone --quiet --depth 1 --branch live "https://x-access-token:$HOOKS_TOKEN@github.com/$GITHUB_REPOSITORY_OWNER/agent-hooks" "$hooks" 2>"$RUNNER_TEMP/agent-hooks-clone.log"; do
           rm -rf "$hooks"
           if [ "$attempt" -ge 3 ]; then
             { printf '%s\n' "A job cannot fetch the owner's hooks after 3 tries"; cat "$RUNNER_TEMP/agent-hooks-clone.log"; } >"$RUNNER_TEMP/agent-hooks-unreachable.log"
@@ -43,7 +43,7 @@ runs:
         rm -rf "$hooks/.git"
         mkdir -p "$HOME/bin"
         ln -sf "$hooks/bin/check" "$HOME/bin/check"
-        python3 "$hooks/hookcheck.py" --root "$hooks" --settings "$RUNNER_TEMP/unregistered.json" --emit-settings >"$RUNNER_TEMP/agent-hooks.json"
+        python3 "$hooks/hookcheck.py" --root "$hooks" --settings "$RUNNER_TEMP/unregistered.json" --emit-stages >"$RUNNER_TEMP/agent-hooks.json"
         printf 'AGENT_HOOKS_SETTINGS=%s\n' "$RUNNER_TEMP/agent-hooks.json" >>"$GITHUB_ENV"
         printf 'FEED=%s\n' "$GITHUB_ACTION_PATH/feed.jq" >>"$GITHUB_ENV"
 
