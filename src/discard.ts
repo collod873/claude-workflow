@@ -51,8 +51,6 @@ function discardsAmong(lines: { at: number; added?: string }[]): Discard[] {
   return found;
 }
 
-export const discardsIn = (source: string): Discard[] => discardsAmong(source.split("\n").map((added, index) => ({ at: index + 1, added })));
-
 export function discards(diff: string): string[] {
   const files: { file: string; lines: { at: number; added?: string }[] }[] = [];
   let at = 0;

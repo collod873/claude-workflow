@@ -28,6 +28,13 @@ jobs:
 
       - run: git checkout origin/main -- vitest.config.ts src/growth-limits.proc.test.ts
 
+      - uses: ./.github/actions/hooks
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+
+      - run: python3 "$RUNNER_TEMP/agent-hooks/treewide.py" .
+
       - uses: actions/setup-node@v4
         with:
           node-version: 24

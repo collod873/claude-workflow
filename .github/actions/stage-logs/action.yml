@@ -27,7 +27,7 @@ runs:
       env:
         KB_TOKEN: ${{ steps.kb-app.outputs.token }}
       run: |
-        timeout 120 bash -c 'while pgrep -f "[c]apture[.]py" >/dev/null; do sleep 1; done' || true
+        timeout 120 bash -c 'while pgrep -f "[c]apture[.]py" >/dev/null; do sleep 1; done' || true # quiet: a capture still writing after two minutes is flushed as far as it got
         captured="$HOME/Claude Projects/Knowledge-Base/raw"
         [ -d "$captured" ] || exit 0
         machine=$(bin/spelled MACHINE) || exit 1
