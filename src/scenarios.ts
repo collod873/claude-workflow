@@ -548,25 +548,15 @@ export function issueStage(prefix: string, issue: object, answer: object, posted
   };
 }
 
-type Left = "uncommitted" | "unlanded" | "landed" | "held by a live session";
-
-export function launching({
+export function sessionExtras({
   gh = "exit 0\n",
-  claude = "exit 0\n",
-  left = {} as Record<string, Left>,
+  npm = "exit 0\n",
   mainMoves = "moved.txt",
-  diverged = false,
-}: { gh?: string; claude?: string; left?: Record<string, Left>; mainMoves?: string; diverged?: boolean } = {}) {
-  const root = scratch("session-");
+  live = 0,
+}: { gh?: string; npm?: string; mainMoves?: string; live?: number } = {}) {
+  const root = scratch("session-extras-");
   const { remote, session: main } = cloned(root, "base");
-  for (const [name, state] of Object.entries(left)) {
-    const at = join(main, ".claude", "worktrees", name);
-    git(main, "worktree", "add", "--quiet", "-b", `worktree-${name}`, at);
-    if (state === "uncommitted" || state === "held by a live session") plant(at, "edit.txt", "half done\n");
-    if (state === "unlanded") git(at, "commit", "--quiet", "--allow-empty", "-m", "unlanded");
-    if (state === "held by a live session") git(main, "worktree", "lock", "--reason", `claude session ${name} (pid ${process.pid} start 1)`, at);
-  }
-  if (diverged) git(main, "commit", "--quiet", "--allow-empty", "-m", "edited in the main checkout");
+  const was = git(main, "rev-parse", "HEAD");
   const other = join(root, "other");
   git(root, "clone", "--quiet", remote, other);
   git(other, "config", "user.email", "other@test");
@@ -575,15 +565,13 @@ export function launching({
   git(other, "add", mainMoves);
   git(other, "commit", "--quiet", "-m", "a merge since the last session");
   git(other, "push", "--quiet", "origin", "main");
-  const argv = (tool: string) => () => (existsSync(join(root, tool)) ? readFileSync(join(root, tool), "utf8").trimEnd().split("\n") : undefined);
-  script(join(root, "bin", "claude"), `printf '%s\\n' "$PWD" "$@" >"${join(root, "claude")}"\n${claude}`);
-  script(join(root, "bin", "npm"), `printf '%s\\n' "$PWD" "$@" >"${join(root, "npm")}"\n`);
+  git(main, "pull", "--quiet", "--ff-only", "origin", "main");
+  const installed = join(root, "npm");
+  script(join(root, "bin", "npm"), `printf '%s\\n' "$PWD" "$@" >"${installed}"\n${npm}`);
   script(join(root, "bin", "gh"), gh);
   return {
-    remote,
     main,
-    claude: argv("claude"),
-    npm: argv("npm"),
-    run: (...args: string[]) => execute(join(BIN, "session"), main, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, args),
+    npm: () => (existsSync(installed) ? readFileSync(installed, "utf8").trimEnd().split("\n") : undefined),
+    run: () => execute(join(BIN, "session-extras"), main, { PATH: `${join(root, "bin")}:${process.env.PATH}`, SESSION_MAIN_WAS: was, SESSION_LIVE: String(live) }, []),
   };
 }
