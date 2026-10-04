@@ -15,7 +15,6 @@ permissions:
 
 jobs:
   ended:
-    if: "${{ !contains(github.event.issue.labels.*.name, 'spec') && !contains(github.event.issue.labels.*.name, 'note') }}"
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -39,7 +38,15 @@ jobs:
         with:
           node-version: 24
 
+      - id: labelled
+        run: |
+          spec=$(bin/spelled SPEC)
+          note=$(bin/spelled NOTE)
+          held=$(jq --arg spec "$spec" --arg note "$note" 'any(.issue.labels[]?.name; IN($spec, $note)) | not' "$GITHUB_EVENT_PATH")
+          printf 'held=%s\n' "$held" | tee -a "$GITHUB_OUTPUT"
+
       - id: ended
+        if: steps.labelled.outputs.held == 'true'
         timeout-minutes: 5
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}

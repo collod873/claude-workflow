@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { cloned, copyMark, git, holds, scratch, script, type StepOutcome } from "./scenarios.ts";
+import { cloned, copyMark, git, holds, labelledAs, scratch, script, starts as startsJob, type IssueEvent, type StepOutcome } from "./scenarios.ts";
 
 const REPO = join(import.meta.dirname, "..");
 const WORKFLOWS = join(REPO, ".github", "workflows");
@@ -53,7 +53,7 @@ function stageStep(job: Job, stage: Stage): Step {
 }
 
 function stagesRun(job: Job, failing: Stage | undefined, given: Record<string, Record<string, string>> = {}): Stage[] {
-  const outputs: Record<string, Record<string, string>> = { admit: { admitted: "true" }, ...given };
+  const outputs: Record<string, Record<string, string>> = { labelled: { held: "true" }, admit: { admitted: "true" }, ...given };
   const outcomes: Record<string, StepOutcome> = {};
   for (const step of job.steps) if (step.id !== undefined) outcomes[step.id] = { outcome: "skipped", conclusion: "skipped", outputs: {} };
   const red = failing === undefined ? undefined : stageStep(job, failing);
@@ -71,72 +71,56 @@ function stagesRun(job: Job, failing: Stage | undefined, given: Record<string, R
 }
 
 describe("build.yml builds a ticket the moment it is filed (#826)", () => {
-  it("an issue labelled note starts no build", () => {
-    const { on, job } = workflow();
-    const starts = (labels: string[]) => holds(job.if ?? "true", { labels });
+  const starts = (event: IssueEvent) => startsJob("build.yml", "build", event);
+
+  it("an issue labelled note starts no build", async () => {
+    const { on } = workflow();
 
     expect(on.issues?.types).toContain("opened");
-    expect(starts([])).toBe(true);
-    expect(starts(["ticket"])).toBe(true);
-    expect(starts(["note"])).toBe(false);
-    expect(starts(["ticket", "note"])).toBe(false);
+    expect(await starts({ labels: [] })).toBe(true);
+    expect(await starts({ labels: ["ticket"] })).toBe(true);
+    expect(await starts({ labels: ["note"] })).toBe(false);
+    expect(await starts({ labels: ["ticket", "note"] })).toBe(false);
   });
 
-  it("an issue labelled spec starts no build", () => {
-    const { job } = workflow();
-    const starts = (labels: string[]) => holds(job.if ?? "true", { labels });
-
-    expect(starts(["spec"])).toBe(false);
-    expect(starts(["ticket", "spec"])).toBe(false);
+  it("an issue labelled spec starts no build", async () => {
+    expect(await starts({ labels: ["spec"] })).toBe(false);
+    expect(await starts({ labels: ["ticket", "spec"] })).toBe(false);
   });
 
-  it("an issue a stranger files or reopens starts no build, since its checks run as shell with the App's token", () => {
-    const { job } = workflow();
-    const starts = (sender: string) => holds(job.if ?? "true", { sender });
-
-    expect(starts("collod873")).toBe(true);
-    expect(starts("stranger")).toBe(false);
+  it("an issue a stranger files or reopens starts no build, since its checks run as shell with the App's token", async () => {
+    expect(await starts({ sender: "collod873" })).toBe(true);
+    expect(await starts({ sender: "stranger" })).toBe(false);
+    expect(await starts({ sender: "stranger", action: "reopened" })).toBe(false);
   });
 
-  it("every ticket the App opens reaches bin/fix, which holds it to a follow-up or an owner's open spec, and nothing a stranger files does (#865, #1022)", () => {
-    const { job } = workflow();
-    const starts = (sender: string, body: string) => holds(job.if ?? "true", { sender, body });
-    const followUp = "## Why\n\nFollow-up of #865: its review found this after the builder's one turn.\n";
-
-    expect(starts("collod873-machine[bot]", followUp)).toBe(true);
-    expect(starts("collod873-machine[bot]", "## Why\n\nA ticket the slicer filed under a spec.\n")).toBe(true);
-    expect(starts("stranger", followUp)).toBe(false);
-    expect(holds(job.if ?? "true", { sender: "collod873-machine[bot]", body: followUp, labels: ["note"] })).toBe(false);
+  it("every ticket the App opens reaches bin/fix, which holds it to a follow-up or an owner's open spec, and nothing a stranger files does (#865, #1022)", async () => {
+    expect(await starts({ sender: "collod873-machine[bot]" })).toBe(true);
+    expect(await starts({ sender: "stranger" })).toBe(false);
+    expect(await starts({ sender: "collod873-machine[bot]", labels: ["note"] })).toBe(false);
   });
 
-  it("builds nothing on the App's reopen", () => {
-    const { job } = workflow();
-    const followUp = "## Why\n\nFollow-up of #865: its review found this after the builder's one turn.\n";
-
-    expect(holds(job.if ?? "true", { sender: "collod873-machine[bot]", body: followUp, action: "opened" })).toBe(true);
-    expect(holds(job.if ?? "true", { sender: "collod873-machine[bot]", body: followUp, action: "reopened" })).toBe(false);
-    expect(holds(job.if ?? "true", { sender: "collod873-machine[bot]", action: "unlabeled", label: "waiting", body: "## Why\n\nThe owner's own words.\n" })).toBe(true);
+  it("builds nothing on the App's reopen", async () => {
+    expect(await starts({ sender: "collod873-machine[bot]", action: "opened" })).toBe(true);
+    expect(await starts({ sender: "collod873-machine[bot]", action: "reopened" })).toBe(false);
+    expect(await starts({ sender: "collod873-machine[bot]", action: "unlabeled", label: "waiting" })).toBe(true);
   });
 
-  it("a ticket split by its builder builds what waited once `waiting` comes off, and no other label change starts a build (#910)", () => {
-    const { on, job } = workflow();
-    const starts = (sender: string, label: string) => holds(job.if ?? "true", { sender, action: "unlabeled", label, body: "## Why\n\nThe owner's own words.\n" });
+  it("a ticket split by its builder builds what waited once `waiting` comes off, and no other label change starts a build (#910)", async () => {
+    const unlabeled = (sender: string, label: string) => starts({ sender, action: "unlabeled", label });
 
-    expect(on.issues?.types).toContain("unlabeled");
-    expect(starts("collod873-machine[bot]", "waiting")).toBe(true);
-    expect(starts("collod873", "waiting")).toBe(true);
-    expect(starts("collod873-machine[bot]", "building")).toBe(false);
-    expect(starts("collod873", "needs-human")).toBe(false);
-    expect(starts("stranger", "waiting")).toBe(false);
-    expect(holds(job.if ?? "true", { sender: "collod873-machine[bot]", action: "unlabeled", label: "waiting", labels: ["note"] })).toBe(false);
+    expect(workflow().on.issues?.types).toContain("unlabeled");
+    expect(await unlabeled("collod873-machine[bot]", "waiting")).toBe(true);
+    expect(await unlabeled("collod873", "waiting")).toBe(true);
+    expect(await unlabeled("collod873-machine[bot]", "building")).toBe(false);
+    expect(await unlabeled("collod873", "needs-human")).toBe(false);
+    expect(await unlabeled("stranger", "waiting")).toBe(false);
+    expect(await starts({ sender: "collod873-machine[bot]", action: "unlabeled", label: "waiting", labels: ["note"] })).toBe(false);
   });
 
-  it("a follow-up the reviewer files labelled `waiting` starts no build when opened, only once `waiting` comes off (#1033)", () => {
-    const { job } = workflow();
-    const followUp = "## Why\n\nFollow-up of #865: its review found this after its builder's repair.\n";
-
-    expect(holds(job.if ?? "true", { sender: "collod873-machine[bot]", body: followUp, action: "opened", labels: ["waiting"] })).toBe(false);
-    expect(holds(job.if ?? "true", { sender: "collod873-machine[bot]", body: followUp, action: "unlabeled", label: "waiting" })).toBe(true);
+  it("a follow-up the reviewer files labelled `waiting` starts no build when opened, only once `waiting` comes off (#1033)", async () => {
+    expect(await starts({ sender: "collod873-machine[bot]", action: "opened", labels: ["waiting"] })).toBe(false);
+    expect(await starts({ sender: "collod873-machine[bot]", action: "unlabeled", label: "waiting" })).toBe(true);
   });
 
   it("admits the ticket before start marks it, and a refused ticket runs neither start nor its builder, ending green so no Fix starts (#1022)", () => {
@@ -266,8 +250,10 @@ describe("every job that spends a model is watched as it goes, read after it end
       expect(steps[minted]?.with).toMatchObject({ owner: "collod873", "permission-contents": "write" });
       expect(minted).toBeGreaterThan(lastModel);
       expect(filed).toBeGreaterThan(minted);
-      expect(steps[minted]?.if).toBe("always()");
-      expect(steps[filed]?.if).toBe("always()");
+      for (const ended of [{}, { failed: true }, { cancelled: true }]) {
+        expect(holds(steps[minted]?.if ?? "success()", { steps: labelledAs(steps, "true"), ...ended })).toBe(true);
+        expect(holds(steps[filed]?.if ?? "success()", { steps: labelledAs(steps, "true"), ...ended })).toBe(true);
+      }
     }
   });
 
@@ -330,6 +316,7 @@ function ranStep(step: Step, cwd: string, env: Record<string, string>): { status
 function lookedUp(env: Record<string, string>, labels = ""): ReturnType<typeof ranStep> {
   const which = namedJob(fixWorkflow().jobs, "which", FIX_WORKFLOW).steps.find((step) => step.id === "which") as Step;
   const root = scratch("which-");
+  copyMark(root);
   script(join(root, "bin", "gh"), `printf '%s\\n' ${labels}\n`);
   return ranStep(which, root, { ISSUE: "", RAN: "", RAN_ON: "", TITLE: "", PATH: `${join(root, "bin")}:${process.env.PATH}`, ...env });
 }
@@ -472,6 +459,7 @@ describe("build.yml re-runs an open PR's failed checks instead of building, when
     const withOpenPr = scratch("reopen-open-");
     const openCalls = join(withOpenPr, "calls");
     const openOutput = join(withOpenPr, "output");
+    copyMark(withOpenPr);
     script(join(withOpenPr, "bin", "mark"), `printf 'mark %s\\n' "$*" >>"${openCalls}"\n`);
     script(
       join(withOpenPr, "bin", "gh"),
@@ -497,6 +485,7 @@ describe("build.yml re-runs an open PR's failed checks instead of building, when
     const withNoPr = scratch("reopen-none-");
     const noCalls = join(withNoPr, "calls");
     const noOutput = join(withNoPr, "output");
+    copyMark(withNoPr);
     script(join(withNoPr, "bin", "mark"), `printf 'mark %s\\n' "$*" >>"${noCalls}"\n`);
     script(
       join(withNoPr, "bin", "gh"),
@@ -603,12 +592,13 @@ describe("build.yml and closed.yml say in their logs when a mark fails, so a tic
   const refusal = (label: string) => `mark: #9 not labelled ${label}: HTTP 403: Resource not accessible by integration`;
   const refusing = (prefix: string, gh: string) => {
     const root = scratch(prefix);
+    copyMark(root);
     script(join(root, "bin", "mark"), "printf 'mark: #%s not labelled %s: HTTP 403: Resource not accessible by integration\\n' \"$1\" \"$2\" >&2\nexit 1\n");
     script(join(root, "bin", "gh"), gh);
     return root;
   };
 
-  it("passes on bin/mark's refusal from the start step, whether it reruns checks, counts a try or builds, and still goes on", () => {
+  it("ends the start step red on bin/mark's refusal, whether it reruns checks, counts a try or builds, so a refused mark never passes unseen (#1108)", () => {
     const start = stageStep(workflow().job, "start");
     const started = (gh: string, action: string) => {
       const cwd = refusing("start-refused-", gh);
@@ -621,7 +611,7 @@ describe("build.yml and closed.yml say in their logs when a mark fails, so a tic
       ["exit 1\n", "opened", "building"],
     ] as const) {
       const { status, stderr } = started(gh, action);
-      expect(status, stderr).toBe(0);
+      expect(status, stderr).not.toBe(0);
       expect(stderr).toContain(`${refusal(label)}\n`);
     }
   });

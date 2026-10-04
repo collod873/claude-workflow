@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { execute, heard, holds, MACHINE, OWNER, plant, type Said, scratch, script, type WorkflowStep } from "./scenarios.ts";
+import { execute, heard, holds, MACHINE, OWNER, plant, type Said, scratch, script, starts, type WorkflowStep } from "./scenarios.ts";
 import { NEEDS_HUMAN } from "./post.ts";
 import { DONE_CHECK_POSTED, doneChecking, specWith } from "./done-checker.part.ts";
 import { missedIn } from "./done-checker.ts";
@@ -264,29 +264,28 @@ describe("done-check.yml runs the done check again on the owner's reply to a sen
     plant(root, "comments.json", JSON.stringify(comments.map((body) => ({ body, user: { login: MACHINE } }))));
     script(join(root, "bin", "gh"), `while [[ $1 != --jq ]]; do shift; done\njq -r "$2" <"${join(root, "comments.json")}"\n`);
     const output = join(root, "output");
-    const step = workflow().asked.steps.find((one) => one.run !== undefined);
+    const step = workflow().asked.steps.find((one) => one.id === "asked");
     const ran = execute("bash", root, { PATH: `${join(root, "bin")}:${process.env.PATH}`, GITHUB_OUTPUT: output, GH_REPO: "collod873/claude-workflow", SPEC: "974" }, ["-e", "-c", step?.run ?? ""]);
     if (ran.status !== 0) throw new Error(ran.stderr);
     return readFileSync(output, "utf8").match(/^asked=(.*)$/m)?.[1];
   }
 
-  it("starts on the owner's comment on a spec, and on no one else's", () => {
-    const { on, asked } = workflow();
-    const starts = (labels: string[], sender = OWNER) => holds(asked.if ?? "true", { labels, sender, action: "created" });
+  it("starts on the owner's comment on a spec, and on no one else's", async () => {
+    const { on } = workflow();
+    const asks = (labels: string[], sender = OWNER) => starts("done-check.yml", "asked", { labels, sender, action: "created" });
 
     expect(on).toEqual({ issue_comment: { types: ["created"] } });
-    expect(starts(["spec"])).toBe(true);
-    expect(starts(["spec"], MACHINE)).toBe(false);
-    expect(starts(["spec"], "stranger")).toBe(false);
-    expect(starts(["ticket"])).toBe(false);
+    expect(await asks(["spec"])).toBe(true);
+    expect(await asks(["spec"], MACHINE)).toBe(false);
+    expect(await asks(["spec"], "stranger")).toBe(false);
+    expect(await asks(["ticket"])).toBe(false);
   });
 
-  it("does not start on the owner's comment once the last done check put a sentence to him and called needs-human (#1043)", () => {
-    const { asked } = workflow();
+  it("does not start on the owner's comment once the last done check put a sentence to him and called needs-human (#1043)", async () => {
     const calledOwner = `## Done check\n\n1. **Did not hold**: one\n   saw it fail\n2. **Put to the owner**: two\n   open it on your phone\n\nSentence 1 missed again after the fix wave, so the spec is marked \`${NEEDS_HUMAN}\`: one. Why: saw it fail\n`;
 
     expect(lastAsked([calledOwner, "an aside"])).toBe("true");
-    expect(holds(asked.if ?? "true", { labels: ["spec", NEEDS_HUMAN], sender: OWNER, action: "created" })).toBe(false);
+    expect(await starts("done-check.yml", "asked", { labels: ["spec", NEEDS_HUMAN], sender: OWNER, action: "created" })).toBe(false);
   });
 
   it("runs bin/done-check on the spec only when the last ## Done check put a sentence to the owner", () => {

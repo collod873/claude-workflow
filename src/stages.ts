@@ -26,11 +26,9 @@ export function declareStage(stage: Stage): void {
 
 export async function stages(): Promise<Stage[]> {
   const src = import.meta.dirname;
-  await Promise.all(
-    readdirSync(src)
-      .filter((name) => PART_FILE.test(name))
-      .sort()
-      .map((name) => import(join(src, name))),
-  );
+  await readdirSync(src)
+    .filter((name) => PART_FILE.test(name))
+    .sort()
+    .reduce<Promise<unknown>>((loaded, name) => loaded.then(() => import(join(src, name))), Promise.resolve());
   return [...declared].sort((one, other) => one.part.name.localeCompare(other.part.name));
 }

@@ -31,13 +31,25 @@ const LABELS = [
 export type LabelName = (typeof LABELS)[number]["name"];
 export type MarkedLabel = Extract<(typeof LABELS)[number], { kind: "state" | "parked" | "owner" }>["name"];
 
-const USAGE = "spelled: usage: spelled labels\n";
+const SPEC = "spec" as const satisfies LabelName;
+const NOTE = "note" as const satisfies LabelName;
+export const RESEARCH = "research" as const satisfies LabelName;
+const BUILDING = "building" as const satisfies MarkedLabel;
+const CHECKING = "checking" as const satisfies MarkedLabel;
+export const WAITING = "waiting" as const satisfies MarkedLabel;
+export const NEEDS_HUMAN = "needs-human" as const satisfies MarkedLabel;
+const KEYED: Record<string, LabelName> = { SPEC, NOTE, RESEARCH, BUILDING, CHECKING, WAITING, NEEDS_HUMAN };
+
+const USAGE = `spelled: usage: spelled labels | spelled <${Object.keys(KEYED).join("|")}>\n`;
 
 if (import.meta.main) {
   const asked = process.argv.slice(2);
-  if (asked.length !== 1 || asked[0] !== "labels") {
+  const [key = ""] = asked;
+  if (asked.length !== 1 || (key !== "labels" && !Object.hasOwn(KEYED, key))) {
     process.stderr.write(USAGE);
     process.exit(2);
   }
-  process.stdout.write(LABELS.map(({ name, kind, colour, description }: Label) => `${[name, kind, colour, description].join("\t")}\n`).join(""));
+  process.stdout.write(
+    key === "labels" ? LABELS.map(({ name, kind, colour, description }: Label) => `${[name, kind, colour, description].join("\t")}\n`).join("") : `${KEYED[key] ?? ""}\n`,
+  );
 }

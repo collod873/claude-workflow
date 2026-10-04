@@ -19,6 +19,7 @@ const spelledIn = (text: string) => SPELLINGS.flatMap((spelling) => [...text.mat
 const workflowFiles = () => [...readdirSync(WORKFLOWS).map((file) => join(WORKFLOWS, file)), ...readdirSync(ACTIONS).map((action) => join(ACTIONS, action, "action.yml"))];
 
 const spelled = (...args: string[]) => execute(join(BIN, "spelled"), scratch("spelled-"), {}, args);
+const USAGE = "spelled: usage: spelled labels | spelled <SPEC|NOTE|RESEARCH|BUILDING|CHECKING|WAITING|NEEDS_HUMAN>\n";
 const rows = () => heard(spelled("labels")).lines.map((line) => line.split("\t"));
 
 describe("bin/spelled prints the machine's labels from one typed set, so no script types its own list (#1100)", () => {
@@ -49,9 +50,23 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
     }
   });
 
-  it("refuses anything but labels, naming its usage", () => {
-    for (const args of [[], ["label"], ["labels", "--all"]]) {
-      expect(spelled(...args), args.join(" ")).toEqual({ status: 2, stdout: "", stderr: "spelled: usage: spelled labels\n" });
+  it("prints the one label a key names, each key named by its TypeScript constant (#1108)", () => {
+    for (const [key, name] of [
+      ["SPEC", "spec"],
+      ["NOTE", "note"],
+      ["RESEARCH", "research"],
+      ["BUILDING", "building"],
+      ["CHECKING", "checking"],
+      ["WAITING", "waiting"],
+      ["NEEDS_HUMAN", "needs-human"],
+    ]) {
+      expect(spelled(key ?? ""), key).toEqual({ status: 0, stdout: `${name ?? ""}\n`, stderr: "" });
+    }
+  });
+
+  it("refuses anything but labels or a key it holds, naming its usage", () => {
+    for (const args of [[], ["label"], ["labels", "--all"], ["SPECS"], ["spec"], ["SPEC", "NOTE"], ["toString"]]) {
+      expect(spelled(...args), args.join(" ")).toEqual({ status: 2, stdout: "", stderr: USAGE });
     }
   });
 
@@ -116,7 +131,7 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
     expect([...new Set(stdout.split("\n").filter((line) => line.startsWith("src/")).map((line) => /^src\/misspelled\.ts\((\d+),/.exec(line)?.[1]))]).toEqual(["2", "3", "4", "5", "7", "8", "9", "10"]);
   });
 
-  it("finds every label a workflow file spells in the set, so a misspelled one fails the check (#1104)", () => {
+  it("finds every label a workflow file spells, and finds none, since each asks spelled by key (#1104, #1108)", () => {
     const held = rows().map(([name]) => name);
     const planted = [
       "if: contains(github.event.issue.labels.*.name, 'specs')",
@@ -128,18 +143,18 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
     ].join("\n");
 
     expect(spelledIn(planted).filter((name) => !held.includes(name))).toEqual(["specs", "waitng", "bulding", "needs-humans", "needs-humen", "asking"]);
-    for (const file of workflowFiles()) expect(spelledIn(readFileSync(file, "utf8")).filter((name) => !held.includes(name)), file).toEqual([]);
+    for (const file of workflowFiles()) expect(spelledIn(readFileSync(file, "utf8")), file).toEqual([]);
   });
 
   it("fails typecheck when a label constant is set to another label the set holds (#1103)", () => {
     const copy = scratch("spelled-swapped-");
     for (const kept of ["src", "tsconfig.json", "package.json", "vitest.config.ts"]) cpSync(join(BIN, "..", kept), join(copy, kept), { recursive: true });
     symlinkSync(join(BIN, "..", "node_modules"), join(copy, "node_modules"));
-    const post = join(copy, "src", "post.ts");
-    const kept = readFileSync(post, "utf8");
+    const spelledAt = join(copy, "src", "spelled.ts");
+    const kept = readFileSync(spelledAt, "utf8");
     const swapped = kept.replace(/(export const NEEDS_HUMAN\b[^=]*= )"needs-human"/, '$1"waiting"');
     expect(swapped).not.toBe(kept);
-    writeFileSync(post, swapped);
+    writeFileSync(spelledAt, swapped);
 
     const { stdout } = execute(join(BIN, "..", "node_modules", ".bin", "tsc"), copy, {}, ["--noEmit", "--pretty", "false", "-p", "tsconfig.json"]);
 

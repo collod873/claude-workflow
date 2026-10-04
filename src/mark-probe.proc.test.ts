@@ -16,7 +16,7 @@ const probe = () => parse(readFileSync(PROBE, "utf8")) as Probe;
 
 function probed(gh: string) {
   const steps = Object.values(probe().jobs).flatMap((job) => job.steps);
-  const marks = steps.filter((step) => /(^|\s)bin\/mark 0 checking\b/.test(step.run ?? ""));
+  const marks = steps.filter((step) => /(^|[\s(])bin\/mark 0 "\$checking"/.test(step.run ?? ""));
   expect(marks).toHaveLength(1);
   const [step] = marks as [WorkflowStep];
   expect(step.env).toMatchObject({ GH_TOKEN: expect.any(String), GH_REPO: expect.any(String) });

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { text as read } from "node:stream/consumers";
 import { emDashLines } from "./em-dash.ts";
 import { NEXT_HEADING, NOTE_SHAPE, SPEC_SHAPE, TICKET_SHAPE, matchEnd, noteRefusals, rewriteRefusals, specRefusals, ticketRefusals } from "./ticket-shape.ts";
-import type { LabelName, MarkedLabel } from "./spelled.ts";
+import { NEEDS_HUMAN, RESEARCH, WAITING, type LabelName, type MarkedLabel } from "./spelled.ts";
 import { type Stop, stoppedAt } from "./stops.ts";
 
 export interface Posting {
@@ -96,11 +96,8 @@ const filed = (refuses: (text: string) => string[], labels: LabelName[], shape: 
 const judgementRefusals = (text: string): string[] => emDashLines(text).map((line) => `line ${line} carries an em dash`);
 
 export const MISSING = /HTTP 404/;
-export const RESEARCH = "research" as const satisfies LabelName;
-export const WAITING = "waiting" as const satisfies MarkedLabel;
-export const NEEDS_HUMAN = "needs-human" as const satisfies MarkedLabel;
 export const RESOLVING = "resolving" as const satisfies MarkedLabel;
-export { type MarkedLabel };
+export { NEEDS_HUMAN, RESEARCH, WAITING, type MarkedLabel };
 
 const KINDS: Record<string, Kind> = {
   ticket: filed(ticketRefusals, ["ticket"], TICKET_SHAPE),

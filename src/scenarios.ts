@@ -1,4 +1,4 @@
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFile, execFileSync, spawnSync } from "node:child_process";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, matchesGlob } from "node:path";
@@ -38,6 +38,8 @@ export const OWNER = "collod873";
 export const MACHINE = "collod873-machine[bot]";
 
 export interface WorkflowStep {
+  id?: string;
+  if?: string;
   uses?: string;
   run?: string;
   with?: Record<string, unknown>;
@@ -46,15 +48,60 @@ export interface WorkflowStep {
 
 interface WorkflowJob {
   if?: string;
+  needs?: string | string[];
   permissions?: Record<string, string>;
   steps: WorkflowStep[];
 }
 
-export function onlyJob(file: string): WorkflowJob {
-  const { jobs } = parse(readFileSync(join(WORKFLOWS, file), "utf8")) as { jobs: Record<string, WorkflowJob> };
-  const [job] = Object.values(jobs);
-  if (job === undefined) throw new Error(`no job in ${file}`);
-  return job;
+export interface IssueEvent {
+  labels?: string[];
+  sender?: string;
+  action?: string;
+  label?: string;
+}
+
+export const workflowJobs = (file: string) => (parse(readFileSync(join(WORKFLOWS, file), "utf8")) as { jobs: Record<string, WorkflowJob> }).jobs;
+
+export function labelledStep(file: string, job: string): WorkflowStep {
+  const step = workflowJobs(file)[job]?.steps.find(({ id }) => id === "labelled");
+  if (step === undefined) throw new Error(`no labelled step in the ${job} job of ${file}`);
+  return step;
+}
+
+export const afterLabelled = (steps: WorkflowStep[]) => steps.slice(steps.findIndex(({ id }) => id === "labelled") + 1);
+
+export const labelledAs = (steps: WorkflowStep[], held: string | undefined): Record<string, StepOutcome> => ({
+  ...Object.fromEntries(steps.flatMap(({ id }) => (id === undefined ? [] : [[id, { outcome: "skipped", conclusion: "skipped", outputs: {} }]]))),
+  labelled: { outcome: "success", conclusion: "success", outputs: held === undefined ? {} : { held } },
+});
+
+export function heldBy(step: WorkflowStep, cwd: string, { labels, action = "opened", label = "", sender = OWNER }: IssueEvent): Promise<{ failed: boolean; held: string | undefined }> {
+  const root = scratch("labelled-");
+  const event = join(root, "event.json");
+  const output = join(root, "output");
+  writeFileSync(event, JSON.stringify({ action, sender: { login: sender }, ...(label === "" ? {} : { label: { name: label } }), ...(labels === undefined ? {} : { issue: { labels: labels.map((name) => ({ name })) } }) }));
+  return new Promise((resolve) => {
+    execFile("bash", ["-e", "-c", step.run ?? ""], { cwd, env: { ...env, GITHUB_EVENT_PATH: event, GITHUB_OUTPUT: output } }, (error) => {
+      const held = existsSync(output) ? /^held=(.*)$/m.exec(readFileSync(output, "utf8"))?.[1] : undefined;
+      resolve({ failed: error !== null, held });
+    });
+  });
+}
+
+const HELD = new Map<string, ReturnType<typeof heldBy>>();
+
+export async function starts(file: string, gated: string, event: IssueEvent): Promise<boolean> {
+  const job = workflowJobs(file)[gated];
+  if (job === undefined) throw new Error(`no ${gated} job in ${file}`);
+  const { labels, ...rest } = event;
+  if (!holds(job.if ?? "true", rest)) return false;
+  const seen = `${file} ${JSON.stringify([labels, rest.action, rest.label])}`;
+  const heard = HELD.get(seen) ?? heldBy(labelledStep(file, gated), join(SRC, ".."), { ...rest, labels, sender: OWNER });
+  HELD.set(seen, heard);
+  const { failed, held } = await heard;
+  if (failed || held === undefined) throw new Error(`the labelled step of ${file} ended red on ${JSON.stringify(labels)}`);
+  const [next] = afterLabelled(job.steps);
+  return holds(next?.if ?? "success()", { steps: labelledAs(job.steps, held) });
 }
 
 export type Said = string | { author: string; type: string; body: string };
