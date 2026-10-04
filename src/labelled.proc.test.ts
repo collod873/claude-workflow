@@ -65,7 +65,7 @@ describe("the workflows ask spelled for each label they test, so a renamed label
     copyMark(root);
     const keys = new Set(files().flatMap((file) => [...readFileSync(file, "utf8").matchAll(/bin\/spelled ([A-Z_]+)/g)].map(([, key]) => key ?? "")));
 
-    expect([...keys].sort()).toEqual(["BUILDING", "CHECKING", "NEEDS_HUMAN", "NOTE", "RESEARCH", "SPEC", "WAITING"]);
+    expect([...keys].sort()).toEqual(["BUILDING", "CHECKING", "NEEDS_HUMAN", "NOTE", "RESEARCH", "SPEC", "TICKET_PREFIX", "WAITING"]);
     for (const key of keys) expect(execute(join(root, "bin", "spelled"), root, {}, [key]).status, key).toBe(0);
   });
 
@@ -97,4 +97,35 @@ describe("the workflows ask spelled for each label they test, so a renamed label
   it("lets a refused mark end its job red, following no mark with || true", () => {
     for (const file of files()) expect(readFileSync(file, "utf8"), file).not.toMatch(/bin\/mark\b[^\n]*\|\|\s*true/);
   });
+});
+
+describe("check.yml asks spelled which branches it reviews and meters, so a renamed prefix cannot pass unseen (#1121)", () => {
+  const BEFORE_CHECK = "${{ startsWith(github.head_ref, 'ticket/') && github.event.pull_request.head.repo.full_name == github.repository }}";
+  const heads = ["ticket/811", "ticket/", "land/4b58f3372b91", "main", "tickets/811", "fix/ticket/811"];
+
+  for (const job of ["review", "meters"]) {
+    it(`starts or skips ${job} on the same branches and forks as before`, async () => {
+      const events = heads.flatMap((head) => [false, true].map((fork) => ({ head, fork })));
+      const now = await Promise.all(events.map(async (event) => `${event.head} ${String(event.fork)} ${String(await starts("check.yml", job, event))}`));
+
+      expect(now).toEqual(events.map((event) => `${event.head} ${String(event.fork)} ${String(holds(BEFORE_CHECK, event))}`));
+    });
+
+    it(`tests only the fork in the ${job} job's if, and runs nothing past its labelled step on a branch it does not review, green or red`, () => {
+      const { if: gated = "", steps } = workflowJobs("check.yml")[job] ?? { steps: [] };
+
+      expect(gated).not.toMatch(/head_ref|ticket/);
+      expect(afterLabelled(steps).length).toBeGreaterThan(0);
+      for (const step of afterLabelled(steps)) {
+        for (const failed of [false, true]) expect(holds(step.if ?? "success()", { steps: labelledAs(steps, "false"), failed }), `${job} ${step.id ?? step.uses ?? ""}`).toBe(false);
+      }
+    });
+
+    it(`ends the ${job} job's labelled step red, holding nothing, when spelled cannot answer`, async () => {
+      const root = scratch("unspelled-");
+      script(join(root, "bin", "spelled"), "printf 'node: not found\\n' >&2\nexit 127\n");
+
+      expect(await heldBy(labelledStep("check.yml", job), root, { head: "ticket/811" })).toEqual({ failed: true, held: undefined });
+    });
+  }
 });

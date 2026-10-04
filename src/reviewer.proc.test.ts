@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { askingBash, cloned, fenceSays, flagValue, git, plant, scratch } from "./scenarios.ts";
+import { askingBash, cloned, fenceSays, flagValue, git, plant, scratch, starts } from "./scenarios.ts";
 import { EARLY_REPAIR, fileDiff, BUILDER_LINE, FROM_MAIN, JUDGED_GAP, JUDGEMENT, RESOLVED, REVIEWED_TICKET, reviewing } from "./reviewer.part.ts";
 import { capped, NO_EM_DASH, TICKET_CAP } from "./brief.ts";
 import { METERS } from "./meter-reviewer.ts";
@@ -89,10 +89,11 @@ describe("bin/review reads a green ticket PR against its Why before it merges (#
     expect(edited()).toEqual([]);
   });
 
-  it("runs on a ticket branch only", () => {
+  it("runs on a ticket branch only", async () => {
     const review = jobNamed((parse(readFileSync(WORKFLOW, "utf8")) as { jobs: Record<string, { needs?: string; if?: string; steps?: { run?: string }[] }> }).jobs, "review");
 
-    expect(review.if).toContain("startsWith(github.head_ref, 'ticket/')");
+    expect(await starts("check.yml", "review", { head: "ticket/810" })).toBe(true);
+    expect(await starts("check.yml", "review", { head: "land/session" })).toBe(false);
     expect(review.steps?.some((step) => /(^|\/)bin\/review /m.test(step.run ?? ""))).toBe(true);
 
     const { run, spent, comments } = reviewing({ branch: "land/session" });

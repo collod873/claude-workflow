@@ -58,6 +58,8 @@ export interface IssueEvent {
   sender?: string;
   action?: string;
   label?: string;
+  head?: string;
+  fork?: boolean;
 }
 
 export const workflowJobs = (file: string) => (parse(readFileSync(join(WORKFLOWS, file), "utf8")) as { jobs: Record<string, WorkflowJob> }).jobs;
@@ -75,11 +77,11 @@ export const labelledAs = (steps: WorkflowStep[], held: string | undefined): Rec
   labelled: { outcome: "success", conclusion: "success", outputs: held === undefined ? {} : { held } },
 });
 
-export function heldBy(step: WorkflowStep, cwd: string, { labels, action = "opened", label = "", sender = OWNER }: IssueEvent): Promise<{ failed: boolean; held: string | undefined }> {
+export function heldBy(step: WorkflowStep, cwd: string, { labels, action = "opened", label = "", sender = OWNER, head }: IssueEvent): Promise<{ failed: boolean; held: string | undefined }> {
   const root = scratch("labelled-");
   const event = join(root, "event.json");
   const output = join(root, "output");
-  writeFileSync(event, JSON.stringify({ action, sender: { login: sender }, ...(label === "" ? {} : { label: { name: label } }), ...(labels === undefined ? {} : { issue: { labels: labels.map((name) => ({ name })) } }) }));
+  writeFileSync(event, JSON.stringify({ action, sender: { login: sender }, ...(label === "" ? {} : { label: { name: label } }), ...(labels === undefined ? {} : { issue: { labels: labels.map((name) => ({ name })) } }), ...(head === undefined ? {} : { pull_request: { head: { ref: head } } }) }));
   return new Promise((resolve) => {
     execFile("bash", ["-e", "-c", step.run ?? ""], { cwd, env: { ...env, GITHUB_EVENT_PATH: event, GITHUB_OUTPUT: output } }, (error) => {
       const held = existsSync(output) ? /^held=(.*)$/m.exec(readFileSync(output, "utf8"))?.[1] : undefined;
@@ -95,7 +97,7 @@ export async function starts(file: string, gated: string, event: IssueEvent): Pr
   if (job === undefined) throw new Error(`no ${gated} job in ${file}`);
   const { labels, ...rest } = event;
   if (!holds(job.if ?? "true", rest)) return false;
-  const seen = `${file} ${JSON.stringify([labels, rest.action, rest.label])}`;
+  const seen = `${file} ${JSON.stringify([labels, rest.action, rest.label, rest.head])}`;
   const heard = HELD.get(seen) ?? heldBy(labelledStep(file, gated), join(SRC, ".."), { ...rest, labels, sender: OWNER });
   HELD.set(seen, heard);
   const { failed, held } = await heard;
@@ -125,6 +127,8 @@ export function holds(
     body = "",
     action = "opened",
     label = "",
+    head = "",
+    fork = false,
   }: {
     labels?: string[];
     steps?: Record<string, StepOutcome>;
@@ -135,6 +139,8 @@ export function holds(
     body?: string;
     action?: string;
     label?: string;
+    head?: string;
+    fork?: boolean;
   },
 ): boolean {
   const bare = condition.replace(/^\s*\$\{\{|\}\}\s*$/g, "");
@@ -142,17 +148,20 @@ export function holds(
     .replace(/github\.event\.action/g, JSON.stringify(action))
     .replace(/github\.event\.label\.name/g, JSON.stringify(label))
     .replace(/github\.event\.sender\.login/g, JSON.stringify(sender))
+    .replace(/github\.head_ref/g, JSON.stringify(head))
+    .replace(/github\.event\.pull_request\.head\.repo\.full_name\s*==\s*github\.repository/g, JSON.stringify(!fork))
     .replace(/contains\(\s*github\.event\.issue\.body\s*,\s*('[^']*')\s*\)/g, `${JSON.stringify(body)}.includes($1)`)
     .replace(/github\.repository_owner/g, JSON.stringify(OWNER))
     .replace(/contains\(\s*github\.event\.issue\.labels\.\*\.name\s*,\s*('[^']*')\s*\)/g, "labels.includes($1)")
     .replace(/steps\.([\w-]+)\.(outcome|conclusion)/g, 'steps["$1"].$2')
     .replace(/steps\.([\w-]+)\.outputs\.([\w-]+)/g, '(steps["$1"].outputs ?? {})["$2"]')
     .replace(/needs\.([\w-]+)\.result/g, 'needs["$1"].result');
-  const evaluate = new Function("labels", "steps", "needs", "success", "failure", "always", "cancelled", `return Boolean(${source});`) as (...scope: unknown[]) => boolean;
+  const evaluate = new Function("labels", "steps", "needs", "startsWith", "success", "failure", "always", "cancelled", `return Boolean(${source});`) as (...scope: unknown[]) => boolean;
   return evaluate(
     labels,
     steps,
     needs,
+    (text: string, start: string) => text.startsWith(start),
     () => !failed && !cancelled,
     () => failed && !cancelled,
     () => true,

@@ -6,6 +6,7 @@ import { METERS } from "./meter-reviewer.ts";
 import { NO_EM_DASH } from "./brief.ts";
 import { metering } from "./meter-reviewer.part.ts";
 import { fileDiff } from "./reviewer.part.ts";
+import { starts } from "./scenarios.ts";
 
 const WORKFLOW = join(import.meta.dirname, "..", ".github", "workflows", "check.yml");
 const TANGLE = "src/tangle.ts joins billing and shipping, which change for different reasons";
@@ -274,13 +275,14 @@ interface Job {
 }
 
 describe("check.yml runs the meters beside the review, and a red meter run never fails the Check run, so no builder starts on it", () => {
-  it("runs main's bin/meters after the check, on a ticket branch only, as a job whose failure the run carries on past and whose logs never take the review's artifact name", () => {
+  it("runs main's bin/meters after the check, on a ticket branch only, as a job whose failure the run carries on past and whose logs never take the review's artifact name", async () => {
     const { jobs } = parse(readFileSync(WORKFLOW, "utf8")) as { jobs: Record<string, Job> };
     const meters = jobs.meters;
     if (meters === undefined) throw new Error(`no meters job in ${WORKFLOW}`);
 
-    expect(meters.if).toContain("startsWith(github.head_ref, 'ticket/')");
-    expect(meters.if).toContain("github.event.pull_request.head.repo.full_name == github.repository");
+    expect(await starts("check.yml", "meters", { head: "ticket/9810" })).toBe(true);
+    expect(await starts("check.yml", "meters", { head: "land/session" })).toBe(false);
+    expect(await starts("check.yml", "meters", { head: "ticket/9810", fork: true })).toBe(false);
     expect(meters["continue-on-error"]).toBe(true);
     expect(meters.steps.some((step) => (step.run ?? "").includes("$RUNNER_TEMP/main/bin/meters "))).toBe(true);
     const logs = meters.steps.find((step) => (step.uses ?? "").includes("stage-logs"));
@@ -289,7 +291,7 @@ describe("check.yml runs the meters beside the review, and a red meter run never
   });
 });
 
-describe("check.yml starts the review and the meters beside the check, not after it, on the ticket branches it already gates on (#970)", () => {
+describe("check.yml starts the review and the meters beside the check, not after it (#970)", () => {
   it("starts the review and the meters beside the check", () => {
     const { jobs } = parse(readFileSync(WORKFLOW, "utf8")) as { jobs: Record<string, Job> };
     const review = jobs.review;
@@ -298,10 +300,6 @@ describe("check.yml starts the review and the meters beside the check, not after
 
     expect(review.needs).not.toBe("check");
     expect(meters.needs).not.toBe("check");
-    expect(review.if).toContain("startsWith(github.head_ref, 'ticket/')");
-    expect(review.if).toContain("github.event.pull_request.head.repo.full_name == github.repository");
-    expect(meters.if).toContain("startsWith(github.head_ref, 'ticket/')");
-    expect(meters.if).toContain("github.event.pull_request.head.repo.full_name == github.repository");
   });
 });
 
