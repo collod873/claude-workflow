@@ -3,7 +3,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { capped } from "./brief.ts";
 import { UNFENCED } from "./fence.ts";
-import { askedIssue, authoredOn, commentOnTicket, gh, mark, NEEDS_HUMAN, OWNER, type Asked } from "./post.ts";
+import { askedIssue, authoredOn, commentOnTicket, gh, mark, NEEDS_HUMAN, OWNER, readOrStop, type Asked } from "./post.ts";
 import { NO_EM_DASH } from "./reviewer.ts";
 import { hired, machineLogs } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
@@ -270,5 +270,5 @@ if (import.meta.main) {
   const [issue, flag, numbers] = process.argv.slice(2);
   if (issue === undefined) throw new Error("no issue number in the arguments");
   const wave = flag === "--wave" ? (numbers ?? "").split(/[ ,]+/).filter((number) => number !== "").map(Number) : undefined;
-  process.exit(exitFor(wave === undefined ? doneCheck(issue) : waveCheck(issue, wave)));
+  process.exit(exitFor(readOrStop("done-check", () => (wave === undefined ? doneCheck(issue) : waveCheck(issue, wave)))));
 }

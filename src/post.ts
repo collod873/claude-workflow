@@ -4,6 +4,7 @@ import { text as read } from "node:stream/consumers";
 import { emDashLines } from "./em-dash.ts";
 import { NEXT_HEADING, NOTE_SHAPE, SPEC_SHAPE, TICKET_SHAPE, matchEnd, noteRefusals, rewriteRefusals, specRefusals, ticketRefusals } from "./ticket-shape.ts";
 import type { LabelName, MarkedLabel } from "./spelled.ts";
+import { type Stop, stoppedAt } from "./stops.ts";
 
 export interface Posting {
   kind: string;
@@ -16,9 +17,49 @@ export interface Posting {
 
 export type Gh = (args: string[]) => { status: number | null; stdout: string; stderr: string };
 
-export const gh: Gh = (args) => spawnSync("gh", args, { encoding: "utf8", maxBuffer: Infinity });
-export const markWith = (env: NodeJS.ProcessEnv) => (issue: string, label: MarkedLabel | "--closed", ...count: ("--try" | "--untry")[]) =>
-  spawnSync(join(process.cwd(), "bin", "mark"), [issue, label, ...count], { stdio: ["ignore", "ignore", "inherit"], env });
+export const ghAs =
+  (env: NodeJS.ProcessEnv): Gh =>
+  (args) =>
+    spawnSync("gh", args, { encoding: "utf8", maxBuffer: Infinity, env });
+export const gh = ghAs(process.env);
+export const git: Gh = (args) => spawnSync("git", args, { encoding: "utf8", maxBuffer: Infinity });
+
+class Stopped extends Error {
+  readonly stop: Stop;
+
+  constructor(stop: Stop, line: string) {
+    super(line);
+    this.stop = stop;
+  }
+}
+
+export const unread = (line: string): never => {
+  throw new Stopped("unread", line);
+};
+
+const readOrUnread = (got: ReturnType<Gh>, line: string): string => (got.status === 0 ? got.stdout.trim() : unread(line));
+
+export const ghRead = (args: string[], line: string) => readOrUnread(gh(args), line);
+export const gitRead = (args: string[], line: string) => readOrUnread(git(args), line);
+
+export function answered(got: ReturnType<Gh>, line: string): boolean {
+  if (got.status !== 0 && got.status !== 1) unread(line);
+  return got.status === 0;
+}
+
+export function readOrStop<Ended>(stage: string, run: () => Ended): Ended | Stop {
+  try {
+    return run();
+  } catch (error) {
+    if (error instanceof Stopped) return stoppedAt(error.stop, `${stage}: ${error.message}`);
+    throw error;
+  }
+}
+
+export const markWith = (env: NodeJS.ProcessEnv) => (issue: string, label: MarkedLabel | "--closed", ...count: ("--try" | "--untry")[]) => {
+  const marked = spawnSync(join(process.cwd(), "bin", "mark"), [issue, label, ...count], { stdio: ["ignore", "ignore", "inherit"], env });
+  if (marked.status !== 0) throw new Stopped("unwritten", `bin/mark #${issue} ${label} ended non-zero, so nothing after it is posted, closed, marked or hired`);
+};
 export const mark = markWith(process.env);
 export interface Held {
   has(label: LabelName): boolean;
@@ -32,7 +73,11 @@ export function labelsOf(issue: string, gh: Gh): Held | "unread" {
 }
 
 export const labelsUnread = (issue: string) => `the labels of #${issue} could not be read, so nothing is marked`;
-export const git = (args: string[]) => spawnSync("git", args, { encoding: "utf8", maxBuffer: Infinity });
+
+export function labelsHeld(issue: string, gh: Gh): Held {
+  const held = labelsOf(issue, gh);
+  return held === "unread" ? unread(labelsUnread(issue)) : held;
+}
 
 interface Kind {
   refuses: (text: string) => string[];
@@ -118,6 +163,8 @@ export function authoredOn(number: string, gh: Gh): { author: string; body: stri
 }
 
 export const commentsOn = (number: string, gh: Gh): string[] | undefined => authoredOn(number, gh)?.map(({ body }) => body);
+
+export const commentsRead = (number: string, line: string, gh: Gh): string[] => commentsOn(number, gh) ?? unread(line);
 
 export interface Opened {
   number?: number;

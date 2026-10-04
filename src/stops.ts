@@ -1,5 +1,6 @@
 const STOPS = {
   unread: "The ticket or its PR cannot be read",
+  unwritten: "A stage's mark is refused: the mark command ends non-zero",
   modelRun: "A stage's model run exits non-zero, or gives no answer",
   unrecorded: "Close: the closing record is refused, or the ticket will not close",
 } as const;

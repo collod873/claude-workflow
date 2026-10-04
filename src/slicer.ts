@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { capped } from "./brief.ts";
 import { FILED } from "./builder.ts";
 import { FENCED_OPUS } from "./fence.ts";
-import { askedIssue, commentOnTicket, commentsOn, gh, mark, NEEDS_HUMAN, post } from "./post.ts";
+import { askedIssue, commentOnTicket, commentsOn, gh, mark, NEEDS_HUMAN, post, readOrStop } from "./post.ts";
 import { LIST_CAP, NO_EM_DASH, TICKET_CAP } from "./reviewer.ts";
 import { hired, machineLogs, type Spent } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
@@ -285,5 +285,5 @@ if (import.meta.main) {
   const [first, second, numbers] = process.argv.slice(2);
   if (first === undefined) throw new Error("no issue number in the arguments");
   const fix = second === "--fix" ? (numbers ?? "").split(/[ ,]+/).filter((number) => number !== "").map(Number) : undefined;
-  process.exit(first === "--ended" && second !== undefined ? ended(second) : exitFor(sliced(first, fix)));
+  process.exit(first === "--ended" && second !== undefined ? ended(second) : exitFor(readOrStop("slice", () => sliced(first, fix))));
 }
