@@ -157,6 +157,8 @@ describe("bin/slice ends red at a read of the wave that fails, rather than handi
     { read: "a ticket's comments", pattern: '*"issues/1001/comments"*', line: "the comments on #1001 could not be read, so no model was spent" },
     { read: "a merged PR's diff", pattern: '"pr diff ticket/1001"*', line: "the diff of #1001's PR could not be read, so no model was spent" },
     { read: "the tickets under the spec", pattern: '*"issues/968/sub_issues"*', line: "the tickets under #968 could not be read, so no model was spent" },
+    { read: "the spec itself (#1115)", pattern: '"issue view 968"*', line: "#968 could not be read, so no label changed and no model was hired" },
+    { read: "the spec's comments (#1115)", pattern: '*"issues/968/comments"*', line: "the comments on #968 could not be read, so no model was spent" },
   ])("ends red at unread naming $read, marking, posting and hiring nothing", ({ pattern, line }) => {
     const sliced = reslicing({ gh: failing(pattern) });
 
