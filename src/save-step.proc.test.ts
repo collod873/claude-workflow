@@ -1,5 +1,7 @@
+import { copyFileSync, existsSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { SAVED_PR, git, heard, saving } from "./scenarios.ts";
+import { BIN, SAVED_PR, execute, git, heard, saving, scratch, script } from "./scenarios.ts";
 
 function savedWithAutoMerge<Saved extends ReturnType<typeof saving>>(saved: Saved, opening: RegExp[]): Saved {
   expect(heard(saved.run())).toEqual({ status: 0, stderr: "", lines: [expect.stringContaining(SAVED_PR)] });
@@ -35,6 +37,22 @@ describe("the save step pushes the branch before anything can refuse it, and ope
     expect(result.stderr).toMatch(/kept/);
     expect(pushed()).toBe("");
     expect(calls()).toEqual([]);
+  });
+});
+
+describe("bin/save asks spelled for the ticket branch prefix (#1121)", () => {
+  it("pushes and opens nothing when spelled cannot answer", () => {
+    const root = scratch("save-unspelled-");
+    script(join(root, "bin", "spelled"), "printf 'node: not found\\n' >&2\nexit 127\n");
+    copyFileSync(join(BIN, "save"), join(root, "bin", "save"));
+    for (const tool of ["git", "gh"]) script(join(root, "bin", tool), `printf '%s\\n' "$*" >>"${join(root, "calls")}"\n`);
+
+    expect(execute(join(root, "bin", "save"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, ["726"])).toEqual({
+      status: 1,
+      stdout: "",
+      stderr: "save: the branch prefix could not be read: node: not found\n",
+    });
+    expect(existsSync(join(root, "calls"))).toBe(false);
   });
 });
 

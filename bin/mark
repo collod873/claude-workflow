@@ -6,6 +6,10 @@ if ! spelled=$("$here/spelled" labels 2>&1); then
   printf 'mark: the labels could not be read: %s\n' "$(printf '%s' "$spelled" | head -n 1 | cut -c 1-120)" >&2
   exit 1
 fi
+if ! prefix=$("$here/spelled" TICKET_PREFIX 2>&1); then
+  printf 'mark: the branch prefix could not be read: %s\n' "$(printf '%s' "$prefix" | head -n 1 | cut -c 1-120)" >&2
+  exit 1
+fi
 states=()
 parked=()
 owners=()
@@ -99,7 +103,7 @@ else
 fi
 
 apply "$number" "${target[@]}"
-if ! pr=$(gh pr list --head "ticket/$number" --state open --json number --jq '.[0].number // empty' 2>&1); then
+if ! pr=$(gh pr list --head "$prefix$number" --state open --json number --jq '.[0].number // empty' 2>&1); then
   printf "mark: #%s's open PR not labelled %s: %s\n" "$number" "$label" "$(printf '%s' "$pr" | head -n 1 | cut -c 1-120)" >&2
   pr=""
 fi
