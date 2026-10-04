@@ -55,11 +55,6 @@ const FIXED: Part[] = [
     stops: "https://github.com/collod873/claude-workflow/issues/912",
   },
   {
-    name: "src/prose.proc.test.ts",
-    file: "src/prose.proc.test.ts",
-    stops: "https://github.com/collod873/claude-workflow/issues/335",
-  },
-  {
     name: "bin/land",
     file: "bin/land",
     stops: "https://github.com/collod873/claude-workflow/issues/652",
@@ -118,19 +113,9 @@ const FIXED: Part[] = [
     stops: "https://github.com/collod873/claude-workflow/issues/680",
   },
   {
-    name: "src/loaded-docs.proc.test.ts",
-    file: "src/loaded-docs.proc.test.ts",
-    stops: "https://github.com/collod873/claude-workflow/issues/663",
-  },
-  {
     name: "src/rulesets.proc.test.ts",
     file: "src/rulesets.proc.test.ts",
     stops: "https://github.com/collod873/claude-workflow/issues/652",
-  },
-  {
-    name: "src/em-dash.proc.test.ts",
-    file: "src/em-dash.proc.test.ts",
-    stops: "https://github.com/collod873/claude-workflow/issues/681",
   },
 ];
 

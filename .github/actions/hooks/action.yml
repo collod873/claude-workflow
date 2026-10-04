@@ -1,0 +1,40 @@
+name: Hooks
+description: Fetches the owner's live hooks release into $RUNNER_TEMP/agent-hooks, with the Python they run on
+
+inputs:
+  client-id:
+    required: true
+  private-key:
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v7
+      with:
+        python-version: "3.14"
+
+    - id: hooks-app
+      uses: actions/create-github-app-token@v3
+      with:
+        client-id: ${{ inputs.client-id }}
+        private-key: ${{ inputs.private-key }}
+        owner: ${{ github.repository_owner }}
+        repositories: agent-hooks
+        permission-contents: read
+
+    - shell: bash
+      env:
+        HOOKS_TOKEN: ${{ steps.hooks-app.outputs.token }}
+      run: |
+        hooks="$RUNNER_TEMP/agent-hooks"
+        attempt=1
+        until git clone --quiet --depth 1 --branch live "https://x-access-token:$HOOKS_TOKEN@github.com/$GITHUB_REPOSITORY_OWNER/agent-hooks" "$hooks" 2>"$RUNNER_TEMP/agent-hooks-clone.log"; do
+          rm -rf "$hooks"
+          if [ "$attempt" -ge 3 ]; then
+            { printf '%s\n' "A job cannot fetch the owner's hooks after 3 tries"; cat "$RUNNER_TEMP/agent-hooks-clone.log"; } >"$RUNNER_TEMP/agent-hooks-unreachable.log"
+            exit 1
+          fi
+          attempt=$((attempt + 1))
+        done
+        rm -rf "$hooks/.git"

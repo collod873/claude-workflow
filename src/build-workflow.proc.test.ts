@@ -208,7 +208,7 @@ function expanded(steps: Step[]): Step[] {
   return steps.flatMap((step) => {
     if (step.uses?.startsWith("./") !== true) return [step];
     const action = parse(readFileSync(join(REPO, step.uses, "action.yml"), "utf8")) as { runs: { steps: Step[] } };
-    return action.runs.steps.map((inner) => ({ ...inner, if: inner.if ?? step.if }));
+    return expanded(action.runs.steps.map((inner) => ({ ...inner, if: inner.if ?? step.if })));
   });
 }
 
@@ -237,12 +237,13 @@ describe("every job that spends a model is watched as it goes, read after it end
   it("every job hands its stages the owner's hooks from the live release, read with a token that can only read agent-hooks", () => {
     for (const { steps } of modelJobs()) {
       const minted = steps.findIndex((step) => step.with?.repositories === "agent-hooks");
+      const cloned = steps.findIndex((step) => /git clone [^\n]*--branch live /.test(step.run ?? ""));
       const handed = steps.findIndex((step) => /AGENT_HOOKS_SETTINGS=.*GITHUB_ENV/.test(step.run ?? ""));
       expect(steps[minted]?.with).toMatchObject({ owner: "${{ github.repository_owner }}", "permission-contents": "read" });
       expect(minted).toBeGreaterThanOrEqual(0);
-      expect(handed).toBeGreaterThan(minted);
+      expect(cloned).toBeGreaterThan(minted);
+      expect(handed).toBeGreaterThan(cloned);
       expect(handed).toBeLessThan(steps.findIndex(spendsModel));
-      expect(steps[handed]?.run).toMatch(/git clone [^\n]*--branch live /);
       expect(steps[handed]?.run).toContain("--emit-stages");
     }
   });
@@ -656,5 +657,17 @@ describe("build.yml and closed.yml say in their logs when a mark fails, so a tic
     expect(stderr).toContain(`${refusal("needs-human")}\n`);
     expect(readFileSync(called, "utf8")).toContain("issue edit 9 --add-label needs-human\n");
     expect(readFileSync(called, "utf8")).toMatch(/issue comment 9 --body @owner the slice run ended red/);
+  });
+});
+
+describe("the PR check runs the owner's tree-wide rules from the live release, so no rule is kept here as a second copy (collod873/agent-hooks#5)", () => {
+  it("fetches the live hooks before it runs treewide.py over the checkout", () => {
+    const { check } = (parse(readFileSync(join(WORKFLOWS, "check.yml"), "utf8")) as Workflow).jobs;
+    const steps = expanded(check?.steps ?? []);
+    const fetched = steps.findIndex((step) => /git clone [^\n]*--branch live /.test(step.run ?? ""));
+    const ruled = steps.findIndex((step) => /treewide\.py" \.$/m.test(step.run ?? ""));
+
+    expect(fetched).toBeGreaterThanOrEqual(0);
+    expect(ruled).toBeGreaterThan(fetched);
   });
 });
