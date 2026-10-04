@@ -5,8 +5,8 @@ import { UNFENCED } from "./fence.ts";
 import { authoredOn, commentOnTicket, commentsRead, gh, mark, NEEDS_HUMAN, OWNER, readOrStop, unread, type Asked } from "./post.ts";
 import { NO_EM_DASH } from "./reviewer.ts";
 import { opened, type Spent } from "./stage.ts";
+import { ASKED, CHECKING, SPEC } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
-import { SPEC_LABEL } from "./wave.ts";
 import { quoted, type Sentence, sentences, SPEC_CAP } from "./ticket-shape.ts";
 
 const stoppedAt = stopsOf({
@@ -137,11 +137,11 @@ function read(issue: string, wave?: number[]): Read | Stop | undefined {
   const opening = opened({
     stage: "done-check",
     issue,
-    state: "checking",
+    state: CHECKING,
     stoppedAt,
     hire: { name: "done checker", reach: UNFENCED, answers: triesOf(wave === undefined ? DONE_OUTCOMES : Object.keys(OUTCOMES)) },
     ready: (asked) => {
-      if (!asked.labels.has(SPEC_LABEL)) return stoppedAt("notSpec", `${said} is not a spec, so nothing was tried`);
+      if (!asked.labels.has(SPEC)) return stoppedAt("notSpec", `${said} is not a spec, so nothing was tried`);
       const listed = sentences(asked.body);
       if (listed.length === 0) return stoppedAt("notSpec", `${said} carries no sentence to try, so nothing was tried or closed`);
       const beyond = wave?.find((number) => number < 1 || number > listed.length);
@@ -259,7 +259,7 @@ function doneCheck(issue: string): Stop | undefined {
   if (typeof comment === "string") return comment;
   const { said } = spec;
   if (found.some(([, , one]) => one.outcome === "owner")) {
-    mark(issue, "asked");
+    mark(issue, ASKED);
     console.log(`${said} did not hold every sentence, so it stays open: ${comment.url}`);
     return undefined;
   }
