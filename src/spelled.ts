@@ -31,14 +31,21 @@ const LABELS = [
 export type LabelName = (typeof LABELS)[number]["name"];
 export type MarkedLabel = Extract<(typeof LABELS)[number], { kind: "state" | "parked" | "owner" }>["name"];
 
-const SPEC = "spec" as const satisfies LabelName;
-const NOTE = "note" as const satisfies LabelName;
+export const TICKET = "ticket" as const satisfies LabelName;
+export const SPEC = "spec" as const satisfies LabelName;
+export const NOTE = "note" as const satisfies LabelName;
 export const RESEARCH = "research" as const satisfies LabelName;
-const BUILDING = "building" as const satisfies MarkedLabel;
-const CHECKING = "checking" as const satisfies MarkedLabel;
+export const BUILDING = "building" as const satisfies MarkedLabel;
+export const CHECKING = "checking" as const satisfies MarkedLabel;
+export const QUEUED = "queued" as const satisfies MarkedLabel;
+export const RESOLVING = "resolving" as const satisfies MarkedLabel;
+export const LANDING = "landing" as const satisfies MarkedLabel;
+export const SLICING = "slicing" as const satisfies MarkedLabel;
+export const RESEARCHING = "researching" as const satisfies MarkedLabel;
 export const WAITING = "waiting" as const satisfies MarkedLabel;
+export const ASKED = "asked" as const satisfies MarkedLabel;
 export const NEEDS_HUMAN = "needs-human" as const satisfies MarkedLabel;
-const KEYED: Record<string, LabelName> = { SPEC, NOTE, RESEARCH, BUILDING, CHECKING, WAITING, NEEDS_HUMAN };
+const KEYED: Record<string, LabelName> = { TICKET, SPEC, NOTE, RESEARCH, BUILDING, CHECKING, QUEUED, RESOLVING, LANDING, SLICING, RESEARCHING, WAITING, ASKED, NEEDS_HUMAN };
 
 const USAGE = `spelled: usage: spelled labels | spelled <${Object.keys(KEYED).join("|")}>\n`;
 

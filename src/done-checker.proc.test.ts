@@ -260,14 +260,13 @@ describe("done-check.yml runs the done check again on the owner's reply to a sen
   }
 
   function lastAsked(comments: string[]): string | undefined {
-    const root = scratch("done-check-yml-");
-    plant(root, "comments.json", JSON.stringify(comments.map((body) => ({ body, user: { login: MACHINE } }))));
-    script(join(root, "bin", "gh"), `while [[ $1 != --jq ]]; do shift; done\njq -r "$2" <"${join(root, "comments.json")}"\n`);
-    const output = join(root, "output");
-    const step = workflow().asked.steps.find((one) => one.id === "asked");
-    const ran = execute("bash", root, { PATH: `${join(root, "bin")}:${process.env.PATH}`, GITHUB_OUTPUT: output, GH_REPO: "collod873/claude-workflow", SPEC: "974" }, ["-e", "-c", step?.run ?? ""]);
+    const checked = doneChecking({ said: comments });
+    const ran = checked.run("974", "--asked");
     if (ran.status !== 0) throw new Error(ran.stderr);
-    return readFileSync(output, "utf8").match(/^asked=(.*)$/m)?.[1];
+    expect(ran.stderr).toBe("");
+    expect(checked.calls()).toEqual([READ_COMMENTS]);
+    expect(checked.marked()).toEqual([]);
+    return ran.stdout.match(/^(true|false)\n$/)?.[1];
   }
 
   it("starts on the owner's comment on a spec, and on no one else's", async () => {
@@ -297,12 +296,31 @@ describe("done-check.yml runs the done check again on the owner's reply to a sen
     expect(lastAsked([`${putToOwner}\n<!-- fix-wave -->\n`, "an aside"])).toBe("false");
     expect(lastAsked(["## Wave check\n\n- Sentence 2, **Waits for the end**: two"])).toBe("false");
     expect(lastAsked([])).toBe("false");
-    const { check } = workflow();
+    const { asked, check } = workflow();
+    const reading = asked.steps.find((one) => one.id === "asked")?.run ?? "";
+    expect(reading).toContain("bin/done-check ${{ github.event.issue.number }} --asked");
+    for (const spelling of ["## Done check", "fix-wave", "Put to the owner", "$SPEC", "|"]) expect(reading, spelling).not.toContain(spelling);
     expect(check.needs).toBe("asked");
     expect(check.if).toBe("${{ needs.asked.outputs.asked == 'true' }}");
     const checked = check.steps.find((step) => step.run?.includes("bin/done-check"));
     expect(checked?.run).toContain("bin/done-check ${{ github.event.issue.number }}");
     expect(checked?.env?.GH_TOKEN).toBe("${{ steps.app.outputs.token }}");
+  });
+});
+
+describe("bin/done-check --asked answers whether the last ## Done check put a sentence to the owner, through the read-or-stop (#1118)", () => {
+  it("ends red at unread, printing nothing and marking nothing, when the spec's comments cannot be read", () => {
+    const checked = doneChecking({ gh: "[[ $1 == api ]] && { printf 'HTTP 502\\n' >&2; exit 1; }" });
+
+    expect(checked.run("974", "--asked")).toEqual({ status: 1, stdout: "", stderr: "done-check: #974 could not read its comments, so nothing was asked\n" });
+    expect(checked.calls()).toEqual([READ_COMMENTS]);
+    expect(checked.marked()).toEqual([]);
+  });
+
+  it("refuses --asked beside anything else, naming its usage", () => {
+    for (const args of [["974", "--asked", "1"], ["--asked"], ["974", "--wave", "1", "--asked"]]) {
+      expect(doneChecking().run(...args), args.join(" ")).toEqual({ status: 2, stdout: "", stderr: "done-check: usage: done-check <issue number> [--wave <sentence numbers> | --asked]\n" });
+    }
   });
 });
 

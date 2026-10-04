@@ -1,6 +1,7 @@
 import { copyFileSync, cpSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import ts from "typescript";
 import { parse } from "yaml";
 import { BIN, execute, heard, plant, scratch, script, type WorkflowStep } from "./scenarios.ts";
 
@@ -19,7 +20,44 @@ const spelledIn = (text: string) => SPELLINGS.flatMap((spelling) => [...text.mat
 const workflowFiles = () => [...readdirSync(WORKFLOWS).map((file) => join(WORKFLOWS, file)), ...readdirSync(ACTIONS).map((action) => join(ACTIONS, action, "action.yml"))];
 
 const spelled = (...args: string[]) => execute(join(BIN, "spelled"), scratch("spelled-"), {}, args);
-const USAGE = "spelled: usage: spelled labels | spelled <SPEC|NOTE|RESEARCH|BUILDING|CHECKING|WAITING|NEEDS_HUMAN>\n";
+const KEYS = [
+  ["TICKET", "ticket"],
+  ["SPEC", "spec"],
+  ["NOTE", "note"],
+  ["RESEARCH", "research"],
+  ["BUILDING", "building"],
+  ["CHECKING", "checking"],
+  ["QUEUED", "queued"],
+  ["RESOLVING", "resolving"],
+  ["LANDING", "landing"],
+  ["SLICING", "slicing"],
+  ["RESEARCHING", "researching"],
+  ["WAITING", "waiting"],
+  ["ASKED", "asked"],
+  ["NEEDS_HUMAN", "needs-human"],
+] as const;
+const USAGE = `spelled: usage: spelled labels | spelled <${KEYS.map(([key]) => key).join("|")}>\n`;
+const NAMING = ["post.ts", "slicer.ts", "done-checker.ts", "researcher.ts", "closer.ts", "wave.ts"].map((file) => join(BIN, "..", "src", file));
+
+function rawLabels(files: string[], names: string[]): string[] {
+  const program = ts.createProgram(files, { strict: true, noEmit: true, allowImportingTsExtensions: true, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, target: ts.ScriptTarget.ESNext });
+  const checker = program.getTypeChecker();
+  const found: string[] = [];
+  for (const file of files) {
+    const source = program.getSourceFile(file);
+    if (source === undefined) throw new Error(`${file} did not load`);
+    const visit = (node: ts.Node) => {
+      if (ts.isStringLiteral(node) && names.includes(node.text)) {
+        const wanted = checker.getContextualType(node);
+        const members = wanted === undefined ? [] : wanted.isUnion() ? wanted.types : [wanted];
+        if (members.some((member) => member.isStringLiteral() && names.includes(member.value))) found.push(`${file.split("/").at(-1) ?? ""}:${source.getLineAndCharacterOfPosition(node.getStart()).line + 1} "${node.text}"`);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+  }
+  return found;
+}
 const rows = () => heard(spelled("labels")).lines.map((line) => line.split("\t"));
 
 describe("bin/spelled prints the machine's labels from one typed set, so no script types its own list (#1100)", () => {
@@ -51,17 +89,32 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
   });
 
   it("prints the one label a key names, each key named by its TypeScript constant (#1108)", () => {
-    for (const [key, name] of [
-      ["SPEC", "spec"],
-      ["NOTE", "note"],
-      ["RESEARCH", "research"],
-      ["BUILDING", "building"],
-      ["CHECKING", "checking"],
-      ["WAITING", "waiting"],
-      ["NEEDS_HUMAN", "needs-human"],
-    ]) {
-      expect(spelled(key ?? ""), key).toEqual({ status: 0, stdout: `${name ?? ""}\n`, stderr: "" });
-    }
+    for (const [key, name] of KEYS) expect(spelled(key), key).toEqual({ status: 0, stdout: `${name}\n`, stderr: "" });
+  });
+
+  it("exports each label the GitHub part and the stages name as the constant spelled prints it under, and nothing else beside the set (#1118)", async () => {
+    const spelledModule: Record<string, unknown> = await import("./spelled.ts");
+    const labelled = Object.entries(spelledModule).filter(([, value]) => typeof value === "string");
+
+    expect(labelled).toEqual(KEYS.map(([key, name]) => [key, name]));
+  });
+
+  it("leaves the GitHub part, the slicer, the done check, the researcher, the closer and the wave reader no raw string or second constant for a label (#1118)", () => {
+    const names = rows().map(([name]) => name ?? "");
+    const planted = scratch("spelled-raw-");
+    plant(
+      planted,
+      "src/raw.ts",
+      [
+        `import { mark, type Held, type MarkedLabel } from "${join(BIN, "..", "src", "post.ts")}";`,
+        'const LANDING = "landing" as const satisfies MarkedLabel;',
+        'export const raw = (held: Held) => { mark("1", "building"); return held.has("spec") ? LANDING : "a building"; };',
+        "",
+      ].join("\n"),
+    );
+
+    expect(rawLabels([join(planted, "src", "raw.ts")], names)).toEqual(['raw.ts:2 "landing"', 'raw.ts:3 "building"', 'raw.ts:3 "spec"']);
+    expect(rawLabels(NAMING, names)).toEqual([]);
   });
 
   it("refuses anything but labels or a key it holds, naming its usage", () => {

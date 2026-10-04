@@ -2,6 +2,7 @@ import { capped } from "./brief.ts";
 import { OPEN_SHELL } from "./fence.ts";
 import { commentOnTicket, gh, readOrStop, RESEARCH } from "./post.ts";
 import { NO_EM_DASH } from "./reviewer.ts";
+import { RESEARCHING } from "./spelled.ts";
 import { opened } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { quoted } from "./ticket-shape.ts";
@@ -42,7 +43,7 @@ function researched(issue: string): Stop | undefined {
   const opening = opened({
     stage: "research",
     issue,
-    state: "researching",
+    state: RESEARCHING,
     stoppedAt,
     hire: { name: "researcher", reach: OPEN_SHELL, answers: FINDINGS, writeUp: { minutes: WRITE_UP_MINUTES, told: OUT_OF_TIME } },
     ready: (asked) => (asked.labels.has(RESEARCH) ? { carrying: {} } : stoppedAt("notResearch", `${said} is not a research note, so nothing answered or closed it`)),

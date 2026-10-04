@@ -5,10 +5,11 @@ import { FILED } from "./builder.ts";
 import { FENCED_OPUS } from "./fence.ts";
 import { commentOnTicket, commentsRead, gh, ghRead, mark, NEEDS_HUMAN, post, readOrStop } from "./post.ts";
 import { LIST_CAP, NO_EM_DASH, TICKET_CAP } from "./reviewer.ts";
+import { BUILDING, SLICING, SPEC } from "./spelled.ts";
 import { opened, type Spent } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { missedIn, WAVE_CHECK_HEADING } from "./done-checker.ts";
-import { DIFF_CAP, ended, FOUND_CAP, movesMarker, SPEC_LABEL, underSpec, waveDiffs, waveFound, waveHeading, waveNotes } from "./wave.ts";
+import { DIFF_CAP, ended, FOUND_CAP, movesMarker, underSpec, waveDiffs, waveFound, waveHeading, waveNotes } from "./wave.ts";
 import { DONE_SENTENCES, filedOutOfScope, filedPassages, type Passage, quoted, restored, sectionsDropped, sentences, SPEC_CAP, specRefusals, ticketRefusals } from "./ticket-shape.ts";
 
 const stoppedAt = stopsOf({
@@ -212,7 +213,7 @@ function filedWave(issue: string, read: string, wave: Wave, number: number): Sto
   const which = number === 1 ? "its first wave" : `wave ${number}`;
   const [unnoted] = commentOnTicket(issue, waveNote(number, passages, wave, numbers), gh).refusals;
   if (unnoted !== undefined) return stoppedAt("unfiled", `${said} filed ${which} under it, ${numbers.join(", ")}, but its note would not post: ${quoted(unnoted)}`);
-  mark(issue, "building");
+  mark(issue, BUILDING);
   console.log(`${said} filed ${which} under it: ${numbers.join(", ")}`);
   return undefined;
 }
@@ -235,12 +236,12 @@ function sliced(issue: string, fix?: number[]): Stop | undefined {
   const opening = opened({
     stage: "slice",
     issue,
-    state: "slicing",
+    state: SLICING,
     tried: fix !== undefined,
     stoppedAt,
     hire: { name: "slicer", tools: TOOLS, reach: FENCED_OPUS, answers: ANSWERS },
     ready: (asked) => {
-      if (!asked.labels.has(SPEC_LABEL)) return stoppedAt("notSpec", `${said} is not a spec, so nothing sliced it`);
+      if (!asked.labels.has(SPEC)) return stoppedAt("notSpec", `${said} is not a spec, so nothing sliced it`);
       const tickets = underSpec(issue, "so no model was spent");
       const [unclosed] = tickets.filter(({ state }) => state === "open");
       if (unclosed !== undefined) {

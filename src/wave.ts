@@ -1,12 +1,11 @@
 import { capped } from "./brief.ts";
 import { commentsRead, gh, ghRead, ghWhole, heldOf, opened, type Opened, prOfTicket, readOrStop, unread } from "./post.ts";
 import { REVIEWED_FROM, SPLIT_FROM } from "./reviewer.ts";
-import type { LabelName } from "./spelled.ts";
+import { NOTE, SPEC, type LabelName } from "./spelled.ts";
 import { exitFor, stoppedAt, type Stop } from "./stops.ts";
 import { why } from "./ticket-shape.ts";
 
-export const SPEC_LABEL: LabelName = "spec";
-const UNSLICED_LABELS: LabelName[] = [SPEC_LABEL, "note"];
+const UNSLICED_LABELS: LabelName[] = [SPEC, NOTE];
 const WAVE_HEADING = "## Wave ";
 const MOVES_OPEN = "<!-- moves: ";
 const MOVES_CLOSE = " -->";
@@ -43,7 +42,7 @@ const followed = (body: string): string | undefined => {
 function specOf(issue: string, chain: string[] = []): Found | "unread" {
   const parent = opened(`${issue}/parent`, gh);
   if (parent === "unread") return "unread";
-  if (parent !== "missing") return heldOf(parent.labels).has(SPEC_LABEL) ? { spec: parent, chain } : { chain };
+  if (parent !== "missing") return heldOf(parent.labels).has(SPEC) ? { spec: parent, chain } : { chain };
   if (chain.length === DEEPEST) return { chain };
   const asked = opened(issue, gh);
   if (asked === "unread") return "unread";

@@ -1,6 +1,7 @@
 import { splitClosed, splitInto } from "./builder.ts";
 import { answered, commentOnPr, commentOnTicket, commentsRead, gh, ghAs, ghRead, git, gitRead, type Held, labelsHeld, markWith, NEEDS_HUMAN, NOTHING_MARKED, prOfTicket, readOrStop, RESOLVING, unread, WAITING, type MarkedLabel } from "./post.ts";
 import { FINGERPRINT, REVIEWED_FROM, TICKET_BRANCH } from "./reviewer.ts";
+import { CHECKING, LANDING, QUEUED } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { quoted, why } from "./ticket-shape.ts";
 
@@ -172,20 +173,19 @@ function markOnce(ticket: string, label: MarkedLabel): void {
   if (![label, NEEDS_HUMAN, RESOLVING].some((kept) => held.has(kept))) mark(ticket, label);
 }
 
-const LANDING = "landing" as const satisfies MarkedLabel;
 
 function wantedOn(pr: QueuedPr, merging: QueuedPr | undefined, held: Held): MarkedLabel | undefined {
   if (pr.checks === "red") return undefined;
   if (pr === merging && (pr.checks === "green" || held.has(LANDING))) return LANDING;
-  return pr.checks === "green" ? "queued" : "checking";
+  return pr.checks === "green" ? QUEUED : CHECKING;
 }
 
 function settle(ticket: string, pr: QueuedPr, merging: QueuedPr | undefined, conflicted: boolean): void {
   const held = labelsHeld(ticket, gh);
   const wanted = conflicted || held.has(RESOLVING) ? undefined : wantedOn(pr, merging, held);
-  const writes = wanted !== undefined && !held.has(NEEDS_HUMAN) && (wanted !== "checking" || held.has(LANDING));
+  const writes = wanted !== undefined && !held.has(NEEDS_HUMAN) && (wanted !== CHECKING || held.has(LANDING));
   if (writes && !held.has(wanted)) mark(ticket, wanted);
-  else if (!writes && held.has(LANDING) && !held.has(NEEDS_HUMAN)) mark(ticket, "checking");
+  else if (!writes && held.has(LANDING) && !held.has(NEEDS_HUMAN)) mark(ticket, CHECKING);
 }
 
 function wakeBuilder(ticket: string, reason: string): void {
