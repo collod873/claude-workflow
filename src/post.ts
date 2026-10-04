@@ -22,7 +22,7 @@ export const ghAs =
   (args) =>
     spawnSync("gh", args, { encoding: "utf8", maxBuffer: Infinity, env });
 export const gh = ghAs(process.env);
-export const git: Gh = (args) => spawnSync("git", args, { encoding: "utf8", maxBuffer: Infinity });
+export const git = (args: string[], input?: string) => spawnSync("git", args, { input, encoding: "utf8", maxBuffer: Infinity });
 
 class Stopped extends Error {
   readonly stop: Stop;
@@ -40,7 +40,11 @@ export const unread = (line: string): never => {
 const readOrUnread = (got: ReturnType<Gh>, line: string): string => (got.status === 0 ? got.stdout.trim() : unread(line));
 
 export const ghRead = (args: string[], line: string) => readOrUnread(gh(args), line);
-export const gitRead = (args: string[], line: string) => readOrUnread(git(args), line);
+export function ghWhole(args: string[], line: string): string {
+  const got = gh(args);
+  return got.status === 0 ? got.stdout : unread(line);
+}
+export const gitRead = (args: string[], line: string, input?: string) => readOrUnread(git(args, input), line);
 
 export function answered(got: ReturnType<Gh>, line: string): boolean {
   if (got.status !== 0 && got.status !== 1) unread(line);
@@ -72,7 +76,8 @@ export function labelsOf(issue: string, gh: Gh): Held | "unread" {
   return got.status === 0 ? new Set(got.stdout.split("\n").filter((label) => label !== "")) : "unread";
 }
 
-export const labelsUnread = (issue: string) => `the labels of #${issue} could not be read, so nothing is marked`;
+export const NOTHING_MARKED = "so nothing is marked";
+const labelsUnread = (issue: string) => `the labels of #${issue} could not be read, ${NOTHING_MARKED}`;
 
 export function labelsHeld(issue: string, gh: Gh): Held {
   const held = labelsOf(issue, gh);
@@ -159,7 +164,7 @@ export function authoredOn(number: string, gh: Gh): { author: string; body: stri
   }
 }
 
-export const commentsOn = (number: string, gh: Gh): string[] | undefined => authoredOn(number, gh)?.map(({ body }) => body);
+const commentsOn = (number: string, gh: Gh): string[] | undefined => authoredOn(number, gh)?.map(({ body }) => body);
 
 export const commentsRead = (number: string, line: string, gh: Gh): string[] => commentsOn(number, gh) ?? unread(line);
 
@@ -196,10 +201,23 @@ export function underOwnerSpec(ticket: string, gh: Gh): Admission {
   return {};
 }
 
-export function prNumber(branch: string, gh: Gh): string | undefined {
-  const got = gh(["pr", "view", branch, "--json", "number", "--jq", ".number"]);
-  const number = got.status === 0 ? got.stdout.trim() : "";
-  return number === "" ? undefined : number;
+const NO_PR = /^no pull requests found/m;
+
+export interface TicketPr {
+  number?: number;
+  state?: string;
+  files?: { path?: string }[];
+}
+
+export function prOfTicket(ticket: string, fields: (keyof TicketPr)[], gh: Gh): TicketPr | "none" {
+  const line = `the PR of #${ticket} could not be read`;
+  const got = gh(["pr", "view", `ticket/${ticket}`, "--json", fields.join(",")]);
+  if (got.status !== 0) return NO_PR.test(got.stderr) ? "none" : unread(line);
+  try {
+    return JSON.parse(got.stdout) as TicketPr;
+  } catch {
+    return unread(line);
+  }
 }
 
 export interface Asked {

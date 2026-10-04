@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { capped } from "./brief.ts";
 import { FILED } from "./builder.ts";
 import { FENCED_OPUS } from "./fence.ts";
-import { commentOnTicket, commentsRead, gh, ghRead, mark, NEEDS_HUMAN, post, readOrStop, unread } from "./post.ts";
+import { commentOnTicket, commentsRead, gh, ghRead, mark, NEEDS_HUMAN, post, readOrStop } from "./post.ts";
 import { LIST_CAP, NO_EM_DASH, TICKET_CAP } from "./reviewer.ts";
 import { opened, type Spent } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
@@ -241,7 +241,7 @@ function sliced(issue: string, fix?: number[]): Stop | undefined {
     hire: { name: "slicer", tools: TOOLS, reach: FENCED_OPUS, answers: ANSWERS },
     ready: (asked) => {
       if (!asked.labels.has(SPEC_LABEL)) return stoppedAt("notSpec", `${said} is not a spec, so nothing sliced it`);
-      const tickets = underSpec(issue) ?? unread(`#${issue}'s tickets could not be read, so no model was spent`);
+      const tickets = underSpec(issue, "so no model was spent");
       const [unclosed] = tickets.filter(({ state }) => state === "open");
       if (unclosed !== undefined) {
         console.log(`${said}'s wave is not over, #${unclosed.number} is still open, so nothing sliced it`);

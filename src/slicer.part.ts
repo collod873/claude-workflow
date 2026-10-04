@@ -31,7 +31,7 @@ export function slicing({
   plant(root, "issue.json", JSON.stringify({ title, body, labels: labels.map((name) => ({ name })) }));
   for (const [path, issue] of Object.entries(issues)) plant(root, `issues/${path.replace("/", "-")}`, JSON.stringify(issue));
   for (const [number, said] of Object.entries(comments)) plant(root, `comments/${number}`, authored(said));
-  for (const [number, pr] of Object.entries(prs)) plant(root, `prs/${number}`, JSON.stringify(pr));
+  for (const [number, pr] of Object.entries(prs)) plant(root, `prs/${number}`, JSON.stringify({ ...pr, files: (pr as { files?: string[] }).files?.map((path) => ({ path })) }));
   for (const [number, diff] of Object.entries(diffs)) plant(root, `diffs/${number}`, diff);
   plant(root, "open.json", JSON.stringify(open));
   const marked = stubbedMark(root, undefined, markRefusal);
@@ -46,10 +46,10 @@ export function slicing({
       'case "$*" in',
       `  *"issue view"*) cat "${join(root, "issue.json")}" ;;`,
       `  "api --paginate "*/sub_issues*) jq -c '.[] | {number, title, state, state_reason}' <<<"$(cat "${join(root, "issues")}/$n-sub_issues" 2>/dev/null || echo '[]')" ;;`,
-      `  "api --paginate "*/comments*) cat "${join(root, "comments")}/$n" 2>/dev/null ;;`,
+      `  "api --paginate "*/comments*) cat "${join(root, "comments")}/$n" 2>/dev/null || true ;;`,
       `  "issue list"*) jq -c '.[]' "${join(root, "open.json")}" ;;`,
       `  "pr view"*) f="${join(root, "prs")}/\${3#ticket/}"; [[ -f $f ]] && cat "$f" || { printf 'no pull requests found for branch "%s"\\n' "$3" >&2; exit 1; } ;;`,
-      `  "pr diff"*) f="${join(root, "diffs")}/\${3#ticket/}"; [[ -f $f ]] && cat "$f" || { printf 'no pull requests found for branch "%s"\\n' "$3" >&2; exit 1; } ;;`,
+      `  "pr diff"*) f="${join(root, "diffs")}/\${3#ticket/}"; [[ -f $f ]] && cat "$f" || [[ -f "${join(root, "prs")}/\${3#ticket/}" ]] || { printf 'no pull requests found for branch "%s"\\n' "$3" >&2; exit 1; } ;;`,
       `  *"issue create"*) mkdir -p "${join(root, "created")}"; n=$(( $(ls "${join(root, "created")}" | wc -l) + 1 )); touch "${join(root, "created")}/$n"; printf '%s%s\\n' '${WAVE_URL}' $((1100 + n)) ;;`,
       "  *sub_issues*) ;;",
       '  "api repos/{owner}/{repo}/issues/"*" --jq .id") printf \'%s\\n\' $(( ${2##*/} + 900000 )) ;;',
