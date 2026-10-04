@@ -1,0 +1,30 @@
+#!/bin/bash
+set -uo pipefail
+
+was=${SESSION_MAIN_WAS:-HEAD}
+live=${SESSION_LIVE:-0}
+status=0
+
+stuck='.[] | select((.headRefName | startswith("land/")) and (.mergeStateStatus == "DIRTY" or any(.statusCheckRollup[]?; (.conclusion // .state) | IN("FAILURE", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE", "ERROR")))) | "#\(.number)"'
+prs=$(mktemp)
+trap 'rm -f "$prs"' EXIT
+gh pr list --state open --json number,headRefName,mergeStateStatus,statusCheckRollup --jq "$stuck" >"$prs" &
+lookup=$!
+
+if ! git diff --quiet "$was" HEAD -- package-lock.json; then
+  if (( live > 0 )); then
+    printf 'package-lock.json moved while another session is open, so node_modules was not reinstalled; run npm ci in the main checkout once none is\n'
+  elif ! npm ci --prefer-offline --no-audit --no-fund >/dev/null 2>&1; then
+    printf 'npm ci failed in the main checkout, so every worktree shares stale node_modules\n'
+    status=1
+  fi
+fi
+
+wait "$lookup" || status=1
+mapfile -t failing <"$prs"
+if (( ${#failing[@]} > 0 )); then
+  printf -v named '%s, ' "${failing[@]:0:8}"
+  printf 'land PRs %s failed a check or conflict with main; ask Claude to look\n' "${named%, }"
+fi
+
+exit "$status"
