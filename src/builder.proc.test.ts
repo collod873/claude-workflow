@@ -212,17 +212,6 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(resolving.marked()).toEqual(["811 checking"]);
   });
 
-  it("ends red naming the label read and the ticket when its labels cannot be read, marking nothing and hiring no model (#1099)", () => {
-    const unread = fixing({ reason: "PR #9811 conflicts with main", claude: FIXES, labelsUnreadable: true });
-
-    const { status, stderr } = unread.run();
-
-    expect(status).toBe(1);
-    expect(stderr).toBe("fix: the labels of #811 could not be read, so nothing is marked\n");
-    expect(unread.marked()).toEqual([]);
-    expect(unread.handed()).toEqual([]);
-  });
-
   it("closes the ticket and its PR unbuilt with the reason, calling the owner by name, keeping the branch, and runs no check", () => {
     const reason = "the ticket asks for a stage the ruling has since dropped";
     const { run, closes, ticketComments, labelled, saved, handed } = fixing({ answer: { outcome: "close", reason }, check: "touch ../checked\nexit 1\n" });
@@ -489,16 +478,16 @@ describe("bin/fix stops at a mark GitHub refused, so it hires no model on a tick
 
 describe("bin/fix reads its ticket, its labels, its PR and their comments before it marks anything, and ends red at a read that fails (#1112)", () => {
   const READS = [
-    { read: "its labels", unreadable: '*"issue view"*"labels"*', line: "the labels of #811 could not be read, so nothing is marked" },
-    { read: "its ticket", unreadable: '*"issue view"*"body"*', line: "the body of #811 could not be read, so nothing is marked" },
+    { read: "its ticket", unreadable: '*"issue view"*', line: "#811 could not be read, so no label changed and no model was hired" },
+    { read: "the log directory", gitUnreadable: '*"--git-common-dir"*', line: "the log directory could not be named by git, so no model was hired" },
     { read: "its PR", unreadable: '*"pr view"*"number"*', line: "the PR of #811 could not be read" },
     { read: "its PR's comments", unreadable: '*"issues/9811/comments"*', line: "the comments on PR #9811 could not be read, so nothing is marked" },
     { read: "its ticket's comments", unreadable: '*"issues/811/comments"*', line: "the comments on #811 could not be read, so nothing is marked" },
     { read: "its failed run", unreadable: '*"run view"*"--log-failed"*', line: "the failed steps of run 555 could not be read, so nothing is marked" },
   ];
 
-  it.each(READS)("ends red at unread naming $read, marking, posting and hiring nothing", ({ unreadable, line }) => {
-    const { run, marked, handed, calls } = fixing({ claude: FIXES, unreadable });
+  it.each(READS)("ends red at unread naming $read, marking, posting and hiring nothing", ({ line, ...reads }) => {
+    const { run, marked, handed, calls } = fixing({ claude: FIXES, ...reads });
 
     expect(run()).toMatchObject({ status: 1, stderr: `fix: ${line}\n` });
     expect(marked()).toEqual([]);
@@ -520,5 +509,32 @@ describe("bin/fix reads its ticket, its labels, its PR and their comments before
     expect(run("811").status).toBe(0);
     expect(handed()).toHaveLength(1);
     expect(marked()).toEqual(["811 building", "811 checking"]);
+  });
+});
+
+describe("bin/fix opens through the one stage opening (#1117)", () => {
+  it("ends green in one line on a ticket marked needs-human, and changes no label and hires no model", () => {
+    const { run, marked, handed, calls } = fixing({ claude: FIXES, labels: ["ticket", "needs-human"] });
+
+    expect(run("811")).toEqual({ status: 0, stdout: "fix: #811 is marked needs-human, so no label changed and no model was hired\n", stderr: "" });
+    expect(marked()).toEqual([]);
+    expect(handed()).toEqual([]);
+    expect(calls().filter((args) => ["comment", "edit", "create", "close"].includes(args[1] ?? ""))).toEqual([]);
+  });
+
+  it("ends red at modelRun when the owner's hooks cannot be read, leaving the owner to the workflow's call-owner step", () => {
+    const { run, marked, handed, ticketComments } = fixing({ claude: FIXES, hooks: "/nowhere/agent-hooks.json" });
+
+    expect(run("811")).toMatchObject({ status: 1, stderr: "fix: #811 ended red, the owner's hooks could not be read from /nowhere/agent-hooks.json\n" });
+    expect(marked()).toEqual(["811 building"]);
+    expect(handed()).toEqual([]);
+    expect(ticketComments()).toEqual([]);
+  });
+
+  it("refuses an unadmitted ticket after the needs-human rule, so a stopped ticket stays green", () => {
+    const { run, marked } = fixing({ claude: FIXES, opener: "collod873-machine[bot]", labels: ["ticket", "needs-human"] });
+
+    expect(run("811")).toMatchObject({ status: 0, stderr: "" });
+    expect(marked()).toEqual([]);
   });
 });

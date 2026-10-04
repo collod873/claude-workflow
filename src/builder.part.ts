@@ -59,9 +59,10 @@ export function fixing({
   opener = OWNER,
   parent = undefined as Parent,
   labels = ["ticket"],
-  labelsUnreadable = false,
   markRefusal = undefined as string | undefined,
   unreadable = undefined as string | undefined,
+  gitUnreadable = undefined as string | undefined,
+  hooks = "",
 } = {}) {
   const root = scratch("builder-");
   const session = join(root, "session");
@@ -84,7 +85,7 @@ export function fixing({
   for (const [path, text] of Object.entries(leftover)) plant(session, path, text);
   if (savedSession !== undefined) plant(home, ".claude/builder/811", `${savedSession}\n`);
   for (const [name, text] of Object.entries(captures)) plant(root, `captures/${name}`, text);
-  plant(root, "ticket.md", body);
+  plant(root, "ticket.json", JSON.stringify({ title: "Build what the ticket asks", body, labels: labels.map((name) => ({ name })) }));
   plant(root, "on-pr.json", authored(onPr ?? []));
   plant(root, "on-ticket.json", authored(onTicket));
   plant(root, "failed-run.log", failedRun);
@@ -101,8 +102,7 @@ export function fixing({
       `  *"api"*"issues/811/comments"*) cat "${join(root, "on-ticket.json")}" ;;`,
       ...openedCases(root, opener, body, parent),
       `  *"issue create"*) n=$(( $(cat "${join(root, "created")}" 2>/dev/null || echo 900) + 1 )); printf '%s\\n' "$n" >"${join(root, "created")}"; printf 'https://github.com/collod873/claude-workflow/issues/%s\\n' "$n" ;;`,
-      `  *"issue view"*"labels"*) ${labelsUnreadable ? "printf 'GraphQL: labels could not be read\\n' >&2; exit 1" : `printf '%s\\n' ${labels.join(" ")}`} ;;`,
-      `  *"issue view"*) cat "${join(root, "ticket.md")}" ;;`,
+      `  *"issue view"*"title,body,labels"*) cat "${join(root, "ticket.json")}" ;;`,
       `  *"pr view"*"number"*) ${onPr === undefined ? "printf 'no pull requests found for branch \"ticket/811\"\\n' >&2; exit 1" : "printf '{\"number\":9811}\\n'"} ;;`,
       `  *"run view"*"--json"*) printf '%s %s %s\\n' '${ranAs}' '${redAt}' '${attempt}' ;;`,
       `  *"run view"*) cat "${join(root, "failed-run.log")}" ;;`,
@@ -113,6 +113,7 @@ export function fixing({
       "",
     ].join("\n"),
   );
+  if (gitUnreadable !== undefined) script(join(root, "bin", "git"), `case "$*" in\n  ${gitUnreadable}) printf 'fatal: unable to read\\n' >&2; exit 128 ;;\nesac\nPATH="\${PATH#*:}" exec git "$@"\n`);
   script(
     join(root, "bin", "claude"),
     [`CALL=$(( $(ls "${spent}" | wc -l) + 1 ))`, `printf '%s\\0' "$@" >"${hires}/$CALL"`, `cat >"${spent}/$CALL"`, claude, `cat "${join(root, "answer.jsonl")}"`, ""].join("\n"),
@@ -141,7 +142,7 @@ export function fixing({
     captured: (name: string) => join(root, "captures", name),
     log: (...args: string[]) => git(session, "log", ...args),
     run: (...args: string[]) =>
-      execute(join(BIN, "fix"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}`, HOME: home, SESSION_CAPTURES: join(root, "captures"), ...(reason === undefined ? {} : { REASON: reason }) }, args.length === 0 ? ["811", RED_RUN] : args),
+      execute(join(BIN, "fix"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}`, HOME: home, AGENT_HOOKS_SETTINGS: hooks, SESSION_CAPTURES: join(root, "captures"), ...(reason === undefined ? {} : { REASON: reason }) }, args.length === 0 ? ["811", RED_RUN] : args),
   };
 }
 

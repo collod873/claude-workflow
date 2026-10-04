@@ -686,6 +686,7 @@ describe("bin/review ends red at a GitHub or git read that fails, spending no mo
     { read: "its fingerprint", options: { gitUnreadable: '"patch-id"*' }, line: "#9810 ended red, the patch id of its diff could not be read, so no model was spent" },
     { read: "the fix's own diff", options: { judged: "merged" as const, gitUnreadable: '"diff "*" HEAD"' }, line: "#9810 ended red, the fix's own diff could not be read, so no model was spent" },
     { read: "what merged since", options: { ...sinceMatched, gitUnreadable: '"log --first-parent"*' }, line: "#9810 ended red, what merged to main since its last judgement could not be read, so no model was spent" },
+    { read: "the log directory", options: { gitUnreadable: '*"--git-common-dir"*' }, line: "the log directory could not be named by git, so no model was hired" },
   ];
 
   it.each(READS)("bin/review ends red at unread naming $read", ({ options, line }) => {
