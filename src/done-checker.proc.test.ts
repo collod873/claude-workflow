@@ -318,6 +318,13 @@ describe("bin/done-check --asked answers whether the last ## Done check put a se
     expect(checked.marked()).toEqual([]);
   });
 
+  it("ends red at unread naming the comments read, marking nothing and hiring no model, when a check cannot read the spec's comments (#1123)", () => {
+    const checked = doneChecking({ gh: "[[ $1 == api ]] && { printf 'HTTP 502\\n' >&2; exit 1; }" });
+
+    expect(checked.run("974")).toEqual({ status: 1, stdout: "", stderr: "done-check: #974 could not read its comments, so nothing was tried\n" });
+    expect(checked.marked()).toEqual([]);
+  });
+
   it("refuses --asked beside anything else, naming its usage", () => {
     for (const args of [["974", "--asked", "1"], ["--asked"], ["974", "--wave", "1", "--asked"]]) {
       expect(doneChecking().run(...args), args.join(" ")).toEqual({ status: 2, stdout: "", stderr: "done-check: usage: done-check <issue number> [--wave <sentence numbers> | --asked]\n" });

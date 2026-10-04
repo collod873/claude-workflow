@@ -289,9 +289,7 @@ function review(pr: string): Stop | undefined {
   }
   const turns = commentsRead(ticket, unspent(pr, `the comments on #${ticket}`), gh);
   const head = headNow(pr);
-  const spec = underOwnerSpec(ticket, gh);
-  if (spec.unread !== undefined) unread(unspent(pr, `the parent of #${ticket}`));
-  const inWave = spec.refused === undefined;
+  const inWave = underOwnerSpec(ticket, unspent(pr, `the parent of #${ticket}`), gh) === undefined;
   const words = inWave ? [] : ownerWords(pr, body);
   const earlier = earlierDrift(ticket, onPr);
   const since = judgedHead(ticket, onPr);

@@ -40,11 +40,8 @@ describe("bin/admit lets a ticket into its build before anything marks it (#1022
     const parent = admitting({ opener: APP, parent: "unreadable" });
     const ticket = admitting({ unread: true });
 
-    for (const scenario of [parent, ticket]) {
-      const result = scenario.run();
-      expect(result.status).not.toBe(0);
-      expect(result.stdout).toBe("");
-      expect(result.stderr).toContain("could not be read");
+    for (const [scenario, read] of [[parent, "the parent of #811"], [ticket, "#811"]] as const) {
+      expect(scenario.run()).toEqual({ status: 1, stdout: "", stderr: `admit: ${read} could not be read, so nothing was admitted\n` });
       expect(scenario.comments()).toEqual([]);
     }
   });

@@ -71,17 +71,11 @@ export interface Held {
 
 export const heldOf = (labels: { name?: string }[] | undefined): Held => new Set((labels ?? []).map(({ name }) => name));
 
-export function labelsOf(issue: string, gh: Gh): Held | "unread" {
-  const got = gh(["issue", "view", issue, "--json", "labels", "--jq", ".labels[].name"]);
-  return got.status === 0 ? new Set(got.stdout.split("\n").filter((label) => label !== "")) : "unread";
-}
-
 export const NOTHING_MARKED = "so nothing is marked";
-const labelsUnread = (issue: string) => `the labels of #${issue} could not be read, ${NOTHING_MARKED}`;
 
 export function labelsHeld(issue: string, gh: Gh): Held {
-  const held = labelsOf(issue, gh);
-  return held === "unread" ? unread(labelsUnread(issue)) : held;
+  const got = gh(["issue", "view", issue, "--json", "labels", "--jq", ".labels[].name"]);
+  return got.status === 0 ? new Set(got.stdout.split("\n").filter((label) => label !== "")) : unread(`the labels of #${issue} could not be read, ${NOTHING_MARKED}`);
 }
 
 interface Kind {
@@ -164,9 +158,9 @@ const trusted = (said: unknown): said is { author: string; body: string } =>
   typeof said.body === "string" &&
   TRUSTED.has(`${String(said.type)} ${said.author}`);
 
-export function authoredOn(number: string, gh: Gh): { author: string; body: string }[] | undefined {
+export function authoredOn(number: string, line: string, gh: Gh): { author: string; body: string }[] {
   const got = gh(["api", "--paginate", `repos/{owner}/{repo}/issues/${number}/comments`, "--jq", ".[] | {author: .user.login, type: .user.type, body}"]);
-  if (got.status !== 0) return undefined;
+  if (got.status !== 0) return unread(line);
   try {
     return got.stdout
       .split("\n")
@@ -175,13 +169,11 @@ export function authoredOn(number: string, gh: Gh): { author: string; body: stri
       .filter(trusted)
       .map(({ author, body }) => ({ author, body }));
   } catch {
-    return undefined;
+    return unread(line);
   }
 }
 
-const commentsOn = (number: string, gh: Gh): string[] | undefined => authoredOn(number, gh)?.map(({ body }) => body);
-
-export const commentsRead = (number: string, line: string, gh: Gh): string[] => commentsOn(number, gh) ?? unread(line);
+export const commentsRead = (number: string, line: string, gh: Gh): string[] => authoredOn(number, line, gh).map(({ body }) => body);
 
 export interface Opened {
   number?: number;
@@ -191,29 +183,25 @@ export interface Opened {
   body?: string | null;
 }
 
-export interface Admission {
-  refused?: string;
-  unread?: string;
-}
+export type Admission = string | undefined;
 
-export function opened(path: string, gh: Gh): Opened | "missing" | "unread" {
+export function opened(path: string, line: string, gh: Gh): Opened | "missing" {
   const got = gh(["api", `repos/{owner}/{repo}/issues/${path}`]);
-  if (got.status !== 0) return MISSING.test(got.stderr) ? "missing" : "unread";
+  if (got.status !== 0) return MISSING.test(got.stderr) ? "missing" : unread(line);
   try {
     return JSON.parse(got.stdout) as Opened;
   } catch {
-    return "unread";
+    return unread(line);
   }
 }
 
-export function underOwnerSpec(ticket: string, gh: Gh): Admission {
-  const spec = opened(`${ticket}/parent`, gh);
-  if (spec === "unread") return { unread: `the parent of #${ticket} could not be read` };
-  if (spec === "missing") return { refused: "the App opened it under no spec" };
-  if (!heldOf(spec.labels).has(SPEC)) return { refused: "the App opened it under an issue not labelled `spec`" };
-  if (spec.user?.login !== OWNER) return { refused: "the App opened it under a spec the owner did not open" };
-  if (spec.state !== "open") return { refused: "the App opened it under a spec that is not open" };
-  return {};
+export function underOwnerSpec(ticket: string, line: string, gh: Gh): Admission {
+  const spec = opened(`${ticket}/parent`, line, gh);
+  if (spec === "missing") return "the App opened it under no spec";
+  if (!heldOf(spec.labels).has(SPEC)) return "the App opened it under an issue not labelled `spec`";
+  if (spec.user?.login !== OWNER) return "the App opened it under a spec the owner did not open";
+  if (spec.state !== "open") return "the App opened it under a spec that is not open";
+  return undefined;
 }
 
 const NO_PR = /^no pull requests found/m;
