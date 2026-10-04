@@ -86,8 +86,10 @@ function reslicing({
   diffs = {} as Record<string, string>,
   spec = "968",
   markRefusal = undefined as string | undefined,
+  gh = "",
 } = {}) {
   return slicing({
+    gh,
     markRefusal,
     labels,
     answers,
@@ -147,6 +149,23 @@ describe("bin/slice on a spec with tickets under it slices its next wave against
 
 const helper = (file: string) => `diff --git a/src/${file} b/src/${file}\n+export const quotedLine = (line: string) => \`> \${line}\`;\n`;
 const MERGED = { "1001": { state: "MERGED", files: ["src/slicer.ts"] }, "1002": { state: "MERGED", files: ["src/done-checker.ts"] } };
+describe("bin/slice ends red at a read of the wave that fails, rather than handing the slicer a placeholder (#1112)", () => {
+  const failing = (pattern: string) => `[[ "$*" == ${pattern} ]] && { printf 'gh: Server Error (HTTP 502)\\n' >&2; exit 1; }`;
+
+  it.each([
+    { read: "a ticket's PR", pattern: '"pr view ticket/1001"*', line: "the PR of #1001 could not be read" },
+    { read: "a ticket's comments", pattern: '*"issues/1001/comments"*', line: "the comments on #1001 could not be read, so no model was spent" },
+    { read: "a merged PR's diff", pattern: '"pr diff ticket/1001"*', line: "the diff of #1001's PR could not be read, so no model was spent" },
+  ])("ends red at unread naming $read, marking, posting and hiring nothing", ({ pattern, line }) => {
+    const sliced = reslicing({ gh: failing(pattern) });
+
+    expect(sliced.run()).toEqual({ status: 1, stdout: "", stderr: `slice: ${line}\n` });
+    expect(sliced.marked()).toEqual([]);
+    expect(sliced.hired()).toEqual([]);
+    expect([...sliced.comments(), ...sliced.filed().map(({ body }) => body), ...sliced.rewrites()]).toEqual([]);
+  });
+});
+
 const merge = { title: "Merge the two quotedLine helpers into one", passages: [1], why: "Wave 1 left two copies of one helper.", done: ["One quotedLine stands."] };
 
 describe("bin/slice hands the re-slice the diff of every PR the wave merged, so it can fold what the wave built into the spec (#1047)", () => {

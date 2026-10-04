@@ -1,5 +1,5 @@
 import { splitClosed, splitInto } from "./builder.ts";
-import { answered, commentOnPr, commentOnTicket, commentsRead, gh, ghAs, ghRead, git, gitRead, type Held, labelsHeld, markWith, NEEDS_HUMAN, readOrStop, RESOLVING, unread, WAITING, type MarkedLabel } from "./post.ts";
+import { answered, commentOnPr, commentOnTicket, commentsRead, gh, ghAs, ghRead, git, gitRead, type Held, labelsHeld, markWith, NEEDS_HUMAN, prOfTicket, readOrStop, RESOLVING, unread, WAITING, type MarkedLabel } from "./post.ts";
 import { FINGERPRINT, REVIEWED_FROM, TICKET_BRANCH } from "./reviewer.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { quoted, why } from "./ticket-shape.ts";
@@ -11,7 +11,6 @@ const MERGED = /^Merge pull request #(\d+) from \S+?(?:\/ticket\/(\d+))?$/;
 const NAMED = /^(?:[ ,]*#\d+)+/;
 const BUILDS = /^Builds #(\d+)[ \t]*$/m;
 const MACHINE_BRANCH = /^(ticket|land)\//;
-const NO_PR = /^no pull requests found/m;
 const REQUIRED_CHECKS = ["check", "review"];
 const PASSED = new Set(["SUCCESS", "SKIPPED", "NEUTRAL"]);
 
@@ -275,9 +274,8 @@ function wokenFromSplit(parent: string, split: string, merged: string | undefine
 function wokenAfterParent(ticket: string, body: string): string {
   const parent = REVIEWED_FROM.exec(why(body))?.[1];
   if (parent === undefined) return "";
-  const asked = gh(["pr", "view", `ticket/${parent}`, "--json", "state", "--jq", ".state"]);
-  if (asked.status !== 0 && !NO_PR.test(asked.stderr)) unread(`the PR of #${parent} could not be read, so #${ticket} is not woken`);
-  const state = asked.stdout.trim();
+  const pr = prOfTicket(parent, ["state"], gh);
+  const state = pr === "none" ? undefined : pr.state;
   if (state !== "MERGED" && state !== "CLOSED") return "";
   const woke = gh(["issue", "edit", ticket, "--remove-label", WAITING]);
   return woke.status === 0 ? `; #${ticket} builds now, the PR of #${parent} ${state.toLowerCase()}` : `; #${ticket} could not be woken: ${quoted((woke.stderr || woke.stdout).trim().split("\n")[0] ?? "")}`;

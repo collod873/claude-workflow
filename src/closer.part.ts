@@ -168,7 +168,7 @@ export function closing({
         `  "api repos/{owner}/{repo}/issues/${ticket} --jq"*) printf '%s\\n' ${labels.map((label) => `'${label}'`).join(" ")} ;;`,
       ]),
       `  *"pr list --head"*) ${prLookupRefused === undefined ? "exit 0" : `printf '%s\\n' '${prLookupRefused}' >&2; exit 1`} ;;`,
-      ...followUps.map(({ parent, parentPr }) => `  *"pr view ticket/${parent} "*"state"*) printf '%s\\n' '${parentPr}' ;;`),
+      ...followUps.map(({ parent, parentPr }) => `  *"pr view ticket/${parent} "*"state"*) printf '{"state":"%s"}\\n' '${parentPr}' ;;`),
       ...followUps.map(({ ticket, split }) => `  *"api"*"issues/${ticket}/comments"*) ${split === true ? `printf '%s\\n' '${JSON.stringify({ author: MACHINE, type: "Bot", body: `@collod873 the builder split #${ticket} into #990, which build themselves.` })}'` : "exit 0"} ;;`),
       ...(splitFrom === undefined
         ? []

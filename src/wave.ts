@@ -1,5 +1,5 @@
 import { capped } from "./brief.ts";
-import { commentsOn, gh, heldOf, opened, type Opened } from "./post.ts";
+import { commentsOn, commentsRead, gh, ghWhole, heldOf, opened, type Opened, prOfTicket } from "./post.ts";
 import { REVIEWED_FROM, SPLIT_FROM } from "./reviewer.ts";
 import type { LabelName } from "./spelled.ts";
 import { exitFor, stoppedAt, type Stop } from "./stops.ts";
@@ -23,11 +23,6 @@ interface Listed {
   state?: string;
   state_reason?: string | null;
   body?: string;
-}
-
-interface Pr {
-  state?: string;
-  files?: string[];
 }
 
 export const FOUND_CAP = 32 * 1024;
@@ -71,25 +66,16 @@ function lines(args: string[]): Listed[] | undefined {
 
 export const underSpec = (spec: string): Listed[] | undefined => lines(["api", "--paginate", `repos/{owner}/{repo}/issues/${spec}/sub_issues`, "--jq", ".[] | {number, title, state, state_reason}"]);
 
-function prRead(ticket: number): Pr | "none" | "unread" {
-  const got = gh(["pr", "view", `ticket/${ticket}`, "--json", "state,files", "--jq", "{state, files: [.files[].path]}"]);
-  if (got.status !== 0) return "none";
-  try {
-    return JSON.parse(got.stdout) as Pr;
-  } catch {
-    return "unread";
-  }
-}
+const UNSPENT = "so no model was spent";
 
 function prOf(ticket: number): string {
-  const pr = prRead(ticket);
+  const pr = prOfTicket(String(ticket), ["state", "files"], gh);
   if (pr === "none") return "Its PR: none";
-  if (pr === "unread") return "Its PR: unread";
-  return `Its PR: ${pr.state ?? "unknown"}, touching ${(pr.files ?? []).join(", ") || "no file"}`;
+  return `Its PR: ${pr.state ?? "unknown"}, touching ${(pr.files ?? []).map(({ path }) => path).join(", ") || "no file"}`;
 }
 
 function ticketFound(ticket: Listed): string {
-  const said = (commentsOn(String(ticket.number), gh) ?? ["(its comments could not be read)"]).map((comment) => capped(comment.trim(), SAID_CAP));
+  const said = commentsRead(String(ticket.number), `the comments on #${ticket.number} could not be read, ${UNSPENT}`, gh).map((comment) => capped(comment.trim(), SAID_CAP));
   return [`### #${ticket.number}, ${ticket.title ?? ""}: ${ticket.state ?? "unknown"}, ${ticket.state_reason ?? "no reason"}`, prOf(ticket.number), ...said].join("\n\n");
 }
 
@@ -105,12 +91,12 @@ const newestFirst = (tickets: Listed[]): Listed[] => [...tickets].sort((one, oth
 
 export function waveDiffs(tickets: Listed[]): string {
   const merged = newestFirst(tickets).filter(({ number }) => {
-    const pr = prRead(number);
-    return typeof pr === "object" && pr.state === "MERGED";
+    const pr = prOfTicket(String(number), ["state"], gh);
+    return pr !== "none" && pr.state === "MERGED";
   });
   const shown = merged.map(({ number }) => {
-    const diff = gh(["pr", "diff", `ticket/${number}`]);
-    return { number, text: `### #${number}'s PR\n\n${diff.status === 0 ? diff.stdout : "(its diff could not be read)"}` };
+    const diff = ghWhole(["pr", "diff", `ticket/${number}`], `the diff of #${number}'s PR could not be read, ${UNSPENT}`);
+    return { number, text: `### #${number}'s PR\n\n${diff}` };
   });
   const all = shown.map(({ text }) => text).join("\n\n");
   if (Buffer.byteLength(all) <= DIFF_CAP) return all;
