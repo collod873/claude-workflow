@@ -220,6 +220,14 @@ describe("bin/slice turns a filed spec into its first wave of tickets under it, 
     expect(sliced.comments()).toEqual(['The slicer rewrote this spec and filed only part of its wave, since #1101 would not go under it\n\nFiled: #1101, not under this spec.\n\nNot filed: "Read the spec kind".']);
   });
 
+  it("ends red at unread naming the id read of a filed ticket that gh fails, and links nothing (#1111)", () => {
+    const sliced = slicing({ body: SPEC, answers: [wave()], gh: '[[ $* == *"--jq .id"* ]] && exit 1' });
+
+    expect(sliced.run()).toEqual({ status: 1, stdout: "", stderr: "slice: #968 filed #1101, but its id could not be read, so it is not under the spec\n" });
+    expect(sliced.linked()).toEqual([]);
+    expect(sliced.marked()).toEqual(["968 slicing"]);
+  });
+
   it("names no ticket as not filed when the last filed but would not go under the spec (#1028)", () => {
     const sliced = slicing({ body: SPEC, answers: [wave()], gh: "[[ $* == *sub_issue_id=901102* ]] && exit 1" });
 
