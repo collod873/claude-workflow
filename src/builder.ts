@@ -5,9 +5,11 @@ import { dirname, join, resolve } from "node:path";
 import { admission, doesNotBuild } from "./admit.ts";
 import { capped, onDisk } from "./brief.ts";
 import { CHECK, UNFENCED } from "./fence.ts";
-import { commentOnTicket, commentsRead, gh, ghRead, ghWhole, git, gitRead, labelsHeld, mark, NEEDS_HUMAN, NOTHING_MARKED, OWNER, post, postRefusals, prOfTicket, readOrStop, RESOLVING, rewriteTicket, sessionLine, unread, WAITING } from "./post.ts";
+import { type Asked, commentOnTicket, commentsRead, gh, ghRead, git, gitRead, mark, NEEDS_HUMAN, NOTHING_MARKED, OWNER, post, postRefusals, prOfTicket, readOrStop, RESOLVING, rewriteTicket, sessionLine, unread, WAITING } from "./post.ts";
 import { BUILDER_SPLIT, earlierDrift, FOLLOW_UP_OF, followUpBody, handedDiff, LIST_CAP, NO_EM_DASH, repairOf, TICKET_CAP } from "./reviewer.ts";
-import { hired, machineLogs, type Spent } from "./stage.ts";
+import { machineLogs, opened, type Spent } from "./stage.ts";
+import { BUILDING, CHECKING } from "./spelled.ts";
+import { exitFor, stopsOf } from "./stops.ts";
 import { DONE_SENTENCES, quoted, why, whyChanged } from "./ticket-shape.ts";
 
 const ANSWER = {
@@ -46,6 +48,8 @@ interface Answer {
   body?: string;
   tickets?: Piece[];
 }
+
+const stoppedAt = stopsOf({ unadmitted: "Build refused: the ticket's checks would run as shell with the App's token" });
 
 export const splitInto = (ticket: string) => `@${OWNER} the builder split #${ticket} into`;
 export const splitClosed = (ticket: string) => `Every ticket #${ticket} was split into has closed:`;
@@ -285,8 +289,8 @@ function checkingAgain(ticket: string, run: string | undefined): number {
     if (ran !== `Check ${head()} 1`) return calledOwner(ticket, "its red Check already reran once, and it is green here unchanged");
     const again = gh(["run", "rerun", String(run), "--failed"]);
     if (again.status !== 0) return calledOwner(ticket, `it is green unchanged and the rerun of its red Check was refused: ${quoted((again.stderr || again.stdout).trim().split("\n")[0] ?? "")}`);
-    mark(ticket, "checking", "--untry");
-  } else mark(ticket, "checking");
+    mark(ticket, CHECKING, "--untry");
+  } else mark(ticket, CHECKING);
   console.log(`fix: #${ticket} is green and pushed, so its PR checks run again`);
   return 0;
 }
@@ -297,26 +301,32 @@ function failedAs(ticket: string, logs: string, run: string | undefined): string
   return run === undefined ? undefined : failure(ticket, logs, run);
 }
 
-function ownTicket(ticket: string, run: string | undefined): number {
+function owned(ticket: string, run: string | undefined, asked: Asked) {
   const { refused, unread: unreadable } = admission(ticket);
   if (unreadable !== undefined) unread(`${unreadable}, ${NOTHING_MARKED}`);
-  if (refused !== undefined) {
-    console.error(`fix: ${doesNotBuild(ticket, refused)}`);
-    return 1;
-  }
-  const logs = machineLogs(process.cwd());
-  mkdirSync(logs, { recursive: true });
+  if (refused !== undefined) return stoppedAt("unadmitted", `fix: ${doesNotBuild(ticket, refused)}`);
+  const logs = machineLogs();
   const failed = failedAs(ticket, logs, run);
-  const held = labelsHeld(ticket, gh);
-  let body = ghWhole(["issue", "view", ticket, "--json", "body", "--jq", ".body"], `the body of #${ticket} could not be read, ${NOTHING_MARKED}`);
   const pr = prOfTicket(ticket, ["number"], gh);
   const judged = pr === "none" ? [] : commentsRead(String(pr.number), `the comments on PR #${pr.number} could not be read, ${NOTHING_MARKED}`, gh);
   const onTicket = commentsRead(ticket, `the comments on #${ticket} could not be read, ${NOTHING_MARKED}`, gh);
   const diff = failed === undefined ? "" : gitRead(["diff", "origin/main...HEAD"], `the diff from main could not be read, ${NOTHING_MARKED}`);
-  if (failed === undefined) mark(ticket, "building");
-  else if (!held.has(RESOLVING)) mark(ticket, "building", "--try");
-  const spend = hired({ name: "builder", transcript: join(logs, `fix-${ticket}.jsonl`), answers: ANSWER, gated: true, reach: UNFENCED });
-  if (typeof spend === "string") return calledOwner(ticket, `the owner's hooks could not be read from ${spend}`);
+  return { carrying: { logs, failed, judged, onTicket, diff }, tried: failed !== undefined, unmarked: failed !== undefined && asked.labels.has(RESOLVING) };
+}
+
+function ownTicket(ticket: string, run: string | undefined): number {
+  const owning = opened({
+    stage: "fix",
+    issue: ticket,
+    state: BUILDING,
+    stoppedAt,
+    hire: { name: "builder", answers: ANSWER, gated: true, reach: UNFENCED },
+    ready: (asked) => owned(ticket, run, asked),
+  });
+  if (typeof owning !== "object") return exitFor(owning);
+  const { asked, spend } = owning;
+  const { logs, failed, judged, onTicket, diff } = owning.carried;
+  let body = asked.body;
   let session = savedSession(ticket);
   const opening = handedOn({
     ticket,

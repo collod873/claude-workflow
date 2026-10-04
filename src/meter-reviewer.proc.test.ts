@@ -317,3 +317,12 @@ describe("bin/meters ends red at a GitHub read that fails (#1112)", () => {
     expect(spent()).toBe(read === "the PR body");
   });
 });
+
+describe("bin/meters hires its model through the stage part's one hire (#1117)", () => {
+  it("ends red at unread naming the log directory when git cannot name it, hiring nothing", () => {
+    const { run, spent } = metering({ gitUnreadable: '*"--git-common-dir"*' });
+
+    expect(run()).toMatchObject({ status: 1, stderr: "meters: the log directory could not be named by git, so no model was hired\n" });
+    expect(spent()).toBe(false);
+  });
+});

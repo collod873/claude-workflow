@@ -1,9 +1,7 @@
 import { createHash } from "node:crypto";
-import { mkdirSync } from "node:fs";
-import { join } from "node:path";
 import { capped } from "./brief.ts";
 import { answered as readAnswered, commentOnTicket, commentsRead, gh, ghRead, ghWhole, git, gitRead, post, readOrStop, underOwnerSpec, unread, WAITING } from "./post.ts";
-import { hired, machineLogs } from "./stage.ts";
+import { hire } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { DONE_SENTENCES, quoted, why } from "./ticket-shape.ts";
 
@@ -197,10 +195,8 @@ function isVerdict(answer: unknown): answer is Verdict {
   return verdict === "match" || verdict === "drift";
 }
 
-export function answered(hire: { name: string; bin: string; answers: object }, prompt: string, pr: string): { answer: unknown; stdout: string } | string {
-  const logs = machineLogs(process.cwd());
-  mkdirSync(logs, { recursive: true });
-  const spend = hired({ name: hire.name, transcript: join(logs, `${hire.bin}-${pr}.jsonl`), tools: TOOLS, answers: hire.answers });
+export function answered({ name, bin, answers }: { name: string; bin: string; answers: object }, prompt: string, pr: string): { answer: unknown; stdout: string } | string {
+  const spend = hire(bin, pr, { name, tools: TOOLS, answers });
   if (typeof spend === "string") return `the owner's hooks could not be read from ${spend}`;
   const spent = spend(prompt);
   return spent.refusal ?? { answer: spent.answer, stdout: spent.stdout };

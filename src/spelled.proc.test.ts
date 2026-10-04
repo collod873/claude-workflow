@@ -37,7 +37,7 @@ const KEYS = [
   ["NEEDS_HUMAN", "needs-human"],
 ] as const;
 const USAGE = `spelled: usage: spelled labels | spelled <${KEYS.map(([key]) => key).join("|")}>\n`;
-const NAMING = ["post.ts", "slicer.ts", "done-checker.ts", "researcher.ts", "closer.ts", "wave.ts"].map((file) => join(BIN, "..", "src", file));
+const NAMING = ["post.ts", "slicer.ts", "done-checker.ts", "researcher.ts", "closer.ts", "wave.ts", "builder.ts"].map((file) => join(BIN, "..", "src", file));
 
 function rawLabels(files: string[], names: string[]): string[] {
   const program = ts.createProgram(files, { strict: true, noEmit: true, allowImportingTsExtensions: true, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, target: ts.ScriptTarget.ESNext });
@@ -99,7 +99,7 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
     expect(labelled).toEqual(KEYS.map(([key, name]) => [key, name]));
   });
 
-  it("leaves the GitHub part, the slicer, the done check, the researcher, the closer and the wave reader no raw string or second constant for a label (#1118)", () => {
+  it("leaves the GitHub part, the slicer, the done check, the researcher, the closer, the wave reader and the builder no raw string or second constant for a label (#1118)", () => {
     const names = rows().map(([name]) => name ?? "");
     const planted = scratch("spelled-raw-");
     plant(
