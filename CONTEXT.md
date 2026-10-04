@@ -38,7 +38,7 @@ any repo it builds, this one included; a receipt records that a step passed for 
 inputs, so no step runs twice for the same tree. The fast check runs mid-session, the full check
 (`--full`) at push, in the builder and in the `check` job of `Check`, the PR workflow, which runs
 the review and the meters beside it.
-_Avoid_: gate (for a step), gauntlet, `bin/check`, static check
+_Avoid_: gate (for a step), gauntlet, a repo-local check script, static check
 
 **Meter**:
 A rule that reports in the PR body what it would have refused, and refuses nothing. Every new rule
