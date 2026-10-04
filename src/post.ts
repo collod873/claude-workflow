@@ -76,7 +76,8 @@ export function labelsOf(issue: string, gh: Gh): Held | "unread" {
   return got.status === 0 ? new Set(got.stdout.split("\n").filter((label) => label !== "")) : "unread";
 }
 
-export const labelsUnread = (issue: string) => `the labels of #${issue} could not be read, so nothing is marked`;
+export const NOTHING_MARKED = "so nothing is marked";
+const labelsUnread = (issue: string) => `the labels of #${issue} could not be read, ${NOTHING_MARKED}`;
 
 export function labelsHeld(issue: string, gh: Gh): Held {
   const held = labelsOf(issue, gh);

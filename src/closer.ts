@@ -1,5 +1,5 @@
 import { splitClosed, splitInto } from "./builder.ts";
-import { answered, commentOnPr, commentOnTicket, commentsRead, gh, ghAs, ghRead, git, gitRead, type Held, labelsHeld, markWith, NEEDS_HUMAN, prOfTicket, readOrStop, RESOLVING, unread, WAITING, type MarkedLabel } from "./post.ts";
+import { answered, commentOnPr, commentOnTicket, commentsRead, gh, ghAs, ghRead, git, gitRead, type Held, labelsHeld, markWith, NEEDS_HUMAN, NOTHING_MARKED, prOfTicket, readOrStop, RESOLVING, unread, WAITING, type MarkedLabel } from "./post.ts";
 import { FINGERPRINT, REVIEWED_FROM, TICKET_BRANCH } from "./reviewer.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { quoted, why } from "./ticket-shape.ts";
@@ -151,7 +151,6 @@ function checksOf(rollup: CheckRun[]): Checks {
   return latest.every((ran) => ran?.status === "COMPLETED") ? "green" : "pending";
 }
 
-const NOTHING_MARKED = "so nothing is marked";
 
 function queuedPrs(): QueuedPr[] {
   const line = `the open PRs could not be read, ${NOTHING_MARKED}`;
