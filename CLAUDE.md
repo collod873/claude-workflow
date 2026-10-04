@@ -9,8 +9,9 @@
   `bin/`. knip runs with no baseline, and a test importing a thing is not a caller: wire it to one
   or delete it.
 - Fix a failure at its cause before adding a gate.
-- `bin/check` is the full gate: pre-push and every PR. Mid-session, run `~/bin/check`;
-  check-gate waits on it.
+- The repo holds no runner, only its steps in `.claude/contract.json`. Mid-session, run
+  `~/bin/check`, the fast check check-gate waits on; `~/bin/check --full` is the full check,
+  which pre-push and the PR's `check` job run.
 - Session hooks live in `collod873/agent-hooks`, not here.
 - A worktree's `node_modules` links to the main checkout's: `rm node_modules && npm ci` before
   editing packages.

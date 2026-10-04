@@ -28,8 +28,17 @@ _Avoid_: rail, safety net, guardrail
 
 **Gate**:
 Something that refuses an action at the moment it is attempted. Unlike a meter, it needs no
-reader, only a trigger.
-_Avoid_: check, validator, guardrail, lint
+reader, only a trigger. A step the check runs is one; call it a step.
+_Avoid_: validator, guardrail, lint
+
+**Check**, **step**, **receipt**:
+agent-hooks' words, used here exactly as there. A check is one run of `~/bin/check`, the one
+runner; a step is one named entry in `.claude/contract.json`, which is all the machine knows of
+any repo it builds, this one included; a receipt records that a step passed for exactly its
+inputs, so no step runs twice for the same tree. The fast check runs mid-session, the full check
+(`--full`) at push, in the builder and in the `check` job of `Check`, the PR workflow, which runs
+the review and the meters beside it.
+_Avoid_: gate (for a step), gauntlet, `bin/check`, static check
 
 **Meter**:
 A rule that reports in the PR body what it would have refused, and refuses nothing. Every new rule

@@ -16,7 +16,7 @@ const LABELS = [
   { name: "note", kind: "kind", colour: KIND_GREY, description: "Filed to be kept, never built" },
   { name: "research", kind: "kind", colour: KIND_GREY, description: "A note the machine answers and closes when filed" },
   { name: "building", kind: "state", colour: STATE_BLUE, description: "The builder is writing the ticket's code, or a spec's wave is building" },
-  { name: "checking", kind: "state", colour: STATE_BLUE, description: "bin/check and the reviewer judge the head, or the done check tries a spec's sentences" },
+  { name: "checking", kind: "state", colour: STATE_BLUE, description: "The check and the reviewer judge the head, or the done check tries a spec's sentences" },
   { name: "queued", kind: "state", colour: STATE_BLUE, description: "Check and the review passed; it waits in the closer's queue" },
   { name: "resolving", kind: "state", colour: STATE_BLUE, description: "The builder is resolving a merge conflict" },
   { name: "landing", kind: "state", colour: STATE_BLUE, description: "Up to date with main and next to merge; auto-merge fires once its checks pass" },

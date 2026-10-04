@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parts, type Part } from "./parts.ts";
-import { LINE_LIMIT, MOST_LINES, checkRepo, closingNote, coveredByCheck, execute, filing, landSession, marking, misshapenTicket, overLimit, saving, scratch, script, sessionExtras, wellFormedNote, wellFormedTicket } from "./scenarios.ts";
+import { CONTRACT, LINE_LIMIT, MOST_LINES, closingNote, coveredByCheck, execute, filing, landSession, marking, misshapenTicket, overLimit, saving, scratch, script, sessionExtras, wellFormedNote, wellFormedTicket } from "./scenarios.ts";
 import { stages, type Scenario } from "./stages.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
@@ -12,11 +12,6 @@ const FILED = `printf '%s\\n' ${URL}\n`;
 const NOTE_CALL = ["note", "--title", "What the audit found", "--body-file", "body.md"];
 
 const listed: Record<string, Scenario[]> = {
-  "bin/check": [
-    { label: "passing", run: () => checkRepo().run() },
-    { label: "with a failing test", run: () => checkRepo({ vitest: NOISE }).run() },
-    { label: "with every tool failing", run: () => checkRepo({ tsc: NOISE, eslint: NOISE, knip: NOISE, jscpd: NOISE, vitest: NOISE, node: NOISE }).run() },
-  ],
   "bin/land": [
     { label: "waiting on checks while gh chatters", run: () => landSession({ gh: `cat >&2 <<'NOISE'\n${NOISE}\nNOISE\n[[ $2 == create ]] && echo ${URL}\nexit 0\n` }).run() },
     { label: "with gh pr create failing", run: () => landSession({ gh: `[[ $2 == create ]] || exit 0\ncat >&2 <<'NOISE'\n${NOISE}\nNOISE\nexit 1\n` }).run() },
@@ -56,8 +51,8 @@ const listed: Record<string, Scenario[]> = {
 
 const scenarios: Record<string, Scenario[]> = { ...listed, ...Object.fromEntries((await stages()).map((stage) => [stage.part.file, stage.scenarios])) };
 
-function speakers(registry: Part[], check: string): string[] {
-  const covered = coveredByCheck(check);
+function speakers(registry: Part[], contract: string): string[] {
+  const covered = coveredByCheck(contract);
   return [...new Set(registry.map((part) => part.file))].filter((file) => !covered(file) && !file.startsWith(".github/workflows/"));
 }
 
@@ -88,7 +83,7 @@ function overheard(part: string, runs: Scenario[] = [], lines = 1, data = false)
 }
 
 describe(`everything the machine prints is one line of ${LINE_LIMIT} characters, or up to ${MOST_LINES} for a part registered for them (#683)`, () => {
-  it.each(speakers(parts, readFileSync(join(REPO, "bin", "check"), "utf8")))("%s stays under the limit on a passing and a failing run", (part) => {
+  it.each(speakers(parts, readFileSync(join(REPO, CONTRACT), "utf8")))("%s stays under the limit on a passing and a failing run", (part) => {
     expect(overheard(part, scenarios[part], linesAllowed(parts, part), printsData(parts, part))).toEqual([]);
   });
 
@@ -99,24 +94,24 @@ describe(`everything the machine prints is one line of ${LINE_LIMIT} characters,
     const registry = [planted("bin/lister", MOST_LINES), planted("bin/talker", MOST_LINES + 1)];
     expect(overAllowed(registry)).toEqual([`bin/talker is registered for ${MOST_LINES + 1} lines, over ${MOST_LINES}`]);
     expect(linesAllowed(registry, "bin/lister")).toBe(MOST_LINES);
-    expect(linesAllowed(registry, "bin/check")).toBe(1);
+    expect(linesAllowed(registry, "bin/unlisted")).toBe(1);
   });
 
   it("leaves uncounted only the rows a data part prints on a passing run, never what it says on stderr or when it fails (#1100)", () => {
     const rows = (status: number, stderr = ""): Scenario => ({ label: `ending ${status}`, run: () => ({ status, stdout: "row\n".repeat(MOST_LINES + 1), stderr }) });
 
     expect(printsData([{ name: "bin/lister", file: "bin/lister", stops: URL, printsData: true }], "bin/lister")).toBe(true);
-    expect(printsData(parts, "bin/check")).toBe(false);
+    expect(printsData(parts, "bin/land")).toBe(false);
     expect(overheard("bin/lister", [rows(0), rows(2)], 1, true)).toEqual([`bin/lister ending 2 said ${MOST_LINES + 1} lines, over 1`]);
     expect(overheard("bin/lister", [rows(0, "one\ntwo\n")], 1, true)).toEqual(["bin/lister has no failing run", "bin/lister ending 0 said 2 lines, over 1"]);
   });
 
-  it("makes every registered part bin/check does not already run prove its own runs, whatever it is written in", () => {
+  it("makes every registered part the contract's steps do not already run prove its own runs, whatever it is written in", () => {
     const planted = (file: string): Part => ({ name: file, file, stops: URL });
-    const registry = ["bin/planted", "src/planted.proc.test.ts", "src/planted.config.ts", "bin/check"].map(planted);
-    const check = "run lint eslint --config src/planted.config.ts src\n";
+    const registry = ["bin/planted", "src/planted.proc.test.ts", "src/planted.config.ts", CONTRACT, "src/planted-each.config.ts", "src/unrun.ts"].map(planted);
+    const contract = JSON.stringify({ steps: { lint: { run: "node_modules/.bin/eslint --config src/planted.config.ts src", each: "node_modules/.bin/eslint --config src/planted-each.config.ts <files>" } } });
 
-    expect(speakers(registry, check)).toEqual(["bin/planted", "bin/check"]);
+    expect(speakers(registry, contract)).toEqual(["bin/planted", "src/unrun.ts"]);
   });
 
   it("names a planted part whose line is too long, says too many lines, or has no passing or failing run", () => {

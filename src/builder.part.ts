@@ -1,17 +1,20 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { CHECK_CAP, handedOn, repaired, TAIL_CAP } from "./builder.ts";
+import { CONTRACT_CAP, handedOn, repaired, TAIL_CAP } from "./builder.ts";
 import { DIFF_CAP, LIST_CAP, TICKET_CAP } from "./brief.ts";
 import { authored, BIN, execute, FIXED_TICKET, ghArgv, git, gitRefusing, openedCases, type Parent, plant, refusedMark, type Said, scratch, script } from "./scenarios.ts";
 import { OWNER } from "./spelled.ts";
 import { declareStage, HANDED_ON } from "./stages.ts";
 
+export const CHECK_PASSES = "printf 'check: ok, 8 steps in 1.0s\\n'\n";
+export const CHECK_RED = "printf 'check: red test src/stops.test.ts:4; log /nowhere/check-full.log\\n'\nexit 1\n";
+
 export const FULL_CHECK_RED_ONCE = [
-  "if [ -f ../checked ]; then exit 0; fi",
+  `if [ -f ../checked ]; then ${CHECK_PASSES.trim()}; exit 0; fi`,
   "touch ../checked",
-  "mkdir -p .git/machine-logs",
-  "printf -- '--- test ---\\nOTHER-TEST-BROKE in src/stops.test.ts\\n' >.git/machine-logs/check-red.log",
-  "printf 'bin/check: FAILED test src/stops.test.ts; log .git/machine-logs/check-red.log\\n'",
+  "mkdir -p .git/check/logs",
+  "printf -- '--- test ---\\nOTHER-TEST-BROKE in src/stops.test.ts\\n' >.git/check/logs/check-full-red.log",
+  "printf 'check: red test src/stops.test.ts:4; log %s/.git/check/logs/check-full-red.log\\n' \"$PWD\"",
   "exit 1",
   "",
 ].join("\n");
@@ -48,7 +51,8 @@ export function fixing({
   leftover = {} as Record<string, string>,
   claude = "",
   npx = "exit 0\n",
-  check = "exit 0\n",
+  check = CHECK_PASSES,
+  contract = undefined as string | undefined,
   save = "exit 0\n",
   failedRun = "",
   ranAs = "Build",
@@ -76,10 +80,10 @@ export function fixing({
   const { setup, calls } = ghArgv(argvDir);
   mkdirSync(spent, { recursive: true });
   mkdirSync(hires, { recursive: true });
-  script(join(session, "bin", "check"), check);
+  script(join(home, "bin", "check"), check);
   script(join(session, "bin", "mark"), `printf '%s\\n' "$*" >>"${marks}"\n${refusedMark(markRefusal)}`);
   script(join(session, "bin", "save"), `printf '%s\\n' "$*" >>"${saves}"\n${save}`);
-  branchedSession(session, "builder", { "src/ticket-shape.ts": "export const shaped = 1;\n" }, { "src/ticket-shape.test.ts": AUTHORED_TEST }, "ticket/811");
+  branchedSession(session, "builder", { "src/ticket-shape.ts": "export const shaped = 1;\n", ...(contract === undefined ? {} : { ".claude/contract.json": contract }) }, { "src/ticket-shape.test.ts": AUTHORED_TEST }, "ticket/811");
   git(session, "commit", "--quiet", "--allow-empty", "-m", "Build #811 against its failing tests");
   const redAt = git(session, "rev-parse", "HEAD");
   for (const [name, text] of Object.entries(logged)) plant(session, `.git/machine-logs/${name}`, text);
@@ -153,9 +157,9 @@ declareStage({
     {
       name: "builder building",
       file: "src/builder.ts",
-      cap: TICKET_CAP + CHECK_CAP + LIST_CAP + 2 * HANDED_ON,
-      slots: ["body", "check", "woken"],
-      build: (filled) => handedOn({ ticket: "", body: filled.body ?? "", check: filled.check ?? "", woken: filled.woken ?? "" }),
+      cap: TICKET_CAP + CONTRACT_CAP + LIST_CAP + 2 * HANDED_ON,
+      slots: ["body", "contract", "woken"],
+      build: (filled) => handedOn({ ticket: "", body: filled.body ?? "", contract: filled.contract ?? "", woken: filled.woken ?? "" }),
     },
     {
       name: "builder",
@@ -176,6 +180,6 @@ declareStage({
     { label: "pushing a fix", run: () => fixing({ claude: "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n" }).run() },
     { label: "building a ticket", run: () => fixing({ claude: "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n" }).run("811") },
     { label: "with its PR unreadable", run: () => fixing({ unreadable: '*"pr view"*"number"*' }).run() },
-    { label: "calling the owner when two rounds in a row change nothing", run: () => fixing({ check: "printf 'bin/check: FAILED test\\n'\nexit 1\n" }).run() },
+    { label: "calling the owner when two rounds in a row change nothing", run: () => fixing({ check: CHECK_RED }).run() },
   ],
 });

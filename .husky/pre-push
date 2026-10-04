@@ -1,11 +1,11 @@
-only_notes=1
+only_side_refs=1
 while read -r _local_ref _local_sha remote_ref _remote_sha; do
   case "$remote_ref" in
-    refs/notes/*) ;;
-    *) only_notes=0 ;;
+    refs/notes/* | refs/check/*) ;;
+    *) only_side_refs=0 ;;
   esac
 done
-if [ "$only_notes" = 1 ]; then
+if [ "$only_side_refs" = 1 ]; then
   exit 0
 fi
-bin/check
+~/bin/check --full --publish

@@ -10,47 +10,42 @@ export interface Part {
 
 const FIXED: Part[] = [
   {
-    name: "bin/check",
-    file: "bin/check",
-    stops: "https://github.com/collod873/claude-workflow/issues/652",
-  },
-  {
-    name: "bin/check typecheck",
+    name: "typecheck step",
     file: "tsconfig.json",
     stops: "https://github.com/collod873/claude-workflow/actions/runs/33346638810",
   },
   {
-    name: "bin/check lint",
+    name: "lint step",
     file: "eslint.config.js",
     stops: "https://github.com/collod873/claude-workflow/issues/360",
   },
   {
-    name: "bin/check unused",
+    name: "unused step",
     file: "knip.config.ts",
     stops: "https://github.com/collod873/claude-workflow/issues/183",
   },
   {
-    name: "bin/check clones",
-    file: "bin/check",
+    name: "clones step",
+    file: ".claude/contract.json",
     stops: "https://github.com/collod873/claude-workflow/actions/runs/34630928220",
   },
   {
-    name: "bin/check test",
+    name: "test step",
     file: "vitest.config.ts",
     stops: "https://github.com/collod873/claude-workflow/actions/runs/33346638810",
   },
   {
-    name: "bin/check links",
+    name: "links step",
     file: "src/part-links.ts",
     stops: "https://github.com/collod873/claude-workflow/issues/682",
   },
   {
-    name: "bin/check prompts",
+    name: "prompts step",
     file: "src/prompt-bytes.ts",
     stops: "https://github.com/collod873/claude-workflow/issues/663",
   },
   {
-    name: "bin/check written twice",
+    name: "written-twice step",
     file: "src/written-twice.ts",
     stops: "https://github.com/collod873/claude-workflow/issues/912",
   },
