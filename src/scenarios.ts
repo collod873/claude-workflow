@@ -462,6 +462,9 @@ export function openedCases(root: string, opener: string, body: string, parent: 
   return [`  *"api"*"issues/811/parent") ${parentSays(root, parent)} ;;`, `  *"api"*"issues/811") cat "${join(root, "opened.json")}" ;;`];
 }
 
+export const gitRefusing = (root: string, unreadable: string) =>
+  script(join(root, "bin", "git"), `case "$*" in\n  ${unreadable}) printf 'fatal: unable to read\\n' >&2; exit 128 ;;\nesac\nPATH="\${PATH#*:}" exec git "$@"\n`);
+
 export function parentSays(root: string, parent: Parent): string {
   plant(root, "parent.json", JSON.stringify(parent ?? {}));
   if (parent === undefined) return "printf 'gh: Not Found (HTTP 404)\\n' >&2; exit 1";

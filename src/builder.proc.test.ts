@@ -7,6 +7,11 @@ const RED_FOUR_TIMES = ["n=$(cat ../reds 2>/dev/null || echo 0)", "[ \"$n\" -ge 
 const FIXES_EACH_ROUND = "printf 'export const shaped = %s;\\n' \"$((CALL + 1))\" >src/ticket-shape.ts\n";
 const MOVES_MAIN = 'git update-ref refs/heads/main "$(git commit-tree -p main -m "Land the reviewer fix #811 needed" "$(git rev-parse "main^{tree}")")"\n';
 const FILED_IN_SESSION = "## Why\n\nThe owner: \"read what I said\".\n\nSession: `ca2517b0-5e2d-46e7-a894-7fc3a4b978b2`\n\n## Done when\n\n- The builder reads it.\n";
+const untouched = ({ marked, handed, calls }: ReturnType<typeof fixing>) => {
+  expect(marked()).toEqual([]);
+  expect(handed()).toEqual([]);
+  expect(calls().filter((args) => ["comment", "edit", "create", "close"].includes(args[1] ?? ""))).toEqual([]);
+};
 const woken = (reason: string) => {
   const { run, handed } = fixing({ reason, claude: FIXES });
   return { result: run("811"), prompt: handed()[0] };
@@ -487,12 +492,10 @@ describe("bin/fix reads its ticket, its labels, its PR and their comments before
   ];
 
   it.each(READS)("ends red at unread naming $read, marking, posting and hiring nothing", ({ line, ...reads }) => {
-    const { run, marked, handed, calls } = fixing({ claude: FIXES, ...reads });
+    const unread = fixing({ claude: FIXES, ...reads });
 
-    expect(run()).toMatchObject({ status: 1, stderr: `fix: ${line}\n` });
-    expect(marked()).toEqual([]);
-    expect(handed()).toEqual([]);
-    expect(calls().filter((args) => ["comment", "edit", "create", "close"].includes(args[1] ?? ""))).toEqual([]);
+    expect(unread.run()).toMatchObject({ status: 1, stderr: `fix: ${line}\n` });
+    untouched(unread);
   });
 
   it("ends red at unread naming the run it was woken by when that run cannot be read once green, marking it checking for nothing and rerunning nothing", () => {
@@ -514,12 +517,10 @@ describe("bin/fix reads its ticket, its labels, its PR and their comments before
 
 describe("bin/fix opens through the one stage opening (#1117)", () => {
   it("ends green in one line on a ticket marked needs-human, and changes no label and hires no model", () => {
-    const { run, marked, handed, calls } = fixing({ claude: FIXES, labels: ["ticket", "needs-human"] });
+    const stopped = fixing({ claude: FIXES, labels: ["ticket", "needs-human"] });
 
-    expect(run("811")).toEqual({ status: 0, stdout: "fix: #811 is marked needs-human, so no label changed and no model was hired\n", stderr: "" });
-    expect(marked()).toEqual([]);
-    expect(handed()).toEqual([]);
-    expect(calls().filter((args) => ["comment", "edit", "create", "close"].includes(args[1] ?? ""))).toEqual([]);
+    expect(stopped.run("811")).toEqual({ status: 0, stdout: "fix: #811 is marked needs-human, so no label changed and no model was hired\n", stderr: "" });
+    untouched(stopped);
   });
 
   it("ends red at modelRun when the owner's hooks cannot be read, leaving the owner to the workflow's call-owner step", () => {

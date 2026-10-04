@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DIFF_CAP, handedOn, handedSince, LIST_CAP, TICKET_CAP } from "./reviewer.ts";
-import { authored, BIN, execute, ghArgv, git, type Parent, parentSays, plant, type Said, scratch, script } from "./scenarios.ts";
+import { authored, BIN, execute, ghArgv, git, gitRefusing, type Parent, parentSays, plant, type Said, scratch, script } from "./scenarios.ts";
 import { declareStage, HANDED_ON } from "./stages.ts";
 
 export const REVIEWED_TICKET = [
@@ -177,7 +177,7 @@ export function reviewing({
       "",
     ].join("\n"),
   );
-  if (gitUnreadable !== undefined) script(join(root, "bin", "git"), `case "$*" in\n  ${gitUnreadable}) printf 'fatal: unable to read\\n' >&2; exit 128 ;;\nesac\nPATH="\${PATH#*:}" exec git "$@"\n`);
+  if (gitUnreadable !== undefined) gitRefusing(root, gitUnreadable);
   script(join(root, "bin", "claude"), `touch "${judgedOnce}"\nprintf '%s\\0' "$@" >"${hired}"\ncat >"${handed}"\ncat "${join(root, "answer.json")}"\n`);
   const bodyOf = (args: string[]) => args[args.indexOf("--body") + 1];
   return {

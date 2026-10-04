@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { CHECK_CAP, handedOn, repaired, TAIL_CAP } from "./builder.ts";
 import { DIFF_CAP, LIST_CAP, TICKET_CAP } from "./reviewer.ts";
-import { authored, BIN, execute, FIXED_TICKET, ghArgv, git, openedCases, OWNER, type Parent, plant, refusedMark, type Said, scratch, script } from "./scenarios.ts";
+import { authored, BIN, execute, FIXED_TICKET, ghArgv, git, gitRefusing, openedCases, OWNER, type Parent, plant, refusedMark, type Said, scratch, script } from "./scenarios.ts";
 import { declareStage, HANDED_ON } from "./stages.ts";
 
 export const FULL_CHECK_RED_ONCE = [
@@ -113,7 +113,7 @@ export function fixing({
       "",
     ].join("\n"),
   );
-  if (gitUnreadable !== undefined) script(join(root, "bin", "git"), `case "$*" in\n  ${gitUnreadable}) printf 'fatal: unable to read\\n' >&2; exit 128 ;;\nesac\nPATH="\${PATH#*:}" exec git "$@"\n`);
+  if (gitUnreadable !== undefined) gitRefusing(root, gitUnreadable);
   script(
     join(root, "bin", "claude"),
     [`CALL=$(( $(ls "${spent}" | wc -l) + 1 ))`, `printf '%s\\0' "$@" >"${hires}/$CALL"`, `cat >"${spent}/$CALL"`, claude, `cat "${join(root, "answer.jsonl")}"`, ""].join("\n"),
