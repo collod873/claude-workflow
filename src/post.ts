@@ -164,7 +164,7 @@ export function authoredOn(number: string, gh: Gh): { author: string; body: stri
   }
 }
 
-export const commentsOn = (number: string, gh: Gh): string[] | undefined => authoredOn(number, gh)?.map(({ body }) => body);
+const commentsOn = (number: string, gh: Gh): string[] | undefined => authoredOn(number, gh)?.map(({ body }) => body);
 
 export const commentsRead = (number: string, line: string, gh: Gh): string[] => commentsOn(number, gh) ?? unread(line);
 
