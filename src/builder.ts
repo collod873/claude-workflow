@@ -8,6 +8,7 @@ import { CHECK, UNFENCED } from "./fence.ts";
 import { type Asked, commentOnTicket, commentsRead, gh, ghRead, git, gitRead, mark, NEEDS_HUMAN, NOTHING_MARKED, OWNER, post, postRefusals, prOfTicket, readOrStop, RESOLVING, rewriteTicket, sessionLine, unread, WAITING } from "./post.ts";
 import { BUILDER_SPLIT, earlierDrift, FOLLOW_UP_OF, followUpBody, handedDiff, LIST_CAP, NO_EM_DASH, repairOf, TICKET_CAP } from "./reviewer.ts";
 import { machineLogs, opened, type Spent } from "./stage.ts";
+import { BUILDING, CHECKING } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { DONE_SENTENCES, quoted, why, whyChanged } from "./ticket-shape.ts";
 
@@ -288,8 +289,8 @@ function checkingAgain(ticket: string, run: string | undefined): number {
     if (ran !== `Check ${head()} 1`) return calledOwner(ticket, "its red Check already reran once, and it is green here unchanged");
     const again = gh(["run", "rerun", String(run), "--failed"]);
     if (again.status !== 0) return calledOwner(ticket, `it is green unchanged and the rerun of its red Check was refused: ${quoted((again.stderr || again.stdout).trim().split("\n")[0] ?? "")}`);
-    mark(ticket, "checking", "--untry");
-  } else mark(ticket, "checking");
+    mark(ticket, CHECKING, "--untry");
+  } else mark(ticket, CHECKING);
   console.log(`fix: #${ticket} is green and pushed, so its PR checks run again`);
   return 0;
 }
@@ -317,7 +318,7 @@ function ownTicket(ticket: string, run: string | undefined): number {
   const owning = opened({
     stage: "fix",
     issue: ticket,
-    state: "building",
+    state: BUILDING,
     stoppedAt,
     hire: { name: "builder", answers: ANSWER, gated: true, reach: UNFENCED },
     ready: (asked) => owned(ticket, run, asked),
