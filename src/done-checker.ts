@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { capped } from "./brief.ts";
 import { UNFENCED } from "./fence.ts";
-import { authoredOn, commentOnTicket, gh, mark, NEEDS_HUMAN, OWNER, readOrStop, unread, type Asked } from "./post.ts";
+import { authoredOn, commentOnTicket, commentsRead, gh, mark, NEEDS_HUMAN, OWNER, readOrStop, unread, type Asked } from "./post.ts";
 import { NO_EM_DASH } from "./reviewer.ts";
 import { opened, type Spent } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
@@ -268,9 +268,17 @@ function doneCheck(issue: string): Stop | undefined {
   return undefined;
 }
 
+function askedOwner(issue: string): undefined {
+  const comments = commentsRead(issue, `#${issue} could not read its comments, so nothing was asked`, gh);
+  const last = comments.filter((comment) => comment.startsWith(DONE_CHECK_HEADING)).at(-1) ?? "";
+  console.log(String(last.includes(`**${OUTCOMES.owner}**`) && !last.includes(FIX_WAVE)));
+  return undefined;
+}
+
 if (import.meta.main) {
   const [issue, flag, numbers] = process.argv.slice(2);
   if (issue === undefined) throw new Error("no issue number in the arguments");
   const wave = flag === "--wave" ? (numbers ?? "").split(/[ ,]+/).filter((number) => number !== "").map(Number) : undefined;
-  process.exit(exitFor(readOrStop("done-check", () => (wave === undefined ? doneCheck(issue) : waveCheck(issue, wave)))));
+  const ran = flag === "--asked" ? () => askedOwner(issue) : () => (wave === undefined ? doneCheck(issue) : waveCheck(issue, wave));
+  process.exit(exitFor(readOrStop("done-check", ran)));
 }

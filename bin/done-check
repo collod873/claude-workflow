@@ -1,7 +1,7 @@
 #!/bin/bash
 set -uo pipefail
 
-usage="done-check: usage: done-check <issue number> [--wave <sentence numbers>]"
+usage="done-check: usage: done-check <issue number> [--wave <sentence numbers> | --asked]"
 
 if [[ ${1:-} == "--help" ]]; then
   printf '%s\n' "$usage"
@@ -10,7 +10,7 @@ fi
 
 issue=${1:-}
 numbers="${*:3}"
-if [[ ! $issue =~ ^[0-9]+$ ]] || { (($# != 1)) && [[ ${2:-} != --wave || ! $numbers =~ ^[0-9]+([\ ,]+[0-9]+)*$ ]]; }; then
+if [[ ! $issue =~ ^[0-9]+$ ]] || { (($# != 1)) && ! { (($# == 2)) && [[ $2 == --asked ]]; } && [[ ${2:-} != --wave || ! $numbers =~ ^[0-9]+([\ ,]+[0-9]+)*$ ]]; }; then
   printf '%s\n' "$usage" >&2
   exit 2
 fi
