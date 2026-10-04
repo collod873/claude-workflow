@@ -146,7 +146,7 @@ export function handedOn(body: string, diff: string, after?: AfterTurn): string 
           `Each \`later\` item becomes its own ticket: the \`gap\` in one sentence, a \`title\`, and \`done\` as ${DONE_SENTENCES}.`,
         ];
   return [
-    "Review this PR against the `## Why` and its `## Done when`. Change nothing; `bin/check` is green. Read the repo if the diff is unclear.",
+    "Review this PR against the `## Why` and its `## Done when`. Change nothing; `~/bin/check --full` is green. Read the repo if the diff is unclear.",
     capped(body, TICKET_CAP),
     "## Diff",
     handedDiff(diff),

@@ -1,13 +1,12 @@
 import { copyFileSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { execute, scratch, script, type Run } from "./scenarios.ts";
+import { CONTRACT, contractSteps, execute, scratch, script, type Run } from "./scenarios.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
-const CHECK = readFileSync(join(REPO, "bin", "check"), "utf8");
-const UNUSED_LINE = /^run unused (.+)$/m.exec(CHECK)?.[1];
-if (UNUSED_LINE === undefined) throw new Error("no `run unused` line in bin/check");
-const [UNUSED_COMMAND, ...UNUSED_ARGS] = UNUSED_LINE.split(" ");
+const UNUSED_STEP = contractSteps(readFileSync(join(REPO, CONTRACT), "utf8")).unused?.run;
+if (UNUSED_STEP === undefined) throw new Error(`no unused step in ${CONTRACT}`);
+const [UNUSED_COMMAND, ...UNUSED_ARGS] = UNUSED_STEP.split(" ");
 const PLANTED = ["reached", "lonely"];
 
 function planted(registry: string[]): string {
@@ -27,8 +26,8 @@ function planted(registry: string[]): string {
 }
 
 function unused(root: string): Run {
-  if (UNUSED_COMMAND === undefined) throw new Error("no command on the `run unused` line in bin/check");
-  return execute(UNUSED_COMMAND, root, { PATH: `${join(REPO, "node_modules", ".bin")}:${process.env.PATH ?? ""}` }, UNUSED_ARGS);
+  if (UNUSED_COMMAND === undefined) throw new Error(`no command in the unused step of ${CONTRACT}`);
+  return execute(resolve(root, UNUSED_COMMAND), root, {}, UNUSED_ARGS);
 }
 
 describe("knip counts its entries from the registered parts, not from the tests (#710)", () => {

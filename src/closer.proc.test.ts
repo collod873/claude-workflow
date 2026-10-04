@@ -15,7 +15,7 @@ function closeWorkflow() {
   return { on, permissions, step: Object.values(jobs).flatMap((job) => job.steps).find((ran) => (ran.run ?? "").startsWith("bin/close")) };
 }
 
-describe("bin/close closes a ticket once its PR merges, since the PR's review and bin/check already judged it (#931)", () => {
+describe("bin/close closes a ticket once its PR merges, since the PR's review and its full check already judged it (#931)", () => {
   it("closes the ticket as completed, naming in its closing record the PR that merged", () => {
     const { calls, run } = closing({ ticket: "812" });
 

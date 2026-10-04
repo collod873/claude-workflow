@@ -1,7 +1,7 @@
 import { execFile, execFileSync, spawnSync } from "node:child_process";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, isAbsolute, join, matchesGlob } from "node:path";
+import { dirname, join, matchesGlob } from "node:path";
 import { parse } from "yaml";
 import { onTestFinished } from "vitest";
 import vitest from "../vitest.config.ts";
@@ -16,14 +16,26 @@ export function overLimit(said: string, allowed: number): string[] {
   return spoken.length > allowed ? [...long, `said ${spoken.length} lines, over ${allowed}`] : long;
 }
 
-export function coveredByCheck(check: string): (file: string) => boolean {
-  const fedToTools = new Set([...check.matchAll(/^run .*$/gm)].flatMap(([line]) => line.match(/[\w./-]+\.(json|m?js|ts)\b/g) ?? []));
+export const CONTRACT = ".claude/contract.json";
+
+interface Step {
+  run: string;
+  each?: string;
+  files?: string;
+  fast?: boolean;
+  why?: string;
+}
+
+export function contractSteps(contract: string): Record<string, Step> {
+  return (JSON.parse(contract) as { steps?: Record<string, Step> }).steps ?? {};
+}
+
+export function coveredByCheck(contract: string): (file: string) => boolean {
+  const commands = Object.values(contractSteps(contract)).flatMap((step) => [step.run, step.each ?? ""]);
+  const fedToTools = new Set([CONTRACT, ...commands.flatMap((command) => command.match(/[\w./-]+\.(json|m?js|ts)\b/g) ?? [])]);
   const collects = vitest.test?.include ?? [];
   return (file) => fedToTools.has(file) || collects.some((glob) => matchesGlob(file, glob));
 }
-
-const TOOLS = ["tsc", "eslint", "knip", "jscpd", "vitest", "node"] as const;
-type Tool = (typeof TOOLS)[number];
 
 export interface Run {
   status: number | null;
@@ -207,28 +219,6 @@ export function copyMark(root: string): void {
 export function execute(file: string, cwd: string, extra: Record<string, string> = {}, args: string[] = []): Run {
   const { status, stdout, stderr } = spawnSync(file, args, { cwd, env: { ...env, ...extra }, encoding: "utf8" });
   return { status, stdout, stderr };
-}
-
-export function inRepo(cwd: string, path: string): string {
-  return isAbsolute(path) ? path : join(cwd, path);
-}
-
-export function stubTool(repo: string, tool: Tool, output?: string): void {
-  script(join(repo, "node_modules", ".bin", tool), output === undefined ? "exit 0\n" : `cat <<'OUTPUT'\n${output}\nOUTPUT\nexit 1\n`);
-}
-
-export function checkRepo(failing: Partial<Record<Tool, string>> = {}) {
-  const repo = join(scratch("check-"), "repo");
-  mkdirSync(join(repo, "bin"), { recursive: true });
-  copyFileSync(join(BIN, "check"), join(repo, "bin", "check"));
-  chmodSync(join(repo, "bin", "check"), 0o755);
-  for (const tool of TOOLS) stubTool(repo, tool, failing[tool]);
-  git(repo, "init", "--quiet", "--initial-branch=main");
-  git(repo, "config", "user.email", "check@test");
-  git(repo, "config", "user.name", "check");
-  git(repo, "add", ".");
-  git(repo, "commit", "--quiet", "-m", "base");
-  return { repo, run: (cwd = repo, args: string[] = [], extra: Record<string, string> = {}) => execute(join(cwd, "bin", "check"), cwd, extra, args) };
 }
 
 export const wellFormedTicket = [

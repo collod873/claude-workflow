@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
-      contents: read
+      contents: write
       issues: write
     steps:
       - env:
@@ -33,21 +33,28 @@ jobs:
           client-id: ${{ vars.CORE_APP_CLIENT_ID }}
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
 
+      - run: |
+          mkdir -p "$HOME/bin"
+          ln -sf "$RUNNER_TEMP/agent-hooks/bin/check" "$HOME/bin/check"
+
       - run: python3 "$RUNNER_TEMP/agent-hooks/treewide.py" .
 
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-
-      - run: npm ci
+          cache: npm
 
       - id: check
         env:
           GH_TOKEN: ${{ github.token }}
-        run: bin/check
+        run: |
+          set -o pipefail
+          ~/bin/check --full --publish | tee "$RUNNER_TEMP/check.out"
 
       - if: failure() && steps.check.conclusion == 'failure'
-        run: tail -n 60 "$(git rev-parse --git-common-dir)"/machine-logs/check-*.log
+        run: |
+          log=$(tail -n 1 "$RUNNER_TEMP/check.out" | sed -n 's/.*; log \(.*\)$/\1/p')
+          [ -z "$log" ] || tail -n 60 "$log"
 
   review:
     if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}

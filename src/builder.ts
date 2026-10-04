@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { admission, doesNotBuild } from "./admit.ts";
 import { capped, handedDiff, LIST_CAP, NO_EM_DASH, onDisk, TICKET_CAP } from "./brief.ts";
-import { CHECK, UNFENCED } from "./fence.ts";
+import { FULL_CHECK, UNFENCED } from "./fence.ts";
 import { type Asked, BUILDER_SPLIT, commentOnTicket, commentsRead, earlierDrift, FOLLOW_UP_OF, followUpBody, gh, ghRead, git, gitRead, mark, NEEDS_HUMAN, NOTHING_MARKED, OWNER, post, postRefusals, prOfTicket, readOrStop, repairOf, RESOLVING, rewriteTicket, sessionLine, ticketBranch, unread, WAITING } from "./post.ts";
 import { machineLogs, opened, type Spent } from "./stage.ts";
 import { BUILDING, CHECKING } from "./spelled.ts";
@@ -58,7 +58,7 @@ interface Handed {
   ticket: string;
   body: string;
   red?: { failed: string; diff: string; gaps: string };
-  check?: string;
+  contract?: string;
   capture?: string;
   woken?: string;
 }
@@ -68,8 +68,11 @@ type Round = { red?: string; ended?: number; body?: string };
 type Spend = (input: string, resume?: string) => Spent;
 
 export const TAIL_CAP = 8 * 1024;
-export const CHECK_CAP = 4 * 1024;
-const LOGGED = /; log (.+?)\s*$/m;
+export const CONTRACT_CAP = 4 * 1024;
+const CHECK = `${FULL_CHECK} --publish`;
+const CONTRACT = join(".claude", "contract.json");
+const PASSED = /^check: ok\b/;
+const LOGGED = /; log (.+?)\s*$/;
 const FILED_IN = new RegExp(`^${sessionLine("([^`]+)")}\\s*$`, "m");
 
 function captureOf(body: string, captures: string | undefined): string | undefined {
@@ -96,20 +99,21 @@ export function repaired(output: string): string {
 
 function checkRed(): string {
   const { GITHUB_ACTIONS: _annotating, ...env } = process.env;
-  const { status, stdout, stderr } = spawnSync("bash", ["-c", CHECK], { env, encoding: "utf8" });
-  if (status === 0) return "";
-  const output = `${stdout}${stderr}`;
-  const log = LOGGED.exec(output)?.[1];
-  return [output.trim(), log === undefined ? "" : (onDisk(resolve(log)) ?? "")].join("\n");
+  const { stdout, stderr } = spawnSync("bash", ["-c", CHECK], { env, encoding: "utf8" });
+  const output = `${stdout}${stderr}`.trim();
+  const verdict = stdout.trim().split("\n").at(-1) ?? "";
+  if (PASSED.test(verdict)) return "";
+  const log = LOGGED.exec(verdict)?.[1];
+  return [output, log === undefined ? "" : (onDisk(resolve(log)) ?? "")].join("\n");
 }
 
-const buildIt = (check: string) => [
+const buildIt = (contract: string) => [
   "## Build it",
   "Build what the ticket's Why asks for until its `## Done when` holds.",
   "Work red before green, one slice at a time: write one failing test, see it fail, write only enough to pass it, repeat.",
   "Commit your own work, each message saying why. If the test count drops, give the reason on a line of its own: `Test count drop: <why>`.",
-  `Run \`${CHECK}\` last: it runs every gate and the whole suite, so running the suite apart only repeats it. It stands in your tree as:`,
-  ["```bash", capped(check, CHECK_CAP).trimEnd(), "```"].join("\n"),
+  `Run \`${FULL_CHECK}\` last: it runs every step of \`${CONTRACT}\` no receipt already covers, so running a step apart only repeats it. The steps stand in your tree as:`,
+  ["```json", capped(contract, CONTRACT_CAP).trimEnd(), "```"].join("\n"),
 ];
 
 const howItFailed = ({ failed, diff, gaps }: NonNullable<Handed["red"]>) => [
@@ -121,16 +125,16 @@ const howItFailed = ({ failed, diff, gaps }: NonNullable<Handed["red"]>) => [
   capped(gaps, LIST_CAP) || "(none)",
 ];
 
-export function handedOn({ ticket, body, red, check = "", capture, woken }: Handed): string {
+export function handedOn({ ticket, body, red, contract = "", capture, woken }: Handed): string {
   return [
     `# Ticket #${ticket}`,
     capped(body, TICKET_CAP),
     ...(woken === undefined ? [] : ["## How its split ended", "Build what a piece closed unbuilt left, or rule it out:", capped(woken, LIST_CAP)]),
     ...filedIn(capture),
-    ...(red === undefined ? buildIt(check) : howItFailed(red)),
+    ...(red === undefined ? buildIt(contract) : howItFailed(red)),
     "## You own it until it merges",
     "Every red on this ticket comes back to you until it merges. Read its Why first; `gh` reads any run. If the reason above names a merge conflict, merge main in and resolve it yourself, keeping the ticket's Why over main's conflicting change. Answer one outcome:",
-    "- `code`: build or fix it, or change nothing on a flake; the machine commits, runs `bin/check`, hands back red, pushes green or reruns the red Check.",
+    `- \`code\`: build or fix it, or change nothing on a flake; the machine commits, runs \`${CHECK}\`, hands back red, pushes green or reruns the red Check.`,
     "- `ticket`: its `## Done when` is wrong; return the ticket as `body`, Why byte-identical.",
     `- \`split\`: too big for one build; file \`tickets\` that build at once, each with \`done\` as ${DONE_SENTENCES}. What must wait for them stays as \`body\`, Why byte-identical, and builds once they merge.`,
     "- `close`: the ticket should not exist as written, and nothing should replace it.",
@@ -330,7 +334,7 @@ function ownTicket(ticket: string, run: string | undefined): number {
     ticket,
     body,
     red: failed === undefined ? undefined : { failed, diff, gaps: earlierDrift(ticket, judged) },
-    check: onDisk(join(process.cwd(), CHECK)) ?? "",
+    contract: onDisk(join(process.cwd(), CONTRACT)) ?? "",
     capture: captureOf(body, process.env.SESSION_CAPTURES),
     woken: onTicket.filter((said) => said.startsWith(splitClosed(ticket))).at(-1),
   });

@@ -1,3 +1,43 @@
 {
-  "stop": "bin/check static"
+  "setup": "[ -e node_modules ] || npm ci",
+  "steps": {
+    "typecheck": {
+      "run": "node_modules/.bin/tsc --noEmit --pretty false -p tsconfig.json",
+      "fast": true,
+      "why": "A type error is the cheapest failure to catch and the one a stage meets most while it works."
+    },
+    "lint": {
+      "run": "node_modules/.bin/eslint --config eslint.config.js",
+      "each": "node_modules/.bin/eslint --config eslint.config.js --no-warn-ignored --no-error-on-unmatched-pattern <files>",
+      "files": "\\.[cm]?[jt]s$",
+      "why": "Every rule in eslint.config.js reads one file at a time, so the changed files alone are the whole lint of a change."
+    },
+    "unused": {
+      "run": "node_modules/.bin/knip --config knip.config.ts --no-config-hints",
+      "fast": true,
+      "why": "knip counts its entries from the registered parts, so code only a test reaches is refused while the session that wrote it can still wire it or delete it."
+    },
+    "clones": {
+      "run": "node_modules/.bin/jscpd src --exitCode 1 --reporters console --min-tokens 50 --min-lines 5 --format typescript,javascript",
+      "fast": true,
+      "why": "A clone spans files, so it is found over the whole of src, and found mid-session rather than a PR round later."
+    },
+    "written-twice": {
+      "run": "node src/written-twice.ts",
+      "fast": true,
+      "why": "A string one owner writes and another reads, spelled twice, drifts; it is cheap enough to hold every turn."
+    },
+    "test": {
+      "run": "node_modules/.bin/vitest run --config vitest.config.ts",
+      "why": "The whole suite, which drives real processes and takes minutes, so it runs in the full check only."
+    },
+    "prompts": {
+      "run": "node src/prompt-bytes.ts",
+      "why": "Every stage prompt stays under its byte cap with its slots filled to their caps."
+    },
+    "links": {
+      "run": "node src/part-links.ts",
+      "why": "Every part links a failure that exists on GitHub, which needs the network and gh, so it runs in the full check only."
+    }
+  }
 }

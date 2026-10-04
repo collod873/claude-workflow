@@ -7,7 +7,7 @@ import { parse } from "yaml";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { FAILURE_LINK } from "./part-links.ts";
 import { parts, type Part } from "./parts.ts";
-import { coveredByCheck } from "./scenarios.ts";
+import { CONTRACT, coveredByCheck } from "./scenarios.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
 const MOST_PARTS = 40;
@@ -57,7 +57,7 @@ function unlinkedParts(repo: string, registry: Part[]): string[] {
   const files = ["src", "bin"]
     .flatMap((dir) => readdirSync(join(repo, dir), { recursive: true, encoding: "utf8" }).map((path) => join(dir, path)))
     .filter((path) => !path.split("/").includes("node_modules") && statSync(join(repo, path)).isFile());
-  const covered = coveredByCheck(readFileSync(join(repo, "bin", "check"), "utf8"));
+  const covered = coveredByCheck(readFileSync(join(repo, CONTRACT), "utf8"));
   const imported = importedWithin(repo, files);
   const runByPart = new Set(registry.flatMap((part) => (existsSync(join(repo, part.file)) ? readFileSync(join(repo, part.file), "utf8").match(SRC_OR_BIN) ?? [] : [])));
   const wired = wiredIn(repo);
@@ -131,7 +131,7 @@ describe("the machine holds its growth limits", () => {
     const copy = scratch();
     plant(copy, "bin/unregistered", "#!/bin/bash\n", 0o755);
     plant(copy, "src/planted.ts", "export {};\n");
-    plant(copy, "bin/check", "#!/bin/bash\nrun lint eslint --config src/planted.config.js src\n", 0o755);
+    plant(copy, CONTRACT, JSON.stringify({ steps: { lint: { run: "node_modules/.bin/eslint --config src/planted.config.js src" } } }));
     plant(copy, "src/planted.config.js", "export default {};\n");
     plant(copy, "src/helper.ts", "export const help = 1;\n");
     plant(copy, "src/helper.test.ts", "import { help } from \"./helper.ts\";\n");
@@ -139,10 +139,10 @@ describe("the machine holds its growth limits", () => {
     plant(copy, "src/wired.mjs", "export const decide = () => 0;\n");
     plant(copy, "src/wired.test.ts", "import { decide } from \"./wired.mjs\";\n");
     plant(copy, "package.json", "{\"scripts\": {\"go\": \"node src/wired.mjs\"}}\n");
-    const check = { ...planted, name: "check", file: "bin/check" };
     const cleanup = { ...planted, name: "cleanup", stops: "https://github.com/collod873/claude-workflow/commit/c7fa969" };
-    expect(unlinkedParts(copy, [{ ...planted, stops: "the owner said so" }, cleanup, check])).toEqual([
+    expect(unlinkedParts(copy, [{ ...planted, stops: "the owner said so" }, cleanup])).toEqual([
       "bin/unregistered can run but is not a registered part",
+      "src/planted.config.js can run but is not a registered part",
       "src/unwired.mjs can run but is not a registered part",
       "src/wired.mjs can run but is not a registered part",
       "planted links no failure: the owner said so",

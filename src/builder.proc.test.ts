@@ -1,11 +1,11 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { BUILDER_SESSION, FULL_CHECK_RED_ONCE, fixing } from "./builder.part.ts";
+import { BUILDER_SESSION, CHECK_PASSES, CHECK_RED, FULL_CHECK_RED_ONCE, fixing } from "./builder.part.ts";
 
 const DRIFT = "The reviewer read this PR against the Why of #811 and found drift.\n\n- src/builder.ts never resumes its session\n";
 const FIXES = "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n";
-const RED_FOUR_TIMES = ["n=$(cat ../reds 2>/dev/null || echo 0)", "[ \"$n\" -ge 4 ] && exit 0", "echo $((n + 1)) >../reds", "printf 'bin/check: FAILED test src/stops.test.ts\\n'", "exit 1", ""].join("\n");
+const RED_FOUR_TIMES = ["n=$(cat ../reds 2>/dev/null || echo 0)", `[ "$n" -ge 4 ] && { ${CHECK_PASSES.trim()}; exit 0; }`, "echo $((n + 1)) >../reds", CHECK_RED].join("\n");
 const FIXES_EACH_ROUND = "printf 'export const shaped = %s;\\n' \"$((CALL + 1))\" >src/ticket-shape.ts\n";
 const MOVES_MAIN = 'git update-ref refs/heads/main "$(git commit-tree -p main -m "Land the reviewer fix #811 needed" "$(git rev-parse "main^{tree}")")"\n';
 const FILED_IN_SESSION = "## Why\n\nThe owner: \"read what I said\".\n\nSession: `ca2517b0-5e2d-46e7-a894-7fc3a4b978b2`\n\n## Done when\n\n- The builder reads it.\n";
@@ -45,20 +45,29 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(saved()).toEqual(["811"]);
   });
 
-  it("opens a build with the whole of bin/check as it stands in the tree it builds in (#990)", () => {
-    const check = "run typecheck tsc --noEmit\nrun gate-only-this-tree node src/gate.ts\nexit 0\n";
-    const { run, handed } = fixing({ claude: FIXES, check });
+  it("opens a build with the whole of the contract's steps as they stand in the tree it builds in, whatever repo that is (#990)", () => {
+    const contract = '{\n  "steps": {\n    "only-this-tree": { "run": "node src/gate.ts", "fast": true }\n  }\n}\n';
+    const { run, handed } = fixing({ claude: FIXES, contract });
 
     expect(run("811").status).toBe(0);
-    expect(handed()[0]).toContain(check.trim());
+    expect(handed()[0]).toContain(contract.trim());
+    expect(handed()[0]).toContain("~/bin/check --full");
   });
 
-  it("hands a builder woken on a red no copy of bin/check (#990)", () => {
-    const check = "run gate-only-this-tree node src/gate.ts\nexit 0\n";
-    const { run, handed } = fixing({ reason: "the Check went red", claude: FIXES, check });
+  it("hands a builder woken on a red no copy of the contract (#990)", () => {
+    const contract = '{ "steps": { "only-this-tree": { "run": "node src/gate.ts" } } }\n';
+    const { run, handed } = fixing({ reason: "the Check went red", claude: FIXES, contract });
 
     expect(run("811").status).toBe(0);
-    expect(handed()[0]).not.toContain("gate-only-this-tree");
+    expect(handed()[0]).not.toContain("only-this-tree");
+  });
+
+  it("runs the full check and publishes its receipts in the tree it builds in, reading only the verdict's last line", () => {
+    const { run, saved, session } = fixing({ claude: FIXES, check: `printf '%s %s\\n' "$(pwd -P)" "$*" >../ran\n${CHECK_PASSES}${CHECK_RED}` });
+
+    expect(run().status).toBe(1);
+    expect(readFileSync(join(session, "..", "ran"), "utf8")).toBe(`${realpathSync(session)} --full --publish\n`);
+    expect(saved()).toEqual([]);
   });
 
   it("opens a build and a red with the path of the capture of the session that filed its ticket, when the job holds it (#992)", () => {
@@ -117,7 +126,7 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(argv[argv.indexOf("--settings") + 1]).not.toContain("node");
   });
 
-  it("hands a red bin/check back to the same session, then commits, pushes and marks the ticket checking", () => {
+  it("hands a red check back to the same session with the log its verdict names, then commits, pushes and marks the ticket checking", () => {
     const { run, handed, hired, saved, marked } = fixing({ claude: FIXES_EACH_ROUND, check: FULL_CHECK_RED_ONCE });
 
     const result = run();
@@ -141,13 +150,13 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
   });
 
   it("calls the owner by name, and pushes nothing, when two rounds in a row change nothing", () => {
-    const { run, handed, saved, marked, ticketComments } = fixing({ check: "printf 'bin/check: FAILED test\\n'\nexit 1\n" });
+    const { run, handed, saved, marked, ticketComments } = fixing({ check: CHECK_RED });
 
     const result = run();
 
     expect(result.status).toBe(1);
     expect(handed()).toHaveLength(2);
-    expect(handed()[1]).toContain("bin/check: FAILED test");
+    expect(handed()[1]).toContain("check: red test src/stops.test.ts:4");
     expect(saved()).toEqual([]);
     expect(marked()).toContain("811 needs-human");
     expect(ticketComments().at(-1)).toMatch(/^@collod873 /);
