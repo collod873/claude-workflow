@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { DIFF_CAP, handedOn, handedSince, LIST_CAP, TICKET_CAP } from "./reviewer.ts";
+import { DIFF_CAP, LIST_CAP, TICKET_CAP } from "./brief.ts";
+import { handedOn, handedSince } from "./reviewer.ts";
 import { authored, BIN, execute, ghArgv, git, gitRefusing, type Parent, parentSays, plant, type Said, scratch, script } from "./scenarios.ts";
 import { declareStage, HANDED_ON } from "./stages.ts";
 

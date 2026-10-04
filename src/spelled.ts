@@ -45,7 +45,8 @@ export const RESEARCHING = "researching" as const satisfies MarkedLabel;
 export const WAITING = "waiting" as const satisfies MarkedLabel;
 export const ASKED = "asked" as const satisfies MarkedLabel;
 export const NEEDS_HUMAN = "needs-human" as const satisfies MarkedLabel;
-const KEYED: Record<string, LabelName> = { TICKET, SPEC, NOTE, RESEARCH, BUILDING, CHECKING, QUEUED, RESOLVING, LANDING, SLICING, RESEARCHING, WAITING, ASKED, NEEDS_HUMAN };
+export const TICKET_PREFIX = "ticket/";
+const KEYED: Record<string, string> = { TICKET, SPEC, NOTE, RESEARCH, BUILDING, CHECKING, QUEUED, RESOLVING, LANDING, SLICING, RESEARCHING, WAITING, ASKED, NEEDS_HUMAN, TICKET_PREFIX };
 
 const USAGE = `spelled: usage: spelled labels | spelled <${Object.keys(KEYED).join("|")}>\n`;
 

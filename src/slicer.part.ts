@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { LIST_CAP } from "./reviewer.ts";
+import { LIST_CAP } from "./brief.ts";
 import { authored, BIN, execute, ghArgv, git, plant, type Said, scratch, script, stubbedMark, wellFormedSpec } from "./scenarios.ts";
 import { COMMENTS_CAP, handedOn, sentBack } from "./slicer.ts";
 import { NEEDS_HUMAN } from "./spelled.ts";

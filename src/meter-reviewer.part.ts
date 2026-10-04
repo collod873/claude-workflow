@@ -1,6 +1,6 @@
 import { handedOn, METERS } from "./meter-reviewer.ts";
 import { reviewing } from "./reviewer.part.ts";
-import { DIFF_CAP, LIST_CAP, TICKET_CAP } from "./reviewer.ts";
+import { DIFF_CAP, LIST_CAP, TICKET_CAP } from "./brief.ts";
 import { declareStage, HANDED_ON } from "./stages.ts";
 
 const NOTHING_METERED = Object.fromEntries(METERS.map(({ name }) => [name.replaceAll(" ", "_"), []]));

@@ -1,7 +1,6 @@
-import { capped } from "./brief.ts";
+import { capped, NO_EM_DASH } from "./brief.ts";
 import { OPEN_SHELL } from "./fence.ts";
 import { commentOnTicket, gh, readOrStop, RESEARCH } from "./post.ts";
-import { NO_EM_DASH } from "./reviewer.ts";
 import { RESEARCHING } from "./spelled.ts";
 import { opened } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";

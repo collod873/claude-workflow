@@ -1,6 +1,6 @@
 import { splitClosed, splitInto } from "./builder.ts";
-import { answered, commentOnPr, commentOnTicket, commentsRead, gh, ghAs, ghRead, git, gitRead, type Held, labelsHeld, markWith, NEEDS_HUMAN, NOTHING_MARKED, prOfTicket, readOrStop, RESOLVING, unread, WAITING, type MarkedLabel } from "./post.ts";
-import { FINGERPRINT, REVIEWED_FROM, TICKET_BRANCH } from "./reviewer.ts";
+import { answered, commentOnPr, commentOnTicket, commentsRead, gh, ghAs, ghRead, git, gitRead, type Held, labelsHeld, markWith, NEEDS_HUMAN, NOTHING_MARKED, prOfTicket, readOrStop, RESOLVING, REVIEWED_FROM, TICKET_BRANCH, ticketBranch, unread, WAITING, type MarkedLabel } from "./post.ts";
+import { FINGERPRINT } from "./reviewer.ts";
 import { CHECKING, LANDING, QUEUED } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { quoted, why } from "./ticket-shape.ts";
@@ -8,10 +8,10 @@ import { quoted, why } from "./ticket-shape.ts";
 const stoppedAt = stopsOf({ unresliced: "Close: the re-slice will not start once the ticket is closed" });
 type Stop = ReturnType<typeof stoppedAt>;
 
-const MERGED = /^Merge pull request #(\d+) from \S+?(?:\/ticket\/(\d+))?$/;
+const MERGED = new RegExp(`^Merge pull request #(\\d+) from \\S+?(?:/${ticketBranch("(\\d+)")})?$`);
 const NAMED = /^(?:[ ,]*#\d+)+/;
 const BUILDS = /^Builds #(\d+)[ \t]*$/m;
-const MACHINE_BRANCH = /^(ticket|land)\//;
+const MACHINE_BRANCH = new RegExp(`^(?:${ticketBranch("")}|land/)`);
 const REQUIRED_CHECKS = ["check", "review"];
 const PASSED = new Set(["SUCCESS", "SKIPPED", "NEUTRAL"]);
 

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { METERS } from "./meter-reviewer.ts";
-import { NO_EM_DASH } from "./reviewer.ts";
+import { NO_EM_DASH } from "./brief.ts";
 import { metering } from "./meter-reviewer.part.ts";
 import { fileDiff } from "./reviewer.part.ts";
 

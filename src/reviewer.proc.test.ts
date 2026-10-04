@@ -6,9 +6,10 @@ import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { askingBash, cloned, fenceSays, flagValue, git, plant, scratch } from "./scenarios.ts";
 import { EARLY_REPAIR, fileDiff, BUILDER_LINE, FROM_MAIN, JUDGED_GAP, JUDGEMENT, RESOLVED, REVIEWED_TICKET, reviewing } from "./reviewer.part.ts";
-import { capped } from "./brief.ts";
+import { capped, NO_EM_DASH, TICKET_CAP } from "./brief.ts";
 import { METERS } from "./meter-reviewer.ts";
-import { earlierDrift, NO_EM_DASH, PLAIN_WORDS, TICKET_CAP } from "./reviewer.ts";
+import { earlierDrift } from "./post.ts";
+import { PLAIN_WORDS } from "./reviewer.ts";
 import { doneWhen, ticketRefusals } from "./ticket-shape.ts";
 
 const WORKFLOW = join(import.meta.dirname, "..", ".github", "workflows", "check.yml");

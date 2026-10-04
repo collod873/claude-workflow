@@ -1,7 +1,7 @@
-import { capped } from "./brief.ts";
+import { capped, handedDiff, NO_EM_DASH, TICKET_CAP } from "./brief.ts";
 import { discards } from "./discard.ts";
 import { gh, ghWhole, readOrStop } from "./post.ts";
-import { answered, handedDiff, NO_EM_DASH, type Stop, TICKET_CAP, ticketPr } from "./reviewer.ts";
+import { answered, type Stop, ticketPr } from "./reviewer.ts";
 import { exitFor, stoppedAt } from "./stops.ts";
 
 export const METERS = [
