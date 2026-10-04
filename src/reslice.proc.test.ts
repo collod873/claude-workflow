@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse } from "yaml";
 import { describe, expect, it } from "vitest";
-import { heard, holds, OWNER, type Said, wellFormedSpec, type WorkflowStep } from "./scenarios.ts";
+import { heard, holds, OWNER, type Said, starts, wellFormedSpec, type WorkflowStep } from "./scenarios.ts";
 import { closing } from "./closer.part.ts";
 import { slicing } from "./slicer.part.ts";
 import { doneChecking, specWith } from "./done-checker.part.ts";
@@ -292,21 +292,21 @@ const stepAt = (steps: Job["steps"], id: string) => steps.findIndex((step) => st
 const endedWith = (outputs: Record<string, string>) => ({ steps: { ended: { outcome: "success", conclusion: "success", outputs } } });
 
 describe("reslice.yml runs the wave check, then the re-slice, when a closed issue ends its spec's wave (#1037)", () => {
-  it("starts on every closed issue but a spec or a note, and finds whether it ended a wave spending no model", () => {
+  it("starts on every closed issue but a spec or a note, and finds whether it ended a wave spending no model", async () => {
     const ended = job("ended");
 
     expect(RESLICE.on.issues?.types).toEqual(["closed"]);
-    expect(holds(ended.if ?? "true", { labels: [], action: "closed" })).toBe(true);
-    expect(holds(ended.if ?? "true", { labels: ["spec"], action: "closed" })).toBe(false);
-    expect(holds(ended.if ?? "true", { labels: ["note"], action: "closed" })).toBe(false);
+    expect(await starts("reslice.yml", "ended", { labels: [], action: "closed" })).toBe(true);
+    expect(await starts("reslice.yml", "ended", { labels: ["spec"], action: "closed" })).toBe(false);
+    expect(await starts("reslice.yml", "ended", { labels: ["note"], action: "closed" })).toBe(false);
     expect(ended.steps.find((step) => step.id === "ended")?.run).toBe('bin/slice --ended "$ISSUE" >>"$GITHUB_OUTPUT"');
     expect(ended.steps.some((step) => step.env?.CLAUDE_CODE_OAUTH_TOKEN !== undefined)).toBe(false);
     expect(ended.outputs?.spec).toBe("${{ steps.ended.outputs.spec }}");
   });
 
-  it("starts too on a dispatch naming the closed issue, which is how the closer starts it after its quiet close (#1045)", () => {
+  it("starts too on a dispatch naming the closed issue, which is how the closer starts it after its quiet close (#1045)", async () => {
     expect(RESLICE.on.workflow_dispatch?.inputs?.issue).toEqual({ required: true, type: "number" });
-    expect(holds(job("ended").if ?? "true", { labels: [], action: "" })).toBe(true);
+    expect(await starts("reslice.yml", "ended", { action: "" })).toBe(true);
     for (const name of ["ended", "reslice"]) expect(job(name).steps.find((step) => step.id === "ended")?.env?.ISSUE).toBe("${{ github.event.issue.number || inputs.issue }}");
   });
 

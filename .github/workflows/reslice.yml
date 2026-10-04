@@ -14,8 +14,33 @@ permissions:
   contents: read
 
 jobs:
+  labelled:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      held: ${{ steps.labelled.outputs.held }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - id: labelled
+        run: |
+          spec=$(bin/spelled SPEC)
+          note=$(bin/spelled NOTE)
+          held=$(jq --arg spec "$spec" --arg note "$note" 'any(.issue.labels[]?.name; IN($spec, $note)) | not' "$GITHUB_EVENT_PATH")
+          printf 'held=%s\n' "$held" | tee -a "$GITHUB_OUTPUT"
+
   ended:
-    if: "${{ !contains(github.event.issue.labels.*.name, 'spec') && !contains(github.event.issue.labels.*.name, 'note') }}"
+    needs: labelled
+    if: ${{ needs.labelled.outputs.held == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

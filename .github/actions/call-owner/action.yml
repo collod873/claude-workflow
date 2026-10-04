@@ -1,5 +1,5 @@
 name: Call owner
-description: Marks an issue needs-human and comments to the owner with the link of the run that ended red, unless it already carries needs-human
+description: Marks an issue with the label spelled NEEDS_HUMAN and comments to the owner with the link of the run that ended red, unless it already carries that label
 
 inputs:
   issue:
@@ -17,6 +17,7 @@ runs:
         ISSUE: ${{ inputs.issue }}
         RAN: ${{ inputs.run }}
       run: |
-        gh issue view "$ISSUE" --json labels --jq '.labels[].name' | grep -qx needs-human && exit 0
-        bin/mark "$ISSUE" needs-human || gh issue edit "$ISSUE" --add-label needs-human
+        stop=$(bin/spelled NEEDS_HUMAN)
+        gh issue view "$ISSUE" --json labels --jq '.labels[].name' | grep -qx "$stop" && exit 0
+        bin/mark "$ISSUE" "$stop" || gh issue edit "$ISSUE" --add-label "$stop"
         gh issue comment "$ISSUE" --body "@${{ github.repository_owner }} $RAN ended red before it could finish, see the run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

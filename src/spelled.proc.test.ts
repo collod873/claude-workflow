@@ -131,7 +131,7 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
     expect([...new Set(stdout.split("\n").filter((line) => line.startsWith("src/")).map((line) => /^src\/misspelled\.ts\((\d+),/.exec(line)?.[1]))]).toEqual(["2", "3", "4", "5", "7", "8", "9", "10"]);
   });
 
-  it("finds every label a workflow file spells in the set, so a misspelled one fails the check (#1104)", () => {
+  it("finds every label a workflow file spells, and finds none, since each asks spelled by key (#1104, #1108)", () => {
     const held = rows().map(([name]) => name);
     const planted = [
       "if: contains(github.event.issue.labels.*.name, 'specs')",
@@ -143,7 +143,7 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
     ].join("\n");
 
     expect(spelledIn(planted).filter((name) => !held.includes(name))).toEqual(["specs", "waitng", "bulding", "needs-humans", "needs-humen", "asking"]);
-    for (const file of workflowFiles()) expect(spelledIn(readFileSync(file, "utf8")).filter((name) => !held.includes(name)), file).toEqual([]);
+    for (const file of workflowFiles()) expect(spelledIn(readFileSync(file, "utf8")), file).toEqual([]);
   });
 
   it("fails typecheck when a label constant is set to another label the set holds (#1103)", () => {

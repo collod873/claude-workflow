@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { OUT_OF_TIME } from "./researcher.ts";
-import { heard, holds, onlyJob, wellFormedNote, type WorkflowStep } from "./scenarios.ts";
+import { heard, starts, wellFormedNote, workflowJobs, type WorkflowStep } from "./scenarios.ts";
 import { FINDINGS_POSTED, READING_SESSION, researching } from "./researcher.part.ts";
 
 const STAGE_ACTION = join(import.meta.dirname, "..", ".github", "actions", "stage", "action.yml");
@@ -60,7 +60,7 @@ describe("bin/research answers a research note on the note and closes it, with n
   });
 
   it("research.yml fetches the run history and copies in the stage's session captures before the researcher starts, with tokens that only read (#936, #937, #931)", () => {
-    const { permissions, steps } = onlyJob("research.yml");
+    const { permissions, steps } = workflowJobs("research.yml").research ?? { steps: [] };
     const staged = steps.findIndex((step) => step.uses === "./.github/actions/stage");
     const fetched = steps.findIndex((step) => /RESEARCH_SOURCES=.*GITHUB_ENV/.test(step.run ?? ""));
     const spent = steps.findIndex((step) => step.env?.CLAUDE_CODE_OAUTH_TOKEN !== undefined);
@@ -111,16 +111,14 @@ describe("bin/research answers a research note on the note and closes it, with n
     expect(calls()).toEqual([]);
   });
 
-  it("the owner's research note starts research.yml and never a build", () => {
-    const research = onlyJob("research.yml");
-    const build = onlyJob("build.yml");
-    const researches = (labels: string[], sender = "collod873") => holds(research.if ?? "true", { labels, sender });
+  it("the owner's research note starts research.yml and never a build", async () => {
+    const researches = (labels: string[], sender = "collod873") => starts("research.yml", "research", { labels, sender });
 
-    expect(researches(["note", "research"])).toBe(true);
-    expect(researches(["note"])).toBe(false);
-    expect(researches([])).toBe(false);
-    expect(researches(["note", "research"], "stranger")).toBe(false);
-    expect(holds(build.if ?? "true", { labels: ["note", "research"] })).toBe(false);
+    expect(await researches(["note", "research"])).toBe(true);
+    expect(await researches(["note"])).toBe(false);
+    expect(await researches([])).toBe(false);
+    expect(await researches(["note", "research"], "stranger")).toBe(false);
+    expect(await starts("build.yml", "build", { labels: ["note", "research"] })).toBe(false);
   });
 });
 

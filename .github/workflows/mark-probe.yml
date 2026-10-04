@@ -27,13 +27,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          if said=$(bin/mark 0 checking 2>&1); then
+          checking=$(bin/spelled CHECKING)
+          if said=$(bin/mark 0 "$checking" 2>&1); then
             printf '%s\n' "$said"
-            printf 'mark probe: bin/mark 0 checking passed, so a failed mark no longer reaches the log\n' >&2
+            printf 'mark probe: bin/mark 0 %s passed, so a failed mark no longer reaches the log\n' "$checking" >&2
             exit 1
           fi
           printf '%s\n' "$said"
-          if [[ $said != *"mark: #0 not labelled checking:"* ]]; then
-            printf "mark probe: bin/mark 0 checking failed without its refusal line, so a failed mark no longer reaches the log\n" >&2
+          if [[ $said != *"mark: #0 not labelled $checking:"* ]]; then
+            printf 'mark probe: bin/mark 0 %s failed without its refusal line, so a failed mark no longer reaches the log\n' "$checking" >&2
             exit 1
           fi

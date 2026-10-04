@@ -9,8 +9,35 @@ permissions:
   contents: read
 
 jobs:
+  labelled:
+    if: "${{ github.event.sender.login == github.repository_owner || (github.event.sender.login == 'collod873-machine[bot]' && (github.event.action == 'unlabeled' || github.event.action == 'opened')) }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      held: ${{ steps.labelled.outputs.held }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - id: labelled
+        run: |
+          waiting=$(bin/spelled WAITING)
+          note=$(bin/spelled NOTE)
+          spec=$(bin/spelled SPEC)
+          held=$(jq --arg waiting "$waiting" --arg note "$note" --arg spec "$spec" '(.action != "unlabeled" or .label.name == $waiting) and (any(.issue.labels[]?.name; IN($note, $spec, $waiting)) | not)' "$GITHUB_EVENT_PATH")
+          printf 'held=%s\n' "$held" | tee -a "$GITHUB_OUTPUT"
+
   build:
-    if: "${{ (github.event.action != 'unlabeled' || github.event.label.name == 'waiting') && (github.event.sender.login == github.repository_owner || (github.event.sender.login == 'collod873-machine[bot]' && (github.event.action == 'unlabeled' || github.event.action == 'opened'))) && !contains(github.event.issue.labels.*.name, 'note') && !contains(github.event.issue.labels.*.name, 'spec') && !contains(github.event.issue.labels.*.name, 'waiting') }}"
+    needs: labelled
+    if: ${{ needs.labelled.outputs.held == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 70
     cache-mode: write
@@ -63,18 +90,20 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
         run: |
           branch="ticket/${{ github.event.issue.number }}"
+          checking=$(bin/spelled CHECKING)
+          building=$(bin/spelled BUILDING)
           if [[ '${{ github.event.action }}' == reopened ]] && state=$(gh pr view "$branch" --json state --jq .state 2>/dev/null) && [[ $state == OPEN ]]; then # quiet: a ticket with no PR yet builds
             gh pr checks "$branch" --json name,bucket,link \
               | jq -r '.[] | select(.bucket == "fail") | .link' \
               | sed -E 's#.*/runs/([0-9]+)/.*#\1#' \
               | sort -u \
               | while read -r run; do gh run rerun "$run" --failed; done
-            bin/mark ${{ github.event.issue.number }} checking || true # quiet: bin/mark names its own refusal, and a stale label never stops the build
+            bin/mark ${{ github.event.issue.number }} "$checking"
             echo rerun=true >>"$GITHUB_OUTPUT"
           elif [[ '${{ github.event.action }}' == reopened ]]; then
-            bin/mark ${{ github.event.issue.number }} building --try || true # quiet: bin/mark names its own refusal, and a stale label never stops the build
+            bin/mark ${{ github.event.issue.number }} "$building" --try
           else
-            bin/mark ${{ github.event.issue.number }} building || true # quiet: bin/mark names its own refusal, and a stale label never stops the build
+            bin/mark ${{ github.event.issue.number }} "$building"
           fi
 
       - id: fix
