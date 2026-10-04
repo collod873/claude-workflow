@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { admission, doesNotBuild } from "./admit.ts";
 import { capped, onDisk } from "./brief.ts";
 import { CHECK, UNFENCED } from "./fence.ts";
-import { commentOnTicket, commentsOn, gh, git, labelsOf, labelsUnread, mark, NEEDS_HUMAN, OWNER, post, postRefusals, prNumber, RESOLVING, rewriteTicket, sessionLine, WAITING } from "./post.ts";
+import { commentOnTicket, commentsOn, gh, git, labelsOf, labelsUnread, mark, NEEDS_HUMAN, OWNER, post, postRefusals, prNumber, readOrStop, RESOLVING, rewriteTicket, sessionLine, WAITING } from "./post.ts";
 import { BUILDER_SPLIT, earlierDrift, FOLLOW_UP_OF, followUpBody, handedDiff, LIST_CAP, NO_EM_DASH, repairOf, TICKET_CAP } from "./reviewer.ts";
 import { hired, machineLogs, type Spent } from "./stage.ts";
 import { DONE_SENTENCES, quoted, why, whyChanged } from "./ticket-shape.ts";
@@ -354,5 +354,6 @@ function ownTicket(ticket: string, run: string | undefined): number {
 if (import.meta.main) {
   const [ticket, run] = process.argv.slice(2);
   if (ticket === undefined) throw new Error("no ticket number in the arguments");
-  process.exit(ownTicket(ticket, run));
+  const ended = readOrStop("fix", () => ownTicket(ticket, run));
+  process.exit(typeof ended === "number" ? ended : 1);
 }

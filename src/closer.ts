@@ -1,6 +1,5 @@
-import { spawnSync } from "node:child_process";
 import { splitClosed, splitInto } from "./builder.ts";
-import { commentOnPr, commentOnTicket, commentsOn, labelsOf, labelsUnread, markWith, type Held, NEEDS_HUMAN, RESOLVING, WAITING, type MarkedLabel } from "./post.ts";
+import { answered, commentOnPr, commentOnTicket, commentsRead, gh, ghAs, ghRead, git, gitRead, type Held, labelsHeld, markWith, NEEDS_HUMAN, readOrStop, RESOLVING, unread, WAITING, type MarkedLabel } from "./post.ts";
 import { FINGERPRINT, REVIEWED_FROM, TICKET_BRANCH } from "./reviewer.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { quoted, why } from "./ticket-shape.ts";
@@ -16,38 +15,8 @@ const NO_PR = /^no pull requests found/m;
 const REQUIRED_CHECKS = ["check", "review"];
 const PASSED = new Set(["SUCCESS", "SKIPPED", "NEUTRAL"]);
 
-const run = (command: string, args: string[]) => spawnSync(command, args, { encoding: "utf8", maxBuffer: Infinity });
-const gh = (args: string[]) => run("gh", args);
 const quietly = { ...process.env, GH_TOKEN: process.env.QUIET_GH_TOKEN };
-const quietGh = (args: string[]) => spawnSync("gh", args, { encoding: "utf8", env: quietly });
-const git = (args: string[]) => run("git", args);
-
-class Unread extends Error {}
-
-const unread = (line: string): never => {
-  throw new Unread(`close: ${line}`);
-};
-
-function read(got: ReturnType<typeof run>, line: string): string {
-  return got.status === 0 ? got.stdout.trim() : unread(line);
-}
-
-const ghRead = (args: string[], line: string) => read(gh(args), line);
-const gitRead = (args: string[], line: string) => read(git(args), line);
-
-function answered(got: ReturnType<typeof run>, line: string): boolean {
-  if (got.status !== 0 && got.status !== 1) unread(line);
-  return got.status === 0;
-}
-
-function labelsHeld(ticket: string): Held {
-  const held = labelsOf(ticket, gh);
-  return held === "unread" ? unread(labelsUnread(ticket)) : held;
-}
-
-function commentsRead(number: string, line: string): string[] {
-  return commentsOn(number, gh) ?? unread(line);
-}
+const quietGh = ghAs(quietly);
 
 const ticketState = (ticket: string, line: string) => ghRead(["issue", "view", ticket, "--json", "state,stateReason", "--jq", '.state + " " + .stateReason'], `the state of #${ticket} could not be read, ${line}`);
 
@@ -201,7 +170,7 @@ function queuedPrs(): QueuedPr[] {
 const mark = markWith(quietly);
 
 function markOnce(ticket: string, label: MarkedLabel): void {
-  const held = labelsHeld(ticket);
+  const held = labelsHeld(ticket, gh);
   if (![label, NEEDS_HUMAN, RESOLVING].some((kept) => held.has(kept))) mark(ticket, label);
 }
 
@@ -214,7 +183,7 @@ function wantedOn(pr: QueuedPr, merging: QueuedPr | undefined, held: Held): Mark
 }
 
 function settle(ticket: string, pr: QueuedPr, merging: QueuedPr | undefined, conflicted: boolean): void {
-  const held = labelsHeld(ticket);
+  const held = labelsHeld(ticket, gh);
   const wanted = conflicted || held.has(RESOLVING) ? undefined : wantedOn(pr, merging, held);
   const writes = wanted !== undefined && !held.has(NEEDS_HUMAN) && (wanted !== "checking" || held.has(LANDING));
   if (writes && !held.has(wanted)) mark(ticket, wanted);
@@ -236,7 +205,7 @@ const conflicts = (pr: QueuedPr, reason: string) =>
   /conflict/i.test(reason) || !answered(git(["merge-tree", "--write-tree", "--quiet", "origin/main", `origin/${pr.headRefName}`]), `whether PR #${pr.number} conflicts with main could not be read, ${NOTHING_MARKED}`);
 
 function conflictReportedAtHead(pr: QueuedPr): boolean {
-  return commentsRead(pr.number, `the comments on PR #${pr.number} could not be read, ${NOTHING_MARKED}`).some((said) => FAILED_BRANCH_UPDATE.test(said) && said.includes(headLine(pr.headRefOid)) && conflicts(pr, said));
+  return commentsRead(pr.number, `the comments on PR #${pr.number} could not be read, ${NOTHING_MARKED}`, gh).some((said) => FAILED_BRANCH_UPDATE.test(said) && said.includes(headLine(pr.headRefOid)) && conflicts(pr, said));
 }
 
 type Moved = "updated" | "conflicted" | "retried";
@@ -256,7 +225,7 @@ function updateBranch(pr: QueuedPr): Moved {
     return "retried";
   }
   commentOnPr(number, `${failedBranchUpdate(number)} ${reason}\n\n${headLine(headRefOid)}\n\nRun: ${thisRun}`, gh);
-  if (ticket !== undefined && labelsHeld(ticket).has(NEEDS_HUMAN)) console.log(`close: #${ticket} is labelled ${NEEDS_HUMAN}, so the conflict on PR #${number} wakes no builder`);
+  if (ticket !== undefined && labelsHeld(ticket, gh).has(NEEDS_HUMAN)) console.log(`close: #${ticket} is labelled ${NEEDS_HUMAN}, so the conflict on PR #${number} wakes no builder`);
   else if (ticket !== undefined) {
     mark(ticket, RESOLVING);
     wakeBuilder(ticket, `#${ticket}'s ${failedBranchUpdate(number)} ${reason}`);
@@ -315,7 +284,7 @@ function wokenAfterParent(ticket: string, body: string): string {
 }
 
 function wokenWaiting(ticket: string, body: string, merged: string | undefined): string {
-  const comments = commentsRead(ticket, `the comments on #${ticket} could not be read, so it is not woken`);
+  const comments = commentsRead(ticket, `the comments on #${ticket} could not be read, so it is not woken`, gh);
   const split = comments.find((said) => said.startsWith(splitInto(ticket)));
   return split === undefined ? wokenAfterParent(ticket, body) : wokenFromSplit(ticket, split, merged);
 }
@@ -343,7 +312,7 @@ function close(): Stop | undefined {
   const { ticket, pr } = merge;
   const asked = gh(["issue", "view", ticket, "--json", "body", "--jq", ".body"]);
   if (asked.status !== 0) return stoppedAt("unread", `close: ticket ${ticket} could not be read, so nothing judged it`);
-  const prComments = commentsRead(pr, `the comments on PR #${pr} could not be read, ${leftAsItIs(ticket)}`);
+  const prComments = commentsRead(pr, `the comments on PR #${pr} could not be read, ${leftAsItIs(ticket)}`, gh);
   const speed = speedReport(marksFor(merge), collisions(prComments));
   const posted = commentOnTicket(ticket, record(merge, speed), gh);
   const [refusal] = posted.refusals;
@@ -358,13 +327,4 @@ function close(): Stop | undefined {
   return resliced(ticket);
 }
 
-function closeOrStop(): Stop | undefined {
-  try {
-    return close();
-  } catch (error) {
-    if (error instanceof Unread) return stoppedAt("unread", error.message);
-    throw error;
-  }
-}
-
-if (import.meta.main) process.exit(exitFor(closeOrStop()));
+if (import.meta.main) process.exit(exitFor(readOrStop("close", close)));

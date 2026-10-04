@@ -1,6 +1,6 @@
 import { mkdirSync, readdirSync, readFileSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
-import { authored, BIN, commitAt, execute, git, MACHINE, plant, type Said, scratch, script } from "./scenarios.ts";
+import { authored, BIN, commitAt, execute, git, MACHINE, plant, refusedMark, type Said, scratch, script } from "./scenarios.ts";
 import { NEEDS_HUMAN, WAITING } from "./post.ts";
 import { declareStage } from "./stages.ts";
 
@@ -97,6 +97,7 @@ export function closing({
   prLookupRefused,
   mergedFrom = `collod873/ticket/${ticket}`,
   prUnreadable = false,
+  markRefusal,
 }: {
   ticket?: string;
   ticketBody?: string;
@@ -113,6 +114,7 @@ export function closing({
   prLookupRefused?: string;
   mergedFrom?: string;
   prUnreadable?: boolean;
+  markRefusal?: string;
 } = {}) {
   const root = scratch("closer-");
   const session = join(root, "session");
@@ -195,7 +197,8 @@ export function closing({
     ].join("\n"),
   );
   mkdirSync(join(session, "bin"));
-  symlinkSync(join(BIN, "mark"), join(session, "bin", "mark"));
+  if (markRefusal === undefined) symlinkSync(join(BIN, "mark"), join(session, "bin", "mark"));
+  else script(join(session, "bin", "mark"), refusedMark(markRefusal));
   return {
     session,
     calls: () => readdirSync(callsDir).sort((a, b) => Number(a) - Number(b)).map((file) => readFileSync(join(callsDir, file), "utf8")),

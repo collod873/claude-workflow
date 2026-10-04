@@ -4,7 +4,6 @@ run-name: "Reslice after #${{ github.event.issue.number || inputs.issue }}${{ gi
 "on":
   issues:
     types: [closed]
-
   workflow_dispatch:
     inputs:
       issue:
