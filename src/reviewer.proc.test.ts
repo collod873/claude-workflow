@@ -190,9 +190,9 @@ describe("bin/review leaves the readback of a ticket under an open spec the owne
     expect(earlierDrift("810", [comments()[0] ?? ""])).toBe("");
   });
 
-  it("keeps the readback of a ticket under no spec, a closed spec, a spec the owner did not open, or a parent it cannot read", () => {
+  it("keeps the readback of a ticket under no spec, a closed spec, or a spec the owner did not open", () => {
     const account = "It now checks the ticket branch before it hires a model.";
-    for (const spec of [undefined, { ...OWNER_SPEC, state: "closed" }, { ...OWNER_SPEC, user: { login: "collod873-machine[bot]" } }, { ...OWNER_SPEC, labels: [] }, "unreadable" as const]) {
+    for (const spec of [undefined, { ...OWNER_SPEC, state: "closed" }, { ...OWNER_SPEC, user: { login: "collod873-machine[bot]" } }, { ...OWNER_SPEC, labels: [] }]) {
       const { run, comments } = reviewing({ spec, verdict: { verdict: "match", gaps: [], readback: account } });
       expect(run().status).toBe(0);
       expect(comments()[0], JSON.stringify(spec)).toContain(account);
@@ -379,11 +379,6 @@ describe("a later find becomes a follow-up ticket that builds itself, one genera
     expect(comments()[0]).toContain("> keep the builder honest about drift");
     expect(comments()[0]).toContain("> never touch the reviewer's own prompt");
     expect(comments()[0]).not.toContain("the closer never names the ticket it closed");
-
-    const unread = reviewing({ body: FOLLOW_UP_TICKET, parent: { ticket: "700" } });
-    expect(unread.run().status).toBe(0);
-    expect(unread.comments()[0]).toContain("The owner's words on #700 could not be read.");
-    expect(unread.comments()[0]).not.toContain("the closer never names the ticket it closed");
   });
 
   it("leaves a finding it cannot shape into a ticket as a comment naming why", () => {
@@ -672,5 +667,32 @@ describe("check.yml judges a PR with main's reviewer and main's test count, what
     expect(readFileSync(join(session, "bin/review"), "utf8")).toBe("the PR's copy\n");
     expect(readFileSync(join(runnerTemp, "main", "bin/review"), "utf8")).toBe("main's copy\n");
     expect(stepRunning(jobNamed(jobs, "review").steps, "bin/review ").run).toContain("$RUNNER_TEMP/main/bin/review ");
+  });
+});
+
+describe("bin/review ends red at a GitHub or git read that fails, spending no model and posting nothing (#1112)", () => {
+  const LANDED_MAIN = { diff: fileDiff("src/done-when.ts", "export const doneWhenOf = 1;"), landed: LANDED };
+  const sinceMatched = { ...LANDED_MAIN, onPr: ({ before }: { before: string }) => [matchedAt(fingerprintOf(LANDED_MAIN.diff, REVIEWED_TICKET), before)] };
+  const READS = [
+    { read: "the PR's branch", options: { unreadable: '*"pr view"*' }, line: "#9810 could not be read, so nothing read it" },
+    { read: "the ticket", options: { unreadable: '*"issue view"*' }, line: "#9810 ended red, ticket #810 could not be read, so no model was spent" },
+    { read: "the diff", options: { unreadable: '*"pr diff"*' }, line: "#9810 ended red, its diff could not be read, so no model was spent" },
+    { read: "the PR's comments", options: { unreadable: '*"api"*"/comments"*' }, line: "#9810 ended red, the comments on its PR could not be read, so no model was spent" },
+    { read: "the ticket's comments", options: { unreadable: '*"issues/810/comments"*' }, line: "#9810 ended red, the comments on #810 could not be read, so no model was spent" },
+    { read: "the ticket's spec", options: { unreadable: '*"issues/810/parent"*' }, line: "#9810 ended red, the parent of #810 could not be read, so no model was spent" },
+    { read: "the owner's words", options: { body: FOLLOW_UP_TICKET, parent: { ticket: "700" } }, line: "#9810 ended red, the owner's words on #700 could not be read, so no model was spent" },
+    { read: "where it stands on main", options: { gitUnreadable: '"merge-base origin/main HEAD"' }, line: "#9810 ended red, where it stands on main could not be read, so no model was spent" },
+    { read: "its head", options: { gitUnreadable: '"rev-parse HEAD"' }, line: "#9810 ended red, its head could not be read, so no model was spent" },
+    { read: "its fingerprint", options: { gitUnreadable: '"patch-id"*' }, line: "#9810 ended red, the patch id of its diff could not be read, so no model was spent" },
+    { read: "the fix's own diff", options: { judged: "merged" as const, gitUnreadable: '"diff "*" HEAD"' }, line: "#9810 ended red, the fix's own diff could not be read, so no model was spent" },
+    { read: "what merged since", options: { ...sinceMatched, gitUnreadable: '"log --first-parent"*' }, line: "#9810 ended red, what merged to main since its last judgement could not be read, so no model was spent" },
+  ];
+
+  it.each(READS)("bin/review ends red at unread naming $read", ({ options, line }) => {
+    const { run, spent, comments, ticketComments, filed } = reviewing(options);
+
+    expect(run()).toMatchObject({ status: 1, stderr: `review: ${line}\n` });
+    expect(spent()).toBe(false);
+    expect([...comments(), ...ticketComments(), ...filed().map(({ body }) => body)]).toEqual([]);
   });
 });

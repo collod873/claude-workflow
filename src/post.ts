@@ -40,6 +40,10 @@ export const unread = (line: string): never => {
 const readOrUnread = (got: ReturnType<Gh>, line: string): string => (got.status === 0 ? got.stdout.trim() : unread(line));
 
 export const ghRead = (args: string[], line: string) => readOrUnread(gh(args), line);
+export function ghWhole(args: string[], line: string): string {
+  const got = gh(args);
+  return got.status === 0 ? got.stdout : unread(line);
+}
 export const gitRead = (args: string[], line: string, input?: string) => readOrUnread(git(args, input), line);
 
 export function answered(got: ReturnType<Gh>, line: string): boolean {

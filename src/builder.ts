@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { admission, doesNotBuild } from "./admit.ts";
 import { capped, onDisk } from "./brief.ts";
 import { CHECK, UNFENCED } from "./fence.ts";
-import { commentOnTicket, commentsRead, gh, ghRead, git, gitRead, labelsHeld, mark, NEEDS_HUMAN, OWNER, post, postRefusals, prOfTicket, readOrStop, RESOLVING, rewriteTicket, sessionLine, unread, WAITING } from "./post.ts";
+import { commentOnTicket, commentsRead, gh, ghRead, ghWhole, git, gitRead, labelsHeld, mark, NEEDS_HUMAN, OWNER, post, postRefusals, prOfTicket, readOrStop, RESOLVING, rewriteTicket, sessionLine, unread, WAITING } from "./post.ts";
 import { BUILDER_SPLIT, earlierDrift, FOLLOW_UP_OF, followUpBody, handedDiff, LIST_CAP, NO_EM_DASH, repairOf, TICKET_CAP } from "./reviewer.ts";
 import { hired, machineLogs, type Spent } from "./stage.ts";
 import { DONE_SENTENCES, quoted, why, whyChanged } from "./ticket-shape.ts";
@@ -309,7 +309,7 @@ function ownTicket(ticket: string, run: string | undefined): number {
   mkdirSync(logs, { recursive: true });
   const failed = failedAs(ticket, logs, run);
   const held = labelsHeld(ticket, gh);
-  let body = ghRead(["issue", "view", ticket, "--json", "body", "--jq", ".body"], `the body of #${ticket} could not be read, ${NOTHING_MARKED}`);
+  let body = ghWhole(["issue", "view", ticket, "--json", "body", "--jq", ".body"], `the body of #${ticket} could not be read, ${NOTHING_MARKED}`);
   const pr = prOfTicket(ticket, ["number"], gh);
   const judged = pr === "none" ? [] : commentsRead(String(pr.number), `the comments on PR #${pr.number} could not be read, ${NOTHING_MARKED}`, gh);
   const onTicket = commentsRead(ticket, `the comments on #${ticket} could not be read, ${NOTHING_MARKED}`, gh);

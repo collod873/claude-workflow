@@ -92,6 +92,8 @@ export function reviewing({
   judged = undefined as "merged" | "ticket" | undefined,
   parent = undefined as { ticket: string; body?: string } | undefined,
   spec = undefined as Parent,
+  unreadable = undefined as string | undefined,
+  gitUnreadable = undefined as string | undefined,
 }: {
   bin?: string;
   branch?: string;
@@ -111,6 +113,8 @@ export function reviewing({
   judged?: "merged" | "ticket";
   parent?: { ticket: string; body?: string };
   spec?: Parent;
+  unreadable?: string;
+  gitUnreadable?: string;
 } = {}) {
   const root = scratch("review-");
   const argvDir = join(root, "gh-argv");
@@ -122,6 +126,7 @@ export function reviewing({
   git(root, "config", "user.email", "review@test");
   git(root, "config", "user.name", "review");
   git(root, "commit", "--quiet", "--allow-empty", "-m", "Build #810 against its failing tests");
+  git(root, "update-ref", "refs/remotes/origin/main", "HEAD");
   if (repair !== undefined) {
     plant(root, "src/repaired.ts", repair);
     git(root, "add", "src/repaired.ts");
@@ -154,6 +159,7 @@ export function reviewing({
     [
       setup,
       'case "$*" in',
+      ...(unreadable === undefined ? [] : [`  ${unreadable}) printf 'gh: Server Error (HTTP 502)\\n' >&2; exit 1 ;;`]),
       `  *"api"*"issues/810/comments"*) cat "${join(root, "turns.json")}" ;;`,
       `  *"api"*"issues/810/parent"*) ${parentSays(root, spec)} ;;`,
       `  *"api"*"/comments"*) cat "${join(root, "on-pr.json")}" ;;`,
@@ -171,6 +177,7 @@ export function reviewing({
       "",
     ].join("\n"),
   );
+  if (gitUnreadable !== undefined) script(join(root, "bin", "git"), `case "$*" in\n  ${gitUnreadable}) printf 'fatal: unable to read\\n' >&2; exit 128 ;;\nesac\nPATH="\${PATH#*:}" exec git "$@"\n`);
   script(join(root, "bin", "claude"), `touch "${judgedOnce}"\nprintf '%s\\0' "$@" >"${hired}"\ncat >"${handed}"\ncat "${join(root, "answer.json")}"\n`);
   const bodyOf = (args: string[]) => args[args.indexOf("--body") + 1];
   return {
@@ -215,6 +222,7 @@ declareStage({
   ],
   scenarios: [
     { label: "passing a match", run: () => reviewing().run() },
+    { label: "with main unreadable", run: () => reviewing({ gitUnreadable: '"merge-base origin/main HEAD"' }).run() },
     { label: "posting a drift", run: () => reviewing({ verdict: { verdict: "drift", gaps: ["the Why asks for more than was built"] } }).run() },
   ],
 });

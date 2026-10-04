@@ -1,9 +1,8 @@
-import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { capped } from "./brief.ts";
-import { commentOnTicket, commentsOn, gh, git, post, underOwnerSpec, WAITING } from "./post.ts";
+import { answered as readAnswered, commentOnTicket, commentsRead, gh, ghRead, ghWhole, git, gitRead, post, readOrStop, underOwnerSpec, unread, WAITING } from "./post.ts";
 import { hired, machineLogs } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { DONE_SENTENCES, quoted, why } from "./ticket-shape.ts";
@@ -28,10 +27,10 @@ const foundNoOverlap = (ticket: string) => `The reviewer read this PR for #${tic
 const drifted = (ticket: string, comment: string) => comment.startsWith(foundDrift(ticket)) || comment.startsWith(foundOverlap(ticket));
 export const earlierDrift = (ticket: string, comments: string[]) => comments.filter((comment) => drifted(ticket, comment)).join("\n\n");
 
-function fingerprintOf(diff: string, body: string): string {
-  const args = ["patch-id", "--stable"];
-  const stdout = spawnSync("git", args, { input: diff, encoding: "utf8", maxBuffer: Infinity }).stdout;
-  const id = (stdout.trim().match(/^\S+/) ?? [""])[0];
+const unspent = (pr: string, read: string) => `#${pr} ended red, ${read} could not be read, so no model was spent`;
+
+function fingerprintOf(pr: string, diff: string, body: string): string {
+  const id = (gitRead(["patch-id", "--stable"], unspent(pr, "the patch id of its diff"), diff).match(/^\S+/) ?? [""])[0];
   return `${id}-${createHash("sha256").update(body).digest("hex").slice(0, 12)}`;
 }
 
@@ -68,15 +67,14 @@ function ownerQuotes(body: string): string[] {
   return text.match(QUOTE_LINE) ?? text.match(DOUBLE_QUOTE) ?? [];
 }
 
-function ownerWords(body: string): string[] {
+function ownerWords(pr: string, body: string): string[] {
   const parent = REVIEWED_FROM.exec(why(body))?.[1];
   if (parent === undefined) return ownerQuotes(body);
-  const read = gh(["issue", "view", parent, "--json", "body", "--jq", ".body"]);
-  return read.status === 0 ? ownerQuotes(read.stdout) : [`The owner's words on #${parent} could not be read.`];
+  return ownerQuotes(ghRead(["issue", "view", parent, "--json", "body", "--jq", ".body"], unspent(pr, `the owner's words on #${parent}`)));
 }
 
-function readbackText(body: string, account: string, fingerprint: string, main: string | undefined): string {
-  return [...stamped(fingerprint, main), "", ...ownerWords(body), "", account, "", "Did this build what you meant, yes or no?"].join("\n");
+function readbackText(words: string[], account: string, fingerprint: string, main: string): string {
+  return [...stamped(fingerprint, main), "", ...words, "", account, "", "Did this build what you meant, yes or no?"].join("\n");
 }
 
 const VERDICT = {
@@ -219,27 +217,20 @@ function judgement(found: string, gaps: string[], stamp: string[]): string {
   return [found, "", ...named, "", ...stamp, ""].join("\n");
 }
 
-function gitLine(args: string[]): string | undefined {
-  const got = git(args);
-  return got.status === 0 ? got.stdout.trim() : undefined;
-}
-
-const headNow = () => gitLine(["rev-parse", "HEAD"]);
-const mainNow = () => gitLine(["merge-base", "origin/main", "HEAD"]);
+const headNow = (pr: string) => gitRead(["rev-parse", "HEAD"], unspent(pr, "its head"));
+const mainNow = (pr: string) => gitRead(["merge-base", "origin/main", "HEAD"], unspent(pr, "where it stands on main"));
 
 function judgedHead(ticket: string, comments: string[]): string | undefined {
   const drifts = comments.filter((comment) => drifted(ticket, comment));
   return HEAD_LINE.exec(drifts.at(-1) ?? "")?.[1];
 }
 
-function fixSince(head: string): string | undefined {
-  const base = git(["merge-base", "origin/main", "HEAD"]);
-  if (base.status !== 0) return undefined;
-  const merged = git(["merge-tree", "--write-tree", head, base.stdout.trim()]);
+function fixSince(pr: string, head: string): string {
+  const line = unspent(pr, "the fix's own diff");
+  const merged = git(["merge-tree", "--write-tree", head, mainNow(pr)]);
+  readAnswered(merged, line);
   const tree = merged.stdout.split("\n")[0] ?? "";
-  if ((merged.status !== 0 && merged.status !== 1) || tree === "") return undefined;
-  const fix = git(["diff", tree, "HEAD"]);
-  return fix.status === 0 ? fix.stdout : undefined;
+  return gitRead(["diff", tree === "" ? unread(line) : tree, "HEAD"], line);
 }
 
 const followUp = (ticket: string, { gap, done }: Later): string =>
@@ -264,30 +255,20 @@ function recordedLater(ticket: string, body: string, later: Later[], turns: stri
   return `, ${later.length} later finds posted: ${posted.said}; follow-ups filed: ${filed.map(({ said }) => said).filter((said) => said !== "").join(" ") || "none"}`;
 }
 
-function bodyAndDiff(pr: string, ticket: string, said: string): { body: string; diff: string } | Stop {
-  const asked = (args: string[]) => {
-    const got = gh(args);
-    return got.status === 0 ? got.stdout : undefined;
-  };
-  const body = asked(["issue", "view", ticket, "--json", "body", "--jq", ".body"]);
-  const diff = asked(["pr", "diff", pr]);
-  if (body === undefined || diff === undefined) {
-    return stoppedAt("unread", `${said} ended red, ${body === undefined ? `ticket #${ticket}` : "its diff"} could not be read, so no model was spent`);
-  }
+function bodyAndDiff(pr: string, ticket: string): { body: string; diff: string } {
+  const body = ghWhole(["issue", "view", ticket, "--json", "body", "--jq", ".body"], unspent(pr, `ticket #${ticket}`));
+  const diff = ghWhole(["pr", "diff", pr], unspent(pr, "its diff"));
   return { body, diff };
 }
 
-export function ticketPr(pr: string, said: string): { ticket: string; body: string; diff: string } | Stop | undefined {
-  const gotBranch = gh(["pr", "view", pr, "--json", "headRefName", "--jq", ".headRefName"]);
-  const branch = gotBranch.status === 0 ? gotBranch.stdout : undefined;
-  if (branch === undefined) return stoppedAt("unread", `${said} could not be read, so nothing read it`);
-  const ticket = TICKET_BRANCH.exec(branch.trim())?.[1];
+export function ticketPr(pr: string, said: string): { ticket: string; body: string; diff: string } | undefined {
+  const branch = ghRead(["pr", "view", pr, "--json", "headRefName", "--jq", ".headRefName"], `#${pr} could not be read, so nothing read it`);
+  const ticket = TICKET_BRANCH.exec(branch)?.[1];
   if (ticket === undefined) {
     console.log(`${said} is not a ticket PR, so there is no Why to read it against`);
     return undefined;
   }
-  const found = bodyAndDiff(pr, ticket, said);
-  return typeof found === "object" ? { ticket, ...found } : found;
+  return { ticket, ...bodyAndDiff(pr, ticket) };
 }
 
 interface Judging {
@@ -298,18 +279,17 @@ interface Judging {
 }
 
 function movedUnder({ pr, ticket, said, fingerprint }: Judging): { ended: Stop | undefined } | undefined {
-  const now = bodyAndDiff(pr, ticket, said);
-  if (typeof now !== "object") return { ended: now };
-  if (fingerprintOf(now.diff, now.body) === fingerprint) return undefined;
+  const now = bodyAndDiff(pr, ticket);
+  if (fingerprintOf(pr, now.diff, now.body) === fingerprint) return undefined;
   console.log(`${said} writes nothing, a newer run judges #${ticket}: the PR moved under it while its model answered`);
   return { ended: undefined };
 }
 
 function reviewedSince(judging: Judging & { body: string; diff: string }, from: string, to: string): Stop | undefined {
   const { pr, ticket, said, fingerprint } = judging;
-  const merged = gitLine(["log", "--first-parent", "--format=- %s", `${from}..${to}`]);
-  const landed = gitLine(["diff", from, to]);
-  if (merged === undefined || landed === undefined) return stoppedAt("unread", `${said} ended red, what merged to main since its last judgement could not be read, so no model was spent`);
+  const line = unspent(pr, "what merged to main since its last judgement");
+  const merged = gitRead(["log", "--first-parent", "--format=- %s", `${from}..${to}`], line);
+  const landed = gitRead(["diff", from, to], line);
   const spent = answered({ name: "reviewer", bin: "review", answers: SINCE }, handedSince(judging.body, judging.diff, merged, landed), pr);
   if (typeof spent === "string") return stoppedAt("modelRun", `${said} ended red, ${spent}`);
   if (!isSince(spent.answer)) return stoppedAt("modelRun", `${said} ended red, the reviewer gave no finds: ${firstLine(spent.stdout)}`);
@@ -321,7 +301,7 @@ function reviewedSince(judging: Judging & { body: string; diff: string }, from: 
     console.log(`${said} overlaps nothing merged to main since its last judgement on #${ticket}: ${posted.said || quoted(posted.refusals[0] ?? "")}`);
     return undefined;
   }
-  const posted = post({ kind: "judgement", pr, text: judgement(foundOverlap(ticket), finds, stamped(fingerprint, to, headNow())) }, gh);
+  const posted = post({ kind: "judgement", pr, text: judgement(foundOverlap(ticket), finds, stamped(fingerprint, to, headNow(pr))) }, gh);
   const [refusal] = posted.refusals;
   if (refusal !== undefined) return stoppedAt("drift", `${said} overlaps what merged to main since its last judgement on #${ticket}, and its judgement was refused: ${quoted(refusal)}`);
   return stoppedAt("drift", `${said} overlaps what merged to main since its last judgement on #${ticket}, ${finds.length} finds posted: ${posted.said}`);
@@ -332,13 +312,12 @@ function review(pr: string): Stop | undefined {
   const read = ticketPr(pr, said);
   if (typeof read !== "object") return read;
   const { ticket, body, diff } = read;
-  const onPr = commentsOn(pr, gh);
-  if (onPr === undefined) return stoppedAt("unread", `${said} ended red, the comments on its PR could not be read, so no model was spent`);
-  const fingerprint = fingerprintOf(diff, body);
+  const onPr = commentsRead(pr, unspent(pr, "the comments on its PR"), gh);
+  const fingerprint = fingerprintOf(pr, diff, body);
   const past = lastJudgement(ticket, onPr);
+  const main = mainNow(pr);
   if (past?.fingerprint === fingerprint) {
-    const main = mainNow();
-    if (past.verdict === "match" && past.main !== undefined && main !== undefined && past.main !== main) {
+    if (past.verdict === "match" && past.main !== undefined && past.main !== main) {
       return reviewedSince({ pr, ticket, body, diff, said, fingerprint }, past.main, main);
     }
     if (past.verdict === "match") {
@@ -347,13 +326,15 @@ function review(pr: string): Stop | undefined {
     }
     return stoppedAt("drift", `${said} reuses its last judgement on #${ticket}, a drift, hiring no model`);
   }
-  const turns = commentsOn(ticket, gh);
-  if (turns === undefined) return stoppedAt("unread", `${said} ended red, the comments on #${ticket} could not be read, so no model was spent`);
-  const head = headNow();
-  const main = mainNow();
+  const turns = commentsRead(ticket, unspent(pr, `the comments on #${ticket}`), gh);
+  const head = headNow(pr);
+  const spec = underOwnerSpec(ticket, gh);
+  if (spec.unread !== undefined) unread(unspent(pr, `the parent of #${ticket}`));
+  const inWave = spec.refused === undefined;
+  const words = inWave ? [] : ownerWords(pr, body);
   const earlier = earlierDrift(ticket, onPr);
   const since = judgedHead(ticket, onPr);
-  const after = earlier === "" ? undefined : { earlier, fix: (since === undefined ? undefined : fixSince(since)) ?? diff };
+  const after = earlier === "" ? undefined : { earlier, fix: since === undefined ? diff : fixSince(pr, since) };
   const verdict = judged(handedOn(body, diff, after), pr);
   if (typeof verdict === "string") return stoppedAt("modelRun", `${said} ended red, ${verdict}`);
   const moved = movedUnder({ pr, ticket, said, fingerprint });
@@ -361,8 +342,7 @@ function review(pr: string): Stop | undefined {
   const blocking = after === undefined ? [...verdict.gaps, ...(verdict.later ?? []).map(({ gap }) => gap)] : verdict.gaps;
   const recorded = recordedLater(ticket, body, after === undefined ? [] : (verdict.later ?? []), turns);
   if (verdict.verdict === "match") {
-    const inWave = Object.keys(underOwnerSpec(ticket, gh)).length === 0;
-    const text = inWave ? [foundMatchInWave(ticket), "", ...stamped(fingerprint, main), ""].join("\n") : readbackText(body, verdict.readback, fingerprint, main);
+    const text = inWave ? [foundMatchInWave(ticket), "", ...stamped(fingerprint, main), ""].join("\n") : readbackText(words, verdict.readback, fingerprint, main);
     const posted = post({ kind: "judgement", pr, text }, gh);
     const [refusal] = posted.refusals;
     const kind = inWave ? "judgement, its readback left to its spec's wave note," : "readback";
@@ -378,5 +358,5 @@ function review(pr: string): Stop | undefined {
 if (import.meta.main) {
   const pr = process.argv[2];
   if (pr === undefined) throw new Error("no PR number in the arguments");
-  process.exit(exitFor(review(pr)));
+  process.exit(exitFor(readOrStop("review", () => review(pr))));
 }

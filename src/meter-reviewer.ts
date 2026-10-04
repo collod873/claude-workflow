@@ -1,6 +1,6 @@
 import { capped } from "./brief.ts";
 import { discards } from "./discard.ts";
-import { gh } from "./post.ts";
+import { gh, ghWhole, readOrStop } from "./post.ts";
 import { answered, handedDiff, NO_EM_DASH, type Stop, TICKET_CAP, ticketPr } from "./reviewer.ts";
 import { exitFor, stoppedAt } from "./stops.ts";
 
@@ -70,9 +70,9 @@ const lineFor = ({ name, findings }: { name: string; findings: string[] }) => ({
 
 function putOn(pr: string, said: string, found: { name: string; findings: string[] }[]): Stop | undefined {
   const lines = found.map(lineFor);
-  const got = gh(["pr", "view", pr, "--json", "body", "--jq", ".body"]);
-  if (got.status !== 0 || gh(["pr", "edit", pr, "--body", withLines(got.stdout, lines)]).status !== 0) {
-    return stoppedAt("unread", `${said} ended red, its PR body could not be read or edited, so its ${lines.length} meter lines are not on it`);
+  const body = ghWhole(["pr", "view", pr, "--json", "body", "--jq", ".body"], `the body of PR #${pr} could not be read, so its meter lines are not on it`);
+  if (gh(["pr", "edit", pr, "--body", withLines(body, lines)]).status !== 0) {
+    return stoppedAt("unread", `${said} ended red, its PR body could not be edited, so its ${lines.length} meter lines are not on it`);
   }
   return undefined;
 }
@@ -87,7 +87,7 @@ function metered(pr: string, print: boolean): Stop | undefined {
   if (typeof spent === "string" || unanswered.length > 0) {
     const why = typeof spent === "string" ? spent : `the meter reviewer answered no ${unanswered.join(", ")}`;
     const unput = print ? undefined : putOn(pr, said, [discard]);
-    return stoppedAt("modelRun", `${said} ended red, ${why}${unput === undefined ? "" : ", and its PR body could not be read or edited, so its discard line is not on it"}`);
+    return stoppedAt("modelRun", `${said} ended red, ${why}${unput === undefined ? "" : ", and its PR body could not be edited, so its discard line is not on it"}`);
   }
   const judged = METERS.map(({ name }) => ({ name, findings: findingsIn(spent.answer, name) ?? [] }));
   if (print) {
@@ -107,5 +107,5 @@ if (import.meta.main) {
   const print = first === "--print";
   const pr = print ? second : first;
   if (pr === undefined) throw new Error("no PR number in the arguments");
-  process.exit(exitFor(metered(pr, print)));
+  process.exit(exitFor(readOrStop("meters", () => metered(pr, print))));
 }
