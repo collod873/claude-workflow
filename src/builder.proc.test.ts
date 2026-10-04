@@ -506,6 +506,14 @@ describe("bin/fix reads its ticket, its labels, its PR and their comments before
     expect(calls().filter((args) => ["comment", "edit", "create", "close"].includes(args[1] ?? ""))).toEqual([]);
   });
 
+  it("ends red at unread naming the run it was woken by when that run cannot be read once green, marking it checking for nothing and rerunning nothing", () => {
+    const { run, marked, reruns } = fixing({ claude: FIXES, unreadable: '*"run view"*"--json"*' });
+
+    expect(run()).toMatchObject({ status: 1, stderr: "fix: the workflow, head and attempt of run 555 could not be read, so it is not marked checking\n" });
+    expect(marked()).toEqual(["811 building --try"]);
+    expect(reruns()).toEqual([]);
+  });
+
   it("builds a ticket that has no PR yet, reading none as none", () => {
     const { run, handed, marked } = fixing({ claude: FIXES, onPr: undefined });
 

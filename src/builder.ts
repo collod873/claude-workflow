@@ -277,7 +277,7 @@ function redOrSaved(ticket: string, logs: string): string | undefined {
 }
 
 const ranAs = (run: string | undefined) =>
-  run === undefined ? "" : ghRead(["run", "view", run, "--json", "workflowName,headSha,attempt", "--jq", '.workflowName + " " + .headSha + " " + (.attempt | tostring)'], `which Check run ${run} was could not be read`);
+  run === undefined ? "" : ghRead(["run", "view", run, "--json", "workflowName,headSha,attempt", "--jq", '.workflowName + " " + .headSha + " " + (.attempt | tostring)'], `the workflow, head and attempt of run ${run} could not be read, so it is not marked checking`);
 
 function checkingAgain(ticket: string, run: string | undefined): number {
   const ran = ranAs(run);

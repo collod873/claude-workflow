@@ -241,14 +241,14 @@ function sliced(issue: string, fix?: number[]): Stop | undefined {
     console.log(`${said} is marked ${NEEDS_HUMAN}, so nothing sliced it`);
     return undefined;
   }
-  const tickets = underSpec(issue);
-  const [unclosed] = (tickets ?? []).filter(({ state }) => state === "open");
+  const tickets = underSpec(issue, "so no model was spent");
+  const [unclosed] = tickets.filter(({ state }) => state === "open");
   if (unclosed !== undefined) {
     console.log(`${said}'s wave is not over, #${unclosed.number} is still open, so nothing sliced it`);
     return undefined;
   }
-  const comments = tickets === undefined || (tickets.length === 0 && fix === undefined) ? [] : commentsOn(issue, gh);
-  if (tickets === undefined || comments === undefined) return stoppedAt("unread", `${said}'s tickets or comments could not be read, so no model was spent`);
+  const comments = tickets.length === 0 && fix === undefined ? [] : commentsOn(issue, gh);
+  if (comments === undefined) return stoppedAt("unread", `${said}'s comments could not be read, so no model was spent`);
   const found = tickets.length === 0 && fix === undefined ? undefined : { comments, tickets: waveFound(tickets), diffs: waveDiffs(tickets), missed: fix ?? missedSinceNote(comments), fix: fix !== undefined };
   mark(issue, "slicing", ...(fix === undefined ? [] : (["--try"] as const)));
   const logs = machineLogs(process.cwd());

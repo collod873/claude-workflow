@@ -14,10 +14,10 @@ const followUp = (number: number, of: number, state = "open") => ({ ...ticket(nu
 const NOTE = "## Wave 1\n\n> the owner's words\n\nSettled.\n\nFiles it.\n\nFiled: #1101, #1102.\n\n<!-- moves: 1, 3 -->\n";
 const CHECKED = "## Wave check\n\n1. **Held**: see it\n";
 
-function ended({ closed = 1102, tickets = [ticket(1101), ticket(1102)], spec = SPEC_ISSUE, open = [] as object[], said = [NOTE, CHECKED], extra = {} as Record<string, object> } = {}) {
+function ended({ closed = 1102, tickets = [ticket(1101), ticket(1102)], spec = SPEC_ISSUE, open = [] as object[], said = [NOTE, CHECKED], extra = {} as Record<string, object>, gh = "" } = {}) {
   const issues: Record<string, object> = { "968": spec, "968/sub_issues": tickets, ...extra };
   for (const one of tickets) Object.assign(issues, { [String(one.number)]: one, [`${one.number}/parent`]: spec });
-  const sliced = slicing({ issues, comments: { "968": said }, open });
+  const sliced = slicing({ issues, comments: { "968": said }, open, gh });
   return { ...sliced, ran: sliced.run("--ended", String(closed)) };
 }
 
@@ -156,6 +156,7 @@ describe("bin/slice ends red at a read of the wave that fails, rather than handi
     { read: "a ticket's PR", pattern: '"pr view ticket/1001"*', line: "the PR of #1001 could not be read" },
     { read: "a ticket's comments", pattern: '*"issues/1001/comments"*', line: "the comments on #1001 could not be read, so no model was spent" },
     { read: "a merged PR's diff", pattern: '"pr diff ticket/1001"*', line: "the diff of #1001's PR could not be read, so no model was spent" },
+    { read: "the tickets under the spec", pattern: '*"issues/968/sub_issues"*', line: "the tickets under #968 could not be read, so no model was spent" },
   ])("ends red at unread naming $read, marking, posting and hiring nothing", ({ pattern, line }) => {
     const sliced = reslicing({ gh: failing(pattern) });
 
@@ -163,6 +164,19 @@ describe("bin/slice ends red at a read of the wave that fails, rather than handi
     expect(sliced.marked()).toEqual([]);
     expect(sliced.hired()).toEqual([]);
     expect([...sliced.comments(), ...sliced.filed().map(({ body }) => body), ...sliced.rewrites()]).toEqual([]);
+  });
+});
+
+describe("bin/slice --ended ends red at a read of the wave that fails, naming no spec (#1112)", () => {
+  it.each([
+    { read: "the tickets under the spec", pattern: '*"issues/968/sub_issues"*', line: "the tickets under #968 could not be read, so no wave ended" },
+    { read: "the open issues", pattern: '"issue list"*', line: "the open issues could not be read to find follow-ups of #968's tickets, so no wave ended" },
+    { read: "the spec's comments", pattern: '*"issues/968/comments"*', line: "the comments on #968 could not be read, so no wave ended" },
+  ])("ends red at unread naming $read", ({ pattern, line }) => {
+    const { ran, hired } = ended({ gh: `[[ "$*" == ${pattern} ]] && { printf 'gh: Server Error (HTTP 502)\\n' >&2; exit 1; }` });
+
+    expect(ran).toEqual({ status: 1, stdout: "", stderr: `slice: ${line}\n` });
+    expect(hired()).toEqual([]);
   });
 });
 

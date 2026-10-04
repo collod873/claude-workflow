@@ -1,5 +1,5 @@
 import { capped } from "./brief.ts";
-import { commentsOn, commentsRead, gh, ghWhole, heldOf, opened, type Opened, prOfTicket } from "./post.ts";
+import { commentsRead, gh, ghRead, ghWhole, heldOf, opened, type Opened, prOfTicket, readOrStop, unread } from "./post.ts";
 import { REVIEWED_FROM, SPLIT_FROM } from "./reviewer.ts";
 import type { LabelName } from "./spelled.ts";
 import { exitFor, stoppedAt, type Stop } from "./stops.ts";
@@ -51,22 +51,22 @@ function specOf(issue: string, chain: string[] = []): Found | "unread" {
   return of === undefined ? { chain } : specOf(of, [...chain, issue]);
 }
 
-function lines(args: string[]): Listed[] | undefined {
-  const got = gh(args);
-  if (got.status !== 0) return undefined;
+function lines(args: string[], unreadLine: string): Listed[] {
+  const listed = ghRead(args, unreadLine);
   try {
-    return got.stdout
+    return listed
       .split("\n")
       .filter((line) => line.trim() !== "")
       .map((line) => JSON.parse(line) as Listed);
   } catch {
-    return undefined;
+    return unread(unreadLine);
   }
 }
 
-export const underSpec = (spec: string): Listed[] | undefined => lines(["api", "--paginate", `repos/{owner}/{repo}/issues/${spec}/sub_issues`, "--jq", ".[] | {number, title, state, state_reason}"]);
+export const underSpec = (spec: string, so: string): Listed[] => lines(["api", "--paginate", `repos/{owner}/{repo}/issues/${spec}/sub_issues`, "--jq", ".[] | {number, title, state, state_reason}"], `the tickets under #${spec} could not be read, ${so}`);
 
 const UNSPENT = "so no model was spent";
+const NO_WAVE_ENDED = "so no wave ended";
 
 function prOf(ticket: number): string {
   const pr = prOfTicket(String(ticket), ["state", "files"], gh);
@@ -107,9 +107,8 @@ export function waveDiffs(tickets: Listed[]): string {
   return capped(all, kept) + capped(`\n\n(cut at the ${DIFF_CAP} byte cap inside #${shown[cutAt]?.number ?? ""}'s diff; not shown: ${unshown.join(", ") || "none"})`, CUT_NOTE_CAP);
 }
 
-function openFollowUps(tied: Set<string>): string[] | undefined {
-  const listed = lines(["issue", "list", "--state", "open", "--limit", String(LISTED), "--json", "number,body", "--jq", ".[]"]);
-  if (listed === undefined) return undefined;
+function openFollowUps(tied: Set<string>, unreadLine: string): string[] {
+  const listed = lines(["issue", "list", "--state", "open", "--limit", String(LISTED), "--json", "number,body", "--jq", ".[]"], unreadLine);
   const still: string[] = [];
   for (let grew = true; grew; ) {
     grew = false;
@@ -151,20 +150,17 @@ function waveEnded(issue: string): Stop | undefined {
     return undefined;
   }
   const number = String(spec.number);
-  const tickets = underSpec(number);
-  if (tickets === undefined) return stoppedAt("unread", `slice: the tickets under #${number} could not be read`);
+  const tickets = underSpec(number, NO_WAVE_ENDED);
   const unclosed = tickets.filter(({ state }) => state === "open").map((one) => `#${one.number}`);
-  const followUps = unclosed.length > 0 ? [] : openFollowUps(new Set([...tickets.map((one) => String(one.number)), ...chain]));
-  if (followUps === undefined) return stoppedAt("unread", `slice: the open issues could not be read to find follow-ups of #${number}'s tickets`);
+  const followUps = unclosed.length > 0 ? [] : openFollowUps(new Set([...tickets.map((one) => String(one.number)), ...chain]), `the open issues could not be read to find follow-ups of #${number}'s tickets, ${NO_WAVE_ENDED}`);
   const [still] = [...unclosed, ...followUps];
   if (still !== undefined) {
     console.error(`slice: #${number}'s wave is not over, ${still} is still open`);
     return undefined;
   }
-  const comments = commentsOn(number, gh);
-  if (comments === undefined) return stoppedAt("unread", `slice: the comments on #${number} could not be read`);
+  const comments = commentsRead(number, `the comments on #${number} could not be read, ${NO_WAVE_ENDED}`, gh);
   console.log(`spec=${number}\nmoves=${moved(comments)}`);
   return undefined;
 }
 
-export const ended = (issue: string): number => exitFor(waveEnded(issue));
+export const ended = (issue: string): number => exitFor(readOrStop("slice", () => waveEnded(issue)));
