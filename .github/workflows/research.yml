@@ -9,33 +9,8 @@ permissions:
   contents: read
 
 jobs:
-  labelled:
-    if: ${{ github.event.sender.login == github.repository_owner }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    outputs:
-      held: ${{ steps.labelled.outputs.held }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-          persist-credentials: false
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-
-      - id: labelled
-        run: |
-          research=$(bin/spelled RESEARCH)
-          held=$(jq --arg research "$research" 'any(.issue.labels[]?.name; . == $research)' "$GITHUB_EVENT_PATH")
-          printf 'held=%s\n' "$held" | tee -a "$GITHUB_OUTPUT"
-
   research:
-    needs: labelled
-    if: ${{ needs.labelled.outputs.held == 'true' }}
+    if: ${{ github.event.sender.login == github.repository_owner }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -61,16 +36,25 @@ jobs:
         with:
           node-version: 24
 
+      - id: labelled
+        run: |
+          research=$(bin/spelled RESEARCH)
+          held=$(jq --arg research "$research" 'any(.issue.labels[]?.name; . == $research)' "$GITHUB_EVENT_PATH")
+          printf 'held=%s\n' "$held" | tee -a "$GITHUB_OUTPUT"
+
       - id: npm-ci
+        if: steps.labelled.outputs.held == 'true'
         run: npm ci
 
       - id: stage
+        if: steps.labelled.outputs.held == 'true'
         uses: ./.github/actions/stage
         with:
           client-id: ${{ vars.CORE_APP_CLIENT_ID }}
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
 
       - id: sources
+        if: steps.labelled.outputs.held == 'true'
         timeout-minutes: 6
         shell: bash
         env:
@@ -93,6 +77,7 @@ jobs:
           printf 'RESEARCH_SOURCES=%s\n' "$sources" >>"$GITHUB_ENV"
 
       - id: research
+        if: steps.labelled.outputs.held == 'true'
         timeout-minutes: 42
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
@@ -102,13 +87,13 @@ jobs:
           tail --pid=$$ -n +1 -F .git/machine-logs/research-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
           bin/research ${{ github.event.issue.number }}
 
-      - if: ${{ failure() || cancelled() }}
+      - if: ${{ steps.labelled.outputs.held != 'false' && (failure() || cancelled()) }}
         uses: ./.github/actions/call-owner
         with:
           issue: ${{ github.event.issue.number }}
           run: the research run
 
-      - if: always()
+      - if: always() && steps.labelled.outputs.held != 'false'
         timeout-minutes: 6
         uses: ./.github/actions/stage-logs
         with:

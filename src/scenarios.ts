@@ -62,11 +62,18 @@ export interface IssueEvent {
 
 export const workflowJobs = (file: string) => (parse(readFileSync(join(WORKFLOWS, file), "utf8")) as { jobs: Record<string, WorkflowJob> }).jobs;
 
-export function labelledStep(file: string): WorkflowStep {
-  const step = workflowJobs(file).labelled?.steps.find(({ id }) => id === "labelled");
-  if (step === undefined) throw new Error(`no labelled step in ${file}`);
+export function labelledStep(file: string, job: string): WorkflowStep {
+  const step = workflowJobs(file)[job]?.steps.find(({ id }) => id === "labelled");
+  if (step === undefined) throw new Error(`no labelled step in the ${job} job of ${file}`);
   return step;
 }
+
+export const afterLabelled = (steps: WorkflowStep[]) => steps.slice(steps.findIndex(({ id }) => id === "labelled") + 1);
+
+export const labelledAs = (steps: WorkflowStep[], held: string | undefined): Record<string, StepOutcome> => ({
+  ...Object.fromEntries(steps.flatMap(({ id }) => (id === undefined ? [] : [[id, { outcome: "skipped", conclusion: "skipped", outputs: {} }]]))),
+  labelled: { outcome: "success", conclusion: "success", outputs: held === undefined ? {} : { held } },
+});
 
 export function heldBy(step: WorkflowStep, cwd: string, { labels, action = "opened", label = "", sender = OWNER }: IssueEvent): Promise<{ failed: boolean; held: string | undefined }> {
   const root = scratch("labelled-");
@@ -84,17 +91,17 @@ export function heldBy(step: WorkflowStep, cwd: string, { labels, action = "open
 const HELD = new Map<string, ReturnType<typeof heldBy>>();
 
 export async function starts(file: string, gated: string, event: IssueEvent): Promise<boolean> {
-  const jobs = workflowJobs(file);
+  const job = workflowJobs(file)[gated];
+  if (job === undefined) throw new Error(`no ${gated} job in ${file}`);
   const { labels, ...rest } = event;
-  if (!holds(jobs.labelled?.if ?? "true", rest)) return false;
+  if (!holds(job.if ?? "true", rest)) return false;
   const seen = `${file} ${JSON.stringify([labels, rest.action, rest.label])}`;
-  const heard = HELD.get(seen) ?? heldBy(labelledStep(file), join(SRC, ".."), { ...rest, labels, sender: OWNER });
+  const heard = HELD.get(seen) ?? heldBy(labelledStep(file, gated), join(SRC, ".."), { ...rest, labels, sender: OWNER });
   HELD.set(seen, heard);
   const { failed, held } = await heard;
   if (failed || held === undefined) throw new Error(`the labelled step of ${file} ended red on ${JSON.stringify(labels)}`);
-  const job = jobs[gated];
-  if (job === undefined) throw new Error(`no ${gated} job in ${file}`);
-  return [job.needs ?? []].flat().includes("labelled") && holds(job.if ?? "true", { needs: { labelled: { result: "success", outputs: { held } } } });
+  const [next] = afterLabelled(job.steps);
+  return holds(next?.if ?? "success()", { steps: labelledAs(job.steps, held) });
 }
 
 export type Said = string | { author: string; type: string; body: string };
@@ -121,7 +128,7 @@ export function holds(
   }: {
     labels?: string[];
     steps?: Record<string, StepOutcome>;
-    needs?: Record<string, { result: string; outputs?: Record<string, string> }>;
+    needs?: Record<string, { result: string }>;
     failed?: boolean;
     cancelled?: boolean;
     sender?: string;
@@ -140,7 +147,6 @@ export function holds(
     .replace(/contains\(\s*github\.event\.issue\.labels\.\*\.name\s*,\s*('[^']*')\s*\)/g, "labels.includes($1)")
     .replace(/steps\.([\w-]+)\.(outcome|conclusion)/g, 'steps["$1"].$2')
     .replace(/steps\.([\w-]+)\.outputs\.([\w-]+)/g, '(steps["$1"].outputs ?? {})["$2"]')
-    .replace(/needs\.([\w-]+)\.outputs\.([\w-]+)/g, '(needs["$1"].outputs ?? {})["$2"]')
     .replace(/needs\.([\w-]+)\.result/g, 'needs["$1"].result');
   const evaluate = new Function("labels", "steps", "needs", "success", "failure", "always", "cancelled", `return Boolean(${source});`) as (...scope: unknown[]) => boolean;
   return evaluate(

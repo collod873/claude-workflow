@@ -264,7 +264,7 @@ describe("done-check.yml runs the done check again on the owner's reply to a sen
     plant(root, "comments.json", JSON.stringify(comments.map((body) => ({ body, user: { login: MACHINE } }))));
     script(join(root, "bin", "gh"), `while [[ $1 != --jq ]]; do shift; done\njq -r "$2" <"${join(root, "comments.json")}"\n`);
     const output = join(root, "output");
-    const step = workflow().asked.steps.find((one) => one.run !== undefined);
+    const step = workflow().asked.steps.find((one) => one.id === "asked");
     const ran = execute("bash", root, { PATH: `${join(root, "bin")}:${process.env.PATH}`, GITHUB_OUTPUT: output, GH_REPO: "collod873/claude-workflow", SPEC: "974" }, ["-e", "-c", step?.run ?? ""]);
     if (ran.status !== 0) throw new Error(ran.stderr);
     return readFileSync(output, "utf8").match(/^asked=(.*)$/m)?.[1];

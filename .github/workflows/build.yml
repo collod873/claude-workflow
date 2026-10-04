@@ -9,35 +9,8 @@ permissions:
   contents: read
 
 jobs:
-  labelled:
-    if: "${{ github.event.sender.login == github.repository_owner || (github.event.sender.login == 'collod873-machine[bot]' && (github.event.action == 'unlabeled' || github.event.action == 'opened')) }}"
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    outputs:
-      held: ${{ steps.labelled.outputs.held }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-          persist-credentials: false
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-
-      - id: labelled
-        run: |
-          waiting=$(bin/spelled WAITING)
-          note=$(bin/spelled NOTE)
-          spec=$(bin/spelled SPEC)
-          held=$(jq --arg waiting "$waiting" --arg note "$note" --arg spec "$spec" '(.action != "unlabeled" or .label.name == $waiting) and (any(.issue.labels[]?.name; IN($note, $spec, $waiting)) | not)' "$GITHUB_EVENT_PATH")
-          printf 'held=%s\n' "$held" | tee -a "$GITHUB_OUTPUT"
-
   build:
-    needs: labelled
-    if: ${{ needs.labelled.outputs.held == 'true' }}
+    if: "${{ github.event.sender.login == github.repository_owner || (github.event.sender.login == 'collod873-machine[bot]' && (github.event.action == 'unlabeled' || github.event.action == 'opened')) }}"
     runs-on: ubuntu-latest
     timeout-minutes: 70
     cache-mode: write
@@ -63,28 +36,40 @@ jobs:
         with:
           node-version: 24
 
+      - id: labelled
+        run: |
+          waiting=$(bin/spelled WAITING)
+          note=$(bin/spelled NOTE)
+          spec=$(bin/spelled SPEC)
+          held=$(jq --arg waiting "$waiting" --arg note "$note" --arg spec "$spec" '(.action != "unlabeled" or .label.name == $waiting) and (any(.issue.labels[]?.name; IN($note, $spec, $waiting)) | not)' "$GITHUB_EVENT_PATH")
+          printf 'held=%s\n' "$held" | tee -a "$GITHUB_OUTPUT"
+
       - id: npm-ci
+        if: steps.labelled.outputs.held == 'true'
         run: npm ci
 
       - id: stage
+        if: steps.labelled.outputs.held == 'true'
         uses: ./.github/actions/stage
         with:
           client-id: ${{ vars.CORE_APP_CLIENT_ID }}
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
 
       - id: admit
+        if: steps.labelled.outputs.held == 'true'
         timeout-minutes: 2
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
         run: bin/admit ${{ github.event.issue.number }} >>"$GITHUB_OUTPUT"
 
       - id: git-config
+        if: steps.labelled.outputs.held == 'true'
         run: |
           git config user.name "core-app[bot]"
           git config user.email "core-app[bot]@users.noreply.github.com"
 
       - id: start
-        if: steps.admit.outputs.admitted == 'true'
+        if: steps.labelled.outputs.held == 'true' && (steps.admit.outputs.admitted == 'true')
         timeout-minutes: 10
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
@@ -107,7 +92,7 @@ jobs:
           fi
 
       - id: fix
-        if: steps.admit.outputs.admitted == 'true' && steps.start.outputs.rerun != 'true'
+        if: steps.labelled.outputs.held == 'true' && (steps.admit.outputs.admitted == 'true' && steps.start.outputs.rerun != 'true')
         timeout-minutes: 50
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
@@ -118,7 +103,7 @@ jobs:
           git checkout --quiet -b "ticket/${{ github.event.issue.number }}"
           bin/fix ${{ github.event.issue.number }}
 
-      - if: always() && steps.fix.outcome != 'skipped'
+      - if: ${{ steps.labelled.outputs.held != 'false' && (always() && steps.fix.outcome != 'skipped') }}
         uses: actions/cache/save@v6
         with:
           path: |
@@ -126,7 +111,7 @@ jobs:
             ~/.claude/builder
           key: builder-ticket/${{ github.event.issue.number }}-${{ github.run_id }}
 
-      - if: always()
+      - if: always() && steps.labelled.outputs.held != 'false'
         timeout-minutes: 6
         uses: ./.github/actions/stage-logs
         with:

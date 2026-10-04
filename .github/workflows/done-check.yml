@@ -9,14 +9,15 @@ permissions:
   contents: read
 
 jobs:
-  labelled:
+  asked:
     if: ${{ github.event.sender.login == github.repository_owner }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: read
+      issues: read
     outputs:
-      held: ${{ steps.labelled.outputs.held }}
+      asked: ${{ steps.asked.outputs.asked }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -34,17 +35,8 @@ jobs:
           held=$(jq --arg spec "$spec" --arg stop "$stop" 'any(.issue.labels[]?.name; . == $spec) and (any(.issue.labels[]?.name; . == $stop) | not)' "$GITHUB_EVENT_PATH")
           printf 'held=%s\n' "$held" | tee -a "$GITHUB_OUTPUT"
 
-  asked:
-    needs: labelled
-    if: ${{ needs.labelled.outputs.held == 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    permissions:
-      issues: read
-    outputs:
-      asked: ${{ steps.asked.outputs.asked }}
-    steps:
       - id: asked
+        if: steps.labelled.outputs.held == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}

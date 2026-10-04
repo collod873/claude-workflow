@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { cloned, copyMark, git, holds, scratch, script, starts as startsJob, type IssueEvent, type StepOutcome } from "./scenarios.ts";
+import { cloned, copyMark, git, holds, labelledAs, scratch, script, starts as startsJob, type IssueEvent, type StepOutcome } from "./scenarios.ts";
 
 const REPO = join(import.meta.dirname, "..");
 const WORKFLOWS = join(REPO, ".github", "workflows");
@@ -53,7 +53,7 @@ function stageStep(job: Job, stage: Stage): Step {
 }
 
 function stagesRun(job: Job, failing: Stage | undefined, given: Record<string, Record<string, string>> = {}): Stage[] {
-  const outputs: Record<string, Record<string, string>> = { admit: { admitted: "true" }, ...given };
+  const outputs: Record<string, Record<string, string>> = { labelled: { held: "true" }, admit: { admitted: "true" }, ...given };
   const outcomes: Record<string, StepOutcome> = {};
   for (const step of job.steps) if (step.id !== undefined) outcomes[step.id] = { outcome: "skipped", conclusion: "skipped", outputs: {} };
   const red = failing === undefined ? undefined : stageStep(job, failing);
@@ -250,8 +250,10 @@ describe("every job that spends a model is watched as it goes, read after it end
       expect(steps[minted]?.with).toMatchObject({ owner: "collod873", "permission-contents": "write" });
       expect(minted).toBeGreaterThan(lastModel);
       expect(filed).toBeGreaterThan(minted);
-      expect(steps[minted]?.if).toBe("always()");
-      expect(steps[filed]?.if).toBe("always()");
+      for (const ended of [{}, { failed: true }, { cancelled: true }]) {
+        expect(holds(steps[minted]?.if ?? "success()", { steps: labelledAs(steps, "true"), ...ended })).toBe(true);
+        expect(holds(steps[filed]?.if ?? "success()", { steps: labelledAs(steps, "true"), ...ended })).toBe(true);
+      }
     }
   });
 

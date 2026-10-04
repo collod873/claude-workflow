@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { BIN, copyMark, execute, heldBy, holds, labelledStep, MACHINE, OWNER, scratch, script, starts, workflowJobs, type IssueEvent } from "./scenarios.ts";
+import { afterLabelled, BIN, copyMark, execute, heldBy, holds, labelledAs, labelledStep, MACHINE, OWNER, scratch, script, starts, workflowJobs, type IssueEvent } from "./scenarios.ts";
 
 const GITHUB = join(BIN, "..", ".github");
 const files = () => [
@@ -52,11 +52,11 @@ describe("the workflows ask spelled for each label they test, so a renamed label
   });
 
   it("ends the labelled step red, holding nothing, when spelled cannot answer", async () => {
-    for (const { file } of GATED) {
+    for (const { file, job } of GATED) {
       const root = scratch("unspelled-");
       script(join(root, "bin", "spelled"), "printf 'node: not found\\n' >&2\nexit 127\n");
 
-      expect(await heldBy(labelledStep(file), root, { labels: ["spec"] }), file).toEqual({ failed: true, held: undefined });
+      expect(await heldBy(labelledStep(file, job), root, { labels: ["spec"] }), file).toEqual({ failed: true, held: undefined });
     }
   });
 
@@ -71,7 +71,26 @@ describe("the workflows ask spelled for each label they test, so a renamed label
 
   it("tests only sender and event in a job's if, never a label", () => {
     for (const file of readdirSync(join(GITHUB, "workflows"))) {
-      for (const [name, job] of Object.entries(workflowJobs(file))) expect(job.if ?? "", `${file} ${name}`).not.toMatch(/labels|label\.name/);
+      for (const [name, job] of Object.entries(workflowJobs(file))) expect(job.if ?? "", `${file} ${name}`).not.toMatch(/labels|label\.name|labelled/);
+    }
+    for (const { file, job } of GATED) {
+      const tested = (workflowJobs(file)[job]?.if ?? "").replace(/github\.event\.(sender\.login|action)|github\.repository_owner|'[^']*'|[\s()&|=!${}"]/g, "");
+      expect(tested, `${file} ${job}`).toBe("");
+    }
+  });
+
+  it("asks spelled in each gated job's first step past checkout and Node, and runs nothing after it on a label it does not start on, green or red", () => {
+    for (const { file, job } of GATED) {
+      const { steps } = workflowJobs(file)[job] ?? { steps: [] };
+      const at = steps.findIndex(({ id }) => id === "labelled");
+      const before = steps.slice(0, at);
+
+      expect(before.every((step) => step.uses?.startsWith("actions/") === true), `${file} ${job}`).toBe(true);
+      expect(before.some((step) => step.uses?.startsWith("actions/setup-node@") === true), `${file} ${job}`).toBe(true);
+      expect(afterLabelled(steps).length, `${file} ${job}`).toBeGreaterThan(0);
+      for (const step of afterLabelled(steps)) {
+        for (const failed of [false, true]) expect(holds(step.if ?? "success()", { steps: labelledAs(steps, "false"), failed }), `${file} ${job} ${step.id ?? step.uses ?? ""}`).toBe(false);
+      }
     }
   });
 
