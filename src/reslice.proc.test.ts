@@ -140,7 +140,7 @@ describe("bin/slice on a spec with tickets under it slices its next wave against
   it("slices nothing on a spec marked needs-human, since the job stopped for the owner", () => {
     const sliced = reslicing({ labels: ["spec", "needs-human"] });
 
-    expect(sliced.run()).toEqual({ status: 0, stdout: "slice: #968 is marked needs-human, so nothing sliced it\n", stderr: "" });
+    expect(sliced.run()).toEqual({ status: 0, stdout: "slice: #968 is marked needs-human, so no label changed and no model was hired\n", stderr: "" });
     expect(sliced.hired()).toEqual([]);
   });
 });

@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { handedOn, NOTE_CAP, OUT_OF_TIME } from "./researcher.ts";
 import { BIN, execute, issueStage, stubbedMark, wellFormedNote } from "./scenarios.ts";
+import { NEEDS_HUMAN } from "./spelled.ts";
 import { declareStage, HANDED_ON } from "./stages.ts";
 
 export const READING_SESSION = "reading-session";
@@ -40,5 +41,7 @@ declareStage({
   scenarios: [
     { label: "answering a research note", run: () => researching().run() },
     { label: "refusing a ticket", run: () => researching({ labels: ["building"] }).run() },
+    { label: "stopping at an issue it cannot read", run: () => researching({ gh: "[[ $1 == issue && $2 == view ]] && exit 1" }).run() },
+    { label: "standing down on needs-human", run: () => researching({ labels: ["note", "research", NEEDS_HUMAN] }).run() },
   ],
 });
