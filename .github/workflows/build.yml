@@ -1,5 +1,5 @@
 name: Build
-run-name: "Build ticket/${{ github.event.issue.number }}: ${{ github.event.issue.title }}"
+run-name: "Build #${{ github.event.issue.number }}: ${{ github.event.issue.title }}"
 
 "on":
   issues:
@@ -74,7 +74,8 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
         run: |
-          branch="ticket/${{ github.event.issue.number }}"
+          branch="$(bin/spelled TICKET_PREFIX)${{ github.event.issue.number }}"
+          printf 'branch=%s\n' "$branch" >>"$GITHUB_OUTPUT"
           checking=$(bin/spelled CHECKING)
           building=$(bin/spelled BUILDING)
           if [[ '${{ github.event.action }}' == reopened ]] && state=$(gh pr view "$branch" --json state --jq .state 2>/dev/null) && [[ $state == OPEN ]]; then # quiet: a ticket with no PR yet builds
@@ -98,9 +99,10 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           STAGE_MINUTES: 45
+          BRANCH: ${{ steps.start.outputs.branch }}
         run: |
           tail --pid=$$ -n +1 -F .git/machine-logs/fix-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
-          git checkout --quiet -b "ticket/${{ github.event.issue.number }}"
+          git checkout --quiet -b "$BRANCH"
           bin/fix ${{ github.event.issue.number }}
 
       - if: ${{ steps.labelled.outputs.held != 'false' && (always() && steps.fix.outcome != 'skipped') }}
@@ -109,7 +111,7 @@ jobs:
           path: |
             ~/.claude/projects
             ~/.claude/builder
-          key: builder-ticket/${{ github.event.issue.number }}-${{ github.run_id }}
+          key: builder-${{ steps.start.outputs.branch }}-${{ github.run_id }}
 
       - if: always() && steps.labelled.outputs.held != 'false'
         timeout-minutes: 6
