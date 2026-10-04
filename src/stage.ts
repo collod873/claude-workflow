@@ -1,8 +1,10 @@
 import { spawnSync } from "node:child_process";
-import { closeSync, existsSync, mkdtempSync, openSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { ownerHooks, stageArgv, type Reach, type Registration } from "./fence.ts";
+import { type Asked, askedIssue, ghRead, mark, NEEDS_HUMAN, unread, type MarkedLabel } from "./post.ts";
+import type { Stop } from "./stops.ts";
 import { quoted } from "./ticket-shape.ts";
 
 const STREAM = ["--output-format", "stream-json", "--verbose"];
@@ -133,3 +135,37 @@ export function hired(hire: Hire): ((input: string, resume?: string) => Spent) |
 }
 
 export const machineLogs = (cwd: string) => join(git(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]).stdout.trim(), "machine-logs");
+
+interface Opening<Carried, Own extends string> {
+  stage: string;
+  issue: string;
+  state: MarkedLabel;
+  tried?: boolean;
+  hire: Omit<Hire, "transcript">;
+  stoppedAt: (stop: Stop, line: string) => Own;
+  ready: (asked: Asked) => { carrying: Carried } | Own | undefined;
+}
+
+export interface Opened<Carried> {
+  asked: Asked;
+  carried: Carried;
+  spend: (input: string, resume?: string) => Spent;
+}
+
+export function opened<Carried, Own extends string>({ stage, issue, state, tried, hire, stoppedAt, ready }: Opening<Carried, Own>): Opened<Carried> | Own | undefined {
+  const said = `${stage}: #${issue}`;
+  const unchanged = "so no label changed and no model was hired";
+  const asked = askedIssue(ghRead(["issue", "view", issue, "--json", "title,body,labels"], `#${issue} could not be read, ${unchanged}`)) ?? unread(`#${issue} could not be read, ${unchanged}`);
+  if (asked.labels.has(NEEDS_HUMAN)) {
+    console.log(`${said} is marked ${NEEDS_HUMAN}, ${unchanged}`);
+    return undefined;
+  }
+  const readied = ready(asked);
+  if (typeof readied !== "object") return readied;
+  mark(issue, state, ...(tried === true ? (["--try"] as const) : []));
+  const logs = machineLogs(process.cwd());
+  mkdirSync(logs, { recursive: true });
+  const spend = hired({ ...hire, transcript: join(logs, `${stage}-${issue}.jsonl`) });
+  if (typeof spend === "string") return stoppedAt("modelRun", `${said} ended red, the owner's hooks could not be read from ${spend}`);
+  return { asked, carried: readied.carrying, spend };
+}

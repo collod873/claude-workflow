@@ -1,11 +1,10 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { capped } from "./brief.ts";
 import { UNFENCED } from "./fence.ts";
-import { askedIssue, authoredOn, commentOnTicket, gh, mark, NEEDS_HUMAN, OWNER, readOrStop, type Asked } from "./post.ts";
+import { authoredOn, commentOnTicket, gh, mark, NEEDS_HUMAN, OWNER, readOrStop, unread, type Asked } from "./post.ts";
 import { NO_EM_DASH } from "./reviewer.ts";
-import { hired, machineLogs } from "./stage.ts";
+import { opened, type Spent } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { SPEC_LABEL } from "./wave.ts";
 import { quoted, type Sentence, sentences, SPEC_CAP } from "./ticket-shape.ts";
@@ -115,11 +114,7 @@ const wavePosted = (tried: [number, string, Try][], repeated: [number, string, T
     "",
   ].join("\n");
 
-function triedByModel({ issue, asked, replies: owners }: Read, ran: number[], wave?: number[]): Try[] | string {
-  const logs = machineLogs(process.cwd());
-  mkdirSync(logs, { recursive: true });
-  const spend = hired({ name: "done checker", transcript: join(logs, `done-check-${issue}.jsonl`), reach: UNFENCED, answers: triesOf(wave === undefined ? DONE_OUTCOMES : Object.keys(OUTCOMES)) });
-  if (typeof spend === "string") return `the owner's hooks could not be read from ${spend}`;
+function triedByModel({ asked, replies: owners, spend }: Read, ran: number[], wave?: number[]): Try[] | string {
   const replies = wave === undefined ? owners : "";
   const spent = spend(handedOn(asked.title, asked.body, { ran, wave, replies }));
   if (spent.refusal !== undefined) return spent.refusal;
@@ -134,23 +129,32 @@ interface Read {
   comments: string[];
   replies: string;
   listed: Sentence[];
+  spend: (input: string) => Spent;
 }
 
-function read(issue: string): Read | Stop {
+function read(issue: string, wave?: number[]): Read | Stop | undefined {
   const said = `done-check: #${issue}`;
-  const view = gh(["issue", "view", issue, "--json", "title,body,labels"]);
-  const asked = view.status === 0 ? askedIssue(view.stdout) : undefined;
-  if (asked === undefined) return stoppedAt("unread", `${said} could not be read, so nothing was tried`);
-  if (!asked.labels.has(SPEC_LABEL)) return stoppedAt("notSpec", `${said} is not a spec, so nothing was tried`);
-  const listed = sentences(asked.body);
-  if (listed.length === 0) return stoppedAt("notSpec", `${said} carries no sentence to try, so nothing was tried or closed`);
-  const authored = authoredOn(issue, gh);
-  if (authored === undefined) return stoppedAt("unread", `${said} could not read its comments, so nothing was tried`);
-  if (!asked.labels.has(NEEDS_HUMAN)) mark(issue, "checking");
+  const opening = opened({
+    stage: "done-check",
+    issue,
+    state: "checking",
+    stoppedAt,
+    hire: { name: "done checker", reach: UNFENCED, answers: triesOf(wave === undefined ? DONE_OUTCOMES : Object.keys(OUTCOMES)) },
+    ready: (asked) => {
+      if (!asked.labels.has(SPEC_LABEL)) return stoppedAt("notSpec", `${said} is not a spec, so nothing was tried`);
+      const listed = sentences(asked.body);
+      if (listed.length === 0) return stoppedAt("notSpec", `${said} carries no sentence to try, so nothing was tried or closed`);
+      const beyond = wave?.find((number) => number < 1 || number > listed.length);
+      if (beyond !== undefined) return stoppedAt("notSpec", `${said} carries no sentence ${beyond}, so nothing was tried`);
+      return { carrying: { listed, authored: authoredOn(issue, gh) ?? unread(`#${issue} could not read its comments, so nothing was tried`) } };
+    },
+  });
+  if (typeof opening !== "object") return opening;
+  const { asked, spend, carried: { listed, authored } } = opening;
   const comments = authored.map(({ body }) => body);
   const since = comments.map((comment) => comment.startsWith(DONE_CHECK_HEADING)).lastIndexOf(true);
   const replies = since === -1 ? "" : authored.slice(since + 1).flatMap(({ author, body }) => (author === OWNER ? [body] : [])).join("\n\n");
-  return { issue, said, asked, comments, replies, listed };
+  return { issue, said, asked, comments, replies, listed, spend };
 }
 
 function tried(spec: Read, numbers: number[], wave?: number[]): [number, string, Try][] | Stop {
@@ -178,10 +182,8 @@ function commented({ issue, said }: Read, text: string): { url: string } | Stop 
 }
 
 function waveCheck(issue: string, wave: number[]): Stop | undefined {
-  const spec = read(issue);
-  if (typeof spec === "string") return spec;
-  const beyond = wave.find((number) => number < 1 || number > spec.listed.length);
-  if (beyond !== undefined) return stoppedAt("notSpec", `${spec.said} carries no sentence ${beyond}, so nothing was tried`);
+  const spec = read(issue, wave);
+  if (typeof spec !== "object") return spec;
   const lastWave = spec.comments.filter((comment) => comment.startsWith(WAVE_CHECK_HEADING)).at(-1) ?? "";
   const trying = [...new Set([...wave, ...unexercisedIn(lastWave)])].sort((one, other) => one - other);
   const found = tried(spec, trying, trying);
@@ -242,7 +244,7 @@ const settled = (found: [number, string, Try][]): [number, string, Try][] => {
 
 function doneCheck(issue: string): Stop | undefined {
   const spec = read(issue);
-  if (typeof spec === "string") return spec;
+  if (typeof spec !== "object") return spec;
   const tries = tried(
     spec,
     spec.listed.map((_, at) => at + 1),

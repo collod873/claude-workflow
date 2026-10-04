@@ -105,3 +105,10 @@ stage is a context boundary and they are not. Each stage declares its part row, 
 quiet-output scenarios in its own part file, `src/<stage>.part.ts`, and its own stops in its own
 code; every growth limit finds them by scanning, so no two stages share a list.
 _Avoid_: phase, pass, step, job
+
+**Stage opening**:
+How a stage starts on its issue, in `src/stage.ts` beside the hire: it reads the issue once, ends red
+at `unread` when it cannot, ends green in one line on `needs-human` with no label changed and no
+model hired, then marks the stage's state, makes the log directory and hires. The slicer, the
+researcher and the done check open through it.
+_Avoid_: preamble, setup, bootstrap

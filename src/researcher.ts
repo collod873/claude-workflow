@@ -1,10 +1,8 @@
-import { mkdirSync } from "node:fs";
-import { join } from "node:path";
 import { capped } from "./brief.ts";
 import { OPEN_SHELL } from "./fence.ts";
-import { askedIssue, commentOnTicket, gh, mark, readOrStop, RESEARCH } from "./post.ts";
+import { commentOnTicket, gh, readOrStop, RESEARCH } from "./post.ts";
 import { NO_EM_DASH } from "./reviewer.ts";
-import { hired, machineLogs } from "./stage.ts";
+import { opened } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { quoted } from "./ticket-shape.ts";
 
@@ -41,15 +39,16 @@ export function handedOn(title: string, body: string, sources?: string): string 
 
 function researched(issue: string): Stop | undefined {
   const said = `research: #${issue}`;
-  const read = gh(["issue", "view", issue, "--json", "title,body,labels"]);
-  const asked = read.status === 0 ? askedIssue(read.stdout) : undefined;
-  if (asked === undefined) return stoppedAt("unread", `${said} could not be read, so no model was spent`);
-  if (!asked.labels.has(RESEARCH)) return stoppedAt("notResearch", `${said} is not a research note, so nothing answered or closed it`);
-  mark(issue, "researching");
-  const logs = machineLogs(process.cwd());
-  mkdirSync(logs, { recursive: true });
-  const spend = hired({ name: "researcher", transcript: join(logs, `research-${issue}.jsonl`), reach: OPEN_SHELL, answers: FINDINGS, writeUp: { minutes: WRITE_UP_MINUTES, told: OUT_OF_TIME } });
-  if (typeof spend === "string") return stoppedAt("modelRun", `${said} ended red, the owner's hooks could not be read from ${spend}`);
+  const opening = opened({
+    stage: "research",
+    issue,
+    state: "researching",
+    stoppedAt,
+    hire: { name: "researcher", reach: OPEN_SHELL, answers: FINDINGS, writeUp: { minutes: WRITE_UP_MINUTES, told: OUT_OF_TIME } },
+    ready: (asked) => (asked.labels.has(RESEARCH) ? { carrying: {} } : stoppedAt("notResearch", `${said} is not a research note, so nothing answered or closed it`)),
+  });
+  if (typeof opening !== "object") return opening;
+  const { asked, spend } = opening;
   const spent = spend(handedOn(asked.title, asked.body, process.env.RESEARCH_SOURCES || undefined));
   if (spent.refusal !== undefined) return stoppedAt("modelRun", `${said} ended red, ${spent.refusal}`);
   const findings = (spent.answer as { findings?: unknown } | undefined)?.findings;

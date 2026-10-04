@@ -1,12 +1,11 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { capped } from "./brief.ts";
 import { FILED } from "./builder.ts";
 import { FENCED_OPUS } from "./fence.ts";
-import { askedIssue, commentOnTicket, commentsOn, gh, mark, NEEDS_HUMAN, post, readOrStop } from "./post.ts";
+import { commentOnTicket, commentsRead, gh, ghRead, mark, NEEDS_HUMAN, post, readOrStop, unread } from "./post.ts";
 import { LIST_CAP, NO_EM_DASH, TICKET_CAP } from "./reviewer.ts";
-import { hired, machineLogs, type Spent } from "./stage.ts";
+import { opened, type Spent } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { missedIn, WAVE_CHECK_HEADING } from "./done-checker.ts";
 import { DIFF_CAP, ended, FOUND_CAP, movesMarker, SPEC_LABEL, underSpec, waveDiffs, waveFound, waveHeading, waveNotes } from "./wave.ts";
@@ -205,8 +204,8 @@ function filedWave(issue: string, read: string, wave: Wave, number: number): Sto
     if (refusal !== undefined) return partWave(issue, wave, numbers, at, `${title} would not file: ${quoted(refusal)}`);
     const number = FILED.exec(filed.said)?.[1];
     if (number === undefined) return partWave(issue, wave, [...numbers, `${title}, its number unknown and not under this spec`], at + 1, `${title} filed, but its number could not be read from ${JSON.stringify(quoted(filed.said))}`);
-    const id = gh(["api", `repos/{owner}/{repo}/issues/${number}`, "--jq", ".id"]);
-    const linked = id.status === 0 ? gh(["api", "--method", "POST", `repos/{owner}/{repo}/issues/${issue}/sub_issues`, "-F", `sub_issue_id=${id.stdout.trim()}`]) : id;
+    const id = ghRead(["api", `repos/{owner}/{repo}/issues/${number}`, "--jq", ".id"], `#${issue} filed #${number}, but its id could not be read, so it is not under the spec`);
+    const linked = gh(["api", "--method", "POST", `repos/{owner}/{repo}/issues/${issue}/sub_issues`, "-F", `sub_issue_id=${id}`]);
     if (linked.status !== 0) return partWave(issue, wave, [...numbers, `#${number}, not under this spec`], at + 1, `#${number} would not go under it`);
     numbers.push(`#${number}`);
   }
@@ -233,28 +232,29 @@ function partWave(issue: string, wave: Wave, filed: string[], next: number, sinc
 
 function sliced(issue: string, fix?: number[]): Stop | undefined {
   const said = `slice: #${issue}`;
-  const read = gh(["issue", "view", issue, "--json", "title,body,labels"]);
-  const asked = read.status === 0 ? askedIssue(read.stdout) : undefined;
-  if (asked === undefined) return stoppedAt("unread", `${said} could not be read, so no model was spent`);
-  if (!asked.labels.has(SPEC_LABEL)) return stoppedAt("notSpec", `${said} is not a spec, so nothing sliced it`);
-  if (asked.labels.has(NEEDS_HUMAN)) {
-    console.log(`${said} is marked ${NEEDS_HUMAN}, so nothing sliced it`);
-    return undefined;
-  }
-  const tickets = underSpec(issue);
-  const [unclosed] = (tickets ?? []).filter(({ state }) => state === "open");
-  if (unclosed !== undefined) {
-    console.log(`${said}'s wave is not over, #${unclosed.number} is still open, so nothing sliced it`);
-    return undefined;
-  }
-  const comments = tickets === undefined || (tickets.length === 0 && fix === undefined) ? [] : commentsOn(issue, gh);
-  if (tickets === undefined || comments === undefined) return stoppedAt("unread", `${said}'s tickets or comments could not be read, so no model was spent`);
-  const found = tickets.length === 0 && fix === undefined ? undefined : { comments, tickets: waveFound(tickets), diffs: waveDiffs(tickets), missed: fix ?? missedSinceNote(comments), fix: fix !== undefined };
-  mark(issue, "slicing", ...(fix === undefined ? [] : (["--try"] as const)));
-  const logs = machineLogs(process.cwd());
-  mkdirSync(logs, { recursive: true });
-  const spend = hired({ name: "slicer", transcript: join(logs, `slice-${issue}.jsonl`), tools: TOOLS, reach: FENCED_OPUS, answers: ANSWERS });
-  if (typeof spend === "string") return stoppedAt("modelRun", `${said} ended red, the owner's hooks could not be read from ${spend}`);
+  const opening = opened({
+    stage: "slice",
+    issue,
+    state: "slicing",
+    tried: fix !== undefined,
+    stoppedAt,
+    hire: { name: "slicer", tools: TOOLS, reach: FENCED_OPUS, answers: ANSWERS },
+    ready: (asked) => {
+      if (!asked.labels.has(SPEC_LABEL)) return stoppedAt("notSpec", `${said} is not a spec, so nothing sliced it`);
+      const tickets = underSpec(issue) ?? unread(`#${issue}'s tickets could not be read, so no model was spent`);
+      const [unclosed] = tickets.filter(({ state }) => state === "open");
+      if (unclosed !== undefined) {
+        console.log(`${said}'s wave is not over, #${unclosed.number} is still open, so nothing sliced it`);
+        return undefined;
+      }
+      const first = tickets.length === 0 && fix === undefined;
+      const comments = first ? [] : commentsRead(issue, `#${issue}'s comments could not be read, so no model was spent`, gh);
+      const found: Found | undefined = first ? undefined : { comments, tickets: waveFound(tickets), diffs: waveDiffs(tickets), missed: fix ?? missedSinceNote(comments), fix: fix !== undefined };
+      return { carrying: { comments, found } };
+    },
+  });
+  if (typeof opening !== "object") return opening;
+  const { asked, spend, carried: { comments, found } } = opening;
   let spent: Spent = spend(handedOn(asked.title, asked.body, found));
   for (let round = 0; ; round++) {
     if (spent.refusal !== undefined) return stoppedAt("modelRun", `${said} ended red, ${spent.refusal}`);
