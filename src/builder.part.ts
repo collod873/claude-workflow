@@ -29,6 +29,7 @@ function branchedSession(session: string, who: string, onMain: Record<string, st
   for (const [path, content] of Object.entries(onMain)) plant(session, path, content);
   git(session, "add", ".");
   git(session, "commit", "--quiet", "-m", "what the build stands on");
+  git(session, "remote", "add", "origin", session);
   git(session, "update-ref", "refs/remotes/origin/main", "HEAD");
   if (Object.keys(tests).length === 0) return;
   git(session, "checkout", "--quiet", "-b", branch);
@@ -60,6 +61,7 @@ export function fixing({
   labels = ["ticket"],
   labelsUnreadable = false,
   markRefusal = undefined as string | undefined,
+  unreadable = undefined as string | undefined,
 } = {}) {
   const root = scratch("builder-");
   const session = join(root, "session");
@@ -94,13 +96,14 @@ export function fixing({
     [
       setup,
       'case "$*" in',
+      ...(unreadable === undefined ? [] : [`  ${unreadable}) printf 'gh: Server Error (HTTP 502)\\n' >&2; exit 1 ;;`]),
       `  *"api"*"issues/9811/comments"*) cat "${join(root, "on-pr.json")}" ;;`,
       `  *"api"*"issues/811/comments"*) cat "${join(root, "on-ticket.json")}" ;;`,
       ...openedCases(root, opener, body, parent),
       `  *"issue create"*) n=$(( $(cat "${join(root, "created")}" 2>/dev/null || echo 900) + 1 )); printf '%s\\n' "$n" >"${join(root, "created")}"; printf 'https://github.com/collod873/claude-workflow/issues/%s\\n' "$n" ;;`,
       `  *"issue view"*"labels"*) ${labelsUnreadable ? "printf 'GraphQL: labels could not be read\\n' >&2; exit 1" : `printf '%s\\n' ${labels.join(" ")}`} ;;`,
       `  *"issue view"*) cat "${join(root, "ticket.md")}" ;;`,
-      `  *"pr view"*"number"*) ${onPr === undefined ? "exit 1" : "printf '9811\\n'"} ;;`,
+      `  *"pr view"*"number"*) ${onPr === undefined ? "printf 'no pull requests found for branch \"ticket/811\"\\n' >&2; exit 1" : "printf '{\"number\":9811}\\n'"} ;;`,
       `  *"run view"*"--json"*) printf '%s %s %s\\n' '${ranAs}' '${redAt}' '${attempt}' ;;`,
       `  *"run view"*) cat "${join(root, "failed-run.log")}" ;;`,
       `  *"run rerun"*) ${rerun} ;;`,
@@ -170,6 +173,7 @@ declareStage({
   scenarios: [
     { label: "pushing a fix", run: () => fixing({ claude: "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n" }).run() },
     { label: "building a ticket", run: () => fixing({ claude: "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n" }).run("811") },
+    { label: "with its PR unreadable", run: () => fixing({ unreadable: '*"pr view"*"number"*' }).run() },
     { label: "calling the owner when two rounds in a row change nothing", run: () => fixing({ check: "printf 'bin/check: FAILED test\\n'\nexit 1\n" }).run() },
   ],
 });

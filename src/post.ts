@@ -22,7 +22,7 @@ export const ghAs =
   (args) =>
     spawnSync("gh", args, { encoding: "utf8", maxBuffer: Infinity, env });
 export const gh = ghAs(process.env);
-export const git: Gh = (args) => spawnSync("git", args, { encoding: "utf8", maxBuffer: Infinity });
+export const git = (args: string[], input?: string) => spawnSync("git", args, { input, encoding: "utf8", maxBuffer: Infinity });
 
 class Stopped extends Error {
   readonly stop: Stop;
@@ -40,7 +40,7 @@ export const unread = (line: string): never => {
 const readOrUnread = (got: ReturnType<Gh>, line: string): string => (got.status === 0 ? got.stdout.trim() : unread(line));
 
 export const ghRead = (args: string[], line: string) => readOrUnread(gh(args), line);
-export const gitRead = (args: string[], line: string) => readOrUnread(git(args), line);
+export const gitRead = (args: string[], line: string, input?: string) => readOrUnread(git(args, input), line);
 
 export function answered(got: ReturnType<Gh>, line: string): boolean {
   if (got.status !== 0 && got.status !== 1) unread(line);
@@ -196,10 +196,23 @@ export function underOwnerSpec(ticket: string, gh: Gh): Admission {
   return {};
 }
 
-export function prNumber(branch: string, gh: Gh): string | undefined {
-  const got = gh(["pr", "view", branch, "--json", "number", "--jq", ".number"]);
-  const number = got.status === 0 ? got.stdout.trim() : "";
-  return number === "" ? undefined : number;
+const NO_PR = /^no pull requests found/m;
+
+export interface TicketPr {
+  number?: number;
+  state?: string;
+  files?: { path?: string }[];
+}
+
+export function prOfTicket(ticket: string, fields: (keyof TicketPr)[], gh: Gh): TicketPr | "none" {
+  const line = `the PR of #${ticket} could not be read`;
+  const got = gh(["pr", "view", `ticket/${ticket}`, "--json", fields.join(",")]);
+  if (got.status !== 0) return NO_PR.test(got.stderr) ? "none" : unread(line);
+  try {
+    return JSON.parse(got.stdout) as TicketPr;
+  } catch {
+    return unread(line);
+  }
 }
 
 export interface Asked {

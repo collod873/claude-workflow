@@ -5,7 +5,7 @@ const DRIFT = "The reviewer read this PR against the Why of #811 and found drift
 const FIXES = "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n";
 const RED_FOUR_TIMES = ["n=$(cat ../reds 2>/dev/null || echo 0)", "[ \"$n\" -ge 4 ] && exit 0", "echo $((n + 1)) >../reds", "printf 'bin/check: FAILED test src/stops.test.ts\\n'", "exit 1", ""].join("\n");
 const FIXES_EACH_ROUND = "printf 'export const shaped = %s;\\n' \"$((CALL + 1))\" >src/ticket-shape.ts\n";
-const MOVES_MAIN = 'git update-ref refs/remotes/origin/main "$(git commit-tree -p refs/remotes/origin/main -m "Land the reviewer fix #811 needed" "$(git rev-parse "refs/remotes/origin/main^{tree}")")"\n';
+const MOVES_MAIN = 'git update-ref refs/heads/main "$(git commit-tree -p main -m "Land the reviewer fix #811 needed" "$(git rev-parse "main^{tree}")")"\n';
 const FILED_IN_SESSION = "## Why\n\nThe owner: \"read what I said\".\n\nSession: `ca2517b0-5e2d-46e7-a894-7fc3a4b978b2`\n\n## Done when\n\n- The builder reads it.\n";
 const woken = (reason: string) => {
   const { run, handed } = fixing({ reason, claude: FIXES });
@@ -484,5 +484,33 @@ describe("bin/fix stops at a mark GitHub refused, so it hires no model on a tick
     expect(marked()).toEqual(["811 building"]);
     expect(handed()).toEqual([]);
     expect(calls().filter((args) => args[0] === "issue" && args[1] !== "view")).toEqual([]);
+  });
+});
+
+describe("bin/fix reads its ticket, its labels, its PR and their comments before it marks anything, and ends red at a read that fails (#1112)", () => {
+  const READS = [
+    { read: "its labels", unreadable: '*"issue view"*"labels"*', line: "the labels of #811 could not be read, so nothing is marked" },
+    { read: "its ticket", unreadable: '*"issue view"*"body"*', line: "the body of #811 could not be read, so nothing is marked" },
+    { read: "its PR", unreadable: '*"pr view"*"number"*', line: "the PR of #811 could not be read" },
+    { read: "its PR's comments", unreadable: '*"issues/9811/comments"*', line: "the comments on PR #9811 could not be read, so nothing is marked" },
+    { read: "its ticket's comments", unreadable: '*"issues/811/comments"*', line: "the comments on #811 could not be read, so nothing is marked" },
+    { read: "its failed run", unreadable: '*"run view"*"--log-failed"*', line: "the failed steps of run 555 could not be read, so nothing is marked" },
+  ];
+
+  it.each(READS)("ends red at unread naming $read, marking, posting and hiring nothing", ({ unreadable, line }) => {
+    const { run, marked, handed, calls } = fixing({ claude: FIXES, unreadable });
+
+    expect(run()).toMatchObject({ status: 1, stderr: `fix: ${line}\n` });
+    expect(marked()).toEqual([]);
+    expect(handed()).toEqual([]);
+    expect(calls().filter((args) => ["comment", "edit", "create", "close"].includes(args[1] ?? ""))).toEqual([]);
+  });
+
+  it("builds a ticket that has no PR yet, reading none as none", () => {
+    const { run, handed, marked } = fixing({ claude: FIXES, onPr: undefined });
+
+    expect(run("811").status).toBe(0);
+    expect(handed()).toHaveLength(1);
+    expect(marked()).toEqual(["811 building", "811 checking"]);
   });
 });

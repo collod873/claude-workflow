@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { admission, doesNotBuild } from "./admit.ts";
 import { capped, onDisk } from "./brief.ts";
 import { CHECK, UNFENCED } from "./fence.ts";
-import { commentOnTicket, commentsOn, gh, git, labelsOf, labelsUnread, mark, NEEDS_HUMAN, OWNER, post, postRefusals, prNumber, readOrStop, RESOLVING, rewriteTicket, sessionLine, WAITING } from "./post.ts";
+import { commentOnTicket, commentsRead, gh, ghRead, git, gitRead, labelsHeld, mark, NEEDS_HUMAN, OWNER, post, postRefusals, prOfTicket, readOrStop, RESOLVING, rewriteTicket, sessionLine, unread, WAITING } from "./post.ts";
 import { BUILDER_SPLIT, earlierDrift, FOLLOW_UP_OF, followUpBody, handedDiff, LIST_CAP, NO_EM_DASH, repairOf, TICKET_CAP } from "./reviewer.ts";
 import { hired, machineLogs, type Spent } from "./stage.ts";
 import { DONE_SENTENCES, quoted, why, whyChanged } from "./ticket-shape.ts";
@@ -138,12 +138,13 @@ export function handedOn({ ticket, body, red, check = "", capture, woken }: Hand
 }
 
 const builtBy = (ticket: string) => `Build #${ticket} as its builder`;
-const head = () => git(["rev-parse", "HEAD"]).stdout.trim();
+const NOTHING_MARKED = "so nothing is marked";
+const head = () => gitRead(["rev-parse", "HEAD"], "the head of this branch could not be read");
 const sessionFile = (ticket: string) => join(homedir(), ".claude", "builder", ticket);
 
 function fetchedMain(): string {
-  git(["fetch", "--quiet", "origin", "main"]);
-  return git(["rev-parse", "origin/main"]).stdout.trim();
+  gitRead(["fetch", "--quiet", "origin", "main"], "origin/main could not be fetched");
+  return gitRead(["rev-parse", "origin/main"], "origin/main could not be read");
 }
 
 function savedSession(ticket: string): string | undefined {
@@ -163,8 +164,8 @@ function failure(ticket: string, logs: string, run: string): string {
     .filter((name) => name.endsWith(`-${ticket}.log`))
     .sort()
     .map((name) => `### ${name}\n\n${readFileSync(join(logs, name), "utf8").trim()}`);
-  const failedRun = gh(["run", "view", run, "--log-failed"]);
-  const ranRed = failedRun.status === 0 && failedRun.stdout.trim() !== "" ? [`### run ${run}, its failed steps\n\n${failedRun.stdout.trim()}`] : [];
+  const failedRun = ghRead(["run", "view", run, "--log-failed"], `the failed steps of run ${run} could not be read, ${NOTHING_MARKED}`);
+  const ranRed = failedRun === "" ? [] : [`### run ${run}, its failed steps\n\n${failedRun}`];
   return [...logged, ...ranRed].join("\n\n");
 }
 
@@ -253,7 +254,7 @@ function answered(ticket: string, body: string, answer: Answer | undefined, main
 }
 
 function committed(message: string): void {
-  if (git(["status", "--porcelain"]).stdout.trim() === "") return;
+  if (gitRead(["status", "--porcelain"], "what the builder changed could not be read") === "") return;
   git(["add", "--all"]);
   git(["commit", "--quiet", "-m", message]);
 }
@@ -277,7 +278,7 @@ function redOrSaved(ticket: string, logs: string): string | undefined {
 }
 
 const ranAs = (run: string | undefined) =>
-  run === undefined ? "" : gh(["run", "view", run, "--json", "workflowName,headSha,attempt", "--jq", '.workflowName + " " + .headSha + " " + (.attempt | tostring)']).stdout.trim();
+  run === undefined ? "" : ghRead(["run", "view", run, "--json", "workflowName,headSha,attempt", "--jq", '.workflowName + " " + .headSha + " " + (.attempt | tostring)'], `which Check run ${run} was could not be read`);
 
 function checkingAgain(ticket: string, run: string | undefined): number {
   const ran = ranAs(run);
@@ -298,36 +299,33 @@ function failedAs(ticket: string, logs: string, run: string | undefined): string
 }
 
 function ownTicket(ticket: string, run: string | undefined): number {
-  const { refused, unread } = admission(ticket);
-  if (unread !== undefined || refused !== undefined) {
-    console.error(`fix: ${unread ?? doesNotBuild(ticket, refused ?? "")}`);
+  const { refused, unread: unreadable } = admission(ticket);
+  if (unreadable !== undefined) unread(`${unreadable}, ${NOTHING_MARKED}`);
+  if (refused !== undefined) {
+    console.error(`fix: ${doesNotBuild(ticket, refused)}`);
     return 1;
   }
   const logs = machineLogs(process.cwd());
   mkdirSync(logs, { recursive: true });
   const failed = failedAs(ticket, logs, run);
-  const held = failed === undefined ? undefined : labelsOf(ticket, gh);
-  if (held === "unread") {
-    console.error(`fix: ${labelsUnread(ticket)}`);
-    return 1;
-  }
-  if (held === undefined) mark(ticket, "building");
+  const held = labelsHeld(ticket, gh);
+  let body = ghRead(["issue", "view", ticket, "--json", "body", "--jq", ".body"], `the body of #${ticket} could not be read, ${NOTHING_MARKED}`);
+  const pr = prOfTicket(ticket, ["number"], gh);
+  const judged = pr === "none" ? [] : commentsRead(String(pr.number), `the comments on PR #${pr.number} could not be read, ${NOTHING_MARKED}`, gh);
+  const onTicket = commentsRead(ticket, `the comments on #${ticket} could not be read, ${NOTHING_MARKED}`, gh);
+  const diff = failed === undefined ? "" : gitRead(["diff", "origin/main...HEAD"], `the diff from main could not be read, ${NOTHING_MARKED}`);
+  if (failed === undefined) mark(ticket, "building");
   else if (!held.has(RESOLVING)) mark(ticket, "building", "--try");
-  const asked = gh(["issue", "view", ticket, "--json", "body", "--jq", ".body"]);
-  if (asked.status !== 0) return calledOwner(ticket, "its ticket could not be read");
-  let body = asked.stdout;
-  const pr = prNumber(`ticket/${ticket}`, gh);
-  const judged = pr === undefined ? [] : (commentsOn(pr, gh) ?? []);
   const spend = hired({ name: "builder", transcript: join(logs, `fix-${ticket}.jsonl`), answers: ANSWER, gated: true, reach: UNFENCED });
   if (typeof spend === "string") return calledOwner(ticket, `the owner's hooks could not be read from ${spend}`);
   let session = savedSession(ticket);
   const opening = handedOn({
     ticket,
     body,
-    red: failed === undefined ? undefined : { failed, diff: git(["diff", "origin/main...HEAD"]).stdout ?? "", gaps: earlierDrift(ticket, judged) },
+    red: failed === undefined ? undefined : { failed, diff, gaps: earlierDrift(ticket, judged) },
     check: onDisk(join(process.cwd(), CHECK)) ?? "",
     capture: captureOf(body, process.env.SESSION_CAPTURES),
-    woken: commentsOn(ticket, gh)?.filter((said) => said.startsWith(splitClosed(ticket))).at(-1),
+    woken: onTicket.filter((said) => said.startsWith(splitClosed(ticket))).at(-1),
   });
   let input = opening;
   let idle = false;
