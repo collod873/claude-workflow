@@ -53,13 +53,6 @@ interface WorkflowJob {
   steps: WorkflowStep[];
 }
 
-export function onlyJob(file: string): WorkflowJob {
-  const { jobs } = parse(readFileSync(join(WORKFLOWS, file), "utf8")) as { jobs: Record<string, WorkflowJob> };
-  const [job] = Object.values(jobs);
-  if (job === undefined) throw new Error(`no job in ${file}`);
-  return job;
-}
-
 export interface IssueEvent {
   labels?: string[];
   sender?: string;
