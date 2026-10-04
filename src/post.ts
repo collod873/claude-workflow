@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { text as read } from "node:stream/consumers";
 import { emDashLines } from "./em-dash.ts";
 import { NEXT_HEADING, NOTE_SHAPE, SPEC_SHAPE, TICKET_SHAPE, matchEnd, noteRefusals, rewriteRefusals, specRefusals, ticketRefusals } from "./ticket-shape.ts";
-import { NEEDS_HUMAN, NOTE, RESEARCH, RESOLVING, SPEC, TICKET, TICKET_PREFIX, WAITING, type LabelName, type MarkedLabel } from "./spelled.ts";
+import { MACHINE, NEEDS_HUMAN, NOTE, OWNER, RESEARCH, RESOLVING, SPEC, TICKET, TICKET_PREFIX, WAITING, type LabelName, type MarkedLabel } from "./spelled.ts";
 import { type Stop, stoppedAt } from "./stops.ts";
 
 export interface Posting {
@@ -118,7 +118,7 @@ export const foundOverlap = (ticket: string) => `The reviewer read this PR for #
 export const drifted = (ticket: string, comment: string) => comment.startsWith(foundDrift(ticket)) || comment.startsWith(foundOverlap(ticket));
 export const earlierDrift = (ticket: string, comments: string[]) => comments.filter((comment) => drifted(ticket, comment)).join("\n\n");
 export const repairOf = (ticket: string) => `Repair #${ticket} as its builder`;
-export { NEEDS_HUMAN, RESEARCH, RESOLVING, WAITING, type MarkedLabel };
+export { NEEDS_HUMAN, OWNER, RESEARCH, RESOLVING, WAITING, type MarkedLabel };
 
 const KINDS: Record<string, Kind> = {
   ticket: filed(ticketRefusals, [TICKET], TICKET_SHAPE),
@@ -152,8 +152,7 @@ function written(gh: Gh, args: string[]): { refusals: string[]; said: string } {
 
 export const commentOnTicket = (ticket: string, text: string, gh: Gh) => written(gh, ["issue", "comment", ticket, "--body", text]);
 
-export const OWNER = "collod873";
-const TRUSTED = new Set([`User ${OWNER}`, "Bot collod873-machine[bot]"]);
+const TRUSTED = new Set([`User ${OWNER}`, `Bot ${MACHINE}`]);
 
 const trusted = (said: unknown): said is { author: string; body: string } =>
   typeof said === "object" &&

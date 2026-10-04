@@ -30,10 +30,11 @@ runs:
         timeout 120 bash -c 'while pgrep -f "[c]apture[.]py" >/dev/null; do sleep 1; done' || true
         captured="$HOME/Claude Projects/Knowledge-Base/raw"
         [ -d "$captured" ] || exit 0
+        machine=$(bin/spelled MACHINE) || exit 1
         kb="$RUNNER_TEMP/knowledge-base"
         git clone --quiet --depth 1 "https://x-access-token:$KB_TOKEN@github.com/collod873/Knowledge-Base" "$kb"
-        git -C "$kb" config user.name "collod873-machine[bot]"
-        git -C "$kb" config user.email "collod873-machine[bot]@users.noreply.github.com"
+        git -C "$kb" config user.name "$machine"
+        git -C "$kb" config user.email "$machine@users.noreply.github.com"
         cp -r "$captured/." "$kb/raw/"
         git -C "$kb" add raw
         git -C "$kb" commit --quiet -m "flush: stage captures from $GITHUB_REPOSITORY run $GITHUB_RUN_ID" || exit 0

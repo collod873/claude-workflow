@@ -46,7 +46,9 @@ export const WAITING = "waiting" as const satisfies MarkedLabel;
 export const ASKED = "asked" as const satisfies MarkedLabel;
 export const NEEDS_HUMAN = "needs-human" as const satisfies MarkedLabel;
 export const TICKET_PREFIX = "ticket/";
-const KEYED: Record<string, string> = { TICKET, SPEC, NOTE, RESEARCH, BUILDING, CHECKING, QUEUED, RESOLVING, LANDING, SLICING, RESEARCHING, WAITING, ASKED, NEEDS_HUMAN, TICKET_PREFIX };
+export const OWNER = "collod873";
+export const MACHINE = "collod873-machine[bot]";
+const KEYED: Record<string, string> = { TICKET, SPEC, NOTE, RESEARCH, BUILDING, CHECKING, QUEUED, RESOLVING, LANDING, SLICING, RESEARCHING, WAITING, ASKED, NEEDS_HUMAN, TICKET_PREFIX, OWNER, MACHINE };
 
 const USAGE = `spelled: usage: spelled labels | spelled <${Object.keys(KEYED).join("|")}>\n`;
 

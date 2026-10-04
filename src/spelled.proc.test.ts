@@ -36,7 +36,7 @@ const KEYS = [
   ["ASKED", "asked"],
   ["NEEDS_HUMAN", "needs-human"],
 ] as const;
-const SPELLED = [...KEYS, ["TICKET_PREFIX", "ticket/"]] as const;
+const SPELLED = [...KEYS, ["TICKET_PREFIX", "ticket/"], ["OWNER", "collod873"], ["MACHINE", "collod873-machine[bot]"]] as const;
 const USAGE = `spelled: usage: spelled labels | spelled <${SPELLED.map(([key]) => key).join("|")}>\n`;
 const NAMING = ["post.ts", "slicer.ts", "done-checker.ts", "researcher.ts", "closer.ts", "wave.ts", "builder.ts"].map((file) => join(BIN, "..", "src", file));
 
@@ -135,6 +135,26 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
           .flatMap((line, at) => (spelling.test(line) && !line.startsWith("export const TICKET_PREFIX = ") ? [`${file.slice(REPO.length + 1)}:${at + 1}`] : [])),
       ),
     ).toEqual([]);
+  });
+
+  it("prints the owner's login under OWNER and the bot's login under MACHINE, the bot's spelled nowhere else the machine runs but build.yml's sender test (#1123)", () => {
+    const REPO = join(BIN, "..");
+    const machine = (dir: string): string[] =>
+      readdirSync(join(REPO, dir), { withFileTypes: true, recursive: true })
+        .filter((found) => found.isFile())
+        .map((found) => join(found.parentPath, found.name))
+        .filter((file) => !/\.(test|part)\.ts$|\/scenarios\.ts$/.test(file));
+
+    expect(spelled("OWNER")).toEqual({ status: 0, stdout: "collod873\n", stderr: "" });
+    expect(spelled("MACHINE")).toEqual({ status: 0, stdout: "collod873-machine[bot]\n", stderr: "" });
+    expect(
+      ["src", "bin", ".github"].flatMap(machine).flatMap((file) =>
+        readFileSync(file, "utf8")
+          .split("\n")
+          .flatMap((line, at) => (line.includes("collod873-machine") && !line.startsWith("export const MACHINE = ") ? [`${file.slice(REPO.length + 1)}:${at + 1}`] : [])),
+      ),
+    ).toEqual([".github/workflows/build.yml:13"]);
+    expect(readFileSync(join(ACTIONS, "stage-logs", "action.yml"), "utf8")).toMatch(/bin\/spelled MACHINE/);
   });
 
   it("refuses anything but labels or a key it holds, naming its usage", () => {

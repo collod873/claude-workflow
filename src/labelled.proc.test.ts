@@ -1,7 +1,8 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { afterLabelled, BIN, copyMark, execute, heldBy, holds, labelledAs, labelledStep, MACHINE, OWNER, scratch, script, starts, workflowJobs, type IssueEvent } from "./scenarios.ts";
+import { afterLabelled, BIN, copyMark, execute, heldBy, holds, labelledAs, labelledStep, scratch, script, starts, workflowJobs, type IssueEvent } from "./scenarios.ts";
+import { MACHINE, OWNER } from "./spelled.ts";
 
 const GITHUB = join(BIN, "..", ".github");
 const files = () => [
@@ -65,7 +66,7 @@ describe("the workflows ask spelled for each label they test, so a renamed label
     copyMark(root);
     const keys = new Set(files().flatMap((file) => [...readFileSync(file, "utf8").matchAll(/bin\/spelled ([A-Z_]+)/g)].map(([, key]) => key ?? "")));
 
-    expect([...keys].sort()).toEqual(["BUILDING", "CHECKING", "NEEDS_HUMAN", "NOTE", "RESEARCH", "SPEC", "TICKET_PREFIX", "WAITING"]);
+    expect([...keys].sort()).toEqual(["BUILDING", "CHECKING", "MACHINE", "NEEDS_HUMAN", "NOTE", "RESEARCH", "SPEC", "TICKET_PREFIX", "WAITING"]);
     for (const key of keys) expect(execute(join(root, "bin", "spelled"), root, {}, [key]).status, key).toBe(0);
   });
 
