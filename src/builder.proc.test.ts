@@ -473,15 +473,16 @@ describe("the builder builds an App-opened ticket only under an open spec the ow
   });
 });
 
-describe("bin/fix says in its log when a mark fails, so a ticket whose labels lag shows why (#1081)", () => {
-  it("passes on bin/mark's refusal and still builds the ticket", () => {
-    const { run, marked, log } = fixing({ claude: FIXES, markRefusal: "mark: #811 not labelled building: HTTP 403: Resource not accessible by integration" });
+describe("bin/fix stops at a mark GitHub refused, so it hires no model on a ticket whose labels lag (#1107)", () => {
+  it("ends red at the building mark, naming the stage, the label and the ticket, and hires, posts and marks nothing after it", () => {
+    const { run, marked, handed, calls } = fixing({ claude: FIXES, markRefusal: "mark: #811 not labelled building: HTTP 403: Resource not accessible by integration" });
 
     const { status, stderr } = run("811");
 
-    expect(status).toBe(0);
-    expect(stderr).toContain("mark: #811 not labelled building: HTTP 403: Resource not accessible by integration\n");
-    expect(marked()).toEqual(["811 building", "811 checking"]);
-    expect(log("-1", "--format=%s")).toBe("Build #811 as its builder");
+    expect(status).toBe(1);
+    expect(stderr).toContain("fix: bin/mark #811 building ended non-zero, so nothing after it is posted, closed, marked or hired\n");
+    expect(marked()).toEqual(["811 building"]);
+    expect(handed()).toEqual([]);
+    expect(calls().filter((args) => args[0] === "issue" && args[1] !== "view")).toEqual([]);
   });
 });

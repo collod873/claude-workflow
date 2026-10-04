@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { capped } from "./brief.ts";
 import { OPEN_SHELL } from "./fence.ts";
-import { askedIssue, commentOnTicket, gh, mark, RESEARCH } from "./post.ts";
+import { askedIssue, commentOnTicket, gh, mark, readOrStop, RESEARCH } from "./post.ts";
 import { NO_EM_DASH } from "./reviewer.ts";
 import { hired, machineLogs } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
@@ -65,5 +65,5 @@ function researched(issue: string): Stop | undefined {
 if (import.meta.main) {
   const issue = process.argv[2];
   if (issue === undefined) throw new Error("no issue number in the arguments");
-  process.exit(exitFor(researched(issue)));
+  process.exit(exitFor(readOrStop("research", () => researched(issue))));
 }

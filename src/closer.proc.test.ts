@@ -812,3 +812,15 @@ describe("bin/close stops red at the first read it cannot make, and marks nothin
     expect(calls().some((call) => /^issue\n(comment|close)\n838\n/.test(call))).toBe(false);
   });
 });
+
+describe("bin/close stops at a mark GitHub refused, so it closes nothing whose labels lag (#1107)", () => {
+  it("ends red at the closed mark, naming the stage, the label and the ticket, and closes and re-slices nothing after it", () => {
+    const { calls, run } = closing({ ticket: "814", markRefusal: "mark: #814 not labelled --closed: HTTP 403: Resource not accessible by integration" });
+
+    const { status, stderr } = run();
+
+    expect(status).toBe(1);
+    expect(stderr).toContain("close: bin/mark #814 --closed ended non-zero, so nothing after it is posted, closed, marked or hired\n");
+    expect(calls().some((call) => /^(issue\nclose|workflow\nrun)\n/.test(call))).toBe(false);
+  });
+});

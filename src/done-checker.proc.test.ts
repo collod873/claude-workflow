@@ -446,14 +446,17 @@ describe("bin/done-check's final check may not give a sentence not tried yet (#1
   });
 });
 
-describe("bin/done-check says in its log when a mark fails, so a spec whose labels lag shows why (#1081)", () => {
-  it("passes on bin/mark's refusal and still checks the spec", () => {
+describe("bin/done-check stops at a mark GitHub refused, so it tries, posts and closes nothing on a spec whose labels lag (#1107)", () => {
+  it("ends red at the checking mark, naming the stage, the label and the spec, and hires, posts and closes nothing after it", () => {
     const checked = doneChecking({ markRefusal: "mark: #974 not labelled checking: HTTP 403: Resource not accessible by integration" });
 
     const { status, stderr } = checked.run();
 
-    expect(status).toBe(0);
-    expect(stderr).toContain("mark: #974 not labelled checking: HTTP 403: Resource not accessible by integration\n");
+    expect(status).toBe(1);
+    expect(stderr).toContain("done-check: bin/mark #974 checking ended non-zero, so nothing after it is posted, closed, marked or hired\n");
     expect(checked.marked()).toEqual(["974 checking"]);
+    expect(checked.hired()).toEqual([]);
+    expect(checked.comments()).toEqual([]);
+    expect(checked.closes()).toEqual([]);
   });
 });

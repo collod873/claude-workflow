@@ -124,14 +124,17 @@ describe("bin/research answers a research note on the note and closes it, with n
   });
 });
 
-describe("bin/research says in its log when a mark fails, so a note whose labels lag shows why (#1081)", () => {
-  it("passes on bin/mark's refusal and still answers the note", () => {
+describe("bin/research stops at a mark GitHub refused, so it hires no model on a note whose labels lag (#1107)", () => {
+  it("ends red at the researching mark, naming the stage, the label and the note, and hires, posts and closes nothing after it", () => {
     const answered = researching({ markRefusal: "mark: #902 not labelled researching: HTTP 403: Resource not accessible by integration" });
 
     const { status, stderr } = answered.run();
 
-    expect(status).toBe(0);
-    expect(stderr).toContain("mark: #902 not labelled researching: HTTP 403: Resource not accessible by integration\n");
-    expect(answered.calls()).toContain("issue close 902");
+    expect(status).toBe(1);
+    expect(stderr).toContain("research: bin/mark #902 researching ended non-zero, so nothing after it is posted, closed, marked or hired\n");
+    expect(answered.marked()).toEqual(["902 researching before the model"]);
+    expect(answered.hired()).toEqual([]);
+    expect(answered.comments()).toEqual([]);
+    expect(answered.calls()).not.toContain("issue close 902");
   });
 });

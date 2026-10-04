@@ -375,14 +375,16 @@ describe("bin/slice marks a spec's next wave and its fix wave as they are sliced
   });
 });
 
-describe("bin/slice says in its log when a mark fails, so a spec whose labels lag shows why (#1081)", () => {
-  it("passes on bin/mark's refusal and still files the wave", () => {
+describe("bin/slice stops at a mark GitHub refused, so it hires no model on a spec whose labels lag (#1107)", () => {
+  it("ends red at the slicing mark, naming the stage, the label and the spec, and hires, files and marks nothing after it", () => {
     const sliced = reslicing({ markRefusal: "mark: #968 not labelled slicing: HTTP 403: Resource not accessible by integration" });
 
     const { status, stderr } = sliced.run();
 
-    expect(status).toBe(0);
-    expect(stderr).toContain("mark: #968 not labelled slicing: HTTP 403: Resource not accessible by integration\n");
-    expect(sliced.filed()).toHaveLength(1);
+    expect(status).toBe(1);
+    expect(stderr).toContain("slice: bin/mark #968 slicing ended non-zero, so nothing after it is posted, closed, marked or hired\n");
+    expect(sliced.marked()).toEqual(["968 slicing"]);
+    expect(sliced.handed()).toEqual([]);
+    expect(sliced.filed()).toEqual([]);
   });
 });
