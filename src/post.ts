@@ -60,8 +60,10 @@ export function readOrStop<Ended>(stage: string, run: () => Ended): Ended | Stop
   }
 }
 
+export const machineBin = (command: string) => join(process.env.MACHINE_BIN ?? join(import.meta.dirname, "..", "bin"), command);
+
 export const markWith = (env: NodeJS.ProcessEnv) => (issue: string, label: MarkedLabel | "--closed", ...count: ("--try" | "--untry")[]) => {
-  const marked = spawnSync(join(process.cwd(), "bin", "mark"), [issue, label, ...count], { stdio: ["ignore", "ignore", "inherit"], env });
+  const marked = spawnSync(machineBin("mark"), [issue, label, ...count], { stdio: ["ignore", "ignore", "inherit"], env });
   if (marked.status !== 0) throw new Stopped("unwritten", `bin/mark #${issue} ${label} ended non-zero, so nothing after it is posted, closed, marked or hired`);
 };
 export const mark = markWith(process.env);
