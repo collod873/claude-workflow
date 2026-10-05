@@ -69,7 +69,7 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(own.handed()[0]).not.toContain("(needs <VAR>)");
   });
 
-  it("reads the unmet need off the real check's verdict, which names it red in CI, and opens the foreign tree's PR in its own repo through the real save, as taking waiting off Lumaria #828 asks (#1142, #1146)", () => {
+  it("reads the unmet need off the real check's verdict, which names it red in CI, and opens the foreign tree's PR in its own repo through the real save (#1142, #1146)", () => {
     const real = realpathSync(join(homedir(), "bin", "check"));
     const contract = '{ "steps": { "integration": { "run": "true", "needs": ["DATABASE_URL"] } } }\n';
     const check = `env -u DATABASE_URL CI=true "${real}" "$@" | tee -a ../check-out\nexit "\${PIPESTATUS[0]}"\n`;

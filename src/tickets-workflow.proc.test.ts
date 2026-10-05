@@ -1,9 +1,11 @@
-import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
+import { fixing } from "./builder.part.ts";
 import { closing } from "./closer.part.ts";
-import { execute, holds, scratch, script, workflowJobs, type WorkflowStep } from "./scenarios.ts";
+import { execute, heldBy, holds, labelledAs, labelledStep, scratch, script, workflowJobs, type WorkflowStep } from "./scenarios.ts";
 import { MACHINE, OWNER } from "./spelled.ts";
 
 const REPO = join(import.meta.dirname, "..");
@@ -132,6 +134,27 @@ describe("a repo's tickets build through one caller file that holds only trigger
     const builders = ["build", "fix"].map((job) => workflowJobs("tickets.yml")[job]?.steps.find(({ id }) => id === "fix"));
 
     expect(builders.map((step) => step?.env?.CALLED_FROM)).toEqual(["${{ github.workflow_ref }}", "${{ github.workflow_ref }}"]);
+  });
+
+  it("ends taking waiting off Lumaria #828 with its PR open in Lumaria: the build job starts and holds, its fix step runs, and the builder, given the repo and caller the workflow resolves there, opens the PR through the real check and save (#1146)", async () => {
+    const unlabeled = { action: "unlabeled", label: "waiting", sender: MACHINE, labels: ["ticket"] };
+    const job = workflowJobs("tickets.yml").build;
+    const fix = job?.steps.find(({ id }) => id === "fix");
+    const { held } = await heldBy(labelledStep("tickets.yml", "build"), REPO, unlabeled);
+    const steps = { ...labelledAs(job?.steps ?? [], held), admit: { outcome: "success", conclusion: "success", outputs: { admitted: "true" } }, start: { outcome: "success", conclusion: "success", outputs: { branch: "ticket/828" } } };
+    const lumaria: Record<string, string> = { "github.repository": "collod873/Lumaria", "github.workflow_ref": "collod873/Lumaria/.github/workflows/machine.yml@refs/heads/main" };
+    const resolved = (value: unknown) => (typeof value !== "string" ? undefined : value.replace(/^\$\{\{ ([\w.]+) \}\}$/, (_, name: string) => lumaria[name] ?? ""));
+    const real = realpathSync(join(homedir(), "bin", "check"));
+    const contract = '{ "steps": { "integration": { "run": "true", "needs": ["DATABASE_URL"] } } }\n';
+    const check = `env -u DATABASE_URL CI=true "${real}" "$@"\n`;
+
+    expect(holds(job?.if ?? "", unlabeled)).toBe(true);
+    expect(held).toBe("true");
+    expect(holds(fix?.if ?? "", { steps })).toBe(true);
+    const { run, opened } = fixing({ ticket: "828", claude: "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n", contract, check, realSave: true, repo: resolved(job?.env?.GH_REPO), calledFrom: resolved(fix?.env?.CALLED_FROM) });
+    const result = run("828");
+    expect(result.status, result.stderr).toBe(0);
+    expect(opened()).toEqual(["collod873/Lumaria https://github.com/collod873/Lumaria/pull/9828"]);
   });
 
   it("tells the builder of a red build which run went red, since that run is still going and its log cannot be read yet", () => {
