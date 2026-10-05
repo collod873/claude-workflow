@@ -49,6 +49,10 @@ jobs:
           held=$(jq --arg WAITING "$waiting" --arg NOTE "$note" --arg SPEC "$spec" '(.action != "unlabeled" or .label.name == $WAITING) and (any(.issue.labels[]?.name; IN($NOTE, $SPEC, $WAITING)) | not)' "$GITHUB_EVENT_PATH")
           printf 'held=%s\n' "$held" | tee -a "$GITHUB_OUTPUT"
 
+      - id: pinned
+        if: steps.labelled.outputs.held == 'true'
+        uses: ./.github/actions/pinned
+
       - id: npm-ci
         if: steps.labelled.outputs.held == 'true'
         run: npm ci
@@ -242,6 +246,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24
+
+      - id: pinned
+        if: steps.branch.outputs.stale != 'true'
+        uses: ./.github/actions/pinned
 
       - id: npm-ci
         if: steps.branch.outputs.stale != 'true'

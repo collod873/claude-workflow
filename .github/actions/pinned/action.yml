@@ -1,0 +1,20 @@
+name: Pinned
+description: Readies the Node a tree's .nvmrc names, or 24 when it names none, and the package manager its package.json pins, so the tree's own setup and gate find them
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version-file: ${{ hashFiles('tree/.nvmrc') != '' && 'tree/.nvmrc' || '' }}
+        node-version: ${{ hashFiles('tree/.nvmrc') == '' && '24' || '' }}
+
+    - shell: bash
+      working-directory: tree
+      env:
+        COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+      run: |
+        jq -e '.packageManager // .devEngines.packageManager' package.json >/dev/null 2>&1 || exit 0
+        command -v corepack >/dev/null || npm install --global corepack@latest
+        corepack enable
+        corepack install

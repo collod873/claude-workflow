@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
@@ -10,6 +10,7 @@ const REPO = join(import.meta.dirname, "..");
 const CALLER = join(REPO, ".github", "caller.yml");
 const TICKETS = join(REPO, ".github", "workflows", "tickets.yml");
 const APP = "${{ steps.app.outputs.token }}";
+const PINNED = join(REPO, ".github", "actions", "pinned", "action.yml");
 
 interface Caller {
   name: string;
@@ -158,6 +159,48 @@ describe("a repo's tickets build through one caller file that holds only trigger
     it("by nothing when its builder already called the owner", () => {
       expect(named({ RAN_ON: "ticket/828" }, "needs-human")).toEqual(["ticket="]);
       expect(named({ BUILT: "830" }, "needs-human")).toEqual(["ticket="]);
+    });
+  });
+
+  describe("readies the Node and package manager a tree pins before the builder runs its setup (#1138)", () => {
+    const pinnedSteps = () => (parse(readFileSync(PINNED, "utf8")) as { runs: { steps: (WorkflowStep & { "working-directory"?: string })[] } }).runs.steps;
+    const readied = (manifest: Record<string, unknown>) => {
+      const root = scratch("pinned-");
+      const calls = join(root, "calls");
+      script(join(root, "bin", "corepack"), `printf '%s %s\\n' "$PWD" "$*" >>"${calls}"\n`);
+      script(join(root, "bin", "npm"), `printf 'npm %s\\n' "$*" >>"${calls}"\n`);
+      mkdirSync(join(root, "tree"));
+      writeFileSync(join(root, "tree", "package.json"), JSON.stringify(manifest));
+      const step = pinnedSteps().find(({ run }) => run !== undefined);
+      const ran = execute("bash", join(root, step?.["working-directory"] ?? ""), { PATH: `${join(root, "bin")}:${process.env.PATH ?? ""}` }, ["-e", "-c", step?.run ?? ""]);
+      expect(ran.status, ran.stderr).toBe(0);
+      return existsSync(calls) ? readFileSync(calls, "utf8").trim().split("\n").map((line) => line.replace(join(root, "tree"), "tree")) : [];
+    };
+
+    it("in every job that runs the builder, after the tree is checked out and the machine's own Node, and before anything installs or the builder starts", () => {
+      const builds = Object.entries(workflowJobs("tickets.yml")).filter(([, { steps }]) => steps.some(({ run }) => (run ?? "").includes("bin/fix")));
+
+      expect(builds.map(([name]) => name).sort()).toEqual(["build", "fix"]);
+      for (const [name, { steps }] of builds) {
+        const at = (found: (step: WorkflowStep) => boolean) => steps.findIndex(found);
+        const pinned = at(({ uses }) => uses === "./.github/actions/pinned");
+
+        expect(pinned, name).toBeGreaterThan(at(({ id }) => id === "checkout"));
+        expect(steps.slice(pinned).filter(({ uses }) => uses?.startsWith("actions/setup-node@") === true), name).toEqual([]);
+        expect(pinned, name).toBeLessThan(at(({ id }) => id === "npm-ci"));
+        expect(pinned, name).toBeLessThan(at(({ run }) => (run ?? "").includes("bin/fix")));
+      }
+    });
+
+    it("takes the Node from the tree's .nvmrc when it has one, and 24 when it has none", () => {
+      const node = pinnedSteps().find(({ uses }) => uses?.startsWith("actions/setup-node@") === true);
+
+      expect(node?.with).toEqual({ "node-version-file": "${{ hashFiles('tree/.nvmrc') != '' && 'tree/.nvmrc' || '' }}", "node-version": "${{ hashFiles('tree/.nvmrc') == '' && '24' || '' }}" });
+    });
+
+    it("installs the package manager the tree's package.json pins, in the tree, and nothing when it pins none", () => {
+      expect(readied({ packageManager: "pnpm@11.7.0" })).toEqual(["tree enable", "tree install"]);
+      expect(readied({ name: "unpinned" })).toEqual([]);
     });
   });
 });
