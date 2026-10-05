@@ -50,7 +50,7 @@ fi
 
 closing_keyword='\b(close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)\b:?[ \t]+#[0-9]+'
 
-src="$(cd "${BASH_SOURCE[0]%/*}/../src" && pwd)"
+src="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../src" && pwd)"
 for commit in $(git rev-list origin/main..HEAD); do
   git log -1 --format=%B "$commit" | node "$src/em-dash.ts"
   case $? in
