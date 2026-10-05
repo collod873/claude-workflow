@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, realpathSync, rmSync, statSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { stageArgv, type Reach, type Registration } from "./fence.ts";
@@ -43,10 +43,20 @@ function sessionOf(stdout: string): string | undefined {
   return session;
 }
 
+function launcher(): string[] {
+  const found = (process.env.PATH ?? "").split(":").map((dir) => join(dir, "claude")).find((path) => existsSync(path));
+  if (found === undefined) return ["claude"];
+  const head = Buffer.alloc(128);
+  const opened = openSync(found, "r");
+  const read = readSync(opened, head, 0, head.length, 0);
+  closeSync(opened);
+  return /^#!.*\bnode\b/.test(head.subarray(0, read).toString("utf8").split("\n")[0] ?? "") ? [process.execPath, found] : ["claude"];
+}
+
 function capped(argv: string[], minutes: number, deadline: number): [string, ...string[]] {
-  if (!(minutes > 0)) return ["claude", ...argv];
+  if (!(minutes > 0)) return [...launcher(), ...argv] as [string, ...string[]];
   const left = Math.max(1, Math.ceil((deadline - Date.now()) / 1000));
-  return ["timeout", `--kill-after=${GRACE_SECONDS}`, String(left), "claude", ...argv];
+  return ["timeout", `--kill-after=${GRACE_SECONDS}`, String(left), ...launcher(), ...argv];
 }
 
 function hooksIn(read: () => string, refusal: string, gated: boolean): Registration | string {
@@ -94,6 +104,8 @@ export interface Spent {
   answer?: unknown;
 }
 
+export const treePathed = (env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv => (env.TREE_PATH === undefined || env.TREE_PATH === "" ? env : { ...env, PATH: `${env.TREE_PATH}:${env.PATH ?? ""}` });
+
 export function hired(hire: Hire): ((input: string, resume?: string) => Spent) | string {
   const minutes = Number(process.env.STAGE_MINUTES);
   const deadline = Date.now() + minutes * 60_000;
@@ -106,7 +118,7 @@ export function hired(hire: Hire): ((input: string, resume?: string) => Spent) |
     const from = existsSync(hire.transcript) ? statSync(hire.transcript).size : 0;
     const streamed = openSync(hire.transcript, "a");
     const [command, ...args] = capped([...argv, ...(resume === undefined ? [] : ["--resume", resume]), ...STREAM], minutes, ends);
-    const spent = spawnSync(command, args, { input, stdio: ["pipe", streamed, "pipe"], encoding: "utf8", maxBuffer: Infinity });
+    const spent = spawnSync(command, args, { input, env: treePathed(), stdio: ["pipe", streamed, "pipe"], encoding: "utf8", maxBuffer: Infinity });
     closeSync(streamed);
     const stdout = readFileSync(hire.transcript).subarray(from).toString("utf8");
     return { stdout, status: spent.status, stderr: String(spent.stderr ?? "") };
