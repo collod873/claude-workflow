@@ -56,7 +56,7 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
 
   it("passes a foreign tree whose check is red only for steps the runner lacks what they need for, leaving them to its own CI, and keeps this repo's own check judging them (#1142)", () => {
     const unmet = "printf 'check: red integration (needs DATABASE_URL), e2e (needs BASE_URL, TOKEN); log /nowhere/check-full.log\\n'\nexit 1\n";
-    const foreign = fixing({ claude: FIXES, check: unmet, jobEnv: { FOREIGN_TREE: "true" } });
+    const foreign = fixing({ claude: FIXES, check: unmet, calledFrom: "collod873/Lumaria/.github/workflows/machine.yml@refs/heads/main" });
     const own = fixing({ claude: FIXES, check: unmet });
 
     expect(foreign.run("811").status).toBe(0);
@@ -70,7 +70,7 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
 
   it("holds a foreign tree red when anything beside an unmet need is red (#1142)", () => {
     const mixed = "printf 'check: red test src/stops.test.ts:4, integration (needs DATABASE_URL); log /nowhere/check-full.log\\n'\nexit 1\n";
-    const { run, saved } = fixing({ claude: FIXES, check: mixed, jobEnv: { FOREIGN_TREE: "true" } });
+    const { run, saved } = fixing({ claude: FIXES, check: mixed, calledFrom: "collod873/Lumaria/.github/workflows/machine.yml@refs/heads/main" });
 
     expect(run("811").status).toBe(1);
     expect(saved()).toEqual([]);
@@ -346,6 +346,45 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(handed()).toHaveLength(2);
     expect(saved()).toEqual([]);
     expect(ticketComments().at(-1)).toContain("main has not moved");
+  });
+
+  const CALLER = "collod873/Lumaria/.github/workflows/machine.yml@refs/heads/main";
+  const FAULT = { title: "Give the machine's check the database a tree's integration step needs", why: "The machine's check runs a tree's integration step with no database, so it is red whatever the code.", done: ["A tree's integration step runs against a database on the machine."] };
+
+  it("files a machine fault found in a foreign tree as a ticket in the machine's repo, and parks its own ticket waiting on it, where Lumaria #828 landed a fix into Lumaria's main (#1143)", () => {
+    const reason = "the machine's check has no database";
+    const { run, calls, filed, ticketComments, marked, saved, closes, handed } = fixing({ calledFrom: CALLER, answer: { outcome: "machine", reason, tickets: [FAULT] }, claude: FIXES });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(calls().filter((args) => args[1] === "create").map((args) => args.slice(args.indexOf("--repo"), args.indexOf("--repo") + 2))).toEqual([["--repo", "collod873/claude-workflow"]]);
+    expect(filed()).toHaveLength(1);
+    expect(filed()[0]).toMatch(/^## Why\n\nFiled by the builder of collod873\/Lumaria#811, which waits on it/);
+    expect(filed()[0]).toContain(`> ${FAULT.why}`);
+    expect(filed()[0]).toContain(`## Done when\n\n- ${FAULT.done[0]}`);
+    expect(ticketComments().at(-1)).toMatch(new RegExp(`^@collod873 the builder of #811 found the machine at fault and filed https://github.com/collod873/claude-workflow/issues/901\\. #811 waits on it.*${reason}`));
+    expect(marked()).toEqual(["811 building --try", "811 waiting"]);
+    expect(saved()).toEqual([]);
+    expect(closes()).toEqual([]);
+    expect(handed()).toHaveLength(1);
+  });
+
+  it("tells a builder in a foreign tree to file a machine fault here, not to land it on the tree's main (#1143)", () => {
+    const { run, handed } = fixing({ calledFrom: CALLER, claude: FIXES });
+
+    expect(run().status).toBe(0);
+    expect(handed()[0]).not.toContain("`bin/land`");
+    expect(handed()[0]).toContain("- `machine`: the machine is at fault, reviewer included; it lives in collod873/claude-workflow, not this tree, so change nothing here for it: file the fault as `tickets`, and this ticket waits on them.");
+  });
+
+  it("hands back a `machine` answer from a foreign tree that files no ticket (#1143)", () => {
+    const { run, filed, handed, marked } = fixing({ calledFrom: CALLER, answer: { outcome: "machine", reason: "the check has no database" } });
+
+    expect(run().status).toBe(1);
+    expect(filed()).toEqual([]);
+    expect(marked()).not.toContain("811 waiting");
+    expect(handed()[1]).toContain("files the machine's fault as one ticket or more in `tickets`");
   });
 
   it("reruns only the red jobs of a Check it left unchanged and green, and never restarts a Build", () => {

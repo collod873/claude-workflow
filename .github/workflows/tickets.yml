@@ -119,8 +119,8 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           STAGE_MINUTES: 45
+          CALLED_FROM: ${{ github.workflow_ref }}
           BRANCH: ${{ steps.start.outputs.branch }}
-          FOREIGN_TREE: "true"
         run: |
           tail --pid=$$ -n +1 -F .git/machine-logs/fix-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
           git checkout --quiet -b "$BRANCH"
@@ -295,8 +295,8 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           STAGE_MINUTES: 45
+          CALLED_FROM: ${{ github.workflow_ref }}
           RUN: ${{ github.event.workflow_run.id }}
-          FOREIGN_TREE: "true"
           REASON: "${{ github.event.inputs.reason || (github.event_name == 'issues' && format('The build of #{0} ended red: {1}/{2}/actions/runs/{3}', needs.which.outputs.ticket, github.server_url, github.repository, github.run_id) || '') }}"
         run: |
           tail --pid=$$ -n +1 -F ".git/machine-logs/fix-$TICKET.jsonl" 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &

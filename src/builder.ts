@@ -62,7 +62,7 @@ interface Handed {
   capture?: string;
   woken?: string;
   commitlint?: boolean;
-  foreignTree?: boolean;
+  foreign?: boolean;
 }
 
 type Round = { red?: string; ended?: number; body?: string };
@@ -73,6 +73,8 @@ export const TAIL_CAP = 8 * 1024;
 export const CONTRACT_CAP = 4 * 1024;
 const CHECK = `${FULL_CHECK} --publish`;
 const CONTRACT = join(".claude", "contract.json");
+const MACHINE_REPO = `${OWNER}/claude-workflow`;
+const FOREIGN = (process.env.CALLED_FROM ?? "") !== "";
 const PASSED = /^check: ok\b/;
 const LOGGED = /; log (.+?)\s*$/;
 const FILED_IN = new RegExp(`^${sessionLine("([^`]+)")}\\s*$`, "m");
@@ -99,7 +101,6 @@ export function repaired(output: string): string {
   return [`\`${CHECK}\` is still red. The end of its output:`, tailOf(output, TAIL_CAP), "Make it pass.", ""].join("\n\n");
 }
 
-const foreign = () => process.env.FOREIGN_TREE === "true";
 const RED_NAMES = /^check: red (.*?)(?:; |$)/;
 const NEEDS = " (needs ";
 const UNMET = new RegExp(`[^\\s,]+${NEEDS.replace("(", "\\(")}[^)]*\\)`, "g");
@@ -114,7 +115,7 @@ function checkRed(): string {
   const { stdout, stderr } = spawnSync("bash", ["-c", CHECK], { env: treePathed(env), encoding: "utf8" });
   const output = `${stdout}${stderr}`.trim();
   const verdict = stdout.trim().split("\n").at(-1) ?? "";
-  if (PASSED.test(verdict) || (foreign() && onlyUnmet(verdict))) return "";
+  if (PASSED.test(verdict) || (FOREIGN && onlyUnmet(verdict))) return "";
   const log = LOGGED.exec(verdict)?.[1];
   return [output, log === undefined ? "" : (onDisk(resolve(log)) ?? "")].join("\n");
 }
@@ -137,20 +138,25 @@ const howItFailed = ({ failed, diff, gaps }: NonNullable<Handed["red"]>) => [
   capped(gaps, LIST_CAP) || "(none)",
 ];
 
-const leftToItsCI = (foreignTree: boolean | undefined) =>
-  foreignTree === true ? [`This repo's own CI judges its PR. A step the check names red only as \`<step>${NEEDS}<VAR>)\` is one this runner lacks what it needs for: the machine leaves it to that CI, so do not provide it yourself.`] : [];
+const leftToItsCI = (foreign: boolean | undefined) =>
+  foreign === true ? [`This repo's own CI judges its PR. A step the check names red only as \`<step>${NEEDS}<VAR>)\` is one this runner lacks what it needs for: the machine leaves it to that CI, so do not provide it yourself.`] : [];
 
 const linted = (commitlint: boolean | undefined) =>
   commitlint === true ? ["This repo runs commitlint on every commit: write each message as `type: subject`, the type `feat`, `fix` or another conventional one, the subject lower-case, as the machine's own are."] : [];
 
-export function handedOn({ ticket, body, red, contract = "", capture, woken, commitlint, foreignTree }: Handed): string {
+const machineAtFault = (foreign: boolean | undefined) =>
+  foreign === true
+    ? `- \`machine\`: the machine is at fault, reviewer included; it lives in ${MACHINE_REPO}, not this tree, so change nothing here for it: file the fault as \`tickets\`, and this ticket waits on them.`
+    : "- `machine`: the machine is at fault, reviewer included; fix it in a worktree off `origin/main`, commit naming this ticket, and `bin/land` it first.";
+
+export function handedOn({ ticket, body, red, contract = "", capture, woken, commitlint, foreign }: Handed): string {
   return [
     `# Ticket #${ticket}`,
     capped(body, TICKET_CAP),
     ...(woken === undefined ? [] : ["## How its split ended", "Build what a piece closed unbuilt left, or rule it out:", capped(woken, LIST_CAP)]),
     ...filedIn(capture),
     ...(red === undefined ? buildIt(contract) : howItFailed(red)),
-    ...leftToItsCI(foreignTree),
+    ...leftToItsCI(foreign),
     ...linted(commitlint),
     "## You own it until it merges",
     "Every red on this ticket comes back to you until it merges. Read its Why first; `gh` reads any run. If the reason above names a merge conflict, merge main in and resolve it yourself, keeping the ticket's Why over main's conflicting change. Answer one outcome:",
@@ -158,7 +164,7 @@ export function handedOn({ ticket, body, red, contract = "", capture, woken, com
     "- `ticket`: its `## Done when` is wrong; return the ticket as `body`, Why byte-identical.",
     `- \`split\`: too big for one build; file \`tickets\` that build at once, each with \`done\` as ${DONE_SENTENCES}. What must wait for them stays as \`body\`, Why byte-identical, and builds once they merge.`,
     "- `close`: the ticket should not exist as written, and nothing should replace it.",
-    "- `machine`: the machine is at fault, reviewer included; fix it in a worktree off `origin/main`, commit naming this ticket, and `bin/land` it first.",
+    machineAtFault(foreign),
     "`reason`: one paragraph for the owner. Two rounds in a row that change nothing call them.",
     "",
   ].join("\n\n");
@@ -279,6 +285,23 @@ function rewritten(ticket: string, body: string, answer: Answer): Round {
   return { body: answer.body };
 }
 
+const faultBody = (ticket: string, { why: fault, done }: Piece): string =>
+  followUpBody([`Filed by the builder of ${process.env.GH_REPO ?? ""}#${ticket}, which waits on it, as the machine's fault.`, "", `> ${fault}`], done);
+
+const inMachineRepo = (args: string[]) => gh([...args, "--repo", MACHINE_REPO]);
+
+function filedForMachine(ticket: string, answer: Answer): Round {
+  const postings = (answer.tickets ?? []).map((piece) => ({ title: piece.title, text: faultBody(ticket, piece) }));
+  const refused = postings.length === 0 ? ["a `machine` answer from a tree that is not the machine's files the machine's fault as one ticket or more in `tickets`"] : postings.flatMap((posting) => postRefusals({ kind: "ticket", ...posting }).map((refusal) => `${posting.title}: ${refusal}`));
+  if (refused.length > 0) return { red: ["Your `machine` answer was refused, and nothing was filed:", ...refused.map((refusal) => `- ${refusal}`)].join("\n") };
+  const filed = postings.map((posting) => post({ kind: "ticket", ...posting }, inMachineRepo).said.trim());
+  if (filed.some((said) => !FILED.test(said))) return { ended: calledOwner(ticket, `it found the machine at fault and filed ${filed.filter((said) => FILED.test(said)).length} of ${filed.length} tickets in ${MACHINE_REPO}`) };
+  commentOnTicket(ticket, `@${OWNER} the builder of #${ticket} found the machine at fault and filed ${filed.join(", ")}. #${ticket} waits on it, labelled \`${WAITING}\`: take the label off once it merges. ${answer.reason}`, gh);
+  mark(ticket, WAITING);
+  console.log(`fix: #${ticket} waits on the machine's fault, filed as ${filed.join(", ")}`);
+  return { ended: 0 };
+}
+
 function landedOnMain(ticket: string, reason: string, before: string): Round {
   if (fetchedMain() === before) return { red: "You answered `machine` and main has not moved: land the machine fix with `bin/land` before you answer." };
   commentOnTicket(ticket, `@${OWNER} the builder of #${ticket} changed the machine: ${reason}`, gh);
@@ -292,6 +315,7 @@ function answered(ticket: string, body: string, answer: Answer | undefined, main
   if (answer.outcome === "close") return { ended: closedUnbuilt(ticket, `@${OWNER} the builder closed #${ticket} unbuilt and kept its branch: ${answer.reason}`) };
   if (answer.outcome === "split") return split(ticket, body, answer);
   if (answer.outcome === "ticket") return rewritten(ticket, body, answer);
+  if (answer.outcome === "machine" && FOREIGN) return filedForMachine(ticket, answer);
   if (answer.outcome === "machine") return landedOnMain(ticket, answer.reason, mainBefore);
   return {};
 }
@@ -377,7 +401,7 @@ function ownTicket(ticket: string, run: string | undefined): number {
     red: failed === undefined ? undefined : { failed, diff, gaps: earlierDrift(ticket, judged) },
     contract,
     commitlint,
-    foreignTree: foreign(),
+    foreign: FOREIGN,
     capture: captureOf(body, process.env.SESSION_CAPTURES),
     woken: onTicket.filter((said) => said.startsWith(splitClosed(ticket))).at(-1),
   });

@@ -71,7 +71,7 @@ export function fixing({
   hooks = "",
   treePath = {} as Record<string, string>,
   nodeLauncher = false,
-  jobEnv = {} as Record<string, string>,
+  calledFrom = undefined as string | undefined,
 } = {}) {
   const root = scratch("builder-");
   const session = join(root, "session");
@@ -160,7 +160,7 @@ export function fixing({
     captured: (name: string) => join(root, "captures", name),
     log: (...args: string[]) => git(session, "log", ...args),
     run: (...args: string[]) =>
-      execute(join(BIN, "fix"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}`, HOME: home, MACHINE_BIN: machine, AGENT_HOOKS_SETTINGS: hooks, SESSION_CAPTURES: join(root, "captures"), ...(reason === undefined ? {} : { REASON: reason }), ...(Object.keys(treePath).length === 0 ? {} : { TREE_PATH: join(root, "tree-bin") }), ...jobEnv }, args.length === 0 ? ["811", RED_RUN] : args),
+      execute(join(BIN, "fix"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}`, HOME: home, MACHINE_BIN: machine, AGENT_HOOKS_SETTINGS: hooks, SESSION_CAPTURES: join(root, "captures"), ...(reason === undefined ? {} : { REASON: reason }), ...(calledFrom === undefined ? {} : { CALLED_FROM: calledFrom, GH_REPO: "collod873/Lumaria" }), ...(Object.keys(treePath).length === 0 ? {} : { TREE_PATH: join(root, "tree-bin") }) }, args.length === 0 ? ["811", RED_RUN] : args),
   };
 }
 
@@ -172,14 +172,14 @@ declareStage({
       file: "src/builder.ts",
       cap: TICKET_CAP + CONTRACT_CAP + LIST_CAP + 2 * HANDED_ON,
       slots: ["body", "contract", "woken"],
-      build: (filled) => handedOn({ ticket: "", body: filled.body ?? "", contract: filled.contract ?? "", woken: filled.woken ?? "", commitlint: true, foreignTree: true }),
+      build: (filled) => handedOn({ ticket: "", body: filled.body ?? "", contract: filled.contract ?? "", woken: filled.woken ?? "", commitlint: true, foreign: true }),
     },
     {
       name: "builder",
       file: "src/builder.ts",
       cap: TICKET_CAP + TAIL_CAP + DIFF_CAP + 3 * LIST_CAP + HANDED_ON,
       slots: ["body", "failed", "diff", "gaps", "woken"],
-      build: (filled) => handedOn({ ticket: "", body: filled.body ?? "", red: { failed: filled.failed ?? "", diff: filled.diff ?? "", gaps: filled.gaps ?? "" }, woken: filled.woken ?? "", commitlint: true, foreignTree: true }),
+      build: (filled) => handedOn({ ticket: "", body: filled.body ?? "", red: { failed: filled.failed ?? "", diff: filled.diff ?? "", gaps: filled.gaps ?? "" }, woken: filled.woken ?? "", commitlint: true, foreign: true }),
     },
     {
       name: "repair",
