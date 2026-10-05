@@ -22,6 +22,8 @@ is its text. The closer wakes a builder by dispatching the caller file by its ow
 `ticket` and `reason`, which GitHub starts only from the caller's default branch, so the file lands
 on main before any ticket there builds. A builder it reaches passes a check red only for steps
 named `(needs ...)`, which the machine's runner lacks; that repo's own CI judges them on its PR.
+It passes such a check even when it says its receipts were not published, as a green one saying so
+passes: that repo's CI judges its PR without them.
 _Avoid_: shim, wrapper, vendored workflow
 
 **Worker**:
