@@ -54,17 +54,26 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(handed()[0]).toContain("~/bin/check --full");
   });
 
-  it("leaves a step the runner lacks what it needs for to a foreign tree's own CI, and keeps this repo's own check judging in CI (#1142)", () => {
-    const strict = `printf '%s\\n' "\${CI:-unset}" >>../check-ci\nif [ -n "$CI" ]; then ${CHECK_RED.trim()}; fi\n${CHECK_PASSES}`;
-    const foreign = fixing({ claude: FIXES, check: strict, jobEnv: { CI: "true", FOREIGN_TREE: "true" } });
-    const own = fixing({ claude: FIXES, check: strict, jobEnv: { CI: "true" } });
+  it("passes a foreign tree whose check is red only for steps the runner lacks what they need for, leaving them to its own CI, and keeps this repo's own check judging them (#1142)", () => {
+    const unmet = "printf 'check: red integration (needs DATABASE_URL), e2e (needs BASE_URL, TOKEN); log /nowhere/check-full.log\\n'\nexit 1\n";
+    const foreign = fixing({ claude: FIXES, check: unmet, jobEnv: { FOREIGN_TREE: "true" } });
+    const own = fixing({ claude: FIXES, check: unmet });
 
     expect(foreign.run("811").status).toBe(0);
-    expect(readFileSync(join(foreign.session, "..", "check-ci"), "utf8")).toBe("unset\n");
     expect(foreign.saved()).toEqual(["811"]);
+    expect(foreign.marked()).toEqual(["811 building", "811 checking"]);
+    expect(foreign.handed()[0]).toContain("`<step> (needs <VAR>)`");
     expect(own.run("811").status).toBe(1);
-    expect(readFileSync(join(own.session, "..", "check-ci"), "utf8")).toMatch(/^true\n/);
     expect(own.saved()).toEqual([]);
+    expect(own.handed()[0]).not.toContain("(needs <VAR>)");
+  });
+
+  it("holds a foreign tree red when anything beside an unmet need is red (#1142)", () => {
+    const mixed = "printf 'check: red test src/stops.test.ts:4, integration (needs DATABASE_URL); log /nowhere/check-full.log\\n'\nexit 1\n";
+    const { run, saved } = fixing({ claude: FIXES, check: mixed, jobEnv: { FOREIGN_TREE: "true" } });
+
+    expect(run("811").status).toBe(1);
+    expect(saved()).toEqual([]);
   });
 
   it("hands a builder woken on a red no copy of the contract (#990)", () => {

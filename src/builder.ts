@@ -62,6 +62,7 @@ interface Handed {
   capture?: string;
   woken?: string;
   commitlint?: boolean;
+  foreignTree?: boolean;
 }
 
 type Round = { red?: string; ended?: number; body?: string };
@@ -98,15 +99,22 @@ export function repaired(output: string): string {
   return [`\`${CHECK}\` is still red. The end of its output:`, tailOf(output, TAIL_CAP), "Make it pass.", ""].join("\n\n");
 }
 
-const leftToItsCI = ({ CI: _judging, ...env }: NodeJS.ProcessEnv): NodeJS.ProcessEnv => env;
+const foreign = () => process.env.FOREIGN_TREE === "true";
+const RED_NAMES = /^check: red (.*?)(?:; |$)/;
+const NEEDS = " (needs ";
+const UNMET = new RegExp(`[^\\s,]+${NEEDS.replace("(", "\\(")}[^)]*\\)`, "g");
+
+const onlyUnmet = (verdict: string) => {
+  const named = RED_NAMES.exec(verdict)?.[1] ?? "";
+  return named.includes(NEEDS) && named.replace(UNMET, "").replace(/[\s,]/g, "") === "";
+};
 
 function checkRed(): string {
   const { GITHUB_ACTIONS: _annotating, ...env } = process.env;
-  const judged = env.FOREIGN_TREE === "true" ? leftToItsCI(env) : env;
-  const { stdout, stderr } = spawnSync("bash", ["-c", CHECK], { env: treePathed(judged), encoding: "utf8" });
+  const { stdout, stderr } = spawnSync("bash", ["-c", CHECK], { env: treePathed(env), encoding: "utf8" });
   const output = `${stdout}${stderr}`.trim();
   const verdict = stdout.trim().split("\n").at(-1) ?? "";
-  if (PASSED.test(verdict)) return "";
+  if (PASSED.test(verdict) || (foreign() && onlyUnmet(verdict))) return "";
   const log = LOGGED.exec(verdict)?.[1];
   return [output, log === undefined ? "" : (onDisk(resolve(log)) ?? "")].join("\n");
 }
@@ -129,16 +137,20 @@ const howItFailed = ({ failed, diff, gaps }: NonNullable<Handed["red"]>) => [
   capped(gaps, LIST_CAP) || "(none)",
 ];
 
+const leftToItsCI = (foreignTree: boolean | undefined) =>
+  foreignTree === true ? [`This repo's own CI judges its PR. A step the check names red only as \`<step>${NEEDS}<VAR>)\` is one this runner lacks what it needs for: the machine leaves it to that CI, so do not provide it yourself.`] : [];
+
 const linted = (commitlint: boolean | undefined) =>
   commitlint === true ? ["This repo runs commitlint on every commit: write each message as `type: subject`, the type `feat`, `fix` or another conventional one, the subject lower-case, as the machine's own are."] : [];
 
-export function handedOn({ ticket, body, red, contract = "", capture, woken, commitlint }: Handed): string {
+export function handedOn({ ticket, body, red, contract = "", capture, woken, commitlint, foreignTree }: Handed): string {
   return [
     `# Ticket #${ticket}`,
     capped(body, TICKET_CAP),
     ...(woken === undefined ? [] : ["## How its split ended", "Build what a piece closed unbuilt left, or rule it out:", capped(woken, LIST_CAP)]),
     ...filedIn(capture),
     ...(red === undefined ? buildIt(contract) : howItFailed(red)),
+    ...leftToItsCI(foreignTree),
     ...linted(commitlint),
     "## You own it until it merges",
     "Every red on this ticket comes back to you until it merges. Read its Why first; `gh` reads any run. If the reason above names a merge conflict, merge main in and resolve it yourself, keeping the ticket's Why over main's conflicting change. Answer one outcome:",
@@ -365,6 +377,7 @@ function ownTicket(ticket: string, run: string | undefined): number {
     red: failed === undefined ? undefined : { failed, diff, gaps: earlierDrift(ticket, judged) },
     contract,
     commitlint,
+    foreignTree: foreign(),
     capture: captureOf(body, process.env.SESSION_CAPTURES),
     woken: onTicket.filter((said) => said.startsWith(splitClosed(ticket))).at(-1),
   });
