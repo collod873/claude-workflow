@@ -54,6 +54,19 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(handed()[0]).toContain("~/bin/check --full");
   });
 
+  it("leaves a step the runner lacks what it needs for to a foreign tree's own CI, and keeps this repo's own check judging in CI (#1142)", () => {
+    const strict = `printf '%s\\n' "\${CI:-unset}" >>../check-ci\nif [ -n "$CI" ]; then ${CHECK_RED.trim()}; fi\n${CHECK_PASSES}`;
+    const foreign = fixing({ claude: FIXES, check: strict, jobEnv: { CI: "true", FOREIGN_TREE: "true" } });
+    const own = fixing({ claude: FIXES, check: strict, jobEnv: { CI: "true" } });
+
+    expect(foreign.run("811").status).toBe(0);
+    expect(readFileSync(join(foreign.session, "..", "check-ci"), "utf8")).toBe("unset\n");
+    expect(foreign.saved()).toEqual(["811"]);
+    expect(own.run("811").status).toBe(1);
+    expect(readFileSync(join(own.session, "..", "check-ci"), "utf8")).toMatch(/^true\n/);
+    expect(own.saved()).toEqual([]);
+  });
+
   it("hands a builder woken on a red no copy of the contract (#990)", () => {
     const contract = '{ "steps": { "only-this-tree": { "run": "node src/gate.ts" } } }\n';
     const { run, handed } = fixing({ reason: "the Check went red", claude: FIXES, contract });

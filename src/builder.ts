@@ -98,9 +98,12 @@ export function repaired(output: string): string {
   return [`\`${CHECK}\` is still red. The end of its output:`, tailOf(output, TAIL_CAP), "Make it pass.", ""].join("\n\n");
 }
 
+const leftToItsCI = ({ CI: _judging, ...env }: NodeJS.ProcessEnv): NodeJS.ProcessEnv => env;
+
 function checkRed(): string {
   const { GITHUB_ACTIONS: _annotating, ...env } = process.env;
-  const { stdout, stderr } = spawnSync("bash", ["-c", CHECK], { env: treePathed(env), encoding: "utf8" });
+  const judged = env.FOREIGN_TREE === "true" ? leftToItsCI(env) : env;
+  const { stdout, stderr } = spawnSync("bash", ["-c", CHECK], { env: treePathed(judged), encoding: "utf8" });
   const output = `${stdout}${stderr}`.trim();
   const verdict = stdout.trim().split("\n").at(-1) ?? "";
   if (PASSED.test(verdict)) return "";

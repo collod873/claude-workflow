@@ -236,3 +236,19 @@ describe("a repo's tickets build through one caller file that holds only trigger
     });
   });
 });
+
+describe("leaves a step the machine's runner lacks what it needs for to the foreign tree's own CI (#1142)", () => {
+  const fixSteps = (file: string) => Object.values(workflowJobs(file)).flatMap(({ steps }) => steps.filter(({ run }) => (run ?? "").includes("bin/fix")));
+
+  it("marks every builder the caller file reaches as building a foreign tree", () => {
+    expect(fixSteps("tickets.yml")).toHaveLength(2);
+    for (const step of fixSteps("tickets.yml")) expect(step.env?.FOREIGN_TREE).toBe("true");
+  });
+
+  it("leaves this repo's own builders judging their check in CI", () => {
+    for (const file of ["build.yml", "fix.yml"]) {
+      expect(fixSteps(file).length, file).toBeGreaterThan(0);
+      for (const step of fixSteps(file)) expect(step.env?.FOREIGN_TREE, file).toBeUndefined();
+    }
+  });
+});
