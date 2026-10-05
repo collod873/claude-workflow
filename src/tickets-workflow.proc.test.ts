@@ -73,10 +73,10 @@ describe("a repo's tickets build through one caller file that holds only trigger
 
   it("checks the machine out at the workspace and the caller's tree apart under tree/, and makes every GitHub call with the App's token", () => {
     const text = readFileSync(TICKETS, "utf8");
-    const { permissions, env } = parse(text) as { permissions: unknown; env: Record<string, string> };
+    const { permissions, jobs } = parse(text) as { permissions: unknown; jobs: Record<string, { env?: Record<string, string> }> };
 
     expect(permissions).toEqual({});
-    expect(env.GH_REPO).toBe("${{ github.repository }}");
+    for (const [name, job] of Object.entries(jobs)) expect(job.env?.GH_REPO, name).toBe("${{ github.repository }}");
     expect(text).not.toMatch(/github\.token|secrets\.GITHUB_TOKEN/);
     for (const [name, { steps }] of Object.entries(workflowJobs("tickets.yml"))) {
       const [app, machine] = steps;
@@ -89,6 +89,7 @@ describe("a repo's tickets build through one caller file that holds only trigger
       for (const step of steps.filter((later) => later.env !== undefined)) {
         for (const token of ["GH_TOKEN", "QUIET_GH_TOKEN"]) if (step.env?.[token] !== undefined) expect(step.env[token], `${name} ${step.id ?? ""}`).toBe(APP);
       }
+      for (const step of steps.filter((later) => later.uses?.startsWith("./.github/actions/call-owner") === true)) expect(step.with?.token, name).toBe(APP);
       for (const step of steps.filter((later) => (later.run ?? "").includes("$GITHUB_WORKSPACE/bin/"))) expect((step as WorkflowStep & { "working-directory"?: string })["working-directory"], `${name} ${step.id ?? ""}`).toBe("tree");
     }
   });

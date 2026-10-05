@@ -547,6 +547,7 @@ describe("closed.yml strips the machine's labels from every issue and PR that cl
 const CALLER = join(REPO, ".github", "actions", "call-owner", "action.yml");
 const CALLERS = [
   { file: "fix.yml", job: "fix", names: "needs.which.outputs.ticket", run: "the builder's job" },
+  { file: "tickets.yml", job: "fix", names: "needs.which.outputs.ticket", run: "the builder's job" },
   { file: "research.yml", job: "research", names: "github.event.issue.number", run: "the research run" },
   { file: "slice.yml", job: "slice", names: "github.event.issue.number", run: "the slice run" },
   { file: "reslice.yml", job: "reslice", names: "steps.ended.outputs.spec", run: "the wave check or reslice run" },

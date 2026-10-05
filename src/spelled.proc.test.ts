@@ -147,7 +147,7 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
           .split("\n")
           .flatMap((line, at) => (line.includes("collod873-machine") && !line.startsWith("export const MACHINE = ") ? [`${file.slice(REPO.length + 1)}:${at + 1}`] : [])),
       ),
-    ).toEqual([".github/workflows/build.yml:13", ".github/workflows/tickets.yml:13"]);
+    ).toEqual([".github/workflows/build.yml:13", ".github/workflows/tickets.yml:10"]);
     expect(readFileSync(join(ACTIONS, "stage-logs", "action.yml"), "utf8")).toMatch(/bin\/spelled MACHINE/);
   });
 
