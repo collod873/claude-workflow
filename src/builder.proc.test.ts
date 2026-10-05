@@ -80,6 +80,14 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(saved()).toEqual(["811"]);
   });
 
+  it("passes a foreign tree red only for an unmet need though its receipts were not published, as a green check whose receipts were not is passed (#1147)", () => {
+    const unpublished = "printf 'check: red integration (needs DATABASE_URL); receipts not published (no origin remote); log /nowhere/check-full.log\\n'\nexit 1\n";
+    const { run, saved } = fixing({ claude: FIXES, check: unpublished, calledFrom: "collod873/Lumaria/.github/workflows/machine.yml@refs/heads/main" });
+
+    expect(run("811").status).toBe(0);
+    expect(saved()).toEqual(["811"]);
+  });
+
   it("holds a foreign tree red when anything beside an unmet need is red (#1142)", () => {
     const mixed = "printf 'check: red test src/stops.test.ts:4, integration (needs DATABASE_URL); log /nowhere/check-full.log\\n'\nexit 1\n";
     const { run, saved } = fixing({ claude: FIXES, check: mixed, calledFrom: "collod873/Lumaria/.github/workflows/machine.yml@refs/heads/main" });
