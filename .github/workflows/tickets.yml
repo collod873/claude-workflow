@@ -285,7 +285,7 @@ jobs:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           STAGE_MINUTES: 45
           RUN: ${{ github.event.workflow_run.id }}
-          REASON: ${{ github.event.inputs.reason || (github.event_name == 'issues' && format('The build of #{0} ended red: {1}/{2}/actions/runs/{3}', needs.which.outputs.ticket, github.server_url, github.repository, github.run_id) || '') }}
+          REASON: "${{ github.event.inputs.reason || (github.event_name == 'issues' && format('The build of #{0} ended red: {1}/{2}/actions/runs/{3}', needs.which.outputs.ticket, github.server_url, github.repository, github.run_id) || '') }}"
         run: |
           tail --pid=$$ -n +1 -F ".git/machine-logs/fix-$TICKET.jsonl" 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
           "$GITHUB_WORKSPACE/bin/fix" "$TICKET" $RUN

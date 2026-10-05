@@ -100,6 +100,12 @@ describe("a repo's tickets build through one caller file that holds only trigger
     expect(caller().on.workflow_dispatch).toEqual({ inputs: { ticket: { required: true, type: "string" }, reason: { required: true, type: "string" } } });
   });
 
+  it("tells the builder of a red build which run went red, since that run is still going and its log cannot be read yet", () => {
+    const fixing = workflowJobs("tickets.yml").fix?.steps.find(({ id }) => id === "fix");
+
+    expect(fixing?.env?.REASON).toMatch(/format\('The build of #\{0\} ended red: \{1\}\/\{2\}\/actions\/runs\/\{3\}'.*\) \|\| ''\) \}\}$/);
+  });
+
   describe("names the ticket a red run hands back", () => {
     const which = workflowJobs("tickets.yml").which?.steps.find(({ id }) => id === "which");
     const named = (env: Record<string, string>, labels = "") => {
