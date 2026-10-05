@@ -5,7 +5,7 @@ usage="file-issue: usage: file-issue ticket|note|research|spec --title <title> -
 shown_refusals=4
 most_shown=5
 
-src="$(cd "${BASH_SOURCE[0]%/*}/../src" && pwd)"
+src="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../src" && pwd)"
 
 if [[ ${1:-} == --help ]]; then
   printf '%s\n' "$usage"
