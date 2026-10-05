@@ -1,4 +1,5 @@
 import { readdirSync, readFileSync, realpathSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { BUILDER_SESSION, CHECK_PASSES, CHECK_RED, FULL_CHECK_RED_ONCE, fixing } from "./builder.part.ts";
@@ -66,6 +67,17 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(own.run("811").status).toBe(1);
     expect(own.saved()).toEqual([]);
     expect(own.handed()[0]).not.toContain("(needs <VAR>)");
+  });
+
+  it("reads the unmet need off the real check's verdict, which names it red in CI, and pushes a foreign tree for its PR (#1142)", () => {
+    const real = realpathSync(join(homedir(), "bin", "check"));
+    const contract = '{ "steps": { "integration": { "run": "true", "needs": ["DATABASE_URL"] } } }\n';
+    const check = `env -u DATABASE_URL CI=true "${real}" "$@" | tee -a ../check-out\nexit "\${PIPESTATUS[0]}"\n`;
+    const { run, saved, session } = fixing({ claude: FIXES, contract, check, calledFrom: "collod873/Lumaria/.github/workflows/machine.yml@refs/heads/main" });
+
+    expect(run("811").status).toBe(0);
+    expect(readFileSync(join(session, "..", "check-out"), "utf8")).toMatch(/^check: red integration \(needs DATABASE_URL\)/m);
+    expect(saved()).toEqual(["811"]);
   });
 
   it("holds a foreign tree red when anything beside an unmet need is red (#1142)", () => {
