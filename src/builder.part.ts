@@ -72,6 +72,7 @@ export function fixing({
   treePath = {} as Record<string, string>,
   nodeLauncher = false,
   calledFrom = undefined as string | undefined,
+  realSave = false,
 } = {}) {
   const root = scratch("builder-");
   const session = join(root, "session");
@@ -83,12 +84,13 @@ export function fixing({
   const argvDir = join(root, "gh-argv");
   const machine = join(root, "machine", "bin");
   const ranIn = join(root, "ran-in");
+  const opens = join(root, "pr-opens");
   const { setup, calls } = ghArgv(argvDir);
   mkdirSync(spent, { recursive: true });
   mkdirSync(hires, { recursive: true });
   script(join(home, "bin", "check"), `printf 'check %s\\n' "$PWD" >>"${ranIn}"\n${check}`);
   script(join(machine, "mark"), `printf '%s\\n' "$*" >>"${marks}"\n${refusedMark(markRefusal)}`);
-  script(join(machine, "save"), `printf '%s\\n' "$*" >>"${saves}"\n${save}`);
+  script(join(machine, "save"), `printf '%s\\n' "$*" >>"${saves}"\n${realSave ? `exec "${join(BIN, "save")}" "$@"\n` : save}`);
   branchedSession(session, "builder", { "src/ticket-shape.ts": "export const shaped = 1;\n", ...onMain, ...(contract === undefined ? {} : { ".claude/contract.json": contract }) }, { "src/ticket-shape.test.ts": AUTHORED_TEST }, "ticket/811");
   git(session, "commit", "--quiet", "--allow-empty", "-m", "Build #811 against its failing tests");
   const redAt = git(session, "rev-parse", "HEAD");
@@ -97,6 +99,7 @@ export function fixing({
   if (savedSession !== undefined) plant(home, ".claude/builder/811", `${savedSession}\n`);
   for (const [name, text] of Object.entries(captures)) plant(root, `captures/${name}`, text);
   plant(root, "ticket.json", JSON.stringify({ title: "Build what the ticket asks", body, labels: labels.map((name) => ({ name })) }));
+  plant(root, "ticket-body", body);
   plant(root, "on-pr.json", authored(onPr ?? []));
   plant(root, "on-ticket.json", authored(onTicket));
   plant(root, "failed-run.log", failedRun);
@@ -115,6 +118,8 @@ export function fixing({
       ...openedCases(root, opener, body, parent),
       `  *"issue create"*) n=$(( $(cat "${join(root, "created")}" 2>/dev/null || echo 900) + 1 )); printf '%s\\n' "$n" >"${join(root, "created")}"; printf 'https://github.com/collod873/claude-workflow/issues/%s\\n' "$n" ;;`,
       `  *"issue view"*"title,body,labels"*) cat "${join(root, "ticket.json")}" ;;`,
+      `  *"issue view"*"body,title"*) printf 'Build what the ticket asks\\001%s' "$(cat "${join(root, "ticket-body")}")" ;;`,
+      `  *"pr create"*) printf '%s https://github.com/%s/pull/9811\\n' "$GH_REPO" "$GH_REPO" >>"${opens}"; printf 'https://github.com/%s/pull/9811\\n' "$GH_REPO" ;;`,
       `  *"pr view"*"number"*) ${onPr === undefined ? "printf 'no pull requests found for branch \"ticket/811\"\\n' >&2; exit 1" : "printf '{\"number\":9811}\\n'"} ;;`,
       `  *"run view"*"--json"*) printf '%s %s %s\\n' '${ranAs}' '${redAt}' '${attempt}' ;;`,
       `  *"run view"*) cat "${join(root, "failed-run.log")}" ;;`,
@@ -145,6 +150,7 @@ export function fixing({
     hired: () => numbered(hires).map((argv) => argv.split("\0").filter((part) => part !== "")),
     marked: () => listed(marks),
     saved: () => listed(saves),
+    opened: () => listed(opens),
     calls,
     ranIn: () => [...new Set(listed(ranIn))],
     ticketComments: () => calls().filter((args) => args[0] === "issue" && args[1] === "comment").map(bodyOf),
