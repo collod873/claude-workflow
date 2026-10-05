@@ -151,7 +151,10 @@ describe("a repo's tickets build through one caller file that holds only trigger
     expect(holds(job?.if ?? "", unlabeled)).toBe(true);
     expect(held).toBe("true");
     expect(holds(fix?.if ?? "", { steps })).toBe(true);
-    const { run, opened } = fixing({ ticket: "828", claude: "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n", contract, check, realSave: true, repo: resolved(job?.env?.GH_REPO), calledFrom: resolved(fix?.env?.CALLED_FROM) });
+    const repo = resolved(job?.env?.GH_REPO);
+    const calledFrom = resolved(fix?.env?.CALLED_FROM);
+    expect({ repo, calledFrom }).toEqual({ repo: lumaria["github.repository"], calledFrom: lumaria["github.workflow_ref"] });
+    const { run, opened } = fixing({ ticket: "828", claude: "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n", contract, check, realSave: true, repo, calledFrom });
     const result = run("828");
     expect(result.status, result.stderr).toBe(0);
     expect(opened()).toEqual(["collod873/Lumaria https://github.com/collod873/Lumaria/pull/9828"]);
