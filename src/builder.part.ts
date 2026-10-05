@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CONTRACT_CAP, handedOn, repaired, TAIL_CAP } from "./builder.ts";
 import { DIFF_CAP, LIST_CAP, TICKET_CAP } from "./brief.ts";
@@ -70,6 +70,7 @@ export function fixing({
   gitUnreadable = undefined as string | undefined,
   hooks = "",
   treePath = {} as Record<string, string>,
+  nodeLauncher = false,
 } = {}) {
   const root = scratch("builder-");
   const session = join(root, "session");
@@ -125,8 +126,12 @@ export function fixing({
   );
   for (const [name, body] of Object.entries(treePath)) script(join(root, "tree-bin", name), body);
   if (gitUnreadable !== undefined) gitRefusing(root, gitUnreadable);
+  if (nodeLauncher) {
+    writeFileSync(join(root, "bin", "claude"), `#!/usr/bin/env node\nrequire("node:fs").appendFileSync("../pinned-ran", \`launcher \${process.version}\\n\`);\nprocess.exitCode = require("node:child_process").spawnSync("bash", [${JSON.stringify(join(root, "bin", "claude-sh"))}, ...process.argv.slice(2)], { stdio: "inherit" }).status ?? 1;\n`);
+    chmodSync(join(root, "bin", "claude"), 0o755);
+  }
   script(
-    join(root, "bin", "claude"),
+    join(root, "bin", nodeLauncher ? "claude-sh" : "claude"),
     [`CALL=$(( $(ls "${spent}" | wc -l) + 1 ))`, `printf 'claude %s\\n' "$PWD" >>"${ranIn}"`, `printf '%s\\0' "$@" >"${hires}/$CALL"`, `cat >"${spent}/$CALL"`, claude, `cat "${join(root, "answer.jsonl")}"`, ""].join("\n"),
   );
   const listed = (file: string) => (existsSync(file) ? readFileSync(file, "utf8").trimEnd().split("\n") : []);
