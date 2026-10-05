@@ -101,6 +101,7 @@ export function closing({
   prUnreadable = false,
   markRefusal,
   calledFrom,
+  foreign = false,
 }: {
   ticket?: string;
   ticketBody?: string;
@@ -119,6 +120,7 @@ export function closing({
   prUnreadable?: boolean;
   markRefusal?: string;
   calledFrom?: string;
+  foreign?: boolean;
 } = {}) {
   const root = scratch("closer-");
   const session = join(root, "session");
@@ -200,9 +202,11 @@ export function closing({
       "",
     ].join("\n"),
   );
-  mkdirSync(join(session, "bin"));
-  if (markRefusal === undefined) symlinkSync(join(BIN, "mark"), join(session, "bin", "mark"));
-  else script(join(session, "bin", "mark"), refusedMark(markRefusal));
+  if (!foreign) {
+    mkdirSync(join(session, "bin"));
+    if (markRefusal === undefined) symlinkSync(join(BIN, "mark"), join(session, "bin", "mark"));
+    else script(join(session, "bin", "mark"), refusedMark(markRefusal));
+  }
   return {
     session,
     calls: () => readdirSync(callsDir).sort((a, b) => Number(a) - Number(b)).map((file) => readFileSync(join(callsDir, file), "utf8")),

@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
@@ -852,6 +852,17 @@ describe("bin/close, called from another repo's caller file, wakes builders thro
 
     expect(run().status).toBe(0);
     expect(calls().some((call) => call.startsWith("pr\nupdate-branch\n936"))).toBe(true);
+  });
+
+  it("marks the ticket closed with the machine's bin/mark, from a caller's tree that holds no bin/ of its own", () => {
+    const { session, calls, run } = closing({ ticket: "819", calledFrom, foreign: true });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(existsSync(join(session, "bin"))).toBe(false);
+    expect(calls().some((call) => call.startsWith("issue\nclose\n819\n"))).toBe(true);
+    expect(calls().some((call) => call.includes("issues/819/labels") || call.startsWith("issue\nedit\n819\n"))).toBe(true);
   });
 
   it("still waits for the review here, where no caller is named", () => {
