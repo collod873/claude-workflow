@@ -356,6 +356,9 @@ jobs:
         with:
           node-version: 24
 
+      - id: pinned
+        uses: ./.github/actions/pinned
+
       - working-directory: tree
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}

@@ -21,10 +21,14 @@ export function doneChecking({
   said = [] as Said[],
   slice = "exit 0\n",
   markRefusal,
-}: { labels?: string[]; body?: string; tries?: { sentence: number; outcome: string; tried: string }[]; gh?: string; said?: Said[]; slice?: string; markRefusal?: string } = {}) {
+  env = {},
+  manifest,
+}: { labels?: string[]; body?: string; tries?: { sentence: number; outcome: string; tried: string }[]; gh?: string; said?: Said[]; slice?: string; markRefusal?: string; env?: Record<string, string>; manifest?: object } = {}) {
   const comments = '[[ $1 == api ]] && { cat "$(dirname "$0")/../comments.json"; exit 0; }';
-  const { root, argv, ...stage } = issueStage("done-check-", { title: "A spec worth trying", body, labels: labels.map((name) => ({ name })) }, { tries }, DONE_CHECK_POSTED, `${gh}\n${comments}\n`);
+  const { argv, ...stage } = issueStage("done-check-", { title: "A spec worth trying", body, labels: labels.map((name) => ({ name })) }, { tries }, DONE_CHECK_POSTED, `${gh}\n${comments}\n`);
+  const { root } = stage;
   plant(root, "comments.json", authored(said));
+  if (manifest !== undefined) plant(root, "package.json", JSON.stringify(manifest));
   const sliced = join(root, "sliced");
   const marked = stubbedMark(root, undefined, markRefusal);
   script(join(root, "bin", "slice"), `printf '%s\\n' "$*" >>"${sliced}"\n${slice}`);
@@ -34,7 +38,7 @@ export function doneChecking({
     labelled: () => argv().filter((args) => args[1] === "edit").map((args) => args.slice(2).join(" ")),
     marked,
     sliced: () => (existsSync(sliced) ? readFileSync(sliced, "utf8").trimEnd().split("\n") : []),
-    run: (...args: string[]) => execute(join(BIN, "done-check"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, args.length > 0 ? args : ["974"]),
+    run: (...args: string[]) => execute(join(BIN, "done-check"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}`, ...env }, args.length > 0 ? args : ["974"]),
   };
 }
 

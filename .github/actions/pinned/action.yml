@@ -1,5 +1,5 @@
 name: Pinned
-description: Readies the Node a tree's .nvmrc names, or 24 when it names none, and the package manager its package.json pins, and hands their bin directory on as TREE_PATH for the tree's setup and gate, leaving the machine on Node 24
+description: Readies the Node a tree's .nvmrc names, or 24 when it names none, and the package manager its package.json pins, and hands their bin directory on as TREE_PATH for the tree's setup, gate and done check, leaving the machine on Node 24
 
 runs:
   using: composite

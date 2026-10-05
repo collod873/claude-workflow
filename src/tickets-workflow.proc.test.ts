@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { closing } from "./closer.part.ts";
+import { doneChecking, specWith } from "./done-checker.part.ts";
 import { execute, holds, scratch, script, workflowJobs, type WorkflowStep } from "./scenarios.ts";
 import { MACHINE, OWNER } from "./spelled.ts";
 
@@ -182,13 +183,34 @@ describe("a repo's tickets build through one caller file that holds only trigger
       const step = pinnedSteps().find(({ run }) => run !== undefined);
       const ran = execute("bash", join(root, step?.["working-directory"] ?? ""), { PATH: `${nodeBin}:/usr/bin:/bin`, GITHUB_ENV: githubEnv, COREPACK_HOME: join(root, "corepack-home"), ...(step?.env as Record<string, string>) }, ["-e", "-c", step?.run ?? ""]);
       expect(ran.status, ran.stderr).toBe(0);
-      const ranPnpm = () => execute("bash", join(root, "tree"), { PATH: `${/^TREE_PATH=(.*)$/m.exec(readFileSync(githubEnv, "utf8"))?.[1] ?? ""}:/usr/bin:/bin`, COREPACK_HOME: join(root, "corepack-home") }, ["-c", "pnpm --version"]);
+      const treeEnv = () => ({ TREE_PATH: /^TREE_PATH=(.*)$/m.exec(readFileSync(githubEnv, "utf8"))?.[1] ?? "", COREPACK_HOME: join(root, "corepack-home") });
+      const ranPnpm = () => execute("bash", join(root, "tree"), { PATH: `${treeEnv().TREE_PATH}:/usr/bin:/bin`, COREPACK_HOME: treeEnv().COREPACK_HOME }, ["-c", "pnpm --version"]);
       return {
+        treeEnv,
         calls: existsSync(calls) ? readFileSync(calls, "utf8").trim().split("\n").map((line) => line.replaceAll(root, "")) : [],
         handed: readFileSync(githubEnv, "utf8").replaceAll(root, ""),
         ranPnpm,
       };
     };
+
+    it("in the close job, after the tree is checked out and the machine's own Node, and before the closer starts the done checker (#1140)", () => {
+      const steps = workflowJobs("tickets.yml").close?.steps ?? [];
+      const at = (found: (step: WorkflowStep) => boolean) => steps.findIndex(found);
+      const pinned = at(({ uses }) => uses === "./.github/actions/pinned");
+
+      expect(pinned).toBeGreaterThan(at(({ id }) => id === "checkout"));
+      expect(steps.slice(pinned).filter(({ uses }) => uses?.startsWith("actions/setup-node@") === true)).toEqual([]);
+      expect(pinned).toBeLessThan(at(({ run }) => (run ?? "").includes("bin/close")));
+    });
+
+    it("lets a pnpm-pinned tree's done check run the pnpm it pins, through the real corepack (#1140)", () => {
+      const env = readied({ packageManager: "pnpm@11.7.0" }, { stubbed: false }).treeEnv();
+      const checked = doneChecking({ body: specWith(["see the tree's own pnpm answer – check: `[ \"$(pnpm --version)\" = 11.7.0 ]`"]), tries: [], env, manifest: { packageManager: "pnpm@11.7.0" } });
+
+      expect(checked.run().status).toBe(0);
+      expect(checked.comments()[0]).toContain("which exited 0.");
+      expect(checked.closes()).toHaveLength(1);
+    });
 
     it("in every job that runs the builder, after the tree is checked out and the machine's own Node, and before anything installs or the builder starts", () => {
       const builds = Object.entries(workflowJobs("tickets.yml")).filter(([, { steps }]) => steps.some(({ run }) => (run ?? "").includes("bin/fix")));

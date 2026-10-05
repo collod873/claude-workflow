@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { capped, NO_EM_DASH } from "./brief.ts";
 import { UNFENCED } from "./fence.ts";
 import { authoredOn, commentOnTicket, commentsRead, gh, machineBin, mark, NEEDS_HUMAN, OWNER, readOrStop, unread, type Asked } from "./post.ts";
-import { opened, type Spent } from "./stage.ts";
+import { opened, type Spent, treePathed } from "./stage.ts";
 import { ASKED, CHECKING, SPEC } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { quoted, type Sentence, sentences, SPEC_CAP } from "./ticket-shape.ts";
@@ -72,7 +72,7 @@ export function handedOn(title: string, body: string, { ran = [], wave, replies 
 }
 
 function ranItself(check: string, sentence: number): Try {
-  const { status } = spawnSync("bash", ["-c", check], { stdio: "ignore", timeout: CHECK_MINUTES * 60_000 });
+  const { status } = spawnSync("bash", ["-c", check], { env: treePathed(), stdio: "ignore", timeout: CHECK_MINUTES * 60_000 });
   const exited = status === null ? `ran past its ${CHECK_MINUTES} minute cap` : `exited ${status}`;
   return { sentence, outcome: status === 0 ? "held" : "missed", tried: `Ran \`${check}\`, which ${exited}.` };
 }
