@@ -93,6 +93,13 @@ describe("a repo's tickets build through one caller file that holds only trigger
     }
   });
 
+  it("tells the closer which caller file it runs under, so a builder it wakes starts through that file", () => {
+    const closing = workflowJobs("tickets.yml").close?.steps.find(({ run }) => (run ?? "").includes("bin/close"));
+
+    expect(closing?.env?.CALLED_FROM).toBe("${{ github.workflow_ref }}");
+    expect(caller().on.workflow_dispatch).toEqual({ inputs: { ticket: { required: true, type: "string" }, reason: { required: true, type: "string" } } });
+  });
+
   describe("names the ticket a red run hands back", () => {
     const which = workflowJobs("tickets.yml").which?.steps.find(({ id }) => id === "which");
     const named = (env: Record<string, string>, labels = "") => {
