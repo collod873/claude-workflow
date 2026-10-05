@@ -551,6 +551,57 @@ describe("bin/fix opens through the one stage opening (#1117)", () => {
   });
 });
 
+describe("the builder builds another repo's checkout from this repo's bin/ (#1134)", () => {
+  const READIED = '{ "setup": "touch ../readied", "steps": {} }\n';
+  const SEES_READIED = "[ -e ../readied ] && printf 'readied\\n' >>../hired-readied\n";
+  const COMMITLINTED = { "commitlint.config.js": "export default { extends: ['@commitlint/config-conventional'] };\n" };
+
+  it("readies the tree with its contract's setup before the hire, and judges it and calls gh from that tree", () => {
+    const { run, session, ranIn, saved, marked } = fixing({ contract: READIED, claude: `${SEES_READIED}${FIXES}` });
+
+    const result = run("811");
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(readFileSync(join(session, "..", "hired-readied"), "utf8")).toBe("readied\n");
+    expect(ranIn()).toEqual(expect.arrayContaining([`gh ${realpathSync(session)}`, `check ${realpathSync(session)}`, `claude ${realpathSync(session)}`]));
+    expect(ranIn().every((line) => line.endsWith(realpathSync(session)))).toBe(true);
+    expect(marked()).toEqual(["811 building", "811 checking"]);
+    expect(saved()).toEqual(["811"]);
+  });
+
+  it("calls the owner and hires no one when its contract's setup fails", () => {
+    const { run, handed, marked, ticketComments } = fixing({ contract: '{ "setup": "echo no lockfile >&2; exit 3", "steps": {} }\n', claude: FIXES });
+
+    expect(run("811").status).toBe(1);
+    expect(handed()).toEqual([]);
+    expect(marked()).toEqual(["811 building", "811 needs-human"]);
+    expect(ticketComments()).toEqual([expect.stringContaining("its tree's setup failed: no lockfile")]);
+  });
+
+  it("writes a build commit the repo's commitlint accepts when the repo carries one", () => {
+    const { run, log, handed } = fixing({ onMain: COMMITLINTED, claude: FIXES });
+
+    expect(run("811").status).toBe(0);
+    expect(log("-1", "--format=%s")).toBe("feat: build #811 as its builder");
+    expect(handed()[0]).toContain("commitlint");
+  });
+
+  it("writes a repair commit the repo's commitlint accepts when the repo carries one", () => {
+    const { run, log } = fixing({ onMain: COMMITLINTED, claude: FIXES });
+
+    expect(run().status).toBe(0);
+    expect(log("-1", "--format=%s")).toBe("fix: repair #811 as its builder");
+  });
+
+  it("keeps this repo's messages, and tells its builder nothing of commitlint, when the repo carries none", () => {
+    const { run, log, handed } = fixing({ claude: FIXES });
+
+    expect(run("811").status).toBe(0);
+    expect(log("-1", "--format=%s")).toBe("Build #811 as its builder");
+    expect(handed()[0]).not.toContain("commitlint");
+  });
+});
+
 describe("the builder borrows nothing from the reviewer, so a change to one leaves the other alone (#1121)", () => {
   const SRC = import.meta.dirname;
   const machine = () => readdirSync(SRC).filter((file) => file.endsWith(".ts") && !/\.(test|part)\.ts$/.test(file) && file !== "scenarios.ts");

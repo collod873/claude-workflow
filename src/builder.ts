@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { admission, doesNotBuild } from "./admit.ts";
 import { capped, handedDiff, LIST_CAP, NO_EM_DASH, onDisk, TICKET_CAP } from "./brief.ts";
 import { FULL_CHECK, UNFENCED } from "./fence.ts";
-import { type Asked, BUILDER_SPLIT, commentOnTicket, commentsRead, earlierDrift, FOLLOW_UP_OF, followUpBody, gh, ghRead, git, gitRead, mark, NEEDS_HUMAN, NOTHING_MARKED, OWNER, post, postRefusals, prOfTicket, readOrStop, repairOf, RESOLVING, rewriteTicket, sessionLine, ticketBranch, unread, WAITING } from "./post.ts";
+import { type Asked, BUILDER_SPLIT, commentOnTicket, commentsRead, earlierDrift, FOLLOW_UP_OF, followUpBody, gh, ghRead, git, gitRead, machineBin, mark, NEEDS_HUMAN, NOTHING_MARKED, OWNER, post, postRefusals, prOfTicket, readOrStop, repairOf, RESOLVING, rewriteTicket, sessionLine, ticketBranch, unread, WAITING } from "./post.ts";
 import { machineLogs, opened, type Spent } from "./stage.ts";
 import { BUILDING, CHECKING } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
@@ -61,6 +61,7 @@ interface Handed {
   contract?: string;
   capture?: string;
   woken?: string;
+  commitlint?: boolean;
 }
 
 type Round = { red?: string; ended?: number; body?: string };
@@ -125,13 +126,17 @@ const howItFailed = ({ failed, diff, gaps }: NonNullable<Handed["red"]>) => [
   capped(gaps, LIST_CAP) || "(none)",
 ];
 
-export function handedOn({ ticket, body, red, contract = "", capture, woken }: Handed): string {
+const linted = (commitlint: boolean | undefined) =>
+  commitlint === true ? ["This repo runs commitlint on every commit: write each message as `type: subject`, the type `feat`, `fix` or another conventional one, the subject lower-case, as the machine's own are."] : [];
+
+export function handedOn({ ticket, body, red, contract = "", capture, woken, commitlint }: Handed): string {
   return [
     `# Ticket #${ticket}`,
     capped(body, TICKET_CAP),
     ...(woken === undefined ? [] : ["## How its split ended", "Build what a piece closed unbuilt left, or rule it out:", capped(woken, LIST_CAP)]),
     ...filedIn(capture),
     ...(red === undefined ? buildIt(contract) : howItFailed(red)),
+    ...linted(commitlint),
     "## You own it until it merges",
     "Every red on this ticket comes back to you until it merges. Read its Why first; `gh` reads any run. If the reason above names a merge conflict, merge main in and resolve it yourself, keeping the ticket's Why over main's conflicting change. Answer one outcome:",
     `- \`code\`: build or fix it, or change nothing on a flake; the machine commits, runs \`${CHECK}\`, hands back red, pushes green or reruns the red Check.`,
@@ -145,6 +150,23 @@ export function handedOn({ ticket, body, red, contract = "", capture, woken }: H
 }
 
 const builtBy = (ticket: string) => `Build #${ticket} as its builder`;
+const COMMITLINT = /^(\.commitlintrc(\.\w+)?|commitlint\.config\.[cm]?[jt]s)$/;
+const COMMITLINT_KEY = /"commitlint"\s*:/;
+const commitlinted = () => readdirSync(process.cwd()).some((name) => COMMITLINT.test(name)) || COMMITLINT_KEY.test(onDisk(join(process.cwd(), "package.json")) ?? "");
+const conventional = (type: string, message: string) => `${type}: ${message.charAt(0).toLowerCase()}${message.slice(1)}`;
+
+function commitOf(ticket: string, repairing: boolean, commitlint: boolean): string {
+  const message = repairing ? repairOf(ticket) : builtBy(ticket);
+  return commitlint ? conventional(repairing ? "fix" : "feat", message) : message;
+}
+
+function setupRefusal(contract: string): string | undefined {
+  const { setup } = JSON.parse(contract || "{}") as { setup?: string };
+  if (setup === undefined || setup.trim() === "") return undefined;
+  const readied = spawnSync("bash", ["-c", setup], { encoding: "utf8", maxBuffer: Infinity });
+  if (readied.status === 0) return undefined;
+  return `${readied.stderr}${readied.stdout}`.trim().split("\n").at(-1) || `it ended ${readied.status}`;
+}
 const head = () => gitRead(["rev-parse", "HEAD"], "the head of this branch could not be read");
 const sessionFile = (ticket: string) => join(homedir(), ".claude", "builder", ticket);
 
@@ -273,7 +295,7 @@ function spentOn(spend: Spend, input: string, session: string | undefined, openi
 }
 
 function saveRefusal(ticket: string, logs: string): string | undefined {
-  const save = spawnSync(join(process.cwd(), "bin", "save"), [ticket], { encoding: "utf8" });
+  const save = spawnSync(machineBin("save"), [ticket], { encoding: "utf8" });
   if (save.status === 0) return undefined;
   return `Save could not push this branch or open its PR:\n\n${tailOf(onDisk(join(logs, `save-${ticket}.log`)) ?? save.stderr, TAIL_CAP)}`;
 }
@@ -330,11 +352,16 @@ function ownTicket(ticket: string, run: string | undefined): number {
   const { logs, failed, judged, onTicket, diff } = owning.carried;
   let body = asked.body;
   let session = savedSession(ticket);
+  const contract = onDisk(join(process.cwd(), CONTRACT)) ?? "";
+  const unready = setupRefusal(contract);
+  if (unready !== undefined) return calledOwner(ticket, `its tree's setup failed: ${quoted(unready)}`);
+  const commitlint = commitlinted();
   const opening = handedOn({
     ticket,
     body,
     red: failed === undefined ? undefined : { failed, diff, gaps: earlierDrift(ticket, judged) },
-    contract: onDisk(join(process.cwd(), CONTRACT)) ?? "",
+    contract,
+    commitlint,
     capture: captureOf(body, process.env.SESSION_CAPTURES),
     woken: onTicket.filter((said) => said.startsWith(splitClosed(ticket))).at(-1),
   });
@@ -350,7 +377,7 @@ function ownTicket(ticket: string, run: string | undefined): number {
     const round = answered(ticket, body, answer, before.main);
     if (round.ended !== undefined) return round.ended;
     body = round.body ?? body;
-    committed(failed === undefined ? builtBy(ticket) : repairOf(ticket));
+    committed(commitOf(ticket, failed !== undefined, commitlint));
     const changed = head() !== before.head || fetchedMain() !== before.main || round.body !== undefined;
     const red = round.red ?? redOrSaved(ticket, logs);
     if (red === undefined) return checkingAgain(ticket, run);
