@@ -94,6 +94,8 @@ export interface Spent {
   answer?: unknown;
 }
 
+export const treePathed = (env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv => (env.TREE_PATH === undefined || env.TREE_PATH === "" ? env : { ...env, PATH: `${env.TREE_PATH}:${env.PATH ?? ""}` });
+
 export function hired(hire: Hire): ((input: string, resume?: string) => Spent) | string {
   const minutes = Number(process.env.STAGE_MINUTES);
   const deadline = Date.now() + minutes * 60_000;
@@ -106,7 +108,7 @@ export function hired(hire: Hire): ((input: string, resume?: string) => Spent) |
     const from = existsSync(hire.transcript) ? statSync(hire.transcript).size : 0;
     const streamed = openSync(hire.transcript, "a");
     const [command, ...args] = capped([...argv, ...(resume === undefined ? [] : ["--resume", resume]), ...STREAM], minutes, ends);
-    const spent = spawnSync(command, args, { input, stdio: ["pipe", streamed, "pipe"], encoding: "utf8", maxBuffer: Infinity });
+    const spent = spawnSync(command, args, { input, env: treePathed(), stdio: ["pipe", streamed, "pipe"], encoding: "utf8", maxBuffer: Infinity });
     closeSync(streamed);
     const stdout = readFileSync(hire.transcript).subarray(from).toString("utf8");
     return { stdout, status: spent.status, stderr: String(spent.stderr ?? "") };

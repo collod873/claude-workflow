@@ -69,6 +69,7 @@ export function fixing({
   unreadable = undefined as string | undefined,
   gitUnreadable = undefined as string | undefined,
   hooks = "",
+  treePath = {} as Record<string, string>,
 } = {}) {
   const root = scratch("builder-");
   const session = join(root, "session");
@@ -122,6 +123,7 @@ export function fixing({
       "",
     ].join("\n"),
   );
+  for (const [name, body] of Object.entries(treePath)) script(join(root, "tree-bin", name), body);
   if (gitUnreadable !== undefined) gitRefusing(root, gitUnreadable);
   script(
     join(root, "bin", "claude"),
@@ -152,7 +154,7 @@ export function fixing({
     captured: (name: string) => join(root, "captures", name),
     log: (...args: string[]) => git(session, "log", ...args),
     run: (...args: string[]) =>
-      execute(join(BIN, "fix"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}`, HOME: home, MACHINE_BIN: machine, AGENT_HOOKS_SETTINGS: hooks, SESSION_CAPTURES: join(root, "captures"), ...(reason === undefined ? {} : { REASON: reason }) }, args.length === 0 ? ["811", RED_RUN] : args),
+      execute(join(BIN, "fix"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}`, HOME: home, MACHINE_BIN: machine, AGENT_HOOKS_SETTINGS: hooks, SESSION_CAPTURES: join(root, "captures"), ...(reason === undefined ? {} : { REASON: reason }), ...(Object.keys(treePath).length === 0 ? {} : { TREE_PATH: join(root, "tree-bin") }) }, args.length === 0 ? ["811", RED_RUN] : args),
   };
 }
 

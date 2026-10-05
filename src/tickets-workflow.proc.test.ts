@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { closing } from "./closer.part.ts";
@@ -162,19 +162,32 @@ describe("a repo's tickets build through one caller file that holds only trigger
     });
   });
 
-  describe("readies the Node and package manager a tree pins before the builder runs its setup (#1138)", () => {
+  describe("readies the Node and package manager a tree pins for its setup and gate, and keeps the machine on its own Node (#1138)", () => {
     const pinnedSteps = () => (parse(readFileSync(PINNED, "utf8")) as { runs: { steps: (WorkflowStep & { "working-directory"?: string })[] } }).runs.steps;
-    const readied = (manifest: Record<string, unknown>) => {
+    const nodes = () => pinnedSteps().filter(({ uses }) => uses?.startsWith("actions/setup-node@") === true);
+    const readied = (manifest: Record<string, unknown> | undefined, { stubbed = true, corepack = true } = {}) => {
       const root = scratch("pinned-");
       const calls = join(root, "calls");
-      script(join(root, "bin", "corepack"), `printf '%s %s\\n' "$PWD" "$*" >>"${calls}"\n`);
-      script(join(root, "bin", "npm"), `printf 'npm %s\\n' "$*" >>"${calls}"\n`);
+      const nodeBin = join(root, "node-bin");
+      const githubEnv = join(root, "github-env");
       mkdirSync(join(root, "tree"));
-      writeFileSync(join(root, "tree", "package.json"), JSON.stringify(manifest));
+      writeFileSync(githubEnv, "");
+      if (manifest !== undefined) writeFileSync(join(root, "tree", "package.json"), JSON.stringify(manifest));
+      const npm = `printf 'npm %s\\n' "$*" >>"${calls}"\n`;
+      script(join(root, "spare", "corepack"), `printf '%s %s\\n' "$PWD" "$*" >>"${calls}"\n`);
+      script(join(nodeBin, "npm"), corepack ? npm : `${npm}cp "${join(root, "spare", "corepack")}" "${nodeBin}/"\n`);
+      symlinkSync(process.execPath, join(nodeBin, "node"));
+      if (!stubbed) symlinkSync(join(dirname(process.execPath), "corepack"), join(nodeBin, "corepack"));
+      else if (corepack) symlinkSync(join(root, "spare", "corepack"), join(nodeBin, "corepack"));
       const step = pinnedSteps().find(({ run }) => run !== undefined);
-      const ran = execute("bash", join(root, step?.["working-directory"] ?? ""), { PATH: `${join(root, "bin")}:${process.env.PATH ?? ""}` }, ["-e", "-c", step?.run ?? ""]);
+      const ran = execute("bash", join(root, step?.["working-directory"] ?? ""), { PATH: `${nodeBin}:/usr/bin:/bin`, GITHUB_ENV: githubEnv, COREPACK_HOME: join(root, "corepack-home"), ...(step?.env as Record<string, string>) }, ["-e", "-c", step?.run ?? ""]);
       expect(ran.status, ran.stderr).toBe(0);
-      return existsSync(calls) ? readFileSync(calls, "utf8").trim().split("\n").map((line) => line.replace(join(root, "tree"), "tree")) : [];
+      const ranPnpm = () => execute("bash", join(root, "tree"), { PATH: `${/^TREE_PATH=(.*)$/m.exec(readFileSync(githubEnv, "utf8"))?.[1] ?? ""}:/usr/bin:/bin`, COREPACK_HOME: join(root, "corepack-home") }, ["-c", "pnpm --version"]);
+      return {
+        calls: existsSync(calls) ? readFileSync(calls, "utf8").trim().split("\n").map((line) => line.replaceAll(root, "")) : [],
+        handed: readFileSync(githubEnv, "utf8").replaceAll(root, ""),
+        ranPnpm,
+      };
     };
 
     it("in every job that runs the builder, after the tree is checked out and the machine's own Node, and before anything installs or the builder starts", () => {
@@ -192,15 +205,34 @@ describe("a repo's tickets build through one caller file that holds only trigger
       }
     });
 
-    it("takes the Node from the tree's .nvmrc when it has one, and 24 when it has none", () => {
-      const node = pinnedSteps().find(({ uses }) => uses?.startsWith("actions/setup-node@") === true);
+    it("sets up the Node the tree's .nvmrc names, or 24 when it names none, hands it on as TREE_PATH, and leaves Node 24 first on the job's PATH for the machine", () => {
+      const [tree, machine, ...more] = nodes();
+      const steps = pinnedSteps();
+      const nodeAt = steps.flatMap(({ uses }, at) => (uses?.startsWith("actions/setup-node@") === true ? [at] : []));
+      const handing = steps.findIndex(({ run }) => (run ?? "").includes("TREE_PATH"));
 
-      expect(node?.with).toEqual({ "node-version-file": "${{ hashFiles('tree/.nvmrc') != '' && 'tree/.nvmrc' || '' }}", "node-version": "${{ hashFiles('tree/.nvmrc') == '' && '24' || '' }}" });
+      expect(more).toEqual([]);
+      expect(tree?.with).toEqual({ "node-version-file": "${{ hashFiles('tree/.nvmrc') != '' && 'tree/.nvmrc' || '' }}", "node-version": "${{ hashFiles('tree/.nvmrc') == '' && '24' || '' }}" });
+      expect(machine?.with).toEqual({ "node-version": 24 });
+      expect(nodeAt).toEqual([handing - 1, handing + 1]);
+      expect(readied({ name: "unpinned" }).handed).toBe("TREE_PATH=/node-bin\n");
     });
 
-    it("installs the package manager the tree's package.json pins, in the tree, and nothing when it pins none", () => {
-      expect(readied({ packageManager: "pnpm@11.7.0" })).toEqual(["tree enable", "tree install"]);
-      expect(readied({ name: "unpinned" })).toEqual([]);
+    it("readies the package manager the tree's package.json pins beside the tree's Node, under packageManager or devEngines, and nothing when it pins none or has no package.json", () => {
+      const readying = ["/tree enable --install-directory /node-bin", "/tree install"];
+
+      expect(readied({ packageManager: "pnpm@11.7.0" }).calls).toEqual(readying);
+      expect(readied({ devEngines: { packageManager: { name: "pnpm", version: "11.7.0" } } }).calls).toEqual(readying);
+      expect(readied({ packageManager: "pnpm@11.7.0" }, { corepack: false }).calls).toEqual(["npm install --global corepack@latest", ...readying]);
+      expect(readied({ name: "unpinned" }).calls).toEqual([]);
+      expect(readied(undefined).calls).toEqual([]);
+    });
+
+    it("leaves a tree like Lumaria's running the pnpm its package.json pins from the tree's own directory, through the real corepack", () => {
+      const pnpm = readied({ packageManager: "pnpm@11.7.0" }, { stubbed: false }).ranPnpm();
+
+      expect(pnpm.status, pnpm.stderr).toBe(0);
+      expect(pnpm.stdout.trim()).toBe("11.7.0");
     });
   });
 });

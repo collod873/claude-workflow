@@ -1,5 +1,5 @@
 name: Pinned
-description: Readies the Node a tree's .nvmrc names, or 24 when it names none, and the package manager its package.json pins, so the tree's own setup and gate find them
+description: Readies the Node a tree's .nvmrc names, or 24 when it names none, and the package manager its package.json pins, and hands their bin directory on as TREE_PATH for the tree's setup and gate, leaving the machine on Node 24
 
 runs:
   using: composite
@@ -14,7 +14,13 @@ runs:
       env:
         COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
       run: |
+        bin=$(dirname "$(command -v node)")
+        printf 'TREE_PATH=%s\n' "$bin" >>"$GITHUB_ENV"
         jq -e '.packageManager // .devEngines.packageManager' package.json >/dev/null 2>&1 || exit 0
         command -v corepack >/dev/null || npm install --global corepack@latest
-        corepack enable
+        corepack enable --install-directory "$bin"
         corepack install
+
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 24

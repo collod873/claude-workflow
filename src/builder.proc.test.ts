@@ -569,6 +569,17 @@ describe("the builder builds another repo's checkout from this repo's bin/ (#113
     expect(saved()).toEqual(["811"]);
   });
 
+  it("runs the tree's setup, its check and its builder on the Node and package manager the tree pins, and itself on the machine's own Node (#1138)", () => {
+    const pinned = { node: "printf 'v20.0.0\\n'\n", pnpm: "printf 'pnpm %s\\n' \"$*\" >>../pinned-ran\n" };
+    const sees = (who: string) => `printf '${who} %s %s\\n' "$(node --version)" "$(command -v pnpm >/dev/null && echo pnpm)" >>../pinned-ran\n`;
+    const { run, session } = fixing({ contract: '{ "setup": "pnpm install --frozen-lockfile && node --version >>../pinned-ran", "steps": {} }\n', claude: `${sees("builder")}${FIXES}`, check: `${sees("check")}${CHECK_PASSES}`, treePath: pinned });
+
+    const result = run("811");
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(readFileSync(join(session, "..", "pinned-ran"), "utf8").trim().split("\n")).toEqual(["pnpm install --frozen-lockfile", "v20.0.0", "builder v20.0.0 pnpm", "check v20.0.0 pnpm"]);
+  });
+
   it("calls the owner and hires no one when its contract's setup fails", () => {
     const { run, handed, marked, ticketComments } = fixing({ contract: '{ "setup": "echo no lockfile >&2; exit 3", "steps": {} }\n', claude: FIXES });
 
