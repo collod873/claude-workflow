@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { BUILDER_SESSION, CHECK_PASSES, CHECK_RED, FULL_CHECK_RED_ONCE, fixing } from "./builder.part.ts";
@@ -569,3 +569,16 @@ describe("the builder borrows nothing from the reviewer, so a change to one leav
     expect(homes).toEqual(MOVED.map((name) => `${name} ${["DIFF_CAP", "TICKET_CAP", "LIST_CAP", "NO_EM_DASH", "handedDiff"].includes(name) ? "brief.ts" : "post.ts"}`));
   });
 });
+
+describe("the builder, run in a caller's tree that holds no bin/, saves and marks with the machine's own scripts (#1135)", () => {
+  it("pushes the branch and opens its PR through the machine's bin/save", () => {
+    const { run, calls, session } = fixing({ claude: FIXES, foreign: true });
+
+    const result = run();
+
+    expect(existsSync(join(session, "bin"))).toBe(false);
+    expect(result.stderr).not.toMatch(/Save could not push/);
+    expect(calls().some((args) => args[0] === "pr" && args[1] === "create" && args.includes("ticket/811")), result.stderr).toBe(true);
+  });
+});
+

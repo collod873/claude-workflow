@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { admission, doesNotBuild } from "./admit.ts";
 import { capped, handedDiff, LIST_CAP, NO_EM_DASH, onDisk, TICKET_CAP } from "./brief.ts";
 import { FULL_CHECK, UNFENCED } from "./fence.ts";
-import { type Asked, BUILDER_SPLIT, commentOnTicket, commentsRead, earlierDrift, FOLLOW_UP_OF, followUpBody, gh, ghRead, git, gitRead, mark, NEEDS_HUMAN, NOTHING_MARKED, OWNER, post, postRefusals, prOfTicket, readOrStop, repairOf, RESOLVING, rewriteTicket, sessionLine, ticketBranch, unread, WAITING } from "./post.ts";
+import { type Asked, binOf, BUILDER_SPLIT, commentOnTicket, commentsRead, earlierDrift, FOLLOW_UP_OF, followUpBody, gh, ghRead, git, gitRead, mark, NEEDS_HUMAN, NOTHING_MARKED, OWNER, post, postRefusals, prOfTicket, readOrStop, repairOf, RESOLVING, rewriteTicket, sessionLine, ticketBranch, unread, WAITING } from "./post.ts";
 import { machineLogs, opened, type Spent } from "./stage.ts";
 import { BUILDING, CHECKING } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
@@ -273,7 +273,7 @@ function spentOn(spend: Spend, input: string, session: string | undefined, openi
 }
 
 function saveRefusal(ticket: string, logs: string): string | undefined {
-  const save = spawnSync(join(process.cwd(), "bin", "save"), [ticket], { encoding: "utf8" });
+  const save = spawnSync(binOf("save"), [ticket], { encoding: "utf8" });
   if (save.status === 0) return undefined;
   return `Save could not push this branch or open its PR:\n\n${tailOf(onDisk(join(logs, `save-${ticket}.log`)) ?? save.stderr, TAIL_CAP)}`;
 }

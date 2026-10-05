@@ -61,7 +61,7 @@ export function readOrStop<Ended>(stage: string, run: () => Ended): Ended | Stop
   }
 }
 
-function binOf(name: string): string {
+export function binOf(name: string): string {
   const tree = join(process.cwd(), "bin", name);
   return existsSync(tree) ? tree : join(import.meta.dirname, "..", "bin", name);
 }

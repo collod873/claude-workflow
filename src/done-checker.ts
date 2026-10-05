@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { capped, NO_EM_DASH } from "./brief.ts";
 import { UNFENCED } from "./fence.ts";
-import { authoredOn, commentOnTicket, commentsRead, gh, mark, NEEDS_HUMAN, OWNER, readOrStop, unread, type Asked } from "./post.ts";
+import { authoredOn, binOf, commentOnTicket, commentsRead, gh, mark, NEEDS_HUMAN, OWNER, readOrStop, unread, type Asked } from "./post.ts";
 import { opened, type Spent } from "./stage.ts";
 import { ASKED, CHECKING, SPEC } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
@@ -220,7 +220,7 @@ function fixWave(spec: Read, found: [number, string, Try][], missed: [number, st
     mark(issue, NEEDS_HUMAN);
     return stoppedAt("calledOwner", `${said} marked ${NEEDS_HUMAN}, sentence ${listing(missed, ", ")} missed again after the fix wave: ${comment.url}`);
   }
-  const fixed = spawnSync(join(process.cwd(), "bin", "slice"), [issue, "--fix", listing(missed, ",")], { encoding: "utf8" });
+  const fixed = spawnSync(binOf("slice"), [issue, "--fix", listing(missed, ",")], { encoding: "utf8" });
   const comment = commented(spec, posted(found, fixed.status === 0 ? [FIX_WAVE] : []));
   if (typeof comment === "string") return comment;
   const [why = ""] = `${fixed.stderr}${fixed.stdout}`.trim().split("\n");

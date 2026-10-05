@@ -68,6 +68,7 @@ export function fixing({
   unreadable = undefined as string | undefined,
   gitUnreadable = undefined as string | undefined,
   hooks = "",
+  foreign = false,
 } = {}) {
   const root = scratch("builder-");
   const session = join(root, "session");
@@ -81,8 +82,10 @@ export function fixing({
   mkdirSync(spent, { recursive: true });
   mkdirSync(hires, { recursive: true });
   script(join(home, "bin", "check"), check);
-  script(join(session, "bin", "mark"), `printf '%s\\n' "$*" >>"${marks}"\n${refusedMark(markRefusal)}`);
-  script(join(session, "bin", "save"), `printf '%s\\n' "$*" >>"${saves}"\n${save}`);
+  if (!foreign) {
+    script(join(session, "bin", "mark"), `printf '%s\\n' "$*" >>"${marks}"\n${refusedMark(markRefusal)}`);
+    script(join(session, "bin", "save"), `printf '%s\\n' "$*" >>"${saves}"\n${save}`);
+  }
   branchedSession(session, "builder", { "src/ticket-shape.ts": "export const shaped = 1;\n", ...(contract === undefined ? {} : { ".claude/contract.json": contract }) }, { "src/ticket-shape.test.ts": AUTHORED_TEST }, "ticket/811");
   git(session, "commit", "--quiet", "--allow-empty", "-m", "Build #811 against its failing tests");
   const redAt = git(session, "rev-parse", "HEAD");
