@@ -223,6 +223,7 @@ export function closing({
           GITHUB_REPOSITORY: "collod873/claude-workflow",
           GITHUB_RUN_ID: CLOSE_RUN_ID,
           ...(calledFrom === undefined ? {} : { CALLED_FROM: calledFrom }),
+          ...(foreign ? { MACHINE_BIN: BIN } : {}),
         },
         afterCheck ? ["queue"] : [],
       ),

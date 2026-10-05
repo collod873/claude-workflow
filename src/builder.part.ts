@@ -53,6 +53,7 @@ export function fixing({
   npx = "exit 0\n",
   check = CHECK_PASSES,
   contract = undefined as string | undefined,
+  onMain = {} as Record<string, string>,
   save = "exit 0\n",
   failedRun = "",
   ranAs = "Build",
@@ -68,7 +69,6 @@ export function fixing({
   unreadable = undefined as string | undefined,
   gitUnreadable = undefined as string | undefined,
   hooks = "",
-  foreign = false,
 } = {}) {
   const root = scratch("builder-");
   const session = join(root, "session");
@@ -78,15 +78,15 @@ export function fixing({
   const marks = join(root, "mark-calls");
   const saves = join(root, "save-calls");
   const argvDir = join(root, "gh-argv");
+  const machine = join(root, "machine", "bin");
+  const ranIn = join(root, "ran-in");
   const { setup, calls } = ghArgv(argvDir);
   mkdirSync(spent, { recursive: true });
   mkdirSync(hires, { recursive: true });
-  script(join(home, "bin", "check"), check);
-  if (!foreign) {
-    script(join(session, "bin", "mark"), `printf '%s\\n' "$*" >>"${marks}"\n${refusedMark(markRefusal)}`);
-    script(join(session, "bin", "save"), `printf '%s\\n' "$*" >>"${saves}"\n${save}`);
-  }
-  branchedSession(session, "builder", { "src/ticket-shape.ts": "export const shaped = 1;\n", ...(contract === undefined ? {} : { ".claude/contract.json": contract }) }, { "src/ticket-shape.test.ts": AUTHORED_TEST }, "ticket/811");
+  script(join(home, "bin", "check"), `printf 'check %s\\n' "$PWD" >>"${ranIn}"\n${check}`);
+  script(join(machine, "mark"), `printf '%s\\n' "$*" >>"${marks}"\n${refusedMark(markRefusal)}`);
+  script(join(machine, "save"), `printf '%s\\n' "$*" >>"${saves}"\n${save}`);
+  branchedSession(session, "builder", { "src/ticket-shape.ts": "export const shaped = 1;\n", ...onMain, ...(contract === undefined ? {} : { ".claude/contract.json": contract }) }, { "src/ticket-shape.test.ts": AUTHORED_TEST }, "ticket/811");
   git(session, "commit", "--quiet", "--allow-empty", "-m", "Build #811 against its failing tests");
   const redAt = git(session, "rev-parse", "HEAD");
   for (const [name, text] of Object.entries(logged)) plant(session, `.git/machine-logs/${name}`, text);
@@ -104,6 +104,7 @@ export function fixing({
     join(root, "bin", "gh"),
     [
       setup,
+      `printf 'gh %s\\n' "$PWD" >>"${ranIn}"`,
       'case "$*" in',
       ...(unreadable === undefined ? [] : [`  ${unreadable}) printf 'gh: Server Error (HTTP 502)\\n' >&2; exit 1 ;;`]),
       `  *"api"*"issues/9811/comments"*) cat "${join(root, "on-pr.json")}" ;;`,
@@ -124,7 +125,7 @@ export function fixing({
   if (gitUnreadable !== undefined) gitRefusing(root, gitUnreadable);
   script(
     join(root, "bin", "claude"),
-    [`CALL=$(( $(ls "${spent}" | wc -l) + 1 ))`, `printf '%s\\0' "$@" >"${hires}/$CALL"`, `cat >"${spent}/$CALL"`, claude, `cat "${join(root, "answer.jsonl")}"`, ""].join("\n"),
+    [`CALL=$(( $(ls "${spent}" | wc -l) + 1 ))`, `printf 'claude %s\\n' "$PWD" >>"${ranIn}"`, `printf '%s\\0' "$@" >"${hires}/$CALL"`, `cat >"${spent}/$CALL"`, claude, `cat "${join(root, "answer.jsonl")}"`, ""].join("\n"),
   );
   const listed = (file: string) => (existsSync(file) ? readFileSync(file, "utf8").trimEnd().split("\n") : []);
   const numbered = (dir: string) => readdirSync(dir).map((_, index) => readFileSync(join(dir, String(index + 1)), "utf8"));
@@ -137,6 +138,7 @@ export function fixing({
     marked: () => listed(marks),
     saved: () => listed(saves),
     calls,
+    ranIn: () => [...new Set(listed(ranIn))],
     ticketComments: () => calls().filter((args) => args[0] === "issue" && args[1] === "comment").map(bodyOf),
     edits: () => calls().filter((args) => args[0] === "issue" && args[1] === "edit" && args.includes("--body")).map(bodyOf),
     labelled: () => calls().filter((args) => args[0] === "issue" && args[1] === "edit" && !args.includes("--body")).map((args) => args.slice(2).join(" ")),
@@ -150,7 +152,7 @@ export function fixing({
     captured: (name: string) => join(root, "captures", name),
     log: (...args: string[]) => git(session, "log", ...args),
     run: (...args: string[]) =>
-      execute(join(BIN, "fix"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}`, HOME: home, AGENT_HOOKS_SETTINGS: hooks, SESSION_CAPTURES: join(root, "captures"), ...(reason === undefined ? {} : { REASON: reason }) }, args.length === 0 ? ["811", RED_RUN] : args),
+      execute(join(BIN, "fix"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}`, HOME: home, MACHINE_BIN: machine, AGENT_HOOKS_SETTINGS: hooks, SESSION_CAPTURES: join(root, "captures"), ...(reason === undefined ? {} : { REASON: reason }) }, args.length === 0 ? ["811", RED_RUN] : args),
   };
 }
 
@@ -162,14 +164,14 @@ declareStage({
       file: "src/builder.ts",
       cap: TICKET_CAP + CONTRACT_CAP + LIST_CAP + 2 * HANDED_ON,
       slots: ["body", "contract", "woken"],
-      build: (filled) => handedOn({ ticket: "", body: filled.body ?? "", contract: filled.contract ?? "", woken: filled.woken ?? "" }),
+      build: (filled) => handedOn({ ticket: "", body: filled.body ?? "", contract: filled.contract ?? "", woken: filled.woken ?? "", commitlint: true }),
     },
     {
       name: "builder",
       file: "src/builder.ts",
       cap: TICKET_CAP + TAIL_CAP + DIFF_CAP + 3 * LIST_CAP + HANDED_ON,
       slots: ["body", "failed", "diff", "gaps", "woken"],
-      build: (filled) => handedOn({ ticket: "", body: filled.body ?? "", red: { failed: filled.failed ?? "", diff: filled.diff ?? "", gaps: filled.gaps ?? "" }, woken: filled.woken ?? "" }),
+      build: (filled) => handedOn({ ticket: "", body: filled.body ?? "", red: { failed: filled.failed ?? "", diff: filled.diff ?? "", gaps: filled.gaps ?? "" }, woken: filled.woken ?? "", commitlint: true }),
     },
     {
       name: "repair",

@@ -1,5 +1,4 @@
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { text as read } from "node:stream/consumers";
 import { emDashLines } from "./em-dash.ts";
@@ -61,13 +60,10 @@ export function readOrStop<Ended>(stage: string, run: () => Ended): Ended | Stop
   }
 }
 
-export function binOf(name: string): string {
-  const tree = join(process.cwd(), "bin", name);
-  return existsSync(tree) ? tree : join(import.meta.dirname, "..", "bin", name);
-}
+export const machineBin = (command: string) => join(process.env.MACHINE_BIN ?? join(import.meta.dirname, "..", "bin"), command);
 
 export const markWith = (env: NodeJS.ProcessEnv) => (issue: string, label: MarkedLabel | "--closed", ...count: ("--try" | "--untry")[]) => {
-  const marked = spawnSync(binOf("mark"), [issue, label, ...count], { stdio: ["ignore", "ignore", "inherit"], env });
+  const marked = spawnSync(machineBin("mark"), [issue, label, ...count], { stdio: ["ignore", "ignore", "inherit"], env });
   if (marked.status !== 0) throw new Stopped("unwritten", `bin/mark #${issue} ${label} ended non-zero, so nothing after it is posted, closed, marked or hired`);
 };
 export const mark = markWith(process.env);

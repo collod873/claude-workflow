@@ -225,7 +225,7 @@ export function copyMark(root: string): void {
 }
 
 export function execute(file: string, cwd: string, extra: Record<string, string> = {}, args: string[] = []): Run {
-  const { status, stdout, stderr } = spawnSync(file, args, { cwd, env: { ...env, ...extra }, encoding: "utf8" });
+  const { status, stdout, stderr } = spawnSync(file, args, { cwd, env: { MACHINE_BIN: join(cwd, "bin"), ...env, ...extra }, encoding: "utf8" });
   return { status, stdout, stderr };
 }
 
