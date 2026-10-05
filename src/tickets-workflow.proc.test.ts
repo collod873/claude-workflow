@@ -128,6 +128,12 @@ describe("a repo's tickets build through one caller file that holds only trigger
     expect(caller().on.workflow_dispatch).toEqual({ inputs: { ticket: { required: true, type: "string" }, reason: { required: true, type: "string" } } });
   });
 
+  it("tells each builder it runs in a tree that is not the machine's, so a machine fault is filed here and not landed on the tree's main (#1143)", () => {
+    const builders = ["build", "fix"].map((job) => workflowJobs("tickets.yml")[job]?.steps.find(({ id }) => id === "fix"));
+
+    expect(builders.map((step) => step?.env?.CALLED_FROM)).toEqual(["${{ github.workflow_ref }}", "${{ github.workflow_ref }}"]);
+  });
+
   it("tells the builder of a red build which run went red, since that run is still going and its log cannot be read yet", () => {
     const fixing = workflowJobs("tickets.yml").fix?.steps.find(({ id }) => id === "fix");
 
