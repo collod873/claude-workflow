@@ -98,6 +98,11 @@ const FIXED: Part[] = [
     stops: "https://github.com/collod873/claude-workflow/actions/runs/36086791587",
   },
   {
+    name: "tickets.yml",
+    file: ".github/workflows/tickets.yml",
+    stops: "https://github.com/collod873/claude-workflow/issues/387",
+  },
+  {
     name: "src/growth-limits.proc.test.ts",
     file: "src/growth-limits.proc.test.ts",
     stops: "https://github.com/collod873/claude-workflow/issues/399",

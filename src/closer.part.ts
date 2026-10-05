@@ -59,6 +59,7 @@ export interface QueuedPr {
   needsHuman?: boolean;
   labels?: string[];
   labelsUnreadable?: boolean;
+  unreviewed?: boolean;
 }
 
 const RUNS = { green: ["COMPLETED", "SUCCESS"], pending: ["IN_PROGRESS", ""], red: ["COMPLETED", "FAILURE"] } as const;
@@ -73,7 +74,7 @@ function listed(pr: QueuedPr, head: string) {
     statusCheckRollup: [
       { __typename: "CheckRun", name: "check", status: "COMPLETED", conclusion: "SUCCESS" },
       { __typename: "CheckRun", name: "meters", status: "COMPLETED", conclusion: "FAILURE" },
-      { __typename: "CheckRun", name: "review", status, conclusion },
+      ...(pr.unreviewed === true ? [] : [{ __typename: "CheckRun", name: "review", status, conclusion }]),
     ],
   };
 }
@@ -99,6 +100,8 @@ export function closing({
   mergedFrom = `collod873/ticket/${ticket}`,
   prUnreadable = false,
   markRefusal,
+  calledFrom,
+  foreign = false,
 }: {
   ticket?: string;
   ticketBody?: string;
@@ -116,6 +119,8 @@ export function closing({
   mergedFrom?: string;
   prUnreadable?: boolean;
   markRefusal?: string;
+  calledFrom?: string;
+  foreign?: boolean;
 } = {}) {
   const root = scratch("closer-");
   const session = join(root, "session");
@@ -197,9 +202,11 @@ export function closing({
       "",
     ].join("\n"),
   );
-  mkdirSync(join(session, "bin"));
-  if (markRefusal === undefined) symlinkSync(join(BIN, "mark"), join(session, "bin", "mark"));
-  else script(join(session, "bin", "mark"), refusedMark(markRefusal));
+  if (!foreign) {
+    mkdirSync(join(session, "bin"));
+    if (markRefusal === undefined) symlinkSync(join(BIN, "mark"), join(session, "bin", "mark"));
+    else script(join(session, "bin", "mark"), refusedMark(markRefusal));
+  }
   return {
     session,
     calls: () => readdirSync(callsDir).sort((a, b) => Number(a) - Number(b)).map((file) => readFileSync(join(callsDir, file), "utf8")),
@@ -215,6 +222,8 @@ export function closing({
           GITHUB_SERVER_URL: "https://github.com",
           GITHUB_REPOSITORY: "collod873/claude-workflow",
           GITHUB_RUN_ID: CLOSE_RUN_ID,
+          ...(calledFrom === undefined ? {} : { CALLED_FROM: calledFrom }),
+          ...(foreign ? { MACHINE_BIN: BIN } : {}),
         },
         afterCheck ? ["queue"] : [],
       ),

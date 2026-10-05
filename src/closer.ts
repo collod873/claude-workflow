@@ -12,7 +12,8 @@ const MERGED = new RegExp(`^Merge pull request #(\\d+) from \\S+?(?:/${ticketBra
 const NAMED = /^(?:[ ,]*#\d+)+/;
 const BUILDS = /^Builds #(\d+)[ \t]*$/m;
 const MACHINE_BRANCH = new RegExp(`^(?:${ticketBranch("")}|land/)`);
-const REQUIRED_CHECKS = ["check", "review"];
+const caller = /\/([^/@]+)@/.exec(process.env.CALLED_FROM ?? "")?.[1];
+const REQUIRED_CHECKS = caller === undefined ? ["check", "review"] : ["check"];
 const PASSED = new Set(["SUCCESS", "SKIPPED", "NEUTRAL"]);
 
 const quietly = { ...process.env, GH_TOKEN: process.env.QUIET_GH_TOKEN };
@@ -189,10 +190,11 @@ function settle(ticket: string, pr: QueuedPr, merging: QueuedPr | undefined, con
 }
 
 function wakeBuilder(ticket: string, reason: string): void {
-  gh(["workflow", "run", "fix.yml", "-f", `ticket=${ticket}`, "-f", `reason=${reason}`]);
+  gh(["workflow", "run", caller ?? "fix.yml", "-f", `ticket=${ticket}`, "-f", `reason=${reason}`]);
 }
 
 function resliced(ticket: string): Stop | undefined {
+  if (caller !== undefined) return undefined;
   const started = gh(["workflow", "run", "reslice.yml", "-f", `issue=${ticket}`]);
   return started.status === 0 ? undefined : stoppedAt("unresliced", `close: #${ticket} closed, but the re-slice would not start: ${quoted((started.stderr || started.stdout).trim().split("\n")[0] ?? "")}`);
 }

@@ -1,0 +1,25 @@
+name: Machine
+
+"on":
+  issues:
+    types: [opened, reopened, unlabeled, closed]
+  pull_request_target:
+    types: [closed]
+  push:
+    branches: [main]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      ticket:
+        required: true
+        type: string
+      reason:
+        required: true
+        type: string
+
+jobs:
+  tickets:
+    uses: collod873/claude-workflow/.github/workflows/tickets.yml@main
+    secrets: inherit

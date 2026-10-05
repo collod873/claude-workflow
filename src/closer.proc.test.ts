@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
@@ -824,3 +824,52 @@ describe("bin/close stops at a mark GitHub refused, so it closes nothing whose l
     expect(calls().some((call) => /^(issue\nclose|workflow\nrun)\n/.test(call))).toBe(false);
   });
 });
+
+describe("bin/close, called from another repo's caller file, wakes builders through that file and lands on its own check (#1135)", () => {
+  const calledFrom = "collod873/Lumaria/.github/workflows/machine.yml@refs/heads/main";
+  const conflicted = { number: "909", ticket: "830", refused: "GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts." };
+
+  it("dispatches the caller file for a conflicted ticket, as the App, since the caller holds no fix.yml", () => {
+    const { calls, tokens, run } = closing({ ticket: "819", openPrs: [conflicted], calledFrom });
+
+    expect(run().status).toBe(0);
+    const wake = calls().find((call) => call.startsWith("workflow\nrun\nmachine.yml\n") && call.includes("ticket=830"));
+    expect(wake).toContain("merge conflicts");
+    expect(tokens()[calls().indexOf(wake ?? "")]).toBe("app");
+    expect(calls().some((call) => call.startsWith("workflow\nrun\nfix.yml"))).toBe(false);
+  });
+
+  it("closes the ticket and starts no re-slice, since the caller holds no reslice.yml", () => {
+    const { calls, run } = closing({ ticket: "819", calledFrom });
+
+    expect(run().status).toBe(0);
+    expect(calls().some((call) => call.startsWith("issue\nclose\n819\n"))).toBe(true);
+    expect(calls().some((call) => call.startsWith("workflow\nrun\n"))).toBe(false);
+  });
+
+  it("brings a PR up to date once the caller's check passed, with no review run to wait for", () => {
+    const { calls, run } = closing({ ticket: "819", afterCheck: true, openPrs: [{ number: "936", ticket: "856", unreviewed: true }], calledFrom });
+
+    expect(run().status).toBe(0);
+    expect(calls().some((call) => call.startsWith("pr\nupdate-branch\n936"))).toBe(true);
+  });
+
+  it("marks the ticket closed with the machine's bin/mark, from a caller's tree that holds no bin/ of its own", () => {
+    const { session, calls, run } = closing({ ticket: "819", calledFrom, foreign: true });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(existsSync(join(session, "bin"))).toBe(false);
+    expect(calls().some((call) => call.startsWith("issue\nclose\n819\n"))).toBe(true);
+    expect(calls().some((call) => call.includes("issues/819/labels") || call.startsWith("issue\nedit\n819\n"))).toBe(true);
+  });
+
+  it("still waits for the review here, where no caller is named", () => {
+    const { calls, run } = closing({ ticket: "819", afterCheck: true, openPrs: [{ number: "936", ticket: "856", unreviewed: true }] });
+
+    expect(run().status).toBe(0);
+    expect(calls().some((call) => call.startsWith("pr\nupdate-branch\n936"))).toBe(false);
+  });
+});
+

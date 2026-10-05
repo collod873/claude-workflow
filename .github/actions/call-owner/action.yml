@@ -6,13 +6,15 @@ inputs:
     required: true
   run:
     required: true
+  token:
+    default: ${{ github.token }}
 
 runs:
   using: composite
   steps:
     - shell: bash
       env:
-        GH_TOKEN: ${{ github.token }}
+        GH_TOKEN: ${{ inputs.token }}
         GH_REPO: ${{ github.repository }}
         ISSUE: ${{ inputs.issue }}
         RAN: ${{ inputs.run }}
