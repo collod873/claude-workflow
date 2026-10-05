@@ -101,12 +101,21 @@ export function repaired(output: string): string {
   return [`\`${CHECK}\` is still red. The end of its output:`, tailOf(output, TAIL_CAP), "Make it pass.", ""].join("\n\n");
 }
 
+const RED_NAMES = /^check: red (.*?)(?:; |$)/;
+const NEEDS = " (needs ";
+const UNMET = new RegExp(`[^\\s,]+${NEEDS.replace("(", "\\(")}[^)]*\\)`, "g");
+
+const onlyUnmet = (verdict: string) => {
+  const named = RED_NAMES.exec(verdict)?.[1] ?? "";
+  return named.includes(NEEDS) && named.replace(UNMET, "").replace(/[\s,]/g, "") === "";
+};
+
 function checkRed(): string {
   const { GITHUB_ACTIONS: _annotating, ...env } = process.env;
   const { stdout, stderr } = spawnSync("bash", ["-c", CHECK], { env: treePathed(env), encoding: "utf8" });
   const output = `${stdout}${stderr}`.trim();
   const verdict = stdout.trim().split("\n").at(-1) ?? "";
-  if (PASSED.test(verdict)) return "";
+  if (PASSED.test(verdict) || (FOREIGN && onlyUnmet(verdict))) return "";
   const log = LOGGED.exec(verdict)?.[1];
   return [output, log === undefined ? "" : (onDisk(resolve(log)) ?? "")].join("\n");
 }
@@ -129,6 +138,9 @@ const howItFailed = ({ failed, diff, gaps }: NonNullable<Handed["red"]>) => [
   capped(gaps, LIST_CAP) || "(none)",
 ];
 
+const leftToItsCI = (foreign: boolean | undefined) =>
+  foreign === true ? [`This repo's own CI judges its PR. A step the check names red only as \`<step>${NEEDS}<VAR>)\` is one this runner lacks what it needs for: the machine leaves it to that CI, so do not provide it yourself.`] : [];
+
 const linted = (commitlint: boolean | undefined) =>
   commitlint === true ? ["This repo runs commitlint on every commit: write each message as `type: subject`, the type `feat`, `fix` or another conventional one, the subject lower-case, as the machine's own are."] : [];
 
@@ -144,6 +156,7 @@ export function handedOn({ ticket, body, red, contract = "", capture, woken, com
     ...(woken === undefined ? [] : ["## How its split ended", "Build what a piece closed unbuilt left, or rule it out:", capped(woken, LIST_CAP)]),
     ...filedIn(capture),
     ...(red === undefined ? buildIt(contract) : howItFailed(red)),
+    ...leftToItsCI(foreign),
     ...linted(commitlint),
     "## You own it until it merges",
     "Every red on this ticket comes back to you until it merges. Read its Why first; `gh` reads any run. If the reason above names a merge conflict, merge main in and resolve it yourself, keeping the ticket's Why over main's conflicting change. Answer one outcome:",

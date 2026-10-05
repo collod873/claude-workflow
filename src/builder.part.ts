@@ -172,14 +172,14 @@ declareStage({
       file: "src/builder.ts",
       cap: TICKET_CAP + CONTRACT_CAP + LIST_CAP + 2 * HANDED_ON,
       slots: ["body", "contract", "woken"],
-      build: (filled) => handedOn({ ticket: "", body: filled.body ?? "", contract: filled.contract ?? "", woken: filled.woken ?? "", commitlint: true }),
+      build: (filled) => handedOn({ ticket: "", body: filled.body ?? "", contract: filled.contract ?? "", woken: filled.woken ?? "", commitlint: true, foreign: true }),
     },
     {
       name: "builder",
       file: "src/builder.ts",
       cap: TICKET_CAP + TAIL_CAP + DIFF_CAP + 3 * LIST_CAP + HANDED_ON,
       slots: ["body", "failed", "diff", "gaps", "woken"],
-      build: (filled) => handedOn({ ticket: "", body: filled.body ?? "", red: { failed: filled.failed ?? "", diff: filled.diff ?? "", gaps: filled.gaps ?? "" }, woken: filled.woken ?? "", commitlint: true }),
+      build: (filled) => handedOn({ ticket: "", body: filled.body ?? "", red: { failed: filled.failed ?? "", diff: filled.diff ?? "", gaps: filled.gaps ?? "" }, woken: filled.woken ?? "", commitlint: true, foreign: true }),
     },
     {
       name: "repair",

@@ -20,7 +20,8 @@ The one workflow another repo carries to have its tickets built: its triggers an
 `tickets.yml` here, nothing else, so no part of the machine is copied into it. `.github/caller.yml`
 is its text. The closer wakes a builder by dispatching the caller file by its own file name with
 `ticket` and `reason`, which GitHub starts only from the caller's default branch, so the file lands
-on main before any ticket there builds.
+on main before any ticket there builds. A builder it reaches passes a check red only for steps
+named `(needs ...)`, which the machine's runner lacks; that repo's own CI judges them on its PR.
 _Avoid_: shim, wrapper, vendored workflow
 
 **Worker**:
