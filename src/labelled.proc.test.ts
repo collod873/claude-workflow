@@ -21,17 +21,15 @@ const BEFORE = {
 const each = (senders: string[], actions: Omit<IssueEvent, "labels" | "sender">[], labelSets: string[][]): IssueEvent[] =>
   senders.flatMap((sender) => actions.flatMap((action) => labelSets.map((labels) => ({ sender, ...action, labels }))));
 
+const BUILT_ON = each(
+  [OWNER, MACHINE, "stranger"],
+  [{ action: "opened" }, { action: "reopened" }, { action: "unlabeled", label: "waiting" }, { action: "unlabeled", label: "building" }],
+  [[], ["ticket"], ["ticket", "note"], ["spec"], ["ticket", "waiting"], ["ticket", "needs-human"]],
+);
+
 const GATED = [
-  {
-    file: "build.yml",
-    job: "build",
-    before: BEFORE.build,
-    events: each(
-      [OWNER, MACHINE, "stranger"],
-      [{ action: "opened" }, { action: "reopened" }, { action: "unlabeled", label: "waiting" }, { action: "unlabeled", label: "building" }],
-      [[], ["ticket"], ["ticket", "note"], ["spec"], ["ticket", "waiting"], ["ticket", "needs-human"]],
-    ),
-  },
+  { file: "build.yml", job: "build", before: BEFORE.build, events: BUILT_ON },
+  { file: "tickets.yml", job: "build", before: BEFORE.build, events: BUILT_ON },
   { file: "slice.yml", job: "slice", before: BEFORE.slice, events: each([OWNER, "stranger"], [{ action: "opened" }], [[], ["spec"], ["note"], ["spec", "needs-human"]]) },
   { file: "research.yml", job: "research", before: BEFORE.research, events: each([OWNER, "stranger"], [{ action: "opened" }], [[], ["note"], ["note", "research"]]) },
   { file: "done-check.yml", job: "asked", before: BEFORE.doneCheck, events: each([OWNER, MACHINE], [{ action: "created" }], [[], ["ticket"], ["spec"], ["spec", "needs-human"]]) },
@@ -75,7 +73,7 @@ describe("the workflows ask spelled for each label they test, so a renamed label
       for (const [name, job] of Object.entries(workflowJobs(file))) expect(job.if ?? "", `${file} ${name}`).not.toMatch(/labels|label\.name|labelled/);
     }
     for (const { file, job } of GATED) {
-      const tested = (workflowJobs(file)[job]?.if ?? "").replace(/github\.event\.(sender\.login|action)|github\.repository_owner|'[^']*'|[\s()&|=!${}"]/g, "");
+      const tested = (workflowJobs(file)[job]?.if ?? "").replace(/github\.event\.(sender\.login|action)|github\.event_name|github\.repository_owner|'[^']*'|[\s()&|=!${}"]/g, "");
       expect(tested, `${file} ${job}`).toBe("");
     }
   });

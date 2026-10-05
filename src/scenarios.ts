@@ -140,10 +140,12 @@ export function holds(
     label = "",
     head = "",
     fork = false,
+    event = "issues",
+    conclusion = "",
   }: {
     labels?: string[];
     steps?: Record<string, StepOutcome>;
-    needs?: Record<string, { result: string }>;
+    needs?: Record<string, { result: string; outputs?: Record<string, string> }>;
     failed?: boolean;
     cancelled?: boolean;
     sender?: string;
@@ -152,10 +154,15 @@ export function holds(
     label?: string;
     head?: string;
     fork?: boolean;
+    event?: string;
+    conclusion?: string;
   },
 ): boolean {
   const bare = condition.replace(/^\s*\$\{\{|\}\}\s*$/g, "");
   const source = (/\b(success|failure|always|cancelled)\(\)/.test(bare) ? bare : `success() && (${bare})`)
+    .replace(/github\.event_name/g, JSON.stringify(event))
+    .replace(/github\.event\.workflow_run\.conclusion/g, JSON.stringify(conclusion))
+    .replace(/github\.event\.workflow_run\.head_repository\.full_name\s*==\s*github\.repository\b/g, JSON.stringify(!fork))
     .replace(/github\.event\.action/g, JSON.stringify(action))
     .replace(/github\.event\.label\.name/g, JSON.stringify(label))
     .replace(/github\.event\.sender\.login/g, JSON.stringify(sender))
@@ -166,7 +173,8 @@ export function holds(
     .replace(/contains\(\s*github\.event\.issue\.labels\.\*\.name\s*,\s*('[^']*')\s*\)/g, "labels.includes($1)")
     .replace(/steps\.([\w-]+)\.(outcome|conclusion)/g, 'steps["$1"].$2')
     .replace(/steps\.([\w-]+)\.outputs\.([\w-]+)/g, '(steps["$1"].outputs ?? {})["$2"]')
-    .replace(/needs\.([\w-]+)\.result/g, 'needs["$1"].result');
+    .replace(/needs\.([\w-]+)\.result/g, 'needs["$1"].result')
+    .replace(/needs\.([\w-]+)\.outputs\.([\w-]+)/g, '(needs["$1"].outputs ?? {})["$2"]');
   const evaluate = new Function("labels", "steps", "needs", "startsWith", "success", "failure", "always", "cancelled", `return Boolean(${source});`) as (...scope: unknown[]) => boolean;
   return evaluate(
     labels,
