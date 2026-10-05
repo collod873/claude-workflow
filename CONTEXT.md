@@ -18,7 +18,9 @@ _Avoid_: core, new core, v2
 **Caller file**:
 The one workflow another repo carries to have its tickets built: its triggers and a call to
 `tickets.yml` here, nothing else, so no part of the machine is copied into it. `.github/caller.yml`
-is its text.
+is its text. The closer wakes a builder by dispatching the caller file by its own file name with
+`ticket` and `reason`, which GitHub starts only from the caller's default branch, so the file lands
+on main before any ticket there builds.
 _Avoid_: shim, wrapper, vendored workflow
 
 **Worker**:

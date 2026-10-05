@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
+import { closing } from "./closer.part.ts";
 import { execute, holds, scratch, script, workflowJobs, type WorkflowStep } from "./scenarios.ts";
 import { MACHINE, OWNER } from "./spelled.ts";
 
@@ -28,7 +29,15 @@ interface Fired {
   outputs?: Record<string, Record<string, string>>;
 }
 
+function declared({ event, action = "" }: Fired): void {
+  const trigger = caller().on[event] as { types?: string[]; workflows?: string[] } | null | undefined;
+  expect(Object.keys(caller().on), `the caller file declares ${event}`).toContain(event);
+  if (trigger?.types !== undefined) expect(trigger.types, `the caller file declares ${event} ${action}`).toContain(action);
+  if (event === "workflow_run") expect(trigger?.workflows?.length, "the caller file names the CI it hands back from").toBeGreaterThan(0);
+}
+
 function jobsRun({ red = [], outputs = {}, ...fired }: Fired): string[] {
+  declared(fired);
   const results: Record<string, { result: string; outputs?: Record<string, string> }> = {};
   for (const [name, job] of Object.entries(workflowJobs("tickets.yml"))) {
     const needs = Object.fromEntries([job.needs ?? []].flat().map((need) => [need, results[need] ?? { result: "skipped" }]));
@@ -69,6 +78,23 @@ describe("a repo's tickets build through one caller file that holds only trigger
     expect(jobsRun({ event: "workflow_run", action: "completed", conclusion: "failure", outputs: { which: { ticket: "" } } })).toEqual(["which", "close"]);
     expect(jobsRun({ event: "issues", action: "opened", sender: OWNER, red: ["build"], outputs: named })).toEqual(["build", "which", "fix"]);
     expect(jobsRun({ event: "workflow_dispatch", action: "", outputs: named })).toEqual(["which", "fix"]);
+  });
+
+  it("fires only what the caller file declares, so a trigger dropped from it fails here", () => {
+    expect(() => jobsRun({ event: "issues", action: "edited" })).toThrow(/declares issues edited/);
+    expect(() => jobsRun({ event: "pull_request", action: "closed" })).toThrow(/declares pull_request/);
+  });
+
+  it("takes from a dispatch exactly the inputs the closer sends and tickets.yml reads", () => {
+    const { calls, run } = closing({ ticket: "819", openPrs: [{ number: "909", ticket: "830", refused: "GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts." }], calledFrom: "collod873/Lumaria/.github/workflows/machine.yml@refs/heads/main" });
+    expect(run().status).toBe(0);
+    const wake = calls().find((call) => call.startsWith("workflow\nrun\nmachine.yml\n")) ?? "";
+    const sent = [...wake.matchAll(/^-f\n(\w+)=/gm)].map(([, input]) => input ?? "");
+    const read = [...new Set([...readFileSync(TICKETS, "utf8").matchAll(/github\.event\.inputs\.(\w+)/g)].map(([, input]) => input ?? ""))];
+    const inputs = Object.keys((caller().on.workflow_dispatch as { inputs: Record<string, unknown> }).inputs);
+
+    expect(sent.sort()).toEqual(inputs.sort());
+    expect(read.sort()).toEqual(inputs.sort());
   });
 
   it("checks the machine out at the workspace and the caller's tree apart under tree/, and makes every GitHub call with the App's token", () => {
