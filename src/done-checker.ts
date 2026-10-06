@@ -88,7 +88,6 @@ const isTry = (given: unknown): given is Try => {
 
 const DONE_CHECK_HEADING = "## Done check";
 const FIX_WAVE = "<!-- fix-wave -->";
-// The done check places the marker on its own closing line, so a try that quotes it in its evidence spends no fix wave (#1161).
 const spentFixWave = (comment: string) => comment.startsWith(DONE_CHECK_HEADING) && comment.trimEnd().split("\n").at(-1) === FIX_WAVE;
 
 const posted = (tried: [number, string, Try][], after: string[] = []) =>
