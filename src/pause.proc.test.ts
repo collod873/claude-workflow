@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { parse } from "yaml";
 import { PAUSED_HEAD, pausing } from "./pause.part.ts";
 
 const merges = (calls: string[][]) => calls.filter((args) => args[0] === "pr" && args[1] === "merge");
@@ -50,11 +53,32 @@ describe("bin/resume picks a ticket up from where it stands once paused or stuck
     expect([...merges(calls()), ...wakes(calls())]).toEqual([]);
   });
 
+  it("does nothing for a ticket whose PR already merged or was closed, so no fresh build starts beside it", () => {
+    for (const state of ["MERGED", "CLOSED"]) {
+      const calls = resumedWithoutBuilding(pausing({ state }));
+
+      expect([...merges(calls), ...wakes(calls)], state).toEqual([]);
+    }
+  });
+
   it("wakes the builder on a red PR, so its session resumes on it, and builds nothing new", () => {
     const calls = resumedWithoutBuilding(pausing({ pr: "red" }));
 
     expect(merges(calls)).toEqual([]);
     expect(wakes(calls)).toEqual([["workflow", "run", "fix.yml", "-f", "ticket=811", "-f", expect.stringMatching(/^reason=.*PR #931 red at 4f2a9c1e/)]]);
+  });
+
+  it("wakes the builder with exactly the inputs fix.yml and the caller file declare, which fix.yml hands the builder as its reason beside the session it saved for the branch", () => {
+    const [wake] = wakes(resumedWithoutBuilding(pausing({ pr: "red" })));
+    const sent = (wake ?? []).filter((arg) => arg.includes("=")).map((arg) => arg.split("=")[0]);
+    const github = join(import.meta.dirname, "..", ".github");
+    const declared = (file: string) => Object.keys((parse(readFileSync(join(github, file), "utf8")) as { on: { workflow_dispatch: { inputs: Record<string, unknown> } } }).on.workflow_dispatch.inputs);
+    const fix = readFileSync(join(github, "workflows", "fix.yml"), "utf8");
+
+    expect(sent).toEqual(declared("workflows/fix.yml"));
+    expect(sent).toEqual(declared("caller.yml"));
+    expect(fix).toContain("REASON: ${{ github.event.inputs.reason }}");
+    expect(fix).toContain("restore-keys: builder-${{ env.HEAD_REF }}-");
   });
 
   it("wakes the builder through the caller file in a repo that calls the machine", () => {

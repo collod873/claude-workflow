@@ -10,7 +10,7 @@ const ROLLUPS = {
   red: [{ name: "check", status: "COMPLETED", conclusion: "FAILURE" }, { name: "review", status: "COMPLETED", conclusion: "SUCCESS" }],
 } as const;
 
-export function pausing({ pr = "green" as keyof typeof ROLLUPS | "none" | "unreadable", autoMerge = true, refused = "", calledFrom = "" } = {}) {
+export function pausing({ pr = "green" as keyof typeof ROLLUPS | "none" | "unreadable", state = "OPEN", autoMerge = true, refused = "", calledFrom = "" } = {}) {
   const root = scratch("pause-");
   const { setup, calls } = ghArgv(join(root, "gh-argv"));
   const viewed =
@@ -18,7 +18,7 @@ export function pausing({ pr = "green" as keyof typeof ROLLUPS | "none" | "unrea
       ? "printf 'no pull requests found for branch \"ticket/811\"\\n' >&2; exit 1"
       : pr === "unreadable"
         ? "printf 'GraphQL: Server Error (HTTP 502)\\n' >&2; exit 1"
-        : `printf '%s\\n' '${JSON.stringify({ number: 931, state: "OPEN", headRefOid: PAUSED_HEAD, autoMergeRequest: autoMerge ? { mergeMethod: "MERGE" } : null, statusCheckRollup: ROLLUPS[pr] })}'`;
+        : `printf '%s\\n' '${JSON.stringify({ number: 931, state, headRefOid: PAUSED_HEAD, autoMergeRequest: autoMerge ? { mergeMethod: "MERGE" } : null, statusCheckRollup: ROLLUPS[pr] })}'`;
   script(
     join(root, "bin", "gh"),
     [setup, 'case "$*" in', `  *"pr view"*) ${viewed} ;;`, ...(refused === "" ? [] : [`  *"pr merge"*|*"workflow run"*) printf '%s\\n' '${refused}' >&2; exit 1 ;;`]), "esac", ""].join("\n"),

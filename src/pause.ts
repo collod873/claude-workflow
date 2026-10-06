@@ -9,7 +9,7 @@ const stoppedAt = stopsOf({
 });
 type Stop = ReturnType<typeof stoppedAt>;
 
-interface OpenPr {
+interface HeldPr {
   number: number;
   state: string;
   headRefOid: string;
@@ -17,13 +17,12 @@ interface OpenPr {
   statusCheckRollup: CheckRun[] | null;
 }
 
-function openPr(ticket: string, so: string): OpenPr | undefined {
+function prOf(ticket: string, so: string): HeldPr | undefined {
   const line = `the PR of #${ticket} could not be read, ${so}`;
   const got = gh(["pr", "view", ticketBranch(ticket), "--json", "number,state,headRefOid,autoMergeRequest,statusCheckRollup"]);
   if (got.status !== 0) return NO_PR.test(got.stderr) ? undefined : unread(line);
   try {
-    const pr = JSON.parse(got.stdout) as OpenPr;
-    return pr.state === "OPEN" ? pr : undefined;
+    return JSON.parse(got.stdout) as HeldPr;
   } catch {
     return unread(line);
   }
@@ -32,8 +31,8 @@ function openPr(ticket: string, so: string): OpenPr | undefined {
 const refusal = (got: ReturnType<typeof gh>) => quoted((got.stderr || got.stdout).trim().split("\n")[0] ?? "");
 
 function pause(ticket: string): Stop | undefined {
-  const pr = openPr(ticket, "so its auto-merge is left as it is");
-  if (pr === undefined || pr.autoMergeRequest === null) {
+  const pr = prOf(ticket, "so its auto-merge is left as it is");
+  if (pr === undefined || pr.state !== "OPEN" || pr.autoMergeRequest === null) {
     console.log(`pause: #${ticket} has no PR with auto-merge on, so nothing of it merges while it is paused`);
     return undefined;
   }
@@ -44,9 +43,14 @@ function pause(ticket: string): Stop | undefined {
 }
 
 function resume(ticket: string): Stop | undefined {
-  const pr = openPr(ticket, "so nothing resumes");
+  const pr = prOf(ticket, "so nothing resumes");
   if (pr === undefined) {
     console.log("builds=true");
+    return undefined;
+  }
+  if (pr.state !== "OPEN") {
+    console.log("builds=false");
+    console.error(`resume: PR #${pr.number} of #${ticket} is ${pr.state.toLowerCase()}, so nothing resumes and no fresh build starts`);
     return undefined;
   }
   if (checksOf(pr.statusCheckRollup ?? []) === "red") {

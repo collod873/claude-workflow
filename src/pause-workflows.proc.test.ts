@@ -63,6 +63,10 @@ describe.each(["build.yml", "tickets.yml"])("%s pauses a ticket's PR and resumes
     expect(await starts(file, "build", owner("unlabeled", held, [other(held)]))).toBe(false);
   });
 
+  it.each(HELD)("taking %s off a closed ticket resumes nothing", async (held) => {
+    expect(await stepsRun(file, { ...owner("unlabeled", held), state: "closed" }, "true")).toEqual([]);
+  });
+
   it("taking waiting off a paused ticket builds nothing, and the App taking paused off is never heard", async () => {
     expect(await stepsRun(file, owner("unlabeled", WAITING, [PAUSED]))).toEqual([]);
     expect(await stepsRun(file, { sender: MACHINE, action: "labeled", label: PAUSED, labels: [PAUSED] })).toEqual([]);

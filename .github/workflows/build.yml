@@ -46,7 +46,7 @@ jobs:
           jq -r --arg WAITING "$waiting" --arg NOTE "$note" --arg SPEC "$spec" --arg PAUSED "$paused" --arg STUCK "$stuck" '
             (any(.issue.labels[]?.name; IN($NOTE, $SPEC)) | not) as $ticket
             | (any(.issue.labels[]?.name; IN($WAITING, $PAUSED, $STUCK)) | not) as $free
-            | (.action == "unlabeled" and IN(.label.name; $PAUSED, $STUCK) and $ticket and $free) as $resumed
+            | (.action == "unlabeled" and IN(.label.name; $PAUSED, $STUCK) and .issue.state != "closed" and $ticket and $free) as $resumed
             | "held=\(((.action == "opened" or .action == "reopened" or (.action == "unlabeled" and .label.name == $WAITING)) and $ticket and $free) or $resumed)",
               "resumed=\($resumed)",
               "paused=\(.action == "labeled" and .label.name == $PAUSED and $ticket)"

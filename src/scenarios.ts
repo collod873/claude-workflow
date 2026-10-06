@@ -74,6 +74,7 @@ export interface IssueEvent {
   label?: string;
   head?: string;
   fork?: boolean;
+  state?: string;
 }
 
 export const workflowJobs = (file: string) => (parse(readFileSync(join(WORKFLOWS, file), "utf8")) as { jobs: Record<string, WorkflowJob> }).jobs;
@@ -91,11 +92,11 @@ export const labelledAs = (steps: WorkflowStep[], held: string | undefined): Rec
   labelled: { outcome: "success", conclusion: "success", outputs: held === undefined ? {} : { held } },
 });
 
-export function labelledOutputs(step: WorkflowStep, cwd: string, { labels, action = "opened", label = "", sender = OWNER, head }: IssueEvent): Promise<{ failed: boolean; outputs: Record<string, string> }> {
+export function labelledOutputs(step: WorkflowStep, cwd: string, { labels, action = "opened", label = "", sender = OWNER, head, state }: IssueEvent): Promise<{ failed: boolean; outputs: Record<string, string> }> {
   const root = scratch("labelled-");
   const event = join(root, "event.json");
   const output = join(root, "output");
-  writeFileSync(event, JSON.stringify({ action, sender: { login: sender }, ...(label === "" ? {} : { label: { name: label } }), ...(labels === undefined ? {} : { issue: { labels: labels.map((name) => ({ name })) } }), ...(head === undefined ? {} : { pull_request: { head: { ref: head } } }) }));
+  writeFileSync(event, JSON.stringify({ action, sender: { login: sender }, ...(label === "" ? {} : { label: { name: label } }), ...(labels === undefined ? {} : { issue: { labels: labels.map((name) => ({ name })), ...(state === undefined ? {} : { state }) } }), ...(head === undefined ? {} : { pull_request: { head: { ref: head } } }) }));
   return new Promise((resolve) => {
     execFile("bash", ["-e", "-c", step.run ?? ""], { cwd, env: { ...env, GITHUB_EVENT_PATH: event, GITHUB_OUTPUT: output } }, (error) => {
       const written = existsSync(output) ? readFileSync(output, "utf8") : "";
