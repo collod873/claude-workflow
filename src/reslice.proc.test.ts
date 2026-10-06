@@ -126,7 +126,7 @@ describe("bin/slice --resumed tells the resume where a spec the owner took pause
 
 const OWNER_SAID = { author: OWNER, type: "User", body: "Keep the done check out of the slicer." };
 const piece = { title: "Read the spec kind", passages: [1], why: "Wave 2 of the spec: read it.", done: ["It reads."] };
-const next = (tickets = [piece], moves = [1]) => ({ spec: wellFormedSpec, tickets, did: "Wave 1 filed the spec kind.", next: "Wave 2 reads it back.", moves });
+const next = (tickets = [piece], moves = [1]) => ({ record: "### Picks\n\n- Read it back.", tickets, did: "Wave 1 filed the spec kind.", next: "Wave 2 reads it back.", moves });
 
 function reslicing({
   tickets = [ticket(1001), ticket(1002)],
@@ -247,7 +247,8 @@ describe("bin/slice hands the re-slice the diff of every PR the wave merged, so 
     const [handed = ""] = sliced.handed();
     expect(handed).toContain(`### #1002's PR\n\n${helper("done-checker.ts")}`);
     expect(handed).toContain(`### #1001's PR\n\n${helper("slicer.ts")}`);
-    expect(handed).toContain("fold the helpers, seams and modules the wave built that tickets share into `### Names the tickets share`");
+    expect(handed).toContain("cut each pick whose ticket merged to a shipped name");
+    expect(handed).toContain("fold the helpers, seams and modules the wave built that tickets share into the record");
     expect(handed).toContain("two copies of one helper or a shallow module");
     expect(handed).toContain("hold the tickets that touch that module back a wave");
     expect(handed).toContain("`did`");

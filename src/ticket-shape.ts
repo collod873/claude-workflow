@@ -11,6 +11,7 @@ const NAMED = {
   outOfScope: "Out of Scope",
   furtherNotes: "Further Notes",
   sentences: "I'll know it works when I can",
+  record: "Decisions record",
 } as const;
 const heading = (name: string): RegExp => new RegExp(`^##[ \\t]+${name.replace("'", "[’']")}[ \\t]*(?=\\r?$)`, "m");
 const WHY = heading(NAMED.why);
@@ -23,7 +24,10 @@ const TESTING_DECISIONS = heading(NAMED.testing);
 const OUT_OF_SCOPE = heading(NAMED.outOfScope);
 const FURTHER_NOTES = heading(NAMED.furtherNotes);
 const SENTENCES = heading(NAMED.sentences);
+const DECISIONS_RECORD = heading(NAMED.record);
+const NAMES_SHARED = /^###[ \t]+Names the tickets share[ \t]*(?=\r?$)/m;
 export const NEXT_HEADING = /^##[ \t]/m;
+const NEXT_SUBHEADING = /^###?[ \t]/m;
 const ITEM = /^[ \t]*-[ \t]*\[[ xX]\][ \t]*/;
 const BULLET = /^[ \t]*-(?:[ \t]*\[[ xX]\])?[ \t]+/;
 const MARKER = /(?:–|(?<=[ \t])-{1,2}(?=[ \t]))[ \t]*check:[ \t]*`([^`\n]+)`[ \t]*$/;
@@ -91,20 +95,40 @@ export function filedPassages(body: string): Passage[] {
   return passages;
 }
 
-function restoredSection(read: string, written: string, heading: RegExp): string {
-  const found = heading.exec(written);
-  if (found === null) return written;
-  const start = matchEnd(found);
-  const next = NEXT_HEADING.exec(written.slice(start));
-  return written.slice(0, start) + section(read, heading) + (next === null ? "" : written.slice(start + next.index));
+export interface Recorded {
+  owner: string;
+  record: string;
 }
 
-export const restored = (read: string, written: string): string => restoredSection(read, restoredSection(read, written, PROBLEM_STATEMENT), OUT_OF_SCOPE);
+function lifted(body: string, heading: RegExp, next: RegExp): { owner: string; whole: string; inner: string } | undefined {
+  const found = heading.exec(body);
+  if (found === null) return undefined;
+  const start = matchEnd(found);
+  const end = next.exec(body.slice(start));
+  const stop = end === null ? body.length : start + end.index;
+  return { owner: body.slice(0, found.index) + body.slice(stop), whole: body.slice(found.index, stop), inner: body.slice(start, stop) };
+}
 
-export const sectionsDropped = (read: string, written: string): string[] => [
-  ...(section(written, PROBLEM_STATEMENT) === section(read, PROBLEM_STATEMENT) ? [] : ["the rewrite drops '## Problem Statement', the owner's words, which stay byte-identical"]),
-  ...(section(written, OUT_OF_SCOPE) === section(read, OUT_OF_SCOPE) ? [] : ["the rewrite drops '## Out of Scope', which every ticket carries byte-identical"]),
-];
+export function filedRecord(body: string): Recorded {
+  const standing = lifted(body, DECISIONS_RECORD, NEXT_HEADING);
+  if (standing !== undefined) return { owner: standing.owner, record: blankLinesTrimmed(standing.inner) };
+  const named = lifted(body, NAMES_SHARED, NEXT_SUBHEADING);
+  return named === undefined ? { owner: body, record: "" } : { owner: named.owner, record: blankLinesTrimmed(named.whole) };
+}
+
+export function spliced({ owner, record }: Recorded): string {
+  const kept = record.trim();
+  if (kept === "") return owner;
+  const at = SENTENCES.exec(owner)?.index ?? owner.length;
+  return `${owner.slice(0, at)}## ${NAMED.record}\n\n${kept}\n\n${owner.slice(at)}`;
+}
+
+export function recordRefusals(recorded: Recorded): string[] {
+  const headed = NEXT_HEADING.test(recorded.record) ? ["the record carries a '## ' heading, which would end it: head its parts with '### '"] : [];
+  const bytes = Buffer.byteLength(spliced(recorded));
+  const over = bytes > SPEC_CAP ? [`the spec would be ${bytes} bytes, over the spec cap of ${SPEC_CAP}: the record must lose at least ${bytes - SPEC_CAP} bytes`] : [];
+  return [...pathRefusals(recorded.record, "the record"), ...headed, ...over];
+}
 
 export const whyChanged = (read: string, written: string): string[] => (why(written) === why(read) ? [] : ["the rewrite changes '## Why', the owner's words, which stay byte-identical"]);
 
@@ -138,9 +162,9 @@ export function ticketRefusals(body: string): string[] {
   return [...refusals, ...emDashLines(text).map((line) => `line ${line} carries an em dash`)];
 }
 
-function pathRefusals(text: string): string[] {
+function pathRefusals(text: string, where: string): string[] {
   const found = [...new Set([...text.matchAll(FILE_PATH)].map(([path]) => path))];
-  return found.map((path) => `'## Implementation Decisions' names \`${path}\`, a file path`);
+  return found.map((path) => `${where} names \`${path}\`, a file path`);
 }
 
 function sentenceRefusals(items: string[]): string[] {
@@ -180,7 +204,7 @@ export function specRefusals(body: string): string[] {
   if (!USER_STORIES.test(text)) refusals.push("the body carries no '## User Stories'");
   else if (!NUMBERED_ITEM.test(section(text, USER_STORIES))) refusals.push("'## User Stories' carries no numbered item");
   if (!IMPLEMENTATION_DECISIONS.test(text)) refusals.push("the body carries no '## Implementation Decisions'");
-  else refusals.push(...pathRefusals(section(text, IMPLEMENTATION_DECISIONS)));
+  else refusals.push(...pathRefusals(section(text, IMPLEMENTATION_DECISIONS), `'## ${NAMED.decisions}'`));
   if (!TESTING_DECISIONS.test(text)) refusals.push("the body carries no '## Testing Decisions'");
   else if (section(text, TESTING_DECISIONS).trim() === "") refusals.push("'## Testing Decisions' says nothing");
   if (!OUT_OF_SCOPE.test(text)) refusals.push("the body carries no '## Out of Scope'");
