@@ -191,6 +191,13 @@ describe("bin/enrol keeps an enrolled repo current with the owner's own login (#
     expect(held().branches).toEqual({});
   });
 
+  it("names the merge refusal and the failed cleanup when cleaning up its PR fails too", () => {
+    const { run, held } = enrolling(bare({ rules: HELD_FOR_CHECK, allow_auto_merge: true, refused: { "pr merge": "GraphQL: Protected branch rules not configured", "pr close": "gh: Resource not accessible (HTTP 403)" } }));
+
+    expect(run().stderr).toContain("- the caller file: GraphQL: Protected branch rules not configured, and cleaning up its PR and branch failed too: gh: Resource not accessible (HTTP 403)");
+    expect(held().prs).toHaveLength(1);
+  });
+
   it("deletes its branch, leaving no PR, when GitHub refuses to open the PR (#1157)", () => {
     const { run, held } = enrolling(bare({ rules: HELD_FOR_CHECK, allow_auto_merge: true, refused: { "pr create": "pull request create failed: GraphQL: Resource not accessible by integration (createPullRequest)" } }));
 

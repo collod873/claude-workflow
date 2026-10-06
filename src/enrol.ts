@@ -164,8 +164,13 @@ function enrolling(repo: string): Setting[] {
       url = open?.url ?? gh(["pr", "create", "-R", repo, "--head", BRANCH, "--base", held().default_branch, "--title", HANDED, "--body", `Brings \`${CALLER}\` to the caller text bin/enrol writes, naming this repo's CI. It merges on its own once \`${CHECK}\` passes.`]).trim();
       gh(["pr", "merge", BRANCH, "-R", repo, "--auto", "--squash", "--delete-branch"]);
     } catch (error) {
-      if (openPr() === undefined) gh(["api", "-X", "DELETE", `repos/${repo}/git/refs/heads/${BRANCH}`]);
-      else gh(["pr", "close", BRANCH, "-R", repo, "--delete-branch"]);
+      try {
+        if (openPr() === undefined) gh(["api", "-X", "DELETE", `repos/${repo}/git/refs/heads/${BRANCH}`]);
+        else gh(["pr", "close", BRANCH, "-R", repo, "--delete-branch"]);
+      } catch (cleanup) {
+        if (!(error instanceof Refused && cleanup instanceof Refused)) throw cleanup;
+        throw new Refused(`${error.message}, and cleaning up its PR and branch failed too: ${cleanup.message}`);
+      }
       throw error;
     }
     return textOf(CALLER)?.text === caller() ? undefined : { waits: url, opened: true };
