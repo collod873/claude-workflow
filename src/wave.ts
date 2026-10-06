@@ -1,6 +1,7 @@
 import { capped } from "./brief.ts";
 import { commentsRead, gh, ghRead, ghWhole, heldOf, opened, type Opened, prOfTicket, readOrStop, REVIEWED_FROM, SPLIT_FROM, ticketBranch, unread } from "./post.ts";
-import { NOTE, SPEC, type LabelName } from "./spelled.ts";
+import { WAVE_CHECK_HEADING } from "./done-checker.ts";
+import { HELD, NOTE, SPEC, type LabelName } from "./spelled.ts";
 import { exitFor, stoppedAt, type Stop } from "./stops.ts";
 import { why } from "./ticket-shape.ts";
 
@@ -63,6 +64,7 @@ export const underSpec = (spec: string, so: string): Listed[] => lines(["api", "
 
 const UNSPENT = "so no model was spent";
 const NO_WAVE_ENDED = "so no wave ended";
+const NOTHING_RESUMED = "so nothing resumed";
 
 function prOf(ticket: number): string {
   const pr = prOfTicket(String(ticket), ["state", "files"], gh);
@@ -126,6 +128,13 @@ function moved(comments: string[]): string {
   return marker.split(/[,\s]+/).filter((number) => number !== "").join(",");
 }
 
+function stillOpen(spec: string, chain: string[], so: string): string | undefined {
+  const tickets = underSpec(spec, so);
+  const unclosed = tickets.filter(({ state }) => state === "open").map((one) => `#${one.number}`);
+  const followUps = unclosed.length > 0 ? [] : openFollowUps(new Set([...tickets.map((one) => String(one.number)), ...chain]), `the open issues could not be read to find follow-ups of #${spec}'s tickets, ${so}`);
+  return [...unclosed, ...followUps][0];
+}
+
 function waveEnded(issue: string): Stop | undefined {
   const closed = opened(issue, `#${issue} could not be read, ${NO_WAVE_ENDED}`, gh);
   const label = closed === "missing" ? undefined : UNSLICED_LABELS.find((one) => heldOf(closed.labels).has(one));
@@ -143,10 +152,7 @@ function waveEnded(issue: string): Stop | undefined {
     return undefined;
   }
   const number = String(spec.number);
-  const tickets = underSpec(number, NO_WAVE_ENDED);
-  const unclosed = tickets.filter(({ state }) => state === "open").map((one) => `#${one.number}`);
-  const followUps = unclosed.length > 0 ? [] : openFollowUps(new Set([...tickets.map((one) => String(one.number)), ...chain]), `the open issues could not be read to find follow-ups of #${number}'s tickets, ${NO_WAVE_ENDED}`);
-  const [still] = [...unclosed, ...followUps];
+  const still = stillOpen(number, chain, NO_WAVE_ENDED);
   if (still !== undefined) {
     console.error(`slice: #${number}'s wave is not over, ${still} is still open`);
     return undefined;
@@ -156,4 +162,26 @@ function waveEnded(issue: string): Stop | undefined {
   return undefined;
 }
 
+const checkedSinceNote = (comments: string[]): boolean => comments.map((said) => said.startsWith(WAVE_CHECK_HEADING)).lastIndexOf(true) > comments.map((said) => WAVE_NOTE.test(said)).lastIndexOf(true);
+
+function waveResumed(spec: string): Stop | undefined {
+  const asked = opened(spec, `#${spec} could not be read, ${NOTHING_RESUMED}`, gh);
+  const labels = heldOf(asked === "missing" ? [] : asked.labels);
+  const held = HELD.find((label) => labels.has(label));
+  const refused = !labels.has(SPEC) ? "is not a spec" : asked === "missing" || asked.state !== "open" ? "is not open" : held === undefined ? undefined : `is still marked ${held}`;
+  if (refused !== undefined) {
+    console.error(`slice: #${spec} ${refused}, ${NOTHING_RESUMED}`);
+    return undefined;
+  }
+  const still = stillOpen(spec, [], NOTHING_RESUMED);
+  if (still !== undefined) {
+    console.error(`slice: #${spec}'s wave is not over, ${still} is still open, so its last close resumes it`);
+    return undefined;
+  }
+  const comments = commentsRead(spec, `the comments on #${spec} could not be read, ${NOTHING_RESUMED}`, gh);
+  console.log(`spec=${spec}\nmoves=${checkedSinceNote(comments) ? "" : moved(comments)}`);
+  return undefined;
+}
+
 export const ended = (issue: string): number => exitFor(readOrStop("slice", () => waveEnded(issue)));
+export const resumed = (spec: string): number => exitFor(readOrStop("slice", () => waveResumed(spec)));
