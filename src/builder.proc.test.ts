@@ -454,6 +454,25 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(handed().at(-1)).toContain("OTHER-TEST-BROKE in src/stops.test.ts");
   });
 
+  it("names in its log why the session of the build was refused before it starts fresh on a red (#1180)", () => {
+    const resumeFails = 'if printf \'%s\\n\' "$@" | grep -qx -- --resume; then printf \'No conversation found with session ID: sess-built\\n\' >&2; exit 1; fi\n';
+    const { run } = fixing({ claude: resumeFails + FIXES, savedSession: "sess-built", reason: "Check went red" });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stderr).toContain("fix: #811 could not resume its builder's session sess-built, so it starts fresh: the builder ended 1: No conversation found with session ID: sess-built");
+  });
+
+  it("names in its log that no session of its builder was saved before it starts fresh on a red (#1180)", () => {
+    const { run } = fixing({ claude: FIXES, reason: "Check went red" });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stderr).toContain("fix: #811 has no session of its builder saved, so it starts fresh");
+  });
+
   it("calls the owner and closes nothing when its own model call fails twice (#862)", () => {
     const { run, closes, ticketComments, marked } = fixing({ claude: "printf 'the model overloaded\\n' >&2\nexit 1\n" });
 
@@ -608,7 +627,7 @@ describe("bin/fix reads its ticket, its labels, its PR and their comments before
   it("ends red at unread naming the run it was woken by when that run cannot be read once green, marking it checking for nothing and rerunning nothing", () => {
     const { run, marked, reruns } = fixing({ claude: FIXES, unreadable: '*"run view"*"--json"*' });
 
-    expect(run()).toMatchObject({ status: 1, stderr: "fix: the workflow, head and attempt of run 555 could not be read, so it is not marked checking\n" });
+    expect(run()).toMatchObject({ status: 1, stderr: expect.stringMatching(/\nfix: the workflow, head and attempt of run 555 could not be read, so it is not marked checking\n$/) });
     expect(marked()).toEqual(["811 building --try"]);
     expect(reruns()).toEqual([]);
   });

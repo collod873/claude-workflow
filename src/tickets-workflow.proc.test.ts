@@ -176,6 +176,13 @@ describe("a repo's tickets build through one caller file that holds only trigger
     expect(opened()).toEqual(["collod873/Lumaria https://github.com/collod873/Lumaria/pull/9828"]);
   });
 
+  it("saves the builder's session from its build and from every red run, which GitHub otherwise gives a read-only cache on an issue or a finished run (#1180)", () => {
+    const saving = Object.entries(workflowJobs("tickets.yml")).filter(([, job]) => job.steps.some((step) => step.uses?.startsWith("actions/cache/save@") === true));
+
+    expect(saving.map(([name]) => name)).toEqual(["build", "fix"]);
+    for (const [name, job] of saving) expect(job["cache-mode"], `${name} writes the cache`).toBe("write");
+  });
+
   it("tells the builder of a red build which run went red, since that run is still going and its log cannot be read yet", () => {
     const fixing = workflowJobs("tickets.yml").fix?.steps.find(({ id }) => id === "fix");
 

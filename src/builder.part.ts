@@ -173,7 +173,7 @@ export function fixing({
 }
 
 declareStage({
-  part: { name: "bin/fix", file: "bin/fix", stops: "https://github.com/collod873/claude-workflow/issues/663" },
+  part: { name: "bin/fix", file: "bin/fix", stops: "https://github.com/collod873/claude-workflow/issues/663", lines: 2 },
   prompts: [
     {
       name: "builder building",

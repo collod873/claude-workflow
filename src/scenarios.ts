@@ -63,6 +63,7 @@ interface WorkflowJob {
   env?: Record<string, unknown>;
   needs?: string | string[];
   permissions?: Record<string, string>;
+  "cache-mode"?: string;
   steps: WorkflowStep[];
 }
 
