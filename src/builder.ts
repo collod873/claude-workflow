@@ -65,7 +65,7 @@ interface Handed {
   foreign?: boolean;
 }
 
-type Round = { red?: string; ended?: number; body?: string };
+type Round = { red?: string; ended?: number };
 
 type Spend = (input: string, resume?: string) => Spent;
 
@@ -159,7 +159,7 @@ export function handedOn({ ticket, body, red, contract = "", capture, woken, com
     "## You own it until it merges",
     "Every red on this ticket comes back to you until it merges. Read its Why first; `gh` reads any run. If the reason above names a merge conflict, merge main in and resolve it yourself, keeping the ticket's Why over main's conflicting change. Answer one outcome:",
     `- \`code\`: build or fix it, or change nothing on a flake; the machine commits, runs \`${CHECK}\`, hands back red, pushes green or reruns the red Check.`,
-    "- `ticket`: its `## Done when` is wrong; return the ticket as `body`, Why byte-identical.",
+    "- `ticket`: its `## Done when` is wrong; return the ticket as `body`, Why byte-identical; nothing is pushed, and it waits for the owner.",
     `- \`split\`: too big for one build; file \`tickets\` that build at once, each with \`done\` as ${DONE_SENTENCES}. What must wait for them stays as \`body\`, Why byte-identical, and builds once they merge.`,
     "- `close`: the ticket should not exist as written, and nothing should replace it.",
     machineAtFault(foreign),
@@ -268,12 +268,14 @@ function split(ticket: string, body: string, answer: Answer): Round {
 }
 
 function rewritten(ticket: string, body: string, answer: Answer): Round {
-  if (answer.body === undefined || answer.body.trim() === body.trim()) return {};
+  if (answer.body === undefined || answer.body.trim() === body.trim()) return { red: "Your `ticket` answer returned the ticket unchanged: return it rewritten as `body`, or answer another outcome." };
   const written = rewriteTicket(ticket, body, answer.body, gh);
   const [refusal] = written.refusals;
   if (refusal !== undefined) return { red: `Your rewrite of the ticket was refused: ${quoted(refusal)}` };
-  commentOnTicket(ticket, `The builder rewrote #${ticket}: ${answer.reason}`, gh);
-  return { body: answer.body };
+  commentOnTicket(ticket, `@${OWNER} the builder of #${ticket} rewrote what done looks like and pushed nothing. #${ticket} waits for you, labelled \`${WAITING}\`: take the label off to build it as rewritten. ${answer.reason}`, gh);
+  mark(ticket, WAITING);
+  console.log(`fix: #${ticket} rewritten; it waits for the owner`);
+  return { ended: 0 };
 }
 
 const faultBody = (ticket: string, { why: fault, done }: Piece): string =>
@@ -296,7 +298,7 @@ function filedForMachine(ticket: string, answer: Answer): Round {
 function landedOnMain(ticket: string, reason: string, before: string): Round {
   if (fetchedMain() === before) return { red: "You answered `machine` and main has not moved: land the machine fix with `bin/land` before you answer." };
   commentOnTicket(ticket, `@${OWNER} the builder of #${ticket} changed the machine: ${reason}`, gh);
-  if (git(["merge", "--quiet", "--no-edit", "origin/main"]).status === 0) return {};
+  if (git(["merge", "--quiet", "--no-edit", "origin/main"]).status === 0) return { red: "main now carries your machine fix, merged into this branch: build the ticket on it, and answer `code` once it is done." };
   git(["merge", "--abort"]);
   return { red: "origin/main, with your machine fix, does not merge cleanly into this branch: merge it and resolve the conflict." };
 }
@@ -336,6 +338,7 @@ function saved(ticket: string, logs: string): Round {
 }
 
 function redOrSaved(ticket: string, logs: string): Round {
+  if (gitRead(["rev-list", "--count", "origin/main..HEAD"], "the commits past main could not be read, so nothing is pushed") === "0") return { red: "You answered `code`, and this branch has no commits past main, so there is nothing to push: build the ticket, or answer `close` if main already does what it asks." };
   const red = checkRed();
   return red === "" ? saved(ticket, logs) : { red: repaired(red) };
 }
@@ -385,7 +388,7 @@ function ownTicket(ticket: string, run: string | undefined): number {
   if (typeof owning !== "object") return exitFor(owning);
   const { asked, spend } = owning;
   const { logs, failed, judged, onTicket, diff } = owning.carried;
-  let body = asked.body;
+  const body = asked.body;
   let session = savedSession(ticket);
   if (session === undefined && failed !== undefined) console.error(`fix: #${ticket} has no session of its builder saved, so it starts fresh`);
   const contract = onDisk(join(process.cwd(), CONTRACT)) ?? "";
@@ -413,9 +416,8 @@ function ownTicket(ticket: string, run: string | undefined): number {
     const answer = spent.answer as Answer | undefined;
     const round = answered(ticket, body, answer, before.main);
     if (round.ended !== undefined) return round.ended;
-    body = round.body ?? body;
     committed(commitOf(ticket, failed !== undefined, commitlint));
-    const changed = head() !== before.head || fetchedMain() !== before.main || round.body !== undefined;
+    const changed = head() !== before.head || fetchedMain() !== before.main;
     const verdict = round.red === undefined ? redOrSaved(ticket, logs) : { red: round.red };
     if (verdict.ended !== undefined) return verdict.ended;
     const { red } = verdict;
