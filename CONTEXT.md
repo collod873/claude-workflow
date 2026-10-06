@@ -132,6 +132,22 @@ count, stand as filed, and gives the seconds from the first size round to filing
 came back for the size; the wave note carries the same owner's-bytes line for the owner.
 _Avoid_: proof comment, audit line, byte check
 
+**Size trial**:
+A slice of a real spec run under a trial cap below the spec cap, so the size refusal happens on the
+running system without padding any spec over the real cap. It is asked for with
+`bin/slice --size-trial <spec> <trial cap>`, or from a manual run of the re-slice workflow given the
+spec as `issue` and the cap as `trial_cap`. The trial cap stands in for the spec cap everywhere the
+slice uses it: the room line, the size refusal and each round's log line. The real slicer is hired
+and sent back each round exactly as in a real slice, answering with the record and the wave only.
+When the wave would file, code proves the owner's bytes stand in the body it would post and logs the
+filing line it would have written, starting `slice: trial #N`, with the owner's bytes and the seconds
+from the first size round, and posts nothing: no body edit, no ticket, no note, no label; a wave still
+refused after the rounds back ends red without marking `stuck` or commenting. A trial cap at or above
+the spec cap, or below the owner's bytes, is refused before any model is hired, since the first can
+never refuse and the second can never fit. A wave check trying the over-cap sentence runs one on the
+spec with a trial cap a few hundred bytes under the spec's current size and reads its log.
+_Avoid_: dry run, size test, fake cap
+
 **Done check**:
 The stage that tries each of a spec's "I'll know it works when I can ___" sentences on the running
 system once nothing is left to slice, and closes the spec only when every one held. A first miss

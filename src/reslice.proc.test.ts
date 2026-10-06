@@ -368,6 +368,7 @@ describe("bin/slice <spec> --fix <numbers> files the spec's one fix wave for the
 interface Job {
   if?: string;
   needs?: string;
+  permissions?: Record<string, string>;
   concurrency?: { group?: string; "cancel-in-progress"?: boolean };
   outputs?: Record<string, string>;
   steps: (WorkflowStep & { id?: string; if?: string })[];
@@ -406,7 +407,7 @@ describe("reslice.yml runs the wave check, then the re-slice, when a closed issu
     expect(run().status).toBe(0);
     const [input = "", number = ""] = /^workflow\nrun\nreslice\.yml\n-f\n(\w+)=(\d+)\n$/m.exec(calls().find((call) => call.startsWith("workflow\nrun\nreslice.yml\n")) ?? "")?.slice(1) ?? [];
 
-    expect(Object.keys(RESLICE.on.workflow_dispatch?.inputs ?? {})).toEqual([input]);
+    expect(Object.entries(RESLICE.on.workflow_dispatch?.inputs ?? {}).filter(([, { required }]) => required === true).map(([name]) => name)).toEqual([input]);
     expect(job("ended").steps.find((step) => step.id === "ended")?.env?.ISSUE).toBe(`\${{ github.event.issue.number || inputs.${input} }}`);
     expect(ended({ closed: Number(number) }).ran).toEqual({ status: 0, stdout: "spec=968\nmoves=1,3\n", stderr: "" });
   });
@@ -537,5 +538,33 @@ describe("bin/slice stops at a mark GitHub refused, so it hires no model on a sp
     expect(sliced.marked()).toEqual(["968 slicing"]);
     expect(sliced.handed()).toEqual([]);
     expect(sliced.filed()).toEqual([]);
+  });
+});
+
+describe("a manual run of reslice.yml given a spec and a trial cap runs that size trial on Actions, posting nothing (#1194)", () => {
+  const dispatched = (inputs: Record<string, string>) => ({ event: "workflow_dispatch", action: "", inputs });
+  const trial = job("size-trial");
+  const step = trial.steps.find((one) => one.id === "size-trial");
+
+  it("takes the trial cap as an input the closer's dispatch leaves out, and starts the trial, not the wave's end, when it is given", () => {
+    expect(RESLICE.on.workflow_dispatch?.inputs?.trial_cap).toEqual({ required: false, type: "number" });
+    expect(holds(trial.if ?? "true", dispatched({ issue: "968", trial_cap: "60000" }))).toBe(true);
+    expect(holds(job("ended").if ?? "true", dispatched({ issue: "968", trial_cap: "60000" }))).toBe(false);
+    expect(holds(trial.if ?? "true", dispatched({ issue: "1102" }))).toBe(false);
+    expect(holds(job("ended").if ?? "true", dispatched({ issue: "1102" }))).toBe(true);
+    expect(holds(trial.if ?? "true", { action: "closed" })).toBe(false);
+  });
+
+  it("runs bin/slice --size-trial on the spec and the trial cap with the real slicer, one spec at a time beside its reslice", () => {
+    expect(step?.run).toContain('bin/slice --size-trial "$ISSUE" "$TRIAL_CAP"');
+    expect(step?.env).toMatchObject({ ISSUE: "${{ inputs.issue }}", TRIAL_CAP: "${{ inputs.trial_cap }}", GH_TOKEN: "${{ steps.app.outputs.token }}", CLAUDE_CODE_OAUTH_TOKEN: "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}" });
+    expect(trial.concurrency).toEqual({ group: "reslice-${{ inputs.issue }}", "cancel-in-progress": false });
+    expect(trial.steps.some((one) => one.uses === "./.github/actions/stage")).toBe(true);
+  });
+
+  it("holds a token that can only read, so the trial cannot post to the spec even by mistake", () => {
+    const app = trial.steps.find((one) => one.id === "app");
+    expect(app?.with).toMatchObject({ "permission-issues": "read", "permission-pull-requests": "read", "permission-contents": "read" });
+    expect(trial.permissions).toEqual({ contents: "read", issues: "read" });
   });
 });
