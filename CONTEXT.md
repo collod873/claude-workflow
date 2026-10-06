@@ -189,8 +189,8 @@ _Avoid_: retry, second chance
 Setting a held issue going again. Taking `waiting` off a ticket resumes its build. Taking `paused`
 or `stuck` off a ticket that then holds neither picks it up from where it stands: with no PR it
 builds, with a red PR its builder resumes its session, with a green PR auto-merge comes back on at
-its head, and a green PR behind main is brought up to date with it, its builder woken if that
-conflicts. Taking either off an open spec that then holds neither reads where it stands, as a wave's
+its head, and a green PR behind main gets the closer's own branch update: marked landing, or on a
+conflict reported at its head, marked resolving and its builder woken once. Taking either off an open spec that then holds neither reads where it stands, as a wave's
 end does: a slice cut short slices again; a wave closed during the hold gets its wave check, then its
 slice, or only its slice once checked; with nothing left to slice, the done check runs. A wave still
 open waits for its last close.
