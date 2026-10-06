@@ -14,6 +14,9 @@ runs:
       with:
         python-version: "3.14"
 
+    - shell: bash
+      run: python3 -m pip install --quiet pyyaml
+
     - id: hooks-app
       uses: actions/create-github-app-token@v3
       with:
