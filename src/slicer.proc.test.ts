@@ -29,7 +29,7 @@ describe("bin/slice turns a filed spec into its first wave of tickets under it, 
   it("splices the slicer's decisions record into the spec just before its sentences, keeping every other byte as filed, then files the wave as sub-issues of the spec", () => {
     const sliced = slicing({ body: SPEC, answers: [wave()] });
 
-    expect(heard(sliced.run())).toEqual({ status: 0, stderr: "", lines: ["slice: #968 filed its first wave under it: #1101, #1102"] });
+    expect(heard(sliced.run())).toEqual({ status: 0, stderr: "", lines: [`slice: #968 filed its first wave under it: #1101, #1102. The owner's ${Buffer.byteLength(SPEC)} bytes stand as filed, and no round came back for the spec's size.`] });
     expect(sliced.rewrites()).toEqual([REWRITE]);
     expect(sliced.filed().map(({ title }) => title)).toEqual(["File the spec kind", "Read the spec kind"]);
     expect(sliced.linked()).toEqual(["repos/{owner}/{repo}/issues/968/sub_issues sub_issue_id=901101", "repos/{owner}/{repo}/issues/968/sub_issues sub_issue_id=901102"]);
@@ -194,7 +194,7 @@ describe("bin/slice turns a filed spec into its first wave of tickets under it, 
     const sliced = slicing({ body: SPEC, answers: [wave([piece("Read the spec kind", [3]), piece("File the spec kind", [1, 3])])] });
 
     expect(sliced.run().status).toBe(0);
-    expect(sliced.comments()).toEqual([`## Wave 1\n\n${ATTRIBUTION}\n\n${WATCHING}\n\n${DID}\n\n${NEXT}\n\nFiled: #1101, #1102.\n\n<!-- moves: 1 -->\n`]);
+    expect(sliced.comments()).toEqual([`## Wave 1\n\n${ATTRIBUTION}\n\n${WATCHING}\n\n${DID}\n\n${NEXT}\n\nThe owner's ${Buffer.byteLength(SPEC)} bytes stand as filed.\n\nFiled: #1101, #1102.\n\n<!-- moves: 1 -->\n`]);
     expect(sliced.calls().at(-1)).toBe("issue comment 968");
   });
 
@@ -212,7 +212,7 @@ describe("bin/slice turns a filed spec into its first wave of tickets under it, 
     const big = piece("Do it all", [2], ["x".repeat(9000)]);
     const sliced = slicing({ body: SPEC, answers: [wave([big]), wave()] });
 
-    expect(heard(sliced.run())).toEqual({ status: 0, stderr: "", lines: ["slice: #968 filed its first wave under it: #1101, #1102"] });
+    expect(heard(sliced.run())).toEqual({ status: 0, stderr: "", lines: [`slice: #968 filed its first wave under it: #1101, #1102. The owner's ${Buffer.byteLength(SPEC)} bytes stand as filed, and no round came back for the spec's size.`] });
     const [, sentBack = ""] = sliced.handed();
     expect(sentBack).toMatch(/ticket 1, "Do it all", would be \d+ bytes, over the builder's brief cap of 8192 bytes: split it/);
     const [, resumed = []] = sliced.hired();
@@ -358,6 +358,42 @@ describe("bin/slice turns a filed spec into its first wave of tickets under it, 
     expect(slice.permissions).toEqual({ contents: "read", issues: "write" });
     const sliced = slice.steps.find((step) => step.run?.includes("bin/slice"));
     expect(sliced?.env?.GH_TOKEN).toBe("${{ steps.app.outputs.token }}");
+  });
+});
+
+describe("bin/slice proves on the running system that the owner's words stood and what the size refusal cost (#1192)", () => {
+  it("stops red without posting when the owner's bytes of the body it would post differ from those it read", () => {
+    const body = SPEC.slice(0, SPEC.indexOf(SENTENCES)).trimEnd();
+    const sliced = slicing({ body, answers: [wave(undefined, undefined, [])] });
+
+    const run = sliced.run();
+    expect(run.status).toBe(1);
+    expect(run.stderr).toBe(`slice: #968 ended red, the owner's ${Buffer.byteLength(body)} bytes would not stand as filed in the body it would post, so nothing was posted\n`);
+    expect(sliced.rewrites()).toEqual([]);
+    expect(sliced.filed()).toEqual([]);
+    expect(sliced.comments()).toEqual([]);
+  });
+
+  it("says in its filing line and its wave note that the owner's bytes stand as filed, with their count, and that no round came back for the spec's size", () => {
+    const sliced = slicing({ body: SPEC, answers: [wave()] });
+    const owner = Buffer.byteLength(SPEC);
+
+    expect(heard(sliced.run()).lines).toEqual([`slice: #968 filed its first wave under it: #1101, #1102. The owner's ${owner} bytes stand as filed, and no round came back for the spec's size.`]);
+    expect(sliced.comments()[0]).toContain(`\n\nThe owner's ${owner} bytes stand as filed.\n\nFiled: #1101, #1102.`);
+  });
+
+  it("logs each round sent back for the spec's size with the bytes over and the bytes the record had to lose, and the seconds from the first to filing", () => {
+    const over = `${RECORD}\n\n${"x".repeat(65536)}`;
+    const larger = `${over}${"y".repeat(10)}`;
+    const sliced = slicing({ body: SPEC, answers: [wave(undefined, over), wave(undefined, larger), wave()] });
+    const bytesOver = (record: string) => Buffer.byteLength(recorded(SPEC, record)) - 65536;
+
+    const { lines } = heard(sliced.run());
+    expect(lines.slice(0, 2)).toEqual([
+      `slice: #968 round 1 came back for the spec's size: the spec would be ${bytesOver(over)} bytes over the spec cap of 65536, so the record had to lose ${bytesOver(over)} of its ${Buffer.byteLength(over)} bytes`,
+      `slice: #968 round 2 came back for the spec's size: the spec would be ${bytesOver(larger)} bytes over the spec cap of 65536, so the record had to lose ${bytesOver(larger)} of its ${Buffer.byteLength(larger)} bytes`,
+    ]);
+    expect(lines[2]).toMatch(/^slice: #968 filed its first wave under it: #1101, #1102\. The owner's \d+ bytes stand as filed, \d+ seconds after the first round came back for the spec's size\.$/);
   });
 });
 

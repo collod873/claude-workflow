@@ -122,6 +122,16 @@ what comes next, and a `<!-- moves: ... -->` marker naming the sentences the wav
 is the wave's readback.
 _Avoid_: wave summary, status update, progress report
 
+**Slice proof line**:
+What every slice that files a wave says on the running system, so a wave check reads it from the
+spec's wave notes and the run logs instead of rebuilding each body from edit history. Before it
+posts, code compares the owner's bytes of the body it would post with those it read, and stops red
+without posting if they differ. Each round that comes back for the spec's size logs the bytes over
+the spec cap and the bytes the record had to lose. The filing line says the owner's bytes, with their
+count, stand as filed, and gives the seconds from the first size round to filing, or says no round
+came back for the size; the wave note carries the same owner's-bytes line for the owner.
+_Avoid_: proof comment, audit line, byte check
+
 **Done check**:
 The stage that tries each of a spec's "I'll know it works when I can ___" sentences on the running
 system once nothing is left to slice, and closes the spec only when every one held. A first miss
