@@ -16,9 +16,11 @@ This repo: `src/` and `bin/`. There is one machine and this is it.
 _Avoid_: core, new core, v2
 
 **Caller file**:
-The one workflow another repo carries to have its tickets built: its triggers and a call to
-`tickets.yml` here, nothing else, so no part of the machine is copied into it. `.github/caller.yml`
-is its text. The closer wakes a builder by dispatching the caller file by its own file name with
+The one workflow another repo carries to have its tickets built and its specs and research notes
+run: its triggers and calls to `tickets.yml` and `specs.yml` here, nothing else, so no part of the
+machine is copied into it. `.github/caller.yml` is its text. Its specs are tried on its own checkout,
+readied by its contract's setup, and a ticket the closer closes there starts the re-slice through
+the caller's own `issues: closed`, since the App's close is heard. The closer wakes a builder by dispatching the caller file by its own file name with
 `ticket` and `reason`, which GitHub starts only from the caller's default branch, so the file lands
 on main before any ticket there builds. A builder it reaches passes a check red only for steps
 named `(needs ...)`, which the machine's runner lacks; that repo's own CI judges them on its PR.

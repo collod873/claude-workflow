@@ -106,6 +106,17 @@ export interface Spent {
 
 export const treePathed = (env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv => (env.TREE_PATH === undefined || env.TREE_PATH === "" ? env : { ...env, PATH: `${env.TREE_PATH}:${env.PATH ?? ""}` });
 
+export const FOREIGN = (process.env.CALLED_FROM ?? "") !== "";
+export const CONTRACT = join(".claude", "contract.json");
+
+export function setupRefusal(contract: string): string | undefined {
+  const { setup } = JSON.parse(contract || "{}") as { setup?: string };
+  if (setup === undefined || setup.trim() === "") return undefined;
+  const readied = spawnSync("bash", ["-c", setup], { env: treePathed(), encoding: "utf8", maxBuffer: Infinity });
+  if (readied.status === 0) return undefined;
+  return `${readied.stderr}${readied.stdout}`.trim().split("\n").at(-1) || `it ended ${readied.status}`;
+}
+
 export function hired(hire: Hire): ((input: string, resume?: string) => Spent) | string {
   const minutes = Number(process.env.STAGE_MINUTES);
   const deadline = Date.now() + minutes * 60_000;

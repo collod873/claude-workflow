@@ -74,6 +74,23 @@ describe("bin/research answers a research note on the note and closes it, with n
     for (const held of ["runs.jsonl", "jobs.jsonl", "machine-logs", "git-log.txt", "sessions"]) expect(run).toContain(`$sources/${held}`);
   });
 
+  it("specs.yml fetches the same sources for a caller's note from the caller's own runs and checkout, with the App's token, before the researcher starts (#1151)", () => {
+    const research = workflowJobs("specs.yml").research ?? { steps: [] };
+    const { steps } = research;
+    const staged = steps.findIndex((step) => step.uses === "./.github/actions/stage");
+    const fetching = steps.find((step) => /RESEARCH_SOURCES=.*GITHUB_ENV/.test(step.run ?? ""));
+    const fetched = steps.indexOf(fetching ?? {});
+    const spent = steps.findIndex((step) => step.env?.CLAUDE_CODE_OAUTH_TOKEN !== undefined);
+    const ours = workflowJobs("research.yml").research?.steps.find((step) => /RESEARCH_SOURCES=.*GITHUB_ENV/.test(step.run ?? ""));
+
+    expect(fetched).toBeGreaterThan(staged);
+    expect(spent).toBeGreaterThan(fetched);
+    expect(fetching?.run).toBe(ours?.run);
+    expect(fetching?.env?.GH_TOKEN).toBe("${{ steps.app.outputs.token }}");
+    expect(research.env?.GH_REPO).toBe("${{ github.repository }}");
+    expect((fetching as WorkflowStep & { "working-directory"?: string })["working-directory"]).toBe("tree");
+  });
+
   it("the stage action hands every job the owner's Workflow session captures, fetched with a token that only reads and never held by the model (#931)", () => {
     const { steps } = (parse(readFileSync(STAGE_ACTION, "utf8")) as { runs: { steps: WorkflowStep[] } }).runs;
     const minted = steps.findIndex((step) => step.with?.repositories === "Knowledge-Base");

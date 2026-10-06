@@ -66,6 +66,7 @@ interface WorkflowJob {
 }
 
 export interface IssueEvent {
+  event?: string;
   labels?: string[];
   sender?: string;
   action?: string;
@@ -109,7 +110,7 @@ export async function starts(file: string, gated: string, event: IssueEvent): Pr
   if (job === undefined) throw new Error(`no ${gated} job in ${file}`);
   const { labels, ...rest } = event;
   if (!holds(job.if ?? "true", rest)) return false;
-  const seen = `${file} ${JSON.stringify([labels, rest.action, rest.label, rest.head])}`;
+  const seen = `${file} ${gated} ${JSON.stringify([labels, rest.action, rest.label, rest.head])}`;
   const heard = HELD.get(seen) ?? heldBy(labelledStep(file, gated), join(SRC, ".."), { ...rest, labels, sender: OWNER });
   HELD.set(seen, heard);
   const { failed, held } = await heard;

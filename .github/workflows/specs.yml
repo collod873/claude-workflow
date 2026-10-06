@@ -1,0 +1,479 @@
+name: Specs
+
+"on":
+  workflow_call:
+
+permissions: {}
+
+jobs:
+  slice:
+    if: ${{ github.event_name == 'issues' && github.event.action == 'opened' && github.event.sender.login == github.repository_owner }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - id: machine
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/claude-workflow
+          ref: main
+          token: ${{ steps.app.outputs.token }}
+          persist-credentials: false
+
+      - id: setup-node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - id: labelled
+        run: |
+          spec=$(bin/spelled SPEC)
+          held=$(jq --arg SPEC "$spec" 'any(.issue.labels[]?.name; . == $SPEC)' "$GITHUB_EVENT_PATH")
+          printf 'held=%s\n' "$held" | tee -a "$GITHUB_OUTPUT"
+
+      - id: checkout
+        if: steps.labelled.outputs.held == 'true'
+        uses: actions/checkout@v4
+        with:
+          path: tree
+          ref: main
+          fetch-depth: 0
+          token: ${{ steps.app.outputs.token }}
+          persist-credentials: false
+
+      - id: pinned
+        if: steps.labelled.outputs.held == 'true'
+        uses: ./.github/actions/pinned
+
+      - id: npm-ci
+        if: steps.labelled.outputs.held == 'true'
+        run: npm ci
+
+      - id: logs
+        if: steps.labelled.outputs.held == 'true'
+        run: |
+          mkdir -p tree/.git/machine-logs
+          ln -s "$PWD/tree/.git/machine-logs" .git/machine-logs
+
+      - id: stage
+        if: steps.labelled.outputs.held == 'true'
+        uses: ./.github/actions/stage
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+
+      - id: slice
+        if: steps.labelled.outputs.held == 'true'
+        timeout-minutes: 50
+        working-directory: tree
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          STAGE_MINUTES: 45
+          CALLED_FROM: ${{ github.workflow_ref }}
+        run: |
+          tail --pid=$$ -n +1 -F .git/machine-logs/slice-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
+          "$GITHUB_WORKSPACE/bin/slice" ${{ github.event.issue.number }}
+
+      - if: ${{ steps.labelled.outputs.held != 'false' && (failure() || cancelled()) }}
+        uses: ./.github/actions/call-owner
+        with:
+          issue: ${{ github.event.issue.number }}
+          run: the slice run
+          token: ${{ steps.app.outputs.token }}
+
+      - if: always() && steps.labelled.outputs.held != 'false'
+        timeout-minutes: 6
+        uses: ./.github/actions/stage-logs
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+
+  ended:
+    if: ${{ github.event_name == 'issues' && github.event.action == 'closed' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_REPO: ${{ github.repository }}
+    outputs:
+      spec: ${{ steps.ended.outputs.spec }}
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - id: machine
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/claude-workflow
+          ref: main
+          token: ${{ steps.app.outputs.token }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - id: labelled
+        run: |
+          spec=$(bin/spelled SPEC)
+          note=$(bin/spelled NOTE)
+          held=$(jq --arg SPEC "$spec" --arg NOTE "$note" 'any(.issue.labels[]?.name; IN($SPEC, $NOTE)) | not' "$GITHUB_EVENT_PATH")
+          printf 'held=%s\n' "$held" | tee -a "$GITHUB_OUTPUT"
+
+      - id: ended
+        if: steps.labelled.outputs.held == 'true'
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: bin/slice --ended "$ISSUE" >>"$GITHUB_OUTPUT"
+
+  reslice:
+    needs: ended
+    if: ${{ needs.ended.outputs.spec != '' }}
+    concurrency:
+      group: reslice-${{ needs.ended.outputs.spec }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 160
+    env:
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - id: machine
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/claude-workflow
+          ref: main
+          token: ${{ steps.app.outputs.token }}
+          persist-credentials: false
+
+      - id: checkout
+        uses: actions/checkout@v4
+        with:
+          path: tree
+          ref: main
+          fetch-depth: 0
+          token: ${{ steps.app.outputs.token }}
+          persist-credentials: false
+
+      - id: setup-node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - id: pinned
+        uses: ./.github/actions/pinned
+
+      - id: npm-ci
+        run: npm ci
+
+      - id: logs
+        run: |
+          mkdir -p tree/.git/machine-logs
+          ln -s "$PWD/tree/.git/machine-logs" .git/machine-logs
+
+      - id: stage
+        uses: ./.github/actions/stage
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+
+      - id: ended
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: bin/slice --ended "$ISSUE" >>"$GITHUB_OUTPUT"
+
+      - id: wave-check
+        if: steps.ended.outputs.spec != '' && steps.ended.outputs.moves != ''
+        timeout-minutes: 50
+        working-directory: tree
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          STAGE_MINUTES: 45
+          CALLED_FROM: ${{ github.workflow_ref }}
+        run: |
+          tail --pid=$$ -n +1 -F .git/machine-logs/done-check-${{ steps.ended.outputs.spec }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
+          "$GITHUB_WORKSPACE/bin/done-check" ${{ steps.ended.outputs.spec }} --wave ${{ steps.ended.outputs.moves }}
+
+      - id: reslice
+        if: steps.ended.outputs.spec != ''
+        timeout-minutes: 100
+        working-directory: tree
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          STAGE_MINUTES: 45
+          CALLED_FROM: ${{ github.workflow_ref }}
+        run: |
+          tail --pid=$$ -q -n +1 -F .git/machine-logs/slice-${{ steps.ended.outputs.spec }}.jsonl .git/machine-logs/done-check-${{ steps.ended.outputs.spec }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
+          "$GITHUB_WORKSPACE/bin/slice" ${{ steps.ended.outputs.spec }}
+
+      - if: ${{ (failure() || cancelled()) && steps.ended.outputs.spec != '' }}
+        uses: ./.github/actions/call-owner
+        with:
+          issue: ${{ steps.ended.outputs.spec }}
+          run: the wave check or reslice run
+          token: ${{ steps.app.outputs.token }}
+
+      - if: always()
+        timeout-minutes: 6
+        uses: ./.github/actions/stage-logs
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+
+  research:
+    if: ${{ github.event_name == 'issues' && github.event.action == 'opened' && github.event.sender.login == github.repository_owner }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - id: machine
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/claude-workflow
+          ref: main
+          token: ${{ steps.app.outputs.token }}
+          persist-credentials: false
+
+      - id: setup-node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - id: labelled
+        run: |
+          research=$(bin/spelled RESEARCH)
+          held=$(jq --arg RESEARCH "$research" 'any(.issue.labels[]?.name; . == $RESEARCH)' "$GITHUB_EVENT_PATH")
+          printf 'held=%s\n' "$held" | tee -a "$GITHUB_OUTPUT"
+
+      - id: checkout
+        if: steps.labelled.outputs.held == 'true'
+        uses: actions/checkout@v4
+        with:
+          path: tree
+          ref: main
+          fetch-depth: 0
+          token: ${{ steps.app.outputs.token }}
+          persist-credentials: false
+
+      - id: npm-ci
+        if: steps.labelled.outputs.held == 'true'
+        run: npm ci
+
+      - id: logs
+        if: steps.labelled.outputs.held == 'true'
+        run: |
+          mkdir -p tree/.git/machine-logs
+          ln -s "$PWD/tree/.git/machine-logs" .git/machine-logs
+
+      - id: stage
+        if: steps.labelled.outputs.held == 'true'
+        uses: ./.github/actions/stage
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+
+      - id: sources
+        if: steps.labelled.outputs.held == 'true'
+        timeout-minutes: 6
+        shell: bash
+        working-directory: tree
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          NEWEST_RUNS: 150
+          NEWEST_LOGS: 50
+        run: |
+          sources="$RUNNER_TEMP/research-sources"
+          mkdir -p "$sources/machine-logs" "$sources/sessions"
+          git log --date=short --format='commit %h %ad %s' --name-status >"$sources/git-log.txt"
+          gh run list --limit 1000 --json databaseId,workflowName,displayTitle,event,headBranch,conclusion,createdAt,url | jq -c '.[]' >"$sources/runs.jsonl"
+          head -n "$NEWEST_RUNS" "$sources/runs.jsonl" | jq -r .databaseId | while read -r run; do
+            gh api "repos/$GH_REPO/actions/runs/$run/jobs" --jq ".jobs[] | {run: $run, job: .name, conclusion, steps: [.steps[] | {name, conclusion}]}"
+          done >"$sources/jobs.jsonl"
+          gh api "repos/$GH_REPO/actions/artifacts?per_page=$NEWEST_LOGS" --jq '.artifacts[] | select(.expired | not) | "\(.workflow_run.id) \(.name)"' | while read -r run kept; do
+            gh run download "$run" --name "$kept" --dir "$sources/machine-logs/$run-$kept"
+          done
+          cp -r "$SESSION_CAPTURES/." "$sources/sessions"
+          printf 'RESEARCH_SOURCES=%s\n' "$sources" >>"$GITHUB_ENV"
+
+      - id: research
+        if: steps.labelled.outputs.held == 'true'
+        timeout-minutes: 42
+        working-directory: tree
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          STAGE_MINUTES: 40
+        run: |
+          tail --pid=$$ -n +1 -F .git/machine-logs/research-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
+          "$GITHUB_WORKSPACE/bin/research" ${{ github.event.issue.number }}
+
+      - if: ${{ steps.labelled.outputs.held != 'false' && (failure() || cancelled()) }}
+        uses: ./.github/actions/call-owner
+        with:
+          issue: ${{ github.event.issue.number }}
+          run: the research run
+          token: ${{ steps.app.outputs.token }}
+
+      - if: always() && steps.labelled.outputs.held != 'false'
+        timeout-minutes: 6
+        uses: ./.github/actions/stage-logs
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+
+  asked:
+    if: ${{ github.event_name == 'issue_comment' && github.event.sender.login == github.repository_owner }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_REPO: ${{ github.repository }}
+    outputs:
+      asked: ${{ steps.asked.outputs.asked }}
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - id: machine
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/claude-workflow
+          ref: main
+          token: ${{ steps.app.outputs.token }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - id: labelled
+        run: |
+          spec=$(bin/spelled SPEC)
+          stop=$(bin/spelled NEEDS_HUMAN)
+          held=$(jq --arg SPEC "$spec" --arg NEEDS_HUMAN "$stop" 'any(.issue.labels[]?.name; . == $SPEC) and (any(.issue.labels[]?.name; . == $NEEDS_HUMAN) | not)' "$GITHUB_EVENT_PATH")
+          printf 'held=%s\n' "$held" | tee -a "$GITHUB_OUTPUT"
+
+      - id: asked
+        if: steps.labelled.outputs.held == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          asked=$(bin/done-check ${{ github.event.issue.number }} --asked)
+          printf 'asked=%s\n' "$asked" >>"$GITHUB_OUTPUT"
+
+  check:
+    needs: asked
+    if: ${{ needs.asked.outputs.asked == 'true' }}
+    concurrency:
+      group: done-check-${{ github.event.issue.number }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - id: machine
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/claude-workflow
+          ref: main
+          token: ${{ steps.app.outputs.token }}
+          persist-credentials: false
+
+      - id: checkout
+        uses: actions/checkout@v4
+        with:
+          path: tree
+          ref: main
+          fetch-depth: 0
+          token: ${{ steps.app.outputs.token }}
+          persist-credentials: false
+
+      - id: setup-node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - id: pinned
+        uses: ./.github/actions/pinned
+
+      - id: npm-ci
+        run: npm ci
+
+      - id: logs
+        run: |
+          mkdir -p tree/.git/machine-logs
+          ln -s "$PWD/tree/.git/machine-logs" .git/machine-logs
+
+      - id: stage
+        uses: ./.github/actions/stage
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+
+      - id: done-check
+        timeout-minutes: 50
+        working-directory: tree
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          STAGE_MINUTES: 45
+          CALLED_FROM: ${{ github.workflow_ref }}
+        run: |
+          tail --pid=$$ -n +1 -F .git/machine-logs/done-check-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
+          "$GITHUB_WORKSPACE/bin/done-check" ${{ github.event.issue.number }}
+
+      - if: ${{ failure() || cancelled() }}
+        uses: ./.github/actions/call-owner
+        with:
+          issue: ${{ github.event.issue.number }}
+          run: the done check run
+          token: ${{ steps.app.outputs.token }}
+
+      - if: always()
+        timeout-minutes: 6
+        uses: ./.github/actions/stage-logs
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
