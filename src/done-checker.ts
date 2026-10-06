@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { capped, NO_EM_DASH, onDisk } from "./brief.ts";
 import { UNFENCED } from "./fence.ts";
-import { authoredOn, commentOnTicket, commentsRead, gh, machineBin, mark, NEEDS_HUMAN, OWNER, readOrStop, unread, type Asked } from "./post.ts";
+import { authoredOn, commentOnTicket, commentsRead, gh, machineBin, mark, OWNER, readOrStop, STUCK, unread, type Asked } from "./post.ts";
 import { CONTRACT, FOREIGN, opened, setupRefusal, type Spent, treePathed } from "./stage.ts";
 import { ASKED, CHECKING, SPEC } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
@@ -10,7 +10,7 @@ import { quoted, type Sentence, sentences, SPEC_CAP } from "./ticket-shape.ts";
 
 const stoppedAt = stopsOf({
   notSpec: "Refused: the issue is not labelled `spec`, or the done check finds no sentence to try",
-  calledOwner: "Done check: a sentence missed twice, so the spec is marked `needs-human`",
+  calledOwner: "Done check: a sentence missed twice, so the spec is marked `stuck`",
   unfixed: "Done check: `bin/slice --fix` files no fix wave for the sentences that missed",
   unready: "Done check: the tree's setup from its contract fails, so nothing is tried",
 });
@@ -94,7 +94,7 @@ const posted = (tried: [number, string, Try][], after: string[] = []) =>
   [DONE_CHECK_HEADING, "", ...tried.map(([number, sentence, one]) => `${number}. **${OUTCOMES[one.outcome]}**: ${sentence}\n   ${one.tried}`), ...after.flatMap((line) => ["", line]), ""].join("\n");
 
 const calledOwner = (missed: [number, string, Try][], when: string) =>
-  missed.map(([number, sentence, one]) => `Sentence ${number} missed ${when}, so the spec is marked \`${NEEDS_HUMAN}\`: ${sentence}. Why: ${one.tried}`);
+  missed.map(([number, sentence, one]) => `Sentence ${number} missed ${when}, so the spec is marked \`${STUCK}\`: ${sentence}. Why: ${one.tried}`);
 
 const listing = (missed: [number, string, Try][], between: string) => missed.map(([number]) => number).join(between);
 
@@ -201,8 +201,8 @@ function waveCheck(issue: string, wave: number[]): Stop | undefined {
   if (typeof comment === "string") return comment;
   const posted = comment.url;
   if (repeated.length > 0) {
-    mark(issue, NEEDS_HUMAN);
-    return stoppedAt("calledOwner", `${spec.said} marked ${NEEDS_HUMAN}, sentence ${listing(repeated, ", ")} missed at two wave checks in a row: ${posted}`);
+    mark(issue, STUCK);
+    return stoppedAt("calledOwner", `${spec.said} marked ${STUCK}, sentence ${listing(repeated, ", ")} missed at two wave checks in a row: ${posted}`);
   }
   const outcome = missed.length === 0 ? "held every sentence it tried" : `missed sentence ${listing(missed, ", ")}`;
   console.log(`${spec.said} wave check ${outcome}, and closes nothing: ${posted}`);
@@ -218,14 +218,14 @@ function fixWave(spec: Read, found: [number, string, Try][], missed: [number, st
   if (repeated.length > 0) {
     const comment = commented(spec, posted(found, calledOwner(repeated, "at the last wave check and again at the end")));
     if (typeof comment === "string") return comment;
-    mark(issue, NEEDS_HUMAN);
-    return stoppedAt("calledOwner", `${said} marked ${NEEDS_HUMAN}, sentence ${listing(repeated, ", ")} missed at the last wave check and again at the end: ${comment.url}`);
+    mark(issue, STUCK);
+    return stoppedAt("calledOwner", `${said} marked ${STUCK}, sentence ${listing(repeated, ", ")} missed at the last wave check and again at the end: ${comment.url}`);
   }
   if (comments.some(spentFixWave)) {
     const comment = commented(spec, posted(found, calledOwner(missed, "again after the fix wave")));
     if (typeof comment === "string") return comment;
-    mark(issue, NEEDS_HUMAN);
-    return stoppedAt("calledOwner", `${said} marked ${NEEDS_HUMAN}, sentence ${listing(missed, ", ")} missed again after the fix wave: ${comment.url}`);
+    mark(issue, STUCK);
+    return stoppedAt("calledOwner", `${said} marked ${STUCK}, sentence ${listing(missed, ", ")} missed again after the fix wave: ${comment.url}`);
   }
   const fixed = spawnSync(machineBin("slice"), [issue, "--fix", listing(missed, ",")], { encoding: "utf8" });
   const comment = commented(spec, posted(found, fixed.status === 0 ? [FIX_WAVE] : []));

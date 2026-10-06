@@ -103,16 +103,16 @@ describe("bin/slice turns a filed spec into its first wave of tickets under it, 
     expect(sliced.filed().map(({ title }) => title)).toEqual(["File the spec kind", "Read the spec kind"]);
   });
 
-  it("after two rounds back still over the brief cap, marks the spec needs-human and files nothing", () => {
+  it("after two rounds back still over the brief cap, marks the spec stuck and files nothing", () => {
     const big = piece("Do it all", [2], ["x".repeat(9000)]);
     const sliced = slicing({ body: SPEC, answers: [wave([big])] });
 
     const run = sliced.run();
     expect(run.status).toBe(1);
-    expect(run.stderr).toMatch(/^slice: #968 marked needs-human, its wave still refused after 2 rounds back: ticket 1, "Do it all", would be/);
+    expect(run.stderr).toMatch(/^slice: #968 marked stuck, its wave still refused after 2 rounds back: ticket 1, "Do it all", would be/);
     expect(sliced.handed()).toHaveLength(3);
     expect(sliced.argv().filter((args) => args.includes("--add-label") || args.includes("--remove-label"))).toEqual([]);
-    expect(sliced.marked()).toEqual(["968 slicing", "968 needs-human"]);
+    expect(sliced.marked()).toEqual(["968 slicing", "968 stuck"]);
     expect(sliced.comments()).toEqual([expect.stringMatching(/^The slicer filed nothing: its wave still refused after 2 rounds back: ticket 1, "Do it all", would be/)]);
     expect(sliced.rewrites()).toEqual([]);
     expect(sliced.filed()).toEqual([]);
@@ -293,7 +293,7 @@ describe("bin/slice marks the spec slicing while it writes a wave, and building 
     expect(unnoted.run().status).toBe(1);
     expect(unnoted.marked()).toEqual(["968 slicing"]);
     expect(stopped.run().status).toBe(1);
-    expect(stopped.marked()).toEqual(["968 slicing", "968 needs-human"]);
+    expect(stopped.marked()).toEqual(["968 slicing", "968 stuck"]);
   });
 
   it("marks nothing on an issue that is not a spec", () => {

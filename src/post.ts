@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { text as read } from "node:stream/consumers";
 import { emDashLines } from "./em-dash.ts";
 import { NEXT_HEADING, NOTE_SHAPE, SPEC_SHAPE, TICKET_SHAPE, matchEnd, noteRefusals, rewriteRefusals, specRefusals, ticketRefusals } from "./ticket-shape.ts";
-import { MACHINE, NEEDS_HUMAN, NOTE, OWNER, RESEARCH, RESOLVING, SPEC, TICKET, TICKET_PREFIX, WAITING, type LabelName, type MarkedLabel } from "./spelled.ts";
+import { HELD, MACHINE, NOTE, OWNER, RESEARCH, RESOLVING, SPEC, STUCK, TICKET, TICKET_PREFIX, WAITING, type LabelName, type MarkedLabel } from "./spelled.ts";
 import { type Stop, stoppedAt } from "./stops.ts";
 
 export interface Posting {
@@ -71,6 +71,8 @@ export interface Held {
   has(label: LabelName): boolean;
 }
 
+export const heldOn = (labels: Held) => HELD.find((label) => labels.has(label));
+
 export const heldOf = (labels: { name?: string }[] | undefined): Held => new Set((labels ?? []).map(({ name }) => name));
 
 export const NOTHING_MARKED = "so nothing is marked";
@@ -114,7 +116,7 @@ export const foundOverlap = (ticket: string) => `The reviewer read this PR for #
 export const drifted = (ticket: string, comment: string) => comment.startsWith(foundDrift(ticket)) || comment.startsWith(foundOverlap(ticket));
 export const earlierDrift = (ticket: string, comments: string[]) => comments.filter((comment) => drifted(ticket, comment)).join("\n\n");
 export const repairOf = (ticket: string) => `Repair #${ticket} as its builder`;
-export { NEEDS_HUMAN, OWNER, RESEARCH, RESOLVING, WAITING, type MarkedLabel };
+export { OWNER, RESEARCH, RESOLVING, STUCK, WAITING, type MarkedLabel };
 
 const KINDS: Record<string, Kind> = {
   ticket: filed(ticketRefusals, [TICKET], TICKET_SHAPE),

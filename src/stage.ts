@@ -3,7 +3,7 @@ import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, 
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { stageArgv, type Reach, type Registration } from "./fence.ts";
-import { type Asked, askedIssue, ghRead, gitRead, mark, NEEDS_HUMAN, unread, type MarkedLabel } from "./post.ts";
+import { type Asked, askedIssue, ghRead, gitRead, heldOn, mark, unread, type MarkedLabel } from "./post.ts";
 import type { Stop } from "./stops.ts";
 import { quoted } from "./ticket-shape.ts";
 
@@ -184,8 +184,9 @@ export function opened<Carried, Own extends string>({ stage, issue, state, tried
   const said = `${stage}: #${issue}`;
   const unchanged = "so no label changed and no model was hired";
   const asked = askedIssue(ghRead(["issue", "view", issue, "--json", "title,body,labels"], `#${issue} could not be read, ${unchanged}`)) ?? unread(`#${issue} could not be read, ${unchanged}`);
-  if (asked.labels.has(NEEDS_HUMAN)) {
-    console.log(`${said} is marked ${NEEDS_HUMAN}, ${unchanged}`);
+  const held = heldOn(asked.labels);
+  if (held !== undefined) {
+    console.log(`${said} is marked ${held}, ${unchanged}`);
     return undefined;
   }
   const readied = ready(asked);

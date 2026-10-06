@@ -2,7 +2,7 @@ import { mkdirSync, readdirSync, readFileSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { authored, BIN, commitAt, execute, git, plant, refusedMark, type Said, scratch, script } from "./scenarios.ts";
 import { MACHINE } from "./spelled.ts";
-import { NEEDS_HUMAN, WAITING } from "./post.ts";
+import { WAITING } from "./post.ts";
 import { declareStage } from "./stages.ts";
 
 const CLOSER_TICKET = [
@@ -56,7 +56,7 @@ export interface QueuedPr {
   autoMerge?: boolean;
   refusedBefore?: boolean;
   conflicts?: boolean;
-  needsHuman?: boolean;
+  held?: string;
   labels?: string[];
   labelsUnreadable?: boolean;
   unreviewed?: boolean;
@@ -169,7 +169,7 @@ export function closing({
       ...(resliceRefused === undefined ? [] : [`  *"workflow run reslice.yml"*) printf '%s\\n' '${resliceRefused}' >&2; exit 1 ;;`]),
       `  *"issue list"*"${WAITING}"*) cat <<'LISTED'\n${JSON.stringify(waitingListed(followUps, splitFrom))}\nLISTED\n    ;;`,
       ...openPrs.filter((pr) => pr.labelsUnreadable === true).map((pr) => `  *"issue view ${pr.ticket} "*"labels"*) printf 'GraphQL: labels could not be read\\n' >&2; exit 1 ;;`),
-      ...openPrs.map((pr) => ({ ticket: pr.ticket, labels: [...(pr.labels ?? []), ...(pr.needsHuman === true ? [NEEDS_HUMAN] : [])] })).filter(({ ticket, labels }) => ticket !== "" && labels.length > 0).flatMap(({ ticket, labels }) => [
+      ...openPrs.map((pr) => ({ ticket: pr.ticket, labels: [...(pr.labels ?? []), ...(pr.held === undefined ? [] : [pr.held])] })).filter(({ ticket, labels }) => ticket !== "" && labels.length > 0).flatMap(({ ticket, labels }) => [
         `  *"issue view ${ticket} "*"labels"*) printf '%s\\n' ${labels.map((label) => `'${label}'`).join(" ")} ;;`,
         `  "api repos/{owner}/{repo}/issues/${ticket} --jq"*) printf '%s\\n' ${labels.map((label) => `'${label}'`).join(" ")} ;;`,
       ]),

@@ -34,7 +34,8 @@ const KEYS = [
   ["RESEARCHING", "researching"],
   ["WAITING", "waiting"],
   ["ASKED", "asked"],
-  ["NEEDS_HUMAN", "needs-human"],
+  ["PAUSED", "paused"],
+  ["STUCK", "stuck"],
 ] as const;
 const SPELLED = [...KEYS, ["TICKET_PREFIX", "ticket/"], ["OWNER", "collod873"], ["MACHINE", "collod873-machine[bot]"]] as const;
 const USAGE = `spelled: usage: spelled labels | spelled <${SPELLED.map(([key]) => key).join("|")}>\n`;
@@ -85,7 +86,8 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
       "researching state",
       "waiting parked",
       "asked owner",
-      "needs-human owner",
+      "paused held",
+      "stuck held",
       "try- try",
     ]);
     for (const row of printed) {
@@ -199,15 +201,16 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
       copy,
       "src/misspelled.ts",
       [
-        'import { askedIssue, gh, heldOf, labelsHeld, mark, NEEDS_HUMAN, post, type MarkedLabel } from "./post.ts";',
-        'const held: MarkedLabel = "needs-humans";',
+        'import { askedIssue, gh, heldOf, labelsHeld, mark, post, type MarkedLabel } from "./post.ts"; import { PAUSED, STUCK } from "./spelled.ts";',
+        'const held: MarkedLabel = "stucks";',
         'mark("811", "fixing");',
-        "mark(\"811\", NEEDS_HUMAN, held);",
+        "mark(\"811\", STUCK, held);",
+        "mark(\"811\", PAUSED);",
         'post({ kind: "ticket", title: "t", text: "", labels: ["waitin"] }, gh);',
         'const read = labelsHeld("811", gh);',
         'if (read.has("resolve")) mark("811", "building");',
         'heldOf([{ name: "spec" }]).has("specs");',
-        'askedIssue("{}")?.labels.some(({ name }) => name === "needs-humen");',
+        'askedIssue("{}")?.labels.some(({ name }) => name === "stuk");',
         'askedIssue("{}")?.labels.has("researh");',
         "",
       ].join("\n"),
@@ -215,7 +218,7 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
 
     const { stdout } = execute(join(BIN, "..", "node_modules", ".bin", "tsc"), copy, {}, ["--noEmit", "--pretty", "false", "-p", "tsconfig.json"]);
 
-    expect([...new Set(stdout.split("\n").filter((line) => line.startsWith("src/")).map((line) => /^src\/misspelled\.ts\((\d+),/.exec(line)?.[1]))]).toEqual(["2", "3", "4", "5", "7", "8", "9", "10"]);
+    expect([...new Set(stdout.split("\n").filter((line) => line.startsWith("src/")).map((line) => /^src\/misspelled\.ts\((\d+),/.exec(line)?.[1]))]).toEqual(["2", "3", "4", "5", "6", "8", "9", "10", "11"]);
   });
 
   it("finds every label a workflow file spells, and finds none, since each asks spelled by key (#1104, #1108)", () => {
@@ -224,12 +227,12 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
       "if: contains(github.event.issue.labels.*.name, 'specs')",
       "if: github.event.label.name == 'waitng'",
       "bin/mark ${{ github.event.issue.number }} bulding || true # quiet: bin/mark names its own refusal",
-      'bin/mark "$ISSUE" needs-humans',
-      "grep -qx needs-humen",
+      'bin/mark "$ISSUE" stucks',
+      "grep -qx pausd",
       "gh issue edit 1 --add-label asking",
     ].join("\n");
 
-    expect(spelledIn(planted).filter((name) => !held.includes(name))).toEqual(["specs", "waitng", "bulding", "needs-humans", "needs-humen", "asking"]);
+    expect(spelledIn(planted).filter((name) => !held.includes(name))).toEqual(["specs", "waitng", "bulding", "stucks", "pausd", "asking"]);
     for (const file of workflowFiles()) expect(spelledIn(readFileSync(file, "utf8")), file).toEqual([]);
   });
 
@@ -239,7 +242,7 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
     symlinkSync(join(BIN, "..", "node_modules"), join(copy, "node_modules"));
     const spelledAt = join(copy, "src", "spelled.ts");
     const kept = readFileSync(spelledAt, "utf8");
-    const swapped = kept.replace(/(export const NEEDS_HUMAN\b[^=]*= )"needs-human"/, '$1"waiting"');
+    const swapped = kept.replace(/(export const STUCK\b[^=]*= )"stuck"/, '$1"waiting"');
     expect(swapped).not.toBe(kept);
     writeFileSync(spelledAt, swapped);
 

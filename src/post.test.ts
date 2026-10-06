@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
-import { authoredOn, labelsHeld, NEEDS_HUMAN, opened, post, readOrStop, RESEARCH, RESOLVING, WAITING, type Posting } from "./post.ts";
+import { authoredOn, labelsHeld, opened, post, readOrStop, RESEARCH, RESOLVING, STUCK, WAITING, type Posting } from "./post.ts";
 import { wellFormedNote as NOTE, wellFormedSpec as SPEC } from "./scenarios.ts";
 
 const URL = "https://github.com/collod873/claude-workflow/issues/700";
@@ -158,7 +158,7 @@ describe("src/post.ts reads what GitHub holds, stopping at unread itself, so no 
 
 describe("the label constants keep their own names (#1103)", () => {
   it("types each one as exactly its label, so one set to another label fails typecheck", () => {
-    expectTypeOf(NEEDS_HUMAN).toEqualTypeOf<"needs-human">();
+    expectTypeOf(STUCK).toEqualTypeOf<"stuck">();
     expectTypeOf(WAITING).toEqualTypeOf<"waiting">();
     expectTypeOf(RESOLVING).toEqualTypeOf<"resolving">();
     expectTypeOf(RESEARCH).toEqualTypeOf<"research">();

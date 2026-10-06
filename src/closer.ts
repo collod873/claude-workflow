@@ -1,5 +1,5 @@
 import { splitClosed, splitInto } from "./builder.ts";
-import { answered, commentOnPr, commentOnTicket, commentsRead, gh, ghAs, ghRead, git, gitRead, type Held, labelsHeld, markWith, NEEDS_HUMAN, NOTHING_MARKED, prOfTicket, readOrStop, RESOLVING, REVIEWED_FROM, TICKET_BRANCH, ticketBranch, unread, WAITING, type MarkedLabel } from "./post.ts";
+import { answered, commentOnPr, commentOnTicket, commentsRead, gh, ghAs, ghRead, git, gitRead, type Held, heldOn, labelsHeld, markWith, NOTHING_MARKED, prOfTicket, readOrStop, RESOLVING, REVIEWED_FROM, TICKET_BRANCH, ticketBranch, unread, WAITING, type MarkedLabel } from "./post.ts";
 import { FINGERPRINT } from "./reviewer.ts";
 import { CHECKING, LANDING, QUEUED } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
@@ -171,7 +171,7 @@ const mark = markWith(quietly);
 
 function markOnce(ticket: string, label: MarkedLabel): void {
   const held = labelsHeld(ticket, gh);
-  if (![label, NEEDS_HUMAN, RESOLVING].some((kept) => held.has(kept))) mark(ticket, label);
+  if (heldOn(held) === undefined && ![label, RESOLVING].some((kept) => held.has(kept))) mark(ticket, label);
 }
 
 
@@ -184,9 +184,10 @@ function wantedOn(pr: QueuedPr, merging: QueuedPr | undefined, held: Held): Mark
 function settle(ticket: string, pr: QueuedPr, merging: QueuedPr | undefined, conflicted: boolean): void {
   const held = labelsHeld(ticket, gh);
   const wanted = conflicted || held.has(RESOLVING) ? undefined : wantedOn(pr, merging, held);
-  const writes = wanted !== undefined && !held.has(NEEDS_HUMAN) && (wanted !== CHECKING || held.has(LANDING));
+  if (heldOn(held) !== undefined) return;
+  const writes = wanted !== undefined && (wanted !== CHECKING || held.has(LANDING));
   if (writes && !held.has(wanted)) mark(ticket, wanted);
-  else if (!writes && held.has(LANDING) && !held.has(NEEDS_HUMAN)) mark(ticket, CHECKING);
+  else if (!writes && held.has(LANDING)) mark(ticket, CHECKING);
 }
 
 function wakeBuilder(ticket: string, reason: string): void {
@@ -225,7 +226,8 @@ function updateBranch(pr: QueuedPr): Moved {
     return "retried";
   }
   commentOnPr(number, `${failedBranchUpdate(number)} ${reason}\n\n${headLine(headRefOid)}\n\nRun: ${thisRun}`, gh);
-  if (ticket !== undefined && labelsHeld(ticket, gh).has(NEEDS_HUMAN)) console.log(`close: #${ticket} is labelled ${NEEDS_HUMAN}, so the conflict on PR #${number} wakes no builder`);
+  const held = ticket === undefined ? undefined : heldOn(labelsHeld(ticket, gh));
+  if (held !== undefined) console.log(`close: #${ticket ?? ""} is labelled ${held}, so the conflict on PR #${number} wakes no builder`);
   else if (ticket !== undefined) {
     mark(ticket, RESOLVING);
     wakeBuilder(ticket, `#${ticket}'s ${failedBranchUpdate(number)} ${reason}`);

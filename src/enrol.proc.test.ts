@@ -21,7 +21,7 @@ describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#11
     expect(after.variables).toEqual(["CORE_APP_CLIENT_ID"]);
     expect(after.secrets.sort()).toEqual(["CLAUDE_CODE_OAUTH_TOKEN", "CORE_APP_PRIVATE_KEY"]);
     expect(after.dependabot).toEqual(["CORE_APP_PRIVATE_KEY"]);
-    expect(after.labels).toEqual(expect.arrayContaining(["bug", "ticket", "spec", "note", "research", "building", "checking", "waiting", "asked", "needs-human"]));
+    expect(after.labels).toEqual(expect.arrayContaining(["bug", "ticket", "spec", "note", "research", "building", "checking", "waiting", "asked", "stuck"]));
     expect(after.labels).not.toContain("try-");
     expect(after.allow_auto_merge).toBe(true);
     expect(after.rules.map(({ type }) => type)).toEqual(expect.arrayContaining(["pull_request", "required_status_checks"]));

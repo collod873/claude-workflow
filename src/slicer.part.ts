@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { LIST_CAP } from "./brief.ts";
 import { authored, BIN, execute, ghArgv, git, plant, type Said, scratch, script, stubbedMark, wellFormedSpec } from "./scenarios.ts";
 import { COMMENTS_CAP, handedOn, sentBack } from "./slicer.ts";
-import { NEEDS_HUMAN } from "./spelled.ts";
+import { PAUSED, STUCK } from "./spelled.ts";
 import { declareStage, HANDED_ON } from "./stages.ts";
 import { SPEC_CAP } from "./ticket-shape.ts";
 import { DIFF_CAP, FOUND_CAP } from "./wave.ts";
@@ -124,7 +124,8 @@ declareStage({
     { label: "filing a wave", run: () => slicing({ answers: [{ spec: wellFormedSpec, tickets: [{ title: "File a spec", passages: [1], why: "Wave 1.", done: ["It files."] }], did: "Settled.", next: "Files it.", moves: [1] }] }).run() },
     { label: "refusing a ticket", run: () => slicing({ labels: ["ticket"] }).run() },
     { label: "stopping at an issue it cannot read", run: () => slicing({ gh: "[[ $1 == issue && $2 == view ]] && exit 1" }).run() },
-    { label: "standing down on needs-human", run: () => slicing({ labels: ["spec", NEEDS_HUMAN] }).run() },
+    { label: "standing down on stuck", run: () => slicing({ labels: ["spec", STUCK] }).run() },
+    { label: "standing down on paused", run: () => slicing({ labels: ["spec", PAUSED] }).run() },
     { label: "ending no wave for an issue under no spec", run: () => slicing().run("--ended", "1500") },
   ],
 });

@@ -6,7 +6,7 @@ import { parse } from "yaml";
 import { fixing } from "./builder.part.ts";
 import { closing } from "./closer.part.ts";
 import { execute, heldBy, holds, labelledAs, labelledStep, scratch, script, workflowJobs, type WorkflowStep } from "./scenarios.ts";
-import { MACHINE, OWNER } from "./spelled.ts";
+import { HELD, MACHINE, OWNER } from "./spelled.ts";
 
 const REPO = join(import.meta.dirname, "..");
 const CALLER = join(REPO, ".github", "caller.yml");
@@ -188,12 +188,14 @@ describe("a repo's tickets build through one caller file that holds only trigger
 
     it("by the issue its red build was opened on, or the ticket the closer dispatched", () => {
       expect(named({ BUILT: "830" })).toEqual(["ticket=830", "branch=ticket/830"]);
-      expect(named({ DISPATCHED: "831" }, "needs-human")).toEqual(["ticket=831", "branch=ticket/831"]);
+      expect(named({ DISPATCHED: "831" }, "stuck")).toEqual(["ticket=831", "branch=ticket/831"]);
     });
 
-    it("by nothing when its builder already called the owner", () => {
-      expect(named({ RAN_ON: "ticket/828" }, "needs-human")).toEqual(["ticket="]);
-      expect(named({ BUILT: "830" }, "needs-human")).toEqual(["ticket="]);
+    it("by nothing when the ticket is paused or stuck (#1166)", () => {
+      for (const held of HELD) {
+        expect(named({ RAN_ON: "ticket/828" }, held), held).toEqual(["ticket="]);
+        expect(named({ BUILT: "830" }, held), held).toEqual(["ticket="]);
+      }
     });
   });
 

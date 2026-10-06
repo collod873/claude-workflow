@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { capped, LIST_CAP, NO_EM_DASH, TICKET_CAP } from "./brief.ts";
 import { FILED } from "./builder.ts";
 import { FENCED_OPUS } from "./fence.ts";
-import { commentOnTicket, commentsRead, gh, ghRead, mark, NEEDS_HUMAN, post, readOrStop } from "./post.ts";
+import { commentOnTicket, commentsRead, gh, ghRead, mark, post, readOrStop, STUCK } from "./post.ts";
 import { BUILDING, SLICING, SPEC } from "./spelled.ts";
 import { opened, type Spent } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
@@ -13,7 +13,7 @@ import { DONE_SENTENCES, filedOutOfScope, filedPassages, type Passage, quoted, r
 
 const stoppedAt = stopsOf({
   notSpec: "Slice refused: the issue is not labelled `spec`",
-  unsliced: "Slice: the wave is still refused after two rounds back, so the spec is marked `needs-human`",
+  unsliced: "Slice: the wave is still refused after two rounds back, so the spec is marked `stuck`",
   unfiled: "Slice: the spec's rewrite, a ticket of its wave or the wave's note will not post",
   unchecked: "Slice: nothing is left to slice, and the done check it hands the spec to ends red",
   unfixed: "Slice: the slicer gives no ticket for the spec's fix wave, so nothing is filed",
@@ -276,9 +276,9 @@ function handedOff(issue: string): Stop | undefined {
 }
 
 function calledOwner(issue: string, why: string): Stop {
-  mark(issue, NEEDS_HUMAN);
+  mark(issue, STUCK);
   commentOnTicket(issue, `The slicer filed nothing: ${why}`, gh);
-  return stoppedAt("unsliced", `slice: #${issue} marked ${NEEDS_HUMAN}, ${why}`);
+  return stoppedAt("unsliced", `slice: #${issue} marked ${STUCK}, ${why}`);
 }
 
 if (import.meta.main) {

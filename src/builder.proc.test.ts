@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { BUILDER_SESSION, CHECK_PASSES, CHECK_RED, FULL_CHECK_RED_ONCE, fixing } from "./builder.part.ts";
+import { HELD } from "./spelled.ts";
 
 const DRIFT = "The reviewer read this PR against the Why of #811 and found drift.\n\n- src/builder.ts never resumes its session\n";
 const FIXES = "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n";
@@ -204,7 +205,7 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(handed()).toHaveLength(2);
     expect(handed()[1]).toContain("check: red test src/stops.test.ts:4");
     expect(saved()).toEqual([]);
-    expect(marked()).toContain("811 needs-human");
+    expect(marked()).toContain("811 stuck");
     expect(ticketComments().at(-1)).toMatch(/^@collod873 /);
     expect(ticketComments().at(-1)).toContain("changed nothing");
   });
@@ -432,7 +433,7 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
 
     expect(run("811", "555").status).toBe(1);
     expect(reruns()).toEqual([]);
-    expect(marked()).toContain("811 needs-human");
+    expect(marked()).toContain("811 stuck");
     expect(ticketComments().at(-1)).toContain("already reran once");
   });
 
@@ -440,7 +441,7 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     const { run, marked, ticketComments } = fixing({ ranAs: "Check", rerun: "printf 'HTTP 403: Resource not accessible by integration\\n' >&2\nexit 1" });
 
     expect(run("811", "555").status).toBe(1);
-    expect(marked()).toContain("811 needs-human");
+    expect(marked()).toContain("811 stuck");
     expect(ticketComments().at(-1)).toContain("HTTP 403");
   });
 
@@ -458,7 +459,7 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
 
     expect(run().status).toBe(1);
     expect(closes()).toEqual([]);
-    expect(marked()).toContain("811 needs-human");
+    expect(marked()).toContain("811 stuck");
     expect(ticketComments().at(-1)).toContain("the model overloaded");
   });
 
@@ -476,7 +477,7 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
 
     expect(run().status).toBe(1);
     expect(handed()).toHaveLength(1);
-    expect(marked()).toContain("811 needs-human");
+    expect(marked()).toContain("811 stuck");
     expect(ticketComments().at(-1)).toContain(fault);
   });
 
@@ -622,12 +623,14 @@ describe("bin/fix reads its ticket, its labels, its PR and their comments before
 });
 
 describe("bin/fix opens through the one stage opening (#1117)", () => {
-  it("ends green in one line on a ticket marked needs-human, and changes no label and hires no model", () => {
-    const stopped = fixing({ claude: FIXES, labels: ["ticket", "needs-human"] });
+  for (const held of HELD) {
+    it(`ends green in one line on a ticket marked ${held}, and changes no label and hires no model (#1166)`, () => {
+      const stopped = fixing({ claude: FIXES, labels: ["ticket", held] });
 
-    expect(stopped.run("811")).toEqual({ status: 0, stdout: "fix: #811 is marked needs-human, so no label changed and no model was hired\n", stderr: "" });
-    untouched(stopped);
-  });
+      expect(stopped.run("811")).toEqual({ status: 0, stdout: `fix: #811 is marked ${held}, so no label changed and no model was hired\n`, stderr: "" });
+      untouched(stopped);
+    });
+  }
 
   it("ends red at modelRun when the owner's hooks cannot be read, leaving the owner to the workflow's call-owner step", () => {
     const { run, marked, handed, ticketComments } = fixing({ claude: FIXES, hooks: "/nowhere/agent-hooks.json" });
@@ -638,8 +641,8 @@ describe("bin/fix opens through the one stage opening (#1117)", () => {
     expect(ticketComments()).toEqual([]);
   });
 
-  it("refuses an unadmitted ticket after the needs-human rule, so a stopped ticket stays green", () => {
-    const { run, marked } = fixing({ claude: FIXES, opener: "collod873-machine[bot]", labels: ["ticket", "needs-human"] });
+  it("refuses an unadmitted ticket after the stuck rule, so a stopped ticket stays green", () => {
+    const { run, marked } = fixing({ claude: FIXES, opener: "collod873-machine[bot]", labels: ["ticket", "stuck"] });
 
     expect(run("811")).toMatchObject({ status: 0, stderr: "" });
     expect(marked()).toEqual([]);
@@ -680,7 +683,7 @@ describe("the builder builds another repo's checkout from this repo's bin/ (#113
 
     expect(run("811").status).toBe(1);
     expect(handed()).toEqual([]);
-    expect(marked()).toEqual(["811 building", "811 needs-human"]);
+    expect(marked()).toEqual(["811 building", "811 stuck"]);
     expect(ticketComments()).toEqual([expect.stringContaining("its tree's setup failed: no lockfile")]);
   });
 
