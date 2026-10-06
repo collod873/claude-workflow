@@ -1,6 +1,10 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { bare, CALLER, CI, DEPLOY, enrolling, REPO } from "./enrol.part.ts";
+import { bare, CI, DEPLOY, ENROLLED as REPO, enrolling } from "./scenarios.ts";
+
+const CALLER = readFileSync(join(import.meta.dirname, "..", ".github", "caller.yml"), "utf8");
 
 describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#1152)", () => {
   it("writes the caller file naming the repo's own CI, reaches it with the App, sets every secret, label and auto-merge, and holds main for check", () => {

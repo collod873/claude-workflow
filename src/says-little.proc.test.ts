@@ -1,9 +1,8 @@
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { bare, enrolling } from "./enrol.part.ts";
 import { parts, type Part } from "./parts.ts";
-import { CONTRACT, LINE_LIMIT, MOST_LINES, closingNote, coveredByCheck, execute, filing, landSession, marking, misshapenTicket, overLimit, saving, scratch, script, sessionExtras, wellFormedNote, wellFormedTicket } from "./scenarios.ts";
+import { bare, CONTRACT, LINE_LIMIT, MOST_LINES, closingNote, coveredByCheck, enrolling, execute, filing, landSession, marking, misshapenTicket, overLimit, saving, scratch, script, sessionExtras, wellFormedNote, wellFormedTicket } from "./scenarios.ts";
 import { stages, type Scenario } from "./stages.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
