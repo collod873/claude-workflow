@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { bare, CI, DEPLOY, ENROLLED as REPO, enrolling } from "./scenarios.ts";
+import { bare, CI, DEPLOY, ENROLLED as REPO, enrolling, KEY } from "./scenarios.ts";
 
 const CALLER = readFileSync(join(import.meta.dirname, "..", ".github", "caller.yml"), "utf8");
 
@@ -44,8 +44,8 @@ describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#11
 
     expect(held().writes.filter((args) => args[0] === "secret").map((args) => `${args[2]} ${args.includes("dependabot") ? "dependabot " : ""}${args.at(-1)}`).sort()).toEqual([
       "CLAUDE_CODE_OAUTH_TOKEN value sk-token",
-      "CORE_APP_PRIVATE_KEY dependabot value -----BEGIN KEY-----",
-      "CORE_APP_PRIVATE_KEY value -----BEGIN KEY-----",
+      `CORE_APP_PRIVATE_KEY dependabot value ${KEY}`,
+      `CORE_APP_PRIVATE_KEY value ${KEY}`,
     ]);
   });
 
@@ -61,15 +61,16 @@ describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#11
   });
 
   it("refuses and names what it could not set, setting the rest", () => {
-    const { run, held } = enrolling(bare({ refused: { "allow_auto_merge=true": "gh: Must have admin rights to Repository. (HTTP 403)" } }), { CORE_APP_PRIVATE_KEY: "-----BEGIN KEY-----" });
+    const { run, held } = enrolling(bare({ refused: { "allow_auto_merge=true": "gh: Must have admin rights to Repository. (HTTP 403)" } }), { CORE_APP_PRIVATE_KEY: KEY });
 
     const result = run();
 
     expect(result.status).toBe(1);
     expect(result.stderr.trimEnd().split("\n")).toEqual([
-      `enrol: ${REPO} is not enrolled, 2 could not be set and 7 were:`,
+      `enrol: ${REPO} is not enrolled, 3 could not be set and 6 were:`,
       "- CLAUDE_CODE_OAUTH_TOKEN: no CLAUDE_CODE_OAUTH_TOKEN in the environment to set it from",
       "- auto-merge: gh: Must have admin rights to Repository. (HTTP 403)",
+      "- the caller file: GraphQL: Auto merge is not allowed for this repository (enablePullRequestAutoMerge)",
     ]);
     expect(held().labels).toContain("ticket");
     expect(held().dependabot).toEqual(["CORE_APP_PRIVATE_KEY"]);
@@ -83,10 +84,10 @@ describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#11
     expect(result.status).toBe(1);
     expect(result.stderr.trimEnd().split("\n")).toEqual([
       `enrol: ${REPO} is not enrolled, 9 could not be set and 0 were:`,
-      "- the caller file: gh: Bad credentials (HTTP 401)",
       "- the App's access: gh: Bad credentials (HTTP 401)",
       "- CORE_APP_CLIENT_ID: gh: Bad credentials (HTTP 401)",
       "- CORE_APP_PRIVATE_KEY: gh: Bad credentials (HTTP 401)",
+      "- CORE_APP_PRIVATE_KEY for Dependabot: gh: Bad credentials (HTTP 401)",
       "- and 5 more",
     ]);
   });
@@ -114,5 +115,54 @@ describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#11
 
     expect(run("Next")).toEqual({ status: 2, stdout: "", stderr: "enrol: usage: enrol <owner/repo>\n" });
     expect(writes()).toEqual([]);
+  });
+});
+
+const STALE = CALLER.replace("    types: [created]\n", "");
+const HELD_FOR_CHECK = [{ type: "pull_request" }, { type: "required_status_checks", parameters: { required_status_checks: [{ context: "check" }] } }];
+
+describe("bin/enrol keeps an enrolled repo current with the owner's own login (#1155)", () => {
+  it("brings a stale caller file up to date through a PR that merges on its own once check passes, where main takes changes only through a PR", () => {
+    const { run, held } = enrolling(bare({ rules: HELD_FOR_CHECK, allow_auto_merge: true, files: { ".github/workflows/ci.yml": CI.replace("name: Gate", "name: CI"), ".github/workflows/machine.yml": STALE } }));
+
+    const result = run();
+
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+    expect(held().files[".github/workflows/machine.yml"]).toBe(CALLER);
+    const merged = held().writes.find((args) => args[0] === "pr" && args[1] === "merge") ?? [];
+    expect(merged).toEqual(expect.arrayContaining(["--auto"]));
+  });
+
+  it("opens the PR afresh from main when a branch is left from an earlier enrolment", () => {
+    const { run, held } = enrolling(bare({ rules: HELD_FOR_CHECK, allow_auto_merge: true, branches: { "enrol/caller": { "old.txt": "old" } } }));
+
+    expect(run().status).toBe(0);
+    expect(held().files[".github/workflows/machine.yml"]).toBeDefined();
+    expect(held().files["old.txt"]).toBeUndefined();
+  });
+
+  it("reads the App's access with the App's own key and grants it with the owner's login, never listing the owner's installations", () => {
+    const { run, held } = enrolling(bare());
+
+    const result = run();
+
+    expect(result.stderr).toBe("");
+    expect(held().reached).toContain(REPO);
+  });
+
+  it("refuses the App's access, naming the key, when no CORE_APP_PRIVATE_KEY is in the environment to read it with", () => {
+    const { run } = enrolling(bare(), { CLAUDE_CODE_OAUTH_TOKEN: "sk-token" });
+
+    expect(run().stderr).toContain("- the App's access: no CORE_APP_PRIVATE_KEY in the environment to read the App's access with");
+  });
+
+  it("ends saying a repo enrolled like Lumaria today was already enrolled, and changes nothing", () => {
+    const { run, held } = enrolling(bare());
+    run();
+    const before = held().writes.length;
+
+    expect(run()).toEqual({ status: 0, stdout: `enrol: ${REPO} was already enrolled, nothing changed\n`, stderr: "" });
+    expect(held().writes).toHaveLength(before);
   });
 });

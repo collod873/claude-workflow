@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { createSign } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse, parseDocument } from "yaml";
@@ -8,8 +9,12 @@ const CALLER_TEXT = readFileSync(join(import.meta.dirname, "..", ".github", "cal
 const WORKFLOWS = ".github/workflows";
 const CALLER = `${WORKFLOWS}/machine.yml`;
 const CHECK = "check";
+const BRANCH = "enrol/caller";
+const KEY = "CORE_APP_PRIVATE_KEY";
+const JWT_LIFE = 540;
 const APP = MACHINE.replace(/\[bot\]$/, "");
 const NOT_FOUND = /\(HTTP 404\)/;
+const HANDED = "Hand this repo's tickets to the machine";
 const LINE_LIMIT = 200;
 const SHOWN = 4;
 const MOST_SHOWN = 5;
@@ -68,6 +73,18 @@ function checkRunner(text: string): boolean {
   }
 }
 
+const url64 = (text: string) => Buffer.from(text).toString("base64url");
+
+function appToken(clientId: string, key: string): string {
+  const now = Math.floor(Date.now() / 1000);
+  const unsigned = `${url64(JSON.stringify({ alg: "RS256", typ: "JWT" }))}.${url64(JSON.stringify({ iat: now - 60, exp: now + JWT_LIFE, iss: clientId }))}`;
+  try {
+    return `${unsigned}.${createSign("RSA-SHA256").update(unsigned).sign(key, "base64url")}`;
+  } catch {
+    throw new Refused(`the ${KEY} in the environment is not a private key the App can sign with`);
+  }
+}
+
 function callerFor(ci: string): string {
   const caller = parseDocument(CALLER_TEXT);
   const named = caller.createNode([ci], { flow: true });
@@ -93,11 +110,18 @@ function enrolling(repo: string): Setting[] {
     if (more.length > 0) throw new Refused(`more than one workflow runs a \`${CHECK}\` job on pull requests: ${runners.join(", ")}`);
     return only;
   });
-  const installation = once(() => {
-    const ours = read<{ installations: { id: number; app_slug: string; repository_selection: string }[] }>(["api", "user/installations"]).installations.find(({ app_slug }) => app_slug === APP);
-    if (ours === undefined) throw new Refused(`the App is not installed on ${repo.split("/")[0] ?? repo}'s account: install it from https://github.com/apps/${APP}`);
-    return ours;
+  const clientId = once(() => read<{ client_id: string }>(["api", `apps/${APP}`]).client_id);
+  const asApp = once(() => {
+    const key = process.env[KEY] ?? "";
+    if (key === "") throw new Refused(`no ${KEY} in the environment to read the App's access with`);
+    return ["-H", `Authorization: Bearer ${appToken(clientId(), key)}`];
   });
+  const owner = repo.split("/")[0] ?? repo;
+  const installation = () => {
+    const ours = found<{ id: number }>(["api", ...asApp(), `users/${owner}/installation`]);
+    if (ours === undefined) throw new Refused(`the App is not installed on ${owner}'s account: install it from https://github.com/apps/${APP}`);
+    return ours;
+  };
   const names = (args: string[]) => read<{ name: string }[]>([...args, "-R", repo, "--json", "name"]).map(({ name }) => name.toLowerCase());
   const labels = once(() => names(["label", "list", "--limit", "1000"]));
   const variables = once(() => names(["variable", "list"]));
@@ -117,25 +141,17 @@ function enrolling(repo: string): Setting[] {
 
   return [
     {
-      name: "the caller file",
-      held: () => textOf(CALLER)?.text === caller(),
-      set: () => {
-        const sha = contents(CALLER)?.sha;
-        gh(["api", "-X", "PUT", `repos/${repo}/contents/${CALLER}`, "-f", "message=Hand this repo's tickets to the machine", "-f", `content=${Buffer.from(caller()).toString("base64")}`, ...(sha === undefined ? [] : ["-f", `sha=${sha}`])]);
-      },
-    },
-    {
       name: "the App's access",
-      held: () => installation().repository_selection === "all" || read<{ repositories: { full_name: string }[] }[]>(["api", "--paginate", "--slurp", `user/installations/${installation().id}/repositories?per_page=100`]).some((page) => page.repositories.some(({ full_name }) => full_name.toLowerCase() === repo.toLowerCase())),
+      held: () => found(["api", ...asApp(), `repos/${repo}/installation`]) !== undefined,
       set: () => void gh(["api", "-X", "PUT", `user/installations/${installation().id}/repositories/${held().id}`]),
     },
     {
       name: "CORE_APP_CLIENT_ID",
       held: () => variables().includes("core_app_client_id"),
-      set: () => void gh(["variable", "set", "CORE_APP_CLIENT_ID", "-R", repo, "--body", read<{ client_id: string }>(["api", `apps/${APP}`]).client_id]),
+      set: () => void gh(["variable", "set", "CORE_APP_CLIENT_ID", "-R", repo, "--body", clientId()]),
     },
-    secret("CORE_APP_PRIVATE_KEY", "actions"),
-    secret("CORE_APP_PRIVATE_KEY", "dependabot"),
+    secret(KEY, "actions"),
+    secret(KEY, "dependabot"),
     secret("CLAUDE_CODE_OAUTH_TOKEN", "actions"),
     {
       name: "the machine's labels",
@@ -170,6 +186,23 @@ function enrolling(repo: string): Setting[] {
           ],
         };
         gh(["api", "-X", "POST", `repos/${repo}/rulesets`, "--input", "-"], JSON.stringify(ruleset));
+      },
+    },
+    {
+      name: "the caller file",
+      held: () => textOf(CALLER)?.text === caller(),
+      set: () => {
+        const main = read<{ object: { sha: string } }>(["api", `repos/${repo}/git/ref/heads/${held().default_branch}`]).object.sha;
+        try {
+          gh(["api", "-X", "POST", `repos/${repo}/git/refs`, "-f", `ref=refs/heads/${BRANCH}`, "-f", `sha=${main}`]);
+        } catch (error) {
+          if (!(error instanceof Refused && /already exists/i.test(error.message))) throw error;
+          gh(["api", "-X", "PATCH", `repos/${repo}/git/refs/heads/${BRANCH}`, "-f", `sha=${main}`, "-F", "force=true"]);
+        }
+        const sha = contents(CALLER)?.sha;
+        gh(["api", "-X", "PUT", `repos/${repo}/contents/${CALLER}`, "-f", `message=${HANDED}`, "-f", `branch=${BRANCH}`, "-f", `content=${Buffer.from(caller()).toString("base64")}`, ...(sha === undefined ? [] : ["-f", `sha=${sha}`])]);
+        if (read<unknown[]>(["pr", "list", "-R", repo, "--head", BRANCH, "--json", "number"]).length === 0) gh(["pr", "create", "-R", repo, "--head", BRANCH, "--base", held().default_branch, "--title", HANDED, "--body", `Brings \`${CALLER}\` to the caller text bin/enrol writes, naming this repo's CI. It merges on its own once \`${CHECK}\` passes.`]);
+        gh(["pr", "merge", BRANCH, "-R", repo, "--auto", "--squash", "--delete-branch"]);
       },
     },
   ];
