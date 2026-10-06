@@ -583,9 +583,9 @@ export function sessionExtras({
 export const ENROLLED = "collod873/Next";
 export const CI = ["name: Gate", "on:", "  pull_request:", "jobs:", "  check:", "    runs-on: ubuntu-latest", "    steps:", "      - run: pnpm check", ""].join("\n");
 export const DEPLOY = ["name: Deploy", "on:", "  push:", "jobs:", "  ship:", "    runs-on: ubuntu-latest", "    steps:", "      - run: ./ship", ""].join("\n");
-const APP_KEY = generateKeyPairSync("rsa", { modulusLength: 2048, publicKeyEncoding: { type: "spki", format: "pem" }, privateKeyEncoding: { type: "pkcs8", format: "pem" } });
-export const KEY = APP_KEY.privateKey;
-const SECRETS = { CORE_APP_PRIVATE_KEY: KEY, CLAUDE_CODE_OAUTH_TOKEN: "sk-token" };
+let appKey: { publicKey: string; privateKey: string } | undefined;
+const appKeys = () => (appKey ??= generateKeyPairSync("rsa", { modulusLength: 2048, publicKeyEncoding: { type: "spki", format: "pem" }, privateKeyEncoding: { type: "pkcs8", format: "pem" } }));
+export const key = () => appKeys().privateKey;
 
 interface Held {
   id: number;
@@ -706,7 +706,7 @@ export function bare(extra: Partial<Held> = {}): Held {
     secrets: [],
     dependabot: [],
     labels: ["bug"],
-    appKey: APP_KEY.publicKey,
+    appKey: appKeys().publicKey,
     rules: [],
     refused: {},
     writes: [],
@@ -714,7 +714,7 @@ export function bare(extra: Partial<Held> = {}): Held {
   };
 }
 
-export function enrolling(held: Held, env: Record<string, string> = SECRETS) {
+export function enrolling(held: Held, env: Record<string, string> = { CORE_APP_PRIVATE_KEY: key(), CLAUDE_CODE_OAUTH_TOKEN: "sk-token" }) {
   const root = scratch("enrol-");
   const state = join(root, "held.json");
   writeFileSync(state, JSON.stringify(held));

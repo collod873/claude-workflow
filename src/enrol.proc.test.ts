@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { bare, CI, DEPLOY, ENROLLED as REPO, enrolling, KEY } from "./scenarios.ts";
+import { bare, CI, DEPLOY, ENROLLED as REPO, enrolling, key } from "./scenarios.ts";
 
 const CALLER = readFileSync(join(import.meta.dirname, "..", ".github", "caller.yml"), "utf8");
 
@@ -44,8 +44,8 @@ describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#11
 
     expect(held().writes.filter((args) => args[0] === "secret").map((args) => `${args[2]} ${args.includes("dependabot") ? "dependabot " : ""}${args.at(-1)}`).sort()).toEqual([
       "CLAUDE_CODE_OAUTH_TOKEN value sk-token",
-      `CORE_APP_PRIVATE_KEY dependabot value ${KEY}`,
-      `CORE_APP_PRIVATE_KEY value ${KEY}`,
+      `CORE_APP_PRIVATE_KEY dependabot value ${key()}`,
+      `CORE_APP_PRIVATE_KEY value ${key()}`,
     ]);
   });
 
@@ -61,7 +61,7 @@ describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#11
   });
 
   it("refuses and names what it could not set, setting the rest", () => {
-    const { run, held } = enrolling(bare({ refused: { "allow_auto_merge=true": "gh: Must have admin rights to Repository. (HTTP 403)" } }), { CORE_APP_PRIVATE_KEY: KEY });
+    const { run, held } = enrolling(bare({ refused: { "allow_auto_merge=true": "gh: Must have admin rights to Repository. (HTTP 403)" } }), { CORE_APP_PRIVATE_KEY: key() });
 
     const result = run();
 
