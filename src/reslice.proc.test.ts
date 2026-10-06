@@ -155,7 +155,7 @@ describe("bin/slice on a spec with tickets under it slices its next wave against
   it("hands the slicer the owner's comments, the last wave check and each ticket's state, comments and PR, then files wave 2 under the spec with its note", () => {
     const sliced = reslicing();
 
-    expect(heard(sliced.run())).toEqual({ status: 0, stderr: "", lines: ["slice: #968 filed wave 2 under it: #1101"] });
+    expect(heard(sliced.run())).toEqual({ status: 0, stderr: "", lines: [expect.stringMatching(/^slice: #968 filed wave 2 under it: #1101\. The owner's \d+ bytes stand as filed, and no round came back for the spec's size\.$/)] });
     const [handed = ""] = sliced.handed();
     expect(handed).toContain("Slice this spec's next wave");
     expect(handed).toContain(OWNER_SAID.body);
@@ -168,7 +168,7 @@ describe("bin/slice on a spec with tickets under it slices its next wave against
     expect(sliced.linked()).toEqual(["repos/{owner}/{repo}/issues/968/sub_issues sub_issue_id=901101"]);
     const [note = ""] = sliced.comments();
     expect(note).toMatch(/^## Wave 2\n\n/);
-    expect(note).toContain("Wave 1 filed the spec kind.\n\nWave 2 reads it back.\n\nFiled: #1101.\n\n<!-- moves: 1 -->\n");
+    expect(note).toMatch(/Wave 1 filed the spec kind\.\n\nWave 2 reads it back\.\n\nThe owner's \d+ bytes stand as filed\.\n\nFiled: #1101\.\n\n<!-- moves: 1 -->\n$/);
   });
 
   it("files nothing and runs bin/done-check on the spec when nothing is left to slice", () => {
@@ -243,7 +243,7 @@ describe("bin/slice hands the re-slice the diff of every PR the wave merged, so 
   it("hands the slicer each merged PR's diff and asks it to fold shared parts into Names, merge two copies of one helper and hold back what leans on it; a wave that merged two copies yields a merge ticket", () => {
     const sliced = reslicing({ prs: MERGED, diffs: { "1001": helper("slicer.ts"), "1002": helper("done-checker.ts") }, answers: [next([merge])] });
 
-    expect(heard(sliced.run())).toEqual({ status: 0, stderr: "", lines: ["slice: #968 filed wave 2 under it: #1101"] });
+    expect(heard(sliced.run())).toEqual({ status: 0, stderr: "", lines: [expect.stringMatching(/^slice: #968 filed wave 2 under it: #1101\. The owner's \d+ bytes stand as filed, and no round came back for the spec's size\.$/)] });
     const [handed = ""] = sliced.handed();
     expect(handed).toContain(`### #1002's PR\n\n${helper("done-checker.ts")}`);
     expect(handed).toContain(`### #1001's PR\n\n${helper("slicer.ts")}`);
@@ -279,7 +279,7 @@ describe("bin/slice sends back a wave that drops a sentence the last wave check 
   it("sends back a wave with no ticket after a wave check that missed, instead of handing off to the done check", () => {
     const sliced = reslicing({ said: [NOTE, MISSED], answers: [next([], []), next()] });
 
-    expect(heard(sliced.run())).toEqual({ status: 0, stderr: "", lines: ["slice: #968 filed wave 2 under it: #1101"] });
+    expect(heard(sliced.run())).toEqual({ status: 0, stderr: "", lines: [expect.stringMatching(/^slice: #968 filed wave 2 under it: #1101\. The owner's \d+ bytes stand as filed, and no round came back for the spec's size\.$/)] });
     const [handed = "", sentBack = ""] = sliced.handed();
     expect(handed).toContain("The last wave check missed sentence 1: this wave carries at least one ticket, and its `moves` name each of them.");
     expect(handed).not.toContain("Give no ticket when nothing is left to slice");
@@ -319,7 +319,7 @@ describe("bin/slice <spec> --fix <numbers> files the spec's one fix wave for the
   it("files the fix wave under the spec, with every ticket closed, from the arguments the done check passes, and notes it moving exactly those sentences", () => {
     const { sliced, ran } = fixing([{ ...next([fixPiece], [2]), spec: FIX_SPEC }]);
 
-    expect(heard(ran)).toEqual({ status: 0, stderr: "", lines: ["slice: #974 filed wave 2 under it: #1101"] });
+    expect(heard(ran)).toEqual({ status: 0, stderr: "", lines: [expect.stringMatching(/^slice: #974 filed wave 2 under it: #1101\. The owner's \d+ bytes stand as filed, and no round came back for the spec's size\.$/)] });
     expect(sliced.linked()).toEqual(["repos/{owner}/{repo}/issues/974/sub_issues sub_issue_id=901101"]);
     expect(sliced.handed()[0]).toContain("Slice this spec's one fix wave: the done check found sentence 2 did not hold with every ticket closed.");
     expect(sliced.comments()[0]).toMatch(/^## Wave 2\n/);

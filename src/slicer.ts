@@ -17,6 +17,7 @@ const stoppedAt = stopsOf({
   unfiled: "Slice: the spec's rewrite, a ticket of its wave or the wave's note will not post",
   unchecked: "Slice: nothing is left to slice, and the done check it hands the spec to ends red",
   unfixed: "Slice: the slicer gives no ticket for the spec's fix wave, so nothing is filed",
+  unproved: "Slice: the owner's bytes of the body it would post differ from those it read, so nothing is posted",
 });
 type Stop = ReturnType<typeof stoppedAt>;
 
@@ -226,9 +227,24 @@ function missedSinceNote(comments: string[]): number[] {
   return check > note ? [...missedIn(comments[check] ?? "")].sort((one, other) => one - other) : [];
 }
 
-function filedWave(issue: string, read: string, wave: Wave, number: number): Stop | undefined {
+const ownerStands = (bytes: number): string => `The owner's ${bytes} bytes stand as filed`;
+
+const SIZE_ROUND = "came back for the spec's size";
+
+function sizeRefused(said: string, round: number, recorded: Recorded): boolean {
+  const over = Buffer.byteLength(spliced(recorded)) - SPEC_CAP;
+  if (over <= 0) return false;
+  console.log(`${said} round ${round} ${SIZE_ROUND}: the spec would be ${over} bytes over the spec cap of ${SPEC_CAP}, so the record had to lose ${over} of its ${Buffer.byteLength(recorded.record)} bytes`);
+  return true;
+}
+
+function filedWave(issue: string, read: string, wave: Wave, number: number, firstSizeRefusal: number | undefined): Stop | undefined {
   const said = `slice: #${issue}`;
-  const edited = gh(["issue", "edit", issue, "--body", spliced({ owner: filedRecord(read).owner, record: wave.record })]);
+  const { owner } = filedRecord(read);
+  const posting = spliced({ owner, record: wave.record });
+  const bytes = Buffer.byteLength(owner);
+  if (filedRecord(posting).owner !== owner) return stoppedAt("unproved", `${said} ended red, the owner's ${bytes} bytes would not stand as filed in the body it would post, so nothing was posted`);
+  const edited = gh(["issue", "edit", issue, "--body", posting]);
   if (edited.status !== 0) return stoppedAt("unfiled", `${said} ended red, its rewrite would not post: ${quoted((edited.stderr || edited.stdout).trim())}`);
   const passages = filedPassages(read);
   const entries = recordEntries(wave.record);
@@ -246,16 +262,17 @@ function filedWave(issue: string, read: string, wave: Wave, number: number): Sto
     numbers.push(`#${number}`);
   }
   const which = number === 1 ? "its first wave" : `wave ${number}`;
-  const [unnoted] = commentOnTicket(issue, waveNote(number, passages, wave, numbers), gh).refusals;
+  const [unnoted] = commentOnTicket(issue, waveNote(number, passages, wave, numbers, bytes), gh).refusals;
   if (unnoted !== undefined) return stoppedAt("unfiled", `${said} filed ${which} under it, ${numbers.join(", ")}, but its note would not post: ${quoted(unnoted)}`);
   mark(issue, BUILDING);
-  console.log(`${said} filed ${which} under it: ${numbers.join(", ")}`);
+  const sized = firstSizeRefusal === undefined ? "and no round came back for the spec's size" : `${Math.round((Date.now() - firstSizeRefusal) / 1000)} seconds after the first round ${SIZE_ROUND}`;
+  console.log(`${said} filed ${which} under it: ${numbers.join(", ")}. ${ownerStands(bytes)}, ${sized}.`);
   return undefined;
 }
 
-function waveNote(number: number, passages: Passage[], wave: Wave, filed: string[]): string {
+function waveNote(number: number, passages: Passage[], wave: Wave, filed: string[], owner: number): string {
   const quoting = [...new Set(wave.tickets.flatMap((piece) => piece.passages))].sort((one, other) => one - other);
-  return `${[waveHeading(number), quote(passages, quoting), wave.did.trim(), wave.next.trim(), `Filed: ${filed.join(", ")}.`, movesMarker(wave.moves)].join("\n\n")}\n`;
+  return `${[waveHeading(number), quote(passages, quoting), wave.did.trim(), wave.next.trim(), `${ownerStands(owner)}.`, `Filed: ${filed.join(", ")}.`, movesMarker(wave.moves)].join("\n\n")}\n`;
 }
 
 function partWave(issue: string, wave: Wave, filed: string[], next: number, since: string): Stop {
@@ -292,6 +309,7 @@ function sliced(issue: string, fix?: number[]): Stop | undefined {
   if (typeof opening !== "object") return opening;
   const { asked, spend, carried: { comments, found } } = opening;
   let spent: Spent = spend(handedOn(asked.title, asked.body, found));
+  let firstSizeRefusal: number | undefined;
   for (let round = 0; ; round++) {
     if (spent.refusal !== undefined) return stoppedAt("modelRun", `${said} ended red, ${spent.refusal}`);
     if (!isWave(spent.answer)) return stoppedAt("modelRun", `${said} ended red, the slicer gave no wave`);
@@ -299,7 +317,8 @@ function sliced(issue: string, fix?: number[]): Stop | undefined {
     if (found !== undefined && found.missed.length === 0 && spent.answer.tickets.length === 0) return handedOff(issue);
     const wave = spent.answer;
     const refusals = waveRefusals(asked.body, wave, found);
-    if (refusals.length === 0) return filedWave(issue, asked.body, wave, waveNotes(comments).length + 1);
+    if (refusals.length === 0) return filedWave(issue, asked.body, wave, waveNotes(comments).length + 1, firstSizeRefusal);
+    if (sizeRefused(said, round + 1, { owner: filedRecord(asked.body).owner, record: wave.record })) firstSizeRefusal ??= Date.now();
     if (round === ROUNDS_BACK) return calledOwner(issue, `its wave still refused after ${ROUNDS_BACK} rounds back: ${quoted(refusals[0] ?? "")}`);
     spent = spend(sentBack(refusals), spent.session);
   }
