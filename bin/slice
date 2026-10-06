@@ -1,11 +1,21 @@
 #!/bin/bash
 set -uo pipefail
 
-usage="slice: usage: slice <issue number> [--fix <sentence numbers>] | slice --ended <closed issue number> | slice --resumed <spec number>"
+usage="slice: usage: slice <issue number> [--fix <sentence numbers>] | slice --ended <closed issue number> | slice --resumed <spec number> | slice --size-trial <spec number> <trial cap>"
 
 if [[ ${1:-} == "--help" ]]; then
   printf '%s\n' "$usage"
   exit 0
+fi
+
+src="$(cd "${BASH_SOURCE[0]%/*}/../src" && pwd)"
+
+if [[ ${1:-} == --size-trial ]]; then
+  if (($# != 3)) || [[ ! $2 =~ ^[0-9]+$ || ! $3 =~ ^[0-9]+$ ]]; then
+    printf '%s\n' "$usage" >&2
+    exit 2
+  fi
+  exec node "$src/slicer.ts" "$@"
 fi
 
 [[ ${1:-} == --ended || ${1:-} == --resumed ]] && ended=$1 && shift
@@ -16,5 +26,4 @@ if [[ ! $issue =~ ^[0-9]+$ ]] || { (($# != 1)) && [[ -n ${ended:-} || ${2:-} != 
   exit 2
 fi
 
-src="$(cd "${BASH_SOURCE[0]%/*}/../src" && pwd)"
 exec node "$src/slicer.ts" ${ended:-} "$issue" ${2:+"$2" "$numbers"}

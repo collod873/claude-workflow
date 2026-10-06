@@ -1,5 +1,5 @@
 name: Reslice
-run-name: "${{ github.event.action == 'unlabeled' && 'Resume' || 'Reslice after' }} #${{ github.event.issue.number || inputs.issue }}${{ github.event.issue.title && ': ' || '' }}${{ github.event.issue.title }}"
+run-name: "${{ inputs.trial_cap && 'Size trial of' || github.event.action == 'unlabeled' && 'Resume' || 'Reslice after' }} #${{ github.event.issue.number || inputs.issue }}${{ inputs.trial_cap && ' under ' || '' }}${{ inputs.trial_cap }}${{ github.event.issue.title && ': ' || '' }}${{ github.event.issue.title }}"
 
 "on":
   issues:
@@ -8,6 +8,9 @@ run-name: "${{ github.event.action == 'unlabeled' && 'Resume' || 'Reslice after'
     inputs:
       issue:
         required: true
+        type: number
+      trial_cap:
+        required: false
         type: number
 
 permissions:
@@ -53,6 +56,66 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           ISSUE: ${{ github.event.issue.number || inputs.issue }}
         run: bin/slice --ended "$ISSUE" >>"$GITHUB_OUTPUT"
+
+  size-trial:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.trial_cap }}
+    concurrency:
+      group: reslice-${{ inputs.issue }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    permissions:
+      contents: read
+      issues: read
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          permission-contents: read
+          permission-issues: read
+          permission-pull-requests: read
+
+      - id: checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - id: setup-node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - id: npm-ci
+        run: npm ci
+
+      - id: stage
+        uses: ./.github/actions/stage
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+
+      - id: size-trial
+        timeout-minutes: 90
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          STAGE_MINUTES: 45
+          ISSUE: ${{ inputs.issue }}
+          TRIAL_CAP: ${{ inputs.trial_cap }}
+        run: |
+          tail --pid=$$ -n +1 -F .git/machine-logs/slice-${{ inputs.issue }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
+          bin/slice --size-trial "$ISSUE" "$TRIAL_CAP"
+
+      - if: always()
+        timeout-minutes: 6
+        uses: ./.github/actions/stage-logs
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
 
   resumed:
     if: ${{ github.event_name == 'issues' && github.event.action == 'unlabeled' && github.event.sender.login == github.repository_owner }}

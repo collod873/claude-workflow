@@ -153,6 +153,7 @@ export function holds(
     event = "issues",
     conclusion = "",
     own = false,
+    inputs = {},
   }: {
     labels?: string[];
     steps?: Record<string, StepOutcome>;
@@ -168,6 +169,7 @@ export function holds(
     event?: string;
     conclusion?: string;
     own?: boolean;
+    inputs?: Record<string, string>;
   },
 ): boolean {
   const bare = condition.replace(/^\s*\$\{\{|\}\}\s*$/g, "");
@@ -188,12 +190,14 @@ export function holds(
     .replace(/steps\.([\w-]+)\.(outcome|conclusion)/g, 'steps["$1"].$2')
     .replace(/steps\.([\w-]+)\.outputs\.([\w-]+)/g, '(steps["$1"].outputs ?? {})["$2"]')
     .replace(/needs\.([\w-]+)\.result/g, 'needs["$1"].result')
-    .replace(/needs\.([\w-]+)\.outputs\.([\w-]+)/g, '(needs["$1"].outputs ?? {})["$2"]');
-  const evaluate = new Function("labels", "steps", "needs", "startsWith", "success", "failure", "always", "cancelled", `return Boolean(${source});`) as (...scope: unknown[]) => boolean;
+    .replace(/needs\.([\w-]+)\.outputs\.([\w-]+)/g, '(needs["$1"].outputs ?? {})["$2"]')
+    .replace(/\binputs\.([\w-]+)/g, 'inputs["$1"]');
+  const evaluate = new Function("labels", "steps", "needs", "inputs", "startsWith", "success", "failure", "always", "cancelled", `return Boolean(${source});`) as (...scope: unknown[]) => boolean;
   return evaluate(
     labels,
     steps,
     needs,
+    inputs,
     (text: string, start: string) => text.startsWith(start),
     () => !failed && !cancelled,
     () => failed && !cancelled,

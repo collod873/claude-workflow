@@ -422,3 +422,57 @@ describe("bin/slice marks the spec slicing while it writes a wave, and building 
     expect(sliced.marked()).toEqual([]);
   });
 });
+
+describe("bin/slice --size-trial slices a real spec under a trial cap below the spec cap, so the size refusal happens on the running system with nothing posted (#1194)", () => {
+  const owner = Buffer.byteLength(SPEC);
+  const cap = owner + 200;
+  const over = `${RECORD}\n\n${"x".repeat(400)}`;
+
+  it("sends the slicer back for size under the trial cap, then proves the owner's bytes and logs the filing it would have made, posting, filing and marking nothing", () => {
+    const sliced = slicing({ body: SPEC, answers: [wave(undefined, over), wave()] });
+    const bytesOver = Buffer.byteLength(recorded(SPEC, over)) - cap;
+
+    const { status, stderr, lines } = heard(sliced.run("--size-trial", "968", String(cap)));
+    expect({ status, stderr }).toEqual({ status: 0, stderr: "" });
+    expect(lines[0]).toBe(`slice: trial #968 round 1 came back for the spec's size: the spec would be ${bytesOver} bytes over the trial cap of ${cap}, so the record had to lose ${bytesOver} of its ${Buffer.byteLength(over)} bytes`);
+    expect(lines[1]).toMatch(new RegExp(`^slice: trial #968 would file its first wave under it, 2 tickets\\. The owner's ${owner} bytes stand as filed, \\d+ seconds after the first round came back for the spec's size\\.$`));
+    expect(sliced.handed()[0]).toContain(`leaving 200 under the trial cap of ${cap}`);
+    expect(sliced.handed()[1]).toContain(`the record must lose at least ${bytesOver} bytes`);
+    expect(sliced.handed()[1]).toContain(`over the trial cap of ${cap}`);
+    expect(sliced.argv().filter((args) => !(args[0] === "issue" && args[1] === "view") && !(args[0] === "api" && args[1] === "--paginate"))).toEqual([]);
+    expect(sliced.marked()).toEqual([]);
+  });
+
+  it("stops red without marking, commenting or calling the owner when the wave is still refused after two rounds back", () => {
+    const sliced = slicing({ body: SPEC, answers: [wave(undefined, over)] });
+
+    const run = sliced.run("--size-trial", "968", String(cap));
+    expect(run.status).toBe(1);
+    expect(run.stderr).toMatch(/^slice: trial #968 ended red, its wave still refused after 2 rounds back: /);
+    expect(sliced.handed()).toHaveLength(3);
+    expect(sliced.comments()).toEqual([]);
+    expect(sliced.marked()).toEqual([]);
+  });
+
+  it("refuses a trial cap at or above the spec cap, or below the owner's bytes, before any model is hired", () => {
+    for (const [given, refusal] of [
+      ["65536", "slice: trial #968 refused, its trial cap of 65536 is not below the spec cap of 65536, so it could never refuse; no model was hired"],
+      [String(owner - 1), `slice: trial #968 refused, its trial cap of ${owner - 1} is below the owner's ${owner} bytes, so no record could fit; no model was hired`],
+    ] as const) {
+      const sliced = slicing({ body: SPEC, answers: [wave()] });
+      const run = sliced.run("--size-trial", "968", given);
+      expect(run.status, given).toBe(1);
+      expect(run.stderr, given).toBe(`${refusal}\n`);
+      expect(sliced.hired(), given).toEqual([]);
+      expect(sliced.marked(), given).toEqual([]);
+    }
+  });
+
+  it("refuses a size trial with no spec number or no trial cap", () => {
+    for (const args of [["--size-trial"], ["--size-trial", "968"], ["--size-trial", "968", "big"], ["--size-trial", "968", "60000", "--fix", "1"]]) {
+      const run = slicing().run(...args);
+      expect(run.status, args.join(" ")).toBe(2);
+      expect(run.stderr, args.join(" ")).toMatch(/--size-trial <spec number> <trial cap>/);
+    }
+  });
+});
