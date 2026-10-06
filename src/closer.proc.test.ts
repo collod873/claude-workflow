@@ -508,6 +508,45 @@ describe("bin/close merges machine PRs one at a time, bringing only the oldest g
   });
 });
 
+describe("bin/close merges the PR the queue waits for once it is green, since GitHub's auto-merge has been seen not to fire (#1171)", () => {
+  const merged = (calls: string[]) => calls.filter((call) => call.startsWith("pr\nmerge\n"));
+
+  it("merges the green PR up to date with main itself, matching its head, and still brings no other PR up to date", () => {
+    const { calls, heads, run } = closing({
+      ticket: "819",
+      afterCheck: true,
+      openPrs: [
+        { number: "960", ticket: "880" },
+        { number: "961", ticket: "881", upToDate: true },
+      ],
+    });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(merged(calls())).toEqual([`pr\nmerge\n961\n--merge\n--match-head-commit\n${heads[1] ?? ""}\n`]);
+    expect(calls().some((call) => call.startsWith("pr\nupdate-branch\n"))).toBe(false);
+    expect(result.stdout).toContain("PR #961 merged");
+  });
+
+  it("merges nothing while the PR up to date with main is still being checked", () => {
+    const { calls, run } = closing({ ticket: "819", afterCheck: true, openPrs: [{ number: "962", ticket: "882", upToDate: true, checks: "pending" }] });
+
+    expect(run().status).toBe(0);
+    expect(merged(calls())).toEqual([]);
+  });
+
+  it("leaves the PR to auto-merge and says why when GitHub refuses the merge, ending green", () => {
+    const { calls, run } = closing({ ticket: "819", afterCheck: true, openPrs: [{ number: "963", ticket: "883", upToDate: true, mergeRefused: "GraphQL: Head branch was modified" }] });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(merged(calls())).toHaveLength(1);
+    expect(result.stdout).toContain("PR #963 could not be merged, so auto-merge is left to merge it: GraphQL: Head branch was modified");
+  });
+});
+
 describe("a finished Check run moves the queue on, and a red one wakes its builder, so a red PR never holds the queue (#1011)", () => {
   const workflow = (name: string) => parse(readFileSync(join(REPO, ".github", "workflows", name), "utf8")) as { on: Record<string, { workflows?: string[]; types?: string[] }>; jobs: Record<string, { steps: { run?: string; env?: Record<string, string> }[] }> };
 
