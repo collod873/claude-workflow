@@ -72,6 +72,9 @@ export function fixing({
   treePath = {} as Record<string, string>,
   nodeLauncher = false,
   calledFrom = undefined as string | undefined,
+  realSave = false,
+  ticket = "811",
+  repo = "collod873/Lumaria",
 } = {}) {
   const root = scratch("builder-");
   const session = join(root, "session");
@@ -83,20 +86,22 @@ export function fixing({
   const argvDir = join(root, "gh-argv");
   const machine = join(root, "machine", "bin");
   const ranIn = join(root, "ran-in");
+  const opens = join(root, "pr-opens");
   const { setup, calls } = ghArgv(argvDir);
   mkdirSync(spent, { recursive: true });
   mkdirSync(hires, { recursive: true });
   script(join(home, "bin", "check"), `printf 'check %s\\n' "$PWD" >>"${ranIn}"\n${check}`);
   script(join(machine, "mark"), `printf '%s\\n' "$*" >>"${marks}"\n${refusedMark(markRefusal)}`);
-  script(join(machine, "save"), `printf '%s\\n' "$*" >>"${saves}"\n${save}`);
-  branchedSession(session, "builder", { "src/ticket-shape.ts": "export const shaped = 1;\n", ...onMain, ...(contract === undefined ? {} : { ".claude/contract.json": contract }) }, { "src/ticket-shape.test.ts": AUTHORED_TEST }, "ticket/811");
-  git(session, "commit", "--quiet", "--allow-empty", "-m", "Build #811 against its failing tests");
+  script(join(machine, "save"), `printf '%s\\n' "$*" >>"${saves}"\n${realSave ? `exec "${join(BIN, "save")}" "$@"\n` : save}`);
+  branchedSession(session, "builder", { "src/ticket-shape.ts": "export const shaped = 1;\n", ...onMain, ...(contract === undefined ? {} : { ".claude/contract.json": contract }) }, { "src/ticket-shape.test.ts": AUTHORED_TEST }, `ticket/${ticket}`);
+  git(session, "commit", "--quiet", "--allow-empty", "-m", `Build #${ticket} against its failing tests`);
   const redAt = git(session, "rev-parse", "HEAD");
   for (const [name, text] of Object.entries(logged)) plant(session, `.git/machine-logs/${name}`, text);
   for (const [path, text] of Object.entries(leftover)) plant(session, path, text);
-  if (savedSession !== undefined) plant(home, ".claude/builder/811", `${savedSession}\n`);
+  if (savedSession !== undefined) plant(home, `.claude/builder/${ticket}`, `${savedSession}\n`);
   for (const [name, text] of Object.entries(captures)) plant(root, `captures/${name}`, text);
   plant(root, "ticket.json", JSON.stringify({ title: "Build what the ticket asks", body, labels: labels.map((name) => ({ name })) }));
+  plant(root, "ticket-body", body);
   plant(root, "on-pr.json", authored(onPr ?? []));
   plant(root, "on-ticket.json", authored(onTicket));
   plant(root, "failed-run.log", failedRun);
@@ -110,17 +115,19 @@ export function fixing({
       `printf 'gh %s\\n' "$PWD" >>"${ranIn}"`,
       'case "$*" in',
       ...(unreadable === undefined ? [] : [`  ${unreadable}) printf 'gh: Server Error (HTTP 502)\\n' >&2; exit 1 ;;`]),
-      `  *"api"*"issues/9811/comments"*) cat "${join(root, "on-pr.json")}" ;;`,
-      `  *"api"*"issues/811/comments"*) cat "${join(root, "on-ticket.json")}" ;;`,
-      ...openedCases(root, opener, body, parent),
+      `  *"api"*"issues/9${ticket}/comments"*) cat "${join(root, "on-pr.json")}" ;;`,
+      `  *"api"*"issues/${ticket}/comments"*) cat "${join(root, "on-ticket.json")}" ;;`,
+      ...openedCases(root, opener, body, parent, ticket),
       `  *"issue create"*) n=$(( $(cat "${join(root, "created")}" 2>/dev/null || echo 900) + 1 )); printf '%s\\n' "$n" >"${join(root, "created")}"; printf 'https://github.com/collod873/claude-workflow/issues/%s\\n' "$n" ;;`,
       `  *"issue view"*"title,body,labels"*) cat "${join(root, "ticket.json")}" ;;`,
-      `  *"pr view"*"number"*) ${onPr === undefined ? "printf 'no pull requests found for branch \"ticket/811\"\\n' >&2; exit 1" : "printf '{\"number\":9811}\\n'"} ;;`,
+      `  *"issue view"*"body,title"*) printf 'Build what the ticket asks\\001%s' "$(cat "${join(root, "ticket-body")}")" ;;`,
+      `  *"pr create"*) printf '%s https://github.com/%s/pull/9${ticket}\\n' "$GH_REPO" "$GH_REPO" >>"${opens}"; printf 'https://github.com/%s/pull/9${ticket}\\n' "$GH_REPO" ;;`,
+      `  *"pr view"*"number"*) ${onPr === undefined ? `printf 'no pull requests found for branch "ticket/${ticket}"\\n' >&2; exit 1` : `printf '{"number":9${ticket}}\\n'`} ;;`,
       `  *"run view"*"--json"*) printf '%s %s %s\\n' '${ranAs}' '${redAt}' '${attempt}' ;;`,
       `  *"run view"*) cat "${join(root, "failed-run.log")}" ;;`,
       `  *"run rerun"*) ${rerun} ;;`,
       "  *\"pr view\"*) exit 22 ;;",
-      "  *) printf 'https://github.com/collod873/claude-workflow/issues/811#issuecomment-1\\n' ;;",
+      `  *) printf 'https://github.com/collod873/claude-workflow/issues/${ticket}#issuecomment-1\\n' ;;`,
       "esac",
       "",
     ].join("\n"),
@@ -145,6 +152,7 @@ export function fixing({
     hired: () => numbered(hires).map((argv) => argv.split("\0").filter((part) => part !== "")),
     marked: () => listed(marks),
     saved: () => listed(saves),
+    opened: () => listed(opens),
     calls,
     ranIn: () => [...new Set(listed(ranIn))],
     ticketComments: () => calls().filter((args) => args[0] === "issue" && args[1] === "comment").map(bodyOf),
@@ -154,13 +162,13 @@ export function fixing({
     closes: () => calls().filter((args) => (args[0] === "issue" || args[0] === "pr") && args[1] === "close"),
     reruns: () => calls().filter((args) => args[0] === "run" && args[1] === "rerun"),
     keptSession: (under = "builder") => {
-      const file = join(home, ".claude", under, "811");
+      const file = join(home, ".claude", under, ticket);
       return existsSync(file) ? readFileSync(file, "utf8").trim() : undefined;
     },
     captured: (name: string) => join(root, "captures", name),
     log: (...args: string[]) => git(session, "log", ...args),
     run: (...args: string[]) =>
-      execute(join(BIN, "fix"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}`, HOME: home, MACHINE_BIN: machine, AGENT_HOOKS_SETTINGS: hooks, SESSION_CAPTURES: join(root, "captures"), ...(reason === undefined ? {} : { REASON: reason }), ...(calledFrom === undefined ? {} : { CALLED_FROM: calledFrom, GH_REPO: "collod873/Lumaria" }), ...(Object.keys(treePath).length === 0 ? {} : { TREE_PATH: join(root, "tree-bin") }) }, args.length === 0 ? ["811", RED_RUN] : args),
+      execute(join(BIN, "fix"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}`, HOME: home, MACHINE_BIN: machine, AGENT_HOOKS_SETTINGS: hooks, SESSION_CAPTURES: join(root, "captures"), ...(reason === undefined ? {} : { REASON: reason }), ...(calledFrom === undefined ? {} : { CALLED_FROM: calledFrom, GH_REPO: repo }), ...(Object.keys(treePath).length === 0 ? {} : { TREE_PATH: join(root, "tree-bin") }) }, args.length === 0 ? [ticket, RED_RUN] : args),
   };
 }
 

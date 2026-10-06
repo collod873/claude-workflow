@@ -69,15 +69,19 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(own.handed()[0]).not.toContain("(needs <VAR>)");
   });
 
-  it("reads the unmet need off the real check's verdict, which names it red in CI, and pushes a foreign tree for its PR (#1142)", () => {
+  it("reads the unmet need off the real check's verdict, which names it red in CI, and opens the foreign tree's PR in its own repo through the real save (#1142, #1146)", () => {
     const real = realpathSync(join(homedir(), "bin", "check"));
     const contract = '{ "steps": { "integration": { "run": "true", "needs": ["DATABASE_URL"] } } }\n';
     const check = `env -u DATABASE_URL CI=true "${real}" "$@" | tee -a ../check-out\nexit "\${PIPESTATUS[0]}"\n`;
-    const { run, saved, session } = fixing({ claude: FIXES, contract, check, calledFrom: "collod873/Lumaria/.github/workflows/machine.yml@refs/heads/main" });
+    const { run, saved, opened, calls, session } = fixing({ claude: FIXES, contract, check, realSave: true, reason: "waiting came off", calledFrom: "collod873/Lumaria/.github/workflows/machine.yml@refs/heads/main" });
 
-    expect(run("811").status).toBe(0);
+    const result = run("811");
+
+    expect(result.status, result.stderr).toBe(0);
     expect(readFileSync(join(session, "..", "check-out"), "utf8")).toMatch(/^check: red integration \(needs DATABASE_URL\)/m);
     expect(saved()).toEqual(["811"]);
+    expect(opened()).toEqual(["collod873/Lumaria https://github.com/collod873/Lumaria/pull/9811"]);
+    expect(calls().filter((args) => args[0] === "pr").map((args) => args.slice(0, 3).join(" "))).toEqual(["pr view ticket/811", "pr create --base", "pr merge ticket/811"]);
   });
 
   it("passes a foreign tree red only for an unmet need though its receipts were not published, as a green check whose receipts were not is passed (#1147)", () => {

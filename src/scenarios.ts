@@ -59,6 +59,7 @@ export interface WorkflowStep {
 
 interface WorkflowJob {
   if?: string;
+  env?: Record<string, unknown>;
   needs?: string | string[];
   permissions?: Record<string, string>;
   steps: WorkflowStep[];
@@ -463,9 +464,9 @@ export const FIXED_TICKET = [
 
 export type Parent = object | "unreadable" | undefined;
 
-export function openedCases(root: string, opener: string, body: string, parent: Parent): string[] {
-  plant(root, "opened.json", JSON.stringify({ number: 811, user: { login: opener }, body }));
-  return [`  *"api"*"issues/811/parent") ${parentSays(root, parent)} ;;`, `  *"api"*"issues/811") cat "${join(root, "opened.json")}" ;;`];
+export function openedCases(root: string, opener: string, body: string, parent: Parent, ticket = "811"): string[] {
+  plant(root, "opened.json", JSON.stringify({ number: Number(ticket), user: { login: opener }, body }));
+  return [`  *"api"*"issues/${ticket}/parent") ${parentSays(root, parent)} ;;`, `  *"api"*"issues/${ticket}") cat "${join(root, "opened.json")}" ;;`];
 }
 
 export const gitRefusing = (root: string, unreadable: string) =>
