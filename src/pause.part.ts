@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { BIN, execute, ghArgv, scratch, script } from "./scenarios.ts";
 import { declareStage } from "./stages.ts";
@@ -10,9 +11,10 @@ const ROLLUPS = {
   red: [{ name: "check", status: "COMPLETED", conclusion: "FAILURE" }, { name: "review", status: "COMPLETED", conclusion: "SUCCESS" }],
 } as const;
 
-export function pausing({ pr = "green" as keyof typeof ROLLUPS | "none" | "unreadable", state = "OPEN", autoMerge = true, refused = "", calledFrom = "", behind = false, updateRefused = "" } = {}) {
+export function pausing({ pr = "green" as keyof typeof ROLLUPS | "none" | "unreadable", state = "OPEN", autoMerge = true, refused = "", calledFrom = "", behind = false, updateRefused = "", held = "", conflicted = true } = {}) {
   const root = scratch("pause-");
   const { setup, calls } = ghArgv(join(root, "gh-argv"));
+  const marks = join(root, "marks");
   const viewed =
     pr === "none"
       ? "printf 'no pull requests found for branch \"ticket/811\"\\n' >&2; exit 1"
@@ -21,11 +23,14 @@ export function pausing({ pr = "green" as keyof typeof ROLLUPS | "none" | "unrea
         : `printf '%s\\n' '${JSON.stringify({ number: 931, state, headRefOid: PAUSED_HEAD, autoMergeRequest: autoMerge ? { mergeMethod: "MERGE" } : null, mergeStateStatus: behind ? "BEHIND" : "CLEAN", statusCheckRollup: ROLLUPS[pr] })}'`;
   script(
     join(root, "bin", "gh"),
-    [setup, 'case "$*" in', `  *"pr view"*) ${viewed} ;;`, ...(updateRefused === "" ? [] : [`  *"pr update-branch"*) printf '%s\\n' '${updateRefused}' >&2; exit 1 ;;`]), ...(refused === "" ? [] : [`  *"pr merge"*|*"workflow run"*) printf '%s\\n' '${refused}' >&2; exit 1 ;;`]), "esac", ""].join("\n"),
+    [setup, 'case "$*" in', `  *"pr view"*) ${viewed} ;;`, `  *"issue view"*) printf '%s' '${held}' ;;`, ...(updateRefused === "" ? [] : [`  *"pr update-branch"*) printf '%s\\n' '${updateRefused}' >&2; exit 1 ;;`]), ...(refused === "" ? [] : [`  *"pr merge"*|*"workflow run"*) printf '%s\\n' '${refused}' >&2; exit 1 ;;`]), "esac", ""].join("\n"),
   );
+  script(join(root, "bin", "mark"), `printf '%s\\n' "$*" >>"${marks}"\n`);
+  script(join(root, "bin", "git"), `case "$*" in\n  *merge-tree*) exit ${conflicted ? 1 : 0} ;;\nesac\n`);
   const env = { PATH: `${join(root, "bin")}:${process.env.PATH}`, ...(calledFrom === "" ? {} : { CALLED_FROM: calledFrom }) };
   return {
     calls,
+    marks: () => (existsSync(marks) ? readFileSync(marks, "utf8").trim().split("\n") : []),
     pause: () => execute(join(BIN, "pause"), root, env, ["811"]),
     resume: () => execute(join(BIN, "resume"), root, env, ["811"]),
   };

@@ -41,11 +41,11 @@ interface Collisions {
 }
 
 const failedBranchUpdate = (pr: string) => `PR #${pr} could not be brought up to date with main:`;
-export const branchUpdate = (pr: string) => `PR #${pr} brought up to date with main by`;
+const branchUpdate = (pr: string) => `PR #${pr} brought up to date with main by`;
 const FAILED_BRANCH_UPDATE = new RegExp(`^${failedBranchUpdate("\\d+")}`);
 const BRANCH_UPDATE = new RegExp(`^${branchUpdate("\\d+")} `);
 const { GITHUB_SERVER_URL: server, GITHUB_REPOSITORY: repository, GITHUB_RUN_ID: runId } = process.env;
-export const thisRun = server && repository && runId ? `${server}/${repository}/actions/runs/${runId}` : "a run outside Actions";
+const thisRun = server && repository && runId ? `${server}/${repository}/actions/runs/${runId}` : "a run outside Actions";
 
 function collisions(comments: string[]): Collisions {
   const branchUpdates = comments.filter((comment) => BRANCH_UPDATE.test(comment)).length;
@@ -132,10 +132,13 @@ const record = ({ ticket, pr }: Built, speed: string): string => [`#${ticket} is
 
 const recorded = (said: string) => (said === "" ? "" : `; record ${said}`);
 
-interface QueuedPr {
+interface BehindPr {
   number: string;
   headRefName: string;
   headRefOid: string;
+}
+
+interface QueuedPr extends BehindPr {
   checks: Checks;
 }
 
@@ -202,18 +205,22 @@ function resliced(ticket: string): Stop | undefined {
 
 const headLine = (oid: string) => `Head: \`${oid}\``;
 
-export const CONFLICT = /conflict/i;
+const CONFLICT = /conflict/i;
 
-const conflicts = (pr: QueuedPr, reason: string) =>
+const conflicts = (pr: BehindPr, reason: string) =>
   CONFLICT.test(reason) || !answered(git(["merge-tree", "--write-tree", "--quiet", "origin/main", `origin/${pr.headRefName}`]), `whether PR #${pr.number} conflicts with main could not be read, ${NOTHING_MARKED}`);
 
 function conflictReportedAtHead(pr: QueuedPr): boolean {
   return commentsRead(pr.number, `the comments on PR #${pr.number} could not be read, ${NOTHING_MARKED}`, gh).some((said) => FAILED_BRANCH_UPDATE.test(said) && said.includes(headLine(pr.headRefOid)) && conflicts(pr, said));
 }
 
-type Moved = "updated" | "conflicted" | "retried";
+interface Retried {
+  retried: string;
+}
 
-function updateBranch(pr: QueuedPr): Moved {
+type Moved = "updated" | "conflicted" | Retried;
+
+export function updateBranch(pr: BehindPr, say = console.log): Moved {
   const { number, headRefName, headRefOid } = pr;
   const ticket = TICKET_BRANCH.exec(headRefName)?.[1];
   const updated = gh(["pr", "update-branch", number]);
@@ -223,13 +230,10 @@ function updateBranch(pr: QueuedPr): Moved {
     return "updated";
   }
   const reason = (updated.stderr || updated.stdout).trim().split("\n")[0] || "no reason given";
-  if (!conflicts(pr, reason)) {
-    console.log(`close: PR #${number} could not be brought up to date with main, and will be tried again: ${reason}`);
-    return "retried";
-  }
+  if (!conflicts(pr, reason)) return { retried: reason };
   commentOnPr(number, `${failedBranchUpdate(number)} ${reason}\n\n${headLine(headRefOid)}\n\nRun: ${thisRun}`, gh);
   const held = ticket === undefined ? undefined : heldOn(labelsHeld(ticket, gh));
-  if (held !== undefined) console.log(`close: #${ticket ?? ""} is labelled ${held}, so the conflict on PR #${number} wakes no builder`);
+  if (held !== undefined) say(`close: #${ticket ?? ""} is labelled ${held}, so the conflict on PR #${number} wakes no builder`);
   else if (ticket !== undefined) {
     mark(ticket, RESOLVING);
     wakeBuilder(ticket, `#${ticket}'s ${failedBranchUpdate(number)} ${reason}`);
@@ -257,6 +261,7 @@ function queue(): string {
           .filter((pr) => pr.checks === "green")
           .find((pr) => {
             const outcome = conflictReportedAtHead(pr) ? "conflicted" : updateBranch(pr);
+            if (typeof outcome === "object") console.log(`close: PR #${pr.number} could not be brought up to date with main, and will be tried again: ${outcome.retried}`);
             moved.set(pr, outcome);
             return outcome === "updated";
           })
