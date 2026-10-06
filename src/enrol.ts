@@ -158,16 +158,18 @@ function enrolling(repo: string): Setting[] {
     if (open !== undefined && textOf(CALLER, BRANCH)?.text === caller()) return { waits: open.url, opened: false };
     if (!read<{ allow_auto_merge: boolean }>(["api", `repos/${repo}`]).allow_auto_merge) throw new Refused("auto-merge is off, so a PR for it would never merge on its own");
     branchFromMain();
-    write(BRANCH);
-    const url = open?.url ?? gh(["pr", "create", "-R", repo, "--head", BRANCH, "--base", held().default_branch, "--title", HANDED, "--body", `Brings \`${CALLER}\` to the caller text bin/enrol writes, naming this repo's CI. It merges on its own once \`${CHECK}\` passes.`]).trim();
+    let url: string;
     try {
+      write(BRANCH);
+      url = open?.url ?? gh(["pr", "create", "-R", repo, "--head", BRANCH, "--base", held().default_branch, "--title", HANDED, "--body", `Brings \`${CALLER}\` to the caller text bin/enrol writes, naming this repo's CI. It merges on its own once \`${CHECK}\` passes.`]).trim();
       gh(["pr", "merge", BRANCH, "-R", repo, "--auto", "--squash", "--delete-branch"]);
     } catch (error) {
       try {
-        gh(["pr", "close", BRANCH, "-R", repo, "--delete-branch"]);
-      } catch (closing) {
-        if (!(error instanceof Refused && closing instanceof Refused)) throw closing;
-        throw new Refused(`${error.message}, and closing its PR failed too: ${closing.message}`);
+        if (openPr() === undefined) gh(["api", "-X", "DELETE", `repos/${repo}/git/refs/heads/${BRANCH}`]);
+        else gh(["pr", "close", BRANCH, "-R", repo, "--delete-branch"]);
+      } catch (cleanup) {
+        if (!(error instanceof Refused && cleanup instanceof Refused)) throw cleanup;
+        throw new Refused(`${error.message}, and cleaning up its PR and branch failed too: ${cleanup.message}`);
       }
       throw error;
     }
