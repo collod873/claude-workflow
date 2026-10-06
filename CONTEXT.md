@@ -151,10 +151,21 @@ neither queues nor merges it.
 _Avoid_: on hold, frozen, blocked
 
 **Stuck**:
-An issue the machine labelled `stuck`, its last resort: a red run or a stage that cannot go on
-marks it and calls the owner. Like `paused` it is `held`, so every stage stands down on it, and the
-machine adds it but never removes it.
+An issue the machine labelled `stuck`, its last resort: a stage that cannot go on marks it, and a
+research, slice, reslice, resume, done check or fix run marks it only when its re-run stops too.
+Its comment names the run that stopped, ended red or out of time, links the first run and the
+re-run, and asks the owner to look at the re-run and take `stuck` off once the cause is fixed.
+Like `paused` it is `held`, so every stage stands down on it, and the machine adds it but never
+removes it.
 _Avoid_: blocked, failed
+
+**Rerun**:
+The machine's second try at a stage run that stopped. A job that ends red or is cancelled by its
+time limit leaves an `owner call` notice naming its issue, unless that issue is `held`; once the run
+completes, `bin/rerun` re-runs its failed jobs once on a first attempt, marking nothing and posting
+nothing, and marks the issue `stuck` on a later one. A run the owner cancelled is neither re-run nor
+marked.
+_Avoid_: retry, second chance
 
 **Resume**:
 Setting a held issue going again. Taking `waiting` off a ticket resumes its build. Taking `paused`

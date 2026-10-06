@@ -51,7 +51,8 @@ export const HELD = [PAUSED, STUCK] as const;
 export const TICKET_PREFIX = "ticket/";
 export const OWNER = "collod873";
 export const MACHINE = "collod873-machine[bot]";
-const KEYED: Record<string, string> = { TICKET, SPEC, NOTE, RESEARCH, BUILDING, CHECKING, QUEUED, RESOLVING, LANDING, SLICING, RESEARCHING, WAITING, ASKED, PAUSED, STUCK, TICKET_PREFIX, OWNER, MACHINE };
+export const OWNER_CALL = "owner call";
+const KEYED: Record<string, string> = { TICKET, SPEC, NOTE, RESEARCH, BUILDING, CHECKING, QUEUED, RESOLVING, LANDING, SLICING, RESEARCHING, WAITING, ASKED, PAUSED, STUCK, TICKET_PREFIX, OWNER, MACHINE, OWNER_CALL };
 
 export const SPELLINGS: [key: string, spelling: string][] = [
   ...Object.entries(KEYED),
