@@ -171,16 +171,48 @@ describe("bin/slice on a spec with tickets under it slices its next wave against
     expect(note).toMatch(/Wave 1 filed the spec kind\.\n\nWave 2 reads it back\.\n\nThe owner's \d+ bytes stand as filed\.\n\nFiled: #1101\.\n\n<!-- moves: 1 -->\n$/);
   });
 
-  it("files nothing and runs bin/done-check on the spec when nothing is left to slice", () => {
+  it("files no ticket, posts the spec with its record spliced in, then runs bin/done-check on the spec when nothing is left to slice (#1200)", () => {
     const sliced = reslicing({ answers: [next([], []), { tries: [{ sentence: 1, outcome: "held", tried: "saw the spec labelled spec" }] }] });
+    const owner = Buffer.byteLength(wellFormedSpec);
 
     const ran = heard(sliced.run());
-    expect(ran.lines).toEqual(["slice: #968 has nothing left to slice, so the done check tries its sentences", expect.stringMatching(/^done-check: #968 held every sentence and is closed/)]);
+    expect(ran.lines).toEqual([
+      `slice: #968 has nothing left to slice, so it posted its record and the done check tries its sentences. The owner's ${owner} bytes stand as filed, and no round came back for the spec's size.`,
+      expect.stringMatching(/^done-check: #968 held every sentence and is closed/),
+    ]);
     expect(sliced.filed()).toEqual([]);
-    expect(sliced.rewrites()).toEqual([]);
+    expect(sliced.rewrites()).toEqual([wellFormedSpec.replace("## I'll know it works when I can", "## Decisions record\n\n### Picks\n\n- **Read back**: read it back.\n\n## I'll know it works when I can")]);
+    const calls = sliced.argv();
+    expect(calls.findIndex((args) => args[1] === "edit")).toBeLessThan(calls.findIndex((args) => args[1] === "comment"));
     expect(sliced.handed()[1]).toContain("Try each sentence");
     expect(sliced.comments()).toEqual([expect.stringMatching(/^## Done check\n/)]);
     expect(sliced.argv()).toContainEqual(["issue", "close", "968", "--reason", "completed"]);
+  });
+
+  it("sends back a hand-off whose record puts the spec over the cap, and runs no done check until it fits (#1200)", () => {
+    const over = { ...next([], []), record: `### Picks\n\n- **Read back**: ${"x".repeat(65536)}` };
+    const sliced = reslicing({ answers: [over, next([], []), { tries: [{ sentence: 1, outcome: "held", tried: "saw it" }] }] });
+
+    const ran = heard(sliced.run());
+    expect(ran.lines[0]).toMatch(/^slice: #968 round 1 came back for the spec's size: the spec would be \d+ bytes over the spec cap of 65536/);
+    expect(ran.lines[1]).toMatch(/^slice: #968 has nothing left to slice, so it posted its record and the done check tries its sentences\. The owner's \d+ bytes stand as filed, \d+ seconds after the first round came back for the spec's size\.$/);
+    expect(sliced.handed()[1]).toContain("the record must lose at least");
+    expect(sliced.rewrites()).toHaveLength(1);
+  });
+
+  it("in a size trial, sends back a hand-off over the trial cap, then logs that it would hand the spec to the done check, posting nothing (#1200)", () => {
+    const owner = Buffer.byteLength(wellFormedSpec);
+    const over = { ...next([], []), record: `### Picks\n\n- **Read back**: ${"x".repeat(400)}` };
+    const sliced = reslicing({ answers: [over, next([], [])] });
+
+    const ran = heard(sliced.run("--size-trial", "968", String(owner + 200)));
+    expect({ status: ran.status, stderr: ran.stderr }).toEqual({ status: 0, stderr: "" });
+    expect(ran.lines[0]).toMatch(new RegExp(`^slice: trial #968 round 1 came back for the spec's size: the spec would be \\d+ bytes over the trial cap of ${owner + 200}`));
+    expect(ran.lines[1]).toMatch(new RegExp(`^slice: trial #968 would hand it to the done check\\. The owner's ${owner} bytes stand as filed, \\d+ seconds after the first round came back for the spec's size\\.$`));
+    expect(ran.lines).toHaveLength(2);
+    expect(sliced.rewrites()).toEqual([]);
+    expect(sliced.comments()).toEqual([]);
+    expect(sliced.handed()).toHaveLength(2);
   });
 
   it("slices nothing while a ticket under the spec is still open, so a second run for one wave's end files no second wave", () => {

@@ -108,13 +108,13 @@ const namesListed = (names: string[]): string => (names.length < 2 ? names.join(
 
 const SLOT_FIRST = "Where pieces plug into one shared surface, slice the surface's slot a wave ahead of them, so no two tickets of a wave edit one file.";
 
-function room(recorded: Recorded, cap: Cap): string {
-  const left = cap.bytes - Buffer.byteLength(spliced(recorded));
+function room(recorded: Recorded): string {
+  const left = SPEC_CAP - Buffer.byteLength(spliced(recorded));
   const standing = left >= 0 ? `${left} under` : `${-left} over`;
-  return `The owner's bytes come to ${Buffer.byteLength(recorded.owner)} and the record's to ${Buffer.byteLength(recorded.record)}, leaving ${standing} the ${cap.named} of ${cap.bytes}: a record that puts the spec over the cap comes back to you, so make room by cutting the record before you add.`;
+  return `The owner's bytes come to ${Buffer.byteLength(recorded.owner)} and the record's to ${Buffer.byteLength(recorded.record)}, leaving ${standing} the ${SPEC_CAPPED.named} of ${SPEC_CAP}: a record that puts the spec over the cap comes back to you, so make room by cutting the record before you add.`;
 }
 
-export function handedOn(title: string, body: string, found?: Found, cap: Cap = SPEC_CAPPED): string {
+export function handedOn(title: string, body: string, found?: Found): string {
   const recorded = filedRecord(body);
   const spec = capped(`# ${title}\n\n${spliced(recorded)}`, SPEC_CAP);
   const read =
@@ -129,7 +129,7 @@ export function handedOn(title: string, body: string, found?: Found, cap: Cap = 
           capped(found.diffs, DIFF_CAP) || "(none)",
           FOLDED,
         ];
-  const last = found === undefined || found.fix || found.missed.length > 0 ? "" : " Give no ticket when nothing is left to slice: code then files nothing and the done check tries every sentence.";
+  const last = found === undefined || found.fix || found.missed.length > 0 ? "" : " Give no ticket when nothing is left to slice: code then posts the spec with your record, held to the cap like any wave, and the done check tries every sentence.";
   return [
     `${lead(found)} ${WATCHED}`,
     "## The spec",
@@ -140,7 +140,7 @@ export function handedOn(title: string, body: string, found?: Found, cap: Cap = 
     sentences(spec).map(({ said }, at) => `${at + 1}. ${said}`).join("\n") || "(none)",
     ...read,
     "## Your answer",
-    `\`record\`: the spec's decisions record in full, which code splices in as \`## Decisions record\` just before the sentences; every other byte of the spec stays as filed. ${room(recorded, cap)} ${SETTLED}`,
+    `\`record\`: the spec's decisions record in full, which code splices in as \`## Decisions record\` just before the sentences; every other byte of the spec stays as filed. ${room(recorded)} ${SETTLED}`,
     `\`tickets\`: the ${found === undefined ? "first" : found.fix ? "fix" : "next"} wave, the fewest tickets that each fit the builder's brief cap of ${TICKET_CAP} bytes, all building at once beside each other. First find which parts each piece touches before you group them: one ticket unless two pieces touch different parts and neither needs the other's code. ${SLOT_FIRST} \`title\`; \`passages\`, the numbers of the Problem Statement passages its \`## Why\` quotes, which code copies in; \`why\`, what this ticket is for in the spec, which follows the quote; \`done\`, ${DONE_SENTENCES}. ${CITED} Code adds the spec's Out of Scope to each. A ticket over the cap comes back to you to split.${last}`,
     NOTED,
     "",
@@ -259,13 +259,19 @@ function trialFiled(said: string, read: string, wave: Wave, number: number, firs
   return undefined;
 }
 
-function filedWave(issue: string, read: string, wave: Wave, number: number, firstSizeRefusal: number | undefined): Stop | undefined {
+function posted(issue: string, read: string, wave: Wave): number | Stop {
   const said = `slice: #${issue}`;
   const standing = proved(said, read, wave);
   if (typeof standing !== "object") return standing;
-  const { posting, bytes } = standing;
-  const edited = gh(["issue", "edit", issue, "--body", posting]);
+  const edited = gh(["issue", "edit", issue, "--body", standing.posting]);
   if (edited.status !== 0) return stoppedAt("unfiled", `${said} ended red, its rewrite would not post: ${quoted((edited.stderr || edited.stdout).trim())}`);
+  return standing.bytes;
+}
+
+function filedWave(issue: string, read: string, wave: Wave, number: number, firstSizeRefusal: number | undefined): Stop | undefined {
+  const said = `slice: #${issue}`;
+  const bytes = posted(issue, read, wave);
+  if (typeof bytes !== "number") return bytes;
   const passages = filedPassages(read);
   const entries = recordEntries(wave.record);
   const numbers: string[] = [];
@@ -336,16 +342,17 @@ function sliced(issue: string, fix?: number[], trial?: number): Stop | undefined
   });
   if (typeof opening !== "object") return opening;
   const { asked, spend, carried: { comments, found } } = opening;
-  let spent: Spent = spend(handedOn(asked.title, asked.body, found, cap));
+  let spent: Spent = spend(handedOn(asked.title, asked.body, found));
   let firstSizeRefusal: number | undefined;
   for (let round = 0; ; round++) {
     if (spent.refusal !== undefined) return stoppedAt("modelRun", `${said} ended red, ${spent.refusal}`);
     if (!isWave(spent.answer)) return stoppedAt("modelRun", `${said} ended red, the slicer gave no wave`);
     if (found?.fix === true && spent.answer.tickets.length === 0) return stoppedAt("unfixed", `${said} ended red, the slicer gave no ticket for its fix wave, so nothing was filed`);
-    if (found !== undefined && found.missed.length === 0 && spent.answer.tickets.length === 0) return trial === undefined ? handedOff(issue) : trialHandedOff(said);
     const wave = spent.answer;
+    const handing = found !== undefined && found.missed.length === 0 && wave.tickets.length === 0;
     const refusals = waveRefusals(asked.body, wave, found, cap);
     const number = waveNotes(comments).length + 1;
+    if (refusals.length === 0 && handing) return trial === undefined ? handedOff(issue, asked.body, wave, firstSizeRefusal) : trialHandedOff(said, asked.body, wave, firstSizeRefusal);
     if (refusals.length === 0) return trial === undefined ? filedWave(issue, asked.body, wave, number, firstSizeRefusal) : trialFiled(said, asked.body, wave, number, firstSizeRefusal);
     if (sizeRefused(said, round + 1, { owner: filedRecord(asked.body).owner, record: wave.record }, cap)) firstSizeRefusal ??= Date.now();
     const unsliced = `its wave still refused after ${ROUNDS_BACK} rounds back: ${quoted(refusals[0] ?? "")}`;
@@ -354,13 +361,17 @@ function sliced(issue: string, fix?: number[], trial?: number): Stop | undefined
   }
 }
 
-function trialHandedOff(said: string): undefined {
-  console.log(`${said} has nothing left to slice, so a slice would hand it to the done check, which a trial does not run`);
+function trialHandedOff(said: string, read: string, wave: Wave, firstSizeRefusal: number | undefined): Stop | undefined {
+  const standing = proved(said, read, wave);
+  if (typeof standing !== "object") return standing;
+  console.log(`${said} would hand it to the done check. ${ownerStands(standing.bytes)}, ${sizedSince(firstSizeRefusal)}.`);
   return undefined;
 }
 
-function handedOff(issue: string): Stop | undefined {
-  console.log(`slice: #${issue} has nothing left to slice, so the done check tries its sentences`);
+function handedOff(issue: string, read: string, wave: Wave, firstSizeRefusal: number | undefined): Stop | undefined {
+  const bytes = posted(issue, read, wave);
+  if (typeof bytes !== "number") return bytes;
+  console.log(`slice: #${issue} has nothing left to slice, so it posted its record and the done check tries its sentences. ${ownerStands(bytes)}, ${sizedSince(firstSizeRefusal)}.`);
   const checked = spawnSync(DONE_CHECK, [issue], { stdio: "inherit" });
   return checked.status === 0 ? undefined : stoppedAt("unchecked", `slice: #${issue} has nothing left to slice, and bin/done-check ${issue} ended red`);
 }

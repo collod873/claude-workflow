@@ -532,17 +532,25 @@ describe("bin/done-check tries a caller's spec on that repo's own checkout, read
 });
 
 describe("bin/done-check lets a check on this repo start a size trial to try a sentence about the size refusal (#1198)", () => {
-  it("tells the checker a size trial counts as leaving GitHub as it is, how to start one a few hundred bytes under the spec, wait for it and read its log, and what misses", () => {
+  it("tells the checker a size trial counts as leaving GitHub as it is, how to start one, wait for it and read its log, and what misses", () => {
     const handed = doneChecking();
     expect(handed.run().status).toBe(0);
     const told = handed.handed();
 
     expect(told).toContain("Starting a size trial counts as leaving GitHub as it is, since a trial posts nothing.");
-    expect(told).toContain(`gh workflow run reslice.yml -f issue=974 -f trial_cap=${Buffer.byteLength(wellFormedSpec) - 300}`);
-    expect(told).toContain("a few hundred bytes under the spec's current size");
     expect(told).toContain("gh run watch");
     expect(told).toContain("`slice: trial #974`");
     expect(told).toContain("60 seconds or more");
+  });
+
+  it("sets the trial cap to the owner's bytes plus half the record's, both counted from the spec's current body, so the slicer's own folding cannot fit without being sent back (#1200)", () => {
+    const record = "### Picks\n\n- **Read back**: read it back, once the wave merged.";
+    const body = wellFormedSpec.replace("## I'll know it works when I can", `## Decisions record\n\n${record}\n\n## I'll know it works when I can`);
+    const handed = doneChecking({ body });
+    expect(handed.run().status).toBe(0);
+
+    expect(handed.handed()).toContain(`gh workflow run reslice.yml -f issue=974 -f trial_cap=${Buffer.byteLength(wellFormedSpec) + Math.floor(Buffer.byteLength(record) / 2)}\``);
+    expect(handed.handed()).toContain("the owner's bytes plus half the record's bytes");
   });
 
   it("tells a caller's checker nothing of a size trial, since its spec is not sliced by this repo's re-slice workflow", () => {

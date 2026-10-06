@@ -6,7 +6,7 @@ import { authoredOn, commentOnTicket, commentsRead, gh, machineBin, mark, OWNER,
 import { CONTRACT, FOREIGN, opened, setupRefusal, type Spent, treePathed } from "./stage.ts";
 import { ASKED, CHECKING, SPEC } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
-import { quoted, type Sentence, sentences, SPEC_CAP } from "./ticket-shape.ts";
+import { filedRecord, quoted, type Sentence, sentences, SPEC_CAP } from "./ticket-shape.ts";
 
 const stoppedAt = stopsOf({
   notSpec: "Refused: the issue is not labelled `spec`, or the done check finds no sentence to try",
@@ -61,9 +61,13 @@ const answered = (replies: string) =>
 const RUNNING_HERE = "For this repo the running system is its own Actions runs and the issues and PRs they touched, read with `gh`.";
 const RUNNING_THERE = "Here the running system is this checkout of the repo, readied by its contract's setup, and its Actions runs and the issues and PRs they touched, read with `gh`.";
 
-const TRIAL_UNDER = 300;
+function trialCap(body: string): number {
+  const { owner, record } = filedRecord(body);
+  return Buffer.byteLength(owner) + Math.floor(Buffer.byteLength(record) / 2);
+}
+
 const sizeTrial = (issue: string, body: string) =>
-  `To try a sentence about a wave going over the spec cap, start a size trial on this spec with a trial cap a few hundred bytes under the spec's current size: \`gh workflow run reslice.yml -f issue=${issue} -f trial_cap=${Buffer.byteLength(body) - TRIAL_UNDER}\`. Starting a size trial counts as leaving GitHub as it is, since a trial posts nothing. Find its run with \`gh run list --workflow reslice.yml\`, wait for it with \`gh run watch <run> --exit-status\`, and answer from \`gh run view <run> --log\`: each size round with the bytes over and the bytes the record had to lose, and the \`slice: trial #${issue}\` line saying the owner's bytes stand and the seconds from the first size round. A trial that ends red, or whose filing line gives 60 seconds or more, is \`missed\`.`;
+  `To try a sentence about a wave going over the spec cap, start a size trial on this spec with a trial cap of the owner's bytes plus half the record's bytes, so the slicer's own folding cannot fit without being sent back: \`gh workflow run reslice.yml -f issue=${issue} -f trial_cap=${trialCap(body)}\`. Starting a size trial counts as leaving GitHub as it is, since a trial posts nothing. Find its run with \`gh run list --workflow reslice.yml\`, wait for it with \`gh run watch <run> --exit-status\`, and answer from \`gh run view <run> --log\`: each size round with the bytes over and the bytes the record had to lose, and the \`slice: trial #${issue}\` line saying the owner's bytes stand and the seconds from the first size round. A trial that ends red, or whose filing line gives 60 seconds or more, is \`missed\`.`;
 
 export function handedOn(title: string, body: string, { issue, ran = [], wave, replies = "", foreign = false }: { issue?: string; ran?: number[]; wave?: number[]; replies?: string; foreign?: boolean } = {}): string {
   return [
