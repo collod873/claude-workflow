@@ -72,6 +72,11 @@ const FIXED: Part[] = [
     stops: "https://github.com/collod873/claude-workflow/issues/649",
   },
   {
+    name: "bin/enrol",
+    file: "bin/enrol",
+    stops: "https://github.com/collod873/claude-workflow/issues/1150",
+  },
+  {
     name: "build.yml",
     file: ".github/workflows/build.yml",
     stops: "https://github.com/collod873/claude-workflow/issues/826",

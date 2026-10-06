@@ -1,0 +1,11 @@
+#!/bin/bash
+set -uo pipefail
+
+repo=${1:-}
+if [[ $# -ne 1 || ! $repo =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+  printf 'enrol: usage: enrol <owner/repo>\n' >&2
+  exit 2
+fi
+
+src="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../src" && pwd)"
+exec node "$src/enrol.ts" "$repo"
