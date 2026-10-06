@@ -10,16 +10,21 @@ const SPEC = wellFormedSpec
   .replace(/## Problem Statement\n\n.*\n/, `## Problem Statement\n\n${ATTRIBUTION}\n\n${WAVES}\n\n${WATCHING}\n`)
   .replace("The slicer and the done check.", "- The done check.\n- Rate limits: the owner, \"only if that ever becomes a problem\".");
 const SPEC_OUT_OF_SCOPE = "- The done check.\n- Rate limits: the owner, \"only if that ever becomes a problem\".";
-const REWRITE = SPEC.replace("Reuse the ticket machinery where it already fits.", "Reuse the ticket machinery where it already fits.\n\n### Names the tickets share\n\n- `SLICE_LABEL`: the label both tickets read.");
+const RECORD = "### Picks\n\n- The spec kind files through the ticket's pipeline.\n\n### Shipped names\n\n- `SLICE_LABEL`: under the Slicer in CONTEXT.md.";
+const SENTENCES = "## I'll know it works when I can";
+const recorded = (body: string, record = RECORD) => body.replace(SENTENCES, `## Decisions record\n\n${record}\n\n${SENTENCES}`);
+const REWRITE = recorded(SPEC);
+const NAMES = "### Names the tickets share\n\n- `SLICE_LABEL`: the label both tickets read.";
+const OLDER = SPEC.replace("Reuse the ticket machinery where it already fits.", `Reuse the ticket machinery where it already fits.\n\n${NAMES}`);
 
 const DID = "The slicer settled the label both tickets read.";
 const NEXT = "Wave 1 files the spec kind and reads it back.";
 
 const piece = (title: string, passages: number[], done = ["It holds."]) => ({ title, passages, why: `Wave 1 of the spec: ${title.toLowerCase()}.`, done });
-const wave = (tickets = [piece("File the spec kind", [1, 2]), piece("Read the spec kind", [3])], spec = REWRITE, moves = [1]) => ({ spec, tickets, did: DID, next: NEXT, moves });
+const wave = (tickets = [piece("File the spec kind", [1, 2]), piece("Read the spec kind", [3])], record = RECORD, moves = [1]) => ({ record, tickets, did: DID, next: NEXT, moves });
 
 describe("bin/slice turns a filed spec into its first wave of tickets under it, with no session open (#1021)", () => {
-  it("rewrites the spec with the names its tickets share, keeping the Problem Statement, then files the wave as sub-issues of the spec", () => {
+  it("splices the slicer's decisions record into the spec just before its sentences, keeping every other byte as filed, then files the wave as sub-issues of the spec", () => {
     const sliced = slicing({ body: SPEC, answers: [wave()] });
 
     expect(heard(sliced.run())).toEqual({ status: 0, stderr: "", lines: ["slice: #968 filed its first wave under it: #1101, #1102"] });
@@ -58,7 +63,7 @@ describe("bin/slice turns a filed spec into its first wave of tickets under it, 
     expect(handed).toContain(`3. ${WATCHING}`);
   });
 
-  it("asks for the fewest tickets that fit, split only by the parts they touch, named in CONTEXT.md's words with no path (#1034)", () => {
+  it("asks for the fewest tickets that fit, split only by the parts they touch with a shared surface's slot a wave ahead, and a record of picks and shipped names with no path (#1034, #1182)", () => {
     const sliced = slicing({ body: SPEC, answers: [wave()] });
 
     sliced.run();
@@ -66,30 +71,69 @@ describe("bin/slice turns a filed spec into its first wave of tickets under it, 
     expect(handed).toContain("the fewest tickets that each fit the builder's brief cap of 8192 bytes");
     expect(handed).toContain("one ticket unless two pieces touch different parts and neither needs the other's code");
     expect(handed).toContain("find which parts each piece touches before you group them");
-    expect(handed).toContain("`## Problem Statement` and `## Out of Scope` stay byte for byte");
+    expect(handed).toContain("every other byte of the spec stays as filed");
+    expect(handed).toContain("`### Picks`");
+    expect(handed).toContain("`### Shipped names`, one line each");
+    expect(handed).toContain("slice the surface's slot a wave ahead of them");
     expect(handed).toContain("in the words of the repo's `CONTEXT.md`");
     expect(handed).toContain("no path");
     expect(handed).not.toContain("a path,");
     expect(handed).not.toContain("change nothing here");
   });
 
-  it("tells the slicer the spec's size in bytes and the room left under the spec cap before it answers (#1165)", () => {
-    const sliced = slicing({ body: SPEC, answers: [wave()] });
+  it("tells the slicer the owner's bytes, the record's bytes and the room left under the spec cap before it answers (#1182)", () => {
+    const body = recorded(SPEC);
+    const sliced = slicing({ body, answers: [wave()] });
 
     sliced.run();
     const [handed = ""] = sliced.handed();
-    const bytes = Buffer.byteLength(SPEC);
-    expect(handed).toContain(`The spec is ${bytes} bytes, ${65536 - bytes} under the spec cap of 65536`);
+    const owner = Buffer.byteLength(SPEC);
+    const record = Buffer.byteLength(RECORD);
+    const left = 65536 - Buffer.byteLength(body);
+    expect(handed).toContain(`The owner's bytes come to ${owner} and the record's to ${record}, leaving ${left} under the spec cap of 65536`);
   });
 
-  it("sends back a rewrite over the spec cap naming the bytes to cut (#1165)", () => {
-    const over = REWRITE.replace("## Further Notes\n", `## Further Notes\n\n${"x".repeat(65536)}\n`);
+  it("refuses a record that puts the spec over the spec cap with the bytes the record must lose, and asks again for the record and the wave, never the spec (#1182)", () => {
+    const over = `${RECORD}\n\n${"x".repeat(65536)}`;
     const sliced = slicing({ body: SPEC, answers: [wave(undefined, over), wave()] });
 
     expect(sliced.run().status).toBe(0);
     const [, sentBack = ""] = sliced.handed();
-    const bytes = Buffer.byteLength(over);
-    expect(sentBack).toContain(`the rewrite: the body is ${bytes} bytes, over the spec cap of 65536: cut at least ${bytes - 65536} bytes`);
+    const bytes = Buffer.byteLength(recorded(SPEC, over));
+    expect(sentBack).toContain(`the spec would be ${bytes} bytes, over the spec cap of 65536: the record must lose at least ${bytes - 65536} bytes`);
+    expect(sentBack).toContain("the `record` and every ticket of the wave");
+    expect(sentBack).not.toContain("`spec`");
+    expect(sliced.rewrites()).toEqual([REWRITE]);
+  });
+
+  it("refuses a record naming a file path or carrying a `## ` heading, as Implementation Decisions refuses a path (#1182)", () => {
+    const sliced = slicing({ body: SPEC, answers: [wave(undefined, `${RECORD}\n- read src/slicer.ts\n\n## Testing Decisions\n\nmore`), wave()] });
+
+    expect(sliced.run().status).toBe(0);
+    const [, sentBack = ""] = sliced.handed();
+    expect(sentBack).toContain("the record names `src/slicer.ts`, a file path");
+    expect(sentBack).toContain("the record carries a '## ' heading");
+    expect(sliced.rewrites()).toEqual([REWRITE]);
+  });
+
+  it("replaces a spec's standing record with the new one and leaves every other byte, line endings included, as filed (#1182)", () => {
+    const filed = recorded(SPEC.replaceAll("\n", "\r\n"), "### Picks\r\n\r\n- an old pick");
+    const sliced = slicing({ body: filed, answers: [wave()] });
+
+    expect(sliced.run().status).toBe(0);
+    const [handed = ""] = sliced.handed();
+    expect(handed).toContain("## Decisions record\n\n### Picks\r\n\r\n- an old pick\n\n## I'll know it works when I can");
+    expect(sliced.rewrites()).toEqual([recorded(SPEC.replaceAll("\n", "\r\n"))]);
+  });
+
+  it("lifts an older spec's `### Names the tickets share` out of its Implementation Decisions as the starting record (#1182)", () => {
+    const sliced = slicing({ body: OLDER, answers: [wave()] });
+
+    expect(sliced.run().status).toBe(0);
+    const [handed = ""] = sliced.handed();
+    expect(handed).toContain("Reuse the ticket machinery where it already fits.\n\n## Testing Decisions");
+    expect(handed).toContain(`## Decisions record\n\n${NAMES}\n\n${SENTENCES}`);
+    expect(sliced.rewrites()).toEqual([REWRITE]);
   });
 
   it("posts one note on the spec starting `## Wave 1`: the passages its tickets quote copied by code, what the wave did, what comes next, and the sentences it moves (#1037)", () => {
@@ -138,47 +182,13 @@ describe("bin/slice turns a filed spec into its first wave of tickets under it, 
     expect(sliced.linked()).toEqual([]);
   });
 
-  it("restores the owner's Problem Statement over a rewrite that changes it, and sends back a ticket naming a passage it does not have", () => {
-    const changed = REWRITE.replace(WATCHING, "> I dont think slice can stop");
-    const sliced = slicing({ body: SPEC, answers: [wave([piece("File the spec kind", [4])], changed), wave(undefined, changed)] });
+  it("sends back a ticket naming a passage the Problem Statement does not have", () => {
+    const sliced = slicing({ body: SPEC, answers: [wave([piece("File the spec kind", [4])]), wave()] });
 
     expect(sliced.run().status).toBe(0);
     const [, sentBack = ""] = sliced.handed();
-    expect(sentBack).not.toContain("Problem Statement'");
     expect(sentBack).toContain('ticket 1, "File the spec kind", quotes passage 4, and the Problem Statement has 3');
     expect(sliced.rewrites()).toEqual([REWRITE]);
-  });
-
-  it("restores the owner's Out of Scope over a rewrite that drops an item or changes its whitespace, and files each ticket with the Out of Scope the owner filed", () => {
-    const changed = REWRITE.replace("- The done check.\n", "").replace(`${WAVES}\n`, `${WAVES}  \n`);
-    const sliced = slicing({ body: SPEC, answers: [wave(undefined, changed)] });
-
-    expect(sliced.run().status).toBe(0);
-    expect(sliced.handed()).toHaveLength(1);
-    expect(sliced.rewrites()).toEqual([REWRITE]);
-    for (const { body } of sliced.filed()) expect(outOfScope(body)).toBe(SPEC_OUT_OF_SCOPE);
-  });
-
-  it("sends back a rewrite that drops the Problem Statement or the Out of Scope, since code has nowhere to restore them", () => {
-    const dropped = REWRITE.replace("## Problem Statement", "## Problem").replace("## Out of Scope", "## Out");
-    const sliced = slicing({ body: SPEC, answers: [wave(undefined, dropped), wave()] });
-
-    expect(sliced.run().status).toBe(0);
-    const [, sentBack = ""] = sliced.handed();
-    expect(sentBack).toContain("the rewrite drops '## Problem Statement', the owner's words, which stay byte-identical");
-    expect(sentBack).toContain("the rewrite drops '## Out of Scope', which every ticket carries byte-identical");
-    expect(sliced.rewrites()).toEqual([REWRITE]);
-  });
-
-  it("slices a spec filed with CRLF line endings when the model answers in LF, restoring the owner's bytes into the rewrite before comparing (#1027)", () => {
-    const sliced = slicing({ body: SPEC.replaceAll("\n", "\r\n"), answers: [wave()] });
-
-    expect(heard(sliced.run())).toEqual({ status: 0, stderr: "", lines: ["slice: #968 filed its first wave under it: #1101, #1102"] });
-    expect(sliced.handed()).toHaveLength(1);
-    const [rewrite = ""] = sliced.rewrites();
-    expect(rewrite).toContain(`## Problem Statement\r\n\r\n${ATTRIBUTION}\r\n\r\n${WAVES}\r\n\r\n${WATCHING}\r\n\r\n## Solution\n`);
-    expect(rewrite).toContain(`## Out of Scope\r\n\r\n${SPEC_OUT_OF_SCOPE.replaceAll("\n", "\r\n")}\r\n\r\n## Further Notes\n`);
-    expect(rewrite).toContain("### Names the tickets share\n");
   });
 
   it("carries the spec's raw bytes, line endings included, as each ticket's Why quote and Out of Scope (#1027)", () => {

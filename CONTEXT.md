@@ -83,10 +83,28 @@ a spec in a file or a conversation has not been published yet.
 _Avoid_: PRD document, requirements doc, brief
 
 **Slicer**:
-The stage that turns a filed spec into tickets under it, one wave at a time. It
-settles in the spec the names the wave's tickets share, and when a wave's last ticket closes, it
-slices the next against the spec and what that wave found.
+The stage that turns a filed spec into tickets under it, one wave at a time. It answers with the
+spec's decisions record, never the spec: code keeps every other byte as filed and splices the
+record in. When a wave's last ticket closes, it slices the next against the spec and what that wave
+found, cutting each pick whose ticket merged to a shipped name. A shared surface's slot is sliced a
+wave ahead of the pieces that plug into it.
 _Avoid_: splitter, decomposer, to-tickets, planner
+
+**Decisions record**:
+The one section of a spec the slicer writes, `## Decisions record` just before the sentences:
+`### Picks` and `### Shipped names`. It names no file path, and it is what gives way when the spec
+nears the spec cap; the owner's sections never do.
+_Avoid_: names section, spec rewrite, Names the tickets share
+
+**Pick**:
+A choice the slicer made where the spec was silent, or a name two tickets of a wave both need,
+written in full under `### Picks` until its ticket merges.
+_Avoid_: decision, assumption, settled name
+
+**Shipped name**:
+A pick whose ticket merged, cut to one line under `### Shipped names` naming the `CONTEXT.md` term
+or ADR it lives under, since the code now says the rest.
+_Avoid_: done pick, built name
 
 **Wave**:
 The tickets under one spec that are open at once and build side by side. The tickets in one wave
