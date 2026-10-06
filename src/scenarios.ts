@@ -655,6 +655,7 @@ else if (args[0] === "api" && method === "POST" && route === "repos/" + repo + "
   out({});
 }
 else if (args[0] === "api" && method === "PATCH" && route.startsWith("repos/" + repo + "/git/refs/heads/")) { wrote(); held.branches[route.slice(("repos/" + repo + "/git/refs/heads/").length)] = { ...held.files }; save(); out({}); }
+else if (args[0] === "api" && method === "DELETE" && route.startsWith("repos/" + repo + "/git/refs/heads/")) { wrote(); delete held.branches[route.slice(("repos/" + repo + "/git/refs/heads/").length)]; save(); }
 else if (args[0] === "pr" && args[1] === "list") out(held.prs.filter(({ head }) => head === flag("--head")).map(({ number }) => ({ number, url: "https://github.com/" + repo + "/pull/" + number })));
 else if (args[0] === "pr" && args[1] === "close") { wrote(); held.prs = held.prs.filter(({ head }) => head !== args[2]); if (args.includes("--delete-branch")) delete held.branches[args[2]]; save(); }
 else if (args[0] === "pr" && args[1] === "create") { wrote(); const number = 900 + held.prs.length; held.prs.push({ number, head: flag("--head"), auto: false }); save(); process.stdout.write("https://github.com/" + repo + "/pull/" + number + "\n"); }

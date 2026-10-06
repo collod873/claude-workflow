@@ -191,6 +191,22 @@ describe("bin/enrol keeps an enrolled repo current with the owner's own login (#
     expect(held().branches).toEqual({});
   });
 
+  it("deletes its branch, leaving no PR, when GitHub refuses to open the PR (#1157)", () => {
+    const { run, held } = enrolling(bare({ rules: HELD_FOR_CHECK, allow_auto_merge: true, refused: { "pr create": "pull request create failed: GraphQL: Resource not accessible by integration (createPullRequest)" } }));
+
+    expect(run().stderr).toContain("- the caller file: pull request create failed: GraphQL: Resource not accessible by integration");
+    expect(held().prs).toEqual([]);
+    expect(held().branches).toEqual({});
+  });
+
+  it("deletes its branch when GitHub refuses the caller file written to it (#1157)", () => {
+    const { run, held } = enrolling(bare({ rules: HELD_FOR_CHECK, allow_auto_merge: true, refused: { "branch=enrol/caller": "gh: Resource not accessible by integration (HTTP 403)" } }));
+
+    expect(run().stderr).toContain("- the caller file: gh: Resource not accessible by integration (HTTP 403)");
+    expect(held().prs).toEqual([]);
+    expect(held().branches).toEqual({});
+  });
+
   it("names the caller PR still waiting on check, and leaves it alone on a re-run", () => {
     const { run, held } = enrolling(bare({ rules: HELD_FOR_CHECK, allow_auto_merge: true, pending: true, files: { ".github/workflows/ci.yml": CI, ".github/workflows/machine.yml": STALE } }));
     const waiting = `- the caller file: https://github.com/${REPO}/pull/900 merges on its own once check passes`;
