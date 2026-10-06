@@ -9,7 +9,7 @@ import { opened, type Spent } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { missedIn, WAVE_CHECK_HEADING } from "./done-checker.ts";
 import { DIFF_CAP, ended, FOUND_CAP, resumed, movesMarker, underSpec, waveDiffs, waveFound, waveHeading, waveNotes } from "./wave.ts";
-import { DONE_SENTENCES, filedOutOfScope, filedPassages, filedRecord, type Passage, quoted, recordRefusals, type Recorded, sentences, SPEC_CAP, spliced, ticketRefusals } from "./ticket-shape.ts";
+import { DONE_SENTENCES, ENTRY_FORM, type Entry, filedOutOfScope, filedPassages, filedRecord, MOST, type Passage, PICKS, quoted, recordEntries, recordRefusals, type Recorded, RELIES_ON, sentences, SHIPPED_NAMES, SPEC_CAP, spliced, ticketRefusals } from "./ticket-shape.ts";
 
 const stoppedAt = stopsOf({
   notSpec: "Slice refused: the issue is not labelled `spec`",
@@ -32,8 +32,9 @@ const PIECE = {
     passages: { type: "array", items: { type: "integer" } },
     why: { type: "string", pattern: NO_EM_DASH },
     done: { type: "array", items: { type: "string", pattern: NO_EM_DASH } },
+    cites: { type: "array", items: { type: "string" } },
   },
-  required: ["title", "passages", "why", "done"],
+  required: ["title", "passages", "why", "done", "cites"],
   additionalProperties: false,
 };
 
@@ -55,6 +56,7 @@ interface Piece {
   passages: number[];
   why: string;
   done: string[];
+  cites: string[];
 }
 
 interface Wave {
@@ -94,8 +96,13 @@ function lead(found: Found | undefined): string {
   return found.missed.length === 0 ? NEXT : `${NEXT} ${owed(found.missed)}`;
 }
 
-const SETTLED =
-  "Under `### Picks`, each pick you made where the spec was silent, in full, and each name two tickets both need, a label, a command or a key, in the words of the repo's `CONTEXT.md`. Under `### Shipped names`, one line each: a name a merged ticket shipped and the `CONTEXT.md` term or ADR it lives under. Write no path, which code refuses, and no `## ` heading.";
+const SETTLED = `Under \`${PICKS}\`, each pick you made where the spec was silent, in full, and each name two tickets both need, a label, a command or a key, in the words of the repo's \`CONTEXT.md\`. Under \`${SHIPPED_NAMES}\`, one line each: a name a merged ticket shipped and the \`CONTEXT.md\` term or ADR it lives under. Start every bullet under both with ${ENTRY_FORM}, the name a ticket cites it by. Write no path, which code refuses, and no \`## \` heading.`;
+
+const CITED = `Builders never read the spec, so a ticket carries every pick and shipped name it relies on: \`cites\`, the exact names of the record entries it needs, whose bullets code copies word for word under \`${RELIES_ON}\`. A ticket citing a pick gets one last done sentence from code asking for its full description in \`CONTEXT.md\` or an ADR, so it gives at most ${MOST - 1} done sentences of its own.`;
+
+const CONTEXT_DONE = "The repo's CONTEXT.md, or an ADR for its reasoning, holds the full description of";
+
+const namesListed = (names: string[]): string => (names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1) ?? ""}`);
 
 const SLOT_FIRST = "Where pieces plug into one shared surface, slice the surface's slot a wave ahead of them, so no two tickets of a wave edit one file.";
 
@@ -132,7 +139,7 @@ export function handedOn(title: string, body: string, found?: Found): string {
     ...read,
     "## Your answer",
     `\`record\`: the spec's decisions record in full, which code splices in as \`## Decisions record\` just before the sentences; every other byte of the spec stays as filed. ${room(recorded)} ${SETTLED}`,
-    `\`tickets\`: the ${found === undefined ? "first" : found.fix ? "fix" : "next"} wave, the fewest tickets that each fit the builder's brief cap of ${TICKET_CAP} bytes, all building at once beside each other. First find which parts each piece touches before you group them: one ticket unless two pieces touch different parts and neither needs the other's code. ${SLOT_FIRST} \`title\`; \`passages\`, the numbers of the Problem Statement passages its \`## Why\` quotes, which code copies in; \`why\`, what this ticket is for in the spec, which follows the quote; \`done\`, ${DONE_SENTENCES}. Code adds the spec's Out of Scope to each. A ticket over the cap comes back to you to split.${last}`,
+    `\`tickets\`: the ${found === undefined ? "first" : found.fix ? "fix" : "next"} wave, the fewest tickets that each fit the builder's brief cap of ${TICKET_CAP} bytes, all building at once beside each other. First find which parts each piece touches before you group them: one ticket unless two pieces touch different parts and neither needs the other's code. ${SLOT_FIRST} \`title\`; \`passages\`, the numbers of the Problem Statement passages its \`## Why\` quotes, which code copies in; \`why\`, what this ticket is for in the spec, which follows the quote; \`done\`, ${DONE_SENTENCES}. ${CITED} Code adds the spec's Out of Scope to each. A ticket over the cap comes back to you to split.${last}`,
     NOTED,
     "",
   ].join("\n\n");
@@ -151,13 +158,21 @@ function quote(passages: Passage[], picked: number[]): string {
   return quoted.map(({ text, after }, at) => (at === quoted.length - 1 ? text : text + (after || PASSAGE_BREAK))).join("");
 }
 
-function ticketBody(spec: string, passages: Passage[], piece: Piece): string {
+function citedOf(entries: Entry[], piece: Piece): Entry[] {
+  return [...new Set(piece.cites)].flatMap((name) => entries.filter((entry) => entry.name === name));
+}
+
+function ticketBody(spec: string, passages: Passage[], piece: Piece, entries: Entry[]): string {
+  const cited = citedOf(entries, piece);
+  const picks = cited.filter(({ pick }) => pick).map(({ name }) => name ?? "");
+  const done = [...piece.done.map((sentence) => sentence.trim()), ...(picks.length === 0 ? [] : [`${CONTEXT_DONE} ${namesListed(picks)}.`])];
   return [
     "## Why",
     quote(passages, piece.passages),
     piece.why.trim(),
+    ...(cited.length === 0 ? [] : [RELIES_ON, cited.map(({ bullet }) => bullet).join("\n\n")]),
     "## Done when",
-    piece.done.map((sentence) => `- ${sentence.trim()}`).join("\n"),
+    done.map((sentence) => `- ${sentence}`).join("\n"),
     "## Out of Scope",
     filedOutOfScope(spec),
     "",
@@ -172,6 +187,7 @@ function isWave(answer: unknown): answer is Wave {
 function waveRefusals(read: string, wave: Wave, found: Found | undefined): string[] {
   const passages = filedPassages(read);
   const record = recordRefusals({ owner: filedRecord(read).owner, record: wave.record });
+  const entries = recordEntries(wave.record);
   const missed = found?.missed ?? [];
   const empty = wave.tickets.length > 0 ? [] : found === undefined ? ["the wave carries no ticket"] : missed.length > 0 ? [`the wave carries no ticket, and the last wave check missed sentence ${listed(missed)}`] : [];
   const tickets = wave.tickets.flatMap((piece, at) => {
@@ -179,7 +195,9 @@ function waveRefusals(read: string, wave: Wave, found: Found | undefined): strin
     const unheld = piece.passages.filter((passage) => !(Number.isInteger(passage) && passage >= 1 && passage <= passages.length));
     const unquoted = piece.passages.length === 0 ? [`${named} quotes no passage`] : unheld.map((passage) => `${named} quotes passage ${passage}, and the Problem Statement has ${passages.length}`);
     if (unquoted.length > 0) return unquoted;
-    const body = ticketBody(read, passages, piece);
+    const uncited = citeRefusals(entries, piece).map((refusal) => `${named} ${refusal}`);
+    if (uncited.length > 0) return uncited;
+    const body = ticketBody(read, passages, piece, entries);
     const bytes = Buffer.byteLength(body);
     const over = bytes > TICKET_CAP ? [`${named} would be ${bytes} bytes, over the builder's brief cap of ${TICKET_CAP} bytes: split it`] : [];
     return [...over, ...ticketRefusals(body).map((refusal) => `${named} ${refusal}`)];
@@ -187,6 +205,12 @@ function waveRefusals(read: string, wave: Wave, found: Found | undefined): strin
   const tried = sentences(read).length;
   const moves = wave.moves.filter((sentence) => !(Number.isInteger(sentence) && sentence >= 1 && sentence <= tried)).map((sentence) => `the note moves sentence ${sentence}, and the spec lists ${tried}`);
   return [...record, ...empty, ...tickets, ...moves, ...owedMoves(wave.moves, found)];
+}
+
+function citeRefusals(entries: Entry[], piece: Piece): string[] {
+  const lacked = piece.cites.filter((name) => !entries.some((entry) => entry.name === name)).map((name) => `cites ${JSON.stringify(name)}, and the record has no entry by that name`);
+  const crowded = citedOf(entries, piece).some(({ pick }) => pick) && piece.done.length >= MOST ? [`cites a pick, so code adds a done sentence of its own: give at most ${MOST - 1}`] : [];
+  return [...lacked, ...crowded];
 }
 
 function owedMoves(moves: number[], found: Found | undefined): string[] {
@@ -207,10 +231,11 @@ function filedWave(issue: string, read: string, wave: Wave, number: number): Sto
   const edited = gh(["issue", "edit", issue, "--body", spliced({ owner: filedRecord(read).owner, record: wave.record })]);
   if (edited.status !== 0) return stoppedAt("unfiled", `${said} ended red, its rewrite would not post: ${quoted((edited.stderr || edited.stdout).trim())}`);
   const passages = filedPassages(read);
+  const entries = recordEntries(wave.record);
   const numbers: string[] = [];
   for (const [at, piece] of wave.tickets.entries()) {
     const title = JSON.stringify(piece.title);
-    const filed = post({ kind: "ticket", title: piece.title, text: ticketBody(read, passages, piece) }, gh);
+    const filed = post({ kind: "ticket", title: piece.title, text: ticketBody(read, passages, piece, entries) }, gh);
     const [refusal] = filed.refusals;
     if (refusal !== undefined) return partWave(issue, wave, numbers, at, `${title} would not file: ${quoted(refusal)}`);
     const number = FILED.exec(filed.said)?.[1];
