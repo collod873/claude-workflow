@@ -197,6 +197,6 @@ export function specRefusals(body: string): string[] {
     else refusals.push(...sentenceRefusals(sentences));
   }
   const bytes = Buffer.byteLength(text);
-  if (bytes > SPEC_CAP) refusals.push(`the body is ${bytes} bytes, over the spec cap of ${SPEC_CAP}`);
+  if (bytes > SPEC_CAP) refusals.push(`the body is ${bytes} bytes, over the spec cap of ${SPEC_CAP}: cut at least ${bytes - SPEC_CAP} bytes`);
   return [...refusals, ...emDashLines(text).map((line) => `line ${line} carries an em dash`)];
 }

@@ -175,7 +175,7 @@ const misshapenSpec: [string, string, unknown[]][] = [
   [
     "a spec over the spec cap, which no stage cuts",
     specBody({ furtherNotes: "x".repeat(SPEC_CAP) }),
-    [expect.stringMatching(/^the body is \d+ bytes, over the spec cap of 65536$/)],
+    [expect.stringMatching(/^the body is (\d+) bytes, over the spec cap of 65536: cut at least \d+ bytes$/)],
   ],
   [
     "a spec with an em dash",
