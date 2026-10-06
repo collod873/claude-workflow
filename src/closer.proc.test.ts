@@ -551,6 +551,26 @@ describe("bin/close merges the PR the queue waits for once it is green, since Gi
   });
 });
 
+describe("bin/close neither queues nor merges a held ticket's PR, whose auto-merge bin/pause turned off (#1174)", () => {
+  it.each(HELD)("leaves the green PR of a ticket labelled %s unmerged, un-updated and unmarked, even up to date with main", (held) => {
+    const { calls, run } = closing({
+      ticket: "819",
+      afterCheck: true,
+      openPrs: [
+        { number: "970", ticket: "890", upToDate: true, autoMerge: false, held },
+        { number: "971", ticket: "891", autoMerge: false, held },
+      ],
+    });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(calls().some((call) => /^pr\n(merge|update-branch)\n/.test(call))).toBe(false);
+    expect(calls().some((call) => /^issue\nedit\n(890|891)\n/.test(call) || /issues\/(890|891)\/labels/.test(call))).toBe(false);
+    expect(result.stdout).toContain("no green PR waits behind main");
+  });
+});
+
 describe("a finished Check run moves the queue on, and a red one wakes its builder, so a red PR never holds the queue (#1011)", () => {
   const workflow = (name: string) => parse(readFileSync(join(REPO, ".github", "workflows", name), "utf8")) as { on: Record<string, { workflows?: string[]; types?: string[] }>; jobs: Record<string, { steps: { run?: string; env?: Record<string, string> }[] }> };
 

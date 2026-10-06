@@ -4,7 +4,7 @@ name: Machine
   issue_comment:
     types: [created]
   issues:
-    types: [opened, reopened, unlabeled, closed]
+    types: [opened, reopened, labeled, unlabeled, closed]
   pull_request_target:
     types: [closed]
   push:

@@ -91,18 +91,23 @@ export const labelledAs = (steps: WorkflowStep[], held: string | undefined): Rec
   labelled: { outcome: "success", conclusion: "success", outputs: held === undefined ? {} : { held } },
 });
 
-export function heldBy(step: WorkflowStep, cwd: string, { labels, action = "opened", label = "", sender = OWNER, head }: IssueEvent): Promise<{ failed: boolean; held: string | undefined }> {
+export function labelledOutputs(step: WorkflowStep, cwd: string, { labels, action = "opened", label = "", sender = OWNER, head }: IssueEvent): Promise<{ failed: boolean; outputs: Record<string, string> }> {
   const root = scratch("labelled-");
   const event = join(root, "event.json");
   const output = join(root, "output");
   writeFileSync(event, JSON.stringify({ action, sender: { login: sender }, ...(label === "" ? {} : { label: { name: label } }), ...(labels === undefined ? {} : { issue: { labels: labels.map((name) => ({ name })) } }), ...(head === undefined ? {} : { pull_request: { head: { ref: head } } }) }));
   return new Promise((resolve) => {
     execFile("bash", ["-e", "-c", step.run ?? ""], { cwd, env: { ...env, GITHUB_EVENT_PATH: event, GITHUB_OUTPUT: output } }, (error) => {
-      const held = existsSync(output) ? /^held=(.*)$/m.exec(readFileSync(output, "utf8"))?.[1] : undefined;
-      resolve({ failed: error !== null, held });
+      const written = existsSync(output) ? readFileSync(output, "utf8") : "";
+      resolve({ failed: error !== null, outputs: Object.fromEntries([...written.matchAll(/^([\w-]+)=(.*)$/gm)].map(([, name = "", value = ""]) => [name, value])) });
     });
   });
 }
+
+export const heldBy = async (step: WorkflowStep, cwd: string, event: IssueEvent): Promise<{ failed: boolean; held: string | undefined }> => {
+  const { failed, outputs } = await labelledOutputs(step, cwd, event);
+  return { failed, held: outputs.held };
+};
 
 const HELD = new Map<string, ReturnType<typeof heldBy>>();
 

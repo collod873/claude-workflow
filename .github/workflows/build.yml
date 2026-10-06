@@ -3,7 +3,7 @@ run-name: "Build #${{ github.event.issue.number }}: ${{ github.event.issue.title
 
 "on":
   issues:
-    types: [opened, reopened, unlabeled]
+    types: [opened, reopened, labeled, unlabeled]
 
 permissions:
   contents: read
@@ -41,8 +41,16 @@ jobs:
           waiting=$(bin/spelled WAITING)
           note=$(bin/spelled NOTE)
           spec=$(bin/spelled SPEC)
-          held=$(jq --arg WAITING "$waiting" --arg NOTE "$note" --arg SPEC "$spec" '(.action != "unlabeled" or .label.name == $WAITING) and (any(.issue.labels[]?.name; IN($NOTE, $SPEC, $WAITING)) | not)' "$GITHUB_EVENT_PATH")
-          printf 'held=%s\n' "$held" | tee -a "$GITHUB_OUTPUT"
+          paused=$(bin/spelled PAUSED)
+          stuck=$(bin/spelled STUCK)
+          jq -r --arg WAITING "$waiting" --arg NOTE "$note" --arg SPEC "$spec" --arg PAUSED "$paused" --arg STUCK "$stuck" '
+            (any(.issue.labels[]?.name; IN($NOTE, $SPEC)) | not) as $ticket
+            | (any(.issue.labels[]?.name; IN($WAITING, $PAUSED, $STUCK)) | not) as $free
+            | (.action == "unlabeled" and IN(.label.name; $PAUSED, $STUCK) and $ticket and $free) as $resumed
+            | "held=\(((.action == "opened" or .action == "reopened" or (.action == "unlabeled" and .label.name == $WAITING)) and $ticket and $free) or $resumed)",
+              "resumed=\($resumed)",
+              "paused=\(.action == "labeled" and .label.name == $PAUSED and $ticket)"
+          ' "$GITHUB_EVENT_PATH" | tee -a "$GITHUB_OUTPUT"
 
       - id: npm-ci
         if: steps.labelled.outputs.held == 'true'
@@ -68,8 +76,15 @@ jobs:
           git config user.name "core-app[bot]"
           git config user.email "core-app[bot]@users.noreply.github.com"
 
+      - id: resume
+        if: steps.labelled.outputs.resumed == 'true' && steps.admit.outputs.admitted == 'true'
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: 'bin/resume ${{ github.event.issue.number }} >>"$GITHUB_OUTPUT"'
+
       - id: start
-        if: steps.labelled.outputs.held == 'true' && (steps.admit.outputs.admitted == 'true')
+        if: steps.labelled.outputs.held == 'true' && (steps.admit.outputs.admitted == 'true' && steps.resume.outputs.builds != 'false')
         timeout-minutes: 10
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
@@ -93,7 +108,7 @@ jobs:
           fi
 
       - id: fix
-        if: steps.labelled.outputs.held == 'true' && (steps.admit.outputs.admitted == 'true' && steps.start.outputs.rerun != 'true')
+        if: steps.labelled.outputs.held == 'true' && (steps.admit.outputs.admitted == 'true' && steps.resume.outputs.builds != 'false' && steps.start.outputs.rerun != 'true')
         timeout-minutes: 50
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
@@ -104,6 +119,13 @@ jobs:
           tail --pid=$$ -n +1 -F .git/machine-logs/fix-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
           git checkout --quiet -b "$BRANCH"
           bin/fix ${{ github.event.issue.number }}
+
+      - id: pause
+        if: steps.labelled.outputs.paused == 'true'
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: bin/pause ${{ github.event.issue.number }}
 
       - if: ${{ steps.labelled.outputs.held != 'false' && (always() && steps.fix.outcome != 'skipped') }}
         uses: actions/cache/save@v6
