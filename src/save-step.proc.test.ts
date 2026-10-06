@@ -1,6 +1,7 @@
 import { copyFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { HELD } from "./spelled.ts";
 import { BIN, SAVED_PR, execute, git, heard, saving, scratch, script } from "./scenarios.ts";
 
 function savedWithAutoMerge<Saved extends ReturnType<typeof saving>>(saved: Saved, opening: RegExp[]): Saved {
@@ -9,6 +10,7 @@ function savedWithAutoMerge<Saved extends ReturnType<typeof saving>>(saved: Save
   expect(saved.calls()).toEqual([
     [expect.stringMatching(/^issue view 726\b/), saved.built],
     ...opening.map((call) => [expect.stringMatching(call), saved.built]),
+    [expect.stringMatching(/^issue view 726 --json labels\b/), saved.built],
     [expect.stringMatching(/^pr merge ticket\/726 --auto .*--match-head-commit [0-9a-f]{40}$/), saved.built],
   ]);
   return saved;
@@ -37,6 +39,20 @@ describe("the save step pushes the branch before anything can refuse it, and ope
     expect(result.stderr).toMatch(/kept/);
     expect(pushed()).toBe("");
     expect(calls()).toEqual([]);
+  });
+});
+
+describe("bin/save leaves auto-merge off on a held ticket's PR, so a paused or stuck ticket never merges (#1174)", () => {
+  it.each(HELD)("opens the PR of a ticket labelled %s but turns no auto-merge on, ending green in one line", (label) => {
+    const saved = saving({ held: label });
+
+    const result = saved.run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(saved.pushed()).toBe(saved.built);
+    expect(saved.calls().some(([call]) => call?.startsWith("pr create") === true)).toBe(true);
+    expect(saved.calls().some(([call]) => call?.startsWith("pr merge") === true)).toBe(false);
+    expect(heard(result)).toEqual({ status: 0, stderr: "", lines: [expect.stringContaining(`auto-merge stays off while #726 is labelled ${label}`)] });
   });
 });
 

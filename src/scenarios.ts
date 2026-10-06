@@ -74,6 +74,7 @@ export interface IssueEvent {
   label?: string;
   head?: string;
   fork?: boolean;
+  state?: string;
 }
 
 export const workflowJobs = (file: string) => (parse(readFileSync(join(WORKFLOWS, file), "utf8")) as { jobs: Record<string, WorkflowJob> }).jobs;
@@ -91,18 +92,23 @@ export const labelledAs = (steps: WorkflowStep[], held: string | undefined): Rec
   labelled: { outcome: "success", conclusion: "success", outputs: held === undefined ? {} : { held } },
 });
 
-export function heldBy(step: WorkflowStep, cwd: string, { labels, action = "opened", label = "", sender = OWNER, head }: IssueEvent): Promise<{ failed: boolean; held: string | undefined }> {
+export function labelledOutputs(step: WorkflowStep, cwd: string, { labels, action = "opened", label = "", sender = OWNER, head, state }: IssueEvent): Promise<{ failed: boolean; outputs: Record<string, string> }> {
   const root = scratch("labelled-");
   const event = join(root, "event.json");
   const output = join(root, "output");
-  writeFileSync(event, JSON.stringify({ action, sender: { login: sender }, ...(label === "" ? {} : { label: { name: label } }), ...(labels === undefined ? {} : { issue: { labels: labels.map((name) => ({ name })) } }), ...(head === undefined ? {} : { pull_request: { head: { ref: head } } }) }));
+  writeFileSync(event, JSON.stringify({ action, sender: { login: sender }, ...(label === "" ? {} : { label: { name: label } }), ...(labels === undefined ? {} : { issue: { labels: labels.map((name) => ({ name })), ...(state === undefined ? {} : { state }) } }), ...(head === undefined ? {} : { pull_request: { head: { ref: head } } }) }));
   return new Promise((resolve) => {
     execFile("bash", ["-e", "-c", step.run ?? ""], { cwd, env: { ...env, GITHUB_EVENT_PATH: event, GITHUB_OUTPUT: output } }, (error) => {
-      const held = existsSync(output) ? /^held=(.*)$/m.exec(readFileSync(output, "utf8"))?.[1] : undefined;
-      resolve({ failed: error !== null, held });
+      const written = existsSync(output) ? readFileSync(output, "utf8") : "";
+      resolve({ failed: error !== null, outputs: Object.fromEntries([...written.matchAll(/^([\w-]+)=(.*)$/gm)].map(([, name = "", value = ""]) => [name, value])) });
     });
   });
 }
+
+export const heldBy = async (step: WorkflowStep, cwd: string, event: IssueEvent): Promise<{ failed: boolean; held: string | undefined }> => {
+  const { failed, outputs } = await labelledOutputs(step, cwd, event);
+  return { failed, held: outputs.held };
+};
 
 const HELD = new Map<string, ReturnType<typeof heldBy>>();
 
@@ -394,12 +400,14 @@ export function saving({
   alreadyOpen = false,
   autoMergeRefused = false,
   autoMergeOff = false,
+  held = "",
   why = CONSENT_ONLY_WHY,
 }: {
   remoteRefuses?: string;
   alreadyOpen?: boolean;
   autoMergeRefused?: boolean;
   autoMergeOff?: boolean;
+  held?: string;
   why?: string;
 } = {}) {
   const root = scratch("save-");
@@ -431,6 +439,7 @@ export function saving({
       ticketBody,
       "TICKET_BODY",
       "    ;;",
+      `  *"issue view"*"--json labels"*) printf 'ticket\\n%s\\n' '${held}' ;;`,
       "  *\"issue view\"*) printf 'Push the branch before anything can refuse it\\n' ;;",
       alreadyOpen ? "  *\"pr create\"*) exit 1 ;;" : `  *"pr create"*) printf '%s\\n' '${SAVED_PR}' ;;`,
       `  *"pr view"*) printf '%s\\n' '${SAVED_PR}' ;;`,

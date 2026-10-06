@@ -108,14 +108,14 @@ describe("build.yml builds a ticket the moment it is filed (#826)", () => {
     expect(await starts({ sender: "collod873-machine[bot]", action: "unlabeled", label: "waiting" })).toBe(true);
   });
 
-  it("a ticket split by its builder builds what waited once `waiting` comes off, and no other label change starts a build (#910)", async () => {
+  it("a ticket split by its builder builds what waited once `waiting` comes off, and no other label change but paused or stuck coming off starts a build (#910, #1174)", async () => {
     const unlabeled = (sender: string, label: string) => starts({ sender, action: "unlabeled", label });
 
     expect(workflow().on.issues?.types).toContain("unlabeled");
     expect(await unlabeled("collod873-machine[bot]", "waiting")).toBe(true);
     expect(await unlabeled("collod873", "waiting")).toBe(true);
     expect(await unlabeled("collod873-machine[bot]", "building")).toBe(false);
-    for (const held of HELD) expect(await unlabeled("collod873", held), held).toBe(false);
+    for (const held of HELD) expect(await unlabeled("collod873", held), held).toBe(true);
     expect(await unlabeled("stranger", "waiting")).toBe(false);
     expect(await starts({ sender: "collod873-machine[bot]", action: "unlabeled", label: "waiting", labels: ["note"] })).toBe(false);
   });

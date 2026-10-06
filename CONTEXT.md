@@ -145,7 +145,9 @@ _Avoid_: preamble, setup, bootstrap
 **Paused**:
 An issue the owner labelled `paused`, a `held` label the machine never adds or removes. Each stage
 reads it when it opens and stands down, so a run already going finishes and none starts after it;
-a pause on a spec holds the spec alone, not its wave's tickets.
+a pause on a spec holds the spec alone, not its wave's tickets. A paused ticket's PR does not merge:
+adding `paused` turns its auto-merge off, and a save on a held ticket leaves it off, so the closer
+neither queues nor merges it.
 _Avoid_: on hold, frozen, blocked
 
 **Stuck**:
@@ -156,9 +158,10 @@ _Avoid_: blocked, failed
 
 **Resume**:
 Setting a held issue going again. Taking `waiting` off a ticket resumes its build. Taking `paused`
-or `stuck` off a ticket fires no stage, so the owner re-runs the run that stood down. Taking either
-off an open spec that then holds neither reads where it stands, as a wave's end does: a slice cut
-short slices again; a wave closed during the hold gets its wave check, then its slice, or only its
-slice once checked; with nothing left to slice, the done check runs. A wave still open waits for its
-last close.
+or `stuck` off a ticket that then holds neither picks it up from where it stands: with no PR it
+builds, with a red PR its builder resumes its session, with a green PR auto-merge comes back on at
+its head. Taking either off an open spec that then holds neither reads where it stands, as a wave's
+end does: a slice cut short slices again; a wave closed during the hold gets its wave check, then its
+slice, or only its slice once checked; with nothing left to slice, the done check runs. A wave still
+open waits for its last close.
 _Avoid_: unpause, restart, unblock
