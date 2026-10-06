@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { bare, enrolling } from "./enrol.part.ts";
 import { parts, type Part } from "./parts.ts";
 import { CONTRACT, LINE_LIMIT, MOST_LINES, closingNote, coveredByCheck, execute, filing, landSession, marking, misshapenTicket, overLimit, saving, scratch, script, sessionExtras, wellFormedNote, wellFormedTicket } from "./scenarios.ts";
 import { stages, type Scenario } from "./stages.ts";
@@ -30,6 +31,10 @@ const listed: Record<string, Scenario[]> = {
     { label: "filing a note", run: () => filing({ gh: FILED, body: wellFormedNote }).run(NOTE_CALL) },
     { label: "refusing a note that says no why", run: () => filing({ gh: FILED, body: "Four proposals, with no heading over them.\n" }).run(NOTE_CALL) },
     { label: "showing its help", run: () => filing({ gh: FILED, body: wellFormedTicket }).run(["--help"]) },
+  ],
+  "bin/enrol": [
+    { label: "enrolling a bare repo", run: () => enrolling(bare()).run() },
+    { label: "with GitHub refusing every call", run: () => enrolling(bare({ refused: { "": NOISE } })).run() },
   ],
   "bin/save": [
     { label: "saving a build", run: () => saving().run() },

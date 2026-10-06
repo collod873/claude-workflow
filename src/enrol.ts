@@ -10,6 +10,11 @@ const CALLER = `${WORKFLOWS}/machine.yml`;
 const CHECK = "check";
 const APP = MACHINE.replace(/\[bot\]$/, "");
 const NOT_FOUND = /\(HTTP 404\)/;
+const LINE_LIMIT = 200;
+const SHOWN = 4;
+const MOST_SHOWN = 5;
+
+const made = () => LABELS.filter(({ kind }) => kind !== "try");
 
 class Refused extends Error {}
 
@@ -132,11 +137,13 @@ function enrolling(repo: string): Setting[] {
     secret("CORE_APP_PRIVATE_KEY", "actions"),
     secret("CORE_APP_PRIVATE_KEY", "dependabot"),
     secret("CLAUDE_CODE_OAUTH_TOKEN", "actions"),
-    ...LABELS.filter(({ kind }) => kind !== "try").map(({ name, colour, description }): Setting => ({
-      name: `the ${name} label`,
-      held: () => labels().includes(name),
-      set: () => void gh(["label", "create", name, "-R", repo, "--color", colour, "--description", description]),
-    })),
+    {
+      name: "the machine's labels",
+      held: () => made().every(({ name }) => labels().includes(name)),
+      set: () => {
+        for (const { name, colour, description } of made().filter((label) => !labels().includes(label.name))) gh(["label", "create", name, "-R", repo, "--color", colour, "--description", description]);
+      },
+    },
     {
       name: "auto-merge",
       held: () => held().allow_auto_merge,
@@ -182,11 +189,11 @@ function enrol(repo: string): number {
     }
   }
   if (refused.length > 0) {
-    if (set.length > 0) console.log(`enrol: ${repo} set: ${set.join(", ")}`);
-    console.error([`enrol: ${repo} is not enrolled, these could not be set:`, ...refused].join("\n"));
+    const shown = refused.length > MOST_SHOWN ? [...refused.slice(0, SHOWN), `- and ${refused.length - SHOWN} more`] : refused;
+    console.error([`enrol: ${repo} is not enrolled, ${refused.length} could not be set and ${set.length} were:`, ...shown.map((line) => line.slice(0, LINE_LIMIT))].join("\n"));
     return 1;
   }
-  console.log(set.length === 0 ? `enrol: ${repo} was already enrolled, nothing changed` : `enrol: ${repo} enrolled, set: ${set.join(", ")}`);
+  console.log(set.length === 0 ? `enrol: ${repo} was already enrolled, nothing changed` : `enrol: ${repo} enrolled, ${set.length} settings set`);
   return 0;
 }
 
