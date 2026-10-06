@@ -152,7 +152,7 @@ _Avoid_: on hold, frozen, blocked
 An issue the machine labelled `stuck`, its last resort: a red run or a stage that cannot go on
 marks it and calls the owner. Like `paused` it is `held`, so every stage stands down on it, and the
 machine adds it but never removes it.
-_Avoid_: needs-human, blocked, failed
+_Avoid_: blocked, failed
 
 **Resume**:
 Setting a held issue going again. Taking `waiting` off a ticket resumes its build; taking `paused`

@@ -586,8 +586,11 @@ describe("a fix, research, slice, reslice or done check run that ends red marks 
     for (const held of HELD) expect(calls(`spec ${held}`, "the slice run"), held).not.toMatch(/issue (edit|comment)|api -X POST/);
   });
 
-  it("no workflow keeps its own copy of the owner call", () => {
-    for (const file of readdirSync(WORKFLOWS)) expect(readFileSync(join(WORKFLOWS, file), "utf8"), file).not.toMatch(/bin\/mark "\$\w+" stuck|issue comment .*ended/);
+  it("no workflow keeps its own copy of the owner call, which marks a held label or comments that a run ended", () => {
+    const ownerCall = /bin\/mark \S+ ("\$(stop|stuck|paused)"|stuck|paused)|--add-label|issue comment .*ended/;
+
+    expect(readFileSync(CALLER, "utf8")).toMatch(ownerCall);
+    for (const file of readdirSync(WORKFLOWS)) expect(readFileSync(join(WORKFLOWS, file), "utf8"), file).not.toMatch(ownerCall);
   });
 
   for (const caller of CALLERS) {
