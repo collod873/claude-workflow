@@ -26,7 +26,7 @@ class Refused extends Error {}
 interface Setting {
   name: string;
   held: () => boolean;
-  set: () => void;
+  set: () => { waits: string; opened: boolean } | void;
 }
 
 interface Flow {
@@ -93,9 +93,9 @@ function callerFor(ci: string): string {
 }
 
 function enrolling(repo: string): Setting[] {
-  const contents = (path: string) => found<{ content: string; sha: string }>(["api", `repos/${repo}/contents/${path}`]);
-  const textOf = (path: string) => {
-    const file = contents(path);
+  const contents = (path: string, ref?: string) => found<{ content: string; sha: string }>(["api", `repos/${repo}/contents/${path}${ref === undefined ? "" : `?ref=${ref}`}`]);
+  const textOf = (path: string, ref?: string) => {
+    const file = contents(path, ref);
     return file === undefined ? undefined : { text: Buffer.from(file.content, "base64").toString("utf8"), sha: file.sha };
   };
   const held = once(() => read<{ id: number; allow_auto_merge: boolean; default_branch: string }>(["api", `repos/${repo}`]));
@@ -138,6 +138,36 @@ function enrolling(repo: string): Setting[] {
   });
 
   const caller = once(() => callerFor(ci()));
+  const rules = () => read<Rule[]>(["api", `repos/${repo}/rules/branches/${held().default_branch}`]);
+  const write = (branch?: string) => {
+    const sha = contents(CALLER)?.sha;
+    gh(["api", "-X", "PUT", `repos/${repo}/contents/${CALLER}`, "-f", `message=${HANDED}`, ...(branch === undefined ? [] : ["-f", `branch=${branch}`]), "-f", `content=${Buffer.from(caller()).toString("base64")}`, ...(sha === undefined ? [] : ["-f", `sha=${sha}`])]);
+  };
+  const branchFromMain = () => {
+    const main = read<{ object: { sha: string } }>(["api", `repos/${repo}/git/ref/heads/${held().default_branch}`]).object.sha;
+    try {
+      gh(["api", "-X", "POST", `repos/${repo}/git/refs`, "-f", `ref=refs/heads/${BRANCH}`, "-f", `sha=${main}`]);
+    } catch (error) {
+      if (!(error instanceof Refused && /already exists/i.test(error.message))) throw error;
+      gh(["api", "-X", "PATCH", `repos/${repo}/git/refs/heads/${BRANCH}`, "-f", `sha=${main}`, "-F", "force=true"]);
+    }
+  };
+  const openPr = () => read<{ url: string }[]>(["pr", "list", "-R", repo, "--head", BRANCH, "--json", "number,url"])[0];
+  const throughPr = () => {
+    const open = openPr();
+    if (open !== undefined && textOf(CALLER, BRANCH)?.text === caller()) return { waits: open.url, opened: false };
+    if (!read<{ allow_auto_merge: boolean }>(["api", `repos/${repo}`]).allow_auto_merge) throw new Refused("auto-merge is off, so a PR for it would never merge on its own");
+    branchFromMain();
+    write(BRANCH);
+    const url = open?.url ?? gh(["pr", "create", "-R", repo, "--head", BRANCH, "--base", held().default_branch, "--title", HANDED, "--body", `Brings \`${CALLER}\` to the caller text bin/enrol writes, naming this repo's CI. It merges on its own once \`${CHECK}\` passes.`]).trim();
+    try {
+      gh(["pr", "merge", BRANCH, "-R", repo, "--auto", "--squash", "--delete-branch"]);
+    } catch (error) {
+      gh(["pr", "close", BRANCH, "-R", repo, "--delete-branch"]);
+      throw error;
+    }
+    return textOf(CALLER)?.text === caller() ? undefined : { waits: url, opened: true };
+  };
 
   return [
     {
@@ -168,8 +198,8 @@ function enrolling(repo: string): Setting[] {
     {
       name: `main taking changes only through a PR passing ${CHECK}`,
       held: () => {
-        const rules = read<Rule[]>(["api", `repos/${repo}/rules/branches/${held().default_branch}`]);
-        return rules.some(({ type }) => type === "pull_request") && rules.some(({ type, parameters }) => type === "required_status_checks" && (parameters?.required_status_checks ?? []).some(({ context }) => context === CHECK));
+        const ours = rules();
+        return ours.some(({ type }) => type === "pull_request") && ours.some(({ type, parameters }) => type === "required_status_checks" && (parameters?.required_status_checks ?? []).some(({ context }) => context === CHECK));
       },
       set: () => {
         ci();
@@ -191,31 +221,21 @@ function enrolling(repo: string): Setting[] {
     {
       name: "the caller file",
       held: () => textOf(CALLER)?.text === caller(),
-      set: () => {
-        const main = read<{ object: { sha: string } }>(["api", `repos/${repo}/git/ref/heads/${held().default_branch}`]).object.sha;
-        try {
-          gh(["api", "-X", "POST", `repos/${repo}/git/refs`, "-f", `ref=refs/heads/${BRANCH}`, "-f", `sha=${main}`]);
-        } catch (error) {
-          if (!(error instanceof Refused && /already exists/i.test(error.message))) throw error;
-          gh(["api", "-X", "PATCH", `repos/${repo}/git/refs/heads/${BRANCH}`, "-f", `sha=${main}`, "-F", "force=true"]);
-        }
-        const sha = contents(CALLER)?.sha;
-        gh(["api", "-X", "PUT", `repos/${repo}/contents/${CALLER}`, "-f", `message=${HANDED}`, "-f", `branch=${BRANCH}`, "-f", `content=${Buffer.from(caller()).toString("base64")}`, ...(sha === undefined ? [] : ["-f", `sha=${sha}`])]);
-        if (read<unknown[]>(["pr", "list", "-R", repo, "--head", BRANCH, "--json", "number"]).length === 0) gh(["pr", "create", "-R", repo, "--head", BRANCH, "--base", held().default_branch, "--title", HANDED, "--body", `Brings \`${CALLER}\` to the caller text bin/enrol writes, naming this repo's CI. It merges on its own once \`${CHECK}\` passes.`]);
-        gh(["pr", "merge", BRANCH, "-R", repo, "--auto", "--squash", "--delete-branch"]);
-      },
+      set: () => (rules().some(({ type }) => type === "pull_request") ? throughPr() : write()),
     },
   ];
 }
 
 function enrol(repo: string): number {
   const set: string[] = [];
+  const waiting: string[] = [];
   const refused: string[] = [];
   for (const setting of enrolling(repo)) {
     try {
       if (setting.held()) continue;
-      setting.set();
-      set.push(setting.name);
+      const pending = setting.set();
+      if (pending !== undefined) waiting.push(`- ${setting.name}: ${pending.waits} merges on its own once ${CHECK} passes`);
+      if (pending?.opened !== false) set.push(setting.name);
     } catch (error) {
       if (!(error instanceof Refused)) throw error;
       refused.push(`- ${setting.name}: ${error.message}`);
@@ -226,7 +246,8 @@ function enrol(repo: string): number {
     console.error([`enrol: ${repo} is not enrolled, ${refused.length} could not be set and ${set.length} were:`, ...shown.map((line) => line.slice(0, LINE_LIMIT))].join("\n"));
     return 1;
   }
-  console.log(set.length === 0 ? `enrol: ${repo} was already enrolled, nothing changed` : `enrol: ${repo} enrolled, ${set.length} settings set`);
+  if (waiting.length > 0) console.log([`enrol: ${repo} is enrolled once its PR merges, ${set.length} settings set:`, ...waiting].join("\n"));
+  else console.log(set.length === 0 ? `enrol: ${repo} was already enrolled, nothing changed` : `enrol: ${repo} enrolled, ${set.length} settings set`);
   return 0;
 }
 

@@ -593,6 +593,7 @@ interface Held {
   files: Record<string, string>;
   branches: Record<string, Record<string, string>>;
   prs: { number: number; head: string; auto: boolean }[];
+  pending: boolean;
   selection: string;
   reached: string[];
   variables: string[];
@@ -631,9 +632,10 @@ else if (args[0] === "api" && method === "GET" && route === contents + ".github/
   out(listed.map((file) => ({ path: file, type: "file" })));
 }
 else if (args[0] === "api" && method === "GET" && route.startsWith(contents)) {
-  const file = route.slice(contents.length);
-  if (held.files[file] === undefined) { process.stderr.write("gh: Not Found (HTTP 404)\n"); process.exit(1); }
-  out({ path: file, sha: "sha-" + file.length, content: Buffer.from(held.files[file]).toString("base64") });
+  const [file, ref] = route.slice(contents.length).split("?ref=");
+  const files = ref === undefined ? held.files : held.branches[ref] ?? {};
+  if (files[file] === undefined) { process.stderr.write("gh: Not Found (HTTP 404)\n"); process.exit(1); }
+  out({ path: file, sha: "sha-" + file.length, content: Buffer.from(files[file]).toString("base64") });
 }
 else if (args[0] === "api" && method === "PUT" && route.startsWith(contents)) {
   wrote();
@@ -653,13 +655,15 @@ else if (args[0] === "api" && method === "POST" && route === "repos/" + repo + "
   out({});
 }
 else if (args[0] === "api" && method === "PATCH" && route.startsWith("repos/" + repo + "/git/refs/heads/")) { wrote(); held.branches[route.slice(("repos/" + repo + "/git/refs/heads/").length)] = { ...held.files }; save(); out({}); }
-else if (args[0] === "pr" && args[1] === "list") out(held.prs.filter(({ head }) => head === flag("--head")).map(({ number }) => ({ number })));
+else if (args[0] === "pr" && args[1] === "list") out(held.prs.filter(({ head }) => head === flag("--head")).map(({ number }) => ({ number, url: "https://github.com/" + repo + "/pull/" + number })));
+else if (args[0] === "pr" && args[1] === "close") { wrote(); held.prs = held.prs.filter(({ head }) => head !== args[2]); if (args.includes("--delete-branch")) delete held.branches[args[2]]; save(); }
 else if (args[0] === "pr" && args[1] === "create") { wrote(); const number = 900 + held.prs.length; held.prs.push({ number, head: flag("--head"), auto: false }); save(); process.stdout.write("https://github.com/" + repo + "/pull/" + number + "\n"); }
 else if (args[0] === "pr" && args[1] === "merge") {
   wrote();
   const pr = held.prs.find(({ number, head }) => String(number) === args[2] || head === args[2]);
   if (pr === undefined || !held.allow_auto_merge || !args.includes("--auto")) { process.stderr.write("GraphQL: Auto merge is not allowed for this repository (enablePullRequestAutoMerge)\n"); process.exit(1); }
   pr.auto = true;
+  if (held.pending) { save(); process.exit(0); }
   held.files = { ...held.branches[pr.head] };
   held.prs = held.prs.filter((open) => open !== pr);
   delete held.branches[pr.head];
@@ -700,6 +704,7 @@ export function bare(extra: Partial<Held> = {}): Held {
     files: { ".github/workflows/ci.yml": CI, ".github/workflows/deploy.yml": DEPLOY },
     branches: {},
     prs: [],
+    pending: false,
     selection: "selected",
     reached: ["collod873/claude-workflow"],
     variables: [],

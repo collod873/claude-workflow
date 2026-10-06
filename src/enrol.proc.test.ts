@@ -70,7 +70,7 @@ describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#11
       `enrol: ${REPO} is not enrolled, 3 could not be set and 6 were:`,
       "- CLAUDE_CODE_OAUTH_TOKEN: no CLAUDE_CODE_OAUTH_TOKEN in the environment to set it from",
       "- auto-merge: gh: Must have admin rights to Repository. (HTTP 403)",
-      "- the caller file: GraphQL: Auto merge is not allowed for this repository (enablePullRequestAutoMerge)",
+      "- the caller file: auto-merge is off, so a PR for it would never merge on its own",
     ]);
     expect(held().labels).toContain("ticket");
     expect(held().dependabot).toEqual(["CORE_APP_PRIVATE_KEY"]);
@@ -164,5 +164,42 @@ describe("bin/enrol keeps an enrolled repo current with the owner's own login (#
 
     expect(run()).toEqual({ status: 0, stdout: `enrol: ${REPO} was already enrolled, nothing changed\n`, stderr: "" });
     expect(held().writes).toHaveLength(before);
+  });
+
+  it("writes the caller file straight to main where main still takes direct pushes, opening no PR", () => {
+    const { run, held } = enrolling(bare({ files: { ".github/workflows/ci.yml": CI.replace("name: Gate", "name: CI") }, refused: { "/rulesets": "gh: Upgrade to GitHub Pro to enable this feature (HTTP 403)" } }));
+
+    run();
+
+    expect(held().files[".github/workflows/machine.yml"]).toBe(CALLER);
+    expect(held().writes.filter((args) => args[0] === "pr")).toEqual([]);
+  });
+
+  it("refuses the caller file before opening anything when auto-merge is off, since its PR would never merge on its own", () => {
+    const { run, held } = enrolling(bare({ rules: HELD_FOR_CHECK, refused: { "allow_auto_merge=true": "gh: Must have admin rights to Repository. (HTTP 403)" } }));
+
+    expect(run().stderr).toContain("- the caller file: auto-merge is off, so a PR for it would never merge on its own");
+    expect(held().prs).toEqual([]);
+    expect(held().branches).toEqual({});
+  });
+
+  it("closes its PR and deletes its branch when GitHub refuses to merge the PR on its own", () => {
+    const { run, held } = enrolling(bare({ rules: HELD_FOR_CHECK, allow_auto_merge: true, refused: { "pr merge": "GraphQL: Pull request Protected branch rules not configured for this branch (enablePullRequestAutoMerge)" } }));
+
+    expect(run().stderr).toContain("- the caller file: GraphQL: Pull request Protected branch rules not configured");
+    expect(held().prs).toEqual([]);
+    expect(held().branches).toEqual({});
+  });
+
+  it("names the caller PR still waiting on check, and leaves it alone on a re-run", () => {
+    const { run, held } = enrolling(bare({ rules: HELD_FOR_CHECK, allow_auto_merge: true, pending: true, files: { ".github/workflows/ci.yml": CI, ".github/workflows/machine.yml": STALE } }));
+    const waiting = `- the caller file: https://github.com/${REPO}/pull/900 merges on its own once check passes`;
+
+    expect(run().stdout).toBe(`enrol: ${REPO} is enrolled once its PR merges, 7 settings set:\n${waiting}\n`);
+    const before = held().writes.length;
+
+    expect(run()).toEqual({ status: 0, stdout: `enrol: ${REPO} is enrolled once its PR merges, 0 settings set:\n${waiting}\n`, stderr: "" });
+    expect(held().writes).toHaveLength(before);
+    expect(held().prs.map(({ auto }) => auto)).toEqual([true]);
   });
 });
