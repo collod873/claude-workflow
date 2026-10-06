@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { handedOn, REPLIES_CAP } from "./done-checker.ts";
 import { authored, BIN, execute, issueStage, plant, type Said, script, stubbedMark, wellFormedSpec } from "./scenarios.ts";
-import { NEEDS_HUMAN } from "./spelled.ts";
+import { PAUSED, STUCK } from "./spelled.ts";
 import { declareStage, HANDED_ON } from "./stages.ts";
 import { SPEC_CAP } from "./ticket-shape.ts";
 
@@ -57,6 +57,7 @@ declareStage({
     { label: "closing a spec whose sentence held", run: () => doneChecking().run() },
     { label: "refusing a ticket", run: () => doneChecking({ labels: ["ticket"] }).run() },
     { label: "stopping at an issue it cannot read", run: () => doneChecking({ gh: "[[ $1 == issue && $2 == view ]] && exit 1" }).run() },
-    { label: "standing down on needs-human", run: () => doneChecking({ labels: ["spec", NEEDS_HUMAN] }).run() },
+    { label: "standing down on stuck", run: () => doneChecking({ labels: ["spec", STUCK] }).run() },
+    { label: "standing down on paused", run: () => doneChecking({ labels: ["spec", PAUSED] }).run() },
   ],
 });

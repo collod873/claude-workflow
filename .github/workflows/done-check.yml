@@ -31,8 +31,9 @@ jobs:
       - id: labelled
         run: |
           spec=$(bin/spelled SPEC)
-          stop=$(bin/spelled NEEDS_HUMAN)
-          held=$(jq --arg SPEC "$spec" --arg NEEDS_HUMAN "$stop" 'any(.issue.labels[]?.name; . == $SPEC) and (any(.issue.labels[]?.name; . == $NEEDS_HUMAN) | not)' "$GITHUB_EVENT_PATH")
+          paused=$(bin/spelled PAUSED)
+          stuck=$(bin/spelled STUCK)
+          held=$(jq --arg SPEC "$spec" --arg PAUSED "$paused" --arg STUCK "$stuck" 'any(.issue.labels[]?.name; . == $SPEC) and (any(.issue.labels[]?.name; . == $PAUSED or . == $STUCK) | not)' "$GITHUB_EVENT_PATH")
           printf 'held=%s\n' "$held" | tee -a "$GITHUB_OUTPUT"
 
       - id: asked

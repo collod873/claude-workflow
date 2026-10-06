@@ -178,12 +178,13 @@ jobs:
           RAN_ON: ${{ github.event.workflow_run.head_branch }}
           GH_TOKEN: ${{ steps.app.outputs.token }}
         run: |
-          stop=$(bin/spelled NEEDS_HUMAN)
+          paused=$(bin/spelled PAUSED)
+          stuck=$(bin/spelled STUCK)
           prefix=$(bin/spelled TICKET_PREFIX)
           ticket=${DISPATCHED:-$BUILT}
           [[ $RAN_ON == "$prefix"* && ${RAN_ON#"$prefix"} =~ ^[0-9]+$ ]] && ticket=${RAN_ON#"$prefix"}
-          if [[ -z $DISPATCHED && -n $ticket ]] && gh issue view "$ticket" --json labels --jq '.labels[].name' | grep -qx "$stop"; then
-            printf 'which: #%s is labelled %s, so its builder already called the owner and none starts again\n' "$ticket" "$stop"
+          if [[ -z $DISPATCHED && -n $ticket ]] && held=$(gh issue view "$ticket" --json labels --jq '.labels[].name' | grep -m 1 -x -e "$paused" -e "$stuck"); then
+            printf 'which: #%s is labelled %s, so no builder starts\n' "$ticket" "$held"
             ticket=
           fi
           printf 'ticket=%s\n' "$ticket" >>"$GITHUB_OUTPUT"

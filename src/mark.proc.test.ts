@@ -5,15 +5,37 @@ const STATE_BLUE = "1d76db";
 const LANDING = "Up to date with main and next to merge; auto-merge fires once its checks pass";
 
 describe("bin/mark leaves one state on a ticket and its open PR, so one look at either says where it is (#1055)", () => {
-  it("sets the state, takes every other state, asked and needs-human off, and leaves the kind and wayfinder labels alone", () => {
-    const marked = marking({ labels: { "811": ["ticket", "checking", "queued", "asked", "needs-human", "wayfinder:map"] } });
+  it("sets the state, takes every other state and asked off, and leaves the kind, held and wayfinder labels alone", () => {
+    const marked = marking({ labels: { "811": ["ticket", "checking", "queued", "asked", "paused", "stuck", "wayfinder:map"] } });
 
     expect(heard(marked.run("811", "building"))).toEqual({ status: 0, stderr: "", lines: ["mark: #811 is at building"] });
-    expect(marked.labels("811")).toEqual(["building", "ticket", "wayfinder:map"]);
+    expect(marked.labels("811")).toEqual(["building", "paused", "stuck", "ticket", "wayfinder:map"]);
+  });
+
+  it("never strips paused or stuck, so a pause added mid-run survives the run's next state (#1166)", () => {
+    for (const held of ["paused", "stuck"]) {
+      const marked = marking({ labels: { "811": ["ticket", "building", held], "900": ["building", held] }, pr: "900" });
+
+      expect(marked.run("811", "checking", "--try").status, held).toBe(0);
+      expect(marked.run("811", "waiting").status, held).toBe(0);
+      expect(marked.run("811", "asked").status, held).toBe(0);
+      expect(marked.labels("811"), held).toEqual(["asked", held, "ticket", "waiting"].sort());
+      expect(marked.run("811", "--closed").status, held).toBe(0);
+      expect(marked.labels("811"), held).toEqual([held, "ticket"]);
+      expect(marked.labels("900"), held).toEqual(["asked", held, "waiting"].sort());
+    }
+  });
+
+  it("refuses to set paused, the owner's alone, and asks GitHub for nothing (#1166)", () => {
+    const marked = marking({ labels: { "811": ["ticket", "building"] } });
+
+    expect(heard(marked.run("811", "paused")).status).toBe(2);
+    expect(marked.calls()).toEqual([]);
+    expect(marked.labels("811")).toEqual(["building", "ticket"]);
   });
 
   it("writes the same state, try and owner labels on the open PR whose head is ticket/<number>", () => {
-    const marked = marking({ labels: { "811": ["ticket", "building", "try-2"], "900": ["checking", "needs-human", "wayfinder:pr"] }, pr: "900" });
+    const marked = marking({ labels: { "811": ["ticket", "building", "try-2"], "900": ["checking", "asked", "wayfinder:pr"] }, pr: "900" });
 
     expect(heard(marked.run("811", "checking")).lines).toEqual(["mark: #811 is at checking, try-2, and so is PR #900"]);
     expect(marked.labels("811")).toEqual(["checking", "ticket", "try-2"]);
@@ -51,13 +73,13 @@ describe("bin/mark leaves one state on a ticket and its open PR, so one look at 
     expect(marked.labels("811")).toEqual(["ticket", "waiting"]);
   });
 
-  it("adds needs-human or asked beside the state on the ticket and its PR, removing nothing", () => {
+  it("adds stuck or asked beside the state on the ticket and its PR, removing nothing", () => {
     const stopped = marking({ labels: { "811": ["ticket", "building", "try-2"], "900": ["building", "try-2"] }, pr: "900" });
     const asked = marking({ labels: { "974": ["spec", "checking"] } });
 
-    expect(heard(stopped.run("811", "needs-human")).lines).toEqual(["mark: #811 is at building, try-2, needs-human, and so is PR #900"]);
-    expect(stopped.labels("811")).toEqual(["building", "needs-human", "ticket", "try-2"]);
-    expect(stopped.labels("900")).toEqual(["building", "needs-human", "try-2"]);
+    expect(heard(stopped.run("811", "stuck")).lines).toEqual(["mark: #811 is at building, try-2, stuck, and so is PR #900"]);
+    expect(stopped.labels("811")).toEqual(["building", "stuck", "ticket", "try-2"]);
+    expect(stopped.labels("900")).toEqual(["building", "stuck", "try-2"]);
     expect(asked.run("974", "asked").status).toBe(0);
     expect(asked.labels("974")).toEqual(["asked", "checking", "spec"]);
   });
@@ -79,10 +101,10 @@ describe("bin/mark leaves one state on a ticket and its open PR, so one look at 
   });
 
   it("with --closed strips every state, try and owner label from that issue or PR, and nothing else", () => {
-    const marked = marking({ labels: { "811": ["ticket", "spec", "note", "research", "building", "try-3", "asked", "needs-human", "wayfinder:map"], "900": ["building"] }, pr: "900" });
+    const marked = marking({ labels: { "811": ["ticket", "spec", "note", "research", "building", "try-3", "asked", "stuck", "wayfinder:map"], "900": ["building"] }, pr: "900" });
 
-    expect(heard(marked.run("811", "--closed")).lines).toEqual(["mark: #811 is closed, so it keeps only its kind"]);
-    expect(marked.labels("811")).toEqual(["note", "research", "spec", "ticket", "wayfinder:map"]);
+    expect(heard(marked.run("811", "--closed")).lines).toEqual(["mark: #811 is closed, so it keeps only its kind and held labels"]);
+    expect(marked.labels("811")).toEqual(["note", "research", "spec", "stuck", "ticket", "wayfinder:map"]);
     expect(marked.labels("900")).toEqual(["building"]);
   });
 
@@ -100,11 +122,11 @@ describe("bin/mark leaves one state on a ticket and its open PR, so one look at 
 
     expect(marked.run("811", "waiting", "--try").status).toBe(2);
     expect(marked.run("811", "building", "--try").status).toBe(0);
-    expect(marked.run("811", "needs-human").status).toBe(0);
+    expect(marked.run("811", "stuck").status).toBe(0);
     expect(marked.run("974", "asked").status).toBe(0);
     expect(marked.run("975", "waiting").status).toBe(0);
     expect(marked.run("976", "slicing").status).toBe(0);
-    expect(marked.made()).toEqual(["building ededed", "try-3 f66a0a", "needs-human b60205", "asked 5319e7", "waiting fbca04", `slicing ${STATE_BLUE}`]);
+    expect(marked.made()).toEqual(["building ededed", "try-3 f66a0a", "stuck b60205", "asked 5319e7", "waiting fbca04", `slicing ${STATE_BLUE}`]);
   });
 
   it("describes landing as next to merge while its checks still run, since it shows before the PR is green (#1074)", () => {
@@ -117,25 +139,25 @@ describe("bin/mark leaves one state on a ticket and its open PR, so one look at 
   it("refuses the old stage labels and anything outside the set, and asks GitHub for nothing", () => {
     const marked = marking();
 
-    for (const args of [["811", "2-building"], ["811", "fixing"], ["811", "needs-human", "--try"], ["811", "--closed", "--try"], ["811", "building", "--again"], ["ticket", "building"], ["811"]]) {
+    for (const args of [["811", "2-building"], ["811", "fixing"], ["811", "stuck", "--try"], ["811", "--closed", "--try"], ["811", "building", "--again"], ["ticket", "building"], ["811"]]) {
       expect(heard(marked.run(...args)).status, args.join(" ")).toBe(2);
     }
     expect(marked.calls()).toEqual([]);
   });
 
-  it("names in its usage line the states and owner labels bin/spelled prints, so the refusal lists what it would take (#1100)", () => {
+  it("names in its usage line the states, owner labels and stuck bin/spelled prints, so the refusal lists what it would take (#1100)", () => {
     const { stderr } = marking().run("811", "fixing");
 
     expect(stderr).toBe(
-      "mark: usage: mark <number> <building|checking|queued|resolving|landing|slicing|researching|waiting> [--try|--untry] | mark <number> <asked|needs-human> | mark <number> --closed\n",
+      "mark: usage: mark <number> <building|checking|queued|resolving|landing|slicing|researching|waiting> [--try|--untry] | mark <number> <asked|stuck> | mark <number> --closed\n",
     );
   });
 
   it("still marks the issue and succeeds when its token may not read PRs, so a caller's next step still runs, and names the refusal (#1077)", () => {
     const marked = marking({ labels: { "974": ["spec", "checking"] }, gh: "[[ $1 == pr ]] && { printf 'HTTP 403: Resource not accessible by integration\\n' >&2; exit 1; }\n" });
 
-    expect(heard(marked.run("974", "needs-human"))).toEqual({ status: 0, stderr: "mark: #974's open PR not labelled needs-human: HTTP 403: Resource not accessible by integration\n", lines: ["mark: #974 is at checking, needs-human"] });
-    expect(marked.labels("974")).toEqual(["checking", "needs-human", "spec"]);
+    expect(heard(marked.run("974", "stuck"))).toEqual({ status: 0, stderr: "mark: #974's open PR not labelled stuck: HTTP 403: Resource not accessible by integration\n", lines: ["mark: #974 is at checking, stuck"] });
+    expect(marked.labels("974")).toEqual(["checking", "spec", "stuck"]);
   });
 
   it("says in one line why GitHub refused the label", () => {

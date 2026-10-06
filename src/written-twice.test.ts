@@ -81,9 +81,9 @@ describe("written twice refuses a script, workflow or action that spells by hand
   const refused = (...scripts: { file: string; text: string }[]) => spelledByHand(scripts, machine);
 
   it("refuses a label planted in a workflow file as a quoted string, a shell word or the argument of --label", () => {
-    expect(refused(source(".github/workflows/planted.yml", "jobs:", "  one:", "    if: contains(github.event.issue.labels.*.name, 'waiting')", "    steps:", "      - run: |", "          bin/mark 1 needs-human", "          gh issue edit 1 --add-label x --label queued", "          grep -qx note <<<\"$labels\""))).toEqual([
+    expect(refused(source(".github/workflows/planted.yml", "jobs:", "  one:", "    if: contains(github.event.issue.labels.*.name, 'waiting')", "    steps:", "      - run: |", "          bin/mark 1 stuck", "          gh issue edit 1 --add-label x --label queued", "          grep -qx note <<<\"$labels\""))).toEqual([
       `written twice: .github/workflows/planted.yml:3 spells "waiting" that src/spelled.ts holds; ${asked("WAITING")}`,
-      `written twice: .github/workflows/planted.yml:6 spells "needs-human" that src/spelled.ts holds; ${asked("NEEDS_HUMAN")}`,
+      `written twice: .github/workflows/planted.yml:6 spells "stuck" that src/spelled.ts holds; ${asked("STUCK")}`,
       `written twice: .github/workflows/planted.yml:7 spells "queued" that src/spelled.ts holds; ${asked("QUEUED")}`,
       `written twice: .github/workflows/planted.yml:8 spells "note" that src/spelled.ts holds; ${asked("NOTE")}`,
     ]);
@@ -117,7 +117,7 @@ describe("written twice refuses a script, workflow or action that spells by hand
         source("bin/planted", "#!/bin/bash", "printf 'close-note: #%s is not a note; a ticket closes when its PR merges\\n' \"$n\""),
         source(".github/workflows/planted.yml", "jobs:", "  research:", "    steps:", "      - id: asked", "        with:", "          run: the research run"),
         source("bin/file-issue", "#!/bin/bash", "[[ $kind != ticket && $kind != note && $kind != research && $kind != spec ]]"),
-        source("bin/spelled", "#!/bin/bash", "printf 'needs-human'"),
+        source("bin/spelled", "#!/bin/bash", "printf 'stuck'"),
       ),
     ).toEqual([]);
   });

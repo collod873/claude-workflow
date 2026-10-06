@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { cloned, copyMark, git, holds, labelledAs, scratch, script, starts as startsJob, type IssueEvent, type StepOutcome } from "./scenarios.ts";
+import { HELD } from "./spelled.ts";
 
 const REPO = join(import.meta.dirname, "..");
 const WORKFLOWS = join(REPO, ".github", "workflows");
@@ -114,7 +115,7 @@ describe("build.yml builds a ticket the moment it is filed (#826)", () => {
     expect(await unlabeled("collod873-machine[bot]", "waiting")).toBe(true);
     expect(await unlabeled("collod873", "waiting")).toBe(true);
     expect(await unlabeled("collod873-machine[bot]", "building")).toBe(false);
-    expect(await unlabeled("collod873", "needs-human")).toBe(false);
+    for (const held of HELD) expect(await unlabeled("collod873", held), held).toBe(false);
     expect(await unlabeled("stranger", "waiting")).toBe(false);
     expect(await starts({ sender: "collod873-machine[bot]", action: "unlabeled", label: "waiting", labels: ["note"] })).toBe(false);
   });
@@ -370,15 +371,17 @@ describe("fix.yml hands every red run of a ticket to its builder, however the ru
     expect(namedJob(fixWorkflow().jobs, "which", FIX_WORKFLOW)).toMatchObject({ outputs: { branch: "${{ steps.which.outputs.branch }}" } });
   });
 
-  it("starts no builder on a red run of a ticket labelled needs-human, whose builder already called the owner, but does on the closer's dispatch (#931)", () => {
+  it("starts no builder on a red run of a ticket labelled paused or stuck, but does on the closer's dispatch (#931, #1166)", () => {
     const building = { RAN: ".github/workflows/build.yml", RAN_ON: "main", TITLE: "Build #9: Give the builder the build" };
     const checking = { RAN: ".github/workflows/check.yml", RAN_ON: "ticket/9", TITLE: "Give the builder the build" };
 
-    expect(ticketNamed(building, "building needs-human")).toBe("");
-    expect(ticketNamed(checking, "needs-human")).toBe("");
+    for (const held of HELD) {
+      expect(ticketNamed(building, `building ${held}`), held).toBe("");
+      expect(ticketNamed(checking, held), held).toBe("");
+      expect(ticketNamed({ DISPATCHED: "9" }, held), held).toBe("9");
+    }
     expect(ticketNamed(building, "building")).toBe("9");
     expect(ticketNamed(checking, "checking")).toBe("9");
-    expect(ticketNamed({ DISPATCHED: "9" }, "needs-human")).toBe("9");
   });
 
   it("goes red, rather than skipping green, when a red Build run's name carries no ticket, so a red nobody fixes still shows", () => {
@@ -560,7 +563,7 @@ const CALLERS = [
 ];
 const callsOwner = (step: Step) => step.uses === "./.github/actions/call-owner";
 
-describe("a fix, research, slice, reslice or done check run that ends red marks its issue needs-human and calls the owner through one shared step, so it leaves a trace (#1057, #1067)", () => {
+describe("a fix, research, slice, reslice or done check run that ends red marks its issue stuck and calls the owner through one shared step, so it leaves a trace (#1057, #1067)", () => {
   const [owned] = (parse(readFileSync(CALLER, "utf8")) as { runs: { steps: Step[] } }).runs.steps;
   const calls = (labels: string, run: string) => {
     const root = scratch("called-");
@@ -575,16 +578,19 @@ describe("a fix, research, slice, reslice or done check run that ends red marks 
   it("the shared step marks the issue and comments to the owner with the run's link, naming the run that ended red", () => {
     expect(owned?.env?.ISSUE).toBe("${{ inputs.issue }}");
     expect(owned?.env?.RAN).toBe("${{ inputs.run }}");
-    expect(calls("spec", "the slice run")).toContain("api -X POST repos/{owner}/{repo}/issues/9/labels -f labels[]=needs-human\n");
+    expect(calls("spec", "the slice run")).toContain("api -X POST repos/{owner}/{repo}/issues/9/labels -f labels[]=stuck\n");
     expect(calls("spec", "the slice run")).toMatch(/issue comment 9 --body @owner the slice run ended red before it could finish, see the run: .*\/actions\/runs\/owner/);
   });
 
-  it("the shared step does nothing when the issue already carries needs-human", () => {
-    expect(calls("spec needs-human", "the slice run")).not.toMatch(/issue (edit|comment)|api -X POST/);
+  it("the shared step does nothing when the issue already carries paused or stuck (#1166)", () => {
+    for (const held of HELD) expect(calls(`spec ${held}`, "the slice run"), held).not.toMatch(/issue (edit|comment)|api -X POST/);
   });
 
-  it("no workflow keeps its own copy of the owner call", () => {
-    for (const file of readdirSync(WORKFLOWS)) expect(readFileSync(join(WORKFLOWS, file), "utf8"), file).not.toMatch(/bin\/mark "\$\w+" needs-human|issue comment .*ended/);
+  it("no workflow keeps its own copy of the owner call, which marks a held label or comments that a run ended", () => {
+    const ownerCall = /bin\/mark \S+ ("\$(stop|stuck|paused)"|stuck|paused)|--add-label|issue comment .*ended/;
+
+    expect(readFileSync(CALLER, "utf8")).toMatch(ownerCall);
+    for (const file of readdirSync(WORKFLOWS)) expect(readFileSync(join(WORKFLOWS, file), "utf8"), file).not.toMatch(ownerCall);
   });
 
   for (const caller of CALLERS) {
@@ -660,8 +666,8 @@ describe("build.yml and closed.yml say in their logs when a mark fails, so a tic
     const { status, stderr } = ranStep(owned ?? {}, cwd, { PATH: `${join(cwd, "stub")}:${process.env.PATH}`, ISSUE: "9", RAN: "the slice run" });
 
     expect(status, stderr).toBe(0);
-    expect(stderr).toContain(`${refusal("needs-human")}\n`);
-    expect(readFileSync(called, "utf8")).toContain("issue edit 9 --add-label needs-human\n");
+    expect(stderr).toContain(`${refusal("stuck")}\n`);
+    expect(readFileSync(called, "utf8")).toContain("issue edit 9 --add-label stuck\n");
     expect(readFileSync(called, "utf8")).toMatch(/issue comment 9 --body @owner the slice run ended red/);
   });
 });

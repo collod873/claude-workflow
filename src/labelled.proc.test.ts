@@ -14,7 +14,7 @@ const BEFORE = {
   build: "${{ (github.event.action != 'unlabeled' || github.event.label.name == 'waiting') && (github.event.sender.login == github.repository_owner || (github.event.sender.login == 'collod873-machine[bot]' && (github.event.action == 'unlabeled' || github.event.action == 'opened'))) && !contains(github.event.issue.labels.*.name, 'note') && !contains(github.event.issue.labels.*.name, 'spec') && !contains(github.event.issue.labels.*.name, 'waiting') }}",
   slice: "${{ github.event.sender.login == github.repository_owner && contains(github.event.issue.labels.*.name, 'spec') }}",
   research: "${{ github.event.sender.login == github.repository_owner && contains(github.event.issue.labels.*.name, 'research') }}",
-  doneCheck: "${{ github.event.sender.login == github.repository_owner && contains(github.event.issue.labels.*.name, 'spec') && !contains(github.event.issue.labels.*.name, 'needs-human') }}",
+  doneCheck: "${{ github.event.sender.login == github.repository_owner && contains(github.event.issue.labels.*.name, 'spec') && !contains(github.event.issue.labels.*.name, 'paused') && !contains(github.event.issue.labels.*.name, 'stuck') }}",
   reslice: "${{ !contains(github.event.issue.labels.*.name, 'spec') && !contains(github.event.issue.labels.*.name, 'note') }}",
 };
 
@@ -24,19 +24,19 @@ const each = (senders: string[], actions: Omit<IssueEvent, "labels" | "sender">[
 const BUILT_ON = each(
   [OWNER, MACHINE, "stranger"],
   [{ action: "opened" }, { action: "reopened" }, { action: "unlabeled", label: "waiting" }, { action: "unlabeled", label: "building" }],
-  [[], ["ticket"], ["ticket", "note"], ["spec"], ["ticket", "waiting"], ["ticket", "needs-human"]],
+  [[], ["ticket"], ["ticket", "note"], ["spec"], ["ticket", "waiting"], ["ticket", "paused"], ["ticket", "stuck"]],
 );
 
 const GATED = [
   { file: "build.yml", job: "build", before: BEFORE.build, events: BUILT_ON },
   { file: "tickets.yml", job: "build", before: BEFORE.build, events: BUILT_ON },
-  { file: "slice.yml", job: "slice", before: BEFORE.slice, events: each([OWNER, "stranger"], [{ action: "opened" }], [[], ["spec"], ["note"], ["spec", "needs-human"]]) },
+  { file: "slice.yml", job: "slice", before: BEFORE.slice, events: each([OWNER, "stranger"], [{ action: "opened" }], [[], ["spec"], ["note"], ["spec", "paused"], ["spec", "stuck"]]) },
   { file: "research.yml", job: "research", before: BEFORE.research, events: each([OWNER, "stranger"], [{ action: "opened" }], [[], ["note"], ["note", "research"]]) },
-  { file: "done-check.yml", job: "asked", before: BEFORE.doneCheck, events: each([OWNER, MACHINE], [{ action: "created" }], [[], ["ticket"], ["spec"], ["spec", "needs-human"]]) },
+  { file: "done-check.yml", job: "asked", before: BEFORE.doneCheck, events: each([OWNER, MACHINE], [{ action: "created" }], [[], ["ticket"], ["spec"], ["spec", "paused"], ["spec", "stuck"]]) },
   { file: "reslice.yml", job: "ended", before: BEFORE.reslice, events: each([OWNER, MACHINE], [{ action: "closed" }], [[], ["ticket"], ["spec"], ["note"], ["ticket", "waiting"]]) },
-  { file: "specs.yml", job: "slice", before: BEFORE.slice, events: each([OWNER, "stranger"], [{ action: "opened" }], [[], ["spec"], ["note"], ["spec", "needs-human"]]) },
+  { file: "specs.yml", job: "slice", before: BEFORE.slice, events: each([OWNER, "stranger"], [{ action: "opened" }], [[], ["spec"], ["note"], ["spec", "paused"], ["spec", "stuck"]]) },
   { file: "specs.yml", job: "research", before: BEFORE.research, events: each([OWNER, "stranger"], [{ action: "opened" }], [[], ["note"], ["note", "research"]]) },
-  { file: "specs.yml", job: "asked", before: BEFORE.doneCheck, events: each([OWNER, MACHINE], [{ action: "created", event: "issue_comment" }], [[], ["ticket"], ["spec"], ["spec", "needs-human"]]) },
+  { file: "specs.yml", job: "asked", before: BEFORE.doneCheck, events: each([OWNER, MACHINE], [{ action: "created", event: "issue_comment" }], [[], ["ticket"], ["spec"], ["spec", "paused"], ["spec", "stuck"]]) },
   { file: "specs.yml", job: "ended", before: BEFORE.reslice, events: each([OWNER, MACHINE], [{ action: "closed" }], [[], ["ticket"], ["spec"], ["note"], ["ticket", "waiting"]]) },
 ];
 
@@ -68,7 +68,7 @@ describe("the workflows ask spelled for each label they test, so a renamed label
     copyMark(root);
     const keys = new Set(files().flatMap((file) => [...readFileSync(file, "utf8").matchAll(/bin\/spelled ([A-Z_]+)/g)].map(([, key]) => key ?? "")));
 
-    expect([...keys].sort()).toEqual(["BUILDING", "CHECKING", "MACHINE", "NEEDS_HUMAN", "NOTE", "RESEARCH", "SPEC", "TICKET_PREFIX", "WAITING"]);
+    expect([...keys].sort()).toEqual(["BUILDING", "CHECKING", "MACHINE", "NOTE", "PAUSED", "RESEARCH", "SPEC", "STUCK", "TICKET_PREFIX", "WAITING"]);
     for (const key of keys) expect(execute(join(root, "bin", "spelled"), root, {}, [key]).status, key).toBe(0);
   });
 

@@ -10,9 +10,14 @@ if ! prefix=$("$here/spelled" TICKET_PREFIX 2>&1); then
   printf 'mark: the branch prefix could not be read: %s\n' "$(printf '%s' "$prefix" | head -n 1 | cut -c 1-120)" >&2
   exit 1
 fi
+if ! owners_own=$("$here/spelled" PAUSED 2>&1); then
+  printf 'mark: the label only the owner sets could not be read: %s\n' "$(printf '%s' "$owners_own" | head -n 1 | cut -c 1-120)" >&2
+  exit 1
+fi
 states=()
 parked=()
 owners=()
+stops=()
 try=""
 declare -A colours descriptions
 while IFS=$'\t' read -r name kind colour description; do
@@ -20,13 +25,15 @@ while IFS=$'\t' read -r name kind colour description; do
     state) states+=("$name") ;;
     parked) parked+=("$name") ;;
     owner) owners+=("$name") ;;
+    held) [[ $name == "$owners_own" ]] || stops+=("$name") ;;
     try) try=$name ;;
   esac
   colours[$name]=$colour
   descriptions[$name]=$description
 done <<<"$spelled"
 steps=("${states[@]}" "${parked[@]}")
-usage="mark: usage: mark <number> <$(IFS='|'; printf '%s' "${steps[*]}")> [--try|--untry] | mark <number> <$(IFS='|'; printf '%s' "${owners[*]}")> | mark <number> --closed"
+added=("${owners[@]}" "${stops[@]}")
+usage="mark: usage: mark <number> <$(IFS='|'; printf '%s' "${steps[*]}")> [--try|--untry] | mark <number> <$(IFS='|'; printf '%s' "${added[*]}")> | mark <number> --closed"
 
 number=${1:-}
 label=${2:-}
@@ -38,7 +45,7 @@ refused() {
 [[ $number =~ ^[0-9]+$ ]] || refused
 if [[ " ${states[*]} " == *" $label "* ]]; then
   (($# == 2)) || [[ $# -eq 3 && ($count == --try || $count == --untry) ]] || refused
-elif [[ " ${parked[*]} ${owners[*]} --closed " == *" $label "* ]]; then
+elif [[ " ${parked[*]} ${added[*]} --closed " == *" $label "* ]]; then
   (($# == 2)) || refused
 else
   refused
@@ -83,9 +90,9 @@ read_labels "$number"
 target=()
 if [[ $label == --closed ]]; then
   apply "$number"
-  printf 'mark: #%s is closed, so it keeps only its kind\n' "$number"
+  printf 'mark: #%s is closed, so it keeps only its kind and held labels\n' "$number"
   exit 0
-elif [[ " ${owners[*]} " == *" $label "* ]]; then
+elif [[ " ${added[*]} " == *" $label "* ]]; then
   for name in "${held[@]}"; do
     machine "$name" && [[ $name != "$label" ]] && target+=("$name")
   done

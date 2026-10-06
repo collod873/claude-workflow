@@ -72,7 +72,7 @@ _Avoid_: precondition, validation, check
 **Builder**:
 The one agent that builds a ticket, and owns it from that build until it merges, one session across
 every red run. It fixes the code, ticket or machine, splits the ticket, or closes it unbuilt; when it
-stops, it marks `needs-human`.
+stops, it marks `stuck`.
 _Avoid_: fixer, mechanic, fresh eyes, repair agent
 
 ### The work
@@ -104,7 +104,7 @@ _Avoid_: wave summary, status update, progress report
 **Done check**:
 The stage that tries each of a spec's "I'll know it works when I can ___" sentences on the running
 system once nothing is left to slice, and closes the spec only when every one held. A first miss
-gets the spec's one fix wave; a second marks the spec `needs-human`. A sentence it puts to the
+gets the spec's one fix wave; a second marks the spec `stuck`. A sentence it puts to the
 owner waits for his reply on the spec, which runs it again. It may not give a sentence
 `unexercised`; one it gives anyway ends the run red, posting and closing nothing.
 _Avoid_: audit, acceptance test, verification
@@ -112,7 +112,7 @@ _Avoid_: audit, acceptance test, verification
 **Wave check**:
 The done check at a wave's end, trying only the sentences that wave should have moved. It skips
 the ones only the owner can try and closes nothing. A sentence that misses at a wave check and
-again at the next wave check or at the end marks the spec `needs-human`. A sentence nothing on
+again at the next wave check or at the end marks the spec `stuck`. A sentence nothing on
 main could have shown yet it gives `unexercised`, listed as **Not tried yet** with what would have
 to happen for it to be seen; that is never a miss, and the next wave check tries it again.
 _Avoid_: wave review, checkpoint, interim check
@@ -137,7 +137,24 @@ _Avoid_: phase, pass, step, job
 
 **Stage opening**:
 How a stage starts on its issue, in `src/stage.ts` beside the hire: it reads the issue once, ends red
-at `unread` when it cannot, ends green in one line on `needs-human` with no label changed and no
-model hired, then marks the stage's state, makes the log directory and hires. The slicer, the
+at `unread` when it cannot, ends green in one line on `paused` or `stuck` with no label changed and
+no model hired, then marks the stage's state, makes the log directory and hires. The slicer, the
 researcher and the done check open through it.
 _Avoid_: preamble, setup, bootstrap
+
+**Paused**:
+An issue the owner labelled `paused`, a `held` label the machine never adds or removes. Each stage
+reads it when it opens and stands down, so a run already going finishes and none starts after it;
+a pause on a spec holds the spec alone, not its wave's tickets.
+_Avoid_: on hold, frozen, blocked
+
+**Stuck**:
+An issue the machine labelled `stuck`, its last resort: a red run or a stage that cannot go on
+marks it and calls the owner. Like `paused` it is `held`, so every stage stands down on it, and the
+machine adds it but never removes it.
+_Avoid_: blocked, failed
+
+**Resume**:
+Setting a held issue going again. Taking `waiting` off a ticket resumes its build; taking `paused`
+or `stuck` off fires no stage yet, so the owner re-runs the run that stood down.
+_Avoid_: unpause, restart, unblock

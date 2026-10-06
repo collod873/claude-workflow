@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { NEEDS_HUMAN } from "./post.ts";
 import { doneChecking } from "./done-checker.part.ts";
 import { researching } from "./researcher.part.ts";
 import { slicing } from "./slicer.part.ts";
+import { HELD } from "./spelled.ts";
 
 const ISSUE_UNREAD = "[[ $1 == issue && $2 == view ]] && { printf 'HTTP 502: Bad Gateway\\n' >&2; exit 1; }";
 
@@ -21,11 +21,13 @@ describe.each(STAGES)("bin/$stage opens through the one stage opening (#1111)", 
     expect(opened.hired()).toEqual([]);
   });
 
-  it("ends green in one line on an issue marked needs-human, and changes no label and hires no model", () => {
-    const opened = open([...kind, NEEDS_HUMAN], "");
+  for (const held of HELD) {
+    it(`ends green in one line on an issue marked ${held}, and changes no label and hires no model (#1166)`, () => {
+      const opened = open([...kind, held], "");
 
-    expect(opened.run()).toEqual({ status: 0, stdout: `${stage}: #${issue} is marked ${NEEDS_HUMAN}, so no label changed and no model was hired\n`, stderr: "" });
-    expect(opened.marked()).toEqual([]);
-    expect(opened.hired()).toEqual([]);
-  });
+      expect(opened.run()).toEqual({ status: 0, stdout: `${stage}: #${issue} is marked ${held}, so no label changed and no model was hired\n`, stderr: "" });
+      expect(opened.marked()).toEqual([]);
+      expect(opened.hired()).toEqual([]);
+    });
+  }
 });

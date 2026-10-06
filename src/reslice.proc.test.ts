@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { parse } from "yaml";
 import { describe, expect, it } from "vitest";
 import { heard, holds, type Said, starts, wellFormedSpec, type WorkflowStep } from "./scenarios.ts";
-import { OWNER } from "./spelled.ts";
+import { HELD, OWNER } from "./spelled.ts";
 import { closing } from "./closer.part.ts";
 import { slicing } from "./slicer.part.ts";
 import { doneChecking, specWith } from "./done-checker.part.ts";
@@ -140,11 +140,13 @@ describe("bin/slice on a spec with tickets under it slices its next wave against
     expect(sliced.hired()).toEqual([]);
   });
 
-  it("slices nothing on a spec marked needs-human, since the job stopped for the owner", () => {
-    const sliced = reslicing({ labels: ["spec", "needs-human"] });
+  it("slices nothing on a spec marked paused or stuck, since the job stopped for the owner (#1166)", () => {
+    for (const held of HELD) {
+      const sliced = reslicing({ labels: ["spec", held] });
 
-    expect(sliced.run()).toEqual({ status: 0, stdout: "slice: #968 is marked needs-human, so no label changed and no model was hired\n", stderr: "" });
-    expect(sliced.hired()).toEqual([]);
+      expect(sliced.run()).toEqual({ status: 0, stdout: `slice: #968 is marked ${held}, so no label changed and no model was hired\n`, stderr: "" });
+      expect(sliced.hired()).toEqual([]);
+    }
   });
 });
 
@@ -395,14 +397,16 @@ describe("bin/slice marks a spec's next wave and its fix wave as they are sliced
     expect(sliced.marked()).toEqual(["968 slicing", "968 checking"]);
   });
 
-  it("marks nothing while the wave is not over, or on a spec marked needs-human", () => {
+  it("marks nothing while the wave is not over, or on a spec marked paused or stuck", () => {
     const open = reslicing({ tickets: [ticket(1001), ticket(1002, "open")] });
-    const stopped = reslicing({ labels: ["spec", "needs-human"] });
 
     expect(open.run().status).toBe(0);
     expect(open.marked()).toEqual([]);
-    expect(stopped.run().status).toBe(0);
-    expect(stopped.marked()).toEqual([]);
+    for (const held of HELD) {
+      const stopped = reslicing({ labels: ["spec", held] });
+      expect(stopped.run().status, held).toBe(0);
+      expect(stopped.marked(), held).toEqual([]);
+    }
   });
 
   it("marks the fix wave's slicing with --try, so the spec carries try-2 from then on", () => {

@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { CLOSE_RUN, closing } from "./closer.part.ts";
+import { HELD, PAUSED, STUCK } from "./spelled.ts";
 
 const REPO = join(import.meta.dirname, "..");
 
@@ -303,19 +304,22 @@ describe("bin/close wakes the ticket's builder directly, instead of reopening it
 });
 
 describe("bin/close wakes no builder for a conflict on a ticket the owner was called for (#1058)", () => {
-  it("leaves the failed branch update on the PR but starts no builder when the ticket carries needs-human", () => {
-    const { calls, run } = closing({
-      ticket: "819",
-      openPrs: [{ number: "912", ticket: "834", needsHuman: true, refused: "GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts." }],
+  for (const held of HELD) {
+    it(`leaves the failed branch update on the PR but starts no builder and marks nothing when the ticket carries ${held} (#1166)`, () => {
+      const { calls, run } = closing({
+        ticket: "819",
+        openPrs: [{ number: "912", ticket: "834", held, refused: "GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts." }],
+      });
+
+      const result = run();
+
+      expect(result.status).toBe(0);
+      expect(calls().some((call) => call.startsWith("pr\ncomment\n912\n"))).toBe(true);
+      expect(calls().some((call) => call.startsWith("workflow\nrun\nfix.yml"))).toBe(false);
+      expect(calls().filter((call) => /^api\n-X\n(POST|DELETE)\nrepos\/\{owner\}\/\{repo\}\/issues\/834\//.test(call))).toEqual([]);
+      expect(result.stdout).toContain(`#834 is labelled ${held}`);
     });
-
-    const result = run();
-
-    expect(result.status).toBe(0);
-    expect(calls().some((call) => call.startsWith("pr\ncomment\n912\n"))).toBe(true);
-    expect(calls().some((call) => call.startsWith("workflow\nrun\nfix.yml"))).toBe(false);
-    expect(result.stdout).toContain("#834 is labelled needs-human");
-  });
+  }
 });
 
 describe("bin/close counts a ticket PR's collisions in its closing record: failed branch updates and re-reviews (#980)", () => {
@@ -680,7 +684,8 @@ describe("bin/close marks what the queue does to each ticket, so waiting its tur
         { number: "954", ticket: "874", labels: ["queued"] },
         { number: "955", ticket: "875", checks: "pending", labels: ["checking"] },
         { number: "956", ticket: "876", checks: "red", labels: ["checking"] },
-        { number: "957", ticket: "877", needsHuman: true },
+        { number: "957", ticket: "877", held: STUCK },
+        { number: "967", ticket: "887", held: PAUSED, labels: ["checking"] },
       ],
     });
 
@@ -691,6 +696,16 @@ describe("bin/close marks what the queue does to each ticket, so waiting its tur
     expect(touched(calls(), "875")).toEqual([]);
     expect(touched(calls(), "876")).toEqual([]);
     expect(touched(calls(), "877")).toEqual([]);
+    expect(touched(calls(), "887")).toEqual([]);
+  });
+
+  it("marks no landing on a held ticket it brings up to date cleanly (#1166)", () => {
+    for (const held of HELD) {
+      const { calls, run } = closing({ ticket: "819", openPrs: [{ number: "951", ticket: "871", held, labels: ["queued"] }] });
+
+      expect(run().status, held).toBe(0);
+      expect(touched(calls(), "871").filter((call) => call.startsWith("api\n-X\n")), held).toEqual([]);
+    }
   });
 
   it("marks no landing while the PR the queue waits for is still being checked, and marks queued every green one behind it", () => {
@@ -728,12 +743,14 @@ describe("bin/close marks what the queue does to each ticket, so waiting its tur
     expect(calls().some((call) => call.includes("issues/884/labels/landing") && tokens()[calls().indexOf(call)] !== "quiet")).toBe(false);
   });
 
-  it("leaves landing beside needs-human as it is, since a state mark would clear needs-human (#1093)", () => {
-    const { calls, run } = closing({ ticket: "819", afterCheck: true, openPrs: [{ number: "965", ticket: "885", checks: "red", needsHuman: true, labels: ["landing"] }] });
+  it("leaves landing beside a held label as it is, so a paused or stuck ticket's state stays where it stopped (#1093, #1166)", () => {
+    for (const held of HELD) {
+      const { calls, run } = closing({ ticket: "819", afterCheck: true, openPrs: [{ number: "965", ticket: "885", checks: "red", held, labels: ["landing"] }] });
 
-    expect(run().status).toBe(0);
-    expect(touched(calls(), "885")).toEqual([]);
-    expect(touched(calls(), "965")).toEqual([]);
+      expect(run().status, held).toBe(0);
+      expect(touched(calls(), "885"), held).toEqual([]);
+      expect(touched(calls(), "965"), held).toEqual([]);
+    }
   });
 
   it("marks queued every green ticket behind the one it brings up to date, and none whose conflict is already reported", () => {
@@ -813,8 +830,8 @@ describe("bin/close writes each mark on the ticket's open PR too, and says in it
 describe("bin/close stops red at the first read it cannot make, and marks nothing after it (#1099)", () => {
   const marked = (calls: string[]) => calls.filter((call) => /^api\n-X\n(POST|DELETE)\n/.test(call));
 
-  it("leaves needs-human on a ticket whose labels cannot be read, naming the label read and the ticket", () => {
-    const { calls, run } = closing({ ticket: "819", afterCheck: true, openPrs: [{ number: "975", ticket: "895", needsHuman: true, labelsUnreadable: true }] });
+  it("leaves stuck on a ticket whose labels cannot be read, naming the label read and the ticket", () => {
+    const { calls, run } = closing({ ticket: "819", afterCheck: true, openPrs: [{ number: "975", ticket: "895", held: STUCK, labelsUnreadable: true }] });
 
     const { status, stderr } = run();
 
