@@ -394,12 +394,14 @@ export function saving({
   alreadyOpen = false,
   autoMergeRefused = false,
   autoMergeOff = false,
+  held = "",
   why = CONSENT_ONLY_WHY,
 }: {
   remoteRefuses?: string;
   alreadyOpen?: boolean;
   autoMergeRefused?: boolean;
   autoMergeOff?: boolean;
+  held?: string;
   why?: string;
 } = {}) {
   const root = scratch("save-");
@@ -431,6 +433,7 @@ export function saving({
       ticketBody,
       "TICKET_BODY",
       "    ;;",
+      `  *"issue view"*"--json labels"*) printf 'ticket\\n%s\\n' '${held}' ;;`,
       "  *\"issue view\"*) printf 'Push the branch before anything can refuse it\\n' ;;",
       alreadyOpen ? "  *\"pr create\"*) exit 1 ;;" : `  *"pr create"*) printf '%s\\n' '${SAVED_PR}' ;;`,
       `  *"pr view"*) printf '%s\\n' '${SAVED_PR}' ;;`,

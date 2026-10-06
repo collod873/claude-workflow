@@ -13,6 +13,10 @@ if ! prefix=$("${BASH_SOURCE[0]%/*}/spelled" TICKET_PREFIX 2>&1); then
   printf 'save: the branch prefix could not be read: %s\n' "$(printf '%s' "$prefix" | head -n 1 | cut -c 1-120)" >&2
   exit 1
 fi
+if ! paused=$("${BASH_SOURCE[0]%/*}/spelled" PAUSED 2>&1) || ! stuck=$("${BASH_SOURCE[0]%/*}/spelled" STUCK 2>&1); then
+  printf 'save: the held labels could not be read: %s\n' "$(printf '%s' "${stuck:-$paused}" | head -n 1 | cut -c 1-120)" >&2
+  exit 1
+fi
 src="$(cd "${BASH_SOURCE[0]%/*}/../src" && pwd)"
 top=$(git rev-parse --show-toplevel) || exit 1
 cd "$top" || exit 1
@@ -58,6 +62,8 @@ opened() {
     [[ -n $said ]] || return 1
     url=$said
   fi
+  call gh issue view "$ticket" --json labels --jq '.labels[].name' || return 1
+  held=$(printf '%s\n' "$said" | grep -m 1 -x -e "$paused" -e "$stuck") && return 0
   call gh pr merge "$branch" --auto --merge --match-head-commit "$head"
 }
 
@@ -71,5 +77,9 @@ if ! opened; then
   stopped "Save: the PR is not open with auto-merge on"
   printf 'save: #%s pushed to %s, but its PR is not open with auto-merge on; log %s\n' "$ticket" "$branch" "$shown" >&2
   exit 1
+fi
+if [[ -n ${held:-} ]]; then
+  printf 'save: #%s pushed to %s, %s, but its auto-merge stays off while #%s is labelled %s\n' "$ticket" "$branch" "$url" "$ticket" "$held"
+  exit 0
 fi
 printf 'save: #%s pushed to %s, %s merges once its checks pass\n' "$ticket" "$branch" "$url"
