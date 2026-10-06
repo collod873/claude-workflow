@@ -8,7 +8,7 @@ import { BUILDING, SLICING, SPEC } from "./spelled.ts";
 import { opened, type Spent } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { missedIn, WAVE_CHECK_HEADING } from "./done-checker.ts";
-import { DIFF_CAP, ended, FOUND_CAP, movesMarker, underSpec, waveDiffs, waveFound, waveHeading, waveNotes } from "./wave.ts";
+import { DIFF_CAP, ended, FOUND_CAP, resumed, movesMarker, underSpec, waveDiffs, waveFound, waveHeading, waveNotes } from "./wave.ts";
 import { DONE_SENTENCES, filedOutOfScope, filedPassages, type Passage, quoted, restored, sectionsDropped, sentences, SPEC_CAP, specRefusals, ticketRefusals } from "./ticket-shape.ts";
 
 const stoppedAt = stopsOf({
@@ -295,5 +295,5 @@ if (import.meta.main) {
   const [first, second, numbers] = process.argv.slice(2);
   if (first === undefined) throw new Error("no issue number in the arguments");
   const fix = second === "--fix" ? (numbers ?? "").split(/[ ,]+/).filter((number) => number !== "").map(Number) : undefined;
-  process.exit(first === "--ended" && second !== undefined ? ended(second) : exitFor(readOrStop("slice", () => sliced(first, fix))));
+  process.exit(first === "--ended" && second !== undefined ? ended(second) : first === "--resumed" && second !== undefined ? resumed(second) : exitFor(readOrStop("slice", () => sliced(first, fix))));
 }

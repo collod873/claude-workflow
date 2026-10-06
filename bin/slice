@@ -1,14 +1,14 @@
 #!/bin/bash
 set -uo pipefail
 
-usage="slice: usage: slice <issue number> [--fix <sentence numbers>] | slice --ended <closed issue number>"
+usage="slice: usage: slice <issue number> [--fix <sentence numbers>] | slice --ended <closed issue number> | slice --resumed <spec number>"
 
 if [[ ${1:-} == "--help" ]]; then
   printf '%s\n' "$usage"
   exit 0
 fi
 
-[[ ${1:-} == --ended ]] && shift && ended=--ended
+[[ ${1:-} == --ended || ${1:-} == --resumed ]] && ended=$1 && shift
 issue=${1:-}
 numbers="${*:3}"
 if [[ ! $issue =~ ^[0-9]+$ ]] || { (($# != 1)) && [[ -n ${ended:-} || ${2:-} != --fix || ! $numbers =~ ^[0-9]+([\ ,]+[0-9]+)*$ ]]; }; then

@@ -244,6 +244,154 @@ jobs:
           client-id: ${{ vars.CORE_APP_CLIENT_ID }}
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
 
+  resumed:
+    if: ${{ github.event_name == 'issues' && github.event.action == 'unlabeled' && github.event.sender.login == github.repository_owner }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_REPO: ${{ github.repository }}
+    outputs:
+      spec: ${{ steps.resumed.outputs.spec }}
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - id: machine
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/claude-workflow
+          ref: main
+          token: ${{ steps.app.outputs.token }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - id: labelled
+        run: |
+          spec=$(bin/spelled SPEC)
+          paused=$(bin/spelled PAUSED)
+          stuck=$(bin/spelled STUCK)
+          held=$(jq --arg SPEC "$spec" --arg PAUSED "$paused" --arg STUCK "$stuck" '(.label.name | IN($PAUSED, $STUCK)) and any(.issue.labels[]?.name; . == $SPEC) and (any(.issue.labels[]?.name; IN($PAUSED, $STUCK)) | not)' "$GITHUB_EVENT_PATH")
+          printf 'held=%s\n' "$held" | tee -a "$GITHUB_OUTPUT"
+
+      - id: resumed
+        if: steps.labelled.outputs.held == 'true'
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: bin/slice --resumed "$ISSUE" >>"$GITHUB_OUTPUT"
+
+  resume:
+    needs: resumed
+    if: ${{ needs.resumed.outputs.spec != '' }}
+    concurrency:
+      group: reslice-${{ needs.resumed.outputs.spec }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 160
+    env:
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - id: machine
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/claude-workflow
+          ref: main
+          token: ${{ steps.app.outputs.token }}
+          persist-credentials: false
+
+      - id: checkout
+        uses: actions/checkout@v4
+        with:
+          path: tree
+          ref: main
+          fetch-depth: 0
+          token: ${{ steps.app.outputs.token }}
+          persist-credentials: false
+
+      - id: setup-node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - id: pinned
+        uses: ./.github/actions/pinned
+
+      - id: npm-ci
+        run: npm ci
+
+      - id: logs
+        run: |
+          mkdir -p tree/.git/machine-logs
+          ln -s "$PWD/tree/.git/machine-logs" .git/machine-logs
+
+      - id: stage
+        uses: ./.github/actions/stage
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+
+      - id: resumed
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: bin/slice --resumed "$ISSUE" >>"$GITHUB_OUTPUT"
+
+      - id: wave-check
+        if: steps.resumed.outputs.spec != '' && steps.resumed.outputs.moves != ''
+        timeout-minutes: 50
+        working-directory: tree
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          STAGE_MINUTES: 45
+          CALLED_FROM: ${{ github.workflow_ref }}
+        run: |
+          tail --pid=$$ -n +1 -F .git/machine-logs/done-check-${{ steps.resumed.outputs.spec }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
+          "$GITHUB_WORKSPACE/bin/done-check" ${{ steps.resumed.outputs.spec }} --wave ${{ steps.resumed.outputs.moves }}
+
+      - id: reslice
+        if: steps.resumed.outputs.spec != ''
+        timeout-minutes: 100
+        working-directory: tree
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          STAGE_MINUTES: 45
+          CALLED_FROM: ${{ github.workflow_ref }}
+        run: |
+          tail --pid=$$ -q -n +1 -F .git/machine-logs/slice-${{ steps.resumed.outputs.spec }}.jsonl .git/machine-logs/done-check-${{ steps.resumed.outputs.spec }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
+          "$GITHUB_WORKSPACE/bin/slice" ${{ steps.resumed.outputs.spec }}
+
+      - if: ${{ (failure() || cancelled()) && steps.resumed.outputs.spec != '' }}
+        uses: ./.github/actions/call-owner
+        with:
+          issue: ${{ steps.resumed.outputs.spec }}
+          run: the wave check or reslice run
+          token: ${{ steps.app.outputs.token }}
+
+      - if: always()
+        timeout-minutes: 6
+        uses: ./.github/actions/stage-logs
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+
   research:
     if: ${{ github.event_name == 'issues' && github.event.action == 'opened' && github.event.sender.login == github.repository_owner }}
     runs-on: ubuntu-latest

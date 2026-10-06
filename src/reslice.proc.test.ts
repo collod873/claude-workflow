@@ -2,8 +2,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse } from "yaml";
 import { describe, expect, it } from "vitest";
-import { heard, holds, type Said, starts, wellFormedSpec, type WorkflowStep } from "./scenarios.ts";
-import { HELD, OWNER } from "./spelled.ts";
+import { heard, holds, type Said, starts, wellFormedSpec, workflowJobs, type WorkflowStep } from "./scenarios.ts";
+import { HELD, MACHINE, OWNER } from "./spelled.ts";
 import { closing } from "./closer.part.ts";
 import { slicing } from "./slicer.part.ts";
 import { doneChecking, specWith } from "./done-checker.part.ts";
@@ -71,6 +71,56 @@ describe("bin/slice --ended tells reslice.yml when a closed issue ends its spec'
       const { ran } = ended({ tickets: [ticket(1101), labelled] });
       expect(ran).toEqual({ status: 0, stdout: "", stderr: `slice: #1102 is a ${label}, so no wave ended\n` });
     }
+  });
+});
+
+function resumed({ tickets = [ticket(1101), ticket(1102)], labels = ["spec"], state = "open", open = [] as object[], said = [NOTE] } = {}) {
+  const spec = { ...SPEC_ISSUE, state, labels: labels.map((name) => ({ name })) };
+  const sliced = ended({ spec, tickets, open, said });
+  return { ...sliced, ran: sliced.run("--resumed", "968") };
+}
+
+describe("bin/slice --resumed tells the resume where a spec the owner took paused or stuck off stands, the way a wave's end does (#1175)", () => {
+  it("names the spec and the sentences its last note moves, when its wave closed during the pause and no wave check followed", () => {
+    const { ran, hired } = resumed();
+
+    expect(ran).toEqual({ status: 0, stdout: "spec=968\nmoves=1,3\n", stderr: "" });
+    expect(hired()).toEqual([]);
+  });
+
+  it("names the spec with no sentences to move when its wave was already checked, so it only slices", () => {
+    expect(resumed({ said: [NOTE, CHECKED] }).ran.stdout).toBe("spec=968\nmoves=\n");
+  });
+
+  it("names the spec with no sentences to move when its first slice was cut short before any ticket was filed", () => {
+    expect(resumed({ tickets: [], said: [] }).ran.stdout).toBe("spec=968\nmoves=\n");
+  });
+
+  it("names no spec while its wave is still open, since its last close starts the rest", () => {
+    const shut = resumed({ tickets: [ticket(1101, "open"), ticket(1102)] });
+    expect(shut.ran).toEqual({ status: 0, stdout: "", stderr: "slice: #968's wave is not over, #1101 is still open, so its last close resumes it\n" });
+
+    const followed = resumed({ open: [followUp(1201, 1101)] });
+    expect(followed.ran.stdout).toBe("");
+  });
+
+  it("names no spec while it still carries paused or stuck", () => {
+    for (const held of HELD) {
+      const { ran } = resumed({ labels: ["spec", held] });
+      expect(ran, held).toEqual({ status: 0, stdout: "", stderr: `slice: #968 is still marked ${held}, so nothing resumed\n` });
+    }
+  });
+
+  it("names no spec for an issue that is not a spec, or a spec that is closed", () => {
+    expect(resumed({ labels: ["ticket"] }).ran).toEqual({ status: 0, stdout: "", stderr: "slice: #968 is not a spec, so nothing resumed\n" });
+    expect(resumed({ state: "closed" }).ran).toEqual({ status: 0, stdout: "", stderr: "slice: #968 is not open, so nothing resumed\n" });
+  });
+
+  it("refuses --resumed with no spec number or with --fix", () => {
+    const sliced = slicing();
+    expect(sliced.run("--resumed").status).toBe(2);
+    expect(sliced.run("--resumed", "968", "--fix", "2").status).toBe(2);
+    expect(sliced.calls()).toEqual([]);
   });
 });
 
@@ -335,7 +385,7 @@ describe("reslice.yml runs the wave check, then the re-slice, when a closed issu
   it("starts on every closed issue but a spec or a note, and finds whether it ended a wave spending no model", async () => {
     const ended = job("ended");
 
-    expect(RESLICE.on.issues?.types).toEqual(["closed"]);
+    expect(RESLICE.on.issues?.types).toEqual(["closed", "unlabeled"]);
     expect(await starts("reslice.yml", "ended", { labels: [], action: "closed" })).toBe(true);
     expect(await starts("reslice.yml", "ended", { labels: ["spec"], action: "closed" })).toBe(false);
     expect(await starts("reslice.yml", "ended", { labels: ["note"], action: "closed" })).toBe(false);
@@ -379,6 +429,64 @@ describe("reslice.yml runs the wave check, then the re-slice, when a closed issu
     expect(holds(resliced?.if ?? "true", endedWith({ spec: "968", moves: "" }))).toBe(true);
     expect(holds(resliced?.if ?? "true", endedWith({ spec: "", moves: "" }))).toBe(false);
     for (const step of [waveCheck, resliced]) expect(step?.env?.GH_TOKEN).toBe("${{ steps.app.outputs.token }}");
+  });
+});
+
+const RESUMES = ["reslice.yml", "specs.yml"];
+const resumeOf = (file: string): Job => {
+  const found = (workflowJobs(file) as Record<string, Job>).resume;
+  if (found === undefined) throw new Error(`no resume job in ${file}`);
+  return found;
+};
+const said = (stdout: string) => ({ spec: "", moves: "", ...Object.fromEntries(stdout.split("\n").filter((line) => line !== "").map((line) => line.split("=") as [string, string])) });
+
+function resumedRuns(file: string, stdout: string): string[] {
+  const resume = resumeOf(file);
+  const outputs = said(stdout);
+  if (!holds(resume.if ?? "success()", { needs: { resumed: { result: "success", outputs } } })) return [];
+  const steps = { resumed: { outcome: "success", conclusion: "success", outputs } };
+  return resume.steps.flatMap(({ id, if: gated }) => (id !== undefined && ["wave-check", "reslice"].includes(id) && holds(gated ?? "success()", { steps }) ? [id] : []));
+}
+
+describe("taking paused or stuck off an open spec resumes it where it stands, with no run started by hand (#1175)", () => {
+  it.each(RESUMES)("%s reads where the spec stands on the owner taking paused or stuck off a spec that then holds neither, and on nothing else", async (file) => {
+    for (const held of HELD) {
+      const other = HELD.find((one) => one !== held) ?? "";
+      expect(await starts(file, "resumed", { action: "unlabeled", label: held, labels: ["spec"] }), held).toBe(true);
+      expect(await starts(file, "resumed", { action: "unlabeled", label: held, labels: ["spec", other] }), `${held} with ${other}`).toBe(false);
+      expect(await starts(file, "resumed", { action: "unlabeled", label: held, labels: ["ticket"] }), `${held} on a ticket`).toBe(false);
+      expect(await starts(file, "resumed", { action: "unlabeled", label: held, labels: ["spec"], sender: MACHINE }), `${held} by the machine`).toBe(false);
+    }
+    expect(await starts(file, "resumed", { action: "unlabeled", label: "waiting", labels: ["spec"] })).toBe(false);
+    expect(await starts(file, "resumed", { action: "closed", labels: ["spec"] })).toBe(false);
+  });
+
+  it.each(RESUMES)("%s runs the wave check and then the slice of a spec whose wave closed during the pause, only the slice of one already checked, and nothing while its wave is open", (file) => {
+    for (const held of HELD) {
+      expect(resumedRuns(file, resumed().ran.stdout), held).toEqual(["wave-check", "reslice"]);
+      expect(resumedRuns(file, resumed({ said: [NOTE, CHECKED] }).ran.stdout), held).toEqual(["reslice"]);
+      expect(resumedRuns(file, resumed({ tickets: [ticket(1101, "open"), ticket(1102)] }).ran.stdout), held).toEqual([]);
+    }
+  });
+
+  it.each(RESUMES)("%s resumes one spec at a time beside its reslice, reading again where it stands, and calls the owner when it ends red", (file) => {
+    const resume = resumeOf(file);
+    const { steps } = resume;
+    const step = (id: string) => steps.find((one) => one.id === id);
+
+    expect(resume.needs).toBe("resumed");
+    expect(resume.concurrency).toEqual({ group: "reslice-${{ needs.resumed.outputs.spec }}", "cancel-in-progress": false });
+    expect(step("resumed")?.run).toBe('bin/slice --resumed "$ISSUE" >>"$GITHUB_OUTPUT"');
+    expect(step("wave-check")?.run).toMatch(/bin\/done-check"? \$\{\{ steps\.resumed\.outputs\.spec \}\} --wave \$\{\{ steps\.resumed\.outputs\.moves \}\}/);
+    expect(step("reslice")?.run).toMatch(/bin\/slice"? \$\{\{ steps\.resumed\.outputs\.spec \}\}/);
+    expect(stepAt(steps, "resumed")).toBeLessThan(stepAt(steps, "wave-check"));
+    expect(stepAt(steps, "wave-check")).toBeLessThan(stepAt(steps, "reslice"));
+    expect(steps.find((one) => one.uses === "./.github/actions/call-owner")?.with?.issue).toBe("${{ steps.resumed.outputs.spec }}");
+  });
+
+  it("leaves reslice.yml's wave end to closed issues and the closer's dispatch, never a label taken off", async () => {
+    expect(RESLICE.on.issues?.types).toContain("unlabeled");
+    expect(await starts("reslice.yml", "ended", { action: "unlabeled", label: "paused", labels: [] })).toBe(false);
   });
 });
 
