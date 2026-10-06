@@ -94,6 +94,16 @@ function lead(found: Found | undefined): string {
   return found.missed.length === 0 ? NEXT : `${NEXT} ${owed(found.missed)}`;
 }
 
+const SETTLED =
+  "Settle under `### Names the tickets share` in `## Implementation Decisions` each name two tickets both need, a label, a command or a key, in the words of the repo's `CONTEXT.md`, and no path, which code refuses there. Write each pick you made where the spec was silent where it belongs. `## Problem Statement` and `## Out of Scope` stay byte for byte: keep both under their headings, and code puts back the owner's bytes as filed.";
+
+function room(body: string): string {
+  const bytes = Buffer.byteLength(body);
+  const left = SPEC_CAP - bytes;
+  const standing = left >= 0 ? `${left} under` : `${-left} over`;
+  return `The spec is ${bytes} bytes, ${standing} the spec cap of ${SPEC_CAP}: a rewrite over the cap comes back to you, so make room by cutting before you add.`;
+}
+
 export function handedOn(title: string, body: string, found?: Found): string {
   const spec = capped(`# ${title}\n\n${body}`, SPEC_CAP);
   const read =
@@ -119,7 +129,7 @@ export function handedOn(title: string, body: string, found?: Found): string {
     sentences(spec).map(({ said }, at) => `${at + 1}. ${said}`).join("\n") || "(none)",
     ...read,
     "## Your answer",
-    "`spec`: the spec rewritten in full. Settle under `### Names the tickets share` in `## Implementation Decisions` each name two tickets both need, a label, a command or a key, in the words of the repo's `CONTEXT.md`, and no path, which code refuses there. Write each pick you made where the spec was silent where it belongs. `## Problem Statement` and `## Out of Scope` stay byte for byte: keep both under their headings, and code puts back the owner's bytes as filed.",
+    `\`spec\`: the spec rewritten in full. ${room(body)} ${SETTLED}`,
     `\`tickets\`: the ${found === undefined ? "first" : found.fix ? "fix" : "next"} wave, the fewest tickets that each fit the builder's brief cap of ${TICKET_CAP} bytes, all building at once beside each other. First find which parts each piece touches before you group them: one ticket unless two pieces touch different parts and neither needs the other's code. \`title\`; \`passages\`, the numbers of the Problem Statement passages its \`## Why\` quotes, which code copies in; \`why\`, what this ticket is for in the spec, which follows the quote; \`done\`, ${DONE_SENTENCES}. Code adds the spec's Out of Scope to each. A ticket over the cap comes back to you to split.${last}`,
     NOTED,
     "",
