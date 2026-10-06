@@ -29,6 +29,7 @@
     },
     "test": {
       "run": "node_modules/.bin/vitest run --config vitest.config.ts",
+      "settings": true,
       "why": "The whole suite, which drives real processes and takes minutes, so it runs in the full check only."
     },
     "prompts": {
