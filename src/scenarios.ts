@@ -152,6 +152,7 @@ export function holds(
     fork = false,
     event = "issues",
     conclusion = "",
+    own = false,
   }: {
     labels?: string[];
     steps?: Record<string, StepOutcome>;
@@ -166,12 +167,15 @@ export function holds(
     fork?: boolean;
     event?: string;
     conclusion?: string;
+    own?: boolean;
   },
 ): boolean {
   const bare = condition.replace(/^\s*\$\{\{|\}\}\s*$/g, "");
   const source = (/\b(success|failure|always|cancelled)\(\)/.test(bare) ? bare : `success() && (${bare})`)
     .replace(/github\.event_name/g, JSON.stringify(event))
     .replace(/github\.event\.workflow_run\.conclusion/g, JSON.stringify(conclusion))
+    .replace(/github\.event\.workflow_run\.name\s*==\s*github\.workflow\b/g, JSON.stringify(own))
+    .replace(/github\.event\.workflow_run\.name\s*!=\s*github\.workflow\b/g, JSON.stringify(!own))
     .replace(/github\.event\.workflow_run\.head_repository\.full_name\s*==\s*github\.repository\b/g, JSON.stringify(!fork))
     .replace(/github\.event\.action/g, JSON.stringify(action))
     .replace(/github\.event\.label\.name/g, JSON.stringify(label))

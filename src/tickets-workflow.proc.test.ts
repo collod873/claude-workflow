@@ -29,6 +29,7 @@ interface Fired {
   sender?: string;
   conclusion?: string;
   fork?: boolean;
+  own?: boolean;
   red?: string[];
   outputs?: Record<string, Record<string, string>>;
 }
@@ -83,6 +84,18 @@ describe("a repo's tickets build through one caller file that holds only trigger
     expect(jobsRun({ event: "workflow_run", action: "completed", conclusion: "failure", outputs: { which: { ticket: "" } } })).toEqual(["which", "close"]);
     expect(jobsRun({ event: "issues", action: "opened", sender: OWNER, red: ["build"], outputs: named })).toEqual(["build", "which", "fix"]);
     expect(jobsRun({ event: "workflow_dispatch", action: "", outputs: named })).toEqual(["which", "fix"]);
+  });
+
+  it("hears its own runs complete, and only re-runs a red one once or calls the owner on it, handing nothing back and landing nothing (#1178)", () => {
+    const named = { which: { ticket: "828" } };
+    const rerun = workflowJobs("tickets.yml").rerun?.steps.find(({ run }) => (run ?? "").includes("bin/rerun"));
+
+    expect((caller().on.workflow_run as { workflows: string[] }).workflows).toContain(caller().name);
+    for (const conclusion of ["failure", "cancelled", "timed_out"]) expect(jobsRun({ event: "workflow_run", action: "completed", conclusion, own: true, outputs: named }), conclusion).toEqual(["rerun"]);
+    for (const conclusion of ["success", "skipped"]) expect(jobsRun({ event: "workflow_run", action: "completed", conclusion, own: true }), conclusion).toEqual([]);
+    expect(jobsRun({ event: "workflow_run", action: "completed", conclusion: "cancelled", outputs: named })).toEqual(["close"]);
+    expect(rerun?.run).toBe('bin/rerun "$RUN" "$ATTEMPT"');
+    expect(rerun?.env).toMatchObject({ RUN: "${{ github.event.workflow_run.id }}", ATTEMPT: "${{ github.event.workflow_run.run_attempt }}" });
   });
 
   it("fires only what the caller file declares, so a trigger dropped from it fails here", () => {

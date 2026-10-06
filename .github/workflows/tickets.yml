@@ -169,7 +169,7 @@ jobs:
 
   which:
     needs: build
-    if: "${{ always() && (github.event_name == 'workflow_dispatch' || needs.build.result == 'failure' || (github.event_name == 'workflow_run' && (github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'timed_out') && github.event.workflow_run.head_repository.full_name == github.repository)) }}"
+    if: "${{ always() && (github.event_name == 'workflow_dispatch' || needs.build.result == 'failure' || (github.event_name == 'workflow_run' && github.event.workflow_run.name != github.workflow && (github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'timed_out') && github.event.workflow_run.head_repository.full_name == github.repository)) }}"
     runs-on: ubuntu-latest
     timeout-minutes: 3
     env:
@@ -353,8 +353,40 @@ jobs:
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
           artifact: fix-logs
 
+  rerun:
+    if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.name == github.workflow && (github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'cancelled' || github.event.workflow_run.conclusion == 'timed_out') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - id: machine
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/claude-workflow
+          ref: main
+          token: ${{ steps.app.outputs.token }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          RUN: ${{ github.event.workflow_run.id }}
+          ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+        run: bin/rerun "$RUN" "$ATTEMPT"
+
   close:
-    if: ${{ github.event_name == 'push' || github.event_name == 'pull_request_target' || github.event_name == 'workflow_run' || (github.event_name == 'issues' && github.event.action == 'closed') }}
+    if: ${{ github.event_name == 'push' || github.event_name == 'pull_request_target' || (github.event_name == 'workflow_run' && github.event.workflow_run.name != github.workflow) || (github.event_name == 'issues' && github.event.action == 'closed') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:

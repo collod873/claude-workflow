@@ -1,5 +1,5 @@
 name: Call owner
-description: Marks an issue with the label spelled STUCK and comments to the owner with the link of the run that ended red, unless it already carries the label spelled PAUSED or STUCK
+description: Leaves a notice titled with the text spelled OWNER_CALL naming the issue and the run that stopped, which bin/rerun reads once the run completes to re-run it once or mark the issue stuck, unless the issue already carries the label spelled PAUSED or STUCK
 
 inputs:
   issue:
@@ -22,5 +22,4 @@ runs:
         paused=$(bin/spelled PAUSED)
         stop=$(bin/spelled STUCK)
         gh issue view "$ISSUE" --json labels --jq '.labels[].name' | grep -q -x -e "$paused" -e "$stop" && exit 0
-        bin/mark "$ISSUE" "$stop" || gh issue edit "$ISSUE" --add-label "$stop"
-        gh issue comment "$ISSUE" --body "@${{ github.repository_owner }} $RAN ended red before it could finish, see the run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        printf '::notice title=%s::%s %s\n' "$(bin/spelled OWNER_CALL)" "$ISSUE" "$RAN"

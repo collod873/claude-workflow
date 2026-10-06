@@ -87,7 +87,7 @@ function appToken(clientId: string, key: string): string {
 
 function callerFor(ci: string): string {
   const caller = parseDocument(CALLER_TEXT);
-  const named = caller.createNode([ci], { flow: true });
+  const named = caller.createNode([ci, caller.get("name")], { flow: true });
   caller.setIn(["on", "workflow_run", "workflows"], named);
   return caller.toString({ flowCollectionPadding: false });
 }
