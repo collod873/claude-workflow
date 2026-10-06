@@ -41,11 +41,11 @@ interface Collisions {
 }
 
 const failedBranchUpdate = (pr: string) => `PR #${pr} could not be brought up to date with main:`;
-const branchUpdate = (pr: string) => `PR #${pr} brought up to date with main by`;
+export const branchUpdate = (pr: string) => `PR #${pr} brought up to date with main by`;
 const FAILED_BRANCH_UPDATE = new RegExp(`^${failedBranchUpdate("\\d+")}`);
 const BRANCH_UPDATE = new RegExp(`^${branchUpdate("\\d+")} `);
 const { GITHUB_SERVER_URL: server, GITHUB_REPOSITORY: repository, GITHUB_RUN_ID: runId } = process.env;
-const thisRun = server && repository && runId ? `${server}/${repository}/actions/runs/${runId}` : "a run outside Actions";
+export const thisRun = server && repository && runId ? `${server}/${repository}/actions/runs/${runId}` : "a run outside Actions";
 
 function collisions(comments: string[]): Collisions {
   const branchUpdates = comments.filter((comment) => BRANCH_UPDATE.test(comment)).length;
@@ -202,8 +202,10 @@ function resliced(ticket: string): Stop | undefined {
 
 const headLine = (oid: string) => `Head: \`${oid}\``;
 
+export const CONFLICT = /conflict/i;
+
 const conflicts = (pr: QueuedPr, reason: string) =>
-  /conflict/i.test(reason) || !answered(git(["merge-tree", "--write-tree", "--quiet", "origin/main", `origin/${pr.headRefName}`]), `whether PR #${pr.number} conflicts with main could not be read, ${NOTHING_MARKED}`);
+  CONFLICT.test(reason) || !answered(git(["merge-tree", "--write-tree", "--quiet", "origin/main", `origin/${pr.headRefName}`]), `whether PR #${pr.number} conflicts with main could not be read, ${NOTHING_MARKED}`);
 
 function conflictReportedAtHead(pr: QueuedPr): boolean {
   return commentsRead(pr.number, `the comments on PR #${pr.number} could not be read, ${NOTHING_MARKED}`, gh).some((said) => FAILED_BRANCH_UPDATE.test(said) && said.includes(headLine(pr.headRefOid)) && conflicts(pr, said));
