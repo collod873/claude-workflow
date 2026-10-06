@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { cloned, copyMark, git, holds, labelledAs, scratch, script, starts as startsJob, type IssueEvent, type StepOutcome } from "./scenarios.ts";
-import { HELD } from "./spelled.ts";
+import { HELD, OWNER_CALL } from "./spelled.ts";
 
 const REPO = join(import.meta.dirname, "..");
 const WORKFLOWS = join(REPO, ".github", "workflows");
@@ -563,7 +563,7 @@ const CALLERS = [
 ];
 const callsOwner = (step: Step) => step.uses === "./.github/actions/call-owner";
 
-describe("a fix, research, slice, reslice or done check run that ends red marks its issue stuck and calls the owner through one shared step, so it leaves a trace (#1057, #1067)", () => {
+describe("a fix, research, slice, reslice or done check run that ends red leaves its issue and run through one shared step, which bin/rerun reads once the run completes (#1057, #1067, #1178)", () => {
   const [owned] = (parse(readFileSync(CALLER, "utf8")) as { runs: { steps: Step[] } }).runs.steps;
   const calls = (labels: string, run: string) => {
     const root = scratch("called-");
@@ -572,24 +572,25 @@ describe("a fix, research, slice, reslice or done check run that ends red marks 
     script(join(root, "stub", "gh"), `printf '%s\\n' "$*" >>"${called}"\n[[ $2 == view ]] && printf '%s\\n' ${labels}\nexit 0\n`);
     const ran = ranStep(owned ?? {}, root, { PATH: `${join(root, "stub")}:${process.env.PATH}`, ISSUE: "9", RAN: run });
     expect(ran.status, ran.stderr).toBe(0);
-    return existsSync(called) ? readFileSync(called, "utf8") : "";
+    return { stdout: ran.stdout, gh: existsSync(called) ? readFileSync(called, "utf8") : "" };
   };
 
-  it("the shared step marks the issue and comments to the owner with the run's link, naming the run that ended red", () => {
+  it("the shared step leaves a notice titled owner call naming the issue and the run that stopped, and marks nothing and posts nothing itself", () => {
     expect(owned?.env?.ISSUE).toBe("${{ inputs.issue }}");
     expect(owned?.env?.RAN).toBe("${{ inputs.run }}");
-    expect(calls("spec", "the slice run")).toContain("api -X POST repos/{owner}/{repo}/issues/9/labels -f labels[]=stuck\n");
-    expect(calls("spec", "the slice run")).toMatch(/issue comment 9 --body @owner the slice run ended red before it could finish, see the run: .*\/actions\/runs\/owner/);
+    const { stdout, gh } = calls("spec", "the slice run");
+    expect(stdout).toBe(`::notice title=${OWNER_CALL}::9 the slice run\n`);
+    expect(gh).not.toMatch(/issue (edit|comment)|api -X POST/);
   });
 
-  it("the shared step does nothing when the issue already carries paused or stuck (#1166)", () => {
-    for (const held of HELD) expect(calls(`spec ${held}`, "the slice run"), held).not.toMatch(/issue (edit|comment)|api -X POST/);
+  it("the shared step leaves no notice when the issue already carries paused or stuck, so nothing re-runs or marks it (#1166)", () => {
+    for (const held of HELD) expect(calls(`spec ${held}`, "the slice run").stdout, held).toBe("");
   });
 
-  it("no workflow keeps its own copy of the owner call, which marks a held label or comments that a run ended", () => {
+  it("no workflow or shared step marks a held label or comments that a run ended, which only bin/rerun does", () => {
     const ownerCall = /bin\/mark \S+ ("\$(stop|stuck|paused)"|stuck|paused)|--add-label|issue comment .*ended/;
 
-    expect(readFileSync(CALLER, "utf8")).toMatch(ownerCall);
+    expect(readFileSync(CALLER, "utf8")).not.toMatch(ownerCall);
     for (const file of readdirSync(WORKFLOWS)) expect(readFileSync(join(WORKFLOWS, file), "utf8"), file).not.toMatch(ownerCall);
   });
 
@@ -655,20 +656,6 @@ describe("build.yml and closed.yml say in their logs when a mark fails, so a tic
     const { stderr } = ranStep(strip, cwd, { NUMBER: "9" });
 
     expect(stderr).toContain(`${refusal("--closed")}\n`);
-  });
-
-  it("passes on bin/mark's refusal from the shared owner call, and still labels and comments through gh", () => {
-    const [owned] = (parse(readFileSync(CALLER, "utf8")) as { runs: { steps: Step[] } }).runs.steps;
-    const cwd = refusing("called-refused-", "exit 0\n");
-    const called = join(cwd, "calls");
-    script(join(cwd, "stub", "gh"), `printf '%s\\n' "$*" >>"${called}"\n[[ $2 == view ]] && printf 'spec\\n'\nexit 0\n`);
-
-    const { status, stderr } = ranStep(owned ?? {}, cwd, { PATH: `${join(cwd, "stub")}:${process.env.PATH}`, ISSUE: "9", RAN: "the slice run" });
-
-    expect(status, stderr).toBe(0);
-    expect(stderr).toContain(`${refusal("stuck")}\n`);
-    expect(readFileSync(called, "utf8")).toContain("issue edit 9 --add-label stuck\n");
-    expect(readFileSync(called, "utf8")).toMatch(/issue comment 9 --body @owner the slice run ended red/);
   });
 });
 
