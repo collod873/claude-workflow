@@ -92,8 +92,11 @@ _Avoid_: splitter, decomposer, to-tickets, planner
 
 **Decisions record**:
 The one section of a spec the slicer writes, `## Decisions record` just before the sentences:
-`### Picks` and `### Shipped names`. It names no file path, and it is what gives way when the spec
-nears the spec cap; the owner's sections never do.
+`### Picks` and `### Shipped names`, each bullet starting `- **name**:`. It names no file path, and
+it is what gives way when the spec nears the spec cap; the owner's sections never do. Builders never
+read the spec, so tickets carry the entries they cite: code copies each cited bullet word for word
+under the ticket's `## Decisions it relies on`, and a ticket citing a pick ends its Done when asking
+for the pick's full description in `CONTEXT.md` or an ADR.
 _Avoid_: names section, spec rewrite, Names the tickets share
 
 **Pick**:

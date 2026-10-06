@@ -10,7 +10,9 @@ const SPEC = wellFormedSpec
   .replace(/## Problem Statement\n\n.*\n/, `## Problem Statement\n\n${ATTRIBUTION}\n\n${WAVES}\n\n${WATCHING}\n`)
   .replace("The slicer and the done check.", "- The done check.\n- Rate limits: the owner, \"only if that ever becomes a problem\".");
 const SPEC_OUT_OF_SCOPE = "- The done check.\n- Rate limits: the owner, \"only if that ever becomes a problem\".";
-const RECORD = "### Picks\n\n- The spec kind files through the ticket's pipeline.\n\n### Shipped names\n\n- `SLICE_LABEL`: under the Slicer in CONTEXT.md.";
+const PICK = "- **Spec kind filing**: the spec kind files through the ticket's pipeline,\n  one issue each.";
+const SHIPPED = "- **`SLICE_LABEL`**: under the Slicer in CONTEXT.md.";
+const RECORD = `### Picks\n\n${PICK}\n\n### Shipped names\n\n${SHIPPED}`;
 const SENTENCES = "## I'll know it works when I can";
 const recorded = (body: string, record = RECORD) => body.replace(SENTENCES, `## Decisions record\n\n${record}\n\n${SENTENCES}`);
 const REWRITE = recorded(SPEC);
@@ -20,7 +22,7 @@ const OLDER = SPEC.replace("Reuse the ticket machinery where it already fits.", 
 const DID = "The slicer settled the label both tickets read.";
 const NEXT = "Wave 1 files the spec kind and reads it back.";
 
-const piece = (title: string, passages: number[], done = ["It holds."]) => ({ title, passages, why: `Wave 1 of the spec: ${title.toLowerCase()}.`, done });
+const piece = (title: string, passages: number[], done = ["It holds."], cites: string[] = []) => ({ title, passages, why: `Wave 1 of the spec: ${title.toLowerCase()}.`, done, cites });
 const wave = (tickets = [piece("File the spec kind", [1, 2]), piece("Read the spec kind", [3])], record = RECORD, moves = [1]) => ({ record, tickets, did: DID, next: NEXT, moves });
 
 describe("bin/slice turns a filed spec into its first wave of tickets under it, with no session open (#1021)", () => {
@@ -63,7 +65,7 @@ describe("bin/slice turns a filed spec into its first wave of tickets under it, 
     expect(handed).toContain(`3. ${WATCHING}`);
   });
 
-  it("asks for the fewest tickets that fit, split only by the parts they touch with a shared surface's slot a wave ahead, and a record of picks and shipped names with no path (#1034, #1182)", () => {
+  it("asks for the fewest tickets that fit, split only by the parts they touch with a shared surface's slot a wave ahead, and a record of named picks and shipped names with no path that tickets cite (#1034, #1182, #1185)", () => {
     const sliced = slicing({ body: SPEC, answers: [wave()] });
 
     sliced.run();
@@ -79,6 +81,10 @@ describe("bin/slice turns a filed spec into its first wave of tickets under it, 
     expect(handed).toContain("no path");
     expect(handed).not.toContain("a path,");
     expect(handed).not.toContain("change nothing here");
+    expect(handed).toContain("`cites`");
+    expect(handed).toContain("`- **name**:`");
+    expect(handed).toContain("Decisions it relies on");
+    expect(handed).toContain("at most 2 done sentences");
   });
 
   it("tells the slicer the owner's bytes, the record's bytes and the room left under the spec cap before it answers (#1182)", () => {
@@ -134,6 +140,54 @@ describe("bin/slice turns a filed spec into its first wave of tickets under it, 
     expect(handed).toContain("Reuse the ticket machinery where it already fits.\n\n## Testing Decisions");
     expect(handed).toContain(`## Decisions record\n\n${NAMES}\n\n${SENTENCES}`);
     expect(sliced.rewrites()).toEqual([REWRITE]);
+  });
+
+  it("copies each record entry a ticket cites word for word under `## Decisions it relies on`, between its Why and its Done when (#1185)", () => {
+    const sliced = slicing({ body: SPEC, answers: [wave([piece("File the spec kind", [1, 2], ["It files."], ["`SLICE_LABEL`", "Spec kind filing"]), piece("Read the spec kind", [3])])] });
+
+    expect(sliced.run().status).toBe(0);
+    const [first = "", second = ""] = sliced.filed().map(({ body }) => body);
+    expect(first).toContain(`Wave 1 of the spec: file the spec kind.\n\n## Decisions it relies on\n\n${SHIPPED}\n\n${PICK}\n\n## Done when\n\n- It files.\n`);
+    expect(second).not.toContain("## Decisions it relies on");
+  });
+
+  it("ends a ticket citing a pick with the CONTEXT.md or ADR sentence naming its picks, and adds none for shipped names alone (#1185)", () => {
+    const record = `### Picks\n\n${PICK}\n\n- **Wave note**: one note a wave.\n\n### Shipped names\n\n${SHIPPED}`;
+    const tickets = [piece("File the spec kind", [1, 2], ["It files.", "It reads."], ["Spec kind filing", "Wave note", "`SLICE_LABEL`"]), piece("Read the spec kind", [3], ["It reads."], ["`SLICE_LABEL`"])];
+    const sliced = slicing({ body: SPEC, answers: [wave(tickets, record)] });
+
+    expect(sliced.run().status).toBe(0);
+    const [first = "", second = ""] = sliced.filed().map(({ body }) => body);
+    expect(first).toContain("## Done when\n\n- It files.\n- It reads.\n- The repo's CONTEXT.md, or an ADR for its reasoning, holds the full description of Spec kind filing and Wave note.\n\n## Out of Scope");
+    expect(second).toContain("## Done when\n\n- It reads.\n\n## Out of Scope");
+  });
+
+  it("sends back a ticket citing a name the record lacks, naming the ticket and the name, and one citing a pick that gives three done sentences of its own (#1185)", () => {
+    const tickets = [piece("File the spec kind", [1, 2], ["It files."], ["Spec kind"]), piece("Read the spec kind", [3], ["One.", "Two.", "Three."], ["Spec kind filing"])];
+    const sliced = slicing({ body: SPEC, answers: [wave(tickets), wave()] });
+
+    expect(sliced.run().status).toBe(0);
+    const [, sentBack = ""] = sliced.handed();
+    expect(sentBack).toContain('ticket 1, "File the spec kind", cites "Spec kind", and the record has no entry by that name');
+    expect(sentBack).toContain('ticket 2, "Read the spec kind", cites a pick, so code adds a done sentence of its own: give at most 2');
+    expect(sliced.filed()).toHaveLength(2);
+  });
+
+  it("sends back a record bullet under Picks or Shipped names with no `- **name**:` (#1185)", () => {
+    const sliced = slicing({ body: SPEC, answers: [wave(undefined, `${RECORD}\n\n- an unnamed pick`), wave()] });
+
+    expect(sliced.run().status).toBe(0);
+    const [, sentBack = ""] = sliced.handed();
+    expect(sentBack).toContain("the record carries a bullet with no `- **name**:`, so no ticket can cite it: \"- an unnamed pick\"");
+  });
+
+  it("sends back a ticket the copied entries put over the brief cap to split (#1185)", () => {
+    const record = `### Picks\n\n- **Long**: ${"word ".repeat(1700)}`;
+    const sliced = slicing({ body: SPEC, answers: [wave([piece("File the spec kind", [1, 2], ["It files."], ["Long"])], record), wave()] });
+
+    expect(sliced.run().status).toBe(0);
+    const [, sentBack = ""] = sliced.handed();
+    expect(sentBack).toMatch(/ticket 1, "File the spec kind", would be \d+ bytes, over the builder's brief cap of 8192 bytes: split it/);
   });
 
   it("posts one note on the spec starting `## Wave 1`: the passages its tickets quote copied by code, what the wave did, what comes next, and the sentences it moves (#1037)", () => {

@@ -125,8 +125,8 @@ describe("bin/slice --resumed tells the resume where a spec the owner took pause
 });
 
 const OWNER_SAID = { author: OWNER, type: "User", body: "Keep the done check out of the slicer." };
-const piece = { title: "Read the spec kind", passages: [1], why: "Wave 2 of the spec: read it.", done: ["It reads."] };
-const next = (tickets = [piece], moves = [1]) => ({ record: "### Picks\n\n- Read it back.", tickets, did: "Wave 1 filed the spec kind.", next: "Wave 2 reads it back.", moves });
+const piece = { title: "Read the spec kind", passages: [1], why: "Wave 2 of the spec: read it.", done: ["It reads."], cites: [] };
+const next = (tickets = [piece], moves = [1]) => ({ record: "### Picks\n\n- **Read back**: read it back.", tickets, did: "Wave 1 filed the spec kind.", next: "Wave 2 reads it back.", moves });
 
 function reslicing({
   tickets = [ticket(1001), ticket(1002)],
@@ -237,7 +237,7 @@ describe("bin/slice --ended ends red at a read of the wave that fails, naming no
   });
 });
 
-const merge = { title: "Merge the two quotedLine helpers into one", passages: [1], why: "Wave 1 left two copies of one helper.", done: ["One quotedLine stands."] };
+const merge = { title: "Merge the two quotedLine helpers into one", passages: [1], why: "Wave 1 left two copies of one helper.", done: ["One quotedLine stands."], cites: [] };
 
 describe("bin/slice hands the re-slice the diff of every PR the wave merged, so it can fold what the wave built into the spec (#1047)", () => {
   it("hands the slicer each merged PR's diff and asks it to fold shared parts into Names, merge two copies of one helper and hold back what leans on it; a wave that merged two copies yields a merge ticket", () => {

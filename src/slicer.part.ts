@@ -121,7 +121,7 @@ declareStage({
     },
   ],
   scenarios: [
-    { label: "filing a wave", run: () => slicing({ answers: [{ record: "### Picks\n\n- Filed.", tickets: [{ title: "File a spec", passages: [1], why: "Wave 1.", done: ["It files."] }], did: "Settled.", next: "Files it.", moves: [1] }] }).run() },
+    { label: "filing a wave", run: () => slicing({ answers: [{ record: "### Picks\n\n- **Filed**: filed.", tickets: [{ title: "File a spec", passages: [1], why: "Wave 1.", done: ["It files."], cites: ["Filed"] }], did: "Settled.", next: "Files it.", moves: [1] }] }).run() },
     { label: "refusing a ticket", run: () => slicing({ labels: ["ticket"] }).run() },
     { label: "stopping at an issue it cannot read", run: () => slicing({ gh: "[[ $1 == issue && $2 == view ]] && exit 1" }).run() },
     { label: "standing down on stuck", run: () => slicing({ labels: ["spec", STUCK] }).run() },

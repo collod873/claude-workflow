@@ -12,6 +12,7 @@ const NAMED = {
   furtherNotes: "Further Notes",
   sentences: "I'll know it works when I can",
   record: "Decisions record",
+  reliesOn: "Decisions it relies on",
 } as const;
 const heading = (name: string): RegExp => new RegExp(`^##[ \\t]+${name.replace("'", "[’']")}[ \\t]*(?=\\r?$)`, "m");
 const WHY = heading(NAMED.why);
@@ -36,7 +37,7 @@ const OWNER_WORDS = /"[^"\n]{4,}"|^>[ \t]*\S/m;
 const FILE_PATH = /[\w.-]+\/[\w./-]+\.[A-Za-z0-9]+/g;
 const NUMBERED_ITEM = /^[ \t]*\d+[.)][ \t]/m;
 const FEWEST = 1;
-const MOST = 3;
+export const MOST = 3;
 const QUOTE = 80;
 
 export const DONE_SENTENCES = `${FEWEST} to ${MOST} sentences saying what done looks like`;
@@ -123,11 +124,49 @@ export function spliced({ owner, record }: Recorded): string {
   return `${owner.slice(0, at)}## ${NAMED.record}\n\n${kept}\n\n${owner.slice(at)}`;
 }
 
+export const PICKS = "### Picks";
+export const SHIPPED_NAMES = "### Shipped names";
+export const ENTRY_FORM = "`- **name**:`";
+export const RELIES_ON = `## ${NAMED.reliesOn}`;
+const ENTRY_NAME = /^- \*\*(.+?)\*\*:/;
+const ENTRY_BULLET = /^-[ \t]/;
+const SUBHEADING = /^###?[ \t]/;
+
+export interface Entry {
+  name: string | undefined;
+  bullet: string;
+  pick: boolean;
+}
+
+export function recordEntries(record: string): Entry[] {
+  const entries: { lines: string[]; pick: boolean }[] = [];
+  let under: boolean | undefined;
+  let open = false;
+  for (const line of record.split("\n")) {
+    if (SUBHEADING.test(line)) {
+      under = line.trimEnd() === PICKS ? true : line.trimEnd() === SHIPPED_NAMES ? false : undefined;
+      open = false;
+    } else if (ENTRY_BULLET.test(line)) {
+      open = under !== undefined;
+      if (under !== undefined) entries.push({ lines: [line], pick: under });
+    } else if (open) entries[entries.length - 1]?.lines.push(line);
+  }
+  return entries.map(({ lines, pick }) => ({ name: ENTRY_NAME.exec(lines[0] ?? "")?.[1], bullet: blankLinesTrimmed(lines.join("\n")), pick }));
+}
+
+function entryRefusals(record: string): string[] {
+  const entries = recordEntries(record);
+  const unnamed = entries.filter(({ name }) => name === undefined).map(({ bullet }) => `the record carries a bullet with no ${ENTRY_FORM}, so no ticket can cite it: ${JSON.stringify(quoted(bullet.split("\n")[0] ?? ""))}`);
+  const names = entries.flatMap(({ name }) => (name === undefined ? [] : [name]));
+  const twice = [...new Set(names.filter((name, at) => names.indexOf(name) !== at))].map((name) => `the record names ${JSON.stringify(name)} on two bullets, so a ticket citing it is ambiguous`);
+  return [...unnamed, ...twice];
+}
+
 export function recordRefusals(recorded: Recorded): string[] {
   const headed = NEXT_HEADING.test(recorded.record) ? ["the record carries a '## ' heading, which would end it: head its parts with '### '"] : [];
   const bytes = Buffer.byteLength(spliced(recorded));
   const over = bytes > SPEC_CAP ? [`the spec would be ${bytes} bytes, over the spec cap of ${SPEC_CAP}: the record must lose at least ${bytes - SPEC_CAP} bytes`] : [];
-  return [...pathRefusals(recorded.record, "the record"), ...headed, ...over];
+  return [...pathRefusals(recorded.record, "the record"), ...headed, ...entryRefusals(recorded.record), ...over];
 }
 
 export const whyChanged = (read: string, written: string): string[] => (why(written) === why(read) ? [] : ["the rewrite changes '## Why', the owner's words, which stay byte-identical"]);
