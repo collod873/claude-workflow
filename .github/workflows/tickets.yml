@@ -10,6 +10,7 @@ jobs:
     if: "${{ github.event_name == 'issues' && github.event.action != 'closed' && (github.event.sender.login == github.repository_owner || (github.event.sender.login == 'collod873-machine[bot]' && (github.event.action == 'unlabeled' || github.event.action == 'opened'))) }}"
     runs-on: ubuntu-latest
     timeout-minutes: 70
+    cache-mode: write
     env:
       GH_REPO: ${{ github.repository }}
     steps:
@@ -222,6 +223,7 @@ jobs:
       group: fix-${{ needs.which.outputs.ticket }}
     runs-on: ubuntu-latest
     timeout-minutes: 70
+    cache-mode: write
     env:
       GH_REPO: ${{ github.repository }}
       TICKET: ${{ needs.which.outputs.ticket }}
