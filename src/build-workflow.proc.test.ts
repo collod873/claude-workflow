@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -272,16 +272,21 @@ describe("every job that spends a model is watched as it goes, read after it end
     }
   });
 
-  it("every step that spends a model shows what its stage's model does in the log as it happens, and ends with the stage's own status", () => {
-    for (const step of modelJobs().flatMap(({ steps }) => steps.filter(spendsModel))) {
-      const run = (step.run ?? "").replaceAll(BARE_EXPRESSIONS, "9");
-      const transcript = `.git/machine-logs/${transcriptOf(run)}-9.jsonl`;
-      const cwd = scratch("feed-");
-      mkdirSync(join(cwd, ".git", "machine-logs"), { recursive: true });
-      const stage = [`printf '%s\\n' '${JSON.stringify(SAID)}' >>${transcript}`, "sleep 1.5", "exit 3"].join("\n");
+  it("every step that spends a model shows what its stage's model does in the log as it happens, and ends with the stage's own status", async () => {
+    const watching = modelJobs()
+      .flatMap(({ steps }) => steps.filter(spendsModel))
+      .map((step) => {
+        const run = (step.run ?? "").replaceAll(BARE_EXPRESSIONS, "9");
+        const transcript = `.git/machine-logs/${transcriptOf(run)}-9.jsonl`;
+        const cwd = scratch("feed-");
+        mkdirSync(join(cwd, ".git", "machine-logs"), { recursive: true });
+        const stage = [`printf '%s\\n' '${JSON.stringify(SAID)}' >>${transcript}`, "sleep 1.5", "exit 3"].join("\n");
+        return new Promise<{ stdout: string; status: number | null }>((resolve) => {
+          execFile("bash", ["-e", "-c", `${run.split("\n")[0]}\n${stage}`], { cwd, env: { ...process.env, FEED, HEAD_REF: "ticket/9", TICKET: "9" }, encoding: "utf8", timeout: 10000 }, (error, stdout) => resolve({ stdout, status: error === null ? 0 : typeof error.code === "number" ? error.code : null }));
+        });
+      });
 
-      const watched = spawnSync("bash", ["-e", "-c", `${run.split("\n")[0]}\n${stage}`], { cwd, env: { ...process.env, FEED, HEAD_REF: "ticket/9", TICKET: "9" }, encoding: "utf8", timeout: 10000 });
-
+    for (const watched of await Promise.all(watching)) {
       expect(watched.stdout).toContain("said: reading the brief");
       expect(watched.status).toBe(3);
     }

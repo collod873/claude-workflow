@@ -1,9 +1,9 @@
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
-import { capped, NO_EM_DASH } from "./brief.ts";
+import { capped, NO_EM_DASH, onDisk } from "./brief.ts";
 import { UNFENCED } from "./fence.ts";
 import { authoredOn, commentOnTicket, commentsRead, gh, machineBin, mark, NEEDS_HUMAN, OWNER, readOrStop, unread, type Asked } from "./post.ts";
-import { opened, type Spent } from "./stage.ts";
+import { CONTRACT, FOREIGN, opened, setupRefusal, type Spent, treePathed } from "./stage.ts";
 import { ASKED, CHECKING, SPEC } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { quoted, type Sentence, sentences, SPEC_CAP } from "./ticket-shape.ts";
@@ -12,6 +12,7 @@ const stoppedAt = stopsOf({
   notSpec: "Refused: the issue is not labelled `spec`, or the done check finds no sentence to try",
   calledOwner: "Done check: a sentence missed twice, so the spec is marked `needs-human`",
   unfixed: "Done check: `bin/slice --fix` files no fix wave for the sentences that missed",
+  unready: "Done check: the tree's setup from its contract fails, so nothing is tried",
 });
 type Stop = ReturnType<typeof stoppedAt>;
 
@@ -57,9 +58,12 @@ export const REPLIES_CAP = 8 * 1024;
 const answered = (replies: string) =>
   replies === "" ? [] : ["## The owner's replies since the last done check", capped(replies, REPLIES_CAP), "Where the owner says a sentence held or did not, his word is its try."];
 
-export function handedOn(title: string, body: string, { ran = [], wave, replies = "" }: { ran?: number[]; wave?: number[]; replies?: string } = {}): string {
+const RUNNING_HERE = "For this repo the running system is its own Actions runs and the issues and PRs they touched, read with `gh`.";
+const RUNNING_THERE = "Here the running system is this checkout of the repo, readied by its contract's setup, and its Actions runs and the issues and PRs they touched, read with `gh`.";
+
+export function handedOn(title: string, body: string, { ran = [], wave, replies = "", foreign = false }: { ran?: number[]; wave?: number[]; replies?: string; foreign?: boolean } = {}): string {
   return [
-    "Try each sentence under `## I'll know it works when I can` in this spec on the running system, not on its tests, and say how each came out. For this repo the running system is its own Actions runs and the issues and PRs they touched, read with `gh`. Read and run what you need, and leave the repo and GitHub as they are.",
+    `Try each sentence under \`## I'll know it works when I can\` in this spec on the running system, not on its tests, and say how each came out. ${foreign ? RUNNING_THERE : RUNNING_HERE} Read and run what you need, and leave the repo and GitHub as they are.`,
     ...(wave === undefined ? [] : [waveOnly(wave)]),
     ...(ran.length === 0 ? [] : [numbered(ran)]),
     "## The spec",
@@ -72,7 +76,7 @@ export function handedOn(title: string, body: string, { ran = [], wave, replies 
 }
 
 function ranItself(check: string, sentence: number): Try {
-  const { status } = spawnSync("bash", ["-c", check], { stdio: "ignore", timeout: CHECK_MINUTES * 60_000 });
+  const { status } = spawnSync("bash", ["-c", check], { stdio: "ignore", env: treePathed(), timeout: CHECK_MINUTES * 60_000 });
   const exited = status === null ? `ran past its ${CHECK_MINUTES} minute cap` : `exited ${status}`;
   return { sentence, outcome: status === 0 ? "held" : "missed", tried: `Ran \`${check}\`, which ${exited}.` };
 }
@@ -115,7 +119,7 @@ const wavePosted = (tried: [number, string, Try][], repeated: [number, string, T
 
 function triedByModel({ asked, replies: owners, spend }: Read, ran: number[], wave?: number[]): Try[] | string {
   const replies = wave === undefined ? owners : "";
-  const spent = spend(handedOn(asked.title, asked.body, { ran, wave, replies }));
+  const spent = spend(handedOn(asked.title, asked.body, { ran, wave, replies, foreign: FOREIGN }));
   if (spent.refusal !== undefined) return spent.refusal;
   const given = (spent.answer as { tries?: unknown } | undefined)?.tries;
   return Array.isArray(given) ? given.filter(isTry).filter(({ sentence }) => !ran.includes(sentence)) : [];
@@ -149,6 +153,8 @@ function read(issue: string, wave?: number[]): Read | Stop | undefined {
     },
   });
   if (typeof opening !== "object") return opening;
+  const unready = setupRefusal(onDisk(join(process.cwd(), CONTRACT)) ?? "");
+  if (unready !== undefined) return stoppedAt("unready", `${said} ended red, its tree's setup failed: ${quoted(unready)}`);
   const { asked, spend, carried: { listed, authored } } = opening;
   const comments = authored.map(({ body }) => body);
   const since = comments.map((comment) => comment.startsWith(DONE_CHECK_HEADING)).lastIndexOf(true);

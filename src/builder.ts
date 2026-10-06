@@ -6,7 +6,7 @@ import { admission, doesNotBuild } from "./admit.ts";
 import { capped, handedDiff, LIST_CAP, NO_EM_DASH, onDisk, TICKET_CAP } from "./brief.ts";
 import { FULL_CHECK, UNFENCED } from "./fence.ts";
 import { type Asked, BUILDER_SPLIT, commentOnTicket, commentsRead, earlierDrift, FOLLOW_UP_OF, followUpBody, gh, ghRead, git, gitRead, machineBin, mark, NEEDS_HUMAN, NOTHING_MARKED, OWNER, post, postRefusals, prOfTicket, readOrStop, repairOf, RESOLVING, rewriteTicket, sessionLine, ticketBranch, unread, WAITING } from "./post.ts";
-import { machineLogs, opened, type Spent, treePathed } from "./stage.ts";
+import { CONTRACT, FOREIGN, machineLogs, opened, setupRefusal, type Spent, treePathed } from "./stage.ts";
 import { BUILDING, CHECKING } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { DONE_SENTENCES, quoted, why, whyChanged } from "./ticket-shape.ts";
@@ -72,9 +72,7 @@ type Spend = (input: string, resume?: string) => Spent;
 export const TAIL_CAP = 8 * 1024;
 export const CONTRACT_CAP = 4 * 1024;
 const CHECK = `${FULL_CHECK} --publish`;
-const CONTRACT = join(".claude", "contract.json");
 const MACHINE_REPO = `${OWNER}/claude-workflow`;
-const FOREIGN = (process.env.CALLED_FROM ?? "") !== "";
 const PASSED = /^check: ok\b/;
 const LOGGED = /; log (.+?)\s*$/;
 const FILED_IN = new RegExp(`^${sessionLine("([^`]+)")}\\s*$`, "m");
@@ -181,13 +179,6 @@ function commitOf(ticket: string, repairing: boolean, commitlint: boolean): stri
   return commitlint ? conventional(repairing ? "fix" : "feat", message) : message;
 }
 
-function setupRefusal(contract: string): string | undefined {
-  const { setup } = JSON.parse(contract || "{}") as { setup?: string };
-  if (setup === undefined || setup.trim() === "") return undefined;
-  const readied = spawnSync("bash", ["-c", setup], { env: treePathed(), encoding: "utf8", maxBuffer: Infinity });
-  if (readied.status === 0) return undefined;
-  return `${readied.stderr}${readied.stdout}`.trim().split("\n").at(-1) || `it ended ${readied.status}`;
-}
 const head = () => gitRead(["rev-parse", "HEAD"], "the head of this branch could not be read");
 const sessionFile = (ticket: string) => join(homedir(), ".claude", "builder", ticket);
 
