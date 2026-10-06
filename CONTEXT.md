@@ -145,8 +145,24 @@ from the first size round, and posts nothing: no body edit, no ticket, no note, 
 refused after the rounds back ends red without marking `stuck` or commenting. A trial cap at or above
 the spec cap, or below the owner's bytes, is refused before any model is hired, since the first can
 never refuse and the second can never fit. A wave check trying the over-cap sentence runs one on the
-spec with a trial cap a few hundred bytes under the spec's current size and reads its log.
+spec with a trial cap a few hundred bytes under the spec's current size and reads its log. A trial
+runs one at a time per spec in a concurrency group of its own, apart from the re-slice's.
 _Avoid_: dry run, size test, fake cap
+
+**Check-started size trial**:
+A size trial a wave check or done check on this repo starts itself, to try a sentence about the size
+refusal, since a trial posts nothing to any spec. The checker's prompt names the manual run of the
+re-slice workflow to start, with the spec and a trial cap a few hundred bytes under the spec's
+current size, and says starting it counts as leaving GitHub as it is. The checker waits for that run
+to end and answers from its log: each size round with the bytes over and the bytes the record had to
+lose, and the `slice: trial #N` line saying the owner's bytes stand and the seconds from the first
+size round. The check holds the app's unnarrowed token, the one the closer starts the re-slice
+workflow with, so it can start the run. The trial's concurrency group is per spec and apart from the
+re-slice's, so a check running inside a re-slice never queues behind itself; a trial posts nothing,
+so it cannot race the re-slice's posting. A trial that ends red, or whose filing line gives 60
+seconds or more, is a miss, not a try left untried. A caller's check is told nothing of it, since
+its spec is not sliced by this repo's re-slice workflow.
+_Avoid_: self-test, trial hook
 
 **Done check**:
 The stage that tries each of a spec's "I'll know it works when I can ___" sentences on the running

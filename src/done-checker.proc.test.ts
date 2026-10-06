@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { execute, heard, holds, plant, type Said, scratch, script, starts, type WorkflowStep } from "./scenarios.ts";
+import { execute, heard, holds, plant, type Said, scratch, script, starts, wellFormedSpec, type WorkflowStep } from "./scenarios.ts";
 import { HELD, MACHINE, OWNER, STUCK } from "./spelled.ts";
 import { DONE_CHECK_POSTED, doneChecking, specWith } from "./done-checker.part.ts";
 import { missedIn } from "./done-checker.ts";
@@ -528,5 +528,27 @@ describe("bin/done-check tries a caller's spec on that repo's own checkout, read
 
     expect(checked.run().status).toBe(0);
     expect(checked.handed()).toContain("For this repo the running system is its own Actions runs");
+  });
+});
+
+describe("bin/done-check lets a check on this repo start a size trial to try a sentence about the size refusal (#1198)", () => {
+  it("tells the checker a size trial counts as leaving GitHub as it is, how to start one a few hundred bytes under the spec, wait for it and read its log, and what misses", () => {
+    const handed = doneChecking();
+    expect(handed.run().status).toBe(0);
+    const told = handed.handed();
+
+    expect(told).toContain("Starting a size trial counts as leaving GitHub as it is, since a trial posts nothing.");
+    expect(told).toContain(`gh workflow run reslice.yml -f issue=974 -f trial_cap=${Buffer.byteLength(wellFormedSpec) - 300}`);
+    expect(told).toContain("a few hundred bytes under the spec's current size");
+    expect(told).toContain("gh run watch");
+    expect(told).toContain("`slice: trial #974`");
+    expect(told).toContain("60 seconds or more");
+  });
+
+  it("tells a caller's checker nothing of a size trial, since its spec is not sliced by this repo's re-slice workflow", () => {
+    const checked = doneChecking({ contract: '{ "setup": "true", "steps": {} }\n', calledFrom: "collod873/Lumaria/.github/workflows/machine.yml@refs/heads/main" });
+
+    expect(checked.run().status).toBe(0);
+    expect(checked.handed()).not.toContain("size trial");
   });
 });

@@ -557,8 +557,30 @@ describe("a manual run of reslice.yml given a spec and a trial cap runs that siz
   it("runs bin/slice --size-trial on the spec and the trial cap with the real slicer, one spec at a time beside its reslice", () => {
     expect(step?.run).toContain('bin/slice --size-trial "$ISSUE" "$TRIAL_CAP"');
     expect(step?.env).toMatchObject({ ISSUE: "${{ inputs.issue }}", TRIAL_CAP: "${{ inputs.trial_cap }}", GH_TOKEN: "${{ steps.app.outputs.token }}", CLAUDE_CODE_OAUTH_TOKEN: "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}" });
-    expect(trial.concurrency).toEqual({ group: "reslice-${{ inputs.issue }}", "cancel-in-progress": false });
     expect(trial.steps.some((one) => one.uses === "./.github/actions/stage")).toBe(true);
+  });
+
+  it("runs one trial at a time per spec in a group of its own, so a wave check inside that spec's re-slice never queues behind itself (#1198)", () => {
+    expect(trial.concurrency).toEqual({ group: "size-trial-${{ inputs.issue }}", "cancel-in-progress": false });
+    const groups = Object.entries(RESLICE.jobs).flatMap(([name, { concurrency }]) => (name === "size-trial" || concurrency?.group === undefined ? [] : [concurrency.group.replace(/\$\{\{.*\}\}$/, "")]));
+    expect(groups).toEqual(["reslice-", "reslice-"]);
+    expect(trial.concurrency?.group?.startsWith("reslice-")).toBe(false);
+  });
+
+  it.each([
+    ["reslice.yml", "reslice", "wave-check"],
+    ["reslice.yml", "resume", "wave-check"],
+    ["done-check.yml", "check", "done-check"],
+  ])("%s's %s job hands its check the app token unnarrowed, the one the closer starts reslice.yml by hand with, so it can start a size trial (#1198)", (file, name, id) => {
+    const appOf = (jobbed: Job) => jobbed.steps.find((one) => one.id === "app")?.with ?? {};
+    const checking = (workflowJobs(file) as Record<string, Job>)[name];
+    const closer = (workflowJobs("tickets.yml") as Record<string, Job>).close;
+    if (checking === undefined || closer === undefined) throw new Error(`no ${name} job in ${file} or close job in tickets.yml`);
+
+    expect(checking.steps.find((one) => one.id === id)?.env?.GH_TOKEN).toBe("${{ steps.app.outputs.token }}");
+    expect(Object.keys(appOf(checking)).filter((key) => key.startsWith("permission-"))).toEqual([]);
+    expect(Object.keys(appOf(closer)).filter((key) => key.startsWith("permission-"))).toEqual([]);
+    expect(appOf(checking)["client-id"]).toBe(appOf(closer)["client-id"]);
   });
 
   it("holds a token that can only read, so the trial cannot post to the spec even by mistake", () => {
