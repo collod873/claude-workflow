@@ -133,7 +133,7 @@ const reviewerOn = (ticket: string) => `The reviewer, on #${ticket}:`;
 
 const firstLine = (text: string) => quoted(text.trim().split("\n")[0] ?? "");
 
-export function handedOn(body: string, diff: string, after?: AfterTurn): string {
+export function handedOn(body: string, diff: string, { prBody = "", after }: { prBody?: string; after?: AfterTurn } = {}): string {
   const turn =
     after === undefined
       ? []
@@ -150,6 +150,9 @@ export function handedOn(body: string, diff: string, after?: AfterTurn): string 
     capped(body, TICKET_CAP),
     "## Diff",
     handedDiff(diff),
+    "## The PR's body",
+    "What it says was done outside the repo, such as on GitHub, counts as shown; the repo outweighs it where they differ.",
+    capped(prBody, LIST_CAP),
     ...turn,
     "## Your verdict",
     "`match` if the diff builds the Why, else `drift`. Name every gap in one pass, each a builder can act on.",
@@ -294,7 +297,8 @@ function review(pr: string): Stop | undefined {
   const earlier = earlierDrift(ticket, onPr);
   const since = judgedHead(ticket, onPr);
   const after = earlier === "" ? undefined : { earlier, fix: since === undefined ? diff : fixSince(pr, since) };
-  const verdict = judged(handedOn(body, diff, after), pr);
+  const prBody = ghWhole(["pr", "view", pr, "--json", "body", "--jq", ".body"], unspent(pr, "its body"));
+  const verdict = judged(handedOn(body, diff, { prBody, after }), pr);
   if (typeof verdict === "string") return stoppedAt("modelRun", `${said} ended red, ${verdict}`);
   const moved = movedUnder({ pr, ticket, said, fingerprint });
   if (moved !== undefined) return moved.ended;

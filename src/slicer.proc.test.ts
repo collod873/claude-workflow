@@ -73,6 +73,25 @@ describe("bin/slice turns a filed spec into its first wave of tickets under it, 
     expect(handed).not.toContain("change nothing here");
   });
 
+  it("tells the slicer the spec's size in bytes and the room left under the spec cap before it answers (#1165)", () => {
+    const sliced = slicing({ body: SPEC, answers: [wave()] });
+
+    sliced.run();
+    const [handed = ""] = sliced.handed();
+    const bytes = Buffer.byteLength(SPEC);
+    expect(handed).toContain(`The spec is ${bytes} bytes, ${65536 - bytes} under the spec cap of 65536`);
+  });
+
+  it("sends back a rewrite over the spec cap naming the bytes to cut (#1165)", () => {
+    const over = REWRITE.replace("## Further Notes\n", `## Further Notes\n\n${"x".repeat(65536)}\n`);
+    const sliced = slicing({ body: SPEC, answers: [wave(undefined, over), wave()] });
+
+    expect(sliced.run().status).toBe(0);
+    const [, sentBack = ""] = sliced.handed();
+    const bytes = Buffer.byteLength(over);
+    expect(sentBack).toContain(`the rewrite: the body is ${bytes} bytes, over the spec cap of 65536: cut at least ${bytes - 65536} bytes`);
+  });
+
   it("posts one note on the spec starting `## Wave 1`: the passages its tickets quote copied by code, what the wave did, what comes next, and the sentences it moves (#1037)", () => {
     const sliced = slicing({ body: SPEC, answers: [wave([piece("Read the spec kind", [3]), piece("File the spec kind", [1, 3])])] });
 

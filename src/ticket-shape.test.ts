@@ -175,7 +175,7 @@ const misshapenSpec: [string, string, unknown[]][] = [
   [
     "a spec over the spec cap, which no stage cuts",
     specBody({ furtherNotes: "x".repeat(SPEC_CAP) }),
-    [expect.stringMatching(/^the body is \d+ bytes, over the spec cap of 65536$/)],
+    [expect.stringMatching(/^the body is (\d+) bytes, over the spec cap of 65536: cut at least \d+ bytes$/)],
   ],
   [
     "a spec with an em dash",
@@ -214,7 +214,7 @@ describe("the builder's split, the reviewer's follow-ups and bin/file-issue --he
   it.each([
     ["bin/file-issue --help", TICKET_SHAPE],
     ["the builder's split", builderBrief({ ticket: "1", body: body() })],
-    ["the reviewer's follow-ups", reviewerBrief(body(), "", { earlier: "", fix: "" })],
+    ["the reviewer's follow-ups", reviewerBrief(body(), "", { after: { earlier: "", fix: "" } })],
   ])("%s", (_, text) => {
     expect(text).toContain(DONE_SENTENCES);
     expect(text.replace(DONE_SENTENCES, "")).not.toMatch(/\d+ to \d+/);
