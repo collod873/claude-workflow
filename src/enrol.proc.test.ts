@@ -191,6 +191,13 @@ describe("bin/enrol keeps an enrolled repo current with the owner's own login (#
     expect(held().branches).toEqual({});
   });
 
+  it("names the merge refusal and the failed cleanup when closing its PR fails too", () => {
+    const { run, held } = enrolling(bare({ rules: HELD_FOR_CHECK, allow_auto_merge: true, refused: { "pr merge": "GraphQL: Protected branch rules not configured", "pr close": "gh: Resource not accessible (HTTP 403)" } }));
+
+    expect(run().stderr).toContain("- the caller file: GraphQL: Protected branch rules not configured, and closing its PR failed too: gh: Resource not accessible (HTTP 403)");
+    expect(held().prs).toHaveLength(1);
+  });
+
   it("names the caller PR still waiting on check, and leaves it alone on a re-run", () => {
     const { run, held } = enrolling(bare({ rules: HELD_FOR_CHECK, allow_auto_merge: true, pending: true, files: { ".github/workflows/ci.yml": CI, ".github/workflows/machine.yml": STALE } }));
     const waiting = `- the caller file: https://github.com/${REPO}/pull/900 merges on its own once check passes`;

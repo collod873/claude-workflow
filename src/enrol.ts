@@ -163,7 +163,12 @@ function enrolling(repo: string): Setting[] {
     try {
       gh(["pr", "merge", BRANCH, "-R", repo, "--auto", "--squash", "--delete-branch"]);
     } catch (error) {
-      gh(["pr", "close", BRANCH, "-R", repo, "--delete-branch"]);
+      try {
+        gh(["pr", "close", BRANCH, "-R", repo, "--delete-branch"]);
+      } catch (closing) {
+        if (!(error instanceof Refused && closing instanceof Refused)) throw closing;
+        throw new Refused(`${error.message}, and closing its PR failed too: ${closing.message}`);
+      }
       throw error;
     }
     return textOf(CALLER)?.text === caller() ? undefined : { waits: url, opened: true };
