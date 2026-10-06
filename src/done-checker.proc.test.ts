@@ -198,6 +198,13 @@ describe("bin/done-check spends the spec's one fix wave on a first miss, and cal
     expect(checked.closes()).toEqual([]);
   });
 
+  it("spends the fix wave when the last done check only quoted the fix wave marker in its evidence (#1161)", () => {
+    const checked = doneChecking({ body: specWith(SENTENCES), tries: missing, said: ["## Done check\n\n1. **Put to the owner**: one\n   found '<!-- fix-wave -->' spelled only in src/done-checker.ts\n"] });
+
+    expect(checked.run().status).toBe(0);
+    expect(checked.sliced()).toEqual(["974 --fix 2,3"]);
+  });
+
   it("marks the spec needs-human, spending no fix wave, when a sentence that missed at the last wave check misses again at the end", () => {
     const checked = doneChecking({ body: specWith(SENTENCES), tries: missing, said: ["## Wave check\n\n- Sentence 3, **Did not hold**: the wave's miss"] });
 
@@ -301,6 +308,7 @@ describe("done-check.yml runs the done check again on the owner's reply to a sen
     expect(lastAsked([putToOwner, "an aside"])).toBe("true");
     expect(lastAsked([putToOwner, allTried, "an aside"])).toBe("false");
     expect(lastAsked([`${putToOwner}\n<!-- fix-wave -->\n`, "an aside"])).toBe("false");
+    expect(lastAsked([`${putToOwner}   found '<!-- fix-wave -->' spelled only in src/done-checker.ts\n`, "an aside"])).toBe("true");
     expect(lastAsked(["## Wave check\n\n- Sentence 2, **Waits for the end**: two"])).toBe("false");
     expect(lastAsked([])).toBe("false");
     const { asked, check } = workflow();

@@ -88,6 +88,7 @@ const isTry = (given: unknown): given is Try => {
 
 const DONE_CHECK_HEADING = "## Done check";
 const FIX_WAVE = "<!-- fix-wave -->";
+const spentFixWave = (comment: string) => comment.startsWith(DONE_CHECK_HEADING) && comment.trimEnd().split("\n").at(-1) === FIX_WAVE;
 
 const posted = (tried: [number, string, Try][], after: string[] = []) =>
   [DONE_CHECK_HEADING, "", ...tried.map(([number, sentence, one]) => `${number}. **${OUTCOMES[one.outcome]}**: ${sentence}\n   ${one.tried}`), ...after.flatMap((line) => ["", line]), ""].join("\n");
@@ -220,7 +221,7 @@ function fixWave(spec: Read, found: [number, string, Try][], missed: [number, st
     mark(issue, NEEDS_HUMAN);
     return stoppedAt("calledOwner", `${said} marked ${NEEDS_HUMAN}, sentence ${listing(repeated, ", ")} missed at the last wave check and again at the end: ${comment.url}`);
   }
-  if (comments.some((comment) => comment.startsWith(DONE_CHECK_HEADING) && comment.includes(FIX_WAVE))) {
+  if (comments.some(spentFixWave)) {
     const comment = commented(spec, posted(found, calledOwner(missed, "again after the fix wave")));
     if (typeof comment === "string") return comment;
     mark(issue, NEEDS_HUMAN);
@@ -276,7 +277,7 @@ function doneCheck(issue: string): Stop | undefined {
 function askedOwner(issue: string): undefined {
   const comments = commentsRead(issue, `#${issue} could not read its comments, so nothing was asked`, gh);
   const last = comments.filter((comment) => comment.startsWith(DONE_CHECK_HEADING)).at(-1) ?? "";
-  console.log(String(last.includes(`**${OUTCOMES.owner}**`) && !last.includes(FIX_WAVE)));
+  console.log(String(last.includes(`**${OUTCOMES.owner}**`) && !spentFixWave(last)));
   return undefined;
 }
 
