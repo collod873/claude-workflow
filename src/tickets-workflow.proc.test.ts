@@ -289,6 +289,11 @@ describe("a repo's specs and research notes run through the same caller file, on
     expect(specs({ event: "issues", action: "closed", sender: MACHINE, outputs: { ended: { spec: "1151" } } })).toEqual(["ended", "reslice"]);
   });
 
+  it("resumes a spec the owner takes a label off, once it names one (#1175)", () => {
+    expect(specs({ event: "issues", action: "unlabeled", outputs: { resumed: { spec: "" } } })).toEqual(["resumed"]);
+    expect(specs({ event: "issues", action: "unlabeled", outputs: { resumed: { spec: "902" } } })).toEqual(["resumed", "resume"]);
+  });
+
   it("runs the done check again on the owner's comment, once the last done check put a sentence to him", () => {
     expect(specs({ event: "issue_comment", action: "created" })).toEqual(["asked"]);
     expect(specs({ event: "issue_comment", action: "created", outputs: { asked: { asked: "true" } } })).toEqual(["asked", "check"]);
@@ -312,7 +317,7 @@ describe("a repo's specs and research notes run through the same caller file, on
   it("readies the tree's pinned Node before anything installs, in every job whose stage may run the done check, and tells that stage the caller file it runs under", () => {
     const trying = stageSteps().filter(({ step }) => /bin\/(slice|done-check)\b/.test(step.run ?? ""));
 
-    expect([...new Set(trying.map(({ name }) => name))].sort()).toEqual(["check", "reslice", "slice"]);
+    expect([...new Set(trying.map(({ name }) => name))].sort()).toEqual(["check", "reslice", "resume", "slice"]);
     for (const { name, steps, step } of trying) {
       const at = (found: (one: WorkflowStep) => boolean) => steps.findIndex(found);
       const pinned = at(({ uses }) => uses === "./.github/actions/pinned");
@@ -324,7 +329,7 @@ describe("a repo's specs and research notes run through the same caller file, on
   });
 
   it("gives every stage it runs the caller's checkout as its working directory", () => {
-    expect(stageSteps().map(({ name, step }) => `${name} ${step.id ?? ""}`).sort()).toEqual(["check done-check", "research research", "reslice reslice", "reslice wave-check", "slice slice"]);
+    expect(stageSteps().map(({ name, step }) => `${name} ${step.id ?? ""}`).sort()).toEqual(["check done-check", "research research", "reslice reslice", "reslice wave-check", "resume reslice", "resume wave-check", "slice slice"]);
     for (const { name, step } of stageSteps()) expect((step as WorkflowStep & { "working-directory"?: string })["working-directory"], name).toBe("tree");
   });
 });

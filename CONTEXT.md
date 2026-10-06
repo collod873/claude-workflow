@@ -160,5 +160,8 @@ _Avoid_: blocked, failed
 Setting a held issue going again. Taking `waiting` off a ticket resumes its build. Taking `paused`
 or `stuck` off a ticket that then holds neither picks it up from where it stands: with no PR it
 builds, with a red PR its builder resumes its session, with a green PR auto-merge comes back on at
-its head. On a spec, taking them off fires no stage yet, so the owner re-runs the run that stood down.
+its head. Taking either off an open spec that then holds neither reads where it stands, as a wave's
+end does: a slice cut short slices again; a wave closed during the hold gets its wave check, then its
+slice, or only its slice once checked; with nothing left to slice, the done check runs. A wave still
+open waits for its last close.
 _Avoid_: unpause, restart, unblock
