@@ -5,6 +5,8 @@ import { parse } from "yaml";
 import { PAUSED_HEAD, pausing } from "./pause.part.ts";
 
 const merges = (calls: string[][]) => calls.filter((args) => args[0] === "pr" && args[1] === "merge");
+const updates = (calls: string[][]) => calls.filter((args) => args[0] === "pr" && args[1] === "update-branch");
+const comments = (calls: string[][]) => calls.filter((args) => args[0] === "pr" && args[1] === "comment");
 const wakes = (calls: string[][]) => calls.filter((args) => args[0] === "workflow" && args[1] === "run");
 
 function resumedWithoutBuilding(scenario: ReturnType<typeof pausing>): string[][] {
@@ -95,6 +97,41 @@ describe("bin/resume picks a ticket up from where it stands once paused or stuck
       expect(merges(calls)).toEqual([["pr", "merge", "931", "--auto", "--merge", "--match-head-commit", PAUSED_HEAD]]);
       expect(wakes(calls)).toEqual([]);
     }
+  });
+
+  it("brings a green PR GitHub calls behind main up to date once auto-merge is back on, leaving the closer's branch-update comment (#1186)", () => {
+    const calls = resumedWithoutBuilding(pausing({ autoMerge: false, behind: true }));
+
+    expect(merges(calls)).toEqual([["pr", "merge", "931", "--auto", "--merge", "--match-head-commit", PAUSED_HEAD]]);
+    expect(updates(calls)).toEqual([["pr", "update-branch", "931"]]);
+    expect(comments(calls)).toEqual([["pr", "comment", "931", "--body", expect.stringMatching(/^PR #931 brought up to date with main by /)]]);
+    expect(wakes(calls)).toEqual([]);
+  });
+
+  it("leaves a green PR already up to date with main as it is beyond auto-merge (#1186)", () => {
+    const calls = resumedWithoutBuilding(pausing({ autoMerge: false }));
+
+    expect(updates(calls)).toEqual([]);
+    expect(comments(calls)).toEqual([]);
+  });
+
+  it("wakes the builder when GitHub refuses the update for a conflict, as on a red PR (#1186)", () => {
+    const calls = resumedWithoutBuilding(pausing({ autoMerge: false, behind: true, updateRefused: "merge conflict between base and head" }));
+
+    expect(updates(calls)).toEqual([["pr", "update-branch", "931"]]);
+    expect(comments(calls)).toEqual([]);
+    expect(wakes(calls)).toEqual([["workflow", "run", "fix.yml", "-f", "ticket=811", "-f", expect.stringMatching(/^reason=.*PR #931 .*merge conflict between base and head/)]]);
+  });
+
+  it("ends red at unresumed, naming GitHub's refusal, when the update is refused for anything but a conflict (#1186)", () => {
+    const { calls, resume } = pausing({ autoMerge: false, behind: true, updateRefused: "GraphQL: Resource not accessible by integration" });
+
+    const refused = resume();
+
+    expect(refused.status).toBe(1);
+    expect(refused.stdout).toBe("");
+    expect(refused.stderr).toContain("Resource not accessible by integration");
+    expect(wakes(calls())).toEqual([]);
   });
 
   it("ends red, building nothing, when the PR cannot be read or GitHub refuses the resume", () => {
