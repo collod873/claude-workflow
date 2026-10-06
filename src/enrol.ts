@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { createSign } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse, parseDocument } from "yaml";
@@ -8,8 +9,12 @@ const CALLER_TEXT = readFileSync(join(import.meta.dirname, "..", ".github", "cal
 const WORKFLOWS = ".github/workflows";
 const CALLER = `${WORKFLOWS}/machine.yml`;
 const CHECK = "check";
+const BRANCH = "enrol/caller";
+const KEY = "CORE_APP_PRIVATE_KEY";
+const JWT_LIFE = 540;
 const APP = MACHINE.replace(/\[bot\]$/, "");
 const NOT_FOUND = /\(HTTP 404\)/;
+const HANDED = "Hand this repo's tickets to the machine";
 const LINE_LIMIT = 200;
 const SHOWN = 4;
 const MOST_SHOWN = 5;
@@ -21,7 +26,7 @@ class Refused extends Error {}
 interface Setting {
   name: string;
   held: () => boolean;
-  set: () => void;
+  set: () => { waits: string; opened: boolean } | void;
 }
 
 interface Flow {
@@ -68,6 +73,18 @@ function checkRunner(text: string): boolean {
   }
 }
 
+const url64 = (text: string) => Buffer.from(text).toString("base64url");
+
+function appToken(clientId: string, key: string): string {
+  const now = Math.floor(Date.now() / 1000);
+  const unsigned = `${url64(JSON.stringify({ alg: "RS256", typ: "JWT" }))}.${url64(JSON.stringify({ iat: now - 60, exp: now + JWT_LIFE, iss: clientId }))}`;
+  try {
+    return `${unsigned}.${createSign("RSA-SHA256").update(unsigned).sign(key, "base64url")}`;
+  } catch {
+    throw new Refused(`the ${KEY} in the environment is not a private key the App can sign with`);
+  }
+}
+
 function callerFor(ci: string): string {
   const caller = parseDocument(CALLER_TEXT);
   const named = caller.createNode([ci], { flow: true });
@@ -76,9 +93,9 @@ function callerFor(ci: string): string {
 }
 
 function enrolling(repo: string): Setting[] {
-  const contents = (path: string) => found<{ content: string; sha: string }>(["api", `repos/${repo}/contents/${path}`]);
-  const textOf = (path: string) => {
-    const file = contents(path);
+  const contents = (path: string, ref?: string) => found<{ content: string; sha: string }>(["api", `repos/${repo}/contents/${path}${ref === undefined ? "" : `?ref=${ref}`}`]);
+  const textOf = (path: string, ref?: string) => {
+    const file = contents(path, ref);
     return file === undefined ? undefined : { text: Buffer.from(file.content, "base64").toString("utf8"), sha: file.sha };
   };
   const held = once(() => read<{ id: number; allow_auto_merge: boolean; default_branch: string }>(["api", `repos/${repo}`]));
@@ -93,11 +110,18 @@ function enrolling(repo: string): Setting[] {
     if (more.length > 0) throw new Refused(`more than one workflow runs a \`${CHECK}\` job on pull requests: ${runners.join(", ")}`);
     return only;
   });
-  const installation = once(() => {
-    const ours = read<{ installations: { id: number; app_slug: string; repository_selection: string }[] }>(["api", "user/installations"]).installations.find(({ app_slug }) => app_slug === APP);
-    if (ours === undefined) throw new Refused(`the App is not installed on ${repo.split("/")[0] ?? repo}'s account: install it from https://github.com/apps/${APP}`);
-    return ours;
+  const clientId = once(() => read<{ client_id: string }>(["api", `apps/${APP}`]).client_id);
+  const asApp = once(() => {
+    const key = process.env[KEY] ?? "";
+    if (key === "") throw new Refused(`no ${KEY} in the environment to read the App's access with`);
+    return ["-H", `Authorization: Bearer ${appToken(clientId(), key)}`];
   });
+  const owner = repo.split("/")[0] ?? repo;
+  const installation = () => {
+    const ours = found<{ id: number }>(["api", ...asApp(), `users/${owner}/installation`]);
+    if (ours === undefined) throw new Refused(`the App is not installed on ${owner}'s account: install it from https://github.com/apps/${APP}`);
+    return ours;
+  };
   const names = (args: string[]) => read<{ name: string }[]>([...args, "-R", repo, "--json", "name"]).map(({ name }) => name.toLowerCase());
   const labels = once(() => names(["label", "list", "--limit", "1000"]));
   const variables = once(() => names(["variable", "list"]));
@@ -114,28 +138,50 @@ function enrolling(repo: string): Setting[] {
   });
 
   const caller = once(() => callerFor(ci()));
+  const rules = () => read<Rule[]>(["api", `repos/${repo}/rules/branches/${held().default_branch}`]);
+  const write = (branch?: string) => {
+    const sha = contents(CALLER)?.sha;
+    gh(["api", "-X", "PUT", `repos/${repo}/contents/${CALLER}`, "-f", `message=${HANDED}`, ...(branch === undefined ? [] : ["-f", `branch=${branch}`]), "-f", `content=${Buffer.from(caller()).toString("base64")}`, ...(sha === undefined ? [] : ["-f", `sha=${sha}`])]);
+  };
+  const branchFromMain = () => {
+    const main = read<{ object: { sha: string } }>(["api", `repos/${repo}/git/ref/heads/${held().default_branch}`]).object.sha;
+    try {
+      gh(["api", "-X", "POST", `repos/${repo}/git/refs`, "-f", `ref=refs/heads/${BRANCH}`, "-f", `sha=${main}`]);
+    } catch (error) {
+      if (!(error instanceof Refused && /already exists/i.test(error.message))) throw error;
+      gh(["api", "-X", "PATCH", `repos/${repo}/git/refs/heads/${BRANCH}`, "-f", `sha=${main}`, "-F", "force=true"]);
+    }
+  };
+  const openPr = () => read<{ url: string }[]>(["pr", "list", "-R", repo, "--head", BRANCH, "--json", "number,url"])[0];
+  const throughPr = () => {
+    const open = openPr();
+    if (open !== undefined && textOf(CALLER, BRANCH)?.text === caller()) return { waits: open.url, opened: false };
+    if (!read<{ allow_auto_merge: boolean }>(["api", `repos/${repo}`]).allow_auto_merge) throw new Refused("auto-merge is off, so a PR for it would never merge on its own");
+    branchFromMain();
+    write(BRANCH);
+    const url = open?.url ?? gh(["pr", "create", "-R", repo, "--head", BRANCH, "--base", held().default_branch, "--title", HANDED, "--body", `Brings \`${CALLER}\` to the caller text bin/enrol writes, naming this repo's CI. It merges on its own once \`${CHECK}\` passes.`]).trim();
+    try {
+      gh(["pr", "merge", BRANCH, "-R", repo, "--auto", "--squash", "--delete-branch"]);
+    } catch (error) {
+      gh(["pr", "close", BRANCH, "-R", repo, "--delete-branch"]);
+      throw error;
+    }
+    return textOf(CALLER)?.text === caller() ? undefined : { waits: url, opened: true };
+  };
 
   return [
     {
-      name: "the caller file",
-      held: () => textOf(CALLER)?.text === caller(),
-      set: () => {
-        const sha = contents(CALLER)?.sha;
-        gh(["api", "-X", "PUT", `repos/${repo}/contents/${CALLER}`, "-f", "message=Hand this repo's tickets to the machine", "-f", `content=${Buffer.from(caller()).toString("base64")}`, ...(sha === undefined ? [] : ["-f", `sha=${sha}`])]);
-      },
-    },
-    {
       name: "the App's access",
-      held: () => installation().repository_selection === "all" || read<{ repositories: { full_name: string }[] }[]>(["api", "--paginate", "--slurp", `user/installations/${installation().id}/repositories?per_page=100`]).some((page) => page.repositories.some(({ full_name }) => full_name.toLowerCase() === repo.toLowerCase())),
+      held: () => found(["api", ...asApp(), `repos/${repo}/installation`]) !== undefined,
       set: () => void gh(["api", "-X", "PUT", `user/installations/${installation().id}/repositories/${held().id}`]),
     },
     {
       name: "CORE_APP_CLIENT_ID",
       held: () => variables().includes("core_app_client_id"),
-      set: () => void gh(["variable", "set", "CORE_APP_CLIENT_ID", "-R", repo, "--body", read<{ client_id: string }>(["api", `apps/${APP}`]).client_id]),
+      set: () => void gh(["variable", "set", "CORE_APP_CLIENT_ID", "-R", repo, "--body", clientId()]),
     },
-    secret("CORE_APP_PRIVATE_KEY", "actions"),
-    secret("CORE_APP_PRIVATE_KEY", "dependabot"),
+    secret(KEY, "actions"),
+    secret(KEY, "dependabot"),
     secret("CLAUDE_CODE_OAUTH_TOKEN", "actions"),
     {
       name: "the machine's labels",
@@ -152,8 +198,8 @@ function enrolling(repo: string): Setting[] {
     {
       name: `main taking changes only through a PR passing ${CHECK}`,
       held: () => {
-        const rules = read<Rule[]>(["api", `repos/${repo}/rules/branches/${held().default_branch}`]);
-        return rules.some(({ type }) => type === "pull_request") && rules.some(({ type, parameters }) => type === "required_status_checks" && (parameters?.required_status_checks ?? []).some(({ context }) => context === CHECK));
+        const ours = rules();
+        return ours.some(({ type }) => type === "pull_request") && ours.some(({ type, parameters }) => type === "required_status_checks" && (parameters?.required_status_checks ?? []).some(({ context }) => context === CHECK));
       },
       set: () => {
         ci();
@@ -172,17 +218,24 @@ function enrolling(repo: string): Setting[] {
         gh(["api", "-X", "POST", `repos/${repo}/rulesets`, "--input", "-"], JSON.stringify(ruleset));
       },
     },
+    {
+      name: "the caller file",
+      held: () => textOf(CALLER)?.text === caller(),
+      set: () => (rules().some(({ type }) => type === "pull_request") ? throughPr() : write()),
+    },
   ];
 }
 
 function enrol(repo: string): number {
   const set: string[] = [];
+  const waiting: string[] = [];
   const refused: string[] = [];
   for (const setting of enrolling(repo)) {
     try {
       if (setting.held()) continue;
-      setting.set();
-      set.push(setting.name);
+      const pending = setting.set();
+      if (pending !== undefined) waiting.push(`- ${setting.name}: ${pending.waits} merges on its own once ${CHECK} passes`);
+      if (pending?.opened !== false) set.push(setting.name);
     } catch (error) {
       if (!(error instanceof Refused)) throw error;
       refused.push(`- ${setting.name}: ${error.message}`);
@@ -193,7 +246,8 @@ function enrol(repo: string): number {
     console.error([`enrol: ${repo} is not enrolled, ${refused.length} could not be set and ${set.length} were:`, ...shown.map((line) => line.slice(0, LINE_LIMIT))].join("\n"));
     return 1;
   }
-  console.log(set.length === 0 ? `enrol: ${repo} was already enrolled, nothing changed` : `enrol: ${repo} enrolled, ${set.length} settings set`);
+  if (waiting.length > 0) console.log([`enrol: ${repo} is enrolled once its PR merges, ${set.length} settings set:`, ...waiting].join("\n"));
+  else console.log(set.length === 0 ? `enrol: ${repo} was already enrolled, nothing changed` : `enrol: ${repo} enrolled, ${set.length} settings set`);
   return 0;
 }
 

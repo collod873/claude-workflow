@@ -1,4 +1,5 @@
 import { execFile, execFileSync, spawnSync } from "node:child_process";
+import { generateKeyPairSync } from "node:crypto";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, matchesGlob } from "node:path";
@@ -582,18 +583,24 @@ export function sessionExtras({
 export const ENROLLED = "collod873/Next";
 export const CI = ["name: Gate", "on:", "  pull_request:", "jobs:", "  check:", "    runs-on: ubuntu-latest", "    steps:", "      - run: pnpm check", ""].join("\n");
 export const DEPLOY = ["name: Deploy", "on:", "  push:", "jobs:", "  ship:", "    runs-on: ubuntu-latest", "    steps:", "      - run: ./ship", ""].join("\n");
-const SECRETS = { CORE_APP_PRIVATE_KEY: "-----BEGIN KEY-----", CLAUDE_CODE_OAUTH_TOKEN: "sk-token" };
+let appKey: { publicKey: string; privateKey: string } | undefined;
+const appKeys = () => (appKey ??= generateKeyPairSync("rsa", { modulusLength: 2048, publicKeyEncoding: { type: "spki", format: "pem" }, privateKeyEncoding: { type: "pkcs8", format: "pem" } }));
+export const key = () => appKeys().privateKey;
 
 interface Held {
   id: number;
   allow_auto_merge: boolean;
   files: Record<string, string>;
+  branches: Record<string, Record<string, string>>;
+  prs: { number: number; head: string; auto: boolean }[];
+  pending: boolean;
   selection: string;
   reached: string[];
   variables: string[];
   secrets: string[];
   dependabot: string[];
   labels: string[];
+  appKey: string;
   rules: { type: string; parameters?: unknown }[];
   refused: Record<string, string>;
   writes: string[][];
@@ -625,14 +632,59 @@ else if (args[0] === "api" && method === "GET" && route === contents + ".github/
   out(listed.map((file) => ({ path: file, type: "file" })));
 }
 else if (args[0] === "api" && method === "GET" && route.startsWith(contents)) {
-  const file = route.slice(contents.length);
-  if (held.files[file] === undefined) { process.stderr.write("gh: Not Found (HTTP 404)\n"); process.exit(1); }
-  out({ path: file, sha: "sha-" + file.length, content: Buffer.from(held.files[file]).toString("base64") });
+  const [file, ref] = route.slice(contents.length).split("?ref=");
+  const files = ref === undefined ? held.files : held.branches[ref] ?? {};
+  if (files[file] === undefined) { process.stderr.write("gh: Not Found (HTTP 404)\n"); process.exit(1); }
+  out({ path: file, sha: "sha-" + file.length, content: Buffer.from(files[file]).toString("base64") });
 }
-else if (args[0] === "api" && method === "PUT" && route.startsWith(contents)) { wrote(); held.files[route.slice(contents.length)] = Buffer.from(fields.content, "base64").toString("utf8"); save(); out({}); }
-else if (args[0] === "api" && route === "user/installations") out({ installations: [{ id: 77, app_slug: "${MACHINE.replace("[bot]", "")}", repository_selection: held.selection }, { id: 78, app_slug: "other", repository_selection: "all" }] });
-else if (args[0] === "api" && method === "GET" && route.startsWith("user/installations/77/repositories")) out([{ repositories: held.reached.map((full_name) => ({ full_name })) }]);
-else if (args[0] === "api" && method === "PUT" && route === "user/installations/77/repositories/" + held.id) { wrote(); held.reached.push(repo); save(); }
+else if (args[0] === "api" && method === "PUT" && route.startsWith(contents)) {
+  wrote();
+  const branch = fields.branch;
+  if (branch === undefined && held.rules.some(({ type }) => type === "pull_request")) { process.stderr.write("gh: Repository rule violations found\n"); process.exit(1); }
+  (branch === undefined ? held.files : held.branches[branch])[route.slice(contents.length)] = Buffer.from(fields.content, "base64").toString("utf8");
+  save();
+  out({});
+}
+else if (args[0] === "api" && method === "GET" && route === "repos/" + repo + "/git/ref/heads/main") out({ object: { sha: "main-sha" } });
+else if (args[0] === "api" && method === "POST" && route === "repos/" + repo + "/git/refs") {
+  wrote();
+  const branch = fields.ref.replace("refs/heads/", "");
+  if (held.branches[branch] !== undefined) { process.stderr.write("gh: Reference already exists (HTTP 422)\n"); process.exit(1); }
+  held.branches[branch] = { ...held.files };
+  save();
+  out({});
+}
+else if (args[0] === "api" && method === "PATCH" && route.startsWith("repos/" + repo + "/git/refs/heads/")) { wrote(); held.branches[route.slice(("repos/" + repo + "/git/refs/heads/").length)] = { ...held.files }; save(); out({}); }
+else if (args[0] === "pr" && args[1] === "list") out(held.prs.filter(({ head }) => head === flag("--head")).map(({ number }) => ({ number, url: "https://github.com/" + repo + "/pull/" + number })));
+else if (args[0] === "pr" && args[1] === "close") { wrote(); held.prs = held.prs.filter(({ head }) => head !== args[2]); if (args.includes("--delete-branch")) delete held.branches[args[2]]; save(); }
+else if (args[0] === "pr" && args[1] === "create") { wrote(); const number = 900 + held.prs.length; held.prs.push({ number, head: flag("--head"), auto: false }); save(); process.stdout.write("https://github.com/" + repo + "/pull/" + number + "\n"); }
+else if (args[0] === "pr" && args[1] === "merge") {
+  wrote();
+  const pr = held.prs.find(({ number, head }) => String(number) === args[2] || head === args[2]);
+  if (pr === undefined || !held.allow_auto_merge || !args.includes("--auto")) { process.stderr.write("GraphQL: Auto merge is not allowed for this repository (enablePullRequestAutoMerge)\n"); process.exit(1); }
+  pr.auto = true;
+  if (held.pending) { save(); process.exit(0); }
+  held.files = { ...held.branches[pr.head] };
+  held.prs = held.prs.filter((open) => open !== pr);
+  delete held.branches[pr.head];
+  save();
+}
+else if (args[0] === "api" && route.startsWith("user/installations") && method === "GET") { process.stderr.write("gh: You must authenticate with an access token authorized to a GitHub App in order to list installations (HTTP 403)\n"); process.exit(1); }
+else if (args[0] === "api" && (route === "repos/" + repo + "/installation" || route === "users/collod873/installation")) {
+  const bearer = (args.find((arg) => arg.startsWith("Authorization: Bearer ")) ?? "").slice("Authorization: Bearer ".length);
+  const [head, body, signature] = bearer.split(".");
+  const signed = signature !== undefined && require("node:crypto").verify("RSA-SHA256", Buffer.from(head + "." + body), held.appKey, Buffer.from(signature, "base64url"));
+  const claims = signed ? JSON.parse(Buffer.from(body, "base64url").toString("utf8")) : {};
+  if (!signed || claims.iss !== "Iv23client" || claims.exp <= Date.now() / 1000) { process.stderr.write("gh: A JSON web token could not be decoded (HTTP 401)\n"); process.exit(1); }
+  if (route.startsWith("repos/") && held.selection !== "all" && !held.reached.includes(repo)) { process.stderr.write("gh: Not Found (HTTP 404)\n"); process.exit(1); }
+  out({ id: 77, repository_selection: held.selection });
+}
+else if (args[0] === "api" && method === "PUT" && route === "user/installations/77/repositories/" + held.id) {
+  wrote();
+  if (args.some((arg) => arg.startsWith("Authorization:"))) { process.stderr.write("gh: This endpoint only works for PATs (classic) (HTTP 403)\n"); process.exit(1); }
+  held.reached.push(repo);
+  save();
+}
 else if (args[0] === "api" && route === "apps/${MACHINE.replace("[bot]", "")}") out({ client_id: "Iv23client" });
 else if (args[0] === "api" && route === "repos/" + repo + "/rules/branches/main") out(held.rules);
 else if (args[0] === "api" && method === "POST" && route === "repos/" + repo + "/rulesets") { wrote(); held.rules.push(...JSON.parse(stdin()).rules); held.writes.at(-1).push("ruleset"); save(); out({}); }
@@ -650,12 +702,16 @@ export function bare(extra: Partial<Held> = {}): Held {
     id: 4242,
     allow_auto_merge: false,
     files: { ".github/workflows/ci.yml": CI, ".github/workflows/deploy.yml": DEPLOY },
+    branches: {},
+    prs: [],
+    pending: false,
     selection: "selected",
     reached: ["collod873/claude-workflow"],
     variables: [],
     secrets: [],
     dependabot: [],
     labels: ["bug"],
+    appKey: appKeys().publicKey,
     rules: [],
     refused: {},
     writes: [],
@@ -663,7 +719,7 @@ export function bare(extra: Partial<Held> = {}): Held {
   };
 }
 
-export function enrolling(held: Held, env: Record<string, string> = SECRETS) {
+export function enrolling(held: Held, env: Record<string, string> = { CORE_APP_PRIVATE_KEY: key(), CLAUDE_CODE_OAUTH_TOKEN: "sk-token" }) {
   const root = scratch("enrol-");
   const state = join(root, "held.json");
   writeFileSync(state, JSON.stringify(held));
