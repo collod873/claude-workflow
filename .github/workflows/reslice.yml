@@ -60,7 +60,7 @@ jobs:
   size-trial:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.trial_cap }}
     concurrency:
-      group: reslice-${{ inputs.issue }}
+      group: size-trial-${{ inputs.issue }}
       cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 100

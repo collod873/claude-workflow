@@ -52,6 +52,13 @@ declareStage({
       slots: ["title", "body", "replies"],
       build: (filled) => handedOn(filled.title ?? "", filled.body ?? "", { replies: filled.replies ?? "", foreign: true }),
     },
+    {
+      name: "done checker on this repo",
+      file: "src/done-checker.ts",
+      cap: SPEC_CAP + REPLIES_CAP + 2 * HANDED_ON,
+      slots: ["title", "body", "replies"],
+      build: (filled) => handedOn(filled.title ?? "", filled.body ?? "", { issue: "99999", wave: [1, 2, 3], replies: filled.replies ?? "" }),
+    },
   ],
   scenarios: [
     { label: "closing a spec whose sentence held", run: () => doneChecking().run() },
