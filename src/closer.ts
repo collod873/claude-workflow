@@ -141,13 +141,13 @@ interface QueuedPr {
 
 type Checks = "green" | "pending" | "red";
 
-interface CheckRun {
+export interface CheckRun {
   name?: string;
   status?: string;
   conclusion?: string;
 }
 
-function checksOf(rollup: CheckRun[]): Checks {
+export function checksOf(rollup: CheckRun[]): Checks {
   const latest = REQUIRED_CHECKS.map((name) => rollup.filter((ran) => ran.name === name).at(-1));
   if (latest.some((ran) => ran?.status === "COMPLETED" && !PASSED.has(ran.conclusion ?? ""))) return "red";
   return latest.every((ran) => ran?.status === "COMPLETED") ? "green" : "pending";
@@ -190,8 +190,8 @@ function settle(ticket: string, pr: QueuedPr, merging: QueuedPr | undefined, con
   else if (!writes && held.has(LANDING)) mark(ticket, CHECKING);
 }
 
-function wakeBuilder(ticket: string, reason: string): void {
-  gh(["workflow", "run", caller ?? "fix.yml", "-f", `ticket=${ticket}`, "-f", `reason=${reason}`]);
+export function wakeBuilder(ticket: string, reason: string): ReturnType<typeof gh> {
+  return gh(["workflow", "run", caller ?? "fix.yml", "-f", `ticket=${ticket}`, "-f", `reason=${reason}`]);
 }
 
 function resliced(ticket: string): Stop | undefined {

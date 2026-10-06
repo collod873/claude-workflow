@@ -210,7 +210,7 @@ export function underOwnerSpec(ticket: string, line: string, gh: Gh): Admission 
   return undefined;
 }
 
-const NO_PR = /^no pull requests found/m;
+export const NO_PR = /^no pull requests found/m;
 
 export interface TicketPr {
   number?: number;
