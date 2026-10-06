@@ -546,12 +546,11 @@ describe("a manual run of reslice.yml given a spec and a trial cap runs that siz
   const trial = job("size-trial");
   const step = trial.steps.find((one) => one.id === "size-trial");
 
-  it("takes the trial cap as an input the closer's dispatch leaves out, and starts the trial, not the wave's end, when it is given", () => {
+  it("takes the trial cap as an input the closer's dispatch leaves out, starting the trial only when it is given, while the wave's end names no spec for a spec", () => {
     expect(RESLICE.on.workflow_dispatch?.inputs?.trial_cap).toEqual({ required: false, type: "number" });
     expect(holds(trial.if ?? "true", dispatched({ issue: "968", trial_cap: "60000" }))).toBe(true);
-    expect(holds(job("ended").if ?? "true", dispatched({ issue: "968", trial_cap: "60000" }))).toBe(false);
     expect(holds(trial.if ?? "true", dispatched({ issue: "1102" }))).toBe(false);
-    expect(holds(job("ended").if ?? "true", dispatched({ issue: "1102" }))).toBe(true);
+    expect(ended({ closed: 968 }).ran).toEqual({ status: 0, stdout: "", stderr: "slice: #968 is a spec, so no wave ended\n" });
     expect(holds(trial.if ?? "true", { action: "closed" })).toBe(false);
   });
 

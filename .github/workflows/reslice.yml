@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   ended:
-    if: ${{ github.event.action != 'unlabeled' && !inputs.trial_cap }}
+    if: ${{ github.event.action != 'unlabeled' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -107,7 +107,7 @@ jobs:
           ISSUE: ${{ inputs.issue }}
           TRIAL_CAP: ${{ inputs.trial_cap }}
         run: |
-          tail --pid=$$ -n +1 -F ".git/machine-logs/slice-$ISSUE.jsonl" 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
+          tail --pid=$$ -n +1 -F .git/machine-logs/slice-${{ inputs.issue }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
           bin/slice --size-trial "$ISSUE" "$TRIAL_CAP"
 
       - if: always()
