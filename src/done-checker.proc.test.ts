@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
@@ -10,6 +10,12 @@ import { missedIn } from "./done-checker.ts";
 
 const READ_COMMENTS = "api --paginate repos/{owner}/{repo}/issues/974/comments";
 const SENTENCES = ["file a spec and see its first wave show up under it", "open any ticket it filed and see my own words copied over", "see the spec close itself once every sentence held"];
+
+const expectNothingDone = (checked: ReturnType<typeof doneChecking>) => {
+  expect(checked.hired()).toEqual([]);
+  expect(checked.comments()).toEqual([]);
+  expect(checked.closes()).toEqual([]);
+};
 
 const expectMarkedNeedsHuman = (checked: ReturnType<typeof doneChecking>) => {
   expect(checked.labelled()).toEqual([]);
@@ -480,8 +486,37 @@ describe("bin/done-check stops at a mark GitHub refused, so it tries, posts and 
     expect(status).toBe(1);
     expect(stderr).toContain("done-check: bin/mark #974 checking ended non-zero, so nothing after it is posted, closed, marked or hired\n");
     expect(checked.marked()).toEqual(["974 checking"]);
-    expect(checked.hired()).toEqual([]);
-    expect(checked.comments()).toEqual([]);
-    expect(checked.closes()).toEqual([]);
+    expectNothingDone(checked);
+  });
+});
+
+describe("bin/done-check tries a caller's spec on that repo's own checkout, readied by its contract's setup (#1151)", () => {
+  const LUMARIA = "collod873/Lumaria/.github/workflows/machine.yml@refs/heads/main";
+  const READIED = '{ "setup": "touch readied", "steps": {} }\n';
+
+  it("runs the tree's setup before the hire, and tells the model the running system is that checkout", () => {
+    const checked = doneChecking({ contract: READIED, calledFrom: LUMARIA });
+
+    expect(heard(checked.run())).toEqual({ status: 0, stderr: "", lines: [`done-check: #974 held every sentence and is closed: ${DONE_CHECK_POSTED}`] });
+    expect(existsSync(join(checked.root, "readied"))).toBe(true);
+    expect(checked.handed()).toContain("the running system is this checkout of the repo, readied by its contract's setup");
+    expect(checked.handed()).not.toContain("For this repo the running system is its own Actions runs");
+  });
+
+  it("ends red when the tree's setup fails, hiring, posting and closing nothing", () => {
+    const checked = doneChecking({ contract: '{ "setup": "echo no lockfile >&2; exit 3", "steps": {} }\n', calledFrom: LUMARIA });
+
+    const { status, stderr } = checked.run();
+
+    expect(status).toBe(1);
+    expect(stderr).toContain("done-check: #974 ended red, its tree's setup failed: no lockfile");
+    expectNothingDone(checked);
+  });
+
+  it("tries this repo's own spec on its Actions runs, as before", () => {
+    const checked = doneChecking({ contract: READIED });
+
+    expect(checked.run().status).toBe(0);
+    expect(checked.handed()).toContain("For this repo the running system is its own Actions runs");
   });
 });
