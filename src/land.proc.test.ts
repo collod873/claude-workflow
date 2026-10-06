@@ -31,18 +31,39 @@ function git(cwd: string, ...args: string[]): string {
 
 const PR = "https://github.com/collod873/claude-workflow/pull/1";
 
-function recordingGh(root: string, prSays: string) {
+interface PrView {
+  state?: "OPEN" | "MERGED" | "CLOSED";
+  mergeStateStatus?: string;
+  headRefOid?: string;
+  statusCheckRollup?: { name?: string; context?: string; status?: string; conclusion?: string; state?: string }[];
+}
+
+const checking: PrView = { statusCheckRollup: [{ name: "check", status: "IN_PROGRESS", conclusion: "" }] };
+
+function recordingGh(root: string, prViews: PrView[] | "unreadable") {
   const dir = join(root, "gh");
   mkdirSync(dir);
   const path = join(dir, "gh");
   const log = join(dir, "argv.jsonl");
+  const views = join(dir, "views");
+  mkdirSync(views);
+  if (prViews !== "unreadable") prViews.forEach((view, at) => writeFileSync(join(views, String(at + 1)), JSON.stringify({ state: "OPEN", mergeStateStatus: "BLOCKED", headRefOid: "a".repeat(40), statusCheckRollup: [], ...view })));
   writeFileSync(
     path,
     [
       "#!/bin/bash",
       `python3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "$@" >> ${JSON.stringify(log)}`,
       `[[ "$1 $2" == "pr create" ]] && echo ${PR}`,
-      `[[ "$1 $2" == "pr view" ]] && printf '%s\\n' ${JSON.stringify(prSays)}`,
+      'if [[ "$1 $2" == "pr view" ]]; then',
+      ...(prViews === "unreadable"
+        ? ["  printf 'HTTP 401: Bad credentials\\n' >&2", "  exit 1"]
+        : [
+            "  for (( at = 1; at <= $#; at++ )); do [[ ${!at} == --jq ]] && { next=$(( at + 1 )); query=${!next}; }; done",
+            `  seen=$(( $(ls ${JSON.stringify(views)} | grep -c seen) + 1 )); touch ${JSON.stringify(views)}/seen-$seen`,
+            `  view=${JSON.stringify(views)}/$seen; [[ -e $view ]] || view=${JSON.stringify(views)}/${prViews.length}`,
+            '  jq -r "$query" "$view"',
+          ]),
+      "fi",
       "exit 0",
       "",
     ].join("\n"),
@@ -60,7 +81,7 @@ function recordingGh(root: string, prSays: string) {
 
 function sessionAheadOfMain(
   commits: number,
-  { githubMerges, prIsAlreadyClean = false, prSays = "" }: { githubMerges: "at once" | "after a moment" | "never"; prIsAlreadyClean?: boolean; prSays?: string },
+  { githubMerges, prIsAlreadyClean = false, prViews = [checking], waitSeconds = "2", stallSeconds }: { githubMerges: "at once" | "after a moment" | "never"; prIsAlreadyClean?: boolean; prViews?: PrView[] | "unreadable"; waitSeconds?: string; stallSeconds?: string },
 ) {
   const root = mkdtempSync(join(tmpdir(), "land-"));
   onTestFinished(() => rmSync(root, { recursive: true, force: true }));
@@ -75,7 +96,7 @@ function sessionAheadOfMain(
     writeFileSync(join(remote, "hooks", "post-receive"), hook);
     chmodSync(join(remote, "hooks", "post-receive"), 0o755);
   }
-  const gh = recordingGh(root, prSays);
+  const gh = recordingGh(root, prViews);
   const githubRefusingAutoMerge = join(root, "refuses-auto-merge");
   execFileSync("mkdir", [githubRefusingAutoMerge]);
   writeFileSync(
@@ -88,7 +109,7 @@ function sessionAheadOfMain(
     spawnSync(land, [], {
       cwd: session,
       encoding: "utf8",
-      env: { ...env, PATH: `${ghDir}:${process.env.PATH}`, LAND_WAIT_SECONDS: "2" },
+      env: { ...env, PATH: `${ghDir}:${process.env.PATH}`, LAND_WAIT_SECONDS: waitSeconds, ...(stallSeconds === undefined ? {} : { LAND_STALL_SECONDS: stallSeconds }) },
     });
   const head = git(session, "rev-parse", "HEAD");
   return { root, remote, session, head, branch: `land/${head.slice(0, 12)}`, run, calls: gh.calls };
@@ -140,14 +161,15 @@ describe("bin/land turns a session's commits into a PR that merges itself", () =
     expect(git(session, "rev-parse", "HEAD")).toBe(git(remote, "rev-parse", "main"));
   });
 
-  it("leaves local main alone and says so while the PR's checks are still running", () => {
+  it("leaves local main alone and ends red naming what it still waits on once it reaches its cap (#1171)", () => {
     const { session, head, run } = sessionAheadOfMain(1, { githubMerges: "never" });
 
     const result = run();
 
-    expect(result.status, result.stderr).toBe(0);
+    expect(result.status).toBe(1);
     expect(git(session, "rev-parse", "HEAD")).toBe(head);
-    expect(result.stdout).toContain("Merges when its checks pass");
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toMatch(/^land: still waiting on \S+ after 2s: check in_progress; it is left open\n$/);
   });
 
   it("rebases the session's commits onto a main that moved since the session started, and lands them (#869)", () => {
@@ -196,12 +218,14 @@ describe("bin/land turns a session's commits into a PR that merges itself", () =
     expect(calls()).toEqual([]);
   });
 
-  it.each([
-    ["a required check failed", "failed check", /^land: check failed on \S+; closed it, so fix it and land again\n$/],
-    ["main moved under it with a conflict", "conflicts", /^land: \S+ conflicts with main; closed it, so land again to rebase\n$/],
-    ["someone closed it", "closed", /^land: \S+ was closed without merging\n$/],
-  ])("waits no further, says why and exits non-zero when %s (#869)", (_, prSays, said) => {
-    const { session, head, branch, run, calls } = sessionAheadOfMain(1, { githubMerges: "never", prSays });
+  it.each<[string, PrView, RegExp]>([
+    ["a required check failed", { statusCheckRollup: [{ name: "check", status: "COMPLETED", conclusion: "FAILURE" }] }, /^land: check failed on \S+; closed it, so fix it and land again\n$/],
+    ["a required check was cancelled (#1171)", { statusCheckRollup: [{ name: "check", status: "COMPLETED", conclusion: "CANCELLED" }] }, /^land: check ended cancelled on \S+; closed it, so land again\n$/],
+    ["a required check went stale (#1171)", { statusCheckRollup: [{ name: "review", status: "COMPLETED", conclusion: "STALE" }] }, /^land: review ended stale on \S+; closed it, so land again\n$/],
+    ["main moved under it with a conflict", { mergeStateStatus: "DIRTY" }, /^land: \S+ conflicts with main; closed it, so land again to rebase\n$/],
+    ["someone closed it", { state: "CLOSED" }, /^land: \S+ was closed without merging\n$/],
+  ])("waits no further, says why and exits non-zero when %s (#869)", (_, prView, said) => {
+    const { session, head, branch, run, calls } = sessionAheadOfMain(1, { githubMerges: "never", prViews: [prView] });
 
     const result = run();
 
@@ -209,7 +233,76 @@ describe("bin/land turns a session's commits into a PR that merges itself", () =
     expect(result.stdout).toBe("");
     expect(result.stderr).toMatch(said);
     expect(git(session, "rev-parse", "HEAD")).toBe(head);
-    expect(calls().some((call) => call[0] === "pr" && call[1] === "close" && call[2] === branch)).toBe(prSays !== "closed");
+    expect(calls().some((call) => call[0] === "pr" && call[1] === "close" && call[2] === branch)).toBe(prView.state !== "CLOSED");
+  });
+
+  it("reports landed when its PR merged in a way that left its head off main, such as a squash (#1171)", () => {
+    const { session, head, run } = sessionAheadOfMain(1, { githubMerges: "never", prViews: [checking, { state: "MERGED" }] });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/^Landed \S+/);
+    expect(git(session, "rev-parse", "HEAD")).toBe(head);
+  });
+
+  it("merges its own PR, matching the head GitHub holds, once it is green, up to date and still open, and lands when that merge shows (#1171)", () => {
+    const green = "b".repeat(40);
+    const { branch, run, calls } = sessionAheadOfMain(1, {
+      githubMerges: "never",
+      waitSeconds: "10",
+      prViews: [checking, { mergeStateStatus: "CLEAN", headRefOid: green, statusCheckRollup: [{ name: "check", status: "COMPLETED", conclusion: "SUCCESS" }, { context: "meters", state: "SUCCESS" }] }, { state: "MERGED" }],
+    });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(calls()).toContainEqual(["pr", "merge", branch, "--merge", "--match-head-commit", green]);
+    expect(result.stdout).toMatch(/^Landed /);
+  });
+
+  it("merges nothing itself while GitHub says the PR is behind main, even with its checks green (#1171)", () => {
+    const { branch, run, calls } = sessionAheadOfMain(1, { githubMerges: "never", prViews: [{ mergeStateStatus: "BEHIND", statusCheckRollup: [{ name: "check", status: "COMPLETED", conclusion: "SUCCESS" }] }] });
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(calls().filter((call) => call[0] === "pr" && call[1] === "merge" && call[2] === branch && !call.includes("--auto"))).toEqual([]);
+    expect(result.stderr).toContain("its merge, with GitHub calling it behind");
+  });
+
+  it.each([
+    ["no check ever started", [{}] as PrView[] | "unreadable", "no check has started"],
+    ["a check sat queued", [{ statusCheckRollup: [{ name: "check", status: "QUEUED", conclusion: "" }] }] as PrView[] | "unreadable", "check queued"],
+    ["every lookup of the PR failed", "unreadable" as PrView[] | "unreadable", "its lookups failing, last with: HTTP 401: Bad credentials"],
+  ])("ends red naming the cause, well before its cap, once nothing has moved for its stall time because %s (#1171)", (_, prViews, cause) => {
+    const { run } = sessionAheadOfMain(1, { githubMerges: "never", prViews, waitSeconds: "60", stallSeconds: "4" });
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe(`land: nothing moved on ${PR} for 4s: ${cause}; it is left open\n`);
+  });
+
+  it("keeps waiting past its stall time while a check starts, finishes or the head moves (#1171)", () => {
+    const { run } = sessionAheadOfMain(1, {
+      githubMerges: "never",
+      waitSeconds: "8",
+      stallSeconds: "3",
+      prViews: [
+        {},
+        { statusCheckRollup: [{ name: "check", status: "QUEUED", conclusion: "" }] },
+        { statusCheckRollup: [{ name: "check", status: "IN_PROGRESS", conclusion: "" }] },
+        { statusCheckRollup: [{ name: "check", status: "COMPLETED", conclusion: "SUCCESS" }, { name: "review", status: "IN_PROGRESS", conclusion: "" }] },
+        { headRefOid: "c".repeat(40), statusCheckRollup: [{ name: "check", status: "QUEUED", conclusion: "" }] },
+      ],
+    });
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/^land: still waiting on \S+ after 8s: check queued; it is left open\n$/);
   });
 
   it("keeps a failing call's own output in a log and says one line naming it", () => {

@@ -15,9 +15,23 @@ const foundNoOverlap = (ticket: string) => `The reviewer read this PR for #${tic
 
 const unspent = (pr: string, read: string) => `#${pr} ended red, ${read} could not be read, so no model was spent`;
 
-function fingerprintOf(pr: string, diff: string, body: string): string {
+export const METER_MARK = " (meter): ";
+
+const withoutMeterLines = (body: string) =>
+  body
+    .split("\n")
+    .filter((line) => !line.includes(METER_MARK))
+    .join("\n");
+
+interface Read {
+  body: string;
+  diff: string;
+  prBody: string;
+}
+
+function fingerprintOf(pr: string, { diff, body, prBody }: Read): string {
   const id = (gitRead(["patch-id", "--stable"], unspent(pr, "the patch id of its diff"), diff).match(/^\S+/) ?? [""])[0];
-  return `${id}-${createHash("sha256").update(body).digest("hex").slice(0, 12)}`;
+  return `${id}-${createHash("sha256").update(body).update(prBody).digest("hex").slice(0, 12)}`;
 }
 
 const fingerprintLine = (fingerprint: string) => `Fingerprint: \`${fingerprint}\``;
@@ -219,13 +233,14 @@ function recordedLater(ticket: string, body: string, later: Later[], turns: stri
   return `, ${later.length} later finds posted: ${posted.said}; follow-ups filed: ${filed.map(({ said }) => said).filter((said) => said !== "").join(" ") || "none"}`;
 }
 
-function bodyAndDiff(pr: string, ticket: string): { body: string; diff: string } {
+function bodyAndDiff(pr: string, ticket: string): Read {
   const body = ghWhole(["issue", "view", ticket, "--json", "body", "--jq", ".body"], unspent(pr, `ticket #${ticket}`));
   const diff = ghWhole(["pr", "diff", pr], unspent(pr, "its diff"));
-  return { body, diff };
+  const prBody = withoutMeterLines(ghWhole(["pr", "view", pr, "--json", "body", "--jq", ".body"], unspent(pr, "its body")));
+  return { body, diff, prBody };
 }
 
-export function ticketPr(pr: string, said: string): { ticket: string; body: string; diff: string } | undefined {
+export function ticketPr(pr: string, said: string): ({ ticket: string } & Read) | undefined {
   const branch = ghRead(["pr", "view", pr, "--json", "headRefName", "--jq", ".headRefName"], `#${pr} could not be read, so nothing read it`);
   const ticket = TICKET_BRANCH.exec(branch)?.[1];
   if (ticket === undefined) {
@@ -244,7 +259,7 @@ interface Judging {
 
 function movedUnder({ pr, ticket, said, fingerprint }: Judging): { ended: Stop | undefined } | undefined {
   const now = bodyAndDiff(pr, ticket);
-  if (fingerprintOf(pr, now.diff, now.body) === fingerprint) return undefined;
+  if (fingerprintOf(pr, now) === fingerprint) return undefined;
   console.log(`${said} writes nothing, a newer run judges #${ticket}: the PR moved under it while its model answered`);
   return { ended: undefined };
 }
@@ -277,7 +292,7 @@ function review(pr: string): Stop | undefined {
   if (typeof read !== "object") return read;
   const { ticket, body, diff } = read;
   const onPr = commentsRead(pr, unspent(pr, "the comments on its PR"), gh);
-  const fingerprint = fingerprintOf(pr, diff, body);
+  const fingerprint = fingerprintOf(pr, read);
   const past = lastJudgement(ticket, onPr);
   const main = mainNow(pr);
   if (past?.fingerprint === fingerprint) {
@@ -297,8 +312,7 @@ function review(pr: string): Stop | undefined {
   const earlier = earlierDrift(ticket, onPr);
   const since = judgedHead(ticket, onPr);
   const after = earlier === "" ? undefined : { earlier, fix: since === undefined ? diff : fixSince(pr, since) };
-  const prBody = ghWhole(["pr", "view", pr, "--json", "body", "--jq", ".body"], unspent(pr, "its body"));
-  const verdict = judged(handedOn(body, diff, { prBody, after }), pr);
+  const verdict = judged(handedOn(body, diff, { prBody: read.prBody, after }), pr);
   if (typeof verdict === "string") return stoppedAt("modelRun", `${said} ended red, ${verdict}`);
   const moved = movedUnder({ pr, ticket, said, fingerprint });
   if (moved !== undefined) return moved.ended;

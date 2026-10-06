@@ -1,7 +1,7 @@
 import { capped, handedDiff, NO_EM_DASH, TICKET_CAP } from "./brief.ts";
 import { discards } from "./discard.ts";
 import { gh, ghWhole, readOrStop } from "./post.ts";
-import { answered, type Stop, ticketPr } from "./reviewer.ts";
+import { answered, METER_MARK, type Stop, ticketPr } from "./reviewer.ts";
 import { exitFor, stoppedAt } from "./stops.ts";
 
 export const METERS = [
@@ -51,9 +51,9 @@ export function handedOn(body: string, diff: string): string {
   ].join("\n\n");
 }
 
-export const meterLine = (name: string, findings: string[]) => `${name} (meter): ${findings.length === 0 ? "would refuse nothing" : `would refuse, ${findings.join("; ")}`}`;
+export const meterLine = (name: string, findings: string[]) => `${name}${METER_MARK}${findings.length === 0 ? "would refuse nothing" : `would refuse, ${findings.join("; ")}`}`;
 
-const lineOf = (name: string) => new RegExp(`^${name} \\(meter\\):.*$`, "m");
+const lineOf = (name: string) => new RegExp(`^${name}${METER_MARK.replace(/[()]/g, "\\$&")}.*$`, "m");
 
 function withLines(body: string, lines: { name: string; line: string }[]): string {
   const missing = lines.filter(({ name }) => !lineOf(name).test(body)).map(({ line }) => line);
