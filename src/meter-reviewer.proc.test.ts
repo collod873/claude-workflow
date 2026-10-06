@@ -306,13 +306,13 @@ describe("check.yml starts the review and the meters beside the check, not after
 describe("bin/meters ends red at a GitHub read that fails (#1112)", () => {
   it.each([
     { read: "the diff", options: { unreadable: '*"pr diff"*' }, line: "#9810 ended red, its diff could not be read, so no model was spent" },
-    { read: "the PR body", options: { prBodyUnreadable: true }, line: "the body of PR #9810 could not be read, so its meter lines are not on it" },
+    { read: "the PR body", options: { prBodyUnreadable: true }, line: "#9810 ended red, its body could not be read, so no model was spent" },
   ])("ends red at unread naming $read, putting nothing on the PR body", ({ read, options, line }) => {
     const { run, edited, spent } = metering(options);
 
     expect(run()).toMatchObject({ status: 1, stderr: `meters: ${line}\n` });
     expect(edited()).toEqual([]);
-    expect(spent()).toBe(read === "the PR body");
+    expect(spent()).toBe(false);
   });
 });
 

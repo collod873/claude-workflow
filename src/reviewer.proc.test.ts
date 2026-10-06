@@ -425,8 +425,8 @@ function patchId(diff: string): string {
   return got.stdout.trim().split(/\s+/)[0] ?? "";
 }
 
-function fingerprintOf(diff: string, body: string): string {
-  return `${patchId(diff)}-${createHash("sha256").update(body).digest("hex").slice(0, 12)}`;
+function fingerprintOf(diff: string, body: string, prBody = "Builds #810\n"): string {
+  return `${patchId(diff)}-${createHash("sha256").update(body).update(prBody).digest("hex").slice(0, 12)}`;
 }
 
 const matchComment = (fingerprint: string) => `It builds what the ticket asked.\n\nFingerprint: \`${fingerprint}\`\n`;
@@ -494,6 +494,30 @@ describe("bin/review reuses its last judgement on the PR when what it judged has
     expect(noFingerprint.run().status).toBe(0);
     expect(noFingerprint.hired()).not.toEqual([]);
     expect(noFingerprint.comments()[0]).toContain(`Fingerprint: \`${fingerprintOf(diff, REVIEWED_TICKET)}\``);
+  });
+
+  it("judges afresh when the PR body changed outside its meter lines, and reuses its judgement when only a meter line changed (#1166)", () => {
+    const diff = fileDiff("src/reviewer.ts", "export const reviewed = 1;");
+    const before = "Builds #810\n";
+    const told = "Builds #810\n\n## Labels on GitHub\n\n- renamed in place\n";
+
+    const bodyChanged = reviewing({ diff, prBody: told, onPr: [driftComment("810", fingerprintOf(diff, REVIEWED_TICKET, before))] });
+    expect(bodyChanged.run().status).toBe(0);
+    expect(bodyChanged.hired()).not.toEqual([]);
+    expect(bodyChanged.comments()[0]).toContain(`Fingerprint: \`${fingerprintOf(diff, REVIEWED_TICKET, told)}\``);
+
+    const metered = `${told}\ndepth (meter): would refuse, a finding\n`;
+    const meterChanged = reviewing({ diff, prBody: metered, onPr: [driftComment("810", fingerprintOf(diff, REVIEWED_TICKET, `${told}\n`))] });
+    expect(meterChanged.run().status).toBe(1);
+    expect(meterChanged.hired()).toEqual([]);
+  });
+
+  it("hands the reviewer the PR body without its meter lines, which only advise (#1166)", () => {
+    const { run, handed } = reviewing({ prBody: "Builds #810\n\nthe builder's account\n\ndepth (meter): would refuse, a finding\n" });
+
+    expect(run().status).toBe(0);
+    expect(handed()).toContain("the builder's account");
+    expect(handed()).not.toContain("(meter)");
   });
 
   it("keeps one fingerprint when main is merged in, unchanged by the shift in its own lines, so the merged PR still reuses its last judgement", () => {
