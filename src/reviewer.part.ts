@@ -202,16 +202,16 @@ declareStage({
     {
       name: "reviewer",
       file: "src/reviewer.ts",
-      cap: 2 * TICKET_CAP + DIFF_CAP + LIST_CAP + HANDED_ON,
-      slots: ["body", "diff"],
-      build: (filled) => handedOn(filled.body ?? "", filled.diff ?? ""),
+      cap: 2 * TICKET_CAP + DIFF_CAP + 2 * LIST_CAP + HANDED_ON,
+      slots: ["body", "diff", "prBody"],
+      build: (filled) => handedOn(filled.body ?? "", filled.diff ?? "", { prBody: filled.prBody ?? "" }),
     },
     {
       name: "reviewer after the builder's repair",
       file: "src/reviewer.ts",
-      cap: 2 * TICKET_CAP + 2 * DIFF_CAP + 2 * LIST_CAP + HANDED_ON,
-      slots: ["body", "diff", "earlier", "fix"],
-      build: (filled) => handedOn(filled.body ?? "", filled.diff ?? "", { earlier: filled.earlier ?? "", fix: filled.fix ?? "" }),
+      cap: 2 * TICKET_CAP + 2 * DIFF_CAP + 3 * LIST_CAP + HANDED_ON,
+      slots: ["body", "diff", "prBody", "earlier", "fix"],
+      build: (filled) => handedOn(filled.body ?? "", filled.diff ?? "", { prBody: filled.prBody ?? "", after: { earlier: filled.earlier ?? "", fix: filled.fix ?? "" } }),
     },
     {
       name: "reviewer since main moved",

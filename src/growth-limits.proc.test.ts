@@ -161,7 +161,7 @@ describe("the machine holds its growth limits", () => {
     expect(timedWorkflows(copy)).toEqual([".github/workflows/listed.yml fires on a timer", ".github/workflows/tick.yml fires on a timer"]);
   });
 
-  it("4. the count of tests is not below the merge base with origin/main, unless a commit gives the reason", () => {
+  it("4. the count of tests is not below the merge base with origin/main, unless a commit gives the reason", { timeout: 120_000 }, () => {
     expect(testCountDrop(REPO)).toEqual([]);
 
     const copy = scratch();

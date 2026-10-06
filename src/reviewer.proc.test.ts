@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { askingBash, cloned, fenceSays, flagValue, git, plant, scratch, starts } from "./scenarios.ts";
 import { EARLY_REPAIR, fileDiff, BUILDER_LINE, FROM_MAIN, JUDGED_GAP, JUDGEMENT, RESOLVED, REVIEWED_TICKET, reviewing } from "./reviewer.part.ts";
-import { capped, NO_EM_DASH, TICKET_CAP } from "./brief.ts";
+import { capped, LIST_CAP, NO_EM_DASH, TICKET_CAP } from "./brief.ts";
 import { METERS } from "./meter-reviewer.ts";
 import { earlierDrift } from "./post.ts";
 import { PLAIN_WORDS } from "./reviewer.ts";
@@ -52,6 +52,23 @@ describe("bin/review reads a green ticket PR against its Why before it merges (#
       expect(handed()).toContain("the filer's note under its own heading");
       expect(handed()).not.toContain("a line past the cap");
     }
+  });
+
+  it("hands the reviewer the PR body, cut at its cap, so work a Done when asks outside the repo, such as a label renamed on GitHub, can be shown (#1166)", () => {
+    const prBody = `Builds #810\n\n## Labels on GitHub\n\n- the old label renamed in place on collod873/claude-workflow\n\n${"w".repeat(LIST_CAP)}a line past the cap\n`;
+    const { run, handed } = reviewing({ prBody });
+
+    expect(run().status).toBe(0);
+    expect(handed()).toContain("## The PR's body");
+    expect(handed()).toContain("the old label renamed in place on collod873/claude-workflow");
+    expect(handed()).not.toContain("a line past the cap");
+  });
+
+  it("ends red, hiring no model, when the PR body cannot be read (#1166)", () => {
+    const { run, handed } = reviewing({ prBodyUnreadable: true });
+
+    expect(run().status).not.toBe(0);
+    expect(handed()).toBe("");
   });
 
   it("hands the diff cut at the cap and the list of every changed file when the whole is over the diff cap", () => {
