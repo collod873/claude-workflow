@@ -391,11 +391,13 @@ export function saving({
   remoteRefuses,
   alreadyOpen = false,
   autoMergeRefused = false,
+  autoMergeOff = false,
   why = CONSENT_ONLY_WHY,
 }: {
   remoteRefuses?: string;
   alreadyOpen?: boolean;
   autoMergeRefused?: boolean;
+  autoMergeOff?: boolean;
   why?: string;
 } = {}) {
   const root = scratch("save-");
@@ -431,6 +433,7 @@ export function saving({
       alreadyOpen ? "  *\"pr create\"*) exit 1 ;;" : `  *"pr create"*) printf '%s\\n' '${SAVED_PR}' ;;`,
       `  *"pr view"*) printf '%s\\n' '${SAVED_PR}' ;;`,
       autoMergeRefused ? "  *\"pr merge\"*) printf 'auto-merge is not enabled for this repository\\n' >&2; exit 1 ;;" : "",
+      autoMergeOff ? "  *\"pr merge\"*) printf 'GraphQL: Auto merge is not allowed for this repository (enablePullRequestAutoMerge)\\n' >&2; exit 1 ;;" : "",
       "esac",
       "",
     ].join("\n"),

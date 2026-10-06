@@ -76,6 +76,18 @@ describe("bin/save's red exits name the stop the builder reads (#835)", () => {
   });
 });
 
+describe("bin/save names auto-merge off as the repo's fault, not the ticket's (#1150)", () => {
+  it("exits 3 with one line naming the repo and bin/enrol, and its log names the stop, when GitHub refuses auto-merge for the repo", () => {
+    const { session, log } = saving({ autoMergeOff: true });
+
+    const result = execute(join(BIN, "save"), session, { PATH: `${join(session, "..", "bin")}:${process.env.PATH}`, GH_REPO: "collod873/Lumaria" }, ["726"]);
+
+    expect(result.status).toBe(3);
+    expect(result.stderr.trimEnd().split("\n")).toEqual(["save: #726's PR is open, but collod873/Lumaria has auto-merge off, the repo's fault and not the ticket's: run bin/enrol collod873/Lumaria"]);
+    expect(log().split("\n")[0]).toBe("1 refusals, stopped at: Save: the repo has auto-merge off");
+  });
+});
+
 describe("bin/save's consent-only quote (meter) reads the ticket's last > passage under Why (#906)", () => {
   it("puts a consent-only quote (meter) line on the PR, quoting the passage and its word count, when the ticket's last > passage under Why is 5 words or fewer", () => {
     const { run, prBody } = saving({

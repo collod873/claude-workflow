@@ -62,6 +62,12 @@ opened() {
 }
 
 if ! opened; then
+  if grep -q 'Auto merge is not allowed for this repository' "$err"; then
+    repo=${GH_REPO:-$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null)}
+    stopped "Save: the repo has auto-merge off"
+    printf "save: #%s's PR is open, but %s has auto-merge off, the repo's fault and not the ticket's: run bin/enrol %s\n" "$ticket" "$repo" "$repo" >&2
+    exit 3
+  fi
   stopped "Save: the PR is not open with auto-merge on"
   printf 'save: #%s pushed to %s, but its PR is not open with auto-merge on; log %s\n' "$ticket" "$branch" "$shown" >&2
   exit 1

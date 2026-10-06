@@ -333,15 +333,18 @@ function spentOn(spend: Spend, input: string, session: string | undefined, openi
   return resumed.refusal === undefined ? resumed : fresh();
 }
 
-function saveRefusal(ticket: string, logs: string): string | undefined {
+const REPO_FAULT = 3;
+
+function saved(ticket: string, logs: string): Round {
   const save = spawnSync(machineBin("save"), [ticket], { encoding: "utf8" });
-  if (save.status === 0) return undefined;
-  return `Save could not push this branch or open its PR:\n\n${tailOf(onDisk(join(logs, `save-${ticket}.log`)) ?? save.stderr, TAIL_CAP)}`;
+  if (save.status === 0) return {};
+  if (save.status === REPO_FAULT) return { ended: calledOwner(ticket, save.stderr.trim()) };
+  return { red: `Save could not push this branch or open its PR:\n\n${tailOf(onDisk(join(logs, `save-${ticket}.log`)) ?? save.stderr, TAIL_CAP)}` };
 }
 
-function redOrSaved(ticket: string, logs: string): string | undefined {
+function redOrSaved(ticket: string, logs: string): Round {
   const red = checkRed();
-  return red === "" ? saveRefusal(ticket, logs) : repaired(red);
+  return red === "" ? saved(ticket, logs) : { red: repaired(red) };
 }
 
 const ranAs = (run: string | undefined) =>
@@ -419,7 +422,9 @@ function ownTicket(ticket: string, run: string | undefined): number {
     body = round.body ?? body;
     committed(commitOf(ticket, failed !== undefined, commitlint));
     const changed = head() !== before.head || fetchedMain() !== before.main || round.body !== undefined;
-    const red = round.red ?? redOrSaved(ticket, logs);
+    const verdict = round.red === undefined ? redOrSaved(ticket, logs) : { red: round.red };
+    if (verdict.ended !== undefined) return verdict.ended;
+    const { red } = verdict;
     if (red === undefined) return checkingAgain(ticket, run);
     if (!changed && idle) return calledOwner(ticket, `two rounds in a row changed nothing: ${round.red ?? answer?.reason ?? "it gave no outcome"}`);
     idle = !changed;
