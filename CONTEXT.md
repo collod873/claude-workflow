@@ -28,6 +28,13 @@ It passes such a check even when it says its receipts were not published, as a g
 passes: that repo's CI judges its PR without them.
 _Avoid_: shim, wrapper, vendored workflow
 
+**Enrol**:
+Give a repo everything its tickets need to build: the caller file naming its own CI, the App's
+reach, the App's client id and keys, every label the machine spells, auto-merge, and main taking
+changes only through a PR passing `check`. `bin/enrol <repo>` sets what is missing and names what it
+could not set; a missing auto-merge Save meets later is the repo's fault, never the ticket's.
+_Avoid_: onboard, install, register
+
 **Worker**:
 A part of the machine whose worth is the work it does: a step, a script, a stage.
 _Avoid_: job, component

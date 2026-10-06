@@ -470,6 +470,16 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(handed()[1]).toContain("Save could not push");
   });
 
+  it("calls the owner on a repo fault Save names, and hands the builder nothing back (#1150)", () => {
+    const fault = "save: #811's PR is open, but collod873/Lumaria has auto-merge off, the repo's fault and not the ticket's: run bin/enrol collod873/Lumaria";
+    const { run, handed, marked, ticketComments } = fixing({ claude: FIXES_EACH_ROUND, save: `printf '%s\\n' "${fault}" >&2\nexit 3\n` });
+
+    expect(run().status).toBe(1);
+    expect(handed()).toHaveLength(1);
+    expect(marked()).toContain("811 needs-human");
+    expect(ticketComments().at(-1)).toContain(fault);
+  });
+
   it("is handed the reason the closer woke it as how the ticket failed, instead of reading logs (#957)", () => {
     const reason = "#811 is not done: a check is red on the merge commit\n\n- `test -f built.txt` exited 1 on the merge commit";
 

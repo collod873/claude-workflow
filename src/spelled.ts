@@ -10,7 +10,7 @@ interface Label {
 const KIND_GREY = "c2c2c2";
 const STATE_BLUE = "1d76db";
 
-const LABELS = [
+export const LABELS = [
   { name: "ticket", kind: "kind", colour: KIND_GREY, description: "A ticket the machine builds" },
   { name: "spec", kind: "kind", colour: KIND_GREY, description: "A spec: the whole statement of a big job, sliced into tickets, never built itself" },
   { name: "note", kind: "kind", colour: KIND_GREY, description: "Filed to be kept, never built" },
