@@ -60,6 +60,7 @@ export interface QueuedPr {
   labels?: string[];
   labelsUnreadable?: boolean;
   unreviewed?: boolean;
+  mergeRefused?: string;
 }
 
 const RUNS = { green: ["COMPLETED", "SUCCESS"], pending: ["IN_PROGRESS", ""], red: ["COMPLETED", "FAILURE"] } as const;
@@ -193,6 +194,7 @@ export function closing({
       `  *"pr list"*) printf '%s\\n' '${JSON.stringify(openPrs.map((pr, at) => listed(pr, heads[at] ?? "")))}' ;;`,
       ...openPrs.filter((pr) => pr.refusedBefore === true).map((pr) => `  *"issues/${pr.number}/comments"*) cat "${join(root, `pr-${pr.number}-comments.json`)}" ;;`),
       ...openPrs.map((pr) => `  *"pr update-branch ${pr.number}"*) ${pr.refused === undefined ? "exit 0" : `printf '%s\\n' '${pr.refused}' >&2; exit 1`} ;;`),
+      ...openPrs.filter((pr) => pr.mergeRefused !== undefined).map((pr) => `  *"pr merge ${pr.number} "*) printf '%s\\n' '${pr.mergeRefused ?? ""}' >&2; exit 1 ;;`),
       ...(prUnreadable ? ["  *\"pr view 900 \"*) printf 'GraphQL: Could not resolve to a PullRequest\\n' >&2; exit 1 ;;"] : []),
       `  *"pr view"*) printf '%s\\n' '${timing.prOpened}' ;;`,
       `  *"pr checks"*) printf '%s\\n' '${timing.checksGreen}' ;;`,
@@ -209,6 +211,7 @@ export function closing({
   }
   return {
     session,
+    heads,
     calls: () => readdirSync(callsDir).sort((a, b) => Number(a) - Number(b)).map((file) => readFileSync(join(callsDir, file), "utf8")),
     tokens: () => readdirSync(tokensDir).sort((a, b) => Number(a) - Number(b)).map((file) => readFileSync(join(tokensDir, file), "utf8")),
     run: () =>

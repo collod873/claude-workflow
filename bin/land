@@ -82,13 +82,40 @@ url=$said
 gh pr merge "$branch" --auto --merge --match-head-commit "$head" >/dev/null 2>&1 || # quiet: a PR with nothing left to wait on refuses auto-merge, and the plain merge below names its own failure
   call "gh pr merge" gh pr merge "$branch" --merge --match-head-commit "$head"
 
-verdict='if .state == "CLOSED" then "closed" elif .mergeStateStatus == "DIRTY" then "conflicts" else (first(.statusCheckRollup[]? | select((.conclusion // .state) | IN("FAILURE", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE", "ERROR")) | .name // .context) | "failed \(.)") end'
+verdict='
+  def red: "FAILURE", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE", "ERROR", "CANCELLED", "STALE";
+  def passed: "SUCCESS", "SKIPPED", "NEUTRAL";
+  [.statusCheckRollup[]? | {name: (.name // .context), status: (.status // .state // "" | ascii_downcase), conclusion: (.conclusion // .state // "")}] as $runs
+  | (first($runs[] | select(.conclusion | IN(red))) // null) as $failed
+  | [$runs[] | select(.conclusion | IN(red, passed) | not)] as $pending
+  | (if .state == "MERGED" then ["merged", "merged"]
+     elif .state == "CLOSED" then ["closed", "closed"]
+     elif .mergeStateStatus == "DIRTY" then ["conflicts", "conflicts"]
+     elif $failed != null then ["failed", (if $failed.conclusion == "FAILURE" then "\($failed.name) failed" else "\($failed.name) ended \($failed.conclusion | ascii_downcase)" end)]
+     elif ($runs | length) == 0 then ["pending", "no check has started"]
+     elif ($pending | length) > 0 then ["pending", ($pending | map("\(.name) \(.status)") | join(", "))]
+     elif .mergeStateStatus == "CLEAN" then ["ready", "its merge"]
+     else ["pending", "its merge, with GitHub calling it \(.mergeStateStatus | ascii_downcase)"] end)
+    + [.headRefOid, ([.headRefOid, .mergeStateStatus, $runs] | tostring)]
+  | join("\t")'
 
+span() { (( $1 % 60 )) && printf '%ss' "$1" || printf '%s minutes' $(( $1 / 60 )); }
+
+seen=
+moved=0
 for (( waited = 0; ; waited += pause )); do
   call "git fetch" git fetch --quiet origin main
   git merge-base --is-ancestor "$head" origin/main && break
-  read -r state check < <(gh pr view "$branch" --json state,mergeStateStatus,statusCheckRollup --jq "$verdict" 2>/dev/null) # quiet: a lookup that fails is read again on the next poll
-  case ${state:-} in
+  if said=$(gh pr view "$branch" --json state,mergeStateStatus,statusCheckRollup,headRefOid --jq "$verdict" 2>"$err"); then
+    IFS=$'\t' read -r state detail oid signature <<<"$said"
+    [[ $signature == "$seen" ]] || { seen=$signature; moved=$waited; }
+  else
+    { printf -- '--- gh pr view %s ---\n' "$branch"; cat "$err"; } >>"$log"
+    state=unread
+    detail="its lookups failing, last with: $(head -n 1 "$err")"
+  fi
+  case $state in
+    merged) break ;;
     closed)
       printf 'land: %s was closed without merging\n' "$url" >&2
       exit 1
@@ -100,13 +127,21 @@ for (( waited = 0; ; waited += pause )); do
       ;;
     failed)
       gh pr close "$branch" --delete-branch >/dev/null
-      printf 'land: %s failed on %s; closed it, so fix it and land again\n' "$check" "$url" >&2
+      [[ $detail == *" failed" ]] && again="fix it and land again" || again="land again"
+      printf 'land: %s on %s; closed it, so %s\n' "$detail" "$url" "$again" >&2
       exit 1
       ;;
+    ready)
+      gh pr merge "$branch" --merge --match-head-commit "$oid" >/dev/null 2>>"$log" || true # quiet: a refused merge goes to the log and auto-merge stays on
+      ;;
   esac
+  if (( waited - moved >= ${LAND_STALL_SECONDS:-600} )); then
+    printf 'land: nothing moved on %s for %s: %s; it is left open\n' "$url" "$(span $(( waited - moved )))" "$detail" >&2
+    exit 1
+  fi
   if (( waited >= ${LAND_WAIT_SECONDS:-1800} )); then
-    printf 'Merges when its checks pass: %s\n' "$url"
-    exit 0
+    printf 'land: still waiting on %s after %s: %s; it is left open\n' "$url" "$(span "$waited")" "$detail" >&2
+    exit 1
   fi
   pause=$(( waited < 60 ? 2 : 15 ))
   sleep "$pause"
