@@ -33,7 +33,7 @@ function measuredCopy(edits: Record<string, (source: string) => string>): string
 const sources = (copy: string) =>
   Object.fromEntries(readdirSync(join(copy, "src")).map((name) => [name, readFileSync(join(copy, "src", name), "utf8")]));
 
-const GROWN = { "src/researcher.ts": (source: string) => source.replace("Your reading time is up.", `Your reading time is up. ${"More words. ".repeat(300)}`) };
+const GROWN = { "src/researcher.ts": (source: string) => source.replace("Your reading time is up.", `Your reading time is up. ${"More words. ".repeat(600)}`) };
 const SHRUNK = { "src/researcher.ts": (source: string) => source.replace(" Read nothing more.", "") };
 const LINE = /^prompt-bytes: \d+ prompts, (\d+) bytes of their own words, the largest the (.+) at (\d+)\n$/;
 
