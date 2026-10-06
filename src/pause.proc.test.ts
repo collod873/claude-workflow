@@ -119,12 +119,36 @@ describe("bin/resume picks a ticket up from where it stands once paused or stuck
     const calls = resumedWithoutBuilding(pausing({ autoMerge: false, behind: true, updateRefused: "merge conflict between base and head" }));
 
     expect(updates(calls)).toEqual([["pr", "update-branch", "931"]]);
-    expect(comments(calls)).toEqual([]);
     expect(wakes(calls)).toEqual([["workflow", "run", "fix.yml", "-f", "ticket=811", "-f", expect.stringMatching(/^reason=.*PR #931 .*merge conflict between base and head/)]]);
   });
 
+  it("leaves the closer's failed-update comment at the head of a conflicting PR and marks it resolving, so the closer's next queue run wakes no builder again for that head (#1189)", () => {
+    const scenario = pausing({ autoMerge: false, behind: true, updateRefused: "merge conflict between base and head" });
+    const calls = resumedWithoutBuilding(scenario);
+
+    expect(comments(calls)).toEqual([["pr", "comment", "931", "--body", expect.stringMatching(new RegExp(`^PR #931 could not be brought up to date with main: merge conflict between base and head\n\nHead: \`${PAUSED_HEAD}\``))]]);
+    expect(scenario.marks()).toEqual(["811 resolving"]);
+    expect(wakes(calls)).toHaveLength(1);
+  });
+
+  it("wakes no builder for a conflict on a ticket still held, leaving the conflict comment for the owner (#1189)", () => {
+    const scenario = pausing({ autoMerge: false, behind: true, updateRefused: "merge conflict between base and head", held: "paused" });
+    const calls = resumedWithoutBuilding(scenario);
+
+    expect(comments(calls)).toHaveLength(1);
+    expect(scenario.marks()).toEqual([]);
+    expect(wakes(calls)).toEqual([]);
+  });
+
+  it("marks a PR brought up to date as landing, as the closer's update does (#1189)", () => {
+    const scenario = pausing({ autoMerge: false, behind: true });
+    resumedWithoutBuilding(scenario);
+
+    expect(scenario.marks()).toEqual(["811 landing"]);
+  });
+
   it("ends red at unresumed, naming GitHub's refusal, when the update is refused for anything but a conflict (#1186)", () => {
-    const { calls, resume } = pausing({ autoMerge: false, behind: true, updateRefused: "GraphQL: Resource not accessible by integration" });
+    const { calls, resume } = pausing({ autoMerge: false, behind: true, updateRefused: "GraphQL: Resource not accessible by integration", conflicted: false });
 
     const refused = resume();
 

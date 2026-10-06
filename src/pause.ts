@@ -1,5 +1,5 @@
-import { branchUpdate, type CheckRun, checksOf, CONFLICT, thisRun, wakeBuilder } from "./closer.ts";
-import { commentOnPr, gh, NO_PR, readOrStop, ticketBranch, unread } from "./post.ts";
+import { type CheckRun, checksOf, updateBranch, wakeBuilder } from "./closer.ts";
+import { gh, NO_PR, readOrStop, ticketBranch, unread } from "./post.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { quoted } from "./ticket-shape.ts";
 
@@ -73,12 +73,11 @@ function woken(ticket: string, pr: HeldPr, standing: string): Stop | undefined {
 
 function updated(ticket: string, pr: HeldPr): Stop | undefined {
   const number = String(pr.number);
-  const update = gh(["pr", "update-branch", number]);
-  if (update.status !== 0 && CONFLICT.test(refusal(update))) return woken(ticket, pr, `in conflict with main: ${refusal(update)}`);
-  if (update.status !== 0) return stoppedAt("unresumed", `resume: PR #${number} of #${ticket} has auto-merge back on but could not be brought up to date with main: ${refusal(update)}`);
-  commentOnPr(number, `${branchUpdate(number)} ${thisRun}`, gh);
+  const moved = updateBranch({ number, headRefName: ticketBranch(ticket), headRefOid: pr.headRefOid }, console.error);
+  if (typeof moved === "object") return stoppedAt("unresumed", `resume: PR #${number} of #${ticket} has auto-merge back on but could not be brought up to date with main: ${quoted(moved.retried)}`);
   console.log("builds=false");
-  console.error(`resume: PR #${number} of #${ticket} has auto-merge back on and was behind main, so it is brought up to date for the closer's queue`);
+  if (moved === "conflicted") console.error(`resume: PR #${number} of #${ticket} is in conflict with main, so its builder resolves it unless #${ticket} is held`);
+  else console.error(`resume: PR #${number} of #${ticket} has auto-merge back on and was behind main, so it is brought up to date for the closer's queue`);
   return undefined;
 }
 
