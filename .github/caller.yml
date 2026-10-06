@@ -1,6 +1,8 @@
 name: Machine
 
 "on":
+  issue_comment:
+    types: [created]
   issues:
     types: [opened, reopened, unlabeled, closed]
   pull_request_target:
@@ -22,4 +24,8 @@ name: Machine
 jobs:
   tickets:
     uses: collod873/claude-workflow/.github/workflows/tickets.yml@main
+    secrets: inherit
+
+  specs:
+    uses: collod873/claude-workflow/.github/workflows/specs.yml@main
     secrets: inherit

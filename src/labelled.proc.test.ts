@@ -34,11 +34,15 @@ const GATED = [
   { file: "research.yml", job: "research", before: BEFORE.research, events: each([OWNER, "stranger"], [{ action: "opened" }], [[], ["note"], ["note", "research"]]) },
   { file: "done-check.yml", job: "asked", before: BEFORE.doneCheck, events: each([OWNER, MACHINE], [{ action: "created" }], [[], ["ticket"], ["spec"], ["spec", "needs-human"]]) },
   { file: "reslice.yml", job: "ended", before: BEFORE.reslice, events: each([OWNER, MACHINE], [{ action: "closed" }], [[], ["ticket"], ["spec"], ["note"], ["ticket", "waiting"]]) },
+  { file: "specs.yml", job: "slice", before: BEFORE.slice, events: each([OWNER, "stranger"], [{ action: "opened" }], [[], ["spec"], ["note"], ["spec", "needs-human"]]) },
+  { file: "specs.yml", job: "research", before: BEFORE.research, events: each([OWNER, "stranger"], [{ action: "opened" }], [[], ["note"], ["note", "research"]]) },
+  { file: "specs.yml", job: "asked", before: BEFORE.doneCheck, events: each([OWNER, MACHINE], [{ action: "created", event: "issue_comment" }], [[], ["ticket"], ["spec"], ["spec", "needs-human"]]) },
+  { file: "specs.yml", job: "ended", before: BEFORE.reslice, events: each([OWNER, MACHINE], [{ action: "closed" }], [[], ["ticket"], ["spec"], ["note"], ["ticket", "waiting"]]) },
 ];
 
 describe("the workflows ask spelled for each label they test, so a renamed label cannot pass unseen (#1108)", () => {
   for (const { file, job, before, events } of GATED) {
-    it(`${file} starts or skips ${job} on the same labels as before`, async () => {
+    it(`${file} starts or skips ${job} on the same labels as ${file === "specs.yml" ? "this repo's own workflow" : "before"}`, async () => {
       const said = (event: IssueEvent) => `${event.sender ?? ""} ${event.action ?? ""}${event.label === undefined ? "" : ` -${event.label}`} [${(event.labels ?? []).join(",")}]`;
       const now = await Promise.all(events.map(async (event) => `${said(event)} ${String(await starts(file, job, event))}`));
 

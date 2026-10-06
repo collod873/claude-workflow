@@ -20,6 +20,7 @@ interface Caller {
   jobs: Record<string, Record<string, unknown>>;
 }
 
+const CALLED = ["tickets.yml", "specs.yml"];
 const caller = () => parse(readFileSync(CALLER, "utf8")) as Caller;
 
 interface Fired {
@@ -39,10 +40,10 @@ function declared({ event, action = "" }: Fired): void {
   if (event === "workflow_run") expect(trigger?.workflows?.length, "the caller file names the CI it hands back from").toBeGreaterThan(0);
 }
 
-function jobsRun({ red = [], outputs = {}, ...fired }: Fired): string[] {
+function jobsRun({ red = [], outputs = {}, ...fired }: Fired, file = "tickets.yml"): string[] {
   declared(fired);
   const results: Record<string, { result: string; outputs?: Record<string, string> }> = {};
-  for (const [name, job] of Object.entries(workflowJobs("tickets.yml"))) {
+  for (const [name, job] of Object.entries(workflowJobs(file))) {
     const needs = Object.fromEntries([job.needs ?? []].flat().map((need) => [need, results[need] ?? { result: "skipped" }]));
     const failed = Object.values(needs).some(({ result }) => result !== "success");
     const ran = holds(job.if ?? "success()", { ...fired, needs, failed });
@@ -52,13 +53,14 @@ function jobsRun({ red = [], outputs = {}, ...fired }: Fired): string[] {
 }
 
 describe("a repo's tickets build through one caller file that holds only triggers and the call (#1135)", () => {
-  it("holds a name, its triggers and one job that calls tickets.yml on this repo's main with the caller's secrets, and nothing else", () => {
+  it("holds a name, its triggers and the jobs that call tickets.yml and specs.yml on this repo's main with the caller's secrets, and nothing else (#1151)", () => {
     const { name, on, jobs, ...rest } = caller();
 
     expect(rest).toEqual({});
     expect(typeof name).toBe("string");
-    expect(Object.keys(on).sort()).toEqual(["issues", "pull_request_target", "push", "workflow_dispatch", "workflow_run"]);
-    expect(Object.values(jobs)).toEqual([{ uses: "collod873/claude-workflow/.github/workflows/tickets.yml@main", secrets: "inherit" }]);
+    expect(Object.keys(on).sort()).toEqual(["issue_comment", "issues", "pull_request_target", "push", "workflow_dispatch", "workflow_run"]);
+    expect(on.issue_comment).toEqual({ types: ["created"] });
+    expect(Object.values(jobs)).toEqual(CALLED.map((file) => ({ uses: `collod873/claude-workflow/.github/workflows/${file}@main`, secrets: "inherit" })));
   });
 
   it("answers each trigger the caller holds: a ticket opened builds, a closed issue or PR is stripped and closed, a merge or a finished CI run lands the queue", () => {
@@ -100,14 +102,15 @@ describe("a repo's tickets build through one caller file that holds only trigger
     expect(read.sort()).toEqual(inputs.sort());
   });
 
-  it("checks the machine out at the workspace and the caller's tree apart under tree/, and makes every GitHub call with the App's token", () => {
-    const text = readFileSync(TICKETS, "utf8");
-    const { permissions, jobs } = parse(text) as { permissions: unknown; jobs: Record<string, { env?: Record<string, string> }> };
+  it.each(CALLED)("%s checks the machine out at the workspace and the caller's tree apart under tree/, and makes every GitHub call with the App's token", (file) => {
+    const text = readFileSync(join(REPO, ".github", "workflows", file), "utf8");
+    const { on, permissions, jobs } = parse(text) as { on: unknown; permissions: unknown; jobs: Record<string, { env?: Record<string, string> }> };
 
+    expect(on).toEqual({ workflow_call: null });
     expect(permissions).toEqual({});
     for (const [name, job] of Object.entries(jobs)) expect(job.env?.GH_REPO, name).toBe("${{ github.repository }}");
     expect(text).not.toMatch(/github\.token|secrets\.GITHUB_TOKEN/);
-    for (const [name, { steps }] of Object.entries(workflowJobs("tickets.yml"))) {
+    for (const [name, { steps }] of Object.entries(workflowJobs(file))) {
       const [app, machine] = steps;
       expect(app?.uses, name).toMatch(/^actions\/create-github-app-token@/);
       expect(app?.with?.owner, name).toBe("${{ github.repository_owner }}");
@@ -266,5 +269,60 @@ describe("a repo's tickets build through one caller file that holds only trigger
       expect(pnpm.status, pnpm.stderr).toBe(0);
       expect(pnpm.stdout.trim()).toBe("11.7.0");
     });
+  });
+});
+
+describe("a repo's specs and research notes run through the same caller file, on its own checkout (#1151)", () => {
+  const specs = (fired: Fired) => jobsRun(fired, "specs.yml");
+  const stageSteps = () => Object.entries(workflowJobs("specs.yml")).flatMap(([name, { steps }]) => steps.filter(({ env }) => env?.CLAUDE_CODE_OAUTH_TOKEN !== undefined).map((step) => ({ name, steps, step })));
+
+  it("slices a spec and answers a research note the owner opens, and nothing anyone else opens", () => {
+    expect(specs({ event: "issues", action: "opened" })).toEqual(["slice", "research"]);
+    expect(specs({ event: "issues", action: "opened", sender: "stranger" })).toEqual([]);
+    expect(specs({ event: "issues", action: "opened", sender: MACHINE })).toEqual([]);
+  });
+
+  it("reslices the spec of any issue that closes, once it names one", () => {
+    expect(specs({ event: "issues", action: "closed", sender: MACHINE, outputs: { ended: { spec: "" } } })).toEqual(["ended"]);
+    expect(specs({ event: "issues", action: "closed", sender: MACHINE, outputs: { ended: { spec: "1151" } } })).toEqual(["ended", "reslice"]);
+  });
+
+  it("runs the done check again on the owner's comment, once the last done check put a sentence to him", () => {
+    expect(specs({ event: "issue_comment", action: "created" })).toEqual(["asked"]);
+    expect(specs({ event: "issue_comment", action: "created", outputs: { asked: { asked: "true" } } })).toEqual(["asked", "check"]);
+    expect(specs({ event: "issue_comment", action: "created", sender: MACHINE })).toEqual([]);
+  });
+
+  it("starts nothing on a ticket's events, and tickets.yml nothing on a comment", () => {
+    for (const fired of [
+      { event: "issues", action: "reopened" },
+      { event: "issues", action: "unlabeled", sender: MACHINE },
+      { event: "pull_request_target", action: "closed" },
+      { event: "push" },
+      { event: "workflow_run", action: "completed", conclusion: "failure" },
+      { event: "workflow_dispatch" },
+    ]) {
+      expect(specs(fired), JSON.stringify(fired)).toEqual([]);
+    }
+    expect(jobsRun({ event: "issue_comment", action: "created" })).toEqual([]);
+  });
+
+  it("readies the tree's pinned Node before anything installs, in every job whose stage may run the done check, and tells that stage the caller file it runs under", () => {
+    const trying = stageSteps().filter(({ step }) => /bin\/(slice|done-check)\b/.test(step.run ?? ""));
+
+    expect([...new Set(trying.map(({ name }) => name))].sort()).toEqual(["check", "reslice", "slice"]);
+    for (const { name, steps, step } of trying) {
+      const at = (found: (one: WorkflowStep) => boolean) => steps.findIndex(found);
+      const pinned = at(({ uses }) => uses === "./.github/actions/pinned");
+
+      expect(pinned, name).toBeGreaterThan(at(({ id }) => id === "checkout"));
+      expect(pinned, name).toBeLessThan(at(({ id }) => id === "npm-ci"));
+      expect(step.env?.CALLED_FROM, `${name} ${step.id ?? ""}`).toBe("${{ github.workflow_ref }}");
+    }
+  });
+
+  it("gives every stage it runs the caller's checkout as its working directory", () => {
+    expect(stageSteps().map(({ name, step }) => `${name} ${step.id ?? ""}`).sort()).toEqual(["check done-check", "research research", "reslice reslice", "reslice wave-check", "slice slice"]);
+    for (const { name, step } of stageSteps()) expect((step as WorkflowStep & { "working-directory"?: string })["working-directory"], name).toBe("tree");
   });
 });
