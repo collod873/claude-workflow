@@ -162,10 +162,10 @@ function entryRefusals(record: string): string[] {
   return [...unnamed, ...twice];
 }
 
-export function recordRefusals(recorded: Recorded): string[] {
+export function recordRefusals(recorded: Recorded, cap: Cap = SPEC_CAPPED): string[] {
   const headed = NEXT_HEADING.test(recorded.record) ? ["the record carries a '## ' heading, which would end it: head its parts with '### '"] : [];
   const bytes = Buffer.byteLength(spliced(recorded));
-  const over = bytes > SPEC_CAP ? [`the spec would be ${bytes} bytes, over the spec cap of ${SPEC_CAP}: the record must lose at least ${bytes - SPEC_CAP} bytes`] : [];
+  const over = bytes > cap.bytes ? [`the spec would be ${bytes} bytes, over the ${cap.named} of ${cap.bytes}: the record must lose at least ${bytes - cap.bytes} bytes`] : [];
   return [...pathRefusals(recorded.record, "the record"), ...headed, ...entryRefusals(recorded.record), ...over];
 }
 
@@ -220,6 +220,13 @@ function sentenceRefusals(items: string[]): string[] {
 }
 
 export const SPEC_CAP = 64 * 1024;
+
+export interface Cap {
+  bytes: number;
+  named: string;
+}
+
+export const SPEC_CAPPED: Cap = { bytes: SPEC_CAP, named: "spec cap" };
 
 export interface Sentence {
   said: string;
