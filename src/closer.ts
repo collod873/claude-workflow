@@ -236,6 +236,12 @@ function updateBranch(pr: QueuedPr): Moved {
 const upToDate = (pr: QueuedPr) =>
   answered(git(["merge-base", "--is-ancestor", "origin/main", `origin/${pr.headRefName}`]), `whether PR #${pr.number} is up to date with main could not be read, ${NOTHING_MARKED}`);
 
+function merged({ number, headRefOid }: QueuedPr): string {
+  const merge = gh(["pr", "merge", number, "--merge", "--match-head-commit", headRefOid]);
+  if (merge.status === 0) return `PR #${number} merged, green and up to date with main`;
+  return `PR #${number} could not be merged, so auto-merge is left to merge it: ${(merge.stderr || merge.stdout).trim().split("\n")[0] || "no reason given"}`;
+}
+
 function queue(): string {
   gitRead(["fetch", "--quiet", "origin"], `origin could not be fetched, ${NOTHING_MARKED}`);
   const queued = queuedPrs();
@@ -255,6 +261,7 @@ function queue(): string {
     const ticket = TICKET_BRANCH.exec(pr.headRefName)?.[1];
     if (ticket !== undefined && moved.get(pr) !== "updated") settle(ticket, pr, merging, moved.get(pr) === "conflicted");
   }
+  if (merging?.checks === "green") return merged(merging);
   if (merging !== undefined) return `PR #${merging.number} is up to date with main, so the queue waits for it`;
   return next === undefined ? "no green PR waits behind main" : `PR #${next.number} brought up to date with main`;
 }
