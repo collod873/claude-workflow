@@ -71,7 +71,7 @@ _Avoid_: precondition, validation, check
 
 **Builder**:
 The one agent that builds a ticket, and owns it from that build until it merges, one session across
-every red run. It fixes the code, ticket or machine, splits the ticket, or closes it unbuilt; when it
+every red run; a run that cannot resume that session says why in its log before it starts fresh. It fixes the code, ticket or machine, splits the ticket, or closes it unbuilt; when it
 stops, it marks `stuck`.
 _Avoid_: fixer, mechanic, fresh eyes, repair agent
 

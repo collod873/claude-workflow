@@ -317,11 +317,13 @@ function committed(message: string): void {
   git(["commit", "--quiet", "-m", message]);
 }
 
-function spentOn(spend: Spend, input: string, session: string | undefined, opening: string): Spent {
+function spentOn(ticket: string, spend: Spend, input: string, session: string | undefined, opening: string): Spent {
   const fresh = () => spend(input === opening ? input : [opening, input].join("\n\n"));
   if (session === undefined) return fresh();
   const resumed = spend(input, session);
-  return resumed.refusal === undefined ? resumed : fresh();
+  if (resumed.refusal === undefined) return resumed;
+  console.error(`fix: #${ticket} could not resume its builder's session ${session}, so it starts fresh: ${resumed.refusal}`);
+  return fresh();
 }
 
 const REPO_FAULT = 3;
@@ -385,6 +387,7 @@ function ownTicket(ticket: string, run: string | undefined): number {
   const { logs, failed, judged, onTicket, diff } = owning.carried;
   let body = asked.body;
   let session = savedSession(ticket);
+  if (session === undefined && failed !== undefined) console.error(`fix: #${ticket} has no session of its builder saved, so it starts fresh`);
   const contract = onDisk(join(process.cwd(), CONTRACT)) ?? "";
   const unready = setupRefusal(contract);
   if (unready !== undefined) return calledOwner(ticket, `its tree's setup failed: ${quoted(unready)}`);
@@ -403,7 +406,7 @@ function ownTicket(ticket: string, run: string | undefined): number {
   let idle = false;
   for (;;) {
     const before = { head: head(), main: fetchedMain() };
-    const spent = spentOn(spend, input, session, opening);
+    const spent = spentOn(ticket, spend, input, session, opening);
     session = spent.session ?? session;
     keepSession(ticket, session);
     if (spent.refusal !== undefined) return calledOwner(ticket, spent.refusal);
