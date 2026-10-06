@@ -10,7 +10,7 @@ const ROLLUPS = {
   red: [{ name: "check", status: "COMPLETED", conclusion: "FAILURE" }, { name: "review", status: "COMPLETED", conclusion: "SUCCESS" }],
 } as const;
 
-export function pausing({ pr = "green" as keyof typeof ROLLUPS | "none" | "unreadable", state = "OPEN", autoMerge = true, refused = "", calledFrom = "" } = {}) {
+export function pausing({ pr = "green" as keyof typeof ROLLUPS | "none" | "unreadable", state = "OPEN", autoMerge = true, refused = "", calledFrom = "", behind = false, updateRefused = "" } = {}) {
   const root = scratch("pause-");
   const { setup, calls } = ghArgv(join(root, "gh-argv"));
   const viewed =
@@ -18,10 +18,10 @@ export function pausing({ pr = "green" as keyof typeof ROLLUPS | "none" | "unrea
       ? "printf 'no pull requests found for branch \"ticket/811\"\\n' >&2; exit 1"
       : pr === "unreadable"
         ? "printf 'GraphQL: Server Error (HTTP 502)\\n' >&2; exit 1"
-        : `printf '%s\\n' '${JSON.stringify({ number: 931, state, headRefOid: PAUSED_HEAD, autoMergeRequest: autoMerge ? { mergeMethod: "MERGE" } : null, statusCheckRollup: ROLLUPS[pr] })}'`;
+        : `printf '%s\\n' '${JSON.stringify({ number: 931, state, headRefOid: PAUSED_HEAD, autoMergeRequest: autoMerge ? { mergeMethod: "MERGE" } : null, mergeStateStatus: behind ? "BEHIND" : "CLEAN", statusCheckRollup: ROLLUPS[pr] })}'`;
   script(
     join(root, "bin", "gh"),
-    [setup, 'case "$*" in', `  *"pr view"*) ${viewed} ;;`, ...(refused === "" ? [] : [`  *"pr merge"*|*"workflow run"*) printf '%s\\n' '${refused}' >&2; exit 1 ;;`]), "esac", ""].join("\n"),
+    [setup, 'case "$*" in', `  *"pr view"*) ${viewed} ;;`, ...(updateRefused === "" ? [] : [`  *"pr update-branch"*) printf '%s\\n' '${updateRefused}' >&2; exit 1 ;;`]), ...(refused === "" ? [] : [`  *"pr merge"*|*"workflow run"*) printf '%s\\n' '${refused}' >&2; exit 1 ;;`]), "esac", ""].join("\n"),
   );
   const env = { PATH: `${join(root, "bin")}:${process.env.PATH}`, ...(calledFrom === "" ? {} : { CALLED_FROM: calledFrom }) };
   return {
@@ -44,6 +44,7 @@ declareStage({
   scenarios: [
     { label: "turning auto-merge back on at a green PR", run: () => pausing().resume() },
     { label: "waking the builder on a red PR", run: () => pausing({ pr: "red" }).resume() },
+    { label: "bringing a green PR behind main up to date", run: () => pausing({ behind: true }).resume() },
     { label: "with the PR unreadable", run: () => pausing({ pr: "unreadable" }).resume() },
   ],
 });

@@ -1,11 +1,11 @@
-import { type CheckRun, checksOf, wakeBuilder } from "./closer.ts";
-import { gh, NO_PR, readOrStop, ticketBranch, unread } from "./post.ts";
+import { branchUpdate, type CheckRun, checksOf, CONFLICT, thisRun, wakeBuilder } from "./closer.ts";
+import { commentOnPr, gh, NO_PR, readOrStop, ticketBranch, unread } from "./post.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { quoted } from "./ticket-shape.ts";
 
 const stoppedAt = stopsOf({
   unpaused: "Pause: GitHub keeps auto-merge on at the paused ticket's PR",
-  unresumed: "Resume: GitHub refuses auto-merge or the builder's wake on the resumed ticket's PR",
+  unresumed: "Resume: GitHub refuses auto-merge, the branch update or the builder's wake on the resumed ticket's PR",
 });
 type Stop = ReturnType<typeof stoppedAt>;
 
@@ -14,12 +14,13 @@ interface HeldPr {
   state: string;
   headRefOid: string;
   autoMergeRequest: unknown;
+  mergeStateStatus: string;
   statusCheckRollup: CheckRun[] | null;
 }
 
 function prOf(ticket: string, so: string): HeldPr | undefined {
   const line = `the PR of #${ticket} could not be read, ${so}`;
-  const got = gh(["pr", "view", ticketBranch(ticket), "--json", "number,state,headRefOid,autoMergeRequest,statusCheckRollup"]);
+  const got = gh(["pr", "view", ticketBranch(ticket), "--json", "number,state,headRefOid,autoMergeRequest,mergeStateStatus,statusCheckRollup"]);
   if (got.status !== 0) return NO_PR.test(got.stderr) ? undefined : unread(line);
   try {
     return JSON.parse(got.stdout) as HeldPr;
@@ -53,17 +54,31 @@ function resume(ticket: string): Stop | undefined {
     console.error(`resume: PR #${pr.number} of #${ticket} is ${pr.state.toLowerCase()}, so nothing resumes and no fresh build starts`);
     return undefined;
   }
-  if (checksOf(pr.statusCheckRollup ?? []) === "red") {
-    const woke = wakeBuilder(ticket, `#${ticket} was resumed with its PR #${pr.number} red at ${pr.headRefOid}`);
-    if (woke.status !== 0) return stoppedAt("unresumed", `resume: #${ticket}'s builder could not be woken on its red PR #${pr.number}: ${refusal(woke)}`);
-    console.log("builds=false");
-    console.error(`resume: PR #${pr.number} of #${ticket} is red, so its builder takes it up again`);
-    return undefined;
-  }
+  if (checksOf(pr.statusCheckRollup ?? []) === "red") return woken(ticket, pr, `red at ${pr.headRefOid}`);
   const on = gh(["pr", "merge", String(pr.number), "--auto", "--merge", "--match-head-commit", pr.headRefOid]);
   if (on.status !== 0) return stoppedAt("unresumed", `resume: PR #${pr.number} of #${ticket} could not have auto-merge back on: ${refusal(on)}`);
+  if (pr.mergeStateStatus === "BEHIND") return updated(ticket, pr);
   console.log("builds=false");
   console.error(`resume: PR #${pr.number} of #${ticket} has auto-merge back on, so the closer's queue takes it`);
+  return undefined;
+}
+
+function woken(ticket: string, pr: HeldPr, standing: string): Stop | undefined {
+  const woke = wakeBuilder(ticket, `#${ticket} was resumed with its PR #${pr.number} ${standing}`);
+  if (woke.status !== 0) return stoppedAt("unresumed", `resume: #${ticket}'s builder could not be woken on its PR #${pr.number}: ${refusal(woke)}`);
+  console.log("builds=false");
+  console.error(`resume: PR #${pr.number} of #${ticket} is ${standing}, so its builder takes it up again`);
+  return undefined;
+}
+
+function updated(ticket: string, pr: HeldPr): Stop | undefined {
+  const number = String(pr.number);
+  const update = gh(["pr", "update-branch", number]);
+  if (update.status !== 0 && CONFLICT.test(refusal(update))) return woken(ticket, pr, `in conflict with main: ${refusal(update)}`);
+  if (update.status !== 0) return stoppedAt("unresumed", `resume: PR #${number} of #${ticket} has auto-merge back on but could not be brought up to date with main: ${refusal(update)}`);
+  commentOnPr(number, `${branchUpdate(number)} ${thisRun}`, gh);
+  console.log("builds=false");
+  console.error(`resume: PR #${number} of #${ticket} has auto-merge back on and was behind main, so it is brought up to date for the closer's queue`);
   return undefined;
 }
 
