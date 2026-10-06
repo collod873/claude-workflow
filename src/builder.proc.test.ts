@@ -240,7 +240,7 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(prompt).not.toContain("delete the fence");
   });
 
-  it("refuses a rewrite that changes one byte of the Why, and writes one that changes only what done looks like, then pushes", () => {
+  it("refuses a rewrite that changes one byte of the Why, and writes one that changes only what done looks like, then parks it for the owner with no Save, where Lumaria #931 looped on a PR with no commits (#1195)", () => {
     const { body } = fixing();
     const refused = fixing({ answer: { outcome: "ticket", reason: "the Why reads better this way", body: body.replace("never the owner", "never The owner") } });
 
@@ -253,8 +253,29 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
 
     expect(written.run().status).toBe(0);
     expect(written.edits()).toEqual([redone]);
-    expect(written.ticketComments().at(-1)).toContain("every stage");
-    expect(written.saved()).toEqual(["811"]);
+    expect(written.ticketComments().at(-1)).toMatch(/^@collod873 .*waiting.*every stage/s);
+    expect(written.marked().at(-1)).toBe("811 waiting");
+    expect(written.saved()).toEqual([]);
+    expect(written.handed()).toHaveLength(1);
+  });
+
+  it("hands back a `ticket` answer that returns the ticket unchanged, and never saves it (#1195)", () => {
+    const { body } = fixing();
+    const { run, edits, saved, handed } = fixing({ answer: { outcome: "ticket", reason: "it reads fine", body } });
+
+    expect(run().status).toBe(1);
+    expect(edits()).toEqual([]);
+    expect(saved()).toEqual([]);
+    expect(handed()[1]).toContain("unchanged");
+  });
+
+  it("hands a `code` answer on a branch with no commits past main back as nothing to push, never as a Save failure (#1195)", () => {
+    const { run, saved, handed } = fixing({ claude: "git reset --quiet --hard main\n" });
+
+    expect(run().status).toBe(1);
+    expect(saved()).toEqual([]);
+    expect(handed()[1]).toContain("no commits past main");
+    expect(handed()[1]).not.toContain("Save");
   });
 
   it("rewrites past `## Done when` when a builder corrects the body around it, and posts why (#942)", () => {
@@ -265,7 +286,7 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(run().status).toBe(0);
     expect(edits()).toEqual([corrected]);
     expect(ticketComments().at(-1)).toContain("the fault it names sits in src/post.ts");
-    expect(saved()).toEqual(["811"]);
+    expect(saved()).toEqual([]);
   });
 
   it("keeps `resolving` with no try when woken on a conflict, since a conflict is not the ticket failing, and marks checking once it pushes", () => {
@@ -352,15 +373,18 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(handed()[1]).toContain("itself a follow-up, so it is not split again");
   });
 
-  it("merges a machine fix it landed on main into the ticket, tells the owner, and pushes once green", () => {
+  it("merges a machine fix it landed on main into the ticket, tells the owner, and hands the build back with no Save until it answers `code` (#1195)", () => {
     const reason = "the reviewer read a renamed export as drift";
-    const { run, ticketComments, saved, log } = fixing({ answer: { outcome: "machine", reason }, claude: MOVES_MAIN });
+    const answers = [{ outcome: "machine", reason }, { outcome: "code", reason: "built on the fix" }];
+    const claude = `if [ "$CALL" = 1 ]; then ${MOVES_MAIN.trim()}; else ${FIXES.trim()}; printf '%s\\n' '${JSON.stringify({ type: "result", subtype: "success", is_error: false, session_id: "sess-fix", structured_output: answers[1] })}'; exit 0; fi\n`;
+    const { run, ticketComments, saved, log, handed } = fixing({ answer: answers[0], claude });
 
     const result = run();
 
     expect(result.status, result.stderr).toBe(0);
     expect(ticketComments()).toEqual([expect.stringMatching(new RegExp(`^@collod873 .*changed the machine: ${reason}`))]);
     expect(log("--format=%s")).toContain("Land the reviewer fix #811 needed");
+    expect(handed()[1]).toContain("main now carries your machine fix");
     expect(saved()).toEqual(["811"]);
   });
 
