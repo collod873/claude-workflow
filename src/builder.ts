@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { admission, doesNotBuild } from "./admit.ts";
 import { capped, handedDiff, LIST_CAP, NO_EM_DASH, onDisk, TICKET_CAP } from "./brief.ts";
 import { FULL_CHECK, UNFENCED } from "./fence.ts";
-import { type Asked, BUILDER_SPLIT, commentOnTicket, commentsRead, earlierDrift, faultOf, FOLLOW_UP_OF, followUpBody, gh, ghRead, git, gitRead, machineBin, mark, NOTHING_MARKED, OWNER, post, postRefusals, prOfTicket, readOrStop, repairOf, RESOLVING, rewriteTicket, sessionLine, STUCK, ticketBranch, unread, WAITING } from "./post.ts";
+import { answered, type Asked, BUILDER_SPLIT, commentOnTicket, commentsRead, earlierDrift, faultOf, FOLLOW_UP_OF, followUpBody, gh, ghRead, git, gitRead, machineBin, mark, NOTHING_MARKED, OWNER, post, postRefusals, prOfTicket, readOrStop, repairOf, RESOLVING, rewriteTicket, sessionLine, STUCK, ticketBranch, unread, WAITING } from "./post.ts";
 import { CONTRACT, FOREIGN, machineLogs, opened, setupRefusal, type Spent, treePathed } from "./stage.ts";
 import { BUILDING, CHECKING } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
@@ -303,7 +303,7 @@ function landedOnMain(ticket: string, reason: string, before: string): Round {
   return { red: "origin/main, with your machine fix, does not merge cleanly into this branch: merge it and resolve the conflict." };
 }
 
-function answered(ticket: string, body: string, answer: Answer | undefined, mainBefore: string): Round {
+function outcomeOf(ticket: string, body: string, answer: Answer | undefined, mainBefore: string): Round {
   if (answer === undefined) return { red: "You gave no outcome. Answer one." };
   if (answer.outcome === "close") return { ended: closedUnbuilt(ticket, `@${OWNER} the builder closed #${ticket} unbuilt and kept its branch: ${answer.reason}`) };
   if (answer.outcome === "split") return split(ticket, body, answer);
@@ -330,9 +330,15 @@ function spentOn(ticket: string, spend: Spend, input: string, session: string | 
 
 const REPO_FAULT = 3;
 
+function unconflicted(ticket: string): Round {
+  fetchedMain();
+  if (answered(git(["merge-tree", "--write-tree", "--quiet", "origin/main", "HEAD"]), `whether the PR of #${ticket} conflicts with main could not be read, so it is not handed back`)) return {};
+  return { red: `The PR of #${ticket} is open in conflict with main, so no check runs on it: merge origin/main into this branch, resolve the conflict, and answer \`code\`.` };
+}
+
 function saved(ticket: string, logs: string): Round {
   const save = spawnSync(machineBin("save"), [ticket], { encoding: "utf8" });
-  if (save.status === 0) return {};
+  if (save.status === 0) return unconflicted(ticket);
   if (save.status === REPO_FAULT) return { ended: calledOwner(ticket, save.stderr.trim()) };
   return { red: `Save could not push this branch or open its PR:\n\n${tailOf(onDisk(join(logs, `save-${ticket}.log`)) ?? save.stderr, TAIL_CAP)}` };
 }
@@ -420,7 +426,7 @@ function ownTicket(ticket: string, run: string | undefined): number {
     keepSession(ticket, session);
     if (spent.refusal !== undefined) return calledOwner(ticket, spent.refusal);
     const answer = spent.answer as Answer | undefined;
-    const round = answered(ticket, body, answer, before.main);
+    const round = outcomeOf(ticket, body, answer, before.main);
     if (round.ended !== undefined) return round.ended;
     committed(commitOf(ticket, failed !== undefined, commitlint));
     const changed = head() !== before.head || fetchedMain() !== before.main;
