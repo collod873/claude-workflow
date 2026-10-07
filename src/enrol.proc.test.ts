@@ -7,7 +7,7 @@ import { bare, CI, DEPLOY, ENROLLED as REPO, enrolling, key } from "./scenarios.
 const CALLER = readFileSync(join(import.meta.dirname, "..", ".github", "caller.yml"), "utf8");
 
 describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#1152)", () => {
-  it("writes the caller file naming the repo's own CI and itself, so it hears its own red runs (#1178), reaches it with the App, sets every secret, label and auto-merge, and holds main for check", () => {
+  it("writes the caller file naming only the repo's own CI, since GitHub refuses a workflow that hears itself, reaches it with the App, sets every secret, label and auto-merge, and holds main for check", () => {
     const { run, held } = enrolling(bare());
 
     const result = run();
@@ -16,7 +16,7 @@ describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#11
     expect(result.status).toBe(0);
     const after = held();
     const caller = parse(after.files[".github/workflows/machine.yml"] ?? "") as { name: string; on: { workflow_run: { workflows: string[] } } };
-    expect(caller.on.workflow_run.workflows).toEqual(["Gate", caller.name]);
+    expect(caller.on.workflow_run.workflows).toEqual(["Gate"]);
     expect(after.reached).toContain(REPO);
     expect(after.variables).toEqual(["CORE_APP_CLIENT_ID"]);
     expect(after.secrets.sort()).toEqual(["CLAUDE_CODE_OAUTH_TOKEN", "CORE_APP_PRIVATE_KEY"]);

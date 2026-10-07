@@ -577,7 +577,7 @@ describe("a finished Check run moves the queue on, and a red one wakes its build
   it("runs the closer's queue, closing no ticket, whenever a Check run completes, red or green", () => {
     const { on, step } = closeWorkflow();
 
-    expect(on.workflow_run).toEqual({ workflows: ["Check", "Machine"], types: ["completed"] });
+    expect(on.workflow_run).toEqual({ workflows: ["Check"], types: ["completed"] });
     expect(step?.run).toContain("$QUEUE_ONLY");
     expect(step?.env?.QUEUE_ONLY).toBe("${{ github.event_name != 'push' && 'queue' || '' }}");
   });

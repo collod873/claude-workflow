@@ -109,14 +109,14 @@ describe("bin/rerun re-runs a red run once by itself, and only a second red mark
   });
 });
 
-describe("the caller file hears its own run complete and hands its red runs to bin/rerun, no other workflow here calling the owner (#1178, #1220)", () => {
+describe("the rerun job hands a red run to bin/rerun, no other workflow here calling the owner, and the caller file never hears itself, which GitHub refuses (#1178, #1220)", () => {
   const workflows = join(import.meta.dirname, "..", ".github", "workflows");
   const read = (file: string) => parse(readFileSync(join(workflows, file), "utf8")) as { name: string; on: Record<string, { workflows?: string[]; types?: string[] } | null>; jobs: Record<string, { if?: string; steps?: WorkflowStep[] }> };
   const caller = read("machine.yml");
   const job = read("tickets.yml").jobs.rerun;
   const step = job?.steps?.find(({ run }) => (run ?? "").includes("bin/rerun"));
 
-  it("leaves no workflow of this repo calling the owner but the reusable ones, which the caller file hears through its own name", () => {
+  it("leaves no workflow of this repo calling the owner but the reusable ones, and keeps the caller file's own name out of what it hears", () => {
     const calling = readdirSync(workflows)
       .filter((file) => readFileSync(join(workflows, file), "utf8").includes("./.github/actions/call-owner"))
       .map(read)
@@ -125,7 +125,7 @@ describe("the caller file hears its own run complete and hands its red runs to b
 
     expect(calling).toEqual([]);
     expect(caller.on.workflow_run?.types).toEqual(["completed"]);
-    expect(caller.on.workflow_run?.workflows).toContain(caller.name);
+    expect(caller.on.workflow_run?.workflows).not.toContain(caller.name);
   });
 
   it("runs on a run of its own that ended red, cancelled or timed out, and not on one that passed or was skipped", () => {
