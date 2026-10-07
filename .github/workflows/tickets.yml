@@ -66,6 +66,10 @@ jobs:
         if: steps.labelled.outputs.held == 'true'
         run: npm ci
 
+      - id: database
+        if: steps.labelled.outputs.held == 'true'
+        uses: ./.github/actions/database
+
       - id: logs
         if: steps.labelled.outputs.held == 'true'
         run: |
@@ -283,6 +287,10 @@ jobs:
       - id: npm-ci
         if: steps.branch.outputs.stale != 'true'
         run: npm ci
+
+      - id: database
+        if: steps.branch.outputs.stale != 'true'
+        uses: ./.github/actions/database
 
       - id: logs
         if: steps.branch.outputs.stale != 'true'

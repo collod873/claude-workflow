@@ -24,6 +24,8 @@ the caller's own `issues: closed`, since the App's close is heard. The closer wa
 `ticket` and `reason`, which GitHub starts only from the caller's default branch, so the file lands
 on main before any ticket there builds. A builder it reaches passes a check red only for steps
 named `(needs ...)`, which the machine's runner lacks; that repo's own CI judges them on its PR.
+The runner lacks no `DATABASE_URL`: when a step needs it, the builder's job starts `postgres:16`
+and hands its address on, so the builder sees that step red and its receipt covers the PR.
 It passes such a check even when it says its receipts were not published, as a green one saying so
 passes: that repo's CI judges its PR without them.
 _Avoid_: shim, wrapper, vendored workflow
