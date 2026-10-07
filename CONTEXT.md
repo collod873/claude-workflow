@@ -228,14 +228,14 @@ caller file's dispatch takes an optional `trial_cap` beside `ticket` and
 job's checkouts and caps and a token that can only read, and `tickets.yml` starts no builder for it.
 A check under a caller file reads the file's name from the run it is called from and is told to
 start the trial with `gh workflow run <caller file> -f ticket=<spec> -f reason=size-trial -f
-trial_cap=<cap>` and to find its run under that file. A dispatch with neither a trial cap nor `rerun`
-wakes a builder.
+trial_cap=<cap>` and to find its run under that file. A dispatch with no trial cap, `rerun` or
+`probe` wakes a builder.
 _Avoid_: caller trial, foreign trial
 
 **Run names**:
 The `run-name` the caller file carries, so every run under it names what it heard: an issue or
 comment event shows `<action> #<number>: <title>`, a closed PR `closed PR #<number>: <title>`, a
-dispatch `Rerun of run <run id>/<attempt>` when it carries `rerun`, `Size trial of #<ticket> under
+dispatch `Probe (<script or claude>): <probe>` when it carries `probe`, `Rerun of run <run id>/<attempt>` when it carries `rerun`, `Size trial of #<ticket> under
 <trial_cap>` when it carries a trial cap and `Fix #<ticket>` otherwise, a heard run `After <workflow>
 on <head branch>`, and a push `Push to main`. Enrol writes the file with no line folded, so the run
 name stays one line.
@@ -316,6 +316,13 @@ set to `<run id>/<attempt>`. Only the `rerun` job runs on that dispatch: it wait
 to complete and stands down if the run has moved past it, so two hand-offs act once. A caller
 lacking the input refuses the dispatch: logged, not red.
 _Avoid_: self-heard rerun, rerun workflow
+
+**Probe**:
+One script or prompt run in the builder's environment on a repo's main, no ticket needed.
+`bin/probe --in <repo> <script|claude> <text>` dispatches the caller file with `probe`, waits, and
+names the output. Only the `probe` job runs, readied by the build job's own steps; the probe gets no
+GitHub token, marks, posts, pushes and re-runs nothing, and its output uploads with the machine logs.
+_Avoid_: dry run, smoke test, sandbox run
 
 **Blip**:
 A GitHub call that fails on a server error, a rate limit, a timeout or a not-found. Every call the
