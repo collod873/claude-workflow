@@ -3,10 +3,18 @@ import { BIN, execute, FIXED_TICKET, ghArgv, openedCases, type Parent, scratch, 
 import { MACHINE, OWNER } from "./spelled.ts";
 import { declareStage } from "./stages.ts";
 
-export function admitting({ opener = OWNER, body = FIXED_TICKET, parent = undefined as Parent, unread = false } = {}) {
+interface Origin {
+  repo: string;
+  ticket: string;
+  opener: string;
+  parent: Parent;
+}
+
+export function admitting({ opener = OWNER, body = FIXED_TICKET, parent = undefined as Parent, unread = false, origin = undefined as Origin | undefined } = {}) {
   const root = scratch("admit-");
   const { setup, calls } = ghArgv(join(root, "gh-argv"));
-  const cases = unread ? ["  *\"api\"*) printf 'gh: Server Error (HTTP 502)\\n' >&2; exit 1 ;;"] : openedCases(root, opener, body, parent);
+  const elsewhere = origin === undefined ? [] : openedCases(join(root, "origin"), origin.opener, FIXED_TICKET, origin.parent, origin.ticket).map((line) => line.replace('*"issues/', `*"repos/${origin.repo}/issues/`));
+  const cases = unread ? ["  *\"api\"*) printf 'gh: Server Error (HTTP 502)\\n' >&2; exit 1 ;;"] : [...elsewhere, ...openedCases(root, opener, body, parent)];
   script(join(root, "bin", "gh"), [setup, 'case "$*" in', ...cases, "  *\"issue comment\"*) printf 'https://github.com/collod873/claude-workflow/issues/811#issuecomment-1\\n' ;;", "esac", ""].join("\n"));
   return {
     calls,
