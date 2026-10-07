@@ -9,7 +9,7 @@ import { opened, type Spent } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { missedIn, WAVE_CHECK_HEADING } from "./done-checker.ts";
 import { DIFF_CAP, ended, FOUND_CAP, resumed, movesMarker, underSpec, waveDiffs, waveFound, waveHeading, waveNotes } from "./wave.ts";
-import { type Cap, DONE_SENTENCES, ENTRY_FORM, type Entry, filedOutOfScope, filedPassages, filedRecord, MOST, type Passage, PICKS, quoted, recordEntries, recordRefusals, type Recorded, RELIES_ON, sentences, SHIPPED_NAMES, SPEC_CAP, SPEC_CAPPED, spliced, ticketRefusals } from "./ticket-shape.ts";
+import { type Cap, DONE_SENTENCES, ENTRY_FORM, type Entry, filedOutOfScope, filedPassages, filedRecord, type Passage, PICKS, quoted, recordEntries, recordRefusals, type Recorded, RELIES_ON, sentences, SHIPPED_NAMES, SPEC_CAP, SPEC_CAPPED, spliced, ticketRefusals } from "./ticket-shape.ts";
 
 const stoppedAt = stopsOf({
   notSpec: "Slice refused: the issue is not labelled `spec`",
@@ -98,13 +98,9 @@ function lead(found: Found | undefined): string {
   return found.missed.length === 0 ? NEXT : `${NEXT} ${owed(found.missed)}`;
 }
 
-const SETTLED = `Under \`${PICKS}\`, each pick you made where the spec was silent, in full, and each name two tickets both need, a label, a command or a key, in the words of the repo's \`CONTEXT.md\`. Under \`${SHIPPED_NAMES}\`, one line each: a name a merged ticket shipped and the \`CONTEXT.md\` term or ADR it lives under. Start every bullet under both with ${ENTRY_FORM}, the name a ticket cites it by. Write no path, which code refuses, and no \`## \` heading.`;
+const SETTLED = `Under \`${PICKS}\`, each pick you made where the spec was silent, in full, and each name two tickets both need, a label, a command or a key, in the words of the repo's \`CONTEXT.md\`. Under \`${SHIPPED_NAMES}\`, one line each: a name a merged ticket shipped and what it names. Start every bullet under both with ${ENTRY_FORM}, the name a ticket cites it by. Write no path, which code refuses, and no \`## \` heading.`;
 
-const CITED = `Builders never read the spec, so a ticket carries every pick and shipped name it relies on: \`cites\`, the exact names of the record entries it needs, whose bullets code copies word for word under \`${RELIES_ON}\`. A ticket citing a pick gets one last done sentence from code asking for its full description in \`CONTEXT.md\` or an ADR, so it gives at most ${MOST - 1} done sentences of its own.`;
-
-const CONTEXT_DONE = "The repo's CONTEXT.md, or an ADR for its reasoning, holds the full description of";
-
-const namesListed = (names: string[]): string => (names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1) ?? ""}`);
+const CITED = `Builders never read the spec, so a ticket carries every pick and shipped name it relies on: \`cites\`, the exact names of the record entries it needs, whose bullets code copies word for word under \`${RELIES_ON}\`.`;
 
 const SLOT_FIRST = "Where pieces plug into one shared surface, slice the surface's slot a wave ahead of them, so no two tickets of a wave edit one file.";
 
@@ -166,8 +162,7 @@ function citedOf(entries: Entry[], piece: Piece): Entry[] {
 
 function ticketBody(spec: string, passages: Passage[], piece: Piece, entries: Entry[]): string {
   const cited = citedOf(entries, piece);
-  const picks = cited.filter(({ pick }) => pick).map(({ name }) => name ?? "");
-  const done = [...piece.done.map((sentence) => sentence.trim()), ...(picks.length === 0 ? [] : [`${CONTEXT_DONE} ${namesListed(picks)}.`])];
+  const done = piece.done.map((sentence) => sentence.trim());
   return [
     "## Why",
     quote(passages, piece.passages),
@@ -210,9 +205,7 @@ function waveRefusals(read: string, wave: Wave, found: Found | undefined, cap: C
 }
 
 function citeRefusals(entries: Entry[], piece: Piece): string[] {
-  const lacked = piece.cites.filter((name) => !entries.some((entry) => entry.name === name)).map((name) => `cites ${JSON.stringify(name)}, and the record has no entry by that name`);
-  const crowded = citedOf(entries, piece).some(({ pick }) => pick) && piece.done.length >= MOST ? [`cites a pick, so code adds a done sentence of its own: give at most ${MOST - 1}`] : [];
-  return [...lacked, ...crowded];
+  return piece.cites.filter((name) => !entries.some((entry) => entry.name === name)).map((name) => `cites ${JSON.stringify(name)}, and the record has no entry by that name`);
 }
 
 function owedMoves(moves: number[], found: Found | undefined): string[] {

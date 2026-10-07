@@ -84,7 +84,7 @@ describe("bin/slice turns a filed spec into its first wave of tickets under it, 
     expect(handed).toContain("`cites`");
     expect(handed).toContain("`- **name**:`");
     expect(handed).toContain("Decisions it relies on");
-    expect(handed).toContain("at most 2 done sentences");
+    expect(handed).not.toContain("ADR");
   });
 
   it("tells the slicer the owner's bytes, the record's bytes and the room left under the spec cap before it answers (#1182)", () => {
@@ -151,25 +151,23 @@ describe("bin/slice turns a filed spec into its first wave of tickets under it, 
     expect(second).not.toContain("## Decisions it relies on");
   });
 
-  it("ends a ticket citing a pick with the CONTEXT.md or ADR sentence naming its picks, and adds none for shipped names alone (#1185)", () => {
+  it("files a ticket citing picks with its own done sentences alone, three of them allowed", () => {
     const record = `### Picks\n\n${PICK}\n\n- **Wave note**: one note a wave.\n\n### Shipped names\n\n${SHIPPED}`;
-    const tickets = [piece("File the spec kind", [1, 2], ["It files.", "It reads."], ["Spec kind filing", "Wave note", "`SLICE_LABEL`"]), piece("Read the spec kind", [3], ["It reads."], ["`SLICE_LABEL`"])];
+    const tickets = [piece("File the spec kind", [1, 2], ["It files.", "It reads.", "It holds."], ["Spec kind filing", "Wave note", "`SLICE_LABEL`"])];
     const sliced = slicing({ body: SPEC, answers: [wave(tickets, record)] });
 
     expect(sliced.run().status).toBe(0);
-    const [first = "", second = ""] = sliced.filed().map(({ body }) => body);
-    expect(first).toContain("## Done when\n\n- It files.\n- It reads.\n- The repo's CONTEXT.md, or an ADR for its reasoning, holds the full description of Spec kind filing and Wave note.\n\n## Out of Scope");
-    expect(second).toContain("## Done when\n\n- It reads.\n\n## Out of Scope");
+    const [first = ""] = sliced.filed().map(({ body }) => body);
+    expect(first).toContain("## Done when\n\n- It files.\n- It reads.\n- It holds.\n\n## Out of Scope");
   });
 
-  it("sends back a ticket citing a name the record lacks, naming the ticket and the name, and one citing a pick that gives three done sentences of its own (#1185)", () => {
-    const tickets = [piece("File the spec kind", [1, 2], ["It files."], ["Spec kind"]), piece("Read the spec kind", [3], ["One.", "Two.", "Three."], ["Spec kind filing"])];
+  it("sends back a ticket citing a name the record lacks, naming the ticket and the name (#1185)", () => {
+    const tickets = [piece("File the spec kind", [1, 2], ["It files."], ["Spec kind"]), piece("Read the spec kind", [3])];
     const sliced = slicing({ body: SPEC, answers: [wave(tickets), wave()] });
 
     expect(sliced.run().status).toBe(0);
     const [, sentBack = ""] = sliced.handed();
     expect(sentBack).toContain('ticket 1, "File the spec kind", cites "Spec kind", and the record has no entry by that name');
-    expect(sentBack).toContain('ticket 2, "Read the spec kind", cites a pick, so code adds a done sentence of its own: give at most 2');
     expect(sliced.filed()).toHaveLength(2);
   });
 
