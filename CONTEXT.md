@@ -43,35 +43,20 @@ the machine as No caller, same file says.
 _Avoid_: local, own-repo mode
 
 **Gaps first**:
-How this repo moved onto the caller file. Wave 1 closed every gap between its own stage workflows
-and the reusable path: a caller file here counts as home, every run under it is named for its issue,
-and the done check starts a size trial through it. The cutover came as wave 2 on its own, in one PR:
-it adds `.github/workflows/machine.yml` exactly as `bin/enrol` writes it, hearing `Check` in place
-of `CI`, and deletes the Build, Fix, Close, Closed, Slice, Reslice, Research, Done check and Rerun
-workflows, their tests moved onto `tickets.yml` and `specs.yml` and their part rows dropped. The
-caller lands on main in that one merge, so the closer can dispatch it from the first ticket built
-after it. Until then each stage was kept twice, about 1,000 lines, and a fix made to one copy had to
-be made again in the other or the two drifted, as #1206 and #1208 each patched both and #1213 landed
-in one. Now every machine run here goes through the path every enrolled repo takes, a machine fix
-lands once, and a test fails if any other workflow here hears an issue, PR or check event a job of
-`tickets.yml` or `specs.yml` hears. The check workflow and the mark probe stay as they are.
+How this repo moved onto the caller file: wave 1 closed every gap between its own stage workflows
+and the reusable path, then one PR added `.github/workflows/machine.yml` as `bin/enrol` writes it,
+hearing `Check`, and deleted the nine stage workflows. Reasoning in `docs/adr/0001-cutover.md`.
 _Avoid_: migration, switchover
 
 **No caller, same file**:
-A stage run with no caller file, as a stage run by hand, reaches the machine through the caller file
-name `bin/enrol` writes, `machine.yml`, never a deleted workflow: `CALLER_FILE` falls back to it.
-The closer wakes a builder by dispatching that file, the done check's size trial starts through it
-as under Trial through the caller, and the closer dispatches no re-slice for a ticket it closes,
-since the caller's own `issues: closed` starts it. Every other difference between no caller file and
-a home caller file stays as Home says. No stage code names a workflow file this repo does not hold.
+A stage run with no caller file reaches the machine through `machine.yml`, the name `bin/enrol`
+writes: builders wake and size trials start through it, and the closer dispatches no re-slice, as
+the caller's `issues: closed` starts it.
 _Avoid_: default caller, fallback workflow
 
 **One checkout**:
-In this repo the machine's checkout and the target checkout under `tree/` are two clones of this repo
-at main. The reusable path keeps them apart already, running the machine's `bin/` from the job's
-workspace and every stage in `tree/`, so nothing changes for this beyond Home: a build here edits
-and pushes `tree/` while the machine it runs stays main as the job checked it out. The cutover's
-first runs prove it.
+Here the machine's and the target's checkouts are two clones of this repo at main, kept apart as in
+any enrolled repo; nothing changes beyond Home.
 _Avoid_: self-checkout, same tree
 
 **Enrol**:
