@@ -229,6 +229,20 @@ describe("bin/close wakes a split ticket once every piece has closed, however ea
     expect(told(early.calls())).toBeUndefined();
   });
 
+  it("holds a split ticket whose pieces have all closed while its Waits on names an open issue, and wakes it once that closes (#1223)", () => {
+    const body = ["## Why", "", '"one ticket"', "", "## Waits on", "", "- The Bank link ticket (#974), whose migration it reads.", "- The ticket split from this one.", "", "## Done when", "", "- It lands.", ""].join("\n");
+    const held = closing({ ticket: "812", splitFrom: { parent: "811", labels: "waiting\n", said, body, siblings: { "813": "CLOSED COMPLETED", "974": "OPEN " } } });
+    const freed = closing({ ticket: "812", splitFrom: { parent: "811", labels: "waiting\n", said, body, siblings: { "813": "CLOSED COMPLETED", "974": "CLOSED COMPLETED" } } });
+
+    const result = held.run();
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("#811 still waits for #974");
+    expect(woken(held.calls())).toBe(-1);
+    expect(told(held.calls())).toBeUndefined();
+    expect(freed.run().status).toBe(0);
+    expect(woken(freed.calls())).toBeGreaterThanOrEqual(0);
+  });
+
   it("runs as a queue run whenever an issue closes, so a piece closed with no PR still wakes its split ticket", () => {
     const { on, step } = closeWorkflow();
 
@@ -273,6 +287,18 @@ describe("bin/close wakes a reviewer's follow-up once its parent's PR merges or 
     expect(run().status).toBe(0);
     expect(woken(calls(), "832")).toBe(-1);
     expect(woken(calls(), "833")).toBe(-1);
+  });
+
+  it("leaves waiting a follow-up whose parent's PR merged while its Waits on names an open issue (#1223)", () => {
+    const held = closing({ ticket: "821", followUps: [{ ticket: "834", parent: "821", parentPr: "MERGED", waitsOn: { ticket: "974", state: "OPEN " } }] });
+    const freed = closing({ ticket: "821", followUps: [{ ticket: "834", parent: "821", parentPr: "MERGED", waitsOn: { ticket: "974", state: "CLOSED COMPLETED" } }] });
+
+    const result = held.run();
+    expect(result.status, result.stderr).toBe(0);
+    expect(woken(held.calls(), "834")).toBe(-1);
+    expect(result.stdout).toContain("#834 still waits for #974");
+    expect(freed.run().status).toBe(0);
+    expect(woken(freed.calls(), "834")).toBeGreaterThanOrEqual(0);
   });
 
   it("runs as a queue run whenever a PR closes, so a parent closed unmerged wakes its follow-ups at once", () => {

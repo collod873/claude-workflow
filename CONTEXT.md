@@ -322,7 +322,8 @@ missing parent, says `--missing-answers`. A blip is absorbed at its call, a reru
 _Avoid_: flake, glitch
 
 **Resume**:
-Setting a held issue going again. Taking `waiting` off a ticket resumes its build. Taking `paused`
+Setting a held issue going again. Taking `waiting` off a ticket resumes its build; the closer takes it
+off only once every issue the ticket's `## Waits on` names has closed. Taking `paused`
 or `stuck` off a ticket that then holds neither picks it up from where it stands: with no PR it
 builds, with a red PR its builder resumes its session, with a green PR auto-merge comes back on at
 its head, and a green PR behind main gets the closer's own branch update: marked landing, or on a

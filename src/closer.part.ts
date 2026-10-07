@@ -29,21 +29,35 @@ export interface WaitingFollowUp {
   parent: string;
   parentPr: "OPEN" | "MERGED" | "CLOSED";
   split?: boolean;
+  waitsOn?: { ticket: string; state: string };
 }
 
-const followUpBody = ({ ticket, parent }: WaitingFollowUp) =>
-  ["## Why", "", `Follow-up of #${parent}: its review found this after its builder's repair, outside the earlier gaps and the fix's own lines.`, "", `> #${ticket} is still to build.`, "", "## Done when", "", "- It lands.", ""].join("\n");
+const followUpBody = ({ ticket, parent, waitsOn }: WaitingFollowUp) =>
+  [
+    "## Why",
+    "",
+    `Follow-up of #${parent}: its review found this after its builder's repair, outside the earlier gaps and the fix's own lines.`,
+    "",
+    `> #${ticket} is still to build.`,
+    "",
+    ...(waitsOn === undefined ? [] : ["## Waits on", "", `- #${waitsOn.ticket}`, ""]),
+    "## Done when",
+    "",
+    "- It lands.",
+    "",
+  ].join("\n");
 
 interface SplitFrom {
   parent: string;
   labels: string;
   said: string;
   siblings: Record<string, string>;
+  body?: string;
 }
 
 const waitingListed = (followUps: WaitingFollowUp[], splitFrom: SplitFrom | undefined) => [
   ...followUps.map((waiting) => ({ number: Number(waiting.ticket), body: followUpBody(waiting) })),
-  ...(splitFrom !== undefined && splitFrom.labels.split("\n").includes(WAITING) ? [{ number: Number(splitFrom.parent), body: CLOSER_TICKET }] : []),
+  ...(splitFrom !== undefined && splitFrom.labels.split("\n").includes(WAITING) ? [{ number: Number(splitFrom.parent), body: splitFrom.body ?? CLOSER_TICKET }] : []),
 ];
 
 export interface QueuedPr {
@@ -174,6 +188,7 @@ export function closing({
       ]),
       `  *"pr list --head"*) ${prLookupRefused === undefined ? "exit 0" : `printf '%s\\n' '${prLookupRefused}' >&2; exit 1`} ;;`,
       ...followUps.map(({ parent, parentPr }) => `  *"pr view ticket/${parent} "*"state"*) printf '{"state":"%s"}\\n' '${parentPr}' ;;`),
+      ...followUps.flatMap(({ waitsOn }) => (waitsOn === undefined ? [] : [`  *"issue view ${waitsOn.ticket} "*"state"*) printf '%s\\n' '${waitsOn.state}' ;;`])),
       ...followUps.map(({ ticket, split }) => `  *"api"*"issues/${ticket}/comments"*) ${split === true ? `printf '%s\\n' '${JSON.stringify({ author: MACHINE, type: "Bot", body: `@collod873 the builder split #${ticket} into #990, which build themselves.` })}'` : "exit 0"} ;;`),
       ...(splitFrom === undefined
         ? []

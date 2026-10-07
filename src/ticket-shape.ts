@@ -13,6 +13,7 @@ const NAMED = {
   sentences: "I'll know it works when I can",
   record: "Decisions record",
   reliesOn: "Decisions it relies on",
+  waitsOn: "Waits on",
 } as const;
 const heading = (name: string): RegExp => new RegExp(`^##[ \\t]+${name.replace("'", "[’']")}[ \\t]*(?=\\r?$)`, "m");
 const WHY = heading(NAMED.why);
@@ -26,6 +27,8 @@ const OUT_OF_SCOPE = heading(NAMED.outOfScope);
 const FURTHER_NOTES = heading(NAMED.furtherNotes);
 const SENTENCES = heading(NAMED.sentences);
 const DECISIONS_RECORD = heading(NAMED.record);
+const WAITS_ON = heading(NAMED.waitsOn);
+const ISSUE_REFERENCE = /(?<![\w/-])#(\d+)\b/g;
 const NAMES_SHARED = /^###[ \t]+Names the tickets share[ \t]*(?=\r?$)/m;
 export const NEXT_HEADING = /^##[ \t]/m;
 const NEXT_SUBHEADING = /^###?[ \t]/m;
@@ -72,6 +75,8 @@ function itemsUnder(body: string, heading: RegExp, item = ITEM): string[] {
 }
 
 export const why = (body: string): string => section(body.replaceAll(/\r\n?/g, "\n"), WHY).trim();
+
+export const waitsOn = (body: string): string[] => [...new Set(Array.from(section(body.replaceAll(/\r\n?/g, "\n"), WAITS_ON).matchAll(ISSUE_REFERENCE), ([, number]) => number ?? ""))];
 
 export const doneWhen = (body: string): string => section(body.replaceAll(/\r\n?/g, "\n"), DONE_WHEN).trim();
 
