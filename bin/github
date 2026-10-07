@@ -1,0 +1,20 @@
+#!/bin/bash
+set -uo pipefail
+
+blip='HTTP (5[0-9]{2}|429|404)|rate limit|timeout|timed out|deadline exceeded|could not resolve to'
+tries=3
+wait=${GH_RETRY_SECONDS:-2}
+out=$(mktemp) && said=$(mktemp) || exit 1
+trap 'rm -f "$out" "$said"' EXIT
+
+for ((try = 1; ; try++)); do
+  gh "$@" >"$out" 2>"$said"
+  status=$?
+  if ((status == 0 || try == tries)) || ! grep -q -i -E -e "$blip" "$said"; then
+    cat "$out"
+    cat "$said" >&2
+    exit "$status"
+  fi
+  printf 'github: gh %s failed on try %d of %d, so it is tried again in %ds: %s\n' "$(printf '%s' "$*" | head -n 1 | cut -c 1-120)" "$try" "$tries" "$((wait * try))" "$(head -n 1 "$said" | cut -c 1-200)" >&2
+  sleep "$((wait * try))"
+done

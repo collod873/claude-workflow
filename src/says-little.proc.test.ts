@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parts, type Part } from "./parts.ts";
-import { bare, CONTRACT, LINE_LIMIT, MOST_LINES, closingNote, coveredByCheck, enrolling, execute, filing, landSession, marking, misshapenTicket, overLimit, saving, scratch, script, sessionExtras, wellFormedNote, wellFormedTicket } from "./scenarios.ts";
+import { bare, CONTRACT, LINE_LIMIT, MOST_LINES, closingNote, coveredByCheck, enrolling, execute, filing, githubCall, landSession, marking, misshapenTicket, overLimit, saving, scratch, script, sessionExtras, wellFormedNote, wellFormedTicket } from "./scenarios.ts";
 import { stages, type Scenario } from "./stages.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
@@ -43,6 +43,11 @@ const listed: Record<string, Scenario[]> = {
   "bin/mark": [
     { label: "moving a ticket to a state", run: () => marking({ labels: { "811": ["ticket", "checking", "try-2"] }, pr: "900" }).run("811", "building", "--try") },
     { label: "with GitHub refusing the label", run: () => marking({ gh: `cat >&2 <<'NOISE'\n${NOISE}\nNOISE\nexit 1\n` }).run("811", "stuck") },
+  ],
+  "bin/github": [
+    { label: "answering after two blips", run: () => githubCall(["gh: Server Error (HTTP 502)", "gh: Server Error (HTTP 502)"]).run() },
+    { label: "refused, not on a blip", run: () => githubCall([NOISE.split("\n")[0] ?? ""]).run() },
+    { label: "refused past a blip", run: () => githubCall(["gh: Server Error (HTTP 502)", "gh: Server Error (HTTP 502)", "gh: Server Error (HTTP 502)"]).run() },
   ],
   "bin/spelled": [
     { label: "printing the labels", run: () => execute(join(REPO, "bin", "spelled"), scratch("spelled-"), {}, ["labels"]) },

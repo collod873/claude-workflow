@@ -751,3 +751,14 @@ export function enrolling(held: Held, env: Record<string, string> = { CORE_APP_P
     writes: () => now().writes.map((args) => args.slice(0, 3).join(" ")),
   };
 }
+
+export function githubCall(refusals: string[], args = ["issue", "edit", "1202", "--add-label", "landing"]) {
+  const root = scratch("github-");
+  const { setup, calls } = ghArgv(join(root, "gh-argv"));
+  script(
+    join(root, "bin", "gh"),
+    [setup, `refusals=(${refusals.map((refusal) => `'${refusal}'`).join(" ")})`, "refusal=${refusals[$((n - 1))]:-}", '[[ -z $refusal ]] && { printf "answered\\n"; exit 0; }', 'printf "partial\\n"', 'printf "%s\\n" "$refusal" >&2', "exit 1", ""].join("\n"),
+  );
+  const run = () => execute(join(BIN, "github"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}`, GH_RETRY_SECONDS: "0" }, args);
+  return { run, calls };
+}
