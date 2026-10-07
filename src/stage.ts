@@ -3,7 +3,7 @@ import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, 
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { stageArgv, type Reach, type Registration } from "./fence.ts";
-import { type Asked, askedIssue, ghRead, gitRead, heldOn, mark, OWNER, unread, type MarkedLabel } from "./post.ts";
+import { type Asked, askedIssue, ghRead, gitRead, heldOn, mark, unread, type MarkedLabel } from "./post.ts";
 import type { Stop } from "./stops.ts";
 import { quoted } from "./ticket-shape.ts";
 
@@ -106,9 +106,6 @@ export interface Spent {
 
 export const treePathed = (env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv => (env.TREE_PATH === undefined || env.TREE_PATH === "" ? env : { ...env, PATH: `${env.TREE_PATH}:${env.PATH ?? ""}` });
 
-export const MACHINE_REPO = `${OWNER}/claude-workflow`;
-const callerRepo = /^([^/]+\/[^/]+)\//.exec(process.env.CALLED_FROM ?? "")?.[1];
-export const FOREIGN = callerRepo !== undefined && callerRepo !== MACHINE_REPO;
 export const CONTRACT = join(".claude", "contract.json");
 
 export function setupRefusal(contract: string): string | undefined {
