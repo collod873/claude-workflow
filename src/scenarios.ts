@@ -238,7 +238,7 @@ export function stubbedMark(root: string, hiredAt?: string, refusal?: string): (
 export function copyMark(root: string): void {
   mkdirSync(join(root, "bin"), { recursive: true });
   mkdirSync(join(root, "src"), { recursive: true });
-  for (const name of ["mark", "spelled"]) copyFileSync(join(BIN, name), join(root, "bin", name));
+  for (const name of ["mark", "spelled", "github"]) copyFileSync(join(BIN, name), join(root, "bin", name));
   copyFileSync(join(SRC, "spelled.ts"), join(root, "src", "spelled.ts"));
 }
 
@@ -498,7 +498,7 @@ export const gitRefusing = (root: string, unreadable: string) =>
 export function parentSays(root: string, parent: Parent): string {
   plant(root, "parent.json", JSON.stringify(parent ?? {}));
   if (parent === undefined) return "printf 'gh: Not Found (HTTP 404)\\n' >&2; exit 1";
-  if (parent === "unreadable") return "printf 'gh: Server Error (HTTP 502)\\n' >&2; exit 1";
+  if (parent === "unreadable") return "printf 'gh: Bad credentials (HTTP 401)\\n' >&2; exit 1";
   return `cat "${join(root, "parent.json")}"`;
 }
 

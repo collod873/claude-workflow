@@ -22,7 +22,7 @@ export const ownerCall = (issue: string, run: string): Annotation => ({ title: O
 
 export const red = (...annotations: Annotation[]): Ended => ({ conclusion: "failure", annotations: [ownerCall("902", "the slice run"), ...annotations] });
 
-export function rerunning({ attempt = "1", jobs = [red()], labels = ["spec"], refused = "", markRefused = undefined as string | undefined } = {}) {
+export function rerunning({ attempt = "1", jobs = [red()], labels = ["spec"], refused = "", markRefused = undefined as string | undefined, blip = "" } = {}) {
   const root = scratch("rerun-");
   const { setup, calls } = ghArgv(join(root, "gh-argv"));
   writeFileSync(join(root, "jobs.json"), JSON.stringify({ jobs: [{ id: 1, name: "labelled", conclusion: "success" }, ...jobs.map(({ conclusion }, at) => ({ id: at + 10, name: "slice", conclusion }))] }));
@@ -34,7 +34,7 @@ export function rerunning({ attempt = "1", jobs = [red()], labels = ["spec"], re
     [
       setup,
       'case "$*" in',
-      `  *"/attempts/${attempt}/jobs"*) cat "${join(root, "jobs.json")}" ;;`,
+      `  *"/attempts/${attempt}/jobs"*) ${blip === "" ? "" : `[[ -e "${join(root, "blipped")}" ]] || { touch "${join(root, "blipped")}"; printf '%s\\n' '${blip}' >&2; exit 1; }; `}cat "${join(root, "jobs.json")}" ;;`,
       `  *"/check-runs/"*) all="$*"; job=\${all##*/check-runs/}; cat "${root}/annotations-\${job%%/*}.json" ;;`,
       `  *"rerun-failed-jobs"*) ${refused === "" ? "exit 0" : `printf '%s\\n' '${refused}' >&2; exit 1`} ;;`,
       `  *"actions/runs/4417 "*) printf '%s\\n' '${RUN_URL}' ;;`,

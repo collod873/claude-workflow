@@ -235,7 +235,7 @@ describe("bin/slice on a spec with tickets under it slices its next wave against
 const helper = (file: string) => `diff --git a/src/${file} b/src/${file}\n+export const quotedLine = (line: string) => \`> \${line}\`;\n`;
 const MERGED = { "1001": { state: "MERGED", files: ["src/slicer.ts"] }, "1002": { state: "MERGED", files: ["src/done-checker.ts"] } };
 describe("bin/slice ends red at a read of the wave that fails, rather than handing the slicer a placeholder (#1112)", () => {
-  const failing = (pattern: string) => `[[ "$*" == ${pattern} ]] && { printf 'gh: Server Error (HTTP 502)\\n' >&2; exit 1; }`;
+  const failing = (pattern: string) => `[[ "$*" == ${pattern} ]] && { printf 'gh: Bad credentials (HTTP 401)\\n' >&2; exit 1; }`;
 
   it.each([
     { read: "a ticket's PR", pattern: '"pr view ticket/1001"*', line: "the PR of #1001 could not be read" },
@@ -262,7 +262,7 @@ describe("bin/slice --ended ends red at a read of the wave that fails, naming no
     { read: "the closed issue (#1123)", pattern: '*"issues/1102"', line: "#1102 could not be read, so no wave ended" },
     { read: "the closed issue's parent (#1123)", pattern: '*"issues/1102/parent"', line: "the parent of #1102 could not be read, so no wave ended" },
   ])("ends red at unread naming $read", ({ pattern, line }) => {
-    const { ran, hired } = ended({ gh: `[[ "$*" == ${pattern} ]] && { printf 'gh: Server Error (HTTP 502)\\n' >&2; exit 1; }` });
+    const { ran, hired } = ended({ gh: `[[ "$*" == ${pattern} ]] && { printf 'gh: Bad credentials (HTTP 401)\\n' >&2; exit 1; }` });
 
     expect(ran).toEqual({ status: 1, stdout: "", stderr: `slice: ${line}\n` });
     expect(hired()).toEqual([]);

@@ -114,7 +114,7 @@ export function fixing({
       setup,
       `printf 'gh %s\\n' "$PWD" >>"${ranIn}"`,
       'case "$*" in',
-      ...(unreadable === undefined ? [] : [`  ${unreadable}) printf 'gh: Server Error (HTTP 502)\\n' >&2; exit 1 ;;`]),
+      ...(unreadable === undefined ? [] : [`  ${unreadable}) printf 'gh: Bad credentials (HTTP 401)\\n' >&2; exit 1 ;;`]),
       `  *"api"*"issues/9${ticket}/comments"*) cat "${join(root, "on-pr.json")}" ;;`,
       `  *"api"*"issues/${ticket}/comments"*) cat "${join(root, "on-ticket.json")}" ;;`,
       ...openedCases(root, opener, body, parent, ticket),

@@ -14,7 +14,7 @@ export function admitting({ opener = OWNER, body = FIXED_TICKET, parent = undefi
   const root = scratch("admit-");
   const { setup, calls } = ghArgv(join(root, "gh-argv"));
   const elsewhere = origin === undefined ? [] : openedCases(join(root, "origin"), origin.opener, FIXED_TICKET, origin.parent, origin.ticket).map((line) => line.replace('*"issues/', `*"repos/${origin.repo}/issues/`));
-  const cases = unread ? ["  *\"api\"*) printf 'gh: Server Error (HTTP 502)\\n' >&2; exit 1 ;;"] : [...elsewhere, ...openedCases(root, opener, body, parent)];
+  const cases = unread ? ["  *\"api\"*) printf 'gh: Bad credentials (HTTP 401)\\n' >&2; exit 1 ;;"] : [...elsewhere, ...openedCases(root, opener, body, parent)];
   script(join(root, "bin", "gh"), [setup, 'case "$*" in', ...cases, "  *\"issue comment\"*) printf 'https://github.com/collod873/claude-workflow/issues/811#issuecomment-1\\n' ;;", "esac", ""].join("\n"));
   return {
     calls,

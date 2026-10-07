@@ -449,7 +449,7 @@ describe("bin/close merges machine PRs one at a time, bringing only the oldest g
     });
 
     expect(run().status).toBe(0);
-    expect(updated(calls())).toEqual(["938", "939"]);
+    expect(updated(calls())).toEqual(["938", "938", "938", "939"]);
     expect(calls().some((call) => call.startsWith("workflow\nrun\nfix.yml")), "a builder cannot fix a network error").toBe(false);
     expect(calls().some((call) => call.startsWith("pr\ncomment\n938\n")), "leaves no comment to pile up or count as a failed branch update").toBe(false);
   });

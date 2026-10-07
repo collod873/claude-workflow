@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { githubCall } from "./scenarios.ts";
 
-function github(refusals: string[]) {
-  const { run, calls } = githubCall(refusals);
+function github(refusals: string[], args?: string[]) {
+  const { run, calls } = githubCall(refusals, args);
   return { ...run(), tries: () => calls().length, calls };
 }
 
@@ -46,5 +46,16 @@ describe("a GitHub call that fails on a blip is tried up to 3 times before its s
     expect(ran.tries()).toBe(1);
     expect(ran.stdout).toBe("partial\n");
     expect(ran.stderr).toBe("HTTP 422: Validation Failed\n");
+  });
+
+  it("takes a not-found as the answer of a call that asks for it, while still retrying its other blips", () => {
+    const missing = github(["gh: Not Found (HTTP 404)"], ["--missing-answers", "api", "repos/{owner}/{repo}/issues/874/parent"]);
+    const blipped = github(["gh: Server Error (HTTP 502)"], ["--missing-answers", "api", "repos/{owner}/{repo}/issues/874/parent"]);
+
+    expect(missing.status).toBe(1);
+    expect(missing.calls()).toEqual([["api", "repos/{owner}/{repo}/issues/874/parent"]]);
+    expect(missing.stderr).toBe("gh: Not Found (HTTP 404)\n");
+    expect(blipped.status).toBe(0);
+    expect(blipped.calls()).toEqual(Array.from({ length: 2 }, () => ["api", "repos/{owner}/{repo}/issues/874/parent"]));
   });
 });
