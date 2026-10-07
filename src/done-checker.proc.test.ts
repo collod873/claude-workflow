@@ -1,8 +1,9 @@
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { execute, heard, holds, plant, type Said, scratch, script, starts, wellFormedSpec, type WorkflowStep } from "./scenarios.ts";
+import { execute, heard, holds, plant, type Said, scratch, script, starts, wellFormedSpec, workflowJobs, type WorkflowStep } from "./scenarios.ts";
 import { HELD, MACHINE, OWNER, STUCK } from "./spelled.ts";
 import { DONE_CHECK_POSTED, doneChecking, specWith } from "./done-checker.part.ts";
 import { missedIn } from "./done-checker.ts";
@@ -40,21 +41,37 @@ describe("bin/done-check tries a spec's sentences and closes it only when every 
 });
 
 describe("bin/done-check leaves the spec open unless every sentence held (#1023)", () => {
-  it.each([
-    ["did not hold", "missed", "Did not hold", "did not hold sentence 2, so bin/slice --fix filed its one fix wave"],
-    ["was put to the owner", "owner", "Put to the owner", "did not hold every sentence, so it stays open"],
-  ])("posts the check and leaves the spec open when one sentence %s", (_, outcome, shown, line) => {
+  it("posts the check and leaves the spec open when one sentence did not hold", () => {
     const tries = [
       { sentence: 1, outcome: "held", tried: "saw the first wave under it" },
-      { sentence: 2, outcome, tried: "opened a ticket it filed" },
+      { sentence: 2, outcome: "missed", tried: "opened a ticket it filed" },
       { sentence: 3, outcome: "held", tried: "saw it close" },
     ];
     const checked = doneChecking({ body: specWith(SENTENCES), tries });
 
-    expect(heard(checked.run())).toEqual({ status: 0, stderr: "", lines: [`done-check: #974 ${line}: ${DONE_CHECK_POSTED}`] });
+    expect(heard(checked.run())).toEqual({ status: 0, stderr: "", lines: [`done-check: #974 did not hold sentence 2, so bin/slice --fix filed its one fix wave: ${DONE_CHECK_POSTED}`] });
     expect(checked.calls()).toEqual(["issue view 974", READ_COMMENTS, "issue comment 974"]);
-    expect(checked.comments()[0]).toContain(`2. **${shown}**: ${SENTENCES[1]}\n   opened a ticket it filed`);
+    expect(checked.comments()[0]).toContain(`2. **Did not hold**: ${SENTENCES[1]}\n   opened a ticket it filed`);
     expect(checked.closes()).toEqual([]);
+  });
+});
+
+describe("bin/done-check closes the spec when every sentence held or was put to the owner, saying what the owner could try (#1213)", () => {
+  it("closes the spec, its comment listing what the owner could try for each sentence put to the owner, and marks no asked", () => {
+    const tries = [
+      { sentence: 1, outcome: "held", tried: "saw the first wave under it" },
+      { sentence: 2, outcome: "owner", tried: "open a ticket it filed on your phone" },
+      { sentence: 3, outcome: "owner", tried: "watch the next red run re-run" },
+    ];
+    const checked = doneChecking({ body: specWith(SENTENCES), tries });
+
+    expect(heard(checked.run())).toEqual({ status: 0, stderr: "", lines: [`done-check: #974 held every sentence it could try, put the rest to the owner, and is closed: ${DONE_CHECK_POSTED}`] });
+    expect(checked.calls()).toEqual(["issue view 974", READ_COMMENTS, "issue comment 974", "issue close 974"]);
+    const [comment = ""] = checked.comments();
+    expect(comment).toContain(`2. **Put to the owner**: ${SENTENCES[1]}\n   open a ticket it filed on your phone`);
+    expect(comment).toContain(`3. **Put to the owner**: ${SENTENCES[2]}\n   watch the next red run re-run`);
+    expect(comment).toContain("Closed with sentence 2, 3 put to the owner: each says what the owner could try, and a miss seen live is filed as a new ticket.");
+    expect(checked.marked()).toEqual(["974 checking"]);
   });
 });
 
@@ -264,7 +281,7 @@ describe("bin/done-check reads the owner's reply to a sentence it put to him (#1
 });
 
 describe("done-check.yml runs the done check again on the owner's reply to a sentence it put to him (#1038)", () => {
-  type Job = { if?: string; needs?: string; steps: WorkflowStep[] };
+  type Job = { if?: string; needs?: string; strategy?: { matrix: Record<string, string> }; steps: WorkflowStep[] };
   function workflow(): { on: object; asked: Job; check: Job } {
     const { on, jobs } = parse(readFileSync(join(import.meta.dirname, "..", ".github", "workflows", "done-check.yml"), "utf8")) as { on: object; jobs: Record<string, Job> };
     const { asked, check } = jobs;
@@ -286,7 +303,7 @@ describe("done-check.yml runs the done check again on the owner's reply to a sen
     const { on } = workflow();
     const asks = (labels: string[], sender = OWNER) => starts("done-check.yml", "asked", { labels, sender, action: "created" });
 
-    expect(on).toEqual({ issue_comment: { types: ["created"] } });
+    expect(on).toEqual({ issue_comment: { types: ["created"] }, push: { branches: ["main"] } });
     expect(await asks(["spec"])).toBe(true);
     expect(await asks(["spec"], MACHINE)).toBe(false);
     expect(await asks(["spec"], "stranger")).toBe(false);
@@ -309,16 +326,52 @@ describe("done-check.yml runs the done check again on the owner's reply to a sen
     expect(lastAsked([`${putToOwner}\n<!-- fix-wave -->\n`, "an aside"])).toBe("false");
     expect(lastAsked([`${putToOwner}   found '<!-- fix-wave -->' spelled only in src/done-checker.ts\n`, "an aside"])).toBe("true");
     expect(lastAsked(["## Wave check\n\n- Sentence 2, **Waits for the end**: two"])).toBe("false");
+    expect(lastAsked([`${putToOwner}\nClosed with sentence 2 put to the owner: each says what the owner could try, and a miss seen live is filed as a new ticket.\n`, "an aside"])).toBe("false");
     expect(lastAsked([])).toBe("false");
     const { asked, check } = workflow();
     const reading = asked.steps.find((one) => one.id === "asked")?.run ?? "";
     expect(reading).toContain("bin/done-check ${{ github.event.issue.number }} --asked");
     for (const spelling of ["## Done check", "fix-wave", "Put to the owner", "$SPEC", "|"]) expect(reading, spelling).not.toContain(spelling);
     expect(check.needs).toBe("asked");
-    expect(check.if).toBe("${{ needs.asked.outputs.asked == 'true' }}");
+    expect(holds(check.if ?? "", { needs: { asked: { result: "success", outputs: { asked: "true" } } } })).toBe(true);
+    expect(holds(check.if ?? "", { needs: { asked: { result: "success", outputs: { asked: "false", marked: "" } } } })).toBe(false);
+    expect(check.strategy?.matrix.spec).toBe("${{ fromJSON(needs.asked.outputs.asked == 'true' && format('[{0}]', github.event.issue.number) || needs.asked.outputs.marked) }}");
     const checked = check.steps.find((step) => step.run?.includes("bin/done-check"));
-    expect(checked?.run).toContain("bin/done-check ${{ github.event.issue.number }}");
+    expect(checked?.run).toContain("bin/done-check ${{ matrix.spec }}");
     expect(checked?.env?.GH_TOKEN).toBe("${{ steps.app.outputs.token }}");
+  });
+});
+
+describe("done-check.yml tries again, on a push to main, each open spec the old rule left marked asked (#1213)", () => {
+  type Job = { if?: string; strategy?: { matrix: Record<string, string> }; steps: WorkflowStep[] };
+  const { asked, check } = workflowJobs("done-check.yml") as Record<string, Job>;
+  const marking = asked?.steps.find((step) => step.id === "marked");
+
+  it("starts the asked job on a push to main whoever pushed, and lists the specs only on a push", () => {
+    expect(holds(asked?.if ?? "", { event: "push", sender: MACHINE })).toBe(true);
+    expect(holds(marking?.if ?? "", { event: "push" })).toBe(true);
+    expect(holds(marking?.if ?? "", { event: "issue_comment" })).toBe(false);
+  });
+
+  it("lists the open issues labelled spec and asked, by the labels spelled names", () => {
+    const root = scratch("marked-");
+    const called = join(root, "called");
+    script(join(root, "stub", "gh"), `printf '%s\\n' "$*" >"${called}"\nprintf '[1164]\\n'\n`);
+    const output = join(root, "output");
+    const ran = spawnSync("bash", ["-e", "-c", marking?.run ?? ""], { cwd: join(import.meta.dirname, ".."), env: { ...process.env, PATH: `${join(root, "stub")}:${process.env.PATH}`, GITHUB_OUTPUT: output }, encoding: "utf8" });
+
+    expect(ran.status, ran.stderr).toBe(0);
+    expect(readFileSync(output, "utf8")).toBe("marked=[1164]\n");
+    expect(readFileSync(called, "utf8")).toContain("issue list --state open --label spec --label asked");
+  });
+
+  it("checks each listed spec in a run of its own, and none when the list is empty", () => {
+    const listed = (marked: string) => holds(check?.if ?? "", { event: "push", needs: { asked: { result: "success", outputs: { marked } } } });
+
+    expect(listed("[1164]")).toBe(true);
+    expect(listed("[]")).toBe(false);
+    expect(listed("")).toBe(false);
+    expect(check?.steps.find((step) => step.id === "done-check")?.run).toContain("bin/done-check ${{ matrix.spec }}");
   });
 });
 
@@ -379,12 +432,12 @@ describe("bin/done-check settles a sentence about its own close by what this run
     expect(checked.comments()[0]).not.toContain("Sentence 3 missed");
   });
 
-  it("leaves the spec open with the self sentence held while another waits on the owner", () => {
+  it("posts the self sentence as held and closes the spec when another was put to the owner (#1213)", () => {
     const checked = doneChecking({ body: specWith(SENTENCES), tries: selfTries("owner") });
 
-    expect(heard(checked.run())).toEqual({ status: 0, stderr: "", lines: [`done-check: #974 did not hold every sentence, so it stays open: ${DONE_CHECK_POSTED}`] });
-    expect(checked.comments()[0]).toContain(`3. **Held**: ${SENTENCES[2]}\n   This run leaves the spec open while another sentence waits on the owner.`);
-    expect(checked.closes()).toEqual([]);
+    expect(heard(checked.run())).toEqual({ status: 0, stderr: "", lines: [`done-check: #974 held every sentence it could try, put the rest to the owner, and is closed: ${DONE_CHECK_POSTED}`] });
+    expect(checked.comments()[0]).toContain(`3. **Held**: ${SENTENCES[2]}\n   This run closed the spec, since every other sentence held or was put to the owner.`);
+    expect(checked.closes()).toHaveLength(1);
   });
 
   it("posts a self sentence at a wave check as waiting for the end, which the next re-slice reads as no miss", () => {
@@ -398,9 +451,7 @@ describe("bin/done-check settles a sentence about its own close by what this run
   });
 });
 
-describe("bin/done-check marks the spec checking while it runs, and asked once it puts a sentence to the owner (#1064)", () => {
-  const putting = SENTENCES.map((_, at) => ({ sentence: at + 1, outcome: at === 1 ? "owner" : "held", tried: "open it on your phone" }));
-
+describe("bin/done-check marks the spec checking while it runs (#1064)", () => {
   it("marks checking at the start of the done check and of a wave check", () => {
     const whole = doneChecking();
     const wave = doneChecking({ body: specWith(SENTENCES), tries: [{ sentence: 1, outcome: "held", tried: "saw it" }] });
@@ -409,16 +460,6 @@ describe("bin/done-check marks the spec checking while it runs, and asked once i
     expect(whole.marked()).toEqual(["974 checking"]);
     expect(wave.run("974", "--wave", "1").status).toBe(0);
     expect(wave.marked()).toEqual(["974 checking"]);
-  });
-
-  it("marks asked after its comment puts a sentence to the owner, and not when the comment will not post", () => {
-    const asked = doneChecking({ body: specWith(SENTENCES), tries: putting });
-    const unposted = doneChecking({ body: specWith(SENTENCES), tries: putting, gh: "[[ $2 == comment ]] && exit 1" });
-
-    expect(asked.run().status).toBe(0);
-    expect(asked.marked()).toEqual(["974 checking", "974 asked"]);
-    expect(unposted.run().status).toBe(1);
-    expect(unposted.marked()).toEqual(["974 checking"]);
   });
 
   it("marks nothing on an issue that is not a spec, or on a spec marked paused or stuck", () => {

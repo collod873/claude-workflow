@@ -4,7 +4,7 @@ import { capped, NO_EM_DASH, onDisk } from "./brief.ts";
 import { UNFENCED } from "./fence.ts";
 import { authoredOn, commentOnTicket, commentsRead, FOREIGN, gh, machineBin, mark, OWNER, readOrStop, STUCK, unread, type Asked } from "./post.ts";
 import { CONTRACT, opened, setupRefusal, type Spent, treePathed } from "./stage.ts";
-import { ASKED, CHECKING, SPEC } from "./spelled.ts";
+import { CHECKING, SPEC } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { filedRecord, quoted, type Sentence, sentences, SPEC_CAP } from "./ticket-shape.ts";
 
@@ -106,6 +106,8 @@ const calledOwner = (missed: [number, string, Try][], when: string) =>
   missed.map(([number, sentence, one]) => `Sentence ${number} missed ${when}, so the spec is marked \`${STUCK}\`: ${sentence}. Why: ${one.tried}`);
 
 const listing = (missed: [number, string, Try][], between: string) => missed.map(([number]) => number).join(between);
+const CLOSED_WITH = "Closed with sentence";
+const closedWith = (putToOwner: [number, string, Try][]) => `${CLOSED_WITH} ${listing(putToOwner, ", ")} put to the owner: each says what the owner could try, and a miss seen live is filed as a new ticket.`;
 
 export const WAVE_CHECK_HEADING = "## Wave check";
 const WAVE_OUTCOMES: Record<Outcome, string> = { ...OUTCOMES, owner: "Waits for the end", self: "Waits for the end" };
@@ -247,7 +249,7 @@ function fixWave(spec: Read, found: [number, string, Try][], missed: [number, st
 
 const SELF_SETTLED = {
   missed: "This run names each other sentence that did not hold, and why.",
-  owner: "This run leaves the spec open while another sentence waits on the owner.",
+  owner: "This run closed the spec, since every other sentence held or was put to the owner.",
   held: "This run closed the spec, since every other sentence held.",
 };
 
@@ -270,23 +272,20 @@ function doneCheck(issue: string): Stop | undefined {
   const found = settled(tries);
   const missed = found.filter(([, , one]) => one.outcome === "missed");
   if (missed.length > 0) return fixWave(spec, found, missed);
-  const comment = commented(spec, posted(found));
+  const putToOwner = found.filter(([, , one]) => one.outcome === "owner");
+  const comment = commented(spec, posted(found, putToOwner.length === 0 ? [] : [closedWith(putToOwner)]));
   if (typeof comment === "string") return comment;
   const { said } = spec;
-  if (found.some(([, , one]) => one.outcome === "owner")) {
-    mark(issue, ASKED);
-    console.log(`${said} did not hold every sentence, so it stays open: ${comment.url}`);
-    return undefined;
-  }
-  if (gh(["issue", "close", issue, "--reason", "completed"]).status !== 0) return stoppedAt("unrecorded", `${said} held every sentence but would not close: ${comment.url}`);
-  console.log(`${said} held every sentence and is closed: ${comment.url}`);
+  const held = putToOwner.length === 0 ? "held every sentence" : "held every sentence it could try, put the rest to the owner,";
+  if (gh(["issue", "close", issue, "--reason", "completed"]).status !== 0) return stoppedAt("unrecorded", `${said} ${held} but would not close: ${comment.url}`);
+  console.log(`${said} ${held} and is closed: ${comment.url}`);
   return undefined;
 }
 
 function askedOwner(issue: string): undefined {
   const comments = commentsRead(issue, `#${issue} could not read its comments, so nothing was asked`, gh);
   const last = comments.filter((comment) => comment.startsWith(DONE_CHECK_HEADING)).at(-1) ?? "";
-  console.log(String(last.includes(`**${OUTCOMES.owner}**`) && !spentFixWave(last)));
+  console.log(String(last.includes(`**${OUTCOMES.owner}**`) && !spentFixWave(last) && !last.includes(`\n${CLOSED_WITH} `)));
   return undefined;
 }
 
