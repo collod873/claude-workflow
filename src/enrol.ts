@@ -3,11 +3,12 @@ import { createSign } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse, parseDocument } from "yaml";
+import { ENROLLED_CALLER } from "./post.ts";
 import { LABELS, MACHINE } from "./spelled.ts";
 
 const CALLER_TEXT = readFileSync(join(import.meta.dirname, "..", ".github", "caller.yml"), "utf8");
 const WORKFLOWS = ".github/workflows";
-const CALLER = `${WORKFLOWS}/machine.yml`;
+const CALLER = `${WORKFLOWS}/${ENROLLED_CALLER}`;
 const CHECK = "check";
 const BRANCH = "enrol/caller";
 const KEY = "CORE_APP_PRIVATE_KEY";

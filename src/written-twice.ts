@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
 import { isMap, isPair, isScalar, isSeq, LineCounter, parseDocument, Scalar, visit } from "yaml";
-import { POSTING_KINDS } from "./post.ts";
+import { ENROLLED_CALLER, POSTING_KINDS } from "./post.ts";
 import { MACHINE, SPELLINGS } from "./spelled.ts";
 
 interface Source {
@@ -166,7 +166,7 @@ interface Code {
 }
 
 const ORDINARY = /^[a-z]+$/;
-const KEPT_BY_HAND = ["bin/spelled"];
+const KEPT_BY_HAND = ["bin/spelled", `.github/workflows/${ENROLLED_CALLER}`];
 const SENDER_TEST = new RegExp(String.raw`sender\.login\s*==\s*'${MACHINE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}'`, "g");
 
 function uncommented(line: string): string {

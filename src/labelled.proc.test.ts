@@ -28,12 +28,7 @@ const BUILT_ON = each(
 );
 
 const GATED = [
-  { file: "build.yml", job: "build", before: BEFORE.build, events: BUILT_ON },
   { file: "tickets.yml", job: "build", before: BEFORE.build, events: BUILT_ON },
-  { file: "slice.yml", job: "slice", before: BEFORE.slice, events: each([OWNER, "stranger"], [{ action: "opened" }], [[], ["spec"], ["note"], ["spec", "paused"], ["spec", "stuck"]]) },
-  { file: "research.yml", job: "research", before: BEFORE.research, events: each([OWNER, "stranger"], [{ action: "opened" }], [[], ["note"], ["note", "research"]]) },
-  { file: "done-check.yml", job: "asked", before: BEFORE.doneCheck, events: each([OWNER, MACHINE], [{ action: "created" }], [[], ["ticket"], ["spec"], ["spec", "paused"], ["spec", "stuck"]]) },
-  { file: "reslice.yml", job: "ended", before: BEFORE.reslice, events: each([OWNER, MACHINE], [{ action: "closed" }], [[], ["ticket"], ["spec"], ["note"], ["ticket", "waiting"]]) },
   { file: "specs.yml", job: "slice", before: BEFORE.slice, events: each([OWNER, "stranger"], [{ action: "opened" }], [[], ["spec"], ["note"], ["spec", "paused"], ["spec", "stuck"]]) },
   { file: "specs.yml", job: "research", before: BEFORE.research, events: each([OWNER, "stranger"], [{ action: "opened" }], [[], ["note"], ["note", "research"]]) },
   { file: "specs.yml", job: "asked", before: BEFORE.doneCheck, events: each([OWNER, MACHINE], [{ action: "created", event: "issue_comment" }], [[], ["ticket"], ["spec"], ["spec", "paused"], ["spec", "stuck"]]) },
@@ -42,17 +37,13 @@ const GATED = [
 
 describe("the workflows ask spelled for each label they test, so a renamed label cannot pass unseen (#1108)", () => {
   for (const { file, job, before, events } of GATED) {
-    it(`${file} starts or skips ${job} on the same labels as ${file === "specs.yml" ? "this repo's own workflow" : "before"}`, async () => {
+    it(`${file} starts or skips ${job} on the same labels as before`, async () => {
       const said = (event: IssueEvent) => `${event.sender ?? ""} ${event.action ?? ""}${event.label === undefined ? "" : ` -${event.label}`} [${(event.labels ?? []).join(",")}]`;
       const now = await Promise.all(events.map(async (event) => `${said(event)} ${String(await starts(file, job, event))}`));
 
       expect(now).toEqual(events.map((event) => `${said(event)} ${String(holds(before, event))}`));
     });
   }
-
-  it("reslice.yml still reslices on the closer's dispatch, which names no issue", async () => {
-    expect(await starts("reslice.yml", "ended", { action: "" })).toBe(true);
-  });
 
   it("ends the labelled step red, holding nothing, when spelled cannot answer", async () => {
     for (const { file, job } of GATED) {
@@ -66,7 +57,7 @@ describe("the workflows ask spelled for each label they test, so a renamed label
   it("asks spelled only for keys it holds", () => {
     const root = scratch("keys-");
     copyMark(root);
-    const keys = new Set(files().flatMap((file) => [...readFileSync(file, "utf8").matchAll(/bin\/spelled ([A-Z_]+)/g)].map(([, key]) => key ?? "")));
+    const keys = new Set(files().flatMap((file) => [...readFileSync(file, "utf8").matchAll(/(?:bin|\$machine)\/spelled"? ([A-Z_]+)/g)].map(([, key]) => key ?? "")));
 
     expect([...keys].sort()).toEqual(["ASKED", "BUILDING", "CHECKING", "MACHINE", "NOTE", "OWNER_CALL", "PAUSED", "RESEARCH", "SPEC", "STUCK", "TICKET_PREFIX", "WAITING"]);
     for (const key of keys) expect(execute(join(root, "bin", "spelled"), root, {}, [key]).status, key).toBe(0);

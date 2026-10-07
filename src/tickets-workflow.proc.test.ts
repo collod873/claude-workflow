@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -7,10 +7,12 @@ import { fixing } from "./builder.part.ts";
 import { closing } from "./closer.part.ts";
 import { execute, heldBy, holds, labelledAs, labelledStep, scratch, script, workflowJobs, type WorkflowStep } from "./scenarios.ts";
 import { HELD, MACHINE, OWNER } from "./spelled.ts";
+import { ENROLLED_CALLER } from "./post.ts";
 
 const REPO = join(import.meta.dirname, "..");
 const CALLER = join(REPO, ".github", "caller.yml");
-const TICKETS = join(REPO, ".github", "workflows", "tickets.yml");
+const WORKFLOWS = join(REPO, ".github", "workflows");
+const TICKETS = join(WORKFLOWS, "tickets.yml");
 const APP = "${{ steps.app.outputs.token }}";
 const PINNED = join(REPO, ".github", "actions", "pinned", "action.yml");
 const DATABASE = join(REPO, ".github", "actions", "database", "action.yml");
@@ -400,9 +402,14 @@ describe("a repo's specs and research notes run through the same caller file, on
   });
 
   it("runs the done check again on the owner's comment, once the last done check put a sentence to him", () => {
-    expect(specs({ event: "issue_comment", action: "created" })).toEqual(["asked"]);
-    expect(specs({ event: "issue_comment", action: "created", outputs: { asked: { asked: "true" } } })).toEqual(["asked", "check"]);
+    expect(specs({ event: "issue_comment", action: "created", outputs: { asked: { asked: "", marked: "" } } })).toEqual(["asked"]);
+    expect(specs({ event: "issue_comment", action: "created", outputs: { asked: { asked: "true", marked: "" } } })).toEqual(["asked", "check"]);
     expect(specs({ event: "issue_comment", action: "created", sender: MACHINE })).toEqual([]);
+  });
+
+  it("tries again on a push to main each open spec an older done check left marked asked, and checks nothing when none is (#1213)", () => {
+    expect(specs({ event: "push", action: "", outputs: { asked: { asked: "", marked: "[1164]" } } })).toEqual(["asked", "check"]);
+    expect(specs({ event: "push", action: "", outputs: { asked: { asked: "", marked: "[]" } } })).toEqual(["asked"]);
   });
 
   it("starts nothing on a ticket's events, and tickets.yml nothing on a comment", () => {
@@ -410,7 +417,6 @@ describe("a repo's specs and research notes run through the same caller file, on
       { event: "issues", action: "reopened" },
       { event: "issues", action: "unlabeled", sender: MACHINE },
       { event: "pull_request_target", action: "closed" },
-      { event: "push" },
       { event: "workflow_run", action: "completed", conclusion: "failure" },
       { event: "workflow_dispatch" },
     ]) {
@@ -436,5 +442,58 @@ describe("a repo's specs and research notes run through the same caller file, on
   it("gives every stage it runs the caller's checkout as its working directory", () => {
     expect(stageSteps().map(({ name, step }) => `${name} ${step.id ?? ""}`).sort()).toEqual(["check done-check", "research research", "reslice reslice", "reslice wave-check", "resume reslice", "resume wave-check", "size-trial size-trial", "slice slice"]);
     for (const { name, step } of stageSteps()) expect((step as WorkflowStep & { "working-directory"?: string })["working-directory"], name).toBe("tree");
+  });
+});
+
+describe("this repo reaches the machine through the caller file bin/enrol writes, like every enrolled repo, so a machine fix lands once (#1220)", () => {
+  const HEARD = ["issues", "issue_comment", "pull_request", "pull_request_target", "workflow_run", "check_run", "check_suite"];
+  const DEFAULT_TYPES: Record<string, string[]> = { pull_request: ["opened", "synchronize", "reopened"], pull_request_target: ["opened", "synchronize", "reopened"] };
+  type Triggers = Record<string, { types?: string[]; workflows?: string[] } | null>;
+  const triggersOf = (file: string) => {
+    const { on } = parse(readFileSync(join(WORKFLOWS, file), "utf8")) as { on: Triggers | string | string[] };
+    return typeof on === "string" ? { [on]: null } : Array.isArray(on) ? Object.fromEntries(on.map((event) => [event, null])) : on;
+  };
+  const typesOf = (triggers: Triggers, event: string) => triggers[event]?.types ?? DEFAULT_TYPES[event];
+  const overlaps = (ours: string[] | undefined, theirs: string[] | undefined) => ours === undefined || theirs === undefined || ours.some((type) => theirs.includes(type));
+
+  it("holds the caller file under the name bin/enrol writes, its text bin/enrol's apart from hearing Check in place of CI", () => {
+    const written = readFileSync(CALLER, "utf8");
+    const ours = written.replace("workflows: [CI, Machine]", "workflows: [Check, Machine]");
+
+    expect(ours).not.toBe(written);
+    expect(readFileSync(join(WORKFLOWS, ENROLLED_CALLER), "utf8")).toBe(ours);
+    expect((parse(readFileSync(join(WORKFLOWS, "check.yml"), "utf8")) as { name: string }).name).toBe("Check");
+  });
+
+  it("leaves no other workflow here handling an issue, PR or check event a job of tickets.yml or specs.yml handles", () => {
+    const caller = triggersOf(ENROLLED_CALLER);
+    const others = readdirSync(WORKFLOWS).filter((file) => file !== ENROLLED_CALLER && !Object.hasOwn(triggersOf(file), "workflow_call"));
+    const twice = others.flatMap((file) => {
+      const triggers = triggersOf(file);
+      return HEARD.filter((event) => Object.hasOwn(triggers, event) && Object.hasOwn(caller, event) && overlaps(typesOf(triggers, event), typesOf(caller, event))).map((event) => `${file} ${event}`);
+    });
+
+    expect(others.length).toBeGreaterThan(0);
+    expect(twice).toEqual([]);
+  });
+
+  it("names in its stage code no workflow file but one this repo holds, so no stage dispatches a deleted workflow", () => {
+    const held = new Set([...readdirSync(WORKFLOWS), "action.yml", "caller.yml"]);
+    const code = [
+      ...readdirSync(join(REPO, "src"))
+        .filter((file) => /\.ts$/.test(file) && !/\.test\.ts$|^scenarios\.ts$/.test(file))
+        .map((file) => join(REPO, "src", file)),
+      ...readdirSync(join(REPO, "bin")).map((file) => join(REPO, "bin", file)),
+    ];
+    const named = code.flatMap((file) => [...readFileSync(file, "utf8").matchAll(/[\w-]+\.ya?ml\b/g)].map(([name]) => `${file.slice(REPO.length + 1)} ${name}`));
+
+    expect(named.filter((said) => !held.has(said.split(" ")[1] ?? ""))).toEqual([]);
+  });
+
+  it("wakes a builder and starts a size trial through that caller file when no caller file is named, as on a run by hand", () => {
+    const { calls, run } = closing({ ticket: "819", openPrs: [{ number: "909", ticket: "830", refused: "GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts." }] });
+
+    expect(run().status).toBe(0);
+    expect(calls().filter((call) => call.startsWith("workflow\nrun\n")).map((call) => call.split("\n")[2])).toEqual([ENROLLED_CALLER]);
   });
 });

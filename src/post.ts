@@ -23,7 +23,6 @@ export const ghAs =
   (args) =>
     spawnSync(GITHUB, args, { encoding: "utf8", maxBuffer: Infinity, env, stdio: ["pipe", "pipe", "pipe", 2] });
 export const gh = ghAs(process.env);
-export const CALLER_FILE = /\/([^/@]+)@/.exec(process.env.CALLED_FROM ?? "")?.[1];
 export const git = (args: string[], input?: string) => spawnSync("git", args, { input, encoding: "utf8", maxBuffer: Infinity });
 
 class Stopped extends Error {
@@ -115,6 +114,8 @@ export const faultOf = (origin: string) => `${FAULT_OF}${origin}${FAULT_WAITS}.`
 export const MACHINE_REPO = `${OWNER}/claude-workflow`;
 const callerRepo = /^([^/]+\/[^/]+)\//.exec(process.env.CALLED_FROM ?? "")?.[1];
 export const FOREIGN = callerRepo !== undefined && callerRepo !== MACHINE_REPO;
+export const ENROLLED_CALLER = "machine.yml";
+export const CALLER_FILE = /\/([^/@]+)@/.exec(process.env.CALLED_FROM ?? "")?.[1] ?? ENROLLED_CALLER;
 export const FAULT_FROM = new RegExp(`^${FAULT_OF}(${OWNER}/[\\w.-]+)#(\\d+)${FAULT_WAITS}\\.`, "m");
 export function followUpBody(whyLines: string[], done: string[]): string {
   return ["## Why", "", ...whyLines, "", "## Done when", "", ...done.map((sentence) => `- ${sentence}`), ""].join("\n");

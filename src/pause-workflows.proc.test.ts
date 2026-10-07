@@ -28,11 +28,11 @@ async function stepsRun(file: string, event: IssueEvent, builds = ""): Promise<s
   return WATCHED.filter((id) => ran.includes(id));
 }
 
-describe.each(["build.yml", "tickets.yml"])("%s pauses a ticket's PR and resumes the ticket from where it stands (#1174)", (file) => {
+describe.each(["tickets.yml"])("%s pauses a ticket's PR and resumes the ticket from where it stands (#1174)", (file) => {
   const owner = (action: string, label: string, labels: string[] = []): IssueEvent => ({ action, label, labels });
 
   it("hears the labelled event, and adding paused turns auto-merge off and builds nothing", async () => {
-    const heard = file === "build.yml" ? join(REPO, ".github", "workflows", file) : join(REPO, ".github", "caller.yml");
+    const heard = join(REPO, ".github", "caller.yml");
     const { on } = parse(readFileSync(heard, "utf8")) as { on: { issues?: { types?: string[] } } };
     expect(on.issues?.types).toContain("labeled");
 

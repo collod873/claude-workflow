@@ -8,7 +8,8 @@ import { HELD, OWNER_CALL } from "./spelled.ts";
 
 const REPO = join(import.meta.dirname, "..");
 const WORKFLOWS = join(REPO, ".github", "workflows");
-const WORKFLOW = join(WORKFLOWS, "build.yml");
+const WORKFLOW = join(WORKFLOWS, "tickets.yml");
+const CALLER_FILE = join(WORKFLOWS, "machine.yml");
 const FEED = join(REPO, ".github", "actions", "stage", "feed.jq");
 const STAGES = ["start", "fix"] as const;
 type Stage = (typeof STAGES)[number];
@@ -39,14 +40,14 @@ interface Workflow {
   jobs: Record<string, Job>;
 }
 
+const RUNS_FIX = /(^|\s|\/)bin\/fix"?(\s|$)/;
+
 function workflow(): { on: Workflow["on"]; job: Job } {
-  const { on, jobs } = parse(readFileSync(WORKFLOW, "utf8")) as Workflow;
-  const building = Object.values(jobs).filter(({ steps }) => steps.some((step) => /(^|\s|\/)bin\/fix(\s|$)/.test(step.run ?? "")));
-  expect(building).toHaveLength(1);
-  const [job] = building;
-  if (job === undefined) throw new Error(`no job that runs bin/fix in ${WORKFLOW}`);
-  return { on, job };
+  const { on } = parse(readFileSync(CALLER_FILE, "utf8")) as Workflow;
+  return { on, job: namedJob(ticketsJobs(), "build", WORKFLOW) };
 }
+
+const ticketsJobs = () => (parse(readFileSync(WORKFLOW, "utf8")) as Workflow).jobs;
 
 function stageStep(job: Job, stage: Stage): Step {
   const step = job.steps.find((candidate) => candidate.id === stage);
@@ -72,8 +73,8 @@ function stagesRun(job: Job, failing: Stage | undefined, given: Record<string, R
   return STAGES.filter((stage) => ran.includes(stageStep(job, stage)));
 }
 
-describe("build.yml builds a ticket the moment it is filed (#826)", () => {
-  const starts = (event: IssueEvent) => startsJob("build.yml", "build", event);
+describe("tickets.yml builds a ticket the moment it is filed (#826)", () => {
+  const starts = (event: IssueEvent) => startsJob("tickets.yml", "build", event);
 
   it("an issue labelled note starts no build", async () => {
     const { on } = workflow();
@@ -129,17 +130,17 @@ describe("build.yml builds a ticket the moment it is filed (#826)", () => {
     const { job } = workflow();
     const admit = job.steps.find((step) => step.id === "admit");
 
-    expect(admit?.run).toMatch(/bin\/admit \$\{\{ github\.event\.issue\.number \}\} >>"\$GITHUB_OUTPUT"/);
+    expect(admit?.run).toMatch(/bin\/admit"? \$\{\{ github\.event\.issue\.number \}\} >>"\$GITHUB_OUTPUT"/);
     expect(String(admit?.env?.GH_TOKEN)).toMatch(/steps\.app\.outputs\.token/);
     expect(job.steps.indexOf(admit as Step)).toBeLessThan(job.steps.indexOf(stageStep(job, "start")));
     expect(stagesRun(job, undefined, { admit: { admitted: "false" } })).toEqual([]);
   });
 
   it("admits and builds with an App token that reaches every repo the owner enrolled, so a machine fault can read the ticket it was filed from (#1203)", () => {
-    const fixing = Object.values(fixWorkflow().jobs).filter(({ steps }) => steps.some((step) => /(^|\s|\/)bin\/fix(\s|$)/.test(step.run ?? "")));
+    const fixing = Object.values(ticketsJobs()).filter(({ steps }) => steps.some((step) => RUNS_FIX.test(step.run ?? "")));
 
-    for (const { steps } of [workflow().job, ...fixing]) expect(steps.find((step) => step.id === "app")?.with?.owner).toBe("${{ github.repository_owner }}");
-    expect(fixing).not.toEqual([]);
+    for (const { steps } of fixing) expect(steps.find((step) => step.id === "app")?.with?.owner).toBe("${{ github.repository_owner }}");
+    expect(fixing).toHaveLength(2);
   });
 
   it("hands the ticket to its builder after start, and nothing runs after start fails", () => {
@@ -173,7 +174,7 @@ describe("build.yml builds a ticket the moment it is filed (#826)", () => {
   it("keeps the App's token in the checkout, since the builder pushes from its own loop and a push by the job's token starts no Check (#931)", () => {
     const { job } = workflow();
     const token = /steps\.app\.outputs\.token/;
-    const checkouts = job.steps.filter((step) => step.uses?.startsWith("actions/checkout@") === true);
+    const checkouts = job.steps.filter((step) => step.uses?.startsWith("actions/checkout@") === true && step.id === "checkout");
 
     expect(checkouts.length).toBeGreaterThan(0);
     for (const checkout of checkouts) {
@@ -182,9 +183,9 @@ describe("build.yml builds a ticket the moment it is filed (#826)", () => {
     }
   });
 
-  it("keeps the session the builder built in, whatever ended it, so the first red resumes it through fix.yml (#931)", () => {
+  it("keeps the session the builder built in, whatever ended it, so the first red resumes it in the fix job (#931)", () => {
     const { job } = workflow();
-    const fix = namedJob(fixWorkflow().jobs, "fix", FIX_WORKFLOW);
+    const fix = namedJob(ticketsJobs(), "fix", WORKFLOW);
     const saved = job.steps.find((step) => step.uses?.startsWith("actions/cache/save@") === true);
     const restored = fix.steps.find((step) => step.uses?.startsWith("actions/cache/restore@") === true);
     const key = String(saved?.with?.key).replace("${{ steps.start.outputs.branch }}", "ticket/9");
@@ -202,10 +203,9 @@ describe("build.yml builds a ticket the moment it is filed (#826)", () => {
   });
 });
 
-describe("build.yml checks out main as it is when the job runs, not the SHA of the issue event (#860)", () => {
-  it("every checkout in build.yml pins a ref, so a rerun after a merge starts from fresh main as it is when the job runs, not the stale SHA the issue event carried", () => {
-    const { jobs } = parse(readFileSync(WORKFLOW, "utf8")) as { jobs: Record<string, Job> };
-    const checkouts = Object.values(jobs).flatMap((job) => job.steps.filter((step) => step.uses?.startsWith("actions/checkout@") === true));
+describe("tickets.yml builds from main as it is when the job runs, not the SHA of the issue event (#860)", () => {
+  it("every checkout of the build job pins a ref, so a rerun after a merge starts from fresh main as it is when the job runs, not the stale SHA the issue event carried", () => {
+    const checkouts = workflow().job.steps.filter((step) => step.uses?.startsWith("actions/checkout@") === true);
 
     expect(checkouts.length).toBeGreaterThan(0);
     for (const checkout of checkouts) expect(checkout.with?.ref, JSON.stringify(checkout)).toBe("main");
@@ -223,8 +223,8 @@ function expanded(steps: Step[]): Step[] {
 const everyJob = (): Job[] =>
   readdirSync(WORKFLOWS)
     .filter((file) => /\.ya?ml$/.test(file))
-    .flatMap((file) => Object.values((parse(readFileSync(join(WORKFLOWS, file), "utf8")) as Workflow).jobs))
-    .map((job) => ({ ...job, steps: expanded(job.steps) }));
+    .flatMap((file) => Object.values((parse(readFileSync(join(WORKFLOWS, file), "utf8")) as { jobs: Record<string, Partial<Job>> }).jobs))
+    .flatMap(({ steps, ...job }) => (steps === undefined ? [] : [{ ...job, steps: expanded(steps) }]));
 const spendsModel = (step: Step) => step.env?.CLAUDE_CODE_OAUTH_TOKEN !== undefined;
 const transcriptOf = (run: string) => (/(^|\s|\/)bin\/([\w-]+)/.exec(run.split("\n").slice(1).join("\n"))?.[2] ?? "fix");
 const SAID = { type: "assistant", message: { content: [{ type: "text", text: "reading the brief" }] } };
@@ -318,12 +318,7 @@ function holdsAlone(condition: string, steps: Step[], scope: { failed?: boolean;
   }
 }
 
-const FIX_WORKFLOW = join(WORKFLOWS, "fix.yml");
 const BARE_EXPRESSIONS = /\$\{\{[^}]*\}\}/g;
-
-function fixWorkflow(): { on: { workflow_run?: { workflows?: string[]; types?: string[] }; issues?: { types?: string[] } }; jobs: Record<string, Job> } {
-  return parse(readFileSync(FIX_WORKFLOW, "utf8")) as { on: { workflow_run?: { workflows?: string[]; types?: string[] } }; jobs: Record<string, Job> };
-}
 
 function ranStep(step: Step, cwd: string, env: Record<string, string>): { status: number | null; stdout: string; stderr: string; output: Record<string, string> } {
   const output = join(cwd, "..", `output-${Math.random().toString(36).slice(2)}`);
@@ -332,75 +327,9 @@ function ranStep(step: Step, cwd: string, env: Record<string, string>): { status
   return { status: ran.status, stdout: ran.stdout, stderr: ran.stderr, output: parseOutput(output) };
 }
 
-function lookedUp(env: Record<string, string>, labels = ""): ReturnType<typeof ranStep> {
-  const which = namedJob(fixWorkflow().jobs, "which", FIX_WORKFLOW).steps.find((step) => step.id === "which") as Step;
-  const root = scratch("which-");
-  copyMark(root);
-  script(join(root, "bin", "gh"), `printf '%s\\n' ${labels}\n`);
-  return ranStep(which, root, { ISSUE: "", RAN: "", RAN_ON: "", TITLE: "", PATH: `${join(root, "bin")}:${process.env.PATH}`, ...env });
-}
-
-const ticketNamed = (env: Record<string, string>, labels = ""): string | undefined => lookedUp(env, labels).output.ticket;
-
-describe("fix.yml hands every red run of a ticket to its builder, however the run died (#898)", () => {
-  it("starts on GitHub's own word that a Build or Check run finished", () => {
-    const { on } = fixWorkflow();
-
-    expect(on.workflow_run?.workflows).toEqual(["Build", "Check"]);
-    expect(on.workflow_run?.types).toEqual(["completed"]);
-  });
-
-  it("starts the builder on no reopen", () => {
-    const { on } = parse(readFileSync(FIX_WORKFLOW, "utf8")) as { on: Record<string, unknown> };
-
-    expect(on.workflow_run).toBeDefined();
-    expect(on.workflow_dispatch).toBeDefined();
-    expect(on.issues).toBeUndefined();
-  });
-
-  it("reads the ticket from a Check run's branch, a Build run's name, or the closer's dispatch, and from nothing else", () => {
-    const buildName = (parse(readFileSync(WORKFLOW, "utf8")) as { "run-name": string })["run-name"]
-      .replace("${{ github.event.issue.number }}", "894")
-      .replace("${{ github.event.issue.title }}", "Give the Builder's one turn a single record: ticket/5");
-
-    expect(buildName).toBe("Build #894: Give the Builder's one turn a single record: ticket/5");
-    expect(ticketNamed({ RAN: ".github/workflows/check.yml", RAN_ON: "ticket/891", TITLE: "Stamp the session id" })).toBe("891");
-    expect(ticketNamed({ RAN: ".github/workflows/build.yml", RAN_ON: "main", TITLE: buildName })).toBe("894");
-    expect(ticketNamed({ DISPATCHED: "812" })).toBe("812");
-    expect(ticketNamed({ RAN: ".github/workflows/check.yml", RAN_ON: "land/4b58f3372b91", TITLE: "Build #7: a land PR's title" })).toBe("");
-    expect(ticketNamed({ RAN: ".github/workflows/check.yml", RAN_ON: "ticket/891x", TITLE: "Build #7: a land PR's title" })).toBe("");
-  });
-
-  it("hands the fix job the ticket's branch as spelled builds it, and none when no ticket is named (#1121)", () => {
-    expect(lookedUp({ RAN: ".github/workflows/check.yml", RAN_ON: "ticket/891" }).output.branch).toBe("ticket/891");
-    expect(lookedUp({ DISPATCHED: "812" }).output.branch).toBe("ticket/812");
-    expect(lookedUp({ RAN: ".github/workflows/check.yml", RAN_ON: "land/4b58f3372b91" }).output.branch).toBeUndefined();
-    expect(namedJob(fixWorkflow().jobs, "which", FIX_WORKFLOW)).toMatchObject({ outputs: { branch: "${{ steps.which.outputs.branch }}" } });
-  });
-
-  it("starts no builder on a red run of a ticket labelled paused or stuck, but does on the closer's dispatch (#931, #1166)", () => {
-    const building = { RAN: ".github/workflows/build.yml", RAN_ON: "main", TITLE: "Build #9: Give the builder the build" };
-    const checking = { RAN: ".github/workflows/check.yml", RAN_ON: "ticket/9", TITLE: "Give the builder the build" };
-
-    for (const held of HELD) {
-      expect(ticketNamed(building, `building ${held}`), held).toBe("");
-      expect(ticketNamed(checking, held), held).toBe("");
-      expect(ticketNamed({ DISPATCHED: "9" }, held), held).toBe("9");
-    }
-    expect(ticketNamed(building, "building")).toBe("9");
-    expect(ticketNamed(checking, "checking")).toBe("9");
-  });
-
-  it("goes red, rather than skipping green, when a red Build run's name carries no ticket, so a red nobody fixes still shows", () => {
-    const nameless = lookedUp({ RAN: ".github/workflows/build.yml", RAN_ON: "main", TITLE: "Build" });
-
-    expect(nameless.status).not.toBe(0);
-    expect(nameless.stderr).toContain("Build");
-    expect(nameless.output.ticket).toBeUndefined();
-  });
-
+describe("the fix job hands every red run of a ticket to its builder, unless the ticket moved on (#898)", () => {
   it("stands down, spending no model, when the ticket moved on since the run that went red", () => {
-    const fix = namedJob(fixWorkflow().jobs, "fix", FIX_WORKFLOW);
+    const fix = namedJob(ticketsJobs(), "fix", WORKFLOW);
     const branch = fix.steps.find((step) => step.id === "branch") as Step;
     const root = scratch("fix-branch-");
     const { session } = cloned(root, "main as it was");
@@ -409,7 +338,7 @@ describe("fix.yml hands every red run of a ticket to its builder, however the ru
     const judged = git(session, "rev-parse", "HEAD");
     git(session, "push", "--quiet", "origin", "ticket/9");
     git(session, "checkout", "--quiet", "main");
-    const env = { HEAD_REF: "ticket/9", EVENT: "workflow_run", RAN: ".github/workflows/check.yml", ENDED: "2026-09-25T02:37:28Z" };
+    const env = { HEAD_REF: "ticket/9", EVENT: "workflow_run" };
 
     const current = ranStep(branch, session, { ...env, RAN_AT: judged });
     expect(current.status, current.stderr).toBe(0);
@@ -427,13 +356,6 @@ describe("fix.yml hands every red run of a ticket to its builder, however the ru
     expect(fresh.output.stale).toBeUndefined();
     expect(git(session, "branch", "--show-current")).toBe("ticket/10");
     expect(git(session, "rev-parse", "HEAD")).toBe(git(session, "rev-parse", "origin/main"));
-  });
-
-  it("saves the builder's session when a finished run woke it, which GitHub otherwise gives a read-only cache", () => {
-    const fix = namedJob(fixWorkflow().jobs, "fix", FIX_WORKFLOW);
-
-    expect(fix.steps.some((step) => step.uses?.startsWith("actions/cache/save@"))).toBe(true);
-    expect(fix["cache-mode"]).toBe("write");
   });
 });
 
@@ -479,12 +401,12 @@ function runOf(step: Step, ticket: string, action: string): string {
   return (step.run ?? "").replaceAll(/\$\{\{ github\.event\.issue\.number \}\}/g, ticket).replaceAll(/\$\{\{ github\.event\.action \}\}/g, action);
 }
 
-describe("build.yml re-runs an open PR's failed checks instead of building, when the owner reopens a ticket whose PR is open (#851)", () => {
+describe("tickets.yml re-runs an open PR's failed checks instead of building, when the owner reopens a ticket whose PR is open (#851)", () => {
   it("builds nothing and re-runs the failed checks when the owner reopens a ticket whose PR is open, but still builds when it has none", () => {
     const { job } = workflow();
     const start = stageStep(job, "start");
     const started = (cwd: string, output: string, action: string) =>
-      spawnSync("bash", ["-e", "-c", runOf(start, "9", action)], { cwd, env: { ...process.env, PATH: `${join(cwd, "bin")}:${process.env.PATH}`, GITHUB_OUTPUT: output }, encoding: "utf8" });
+      spawnSync("bash", ["-e", "-c", runOf(start, "9", action)], { cwd, env: { ...process.env, PATH: `${join(cwd, "bin")}:${process.env.PATH}`, GITHUB_OUTPUT: output, GITHUB_WORKSPACE: cwd }, encoding: "utf8" });
 
     const withOpenPr = scratch("reopen-open-");
     const openCalls = join(withOpenPr, "calls");
@@ -538,11 +460,10 @@ describe("build.yml re-runs an open PR's failed checks instead of building, when
   });
 });
 
-describe("closed.yml strips the machine's labels from every issue and PR that closes, so nothing is left behind (#1055)", () => {
-  it("runs bin/mark --closed on every issue close and PR close, with the token whose label changes start no workflow", () => {
-    const { on, jobs } = parse(readFileSync(join(WORKFLOWS, "closed.yml"), "utf8")) as { on: { issues?: { types?: string[] }; pull_request_target?: { types?: string[] } }; jobs: Record<string, Job> };
-    const steps = Object.values(jobs).flatMap((job) => job.steps);
-    const strip = steps.find((step) => /bin\/mark .*--closed/.test(step.run ?? "")) as Step;
+describe("tickets.yml strips the machine's labels from every issue and PR that closes, so nothing is left behind (#1055)", () => {
+  it("runs bin/mark --closed on every issue close and PR close", () => {
+    const { on } = parse(readFileSync(CALLER_FILE, "utf8")) as { on: { issues?: { types?: string[] }; pull_request_target?: { types?: string[] } } };
+    const strip = namedJob(ticketsJobs(), "strip", WORKFLOW).steps.find((step) => /bin\/mark .*--closed/.test(step.run ?? "")) as Step;
     const stripped = (number: Record<string, string>) => {
       const root = scratch("closed-");
       const calls = join(root, "calls");
@@ -551,9 +472,8 @@ describe("closed.yml strips the machine's labels from every issue and PR that cl
       return readFileSync(calls, "utf8");
     };
 
-    expect(on.issues?.types).toEqual(["closed"]);
+    expect(on.issues?.types).toContain("closed");
     expect(on.pull_request_target?.types).toEqual(["closed"]);
-    expect(strip.env?.GH_TOKEN).toBe("${{ github.token }}");
     expect(String(strip.env?.NUMBER)).toMatch(/github\.event\.issue\.number \|\| github\.event\.pull_request\.number/);
     expect(stripped({ NUMBER: "811" })).toBe("811 --closed\n");
   });
@@ -561,16 +481,14 @@ describe("closed.yml strips the machine's labels from every issue and PR that cl
 
 const CALLER = join(REPO, ".github", "actions", "call-owner", "action.yml");
 const CALLERS = [
-  { file: "fix.yml", job: "fix", names: "needs.which.outputs.ticket", run: "the builder's job" },
   { file: "tickets.yml", job: "fix", names: "needs.which.outputs.ticket", run: "the builder's job" },
-  { file: "research.yml", job: "research", names: "github.event.issue.number", run: "the research run" },
-  { file: "slice.yml", job: "slice", names: "github.event.issue.number", run: "the slice run" },
-  { file: "reslice.yml", job: "reslice", names: "steps.ended.outputs.spec", run: "the wave check or reslice run" },
-  { file: "done-check.yml", job: "check", names: "matrix.spec", run: "the done check run" },
-  { file: "close.yml", job: "close", names: "steps.close.outputs.ticket", run: "the closer run" },
   { file: "tickets.yml", job: "close", names: "steps.close.outputs.ticket", run: "the closer run" },
-  { file: "closed.yml", job: "strip", names: "github.event.issue.number", run: "the strip run" },
   { file: "tickets.yml", job: "strip", names: "github.event.issue.number", run: "the strip run" },
+  { file: "specs.yml", job: "research", names: "github.event.issue.number", run: "the research run" },
+  { file: "specs.yml", job: "slice", names: "github.event.issue.number", run: "the slice run" },
+  { file: "specs.yml", job: "reslice", names: "steps.ended.outputs.spec", run: "the wave check or reslice run" },
+  { file: "specs.yml", job: "resume", names: "steps.resumed.outputs.spec", run: "the wave check or reslice run" },
+  { file: "specs.yml", job: "check", names: "matrix.spec", run: "the done check run" },
 ];
 const callsOwner = (step: Step) => step.uses === "./.github/actions/call-owner";
 
@@ -622,16 +540,16 @@ describe("a fix, research, slice, reslice, done check, closer or strip run that 
     });
   }
 
-  it("close.yml calls the owner on nothing when the closer stops before a ticket is in its hands", () => {
-    const job = namedJob((parse(readFileSync(join(WORKFLOWS, "close.yml"), "utf8")) as { jobs: Record<string, Job> }).jobs, "close", "close.yml");
+  it("the close job calls the owner on nothing when the closer stops before a ticket is in its hands", () => {
+    const job = namedJob(ticketsJobs(), "close", WORKFLOW);
     const calling = job.steps.find(callsOwner);
     const unnamed = { ...allSkipped(job.steps), close: { outcome: "failure", conclusion: "failure", outputs: { ticket: "" } } };
 
     expect(holds(calling?.if ?? "false", { steps: unnamed, failed: true })).toBe(false);
   });
 
-  it("reslice.yml marks nothing when its run ends red before it names its spec", () => {
-    const job = namedJob((parse(readFileSync(join(WORKFLOWS, "reslice.yml"), "utf8")) as { jobs: Record<string, Job> }).jobs, "reslice", "reslice.yml");
+  it("the reslice job marks nothing when its run ends red before it names its spec", () => {
+    const job = namedJob((parse(readFileSync(join(WORKFLOWS, "specs.yml"), "utf8")) as { jobs: Record<string, Job> }).jobs, "reslice", "specs.yml");
     const calling = job.steps.find(callsOwner);
     const unnamed = { ...allSkipped(job.steps), ended: { outcome: "failure", conclusion: "failure", outputs: { spec: "" } } };
 
@@ -640,7 +558,7 @@ describe("a fix, research, slice, reslice, done check, closer or strip run that 
   });
 });
 
-describe("build.yml and closed.yml say in their logs when a mark fails, so a ticket whose labels lag shows why (#1081)", () => {
+describe("tickets.yml says in its logs when a mark fails, so a ticket whose labels lag shows why (#1081)", () => {
   const refusal = (label: string) => `mark: #9 not labelled ${label}: HTTP 403: Resource not accessible by integration`;
   const refusing = (prefix: string, gh: string) => {
     const root = scratch(prefix);
@@ -654,7 +572,7 @@ describe("build.yml and closed.yml say in their logs when a mark fails, so a tic
     const start = stageStep(workflow().job, "start");
     const started = (gh: string, action: string) => {
       const cwd = refusing("start-refused-", gh);
-      return spawnSync("bash", ["-e", "-c", runOf(start, "9", action)], { cwd, env: { ...process.env, PATH: `${join(cwd, "bin")}:${process.env.PATH}`, GITHUB_OUTPUT: join(cwd, "output") }, encoding: "utf8" });
+      return spawnSync("bash", ["-e", "-c", runOf(start, "9", action)], { cwd, env: { ...process.env, PATH: `${join(cwd, "bin")}:${process.env.PATH}`, GITHUB_OUTPUT: join(cwd, "output"), GITHUB_WORKSPACE: cwd }, encoding: "utf8" });
     };
 
     for (const [gh, action, label] of [
@@ -668,9 +586,8 @@ describe("build.yml and closed.yml say in their logs when a mark fails, so a tic
     }
   });
 
-  it("passes on bin/mark's refusal from closed.yml's strip step", () => {
-    const { jobs } = parse(readFileSync(join(WORKFLOWS, "closed.yml"), "utf8")) as { jobs: Record<string, Job> };
-    const strip = Object.values(jobs).flatMap((job) => job.steps).find((step) => /bin\/mark .*--closed/.test(step.run ?? "")) as Step;
+  it("passes on bin/mark's refusal from the strip step", () => {
+    const strip = namedJob(ticketsJobs(), "strip", WORKFLOW).steps.find((step) => /bin\/mark .*--closed/.test(step.run ?? "")) as Step;
     const cwd = refusing("closed-refused-", "exit 0\n");
 
     const { stderr } = ranStep(strip, cwd, { NUMBER: "9" });

@@ -33,13 +33,46 @@ _Avoid_: shim, wrapper, vendored workflow
 **Home**:
 A stage run is home when it has no caller file, or when its caller file (named by `CALLED_FROM`)
 is in the machine's own repo; it is foreign only when the caller file is in another repo. A home run
-behaves exactly as this repo's own workflows always have: the builder lands a `machine` outcome on
+behaves exactly as this repo's own stage workflows did before Gaps first: the builder lands a `machine` outcome on
 main and fails a check on any red step, `(needs ...)` ones included; the closer requires both
 `check` and `review`; the done check gets this repo's running-system line and is offered the size
-trial. So this repo can move onto the caller file with no difference the owner sees. The closer
+trial. So this repo moved onto the caller file with no difference the owner sees. The closer
 still wakes a builder by dispatching the caller file it runs under, and a ticket it closes still
-starts the re-slice through the caller's own `issues: closed`, never by dispatching `reslice.yml`.
+starts the re-slice through the caller's own `issues: closed`; a run with no caller file reaches
+the machine as No caller, same file says.
 _Avoid_: local, own-repo mode
+
+**Gaps first**:
+How this repo moved onto the caller file. Wave 1 closed every gap between its own stage workflows
+and the reusable path: a caller file here counts as home, every run under it is named for its issue,
+and the done check starts a size trial through it. The cutover came as wave 2 on its own, in one PR:
+it adds `.github/workflows/machine.yml` exactly as `bin/enrol` writes it, hearing `Check` in place
+of `CI`, and deletes the Build, Fix, Close, Closed, Slice, Reslice, Research, Done check and Rerun
+workflows, their tests moved onto `tickets.yml` and `specs.yml` and their part rows dropped. The
+caller lands on main in that one merge, so the closer can dispatch it from the first ticket built
+after it. Until then each stage was kept twice, about 1,000 lines, and a fix made to one copy had to
+be made again in the other or the two drifted, as #1206 and #1208 each patched both and #1213 landed
+in one. Now every machine run here goes through the path every enrolled repo takes, a machine fix
+lands once, and a test fails if any other workflow here hears an issue, PR or check event a job of
+`tickets.yml` or `specs.yml` hears. The check workflow and the mark probe stay as they are.
+_Avoid_: migration, switchover
+
+**No caller, same file**:
+A stage run with no caller file, as a stage run by hand, reaches the machine through the caller file
+name `bin/enrol` writes, `machine.yml`, never a deleted workflow: `CALLER_FILE` falls back to it.
+The closer wakes a builder by dispatching that file, the done check's size trial starts through it
+as under Trial through the caller, and the closer dispatches no re-slice for a ticket it closes,
+since the caller's own `issues: closed` starts it. Every other difference between no caller file and
+a home caller file stays as Home says. No stage code names a workflow file this repo does not hold.
+_Avoid_: default caller, fallback workflow
+
+**One checkout**:
+In this repo the machine's checkout and the target checkout under `tree/` are two clones of this repo
+at main. The reusable path keeps them apart already, running the machine's `bin/` from the job's
+workspace and every stage in `tree/`, so nothing changes for this beyond Home: a build here edits
+and pushes `tree/` while the machine it runs stays main as the job checked it out. The cutover's
+first runs prove it.
+_Avoid_: self-checkout, same tree
 
 **Enrol**:
 Give a repo everything its tickets need to build: the caller file naming its own CI, the App's
@@ -148,8 +181,7 @@ _Avoid_: proof comment, audit line, byte check
 **Size trial**:
 A slice of a real spec run under a trial cap below the spec cap, so the size refusal happens on the
 running system without padding any spec over the real cap. It is asked for with
-`bin/slice --size-trial <spec> <trial cap>`, from a manual run of the re-slice workflow given the
-spec as `issue` and the cap as `trial_cap`, or through a caller file (see Trial through the caller). The trial cap stands in for the spec cap in the size
+`bin/slice --size-trial <spec> <trial cap>`, through a caller file (see Trial through the caller). The trial cap stands in for the spec cap in the size
 refusal, its sent-back prompt and each round's log line, but not in the room line (see Trial room
 line). The real slicer is hired and sent back each round exactly as in a real slice, answering with
 the record and the wave only.
@@ -194,20 +226,20 @@ _Avoid_: trial of a finished spec, final record
 **Check-started size trial**:
 A size trial a wave check or done check on this repo starts itself, to try a sentence about the size
 refusal, since a trial posts nothing to any spec. The checker's prompt names the manual run of the
-re-slice workflow to start, with the spec and the trial cap a check sets, and says starting it counts
+caller file to start, with the spec and the trial cap a check sets, and says starting it counts
 as leaving GitHub as it is. The checker waits for that run
 to end and answers from its log: each size round with the bytes over and the bytes the record had to
 lose, and the `slice: trial #N` line saying the owner's bytes stand and the seconds from the first
-size round. The check holds the app's unnarrowed token, the one the closer starts the re-slice
-workflow with, so it can start the run. The trial's concurrency group is per spec and apart from the
+size round. The check holds the app's unnarrowed token, the one the closer wakes builders with, so
+it can start the run. The trial's concurrency group is per spec and apart from the
 re-slice's, so a check running inside a re-slice never queues behind itself; a trial posts nothing,
 so it cannot race the re-slice's posting. A trial that ends red, or whose filing line gives 60
-seconds or more, is a miss, not a try left untried. A check under a caller file starts it as
-described under Trial through the caller; one with no caller file keeps the re-slice workflow's run.
+seconds or more, is a miss, not a try left untried. Every check starts it as described under Trial
+through the caller, one with no caller file through the file No caller, same file names.
 _Avoid_: self-test, trial hook
 
 **Trial through the caller**:
-A size trial started through a caller file rather than the re-slice workflow, so this repo can drop
+A size trial started through a caller file rather than the re-slice workflow, so this repo could drop
 its own copies of the stage workflows without losing the trials its checks start, and every enrolled
 repo can run one. The caller file's dispatch takes an optional `trial_cap` beside `ticket` and
 `reason`; a dispatch carrying it runs the `size-trial` job in `specs.yml` on the spec named in

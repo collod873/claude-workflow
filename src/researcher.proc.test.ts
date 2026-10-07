@@ -59,33 +59,20 @@ describe("bin/research answers a research note on the note and closes it, with n
     expect(cutOff.calls()).toEqual(["issue view 902", "issue comment 902", "issue close 902"]);
   });
 
-  it("research.yml fetches the run history and copies in the stage's session captures before the researcher starts, with tokens that only read (#936, #937, #931)", () => {
-    const { permissions, steps } = workflowJobs("research.yml").research ?? { steps: [] };
-    const staged = steps.findIndex((step) => step.uses === "./.github/actions/stage");
-    const fetched = steps.findIndex((step) => /RESEARCH_SOURCES=.*GITHUB_ENV/.test(step.run ?? ""));
-    const spent = steps.findIndex((step) => step.env?.CLAUDE_CODE_OAUTH_TOKEN !== undefined);
-    const run = steps[fetched]?.run ?? "";
-
-    expect(permissions).toEqual({ contents: "read", issues: "write", actions: "read" });
-    expect(steps.some((step) => step.with?.repositories === "Knowledge-Base")).toBe(false);
-    expect(fetched).toBeGreaterThan(staged);
-    expect(spent).toBeGreaterThan(fetched);
-    expect(run).toContain('"$SESSION_CAPTURES/."');
-    for (const held of ["runs.jsonl", "jobs.jsonl", "machine-logs", "git-log.txt", "sessions"]) expect(run).toContain(`$sources/${held}`);
-  });
-
-  it("specs.yml fetches the same sources for a caller's note from the caller's own runs and checkout, with the App's token, before the researcher starts (#1151)", () => {
+  it("specs.yml fetches the run history and copies in the stage's session captures from the caller's own runs and checkout, with the App's token, before the researcher starts (#936, #937, #931, #1151)", () => {
     const research = workflowJobs("specs.yml").research ?? { steps: [] };
     const { steps } = research;
     const staged = steps.findIndex((step) => step.uses === "./.github/actions/stage");
     const fetching = steps.find((step) => /RESEARCH_SOURCES=.*GITHUB_ENV/.test(step.run ?? ""));
     const fetched = steps.indexOf(fetching ?? {});
     const spent = steps.findIndex((step) => step.env?.CLAUDE_CODE_OAUTH_TOKEN !== undefined);
-    const ours = workflowJobs("research.yml").research?.steps.find((step) => /RESEARCH_SOURCES=.*GITHUB_ENV/.test(step.run ?? ""));
+    const run = fetching?.run ?? "";
 
     expect(fetched).toBeGreaterThan(staged);
     expect(spent).toBeGreaterThan(fetched);
-    expect(fetching?.run).toBe(ours?.run);
+    expect(steps.some((step) => step.with?.repositories === "Knowledge-Base")).toBe(false);
+    expect(run).toContain('"$SESSION_CAPTURES/."');
+    for (const held of ["runs.jsonl", "jobs.jsonl", "machine-logs", "git-log.txt", "sessions"]) expect(run).toContain(`$sources/${held}`);
     expect(fetching?.env?.GH_TOKEN).toBe("${{ steps.app.outputs.token }}");
     expect(research.env?.GH_REPO).toBe("${{ github.repository }}");
     expect((fetching as WorkflowStep & { "working-directory"?: string })["working-directory"]).toBe("tree");
@@ -128,14 +115,14 @@ describe("bin/research answers a research note on the note and closes it, with n
     expect(calls()).toEqual([]);
   });
 
-  it("the owner's research note starts research.yml and never a build", async () => {
-    const researches = (labels: string[], sender = "collod873") => starts("research.yml", "research", { labels, sender });
+  it("the owner's research note starts the research job and never a build", async () => {
+    const researches = (labels: string[], sender = "collod873") => starts("specs.yml", "research", { labels, sender });
 
     expect(await researches(["note", "research"])).toBe(true);
     expect(await researches(["note"])).toBe(false);
     expect(await researches([])).toBe(false);
     expect(await researches(["note", "research"], "stranger")).toBe(false);
-    expect(await starts("build.yml", "build", { labels: ["note", "research"] })).toBe(false);
+    expect(await starts("tickets.yml", "build", { labels: ["note", "research"] })).toBe(false);
   });
 });
 

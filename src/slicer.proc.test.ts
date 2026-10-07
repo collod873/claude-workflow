@@ -347,15 +347,14 @@ describe("bin/slice turns a filed spec into its first wave of tickets under it, 
     expect(sliced.linked()).toEqual([]);
   });
 
-  it("the owner's spec starts slice.yml, which files its wave with the App's token; not a spec, or someone else's, does not", async () => {
-    const slice = workflowJobs("slice.yml").slice ?? { steps: [] };
-    const slices = (labels: string[], sender = "collod873") => starts("slice.yml", "slice", { labels, sender, action: "opened" });
+  it("the owner's spec starts the slice job, which files its wave with the App's token; not a spec, or someone else's, does not", async () => {
+    const slice = workflowJobs("specs.yml").slice ?? { steps: [] };
+    const slices = (labels: string[], sender = "collod873") => starts("specs.yml", "slice", { labels, sender, action: "opened" });
 
     expect(await slices(["spec"])).toBe(true);
     expect(await slices([])).toBe(false);
     expect(await slices(["note"])).toBe(false);
     expect(await slices(["spec"], "stranger")).toBe(false);
-    expect(slice.permissions).toEqual({ contents: "read", issues: "write" });
     const sliced = slice.steps.find((step) => step.run?.includes("bin/slice"));
     expect(sliced?.env?.GH_TOKEN).toBe("${{ steps.app.outputs.token }}");
   });
