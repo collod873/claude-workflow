@@ -1,7 +1,9 @@
 #!/bin/bash
 set -uo pipefail
 
-usage="rerun: usage: rerun <run id> <attempt>"
+usage="rerun: usage: rerun [--dispatch] <run id> <attempt>"
+given=("$@")
+[[ ${1:-} == --dispatch ]] && shift
 
 if [[ $# -ne 2 || ! $1 =~ ^[0-9]+$ || ! $2 =~ ^[0-9]+$ ]]; then
   printf '%s\n' "$usage" >&2
@@ -9,4 +11,4 @@ if [[ $# -ne 2 || ! $1 =~ ^[0-9]+$ || ! $2 =~ ^[0-9]+$ ]]; then
 fi
 
 src="$(cd "${BASH_SOURCE[0]%/*}/../src" && pwd)"
-exec node "$src/rerun.ts" "$@"
+exec node "$src/rerun.ts" "${given[@]}"

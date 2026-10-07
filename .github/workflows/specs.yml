@@ -245,7 +245,7 @@ jobs:
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
 
   size-trial:
-    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.trial_cap }}
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.trial_cap && !github.event.inputs.rerun }}
     concurrency:
       group: size-trial-${{ github.event.inputs.ticket }}
       cancel-in-progress: false
@@ -718,3 +718,38 @@ jobs:
         with:
           client-id: ${{ vars.CORE_APP_CLIENT_ID }}
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+
+  dispatch-rerun:
+    needs: [slice, ended, reslice, size-trial, resumed, resume, research, asked, check]
+    if: ${{ always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - id: machine
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/claude-workflow
+          ref: main
+          token: ${{ steps.app.outputs.token }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          RUN: ${{ github.run_id }}
+          ATTEMPT: ${{ github.run_attempt }}
+          CALLED_FROM: ${{ github.workflow_ref }}
+          TICKET: ${{ github.event.issue.number || github.event.inputs.ticket }}
+        run: bin/rerun --dispatch "$RUN" "$ATTEMPT"

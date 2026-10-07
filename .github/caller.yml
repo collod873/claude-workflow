@@ -1,5 +1,5 @@
 name: Machine
-run-name: "${{ github.event_name == 'workflow_dispatch' && (inputs.trial_cap && format('Size trial of #{0} under {1}', inputs.ticket, inputs.trial_cap) || format('Fix #{0}', inputs.ticket)) || github.event_name == 'workflow_run' && format('After {0} on {1}', github.event.workflow_run.name, github.event.workflow_run.head_branch) || github.event_name == 'push' && 'Push to main' || github.event_name == 'pull_request_target' && format('closed PR #{0}: {1}', github.event.pull_request.number, github.event.pull_request.title) || format('{0} #{1}: {2}', github.event.action, github.event.issue.number, github.event.issue.title) }}"
+run-name: "${{ github.event_name == 'workflow_dispatch' && (inputs.rerun && format('Rerun of run {0}', inputs.rerun) || inputs.trial_cap && format('Size trial of #{0} under {1}', inputs.ticket, inputs.trial_cap) || format('Fix #{0}', inputs.ticket)) || github.event_name == 'workflow_run' && format('After {0} on {1}', github.event.workflow_run.name, github.event.workflow_run.head_branch) || github.event_name == 'push' && 'Push to main' || github.event_name == 'pull_request_target' && format('closed PR #{0}: {1}', github.event.pull_request.number, github.event.pull_request.title) || format('{0} #{1}: {2}', github.event.action, github.event.issue.number, github.event.issue.title) }}"
 
 "on":
   issue_comment:
@@ -24,6 +24,9 @@ run-name: "${{ github.event_name == 'workflow_dispatch' && (inputs.trial_cap && 
       trial_cap:
         required: false
         type: number
+      rerun:
+        required: false
+        type: string
 
 jobs:
   tickets:

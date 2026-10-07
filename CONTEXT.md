@@ -36,10 +36,8 @@ is in the machine's own repo; it is foreign only when the caller file is in anot
 behaves exactly as this repo's own stage workflows did before Gaps first: the builder lands a `machine` outcome on
 main and fails a check on any red step, `(needs ...)` ones included; the closer requires both
 `check` and `review`; the done check gets this repo's running-system line and is offered the size
-trial. So this repo moved onto the caller file with no difference the owner sees. The closer
-still wakes a builder by dispatching the caller file it runs under, and a ticket it closes still
-starts the re-slice through the caller's own `issues: closed`; a run with no caller file reaches
-the machine as No caller, same file says.
+trial. So this repo moved onto the caller file with no difference the owner sees; a run with no
+caller file reaches the machine as No caller, same file says.
 _Avoid_: local, own-repo mode
 
 **Gaps first**:
@@ -223,26 +221,24 @@ through the caller, one with no caller file through the file No caller, same fil
 _Avoid_: self-test, trial hook
 
 **Trial through the caller**:
-A size trial started through a caller file rather than the re-slice workflow, so this repo could drop
-its own copies of the stage workflows without losing the trials its checks start, and every enrolled
-repo can run one. The caller file's dispatch takes an optional `trial_cap` beside `ticket` and
+A size trial started through a caller file, so every repo on the caller file can run one. The
+caller file's dispatch takes an optional `trial_cap` beside `ticket` and
 `reason`; a dispatch carrying it runs the `size-trial` job in `specs.yml` on the spec named in
 `ticket`, with `bin/slice --size-trial` in the concurrency group `size-trial-<spec>`, the re-slice
 job's checkouts and caps and a token that can only read, and `tickets.yml` starts no builder for it.
 A check under a caller file reads the file's name from the run it is called from and is told to
 start the trial with `gh workflow run <caller file> -f ticket=<spec> -f reason=size-trial -f
-trial_cap=<cap>` and to find its run under that file. The closer still sends only `ticket` and
-`reason`, so a dispatch without a trial cap wakes a builder as before.
+trial_cap=<cap>` and to find its run under that file. A dispatch with neither a trial cap nor `rerun`
+wakes a builder.
 _Avoid_: caller trial, foreign trial
 
 **Run names**:
 The `run-name` the caller file carries, so every run under it names what it heard: an issue or
 comment event shows `<action> #<number>: <title>`, a closed PR `closed PR #<number>: <title>`, a
-dispatch `Size trial of #<ticket> under <trial_cap>` when it carries a trial cap and `Fix #<ticket>`
-otherwise, a heard run `After <workflow> on <head branch>`, and a push `Push to main`. This repo's
-own stage workflows named each run for its issue and the reusable path did not; the caller file
-names them once for every enrolled repo. Enrol writes the file with no line folded, so the run name
-stays one line.
+dispatch `Rerun of run <run id>/<attempt>` when it carries `rerun`, `Size trial of #<ticket> under
+<trial_cap>` when it carries a trial cap and `Fix #<ticket>` otherwise, a heard run `After <workflow>
+on <head branch>`, and a push `Push to main`. Enrol writes the file with no line folded, so the run
+name stays one line.
 _Avoid_: run title, display name
 
 **Done check**:
@@ -298,8 +294,7 @@ _Avoid_: on hold, frozen, blocked
 
 **Stuck**:
 An issue the machine labelled `stuck`, its last resort: a stage that cannot go on marks it, and a
-research, slice, reslice, resume, done check, fix, closer or strip run marks it only when its re-run
-stops too.
+stage run marks it only when its re-run stops too.
 Its comment names the run that stopped, ended red or out of time, links the first run and the
 re-run, and asks the owner to look at the re-run and take `stuck` off once the cause is fixed.
 Like `paused` it is `held`, so every stage stands down on it, and the machine adds it but never
@@ -309,10 +304,18 @@ _Avoid_: blocked, failed
 **Rerun**:
 The machine's second try at a stage run that stopped. A job that ends red or is cancelled by its
 time limit leaves an `owner call` notice naming its issue, unless that issue is `held`; once the run
-completes, `bin/rerun` re-runs its failed jobs once on a first attempt, marking nothing and posting
-nothing, and marks the issue `stuck` on a later one. A run the owner cancelled is neither re-run nor
+completes, Rerun by dispatch hands it to `bin/rerun`, which re-runs its failed jobs once on a
+first attempt, marking nothing and posting nothing, and marks the issue `stuck` on a later one. A run the owner cancelled is neither re-run nor
 marked. The closer names the ticket in its hands when it stops, so its run calls the owner on that.
 _Avoid_: retry, second chance
+
+**Rerun by dispatch**:
+How a stopped run reaches `bin/rerun`, as the caller cannot hear itself: each reusable workflow's
+last job needs every stage job and, when one stopped, dispatches the run's caller file with `rerun`
+set to `<run id>/<attempt>`. Only the `rerun` job runs on that dispatch: it waits for that attempt
+to complete and stands down if the run has moved past it, so two hand-offs act once. A caller
+lacking the input refuses the dispatch: logged, not red.
+_Avoid_: self-heard rerun, rerun workflow
 
 **Blip**:
 A GitHub call that fails on a server error, a rate limit, a timeout or a not-found. Every call the
