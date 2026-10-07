@@ -439,7 +439,7 @@ describe("fix.yml hands every red run of a ticket to its builder, however the ru
 
 describe("every step that runs gh names its repo, since gh otherwise reads it from a checkout that may never have run (#864)", () => {
   it("every step that runs gh sets GH_REPO or runs only once a checkout succeeded", () => {
-    const runsGh = (step: Step) => /(^|[\s|;&(])gh\s/.test(step.run ?? "");
+    const runsGh = (step: Step) => /(^|[\s|;&(])gh\s|\/github"?\s/.test(step.run ?? "");
     const calls = everyJob().flatMap((job) => job.steps.filter(runsGh).map((step) => ({ job, step })));
 
     expect(calls.length).toBeGreaterThan(0);

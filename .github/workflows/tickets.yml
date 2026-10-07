@@ -119,12 +119,12 @@ jobs:
           printf 'branch=%s\n' "$branch" >>"$GITHUB_OUTPUT"
           checking=$("$machine/spelled" CHECKING)
           building=$("$machine/spelled" BUILDING)
-          if [[ '${{ github.event.action }}' == reopened ]] && state=$(gh pr view "$branch" --json state --jq .state 2>/dev/null) && [[ $state == OPEN ]]; then # quiet: a ticket with no PR yet builds
-            gh pr checks "$branch" --json name,bucket,link \
+          if [[ '${{ github.event.action }}' == reopened ]] && state=$("$machine/github" pr view "$branch" --json state --jq .state 2>/dev/null) && [[ $state == OPEN ]]; then # quiet: a ticket with no PR yet builds
+            "$machine/github" pr checks "$branch" --json name,bucket,link \
               | jq -r '.[] | select(.bucket == "fail") | .link' \
               | sed -E 's#.*/runs/([0-9]+)/.*#\1#' \
               | sort -u \
-              | while read -r run; do gh run rerun "$run" --failed; done
+              | while read -r run; do "$machine/github" run rerun "$run" --failed; done
             "$machine/mark" ${{ github.event.issue.number }} "$checking"
             echo rerun=true >>"$GITHUB_OUTPUT"
           elif [[ '${{ github.event.action }}' == reopened ]]; then
@@ -213,7 +213,7 @@ jobs:
           prefix=$(bin/spelled TICKET_PREFIX)
           ticket=${DISPATCHED:-$BUILT}
           [[ $RAN_ON == "$prefix"* && ${RAN_ON#"$prefix"} =~ ^[0-9]+$ ]] && ticket=${RAN_ON#"$prefix"}
-          if [[ -z $DISPATCHED && -n $ticket ]] && held=$(gh issue view "$ticket" --json labels --jq '.labels[].name' | grep -m 1 -x -e "$paused" -e "$stuck"); then
+          if [[ -z $DISPATCHED && -n $ticket ]] && held=$(bin/github issue view "$ticket" --json labels --jq '.labels[].name' | grep -m 1 -x -e "$paused" -e "$stuck"); then
             printf 'which: #%s is labelled %s, so no builder starts\n' "$ticket" "$held"
             ticket=
           fi

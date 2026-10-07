@@ -52,7 +52,7 @@ jobs:
           [[ $RAN == .github/workflows/check.yml && $RAN_ON == "$prefix"* && ${RAN_ON#"$prefix"} =~ ^[0-9]+$ ]] && ticket=${RAN_ON#"$prefix"}
           [[ $RAN == .github/workflows/build.yml && $TITLE =~ ^Build\ \#([0-9]+): ]] && ticket=${BASH_REMATCH[1]}
           [[ $RAN != .github/workflows/build.yml || -n $ticket ]] || { printf 'which: the red Build run "%s" names no ticket, so no builder starts\n' "$TITLE" >&2; exit 1; }
-          if [[ -z $DISPATCHED && -n $ticket ]] && held=$(gh issue view "$ticket" --json labels --jq '.labels[].name' | grep -m 1 -x -e "$paused" -e "$stuck"); then
+          if [[ -z $DISPATCHED && -n $ticket ]] && held=$(bin/github issue view "$ticket" --json labels --jq '.labels[].name' | grep -m 1 -x -e "$paused" -e "$stuck"); then
             printf 'which: #%s is labelled %s, so no builder starts\n' "$ticket" "$held"
             ticket=
           fi
@@ -133,7 +133,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RUN: ${{ github.event.workflow_run.id }}
-        run: gh run download "$RUN" --name machine-logs --dir .git/machine-logs || true # quiet: gh names the miss, and a run that died before saving its logs has none to hand on
+        run: bin/github run download "$RUN" --name machine-logs --dir .git/machine-logs || true # quiet: gh names the miss, and a run that died before saving its logs has none to hand on
 
       - id: restore
         if: steps.branch.outputs.stale != 'true'
