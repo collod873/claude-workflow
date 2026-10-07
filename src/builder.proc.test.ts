@@ -388,6 +388,20 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(saved()).toEqual(["811"]);
   });
 
+  it("hands a PR that save opens already conflicting with main back to its builder with the conflict as the red, where Lumaria #962's PR sat checking with no CI behind it (#1211)", () => {
+    const conflictsOnMain = "if [ ! -f ../main-moved ]; then touch ../main-moved; git update-ref refs/heads/main \"$(git commit-tree -p main -m \"Land #963 on the same code\" \"$(printf '100644 blob %s\\tticket-shape.ts\\n' \"$(printf 'export const shaped = 3;\\n' | git hash-object -w --stdin)\" | git mktree | xargs -I{} printf '040000 tree %s\\tsrc\\n' {} | git mktree)\")\"; fi\n";
+    const resolves = `if [ "$CALL" = 1 ]; then ${FIXES.trim()}; else git merge --quiet --no-edit -X ours origin/main; fi\n`;
+    const { run, handed, saved, marked } = fixing({ claude: resolves, save: conflictsOnMain });
+
+    const result = run("811");
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(handed()).toHaveLength(2);
+    expect(handed()[1]).toMatch(/conflict/);
+    expect(saved()).toEqual(["811", "811"]);
+    expect(marked()).toEqual(["811 building", "811 checking"]);
+  });
+
   it("will not take `machine` for an answer when main has not moved", () => {
     const { run, handed, saved, ticketComments } = fixing({ answer: { outcome: "machine", reason: "the reviewer is wrong" } });
 
