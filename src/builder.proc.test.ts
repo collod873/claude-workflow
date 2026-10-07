@@ -437,8 +437,8 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
   });
 
   it("reruns only the red jobs of a Check it left unchanged and green, and never restarts a Build", () => {
-    const flake = fixing({ ranAs: "Check" });
-    const fixed = fixing({ ranAs: "Check", claude: FIXES });
+    const flake = fixing({ ranAs: "Check", ranOn: "pull_request_target" });
+    const fixed = fixing({ ranAs: "Check", ranOn: "pull_request_target", claude: FIXES });
     const built = fixing({ ranAs: "Build" });
 
     expect(flake.run("811", "555").status).toBe(0);
@@ -447,13 +447,35 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(fixed.run("811", "555").status).toBe(0);
     expect(fixed.marked()).toEqual(["811 building --try", "811 checking"]);
     expect(fixed.reruns()).toEqual([]);
-    expect(built.run("811", "555").status).toBe(0);
+    expect(built.run("811", "555").status).toBe(1);
     expect(built.reruns()).toEqual([]);
     expect(built.saved()).toEqual(["811"]);
+    expect(built.ticketComments().at(-1), "a red Build of an unchanged branch leaves nothing to rerun, and says so").toContain("no check runs again");
+  });
+
+  it("reruns the red check of an enrolled repo whose check workflow is named CI, not Check, still only once (#1208)", () => {
+    const flake = fixing({ calledFrom: CALLER, ranAs: "CI", ranOn: "pull_request" });
+    const again = fixing({ calledFrom: CALLER, ranAs: "CI", ranOn: "pull_request", attempt: 2 });
+
+    expect(flake.run("811", "555").status).toBe(0);
+    expect(flake.reruns()).toEqual([["run", "rerun", "555", "--failed"]]);
+    expect(flake.marked()).toEqual(["811 building --try", "811 checking --untry"]);
+    expect(again.run("811", "555").status).toBe(1);
+    expect(again.reruns()).toEqual([]);
+    expect(again.ticketComments().at(-1)).toContain("its red CI already reran once");
+  });
+
+  it("says on the ticket that no check runs again when it pushes nothing new and has no red check to rerun, instead of marking it checking (#1208)", () => {
+    const { run, marked, reruns, ticketComments } = fixing({ reason: "the owner asked for another look" });
+
+    expect(run("811").status).toBe(1);
+    expect(reruns()).toEqual([]);
+    expect(marked()).not.toContain("811 checking");
+    expect(ticketComments().at(-1)).toContain("no check runs again");
   });
 
   it("reruns a red Check only once, then calls the owner, so an unchanged branch cannot loop through Check", () => {
-    const { run, reruns, marked, ticketComments } = fixing({ ranAs: "Check", attempt: 2 });
+    const { run, reruns, marked, ticketComments } = fixing({ ranAs: "Check", ranOn: "pull_request_target", attempt: 2 });
 
     expect(run("811", "555").status).toBe(1);
     expect(reruns()).toEqual([]);
@@ -462,7 +484,7 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
   });
 
   it("calls the owner when the rerun of its unchanged green Check is refused", () => {
-    const { run, marked, ticketComments } = fixing({ ranAs: "Check", rerun: "printf 'HTTP 403: Resource not accessible by integration\\n' >&2\nexit 1" });
+    const { run, marked, ticketComments } = fixing({ ranAs: "Check", ranOn: "pull_request_target", rerun: "printf 'HTTP 403: Resource not accessible by integration\\n' >&2\nexit 1" });
 
     expect(run("811", "555").status).toBe(1);
     expect(marked()).toContain("811 stuck");
