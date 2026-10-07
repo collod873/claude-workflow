@@ -30,6 +30,17 @@ It passes such a check even when it says its receipts were not published, as a g
 passes: that repo's CI judges its PR without them.
 _Avoid_: shim, wrapper, vendored workflow
 
+**Home**:
+A stage run is home when it has no caller file, or when its caller file (named by `CALLED_FROM`)
+is in the machine's own repo; it is foreign only when the caller file is in another repo. A home run
+behaves exactly as this repo's own workflows always have: the builder lands a `machine` outcome on
+main and fails a check on any red step, `(needs ...)` ones included; the closer requires both
+`check` and `review`; the done check gets this repo's running-system line and is offered the size
+trial. So this repo can move onto the caller file with no difference the owner sees. The closer
+still wakes a builder by dispatching the caller file it runs under, and a ticket it closes still
+starts the re-slice through the caller's own `issues: closed`, never by dispatching `reslice.yml`.
+_Avoid_: local, own-repo mode
+
 **Enrol**:
 Give a repo everything its tickets need to build: the caller file naming its own CI, the App's
 reach, the App's client id and keys, every label the machine spells, auto-merge, and main taking

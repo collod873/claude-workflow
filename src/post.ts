@@ -112,6 +112,9 @@ export const SPLIT_FROM = new RegExp(`^${FOLLOW_UP_OF}(\\d+)${BUILDER_SPLIT}`, "
 const FAULT_OF = "Filed by the builder of ";
 const FAULT_WAITS = ", which waits on it, as the machine's fault";
 export const faultOf = (origin: string) => `${FAULT_OF}${origin}${FAULT_WAITS}.`;
+export const MACHINE_REPO = `${OWNER}/claude-workflow`;
+const callerRepo = /^([^/]+\/[^/]+)\//.exec(process.env.CALLED_FROM ?? "")?.[1];
+export const FOREIGN = callerRepo !== undefined && callerRepo !== MACHINE_REPO;
 export const FAULT_FROM = new RegExp(`^${FAULT_OF}(${OWNER}/[\\w.-]+)#(\\d+)${FAULT_WAITS}\\.`, "m");
 export function followUpBody(whyLines: string[], done: string[]): string {
   return ["## Why", "", ...whyLines, "", "## Done when", "", ...done.map((sentence) => `- ${sentence}`), ""].join("\n");

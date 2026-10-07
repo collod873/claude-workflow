@@ -949,6 +949,33 @@ describe("bin/close, called from another repo's caller file, wakes builders thro
   });
 });
 
+describe("bin/close, called from a caller file in the machine's own repo, is home: it waits for the review but wakes builders through that file (#1215)", () => {
+  const calledFrom = "collod873/claude-workflow/.github/workflows/machine.yml@refs/heads/main";
+
+  it("waits for the review before bringing a PR up to date, as this repo's own workflows do", () => {
+    const { calls, run } = closing({ ticket: "819", afterCheck: true, openPrs: [{ number: "936", ticket: "856", unreviewed: true }], calledFrom });
+
+    expect(run().status).toBe(0);
+    expect(calls().some((call) => call.startsWith("pr\nupdate-branch\n936"))).toBe(false);
+  });
+
+  it("dispatches the caller file it runs under for a conflicted ticket, never fix.yml", () => {
+    const { calls, run } = closing({ ticket: "819", openPrs: [{ number: "909", ticket: "830", refused: "GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts." }], calledFrom });
+
+    expect(run().status).toBe(0);
+    expect(calls().some((call) => call.startsWith("workflow\nrun\nmachine.yml\n") && call.includes("ticket=830"))).toBe(true);
+    expect(calls().some((call) => call.startsWith("workflow\nrun\nfix.yml"))).toBe(false);
+  });
+
+  it("closes the ticket and leaves the re-slice to the caller's own issues: closed, dispatching no reslice.yml", () => {
+    const { calls, run } = closing({ ticket: "819", calledFrom });
+
+    expect(run().status).toBe(0);
+    expect(calls().some((call) => call.startsWith("issue\nclose\n819\n"))).toBe(true);
+    expect(calls().some((call) => call.startsWith("workflow\nrun\n"))).toBe(false);
+  });
+});
+
 describe("bin/close names the ticket in its hands when it stops red, so the run calls the owner on it and gets its one re-run (#1206)", () => {
   it("names a queued ticket whose mark stopped it, as #1202's landing mark did on 2026-10-07", () => {
     const { output, run } = closing({ ticket: "819", openPrs: [{ number: "938", ticket: "858", upToDate: true, labels: ["queued"] }], markRefusal: "mark: #858 not labelled landing: gh: Label does not exist (HTTP 404)" });
