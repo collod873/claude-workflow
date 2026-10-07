@@ -107,6 +107,7 @@ export interface Spent {
 export const treePathed = (env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv => (env.TREE_PATH === undefined || env.TREE_PATH === "" ? env : { ...env, PATH: `${env.TREE_PATH}:${env.PATH ?? ""}` });
 
 export const FOREIGN = (process.env.CALLED_FROM ?? "") !== "";
+export const CALLER_FILE = /\/([^/@]+)@/.exec(process.env.CALLED_FROM ?? "")?.[1];
 export const CONTRACT = join(".claude", "contract.json");
 
 export function setupRefusal(contract: string): string | undefined {

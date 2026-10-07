@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { capped, NO_EM_DASH, onDisk } from "./brief.ts";
 import { UNFENCED } from "./fence.ts";
 import { authoredOn, commentOnTicket, commentsRead, gh, machineBin, mark, OWNER, readOrStop, STUCK, unread, type Asked } from "./post.ts";
-import { CONTRACT, FOREIGN, opened, setupRefusal, type Spent, treePathed } from "./stage.ts";
+import { CALLER_FILE, CONTRACT, FOREIGN, opened, setupRefusal, type Spent, treePathed } from "./stage.ts";
 import { ASKED, CHECKING, SPEC } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { filedRecord, quoted, type Sentence, sentences, SPEC_CAP } from "./ticket-shape.ts";
@@ -66,13 +66,18 @@ function trialCap(body: string): number {
   return Buffer.byteLength(owner) + Math.floor(Buffer.byteLength(record) / 2);
 }
 
-const sizeTrial = (issue: string, body: string) =>
-  `To try a sentence about a wave going over the spec cap, start a size trial on this spec with a trial cap of the owner's bytes plus half the record's bytes, so the slicer's own folding cannot fit without being sent back: \`gh workflow run reslice.yml -f issue=${issue} -f trial_cap=${trialCap(body)}\`. Starting a size trial counts as leaving GitHub as it is, since a trial posts nothing. Find its run with \`gh run list --workflow reslice.yml\`, wait for it with \`gh run watch <run> --exit-status\`, and answer from \`gh run view <run> --log\`: each size round with the bytes over and the bytes the record had to lose, and the \`slice: trial #${issue}\` line saying the owner's bytes stand and the seconds from the first size round. A trial that ends red, or whose filing line gives 60 seconds or more, is \`missed\`.`;
+const trialRun = (issue: string, cap: number, caller?: string) =>
+  caller === undefined ? { start: `gh workflow run reslice.yml -f issue=${issue} -f trial_cap=${cap}`, file: "reslice.yml" } : { start: `gh workflow run ${caller} -f ticket=${issue} -f reason=size-trial -f trial_cap=${cap}`, file: caller };
 
-export function handedOn(title: string, body: string, { issue, ran = [], wave, replies = "", foreign = false }: { issue?: string; ran?: number[]; wave?: number[]; replies?: string; foreign?: boolean } = {}): string {
+const sizeTrial = (issue: string, body: string, caller?: string) => {
+  const { start, file } = trialRun(issue, trialCap(body), caller);
+  return `To try a sentence about a wave going over the spec cap, start a size trial on this spec with a trial cap of the owner's bytes plus half the record's bytes, so the slicer's own folding cannot fit without being sent back: \`${start}\`. Starting a size trial counts as leaving GitHub as it is, since a trial posts nothing. Find its run with \`gh run list --workflow ${file}\`, wait for it with \`gh run watch <run> --exit-status\`, and answer from \`gh run view <run> --log\`: each size round with the bytes over and the bytes the record had to lose, and the \`slice: trial #${issue}\` line saying the owner's bytes stand and the seconds from the first size round. A trial that ends red, or whose filing line gives 60 seconds or more, is \`missed\`.`;
+};
+
+export function handedOn(title: string, body: string, { issue, ran = [], wave, replies = "", foreign = false, caller }: { issue?: string; ran?: number[]; wave?: number[]; replies?: string; foreign?: boolean; caller?: string } = {}): string {
   return [
     `Try each sentence under \`## I'll know it works when I can\` in this spec on the running system, not on its tests, and say how each came out. ${foreign ? RUNNING_THERE : RUNNING_HERE} Read and run what you need, and leave the repo and GitHub as they are.`,
-    ...(foreign || issue === undefined ? [] : [sizeTrial(issue, body)]),
+    ...(issue === undefined ? [] : [sizeTrial(issue, body, caller)]),
     ...(wave === undefined ? [] : [waveOnly(wave)]),
     ...(ran.length === 0 ? [] : [numbered(ran)]),
     "## The spec",
@@ -129,7 +134,7 @@ const wavePosted = (tried: [number, string, Try][], repeated: [number, string, T
 
 function triedByModel({ issue, asked, replies: owners, spend }: Read, ran: number[], wave?: number[]): Try[] | string {
   const replies = wave === undefined ? owners : "";
-  const spent = spend(handedOn(asked.title, asked.body, { issue, ran, wave, replies, foreign: FOREIGN }));
+  const spent = spend(handedOn(asked.title, asked.body, { issue, ran, wave, replies, foreign: FOREIGN, caller: CALLER_FILE }));
   if (spent.refusal !== undefined) return spent.refusal;
   const given = (spent.answer as { tries?: unknown } | undefined)?.tries;
   return Array.isArray(given) ? given.filter(isTry).filter(({ sentence }) => !ran.includes(sentence)) : [];
