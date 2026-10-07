@@ -566,7 +566,7 @@ const CALLERS = [
   { file: "research.yml", job: "research", names: "github.event.issue.number", run: "the research run" },
   { file: "slice.yml", job: "slice", names: "github.event.issue.number", run: "the slice run" },
   { file: "reslice.yml", job: "reslice", names: "steps.ended.outputs.spec", run: "the wave check or reslice run" },
-  { file: "done-check.yml", job: "check", names: "github.event.issue.number", run: "the done check run" },
+  { file: "done-check.yml", job: "check", names: "matrix.spec", run: "the done check run" },
   { file: "close.yml", job: "close", names: "steps.close.outputs.ticket", run: "the closer run" },
   { file: "tickets.yml", job: "close", names: "steps.close.outputs.ticket", run: "the closer run" },
   { file: "closed.yml", job: "strip", names: "github.event.issue.number", run: "the strip run" },
