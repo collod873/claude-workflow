@@ -428,7 +428,7 @@ describe("bin/slice --size-trial slices a real spec under a trial cap below the 
   const cap = owner + 200;
   const over = `${RECORD}\n\n${"x".repeat(400)}`;
 
-  it("sends the slicer back for size under the trial cap, then proves the owner's bytes and logs the filing it would have made, posting, filing and marking nothing", () => {
+  it("tells the slicer its room under the spec cap, sends it back for size under the trial cap, then proves the owner's bytes and logs the filing it would have made, posting, filing and marking nothing", () => {
     const sliced = slicing({ body: SPEC, answers: [wave(undefined, over), wave()] });
     const bytesOver = Buffer.byteLength(recorded(SPEC, over)) - cap;
 
@@ -436,7 +436,8 @@ describe("bin/slice --size-trial slices a real spec under a trial cap below the 
     expect({ status, stderr }).toEqual({ status: 0, stderr: "" });
     expect(lines[0]).toBe(`slice: trial #968 round 1 came back for the spec's size: the spec would be ${bytesOver} bytes over the trial cap of ${cap}, so the record had to lose ${bytesOver} of its ${Buffer.byteLength(over)} bytes`);
     expect(lines[1]).toMatch(new RegExp(`^slice: trial #968 would file its first wave under it, 2 tickets\\. The owner's ${owner} bytes stand as filed, \\d+ seconds after the first round came back for the spec's size\\.$`));
-    expect(sliced.handed()[0]).toContain(`leaving 200 under the trial cap of ${cap}`);
+    expect(sliced.handed()[0]).toContain(`leaving ${65536 - owner} under the spec cap of 65536`);
+    expect(sliced.handed()[0]).not.toContain("trial cap");
     expect(sliced.handed()[1]).toContain(`the record must lose at least ${bytesOver} bytes`);
     expect(sliced.handed()[1]).toContain(`over the trial cap of ${cap}`);
     expect(sliced.argv().filter((args) => !(args[0] === "issue" && args[1] === "view") && !(args[0] === "api" && args[1] === "--paginate"))).toEqual([]);

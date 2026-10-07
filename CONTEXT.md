@@ -136,24 +136,53 @@ _Avoid_: proof comment, audit line, byte check
 A slice of a real spec run under a trial cap below the spec cap, so the size refusal happens on the
 running system without padding any spec over the real cap. It is asked for with
 `bin/slice --size-trial <spec> <trial cap>`, or from a manual run of the re-slice workflow given the
-spec as `issue` and the cap as `trial_cap`. The trial cap stands in for the spec cap everywhere the
-slice uses it: the room line, the size refusal and each round's log line. The real slicer is hired
-and sent back each round exactly as in a real slice, answering with the record and the wave only.
+spec as `issue` and the cap as `trial_cap`. The trial cap stands in for the spec cap in the size
+refusal, its sent-back prompt and each round's log line, but not in the room line (see Trial room
+line). The real slicer is hired and sent back each round exactly as in a real slice, answering with
+the record and the wave only.
 When the wave would file, code proves the owner's bytes stand in the body it would post and logs the
 filing line it would have written, starting `slice: trial #N`, with the owner's bytes and the seconds
 from the first size round, and posts nothing: no body edit, no ticket, no note, no label; a wave still
-refused after the rounds back ends red without marking `stuck` or commenting. A trial cap at or above
+refused after the rounds back ends red without marking `stuck` or commenting. A trial of a spec with
+nothing left to slice goes through Record at the hand-off under its trial cap and logs
+`slice: trial #N would hand it to the done check` instead. A trial cap at or above
 the spec cap, or below the owner's bytes, is refused before any model is hired, since the first can
 never refuse and the second can never fit. A wave check trying the over-cap sentence runs one on the
-spec with a trial cap a few hundred bytes under the spec's current size and reads its log. A trial
+spec with the cap described under Trial cap a check sets and reads its log. A trial
 runs one at a time per spec in a concurrency group of its own, apart from the re-slice's.
 _Avoid_: dry run, size test, fake cap
+
+**Trial room line**:
+In a size trial, the room line the slicer reads before its first answer gives the room under the
+spec cap, not the trial cap; only the size refusal, its sent-back prompt and its round log lines use
+the trial cap. Told the trial cap up front, a slicer cuts its record to fit before it answers, and no
+round comes back, so the trial shows nothing of a slicer that misjudges its room. Told the spec cap,
+its first answer goes over the trial cap the way a real over-cap slice goes over the spec cap.
+_Avoid_: trial room, dry room line
+
+**Trial cap a check sets**:
+The trial cap the checker's size trial command carries: the owner's bytes plus half the record's
+bytes, both counted from the spec's current body. A cap a few hundred bytes under the spec's size
+let the slicer's own folding of the last wave fit without a round back, so the over-cap sentence was
+never seen; half the record cannot hold a record the slicer only trims.
+_Avoid_: trial size, check cap
+
+**Record at the hand-off**:
+When a slice gives no ticket and the last wave check missed nothing, code still holds its record to
+the cap with the size refusal like any wave, proves the owner's bytes stand, and posts the spec with
+the record spliced in before it runs the done check, so the last wave's picks are folded into shipped
+names before the sentences are tried. Its line, `slice: #N has nothing left to slice, so it posted
+its record and the done check tries its sentences`, says the owner's bytes stand and gives the
+seconds from the first size round. A size trial of such a spec takes the same path under its trial
+cap: sent back while over, then it logs `slice: trial #N would hand it to the done check` with the
+owner's bytes standing and the seconds from the first size round, and posts nothing.
+_Avoid_: trial of a finished spec, final record
 
 **Check-started size trial**:
 A size trial a wave check or done check on this repo starts itself, to try a sentence about the size
 refusal, since a trial posts nothing to any spec. The checker's prompt names the manual run of the
-re-slice workflow to start, with the spec and a trial cap a few hundred bytes under the spec's
-current size, and says starting it counts as leaving GitHub as it is. The checker waits for that run
+re-slice workflow to start, with the spec and the trial cap a check sets, and says starting it counts
+as leaving GitHub as it is. The checker waits for that run
 to end and answers from its log: each size round with the bytes over and the bytes the record had to
 lose, and the `slice: trial #N` line saying the owner's bytes stand and the seconds from the first
 size round. The check holds the app's unnarrowed token, the one the closer starts the re-slice
