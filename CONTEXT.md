@@ -90,7 +90,7 @@ the review and the meters beside it.
 _Avoid_: gate (for a step), gauntlet, a repo-local check script, static check
 
 **Meter**:
-A rule that reports in the PR body what it would have refused, and refuses nothing. Every new rule
+A rule that reports in the PR body what it would have refused, and refuses nothing. An unproven rule
 enters as one; run on 30 merged PRs, it becomes a gate or is deleted.
 _Avoid_: soft gate, warning, advisory check
 
