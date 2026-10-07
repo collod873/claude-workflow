@@ -162,7 +162,7 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(handed()[0]).not.toContain("split into has closed");
   });
 
-  it("runs on Opus with no fence, the owner's hooks its only guard", () => {
+  it("runs on Opus with no fence, every command in the foreground under a ten minute default, with nothing it could leave running after it answers", () => {
     const { run, hired } = fixing({ claude: FIXES });
 
     expect(run().status).toBe(0);
@@ -171,6 +171,9 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(argv[argv.indexOf("--model") + 1]).toBe("opus");
     expect(argv).not.toContain("--tools");
     expect(argv[argv.indexOf("--settings") + 1]).not.toContain("node");
+    const { env, permissions } = JSON.parse(argv[argv.indexOf("--settings") + 1] ?? "{}") as { env: Record<string, string>; permissions: { deny: string[] } };
+    expect(env).toEqual({ CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1", BASH_DEFAULT_TIMEOUT_MS: "600000", BASH_MAX_TIMEOUT_MS: "1200000" });
+    expect(permissions.deny).toEqual(["Agent", "Monitor", "Workflow", "ScheduleWakeup", "CronCreate", "RemoteTrigger"]);
   });
 
   it("hands a red check back to the same session with the log its verdict names, then commits, pushes and marks the ticket checking", () => {

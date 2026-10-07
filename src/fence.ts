@@ -17,10 +17,15 @@ const shellQuoted = (text: string) => `'${text.replaceAll("'", "'\\''")}'`;
 
 export type Registration = Record<string, { matcher?: string; hooks: { command: string }[] }[]>;
 
-function fenced(runs: string[], owned: Registration): string {
+const FOREGROUND_ONLY = {
+  env: { CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1", BASH_DEFAULT_TIMEOUT_MS: "600000", BASH_MAX_TIMEOUT_MS: "1200000" },
+  permissions: { deny: ["Agent", "Monitor", "Workflow", "ScheduleWakeup", "CronCreate", "RemoteTrigger"] },
+};
+
+function fenced(runs: string[], owned: Registration): Registration {
   const command = ["node", "-e", FENCE, JSON.stringify(runs)].map(shellQuoted).join(" ");
   const fence = { matcher: "Bash", hooks: [{ type: "command", command }] };
-  return JSON.stringify({ hooks: { ...owned, PreToolUse: [fence, ...(owned.PreToolUse ?? [])] } });
+  return { ...owned, PreToolUse: [fence, ...(owned.PreToolUse ?? [])] };
 }
 
 export interface Reach {
@@ -35,7 +40,7 @@ export const FENCED_OPUS: Reach = { model: "opus", fenced: true };
 
 export function stageArgv(commands: string[], owned: Registration = {}, tools: string[] = TOOLS, reach: Reach = FENCED): string[] {
   const runs = [...commands, ...CHECKS];
-  const settings = reach.fenced ? fenced(runs, owned) : JSON.stringify({ hooks: owned });
+  const settings = JSON.stringify({ hooks: reach.fenced ? fenced(runs, owned) : owned, ...FOREGROUND_ONLY });
   return [
     "--print",
     "--model",
