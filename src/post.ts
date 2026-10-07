@@ -23,6 +23,7 @@ export const ghAs =
   (args) =>
     spawnSync(GITHUB, args, { encoding: "utf8", maxBuffer: Infinity, env, stdio: ["pipe", "pipe", "pipe", 2] });
 export const gh = ghAs(process.env);
+export const CALLER_FILE = /\/([^/@]+)@/.exec(process.env.CALLED_FROM ?? "")?.[1];
 export const git = (args: string[], input?: string) => spawnSync("git", args, { input, encoding: "utf8", maxBuffer: Infinity });
 
 class Stopped extends Error {

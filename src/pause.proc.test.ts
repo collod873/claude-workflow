@@ -70,11 +70,11 @@ describe("bin/resume picks a ticket up from where it stands once paused or stuck
     expect(wakes(calls)).toEqual([["workflow", "run", "fix.yml", "-f", "ticket=811", "-f", expect.stringMatching(/^reason=.*PR #931 red at 4f2a9c1e/)]]);
   });
 
-  it("wakes the builder with exactly the inputs fix.yml and the caller file declare, which fix.yml hands the builder as its reason beside the session it saved for the branch", () => {
+  it("wakes the builder with exactly the inputs fix.yml and the caller file require, which fix.yml hands the builder as its reason beside the session it saved for the branch", () => {
     const [wake] = wakes(resumedWithoutBuilding(pausing({ pr: "red" })));
     const sent = (wake ?? []).filter((arg) => arg.includes("=")).map((arg) => arg.split("=")[0]);
     const github = join(import.meta.dirname, "..", ".github");
-    const declared = (file: string) => Object.keys((parse(readFileSync(join(github, file), "utf8")) as { on: { workflow_dispatch: { inputs: Record<string, unknown> } } }).on.workflow_dispatch.inputs);
+    const declared = (file: string) => Object.entries((parse(readFileSync(join(github, file), "utf8")) as { on: { workflow_dispatch: { inputs: Record<string, { required: boolean }> } } }).on.workflow_dispatch.inputs).flatMap(([input, { required }]) => (required ? [input] : []));
     const fix = readFileSync(join(github, "workflows", "fix.yml"), "utf8");
 
     expect(sent).toEqual(declared("workflows/fix.yml"));

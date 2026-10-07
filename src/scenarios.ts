@@ -56,6 +56,7 @@ export interface WorkflowStep {
   run?: string;
   with?: Record<string, unknown>;
   env?: Record<string, unknown>;
+  "timeout-minutes"?: number;
 }
 
 interface WorkflowJob {
@@ -64,6 +65,8 @@ interface WorkflowJob {
   needs?: string | string[];
   permissions?: Record<string, string>;
   "cache-mode"?: string;
+  "timeout-minutes"?: number;
+  concurrency?: unknown;
   steps: WorkflowStep[];
 }
 
@@ -191,7 +194,7 @@ export function holds(
     .replace(/steps\.([\w-]+)\.outputs\.([\w-]+)/g, '(steps["$1"].outputs ?? {})["$2"]')
     .replace(/needs\.([\w-]+)\.result/g, 'needs["$1"].result')
     .replace(/needs\.([\w-]+)\.outputs\.([\w-]+)/g, '(needs["$1"].outputs ?? {})["$2"]')
-    .replace(/\binputs\.([\w-]+)/g, 'inputs["$1"]');
+    .replace(/\b(github\.event\.)?inputs\.([\w-]+)/g, 'inputs["$2"]');
   const evaluate = new Function("labels", "steps", "needs", "inputs", "startsWith", "success", "failure", "always", "cancelled", `return Boolean(${source});`) as (...scope: unknown[]) => boolean;
   return evaluate(
     labels,
