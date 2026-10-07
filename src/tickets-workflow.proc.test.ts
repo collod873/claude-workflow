@@ -100,11 +100,11 @@ describe("a repo's tickets build through one caller file that holds only trigger
     expect(jobsRun({ event: "workflow_dispatch", action: "", outputs: named })).toEqual(["which", "fix"]);
   });
 
-  it("hears its own runs complete, and only re-runs a red one once or calls the owner on it, handing nothing back and landing nothing (#1178)", () => {
+  it("on one of its own runs completing, only re-runs a red one once or calls the owner on it, handing nothing back and landing nothing, though the caller cannot hear itself (#1178)", () => {
     const named = { which: { ticket: "828" } };
     const rerun = workflowJobs("tickets.yml").rerun?.steps.find(({ run }) => (run ?? "").includes("bin/rerun"));
 
-    expect((caller().on.workflow_run as { workflows: string[] }).workflows).toContain(caller().name);
+    expect((caller().on.workflow_run as { workflows: string[] }).workflows).not.toContain(caller().name);
     for (const conclusion of ["failure", "cancelled", "timed_out"]) expect(jobsRun({ event: "workflow_run", action: "completed", conclusion, own: true, outputs: named }), conclusion).toEqual(["rerun"]);
     for (const conclusion of ["success", "skipped"]) expect(jobsRun({ event: "workflow_run", action: "completed", conclusion, own: true }), conclusion).toEqual([]);
     expect(jobsRun({ event: "workflow_run", action: "completed", conclusion: "cancelled", outputs: named })).toEqual(["close"]);
@@ -458,7 +458,7 @@ describe("this repo reaches the machine through the caller file bin/enrol writes
 
   it("holds the caller file under the name bin/enrol writes, its text bin/enrol's apart from hearing Check in place of CI", () => {
     const written = readFileSync(CALLER, "utf8");
-    const ours = written.replace("workflows: [CI, Machine]", "workflows: [Check, Machine]");
+    const ours = written.replace("workflows: [CI]", "workflows: [Check]");
 
     expect(ours).not.toBe(written);
     expect(readFileSync(join(WORKFLOWS, ENROLLED_CALLER), "utf8")).toBe(ours);

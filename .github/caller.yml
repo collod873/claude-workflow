@@ -11,7 +11,7 @@ run-name: "${{ github.event_name == 'workflow_dispatch' && (inputs.trial_cap && 
   push:
     branches: [main]
   workflow_run:
-    workflows: [CI, Machine]
+    workflows: [CI]
     types: [completed]
   workflow_dispatch:
     inputs:
