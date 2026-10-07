@@ -426,13 +426,21 @@ jobs:
         with:
           node-version: 24
 
-      - working-directory: tree
+      - id: close
+        working-directory: tree
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           QUIET_GH_TOKEN: ${{ steps.app.outputs.token }}
           QUEUE_ONLY: ${{ github.event_name != 'push' && 'queue' || '' }}
           CALLED_FROM: ${{ github.workflow_ref }}
         run: '"$GITHUB_WORKSPACE/bin/close" $QUEUE_ONLY'
+
+      - if: ${{ (failure() || cancelled()) && steps.close.outputs.ticket != '' }}
+        uses: ./.github/actions/call-owner
+        with:
+          issue: ${{ steps.close.outputs.ticket }}
+          run: the closer run
+          token: ${{ steps.app.outputs.token }}
 
   strip:
     if: ${{ github.event.action == 'closed' }}
@@ -464,3 +472,10 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
         run: bin/mark "$NUMBER" --closed
+
+      - if: ${{ failure() || cancelled() }}
+        uses: ./.github/actions/call-owner
+        with:
+          issue: ${{ github.event.issue.number || github.event.pull_request.number }}
+          run: the strip run
+          token: ${{ steps.app.outputs.token }}

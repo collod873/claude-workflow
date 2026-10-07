@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, readFileSync, symlinkSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { authored, BIN, commitAt, execute, git, plant, refusedMark, type Said, scratch, script } from "./scenarios.ts";
 import { MACHINE } from "./spelled.ts";
@@ -125,6 +125,7 @@ export function closing({
 } = {}) {
   const root = scratch("closer-");
   const session = join(root, "session");
+  const output = join(root, "github-output");
   const callsDir = join(root, "gh-calls");
   const tokensDir = join(root, "gh-tokens");
   mkdirSync(callsDir, { recursive: true });
@@ -213,6 +214,7 @@ export function closing({
     session,
     heads,
     calls: () => readdirSync(callsDir).sort((a, b) => Number(a) - Number(b)).map((file) => readFileSync(join(callsDir, file), "utf8")),
+    output: () => (existsSync(output) ? readFileSync(output, "utf8") : ""),
     tokens: () => readdirSync(tokensDir).sort((a, b) => Number(a) - Number(b)).map((file) => readFileSync(join(tokensDir, file), "utf8")),
     run: () =>
       execute(
@@ -225,6 +227,7 @@ export function closing({
           GITHUB_SERVER_URL: "https://github.com",
           GITHUB_REPOSITORY: "collod873/claude-workflow",
           GITHUB_RUN_ID: CLOSE_RUN_ID,
+          GITHUB_OUTPUT: output,
           ...(calledFrom === undefined ? {} : { CALLED_FROM: calledFrom }),
           ...(foreign ? { MACHINE_BIN: BIN } : {}),
         },
