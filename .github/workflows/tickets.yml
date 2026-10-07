@@ -173,7 +173,7 @@ jobs:
 
   which:
     needs: build
-    if: "${{ always() && ((github.event_name == 'workflow_dispatch' && !github.event.inputs.trial_cap) || needs.build.result == 'failure' || (github.event_name == 'workflow_run' && github.event.workflow_run.name != github.workflow && (github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'timed_out') && github.event.workflow_run.head_repository.full_name == github.repository)) }}"
+    if: "${{ always() && ((github.event_name == 'workflow_dispatch' && !github.event.inputs.trial_cap && !github.event.inputs.rerun) || needs.build.result == 'failure' || (github.event_name == 'workflow_run' && github.event.workflow_run.name != github.workflow && (github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'timed_out') && github.event.workflow_run.head_repository.full_name == github.repository)) }}"
     runs-on: ubuntu-latest
     timeout-minutes: 3
     env:
@@ -362,9 +362,11 @@ jobs:
           artifact: fix-logs
 
   rerun:
-    if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.name == github.workflow && (github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'cancelled' || github.event.workflow_run.conclusion == 'timed_out') }}
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.rerun }}
+    concurrency:
+      group: rerun-${{ github.event.inputs.rerun }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 180
     env:
       GH_REPO: ${{ github.repository }}
     steps:
@@ -389,9 +391,8 @@ jobs:
 
       - env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
-          RUN: ${{ github.event.workflow_run.id }}
-          ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
-        run: bin/rerun "$RUN" "$ATTEMPT"
+          RERUN: ${{ github.event.inputs.rerun }}
+        run: bin/rerun "${RERUN%/*}" "${RERUN#*/}"
 
   close:
     if: ${{ github.event_name == 'push' || github.event_name == 'pull_request_target' || (github.event_name == 'workflow_run' && github.event.workflow_run.name != github.workflow) || (github.event_name == 'issues' && github.event.action == 'closed') }}
@@ -479,3 +480,38 @@ jobs:
           issue: ${{ github.event.issue.number || github.event.pull_request.number }}
           run: the strip run
           token: ${{ steps.app.outputs.token }}
+
+  dispatch-rerun:
+    needs: [build, which, fix, close, strip]
+    if: ${{ always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - id: machine
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/claude-workflow
+          ref: main
+          token: ${{ steps.app.outputs.token }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          RUN: ${{ github.run_id }}
+          ATTEMPT: ${{ github.run_attempt }}
+          CALLED_FROM: ${{ github.workflow_ref }}
+          TICKET: ${{ github.event.issue.number || github.event.pull_request.number || github.event.inputs.ticket || needs.which.outputs.ticket }}
+        run: bin/rerun --dispatch "$RUN" "$ATTEMPT"

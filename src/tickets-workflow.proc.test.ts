@@ -38,6 +38,7 @@ interface Fired {
   own?: boolean;
   inputs?: Record<string, string>;
   red?: string[];
+  stopped?: string[];
   outputs?: Record<string, Record<string, string>>;
 }
 
@@ -54,14 +55,14 @@ function builders() {
   return builds.map(([name, { steps }]) => ({ name, steps, at: (found: (step: WorkflowStep) => boolean) => steps.findIndex(found) }));
 }
 
-function jobsRun({ red = [], outputs = {}, ...fired }: Fired, file = "tickets.yml"): string[] {
+function jobsRun({ red = [], stopped = [], outputs = {}, ...fired }: Fired, file = "tickets.yml"): string[] {
   declared(fired);
   const results: Record<string, { result: string; outputs?: Record<string, string> }> = {};
   for (const [name, job] of Object.entries(workflowJobs(file))) {
     const needs = Object.fromEntries([job.needs ?? []].flat().map((need) => [need, results[need] ?? { result: "skipped" }]));
     const failed = Object.values(needs).some(({ result }) => result !== "success");
     const ran = holds(job.if ?? "success()", { ...fired, needs, failed });
-    results[name] = ran ? { result: red.includes(name) ? "failure" : "success", outputs: outputs[name] ?? {} } : { result: "skipped" };
+    results[name] = ran ? { result: red.includes(name) ? "failure" : stopped.includes(name) ? "cancelled" : "success", outputs: outputs[name] ?? {} } : { result: "skipped" };
   }
   return Object.entries(results).flatMap(([name, { result }]) => (result === "skipped" ? [] : [name]));
 }
@@ -96,20 +97,35 @@ describe("a repo's tickets build through one caller file that holds only trigger
     expect(jobsRun({ event: "workflow_run", action: "completed", conclusion: "timed_out", outputs: named })).toEqual(["which", "fix", "close"]);
     expect(jobsRun({ event: "workflow_run", action: "completed", conclusion: "failure", fork: true, outputs: named })).toEqual(["close"]);
     expect(jobsRun({ event: "workflow_run", action: "completed", conclusion: "failure", outputs: { which: { ticket: "" } } })).toEqual(["which", "close"]);
-    expect(jobsRun({ event: "issues", action: "opened", sender: OWNER, red: ["build"], outputs: named })).toEqual(["build", "which", "fix"]);
+    expect(jobsRun({ event: "issues", action: "opened", sender: OWNER, red: ["build"], outputs: named })).toEqual(["build", "which", "fix", "dispatch-rerun"]);
     expect(jobsRun({ event: "workflow_dispatch", action: "", outputs: named })).toEqual(["which", "fix"]);
   });
 
-  it("on one of its own runs completing, only re-runs a red one once or calls the owner on it, handing nothing back and landing nothing, though the caller cannot hear itself (#1178)", () => {
+  it("hands a run whose stage job ended red, was cancelled or timed out to a dispatch of the caller file, and on that dispatch only re-runs it or calls the owner, no build, fix or size trial starting (#1225)", () => {
     const named = { which: { ticket: "828" } };
-    const rerun = workflowJobs("tickets.yml").rerun?.steps.find(({ run }) => (run ?? "").includes("bin/rerun"));
+    const handed = { event: "workflow_dispatch", action: "", inputs: { ticket: "828", reason: "red", rerun: "4417/1" }, outputs: named };
 
     expect((caller().on.workflow_run as { workflows: string[] }).workflows).not.toContain(caller().name);
-    for (const conclusion of ["failure", "cancelled", "timed_out"]) expect(jobsRun({ event: "workflow_run", action: "completed", conclusion, own: true, outputs: named }), conclusion).toEqual(["rerun"]);
-    for (const conclusion of ["success", "skipped"]) expect(jobsRun({ event: "workflow_run", action: "completed", conclusion, own: true }), conclusion).toEqual([]);
-    expect(jobsRun({ event: "workflow_run", action: "completed", conclusion: "cancelled", outputs: named })).toEqual(["close"]);
-    expect(rerun?.run).toBe('bin/rerun "$RUN" "$ATTEMPT"');
-    expect(rerun?.env).toMatchObject({ RUN: "${{ github.event.workflow_run.id }}", ATTEMPT: "${{ github.event.workflow_run.run_attempt }}" });
+    expect(jobsRun({ event: "issues", action: "opened", sender: OWNER, red: ["build"], outputs: named })).toEqual(["build", "which", "fix", "dispatch-rerun"]);
+    expect(jobsRun({ event: "workflow_run", action: "completed", conclusion: "failure", red: ["fix"], outputs: named })).toEqual(["which", "fix", "close", "dispatch-rerun"]);
+    expect(jobsRun({ event: "push", action: "", stopped: ["close"] })).toEqual(["close", "dispatch-rerun"]);
+    expect(jobsRun({ event: "issues", action: "opened", sender: OWNER, red: ["slice"] }, "specs.yml")).toEqual(["slice", "research", "dispatch-rerun"]);
+    expect(jobsRun({ event: "issues", action: "opened", sender: OWNER }, "specs.yml")).toEqual(["slice", "research"]);
+    expect(jobsRun(handed)).toEqual(["rerun"]);
+    expect(jobsRun({ ...handed, inputs: { ...handed.inputs, trial_cap: "60000" } }, "specs.yml")).toEqual([]);
+    expect(jobsRun(handed, "specs.yml")).toEqual([]);
+    expect(jobsRun({ ...handed, red: ["rerun"] })).toEqual(["rerun"]);
+    for (const conclusion of ["failure", "cancelled", "timed_out"]) expect(jobsRun({ event: "workflow_run", action: "completed", conclusion, own: true }), conclusion).not.toContain("rerun");
+  });
+
+  it("carries the optional rerun input in the caller bin/enrol writes and in this repo's caller, beside the ticket and reason every dispatch fills (#1225)", () => {
+    const inputs = (text: string) => (parse(text) as { on: { workflow_dispatch: { inputs: Record<string, unknown> } } }).on.workflow_dispatch.inputs;
+
+    for (const text of [readFileSync(CALLER, "utf8"), readFileSync(join(WORKFLOWS, ENROLLED_CALLER), "utf8")]) {
+      expect(inputs(text).rerun).toEqual({ required: false, type: "string" });
+      expect(inputs(text).ticket).toEqual({ required: true, type: "string" });
+      expect(inputs(text).reason).toEqual({ required: true, type: "string" });
+    }
   });
 
   it.each([
@@ -119,6 +135,7 @@ describe("a repo's tickets build through one caller file that holds only trigger
     [{ event_name: "pull_request_target", event: { action: "closed", pull_request: { number: 1220, title: "Name each run" } } }, "closed PR #1220: Name each run"],
     [{ event_name: "workflow_dispatch", event: { inputs: { ticket: "968", reason: "size-trial", trial_cap: "60000" } } }, "Size trial of #968 under 60000"],
     [{ event_name: "workflow_dispatch", event: { inputs: { ticket: "828", reason: "PR red" } } }, "Fix #828"],
+    [{ event_name: "workflow_dispatch", event: { inputs: { ticket: "828", reason: "red", rerun: "4417/1" } } }, "Rerun of run 4417/1"],
     [{ event_name: "workflow_run", event: { action: "completed", workflow_run: { name: "CI", head_branch: "ticket/828" } } }, "After CI on ticket/828"],
     [{ event_name: "push", event: {} }, "Push to main"],
   ])("names each run for what it heard (#1216): %j", (github, named) => {
@@ -192,7 +209,7 @@ describe("a repo's tickets build through one caller file that holds only trigger
     const closing = workflowJobs("tickets.yml").close?.steps.find(({ run }) => (run ?? "").includes("bin/close"));
 
     expect(closing?.env?.CALLED_FROM).toBe("${{ github.workflow_ref }}");
-    expect(caller().on.workflow_dispatch).toEqual({ inputs: { ticket: { required: true, type: "string" }, reason: { required: true, type: "string" }, trial_cap: { required: false, type: "number" } } });
+    expect(caller().on.workflow_dispatch).toEqual({ inputs: { ticket: { required: true, type: "string" }, reason: { required: true, type: "string" }, trial_cap: { required: false, type: "number" }, rerun: { required: false, type: "string" } } });
   });
 
   it("tells each builder it runs in a tree that is not the machine's, so a machine fault is filed here and not landed on the tree's main (#1143)", () => {

@@ -192,6 +192,7 @@ export function holds(
     .replace(/contains\(\s*github\.event\.issue\.labels\.\*\.name\s*,\s*('[^']*')\s*\)/g, "labels.includes($1)")
     .replace(/steps\.([\w-]+)\.(outcome|conclusion)/g, 'steps["$1"].$2')
     .replace(/steps\.([\w-]+)\.outputs\.([\w-]+)/g, '(steps["$1"].outputs ?? {})["$2"]')
+    .replace(/contains\(\s*needs\.\*\.result\s*,\s*('[^']*')\s*\)/g, "Object.values(needs).some(({ result }) => result === $1)")
     .replace(/needs\.([\w-]+)\.result/g, 'needs["$1"].result')
     .replace(/needs\.([\w-]+)\.outputs\.([\w-]+)/g, '(needs["$1"].outputs ?? {})["$2"]')
     .replace(/\b(github\.event\.)?inputs\.([\w-]+)/g, 'inputs["$2"]');

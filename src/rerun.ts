@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { commentOnTicket, gh, ghRead, heldOn, labelsHeld, machineBin, OWNER, readOrStop, STUCK, unread } from "./post.ts";
+import { CALLER_FILE, commentOnTicket, gh, ghRead, heldOn, labelsHeld, machineBin, OWNER, readOrStop, STUCK, unread } from "./post.ts";
 import { OWNER_CALL } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 
@@ -25,6 +25,7 @@ interface Call {
 const OUT_OF_TIME = /exceeded the maximum execution time/;
 const CALLED = /^(\d+) (.+)$/;
 const STOPPED = new Set(["failure", "timed_out", "cancelled"]);
+const WAIT_SECONDS = Number(process.env.RERUN_WAIT_SECONDS ?? "30");
 
 function parsed<Read>(text: string, line: string): Read {
   try {
@@ -69,7 +70,26 @@ function callOwner(call: Call, url: string, attempt: string): void {
   console.log(`rerun: #${call.issue} is labelled ${STUCK}, as ${call.run} ${call.ended} on its re-run`);
 }
 
+function waitFor(run: string, attempt: string): void {
+  const line = `run ${run} could not be read, so nothing is re-run or marked`;
+  while (ghRead(["api", `repos/{owner}/{repo}/actions/runs/${run}/attempts/${attempt}`, "--jq", ".status"], line).trim() !== "completed") spawnSync("sleep", [String(WAIT_SECONDS)]);
+}
+
+function handOn(run: string, attempt: string): undefined {
+  const url = `${process.env.GITHUB_SERVER_URL ?? "https://github.com"}/${process.env.GH_REPO ?? ""}/actions/runs/${run}`;
+  const handed = gh(["workflow", "run", CALLER_FILE, "-f", `ticket=${process.env.TICKET || "none"}`, "-f", `reason=Run ${url} ended red on attempt ${attempt}`, "-f", `rerun=${run}/${attempt}`]);
+  if (handed.status !== 0) console.error(`rerun: run ${run} could not be handed to ${CALLER_FILE}, so it is not re-run: ${firstLine(handed)}`);
+  else console.log(`rerun: run ${run} ended red on attempt ${attempt}, so ${CALLER_FILE} is dispatched to re-run it`);
+  return undefined;
+}
+
 function rerun(run: string, attempt: string): Stop | undefined {
+  waitFor(run, attempt);
+  const [latest = "", url = ""] = ghRead(["api", `repos/{owner}/{repo}/actions/runs/${run}`, "--jq", '"\\(.run_attempt) \\(.html_url)"'], `run ${run} could not be read, so nothing is re-run or marked`).trim().split(" ");
+  if (Number(latest) > Number(attempt)) {
+    console.log(`rerun: run ${run} is already on attempt ${latest}, so attempt ${attempt} is neither re-run nor marked`);
+    return undefined;
+  }
   const calls = callsOf(run, attempt);
   if (calls.length === 0) {
     console.log(`rerun: no job of run ${run} that ended red or ran out of time called the owner, so nothing is re-run or marked`);
@@ -81,13 +101,13 @@ function rerun(run: string, attempt: string): Stop | undefined {
     console.log(`rerun: ${calls.map(({ run: named, ended }) => `${named} ${ended}`).join(" and ")} on its first attempt, so run ${run} re-runs its failed jobs once`);
     return undefined;
   }
-  const url = ghRead(["api", `repos/{owner}/{repo}/actions/runs/${run}`, "--jq", ".html_url"], `run ${run} could not be read, so nothing is marked`);
   for (const call of calls) callOwner(call, url, attempt);
   return undefined;
 }
 
 if (import.meta.main) {
-  const [run, attempt] = process.argv.slice(2);
+  const dispatching = process.argv[2] === "--dispatch";
+  const [run, attempt] = process.argv.slice(dispatching ? 3 : 2);
   if (run === undefined || attempt === undefined) throw new Error("no run id and attempt in the arguments");
-  process.exit(exitFor(readOrStop("rerun", () => rerun(run, attempt))));
+  process.exit(exitFor(readOrStop("rerun", () => (dispatching ? handOn : rerun)(run, attempt))));
 }
