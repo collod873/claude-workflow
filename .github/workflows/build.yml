@@ -94,7 +94,7 @@ jobs:
           printf 'branch=%s\n' "$branch" >>"$GITHUB_OUTPUT"
           checking=$(bin/spelled CHECKING)
           building=$(bin/spelled BUILDING)
-          if [[ '${{ github.event.action }}' == reopened ]] && state=$(bin/github pr view "$branch" --json state --jq .state 2>/dev/null) && [[ $state == OPEN ]]; then # quiet: a ticket with no PR yet builds
+          if [[ '${{ github.event.action }}' == reopened ]] && state=$(gh pr view "$branch" --json state --jq .state 2>/dev/null) && [[ $state == OPEN ]]; then # quiet: a ticket with no PR yet builds
             bin/github pr checks "$branch" --json name,bucket,link \
               | jq -r '.[] | select(.bucket == "fail") | .link' \
               | sed -E 's#.*/runs/([0-9]+)/.*#\1#' \
