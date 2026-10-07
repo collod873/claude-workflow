@@ -36,14 +36,12 @@ is in the machine's own repo; it is foreign only when the caller file is in anot
 behaves exactly as this repo's own stage workflows did before Gaps first: the builder lands a `machine` outcome on
 main and fails a check on any red step, `(needs ...)` ones included; the closer requires both
 `check` and `review`; the done check gets this repo's running-system line and is offered the size
-trial. So this repo moved onto the caller file with no difference the owner sees; a run with no
-caller file reaches the machine as No caller, same file says.
+trial. So this repo moved onto the caller file with no difference the owner sees.
 _Avoid_: local, own-repo mode
 
 **Gaps first**:
-How this repo moved onto the caller file: wave 1 closed every gap between its own stage workflows
-and the reusable path, then one PR added `.github/workflows/machine.yml` as `bin/enrol` writes it,
-hearing `Check`, and deleted the nine stage workflows. Reasoning in `docs/adr/0001-cutover.md`.
+How this repo moved onto the caller file: every gap on the reusable path closed first, then one PR
+swapped its stage workflows for `machine.yml`. See `docs/adr/0001-cutover.md`.
 _Avoid_: migration, switchover
 
 **No caller, same file**:
@@ -54,7 +52,7 @@ _Avoid_: default caller, fallback workflow
 
 **One checkout**:
 Here the machine's and the target's checkouts are two clones of this repo at main, kept apart as in
-any enrolled repo; nothing changes beyond Home.
+any enrolled repo.
 _Avoid_: self-checkout, same tree
 
 **Enrol**:
@@ -228,14 +226,14 @@ caller file's dispatch takes an optional `trial_cap` beside `ticket` and
 job's checkouts and caps and a token that can only read, and `tickets.yml` starts no builder for it.
 A check under a caller file reads the file's name from the run it is called from and is told to
 start the trial with `gh workflow run <caller file> -f ticket=<spec> -f reason=size-trial -f
-trial_cap=<cap>` and to find its run under that file. A dispatch with neither a trial cap nor `rerun`
-wakes a builder.
+trial_cap=<cap>` and to find its run under that file. A dispatch with no trial cap, `rerun` or
+`probe` wakes a builder.
 _Avoid_: caller trial, foreign trial
 
 **Run names**:
 The `run-name` the caller file carries, so every run under it names what it heard: an issue or
 comment event shows `<action> #<number>: <title>`, a closed PR `closed PR #<number>: <title>`, a
-dispatch `Rerun of run <run id>/<attempt>` when it carries `rerun`, `Size trial of #<ticket> under
+dispatch `Probe (<how>): <probe>` for a probe, `Rerun of run <run id>/<attempt>` when it carries `rerun`, `Size trial of #<ticket> under
 <trial_cap>` when it carries a trial cap and `Fix #<ticket>` otherwise, a heard run `After <workflow>
 on <head branch>`, and a push `Push to main`. Enrol writes the file with no line folded, so the run
 name stays one line.
@@ -316,6 +314,11 @@ set to `<run id>/<attempt>`. Only the `rerun` job runs on that dispatch: it wait
 to complete and stands down if the run has moved past it, so two hand-offs act once. A caller
 lacking the input refuses the dispatch: logged, not red.
 _Avoid_: self-heard rerun, rerun workflow
+
+**Probe**:
+A script or prompt `bin/probe --in <repo>` runs in the builder's environment, with no ticket or
+GitHub token; nothing runs after it.
+_Avoid_: dry run, smoke test
 
 **Blip**:
 A GitHub call that fails on a server error, a rate limit, a timeout or a not-found. Every call the

@@ -8,6 +8,7 @@ import { closing } from "./closer.part.ts";
 import { execute, heldBy, holds, labelledAs, labelledStep, scratch, script, workflowJobs, type WorkflowStep } from "./scenarios.ts";
 import { HELD, MACHINE, OWNER } from "./spelled.ts";
 import { ENROLLED_CALLER } from "./post.ts";
+import { probeRunName } from "./probe.ts";
 
 const REPO = join(import.meta.dirname, "..");
 const CALLER = join(REPO, ".github", "caller.yml");
@@ -136,6 +137,9 @@ describe("a repo's tickets build through one caller file that holds only trigger
     [{ event_name: "workflow_dispatch", event: { inputs: { ticket: "968", reason: "size-trial", trial_cap: "60000" } } }, "Size trial of #968 under 60000"],
     [{ event_name: "workflow_dispatch", event: { inputs: { ticket: "828", reason: "PR red" } } }, "Fix #828"],
     [{ event_name: "workflow_dispatch", event: { inputs: { ticket: "828", reason: "red", rerun: "4417/1" } } }, "Rerun of run 4417/1"],
+    [{ event_name: "workflow_dispatch", event: { inputs: { ticket: "0", reason: "probe", probe: "~/bin/check", probe_with: "script" } } }, probeRunName("script", "~/bin/check")],
+    [{ event_name: "workflow_dispatch", event: { inputs: { ticket: "0", reason: "probe", probe: "Say hi", probe_with: "claude" } } }, probeRunName("claude", "Say hi")],
+    [{ event_name: "workflow_dispatch", event: { inputs: { ticket: "0", reason: "probe", probe: "~/bin/check" } } }, probeRunName("script", "~/bin/check")],
     [{ event_name: "workflow_run", event: { action: "completed", workflow_run: { name: "CI", head_branch: "ticket/828" } } }, "After CI on ticket/828"],
     [{ event_name: "push", event: {} }, "Push to main"],
   ])("names each run for what it heard (#1216): %j", (github, named) => {
@@ -162,6 +166,38 @@ describe("a repo's tickets build through one caller file that holds only trigger
     expect(sizeTrial?.["timeout-minutes"]).toBe(reslice?.["timeout-minutes"]);
     expect(step(sizeTrial, "size-trial")?.["timeout-minutes"]).toBe(step(reslice, "reslice")?.["timeout-minutes"]);
     expect(step(sizeTrial, "size-trial")?.env?.STAGE_MINUTES).toBe(step(reslice, "reslice")?.env?.STAGE_MINUTES);
+  });
+
+  describe("runs a probe a dispatch names in the builder's own environment, and nothing else (#1251)", () => {
+    const probed = { event: "workflow_dispatch", action: "", inputs: { ticket: "0", reason: "probe", probe: "~/bin/check" }, outputs: { which: { ticket: "0" } } };
+    const steps = () => workflowJobs("tickets.yml").probe?.steps ?? [];
+    const step = (id: string) => steps().find((one) => one.id === id);
+    const readying = (job: string) =>
+      (workflowJobs("tickets.yml")[job]?.steps ?? [])
+        .filter(({ id }) => ["checkout", "setup-node", "pinned", "npm-ci", "database", "logs", "stage"].includes(id ?? ""))
+        .map(({ if: _when, with: given, ...rest }) => ({ ...rest, with: { ...given, "persist-credentials": undefined } }));
+
+    it("starts the probe job alone, whether it ends green or red, so no builder, fix, rerun or size trial starts and no owner is called", () => {
+      expect(jobsRun(probed)).toEqual(["probe"]);
+      expect(jobsRun({ ...probed, red: ["probe"] })).toEqual(["probe"]);
+      expect(jobsRun(probed, "specs.yml")).toEqual([]);
+      expect(steps().filter(({ uses }) => uses?.startsWith("./.github/actions/call-owner") === true)).toEqual([]);
+    });
+
+    it("readies the tree with the build job's own steps, keeping no token in the tree's checkout", () => {
+      expect(readying("probe")).toEqual(readying("build"));
+      expect(step("checkout")?.with?.["persist-credentials"]).toBe(false);
+    });
+
+    it("runs a script probe by default and a claude probe when probe_with names claude, handing neither a GitHub token", () => {
+      const ran = (probeWith: string | undefined) => ["probe-script", "probe-claude"].filter((id) => holds(step(id)?.if ?? "success()", { inputs: probeWith === undefined ? {} : { probe_with: probeWith } }));
+
+      expect(ran(undefined)).toEqual(["probe-script"]);
+      expect(ran("script")).toEqual(["probe-script"]);
+      expect(ran("claude")).toEqual(["probe-claude"]);
+      for (const id of ["probe-script", "probe-claude"]) expect(Object.keys(step(id)?.env ?? {}).filter((name) => /GH_TOKEN|GITHUB_TOKEN/.test(name)), id).toEqual([]);
+      expect(step("probe-script")?.env).toEqual({ PROBE: "${{ github.event.inputs.probe }}" });
+    });
   });
 
   it("fires only what the caller file declares, so a trigger dropped from it fails here", () => {
@@ -209,7 +245,16 @@ describe("a repo's tickets build through one caller file that holds only trigger
     const closing = workflowJobs("tickets.yml").close?.steps.find(({ run }) => (run ?? "").includes("bin/close"));
 
     expect(closing?.env?.CALLED_FROM).toBe("${{ github.workflow_ref }}");
-    expect(caller().on.workflow_dispatch).toEqual({ inputs: { ticket: { required: true, type: "string" }, reason: { required: true, type: "string" }, trial_cap: { required: false, type: "number" }, rerun: { required: false, type: "string" } } });
+    expect(caller().on.workflow_dispatch).toEqual({
+      inputs: {
+        ticket: { required: true, type: "string" },
+        reason: { required: true, type: "string" },
+        trial_cap: { required: false, type: "number" },
+        rerun: { required: false, type: "string" },
+        probe: { required: false, type: "string" },
+        probe_with: { required: false, type: "string" },
+      },
+    });
   });
 
   it("tells each builder it runs in a tree that is not the machine's, so a machine fault is filed here and not landed on the tree's main (#1143)", () => {
