@@ -13,6 +13,7 @@ const CALLER = join(REPO, ".github", "caller.yml");
 const TICKETS = join(REPO, ".github", "workflows", "tickets.yml");
 const APP = "${{ steps.app.outputs.token }}";
 const PINNED = join(REPO, ".github", "actions", "pinned", "action.yml");
+const DATABASE = join(REPO, ".github", "actions", "database", "action.yml");
 
 interface Caller {
   name: string;
@@ -39,6 +40,12 @@ function declared({ event, action = "" }: Fired): void {
   expect(Object.keys(caller().on), `the caller file declares ${event}`).toContain(event);
   if (trigger?.types !== undefined) expect(trigger.types, `the caller file declares ${event} ${action}`).toContain(action);
   if (event === "workflow_run") expect(trigger?.workflows?.length, "the caller file names the CI it hands back from").toBeGreaterThan(0);
+}
+
+function builders() {
+  const builds = Object.entries(workflowJobs("tickets.yml")).filter(([, { steps }]) => steps.some(({ run }) => (run ?? "").includes("bin/fix")));
+  expect(builds.map(([name]) => name).sort()).toEqual(["build", "fix"]);
+  return builds.map(([name, { steps }]) => ({ name, steps, at: (found: (step: WorkflowStep) => boolean) => steps.findIndex(found) }));
 }
 
 function jobsRun({ red = [], outputs = {}, ...fired }: Fired, file = "tickets.yml"): string[] {
@@ -248,11 +255,7 @@ describe("a repo's tickets build through one caller file that holds only trigger
     };
 
     it("in every job that runs the builder, after the tree is checked out and the machine's own Node, and before anything installs or the builder starts", () => {
-      const builds = Object.entries(workflowJobs("tickets.yml")).filter(([, { steps }]) => steps.some(({ run }) => (run ?? "").includes("bin/fix")));
-
-      expect(builds.map(([name]) => name).sort()).toEqual(["build", "fix"]);
-      for (const [name, { steps }] of builds) {
-        const at = (found: (step: WorkflowStep) => boolean) => steps.findIndex(found);
+      for (const { name, steps, at } of builders()) {
         const pinned = at(({ uses }) => uses === "./.github/actions/pinned");
 
         expect(pinned, name).toBeGreaterThan(at(({ id }) => id === "checkout"));
@@ -290,6 +293,48 @@ describe("a repo's tickets build through one caller file that holds only trigger
 
       expect(pnpm.status, pnpm.stderr).toBe(0);
       expect(pnpm.stdout.trim()).toBe("11.7.0");
+    });
+  });
+
+  describe("gives the builder the Postgres a step of the tree's contract needs as DATABASE_URL, so its check runs that step and leaves its receipt (#1202)", () => {
+    const databaseSteps = () => (parse(readFileSync(DATABASE, "utf8")) as { runs: { steps: (WorkflowStep & { "working-directory"?: string })[] } }).runs.steps;
+    const readied = (contract: string | undefined) => {
+      const root = scratch("database-");
+      const calls = join(root, "calls");
+      const githubEnv = join(root, "github-env");
+      mkdirSync(join(root, "tree", ".claude"), { recursive: true });
+      writeFileSync(githubEnv, "");
+      if (contract !== undefined) writeFileSync(join(root, "tree", ".claude", "contract.json"), contract);
+      script(join(root, "bin", "docker"), `printf '%s\\n' "$*" >>"${calls}"\n`);
+      const [step, ...more] = databaseSteps();
+      expect(more).toEqual([]);
+      const ran = execute("bash", join(root, step?.["working-directory"] ?? ""), { PATH: `${join(root, "bin")}:/usr/bin:/bin`, GITHUB_ENV: githubEnv }, ["-e", "-c", step?.run ?? ""]);
+      expect(ran.status, ran.stderr).toBe(0);
+      return { calls: existsSync(calls) ? readFileSync(calls, "utf8").trim().split("\n") : [], handed: readFileSync(githubEnv, "utf8") };
+    };
+
+    it("starts postgres:16 and hands its address on as DATABASE_URL once it takes connections, when a step needs DATABASE_URL", () => {
+      const { calls, handed } = readied('{ "steps": { "lint": { "run": "true" }, "integration": { "run": "true", "needs": ["BASE_URL", "DATABASE_URL"] } } }\n');
+
+      expect(calls[0]).toMatch(/^run --quiet --detach --name database --publish 5432:5432 .*postgres:16$/);
+      expect(calls.slice(1)).toEqual(["exec database pg_isready --quiet --host 127.0.0.1"]);
+      expect(handed).toBe("DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres\n");
+    });
+
+    it("starts nothing and hands nothing on when no step needs DATABASE_URL, the contract has no steps, or the tree has no contract", () => {
+      for (const contract of ['{ "steps": { "integration": { "run": "true", "needs": ["BASE_URL"] } } }\n', '{ "stop": "true" }\n', undefined]) {
+        expect(readied(contract), contract).toEqual({ calls: [], handed: "" });
+      }
+    });
+
+    it("in every job that runs the builder, after the tree is checked out and before the builder starts", () => {
+      for (const { name, steps, at } of builders()) {
+        const database = at(({ uses }) => uses === "./.github/actions/database");
+
+        expect(database, name).toBeGreaterThan(at(({ id }) => id === "checkout"));
+        expect(database, name).toBeLessThan(at(({ run }) => (run ?? "").includes("bin/fix")));
+        expect(steps[database]?.if, name).toBe(steps[at(({ id }) => id === "npm-ci")]?.if);
+      }
     });
   });
 });

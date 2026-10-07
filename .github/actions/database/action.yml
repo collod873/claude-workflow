@@ -1,0 +1,13 @@
+name: Database
+description: Starts postgres:16 when a step of the tree's contract needs DATABASE_URL, and hands its address on as DATABASE_URL once it takes connections, so the builder's check runs that step and leaves its receipt
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      working-directory: tree
+      run: |
+        jq -e 'any(.steps[]?.needs[]?; . == "DATABASE_URL")' .claude/contract.json >/dev/null 2>&1 || exit 0
+        docker run --quiet --detach --name database --publish 5432:5432 --env POSTGRES_PASSWORD=postgres postgres:16 >/dev/null
+        timeout 60 bash -c 'until docker exec database pg_isready --quiet --host 127.0.0.1; do sleep 1; done'
+        printf 'DATABASE_URL=%s\n' postgres://postgres:postgres@localhost:5432/postgres >>"$GITHUB_ENV"
