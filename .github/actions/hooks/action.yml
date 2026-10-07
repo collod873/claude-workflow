@@ -35,7 +35,7 @@ runs:
         until git clone --quiet --depth 1 --branch live "https://x-access-token:$HOOKS_TOKEN@github.com/$GITHUB_REPOSITORY_OWNER/agent-hooks" "$hooks" 2>"$RUNNER_TEMP/agent-hooks-clone.log"; do
           rm -rf "$hooks"
           if [ "$attempt" -ge 3 ]; then
-            { printf '%s\n' "A job cannot fetch the owner's hooks after 3 tries"; cat "$RUNNER_TEMP/agent-hooks-clone.log"; } >"$RUNNER_TEMP/agent-hooks-unreachable.log"
+            { printf '%s\n' "A job cannot fetch the owner's hooks after 3 tries"; cat "$RUNNER_TEMP/agent-hooks-clone.log"; } | tee "$RUNNER_TEMP/agent-hooks-unreachable.log" >&2
             exit 1
           fi
           attempt=$((attempt + 1))

@@ -40,13 +40,13 @@ export const FENCED_OPUS: Reach = { model: "opus", fenced: true };
 
 export function stageArgv(commands: string[], owned: Registration = {}, tools: string[] = TOOLS, reach: Reach = FENCED): string[] {
   const runs = [...commands, ...CHECKS];
-  const settings = JSON.stringify({ hooks: reach.fenced ? fenced(runs, owned) : owned, ...FOREGROUND_ONLY });
+  const settings = JSON.stringify({ hooks: reach.fenced ? fenced(runs, owned) : owned, disableAllHooks: false, ...FOREGROUND_ONLY });
   return [
     "--print",
     "--model",
     reach.model,
     "--setting-sources",
-    "",
+    "project",
     "--settings",
     settings,
     ...(reach.fenced ? ["--tools", tools.join(",")] : []),

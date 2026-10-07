@@ -162,7 +162,7 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(handed()[0]).not.toContain("split into has closed");
   });
 
-  it("runs on Opus with no fence, every command in the foreground under a ten minute default, with nothing it could leave running after it answers", () => {
+  it("runs on Opus with no fence, every command in the foreground under a ten minute default, with nothing it could leave running after it answers, under the repo's own CLAUDE.md and hooks that no repo setting can switch the owner's off beside", () => {
     const { run, hired } = fixing({ claude: FIXES });
 
     expect(run().status).toBe(0);
@@ -170,10 +170,12 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     if (argv === undefined) throw new Error("no claude hired");
     expect(argv[argv.indexOf("--model") + 1]).toBe("opus");
     expect(argv).not.toContain("--tools");
+    expect(argv[argv.indexOf("--setting-sources") + 1]).toBe("project");
     expect(argv[argv.indexOf("--settings") + 1]).not.toContain("node");
-    const { env, permissions } = JSON.parse(argv[argv.indexOf("--settings") + 1] ?? "{}") as { env: Record<string, string>; permissions: { deny: string[] } };
+    const { env, permissions, disableAllHooks } = JSON.parse(argv[argv.indexOf("--settings") + 1] ?? "{}") as { env: Record<string, string>; permissions: { deny: string[] }; disableAllHooks: boolean };
     expect(env).toEqual({ CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1", BASH_DEFAULT_TIMEOUT_MS: "600000", BASH_MAX_TIMEOUT_MS: "1200000" });
     expect(permissions.deny).toEqual(["Agent", "Monitor", "Workflow", "ScheduleWakeup", "CronCreate", "RemoteTrigger"]);
+    expect(disableAllHooks).toBe(false);
   });
 
   it("hands a red check back to the same session with the log its verdict names, then commits, pushes and marks the ticket checking", () => {

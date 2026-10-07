@@ -1,5 +1,5 @@
 import { execFile, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
@@ -605,5 +605,25 @@ describe("the PR check runs the owner's tree-wide rules from the live release, s
 
     expect(fetched).toBeGreaterThanOrEqual(0);
     expect(ruled).toBeGreaterThan(fetched);
+  });
+});
+
+describe("a red PR check keeps its whole log, not only the last 60 lines it prints", () => {
+  it("names the log its verdict points at and uploads that file when the check ends red", () => {
+    const { check } = (parse(readFileSync(join(WORKFLOWS, "check.yml"), "utf8")) as Workflow).jobs;
+    const steps = check?.steps ?? [];
+    const told = steps.find((step) => (step.run ?? "").includes("tail -n 60")) as Step;
+    const runnerTemp = scratch("check-log-");
+    const log = join(runnerTemp, "check-full-4baa50.log");
+    writeFileSync(log, "unit: red\n");
+    writeFileSync(join(runnerTemp, "check.out"), `check: red unit; log ${log}\n`);
+
+    const { status, output } = ranStep(told, runnerTemp, { RUNNER_TEMP: runnerTemp });
+    const kept = steps.find((step) => step.uses?.startsWith("actions/upload-artifact") === true);
+
+    expect(status).toBe(0);
+    expect(output.log).toBe(log);
+    expect(kept?.with?.path).toBe(`\${{ steps.${told.id}.outputs.log }}`);
+    expect(kept?.if).toBe(`failure() && steps.${told.id}.outputs.log != ''`);
   });
 });
