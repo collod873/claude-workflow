@@ -37,6 +37,18 @@ describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#11
     expect(held().files[".github/workflows/machine.yml"]).toBe(CALLER);
   });
 
+  it("commits the caller file and titles its PR as a conventional commit, which a commitlinted repo like Lumaria checks (#1251)", () => {
+    for (const held of [bare(), bare({ rules: [{ type: "pull_request" }] })]) {
+      const { run, held: after } = enrolling(held);
+
+      run();
+
+      const said = after().writes.flatMap((args) => args.flatMap((arg, at) => (args[at - 1] === "--title" ? [arg] : args[at - 1] === "-f" && arg.startsWith("message=") ? [arg.slice("message=".length)] : [])));
+      expect(said.length).toBeGreaterThan(0);
+      for (const message of said) expect(message).toMatch(/^ci: [a-z]/);
+    }
+  });
+
   it("sets each secret from the value in its own environment variable", () => {
     const { run, held } = enrolling(bare());
 
