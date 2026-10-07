@@ -344,16 +344,21 @@ function redOrSaved(ticket: string, logs: string): Round {
 }
 
 const ranAs = (run: string | undefined) =>
-  run === undefined ? "" : ghRead(["run", "view", run, "--json", "workflowName,headSha,attempt", "--jq", '.workflowName + " " + .headSha + " " + (.attempt | tostring)'], `the workflow, head and attempt of run ${run} could not be read, so it is not marked checking`);
+  run === undefined ? "" : ghRead(["run", "view", run, "--json", "event,headSha,attempt,workflowName", "--jq", '.event + " " + .headSha + " " + (.attempt | tostring) + " " + .workflowName'], `the workflow, head and attempt of run ${run} could not be read, so it is not marked checking`);
 
-function checkingAgain(ticket: string, run: string | undefined): number {
-  const ran = ranAs(run);
-  if (ran.startsWith(`Check ${head()} `)) {
-    if (ran !== `Check ${head()} 1`) return calledOwner(ticket, "its red Check already reran once, and it is green here unchanged");
+function checkingAgain(ticket: string, run: string | undefined, start: string, opensPr: boolean): number {
+  const [event, at, attempt, ...named] = ranAs(run).split(" ");
+  const workflow = named.join(" ");
+  if (head() !== start || opensPr) mark(ticket, CHECKING);
+  else if (event === "issues" || at !== head()) return calledOwner(ticket, "it is green unchanged and pushed nothing new, with no red check run of this head to rerun, so no check runs again");
+  else {
+    if (attempt !== "1") return calledOwner(ticket, `its red ${workflow} already reran once, and it is green here unchanged`);
     const again = gh(["run", "rerun", String(run), "--failed"]);
-    if (again.status !== 0) return calledOwner(ticket, `it is green unchanged and the rerun of its red Check was refused: ${quoted((again.stderr || again.stdout).trim().split("\n")[0] ?? "")}`);
+    if (again.status !== 0) return calledOwner(ticket, `it is green unchanged and the rerun of its red ${workflow} was refused: ${quoted((again.stderr || again.stdout).trim().split("\n")[0] ?? "")}`);
     mark(ticket, CHECKING, "--untry");
-  } else mark(ticket, CHECKING);
+    console.log(`fix: #${ticket} is green unchanged, so its red ${workflow} reruns`);
+    return 0;
+  }
   console.log(`fix: #${ticket} is green and pushed, so its PR checks run again`);
   return 0;
 }
@@ -373,7 +378,7 @@ function owned(ticket: string, run: string | undefined, asked: Asked) {
   const judged = pr === "none" ? [] : commentsRead(String(pr.number), `the comments on PR #${pr.number} could not be read, ${NOTHING_MARKED}`, gh);
   const onTicket = commentsRead(ticket, `the comments on #${ticket} could not be read, ${NOTHING_MARKED}`, gh);
   const diff = failed === undefined ? "" : gitRead(["diff", "origin/main...HEAD"], `the diff from main could not be read, ${NOTHING_MARKED}`);
-  return { carrying: { logs, failed, judged, onTicket, diff }, tried: failed !== undefined, unmarked: failed !== undefined && asked.labels.has(RESOLVING) };
+  return { carrying: { logs, failed, judged, onTicket, diff, opensPr: pr === "none" }, tried: failed !== undefined, unmarked: failed !== undefined && asked.labels.has(RESOLVING) };
 }
 
 function ownTicket(ticket: string, run: string | undefined): number {
@@ -387,7 +392,7 @@ function ownTicket(ticket: string, run: string | undefined): number {
   });
   if (typeof owning !== "object") return exitFor(owning);
   const { asked, spend } = owning;
-  const { logs, failed, judged, onTicket, diff } = owning.carried;
+  const { logs, failed, judged, onTicket, diff, opensPr } = owning.carried;
   const body = asked.body;
   let session = savedSession(ticket);
   if (session === undefined && failed !== undefined) console.error(`fix: #${ticket} has no session of its builder saved, so it starts fresh`);
@@ -407,6 +412,7 @@ function ownTicket(ticket: string, run: string | undefined): number {
   });
   let input = opening;
   let idle = false;
+  const start = head();
   for (;;) {
     const before = { head: head(), main: fetchedMain() };
     const spent = spentOn(ticket, spend, input, session, opening);
@@ -421,7 +427,7 @@ function ownTicket(ticket: string, run: string | undefined): number {
     const verdict = round.red === undefined ? redOrSaved(ticket, logs) : { red: round.red };
     if (verdict.ended !== undefined) return verdict.ended;
     const { red } = verdict;
-    if (red === undefined) return checkingAgain(ticket, run);
+    if (red === undefined) return checkingAgain(ticket, run, start, opensPr);
     if (!changed && idle) return calledOwner(ticket, `two rounds in a row changed nothing: ${round.red ?? answer?.reason ?? "it gave no outcome"}`);
     idle = !changed;
     input = red;
