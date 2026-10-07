@@ -135,6 +135,13 @@ describe("build.yml builds a ticket the moment it is filed (#826)", () => {
     expect(stagesRun(job, undefined, { admit: { admitted: "false" } })).toEqual([]);
   });
 
+  it("admits and builds with an App token that reaches every repo the owner enrolled, so a machine fault can read the ticket it was filed from (#1203)", () => {
+    const fixing = Object.values(fixWorkflow().jobs).filter(({ steps }) => steps.some((step) => /(^|\s|\/)bin\/fix(\s|$)/.test(step.run ?? "")));
+
+    for (const { steps } of [workflow().job, ...fixing]) expect(steps.find((step) => step.id === "app")?.with?.owner).toBe("${{ github.repository_owner }}");
+    expect(fixing).not.toEqual([]);
+  });
+
   it("hands the ticket to its builder after start, and nothing runs after start fails", () => {
     const { job } = workflow();
 

@@ -107,6 +107,10 @@ export const REVIEW_FOUND = ": its review found";
 export const BUILDER_SPLIT = ": its builder split it";
 export const REVIEWED_FROM = new RegExp(`^${FOLLOW_UP_OF}(\\d+)${REVIEW_FOUND}`, "m");
 export const SPLIT_FROM = new RegExp(`^${FOLLOW_UP_OF}(\\d+)${BUILDER_SPLIT}`, "m");
+const FAULT_OF = "Filed by the builder of ";
+const FAULT_WAITS = ", which waits on it, as the machine's fault";
+export const faultOf = (origin: string) => `${FAULT_OF}${origin}${FAULT_WAITS}.`;
+export const FAULT_FROM = new RegExp(`^${FAULT_OF}(${OWNER}/[\\w.-]+)#(\\d+)${FAULT_WAITS}\\.`, "m");
 export function followUpBody(whyLines: string[], done: string[]): string {
   return ["## Why", "", ...whyLines, "", "## Done when", "", ...done.map((sentence) => `- ${sentence}`), ""].join("\n");
 }
@@ -191,8 +195,8 @@ export interface Opened {
 
 export type Admission = string | undefined;
 
-export function opened(path: string, line: string, gh: Gh): Opened | "missing" {
-  const got = gh(["api", `repos/{owner}/{repo}/issues/${path}`]);
+export function opened(path: string, line: string, gh: Gh, repo = "{owner}/{repo}"): Opened | "missing" {
+  const got = gh(["api", `repos/${repo}/issues/${path}`]);
   if (got.status !== 0) return MISSING.test(got.stderr) ? "missing" : unread(line);
   try {
     return JSON.parse(got.stdout) as Opened;
@@ -201,8 +205,8 @@ export function opened(path: string, line: string, gh: Gh): Opened | "missing" {
   }
 }
 
-export function underOwnerSpec(ticket: string, line: string, gh: Gh): Admission {
-  const spec = opened(`${ticket}/parent`, line, gh);
+export function underOwnerSpec(ticket: string, line: string, gh: Gh, repo?: string): Admission {
+  const spec = opened(`${ticket}/parent`, line, gh, repo);
   if (spec === "missing") return "the App opened it under no spec";
   if (!heldOf(spec.labels).has(SPEC)) return "the App opened it under an issue not labelled `spec`";
   if (spec.user?.login !== OWNER) return "the App opened it under a spec the owner did not open";
