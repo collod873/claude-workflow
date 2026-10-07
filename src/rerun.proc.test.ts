@@ -109,31 +109,29 @@ describe("bin/rerun re-runs a red run once by itself, and only a second red mark
   });
 });
 
-describe("rerun.yml hears every stage workflow that calls the owner complete, and hands its red runs to bin/rerun (#1178)", () => {
+describe("the caller file hears its own run complete and hands its red runs to bin/rerun, no other workflow here calling the owner (#1178, #1220)", () => {
   const workflows = join(import.meta.dirname, "..", ".github", "workflows");
-  const read = (file: string) => parse(readFileSync(join(workflows, file), "utf8")) as { name: string; on: Record<string, { workflows?: string[]; types?: string[] } | null>; jobs: Record<string, { if?: string; permissions?: Record<string, string>; steps: WorkflowStep[] }> };
-  const { on, jobs } = read("rerun.yml");
-  const [job] = Object.values(jobs);
-  const step = job?.steps.find(({ run }) => (run ?? "").includes("bin/rerun"));
+  const read = (file: string) => parse(readFileSync(join(workflows, file), "utf8")) as { name: string; on: Record<string, { workflows?: string[]; types?: string[] } | null>; jobs: Record<string, { if?: string; steps?: WorkflowStep[] }> };
+  const caller = read("machine.yml");
+  const job = read("tickets.yml").jobs.rerun;
+  const step = job?.steps?.find(({ run }) => (run ?? "").includes("bin/rerun"));
 
-  it("names each workflow of this repo whose job calls the owner, the reusable ones being heard through the caller file instead", () => {
+  it("leaves no workflow of this repo calling the owner but the reusable ones, which the caller file hears through its own name", () => {
     const calling = readdirSync(workflows)
       .filter((file) => readFileSync(join(workflows, file), "utf8").includes("./.github/actions/call-owner"))
       .map(read)
       .filter((flow) => !Object.hasOwn(flow.on, "workflow_call"))
       .map(({ name }) => name);
 
-    expect(calling.length).toBeGreaterThan(0);
-    expect(Object.keys(on)).toEqual(["workflow_run"]);
-    expect(on.workflow_run?.types).toEqual(["completed"]);
-    expect([...(on.workflow_run?.workflows ?? [])].sort()).toEqual(calling.sort());
+    expect(calling).toEqual([]);
+    expect(caller.on.workflow_run?.types).toEqual(["completed"]);
+    expect(caller.on.workflow_run?.workflows).toContain(caller.name);
   });
 
-  it("runs on a run that ended red, cancelled or timed out, and not on one that passed or was skipped", () => {
-    for (const conclusion of ["failure", "cancelled", "timed_out"]) expect(holds(job?.if ?? "", { event: "workflow_run", conclusion }), conclusion).toBe(true);
-    for (const conclusion of ["success", "skipped"]) expect(holds(job?.if ?? "", { event: "workflow_run", conclusion }), conclusion).toBe(false);
+  it("runs on a run of its own that ended red, cancelled or timed out, and not on one that passed or was skipped", () => {
+    for (const conclusion of ["failure", "cancelled", "timed_out"]) expect(holds(job?.if ?? "", { event: "workflow_run", conclusion, own: true }), conclusion).toBe(true);
+    for (const conclusion of ["success", "skipped"]) expect(holds(job?.if ?? "", { event: "workflow_run", conclusion, own: true }), conclusion).toBe(false);
     expect(step?.run).toBe('bin/rerun "$RUN" "$ATTEMPT"');
     expect(step?.env).toMatchObject({ RUN: "${{ github.event.workflow_run.id }}", ATTEMPT: "${{ github.event.workflow_run.run_attempt }}" });
-    expect(job?.permissions).toMatchObject({ actions: "write", checks: "read", issues: "write" });
   });
 });

@@ -139,7 +139,7 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
     ).toEqual([]);
   });
 
-  it("prints the owner's login under OWNER and the bot's login under MACHINE, the bot's spelled nowhere else the machine runs but the sender tests of build.yml and tickets.yml (#1123, #1135)", () => {
+  it("prints the owner's login under OWNER and the bot's login under MACHINE, the bot's spelled nowhere else the machine runs but the sender test of tickets.yml (#1123, #1135, #1220)", () => {
 
     expect(spelled("OWNER")).toEqual({ status: 0, stdout: "collod873\n", stderr: "" });
     expect(spelled("MACHINE")).toEqual({ status: 0, stdout: "collod873-machine[bot]\n", stderr: "" });
@@ -149,7 +149,7 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
           .split("\n")
           .flatMap((line, at) => (line.includes("collod873-machine") && !line.startsWith("export const MACHINE = ") ? [`${file.slice(REPO.length + 1)}:${at + 1}`] : [])),
       ),
-    ).toEqual([".github/workflows/build.yml:13", ".github/workflows/tickets.yml:10"]);
+    ).toEqual([".github/workflows/tickets.yml:10"]);
     expect(readFileSync(join(ACTIONS, "stage-logs", "action.yml"), "utf8")).toMatch(/bin\/spelled MACHINE/);
   });
 
@@ -183,8 +183,8 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
 
   it("sets up Node 24 in every job that runs bin/mark, since bin/mark reads its labels through node", () => {
     for (const file of readdirSync(WORKFLOWS)) {
-      const { jobs } = parse(readFileSync(join(WORKFLOWS, file), "utf8")) as { jobs: Record<string, { steps: WorkflowStep[] }> };
-      for (const [name, { steps }] of Object.entries(jobs)) {
+      const { jobs } = parse(readFileSync(join(WORKFLOWS, file), "utf8")) as { jobs: Record<string, { steps?: WorkflowStep[] }> };
+      for (const [name, { steps = [] }] of Object.entries(jobs)) {
         const marking = steps.findIndex((step) => /(^|\s)bin\/mark\b/.test(step.run ?? "") || step.uses === "./.github/actions/call-owner");
         const node = steps.findIndex((step) => step.uses?.startsWith("actions/setup-node@") === true && step.with?.["node-version"] === 24);
         if (marking >= 0) expect(node, `${file} ${name}`).toBeGreaterThanOrEqual(0);

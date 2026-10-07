@@ -78,11 +78,6 @@ const FIXED: Part[] = [
     lines: 6,
   },
   {
-    name: "build.yml",
-    file: ".github/workflows/build.yml",
-    stops: "https://github.com/collod873/claude-workflow/issues/826",
-  },
-  {
     name: "bin/mark",
     file: "bin/mark",
     stops: "https://github.com/collod873/claude-workflow/issues/835",
@@ -103,11 +98,6 @@ const FIXED: Part[] = [
     name: "bin/close-note",
     file: "bin/close-note",
     stops: "https://github.com/collod873/claude-workflow/issues/879",
-  },
-  {
-    name: "fix.yml",
-    file: ".github/workflows/fix.yml",
-    stops: "https://github.com/collod873/claude-workflow/actions/runs/36086791587",
   },
   {
     name: "tickets.yml",

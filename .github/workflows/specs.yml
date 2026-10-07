@@ -582,13 +582,14 @@ jobs:
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
 
   asked:
-    if: ${{ github.event_name == 'issue_comment' && github.event.sender.login == github.repository_owner }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'issue_comment' && github.event.sender.login == github.repository_owner) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
       GH_REPO: ${{ github.repository }}
     outputs:
       asked: ${{ steps.asked.outputs.asked }}
+      marked: ${{ steps.marked.outputs.marked }}
     steps:
       - id: app
         uses: actions/create-github-app-token@v3
@@ -625,11 +626,22 @@ jobs:
           asked=$(bin/done-check ${{ github.event.issue.number }} --asked)
           printf 'asked=%s\n' "$asked" >>"$GITHUB_OUTPUT"
 
+      - id: marked
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          marked=$(gh issue list --state open --label "$(bin/spelled SPEC)" --label "$(bin/spelled ASKED)" --limit 100 --json number --jq '[.[].number]')
+          printf 'marked=%s\n' "$marked" >>"$GITHUB_OUTPUT"
+
   check:
     needs: asked
-    if: ${{ needs.asked.outputs.asked == 'true' }}
+    if: ${{ needs.asked.outputs.asked == 'true' || (needs.asked.outputs.marked != '' && needs.asked.outputs.marked != '[]') }}
+    strategy:
+      matrix:
+        spec: ${{ fromJSON(needs.asked.outputs.asked == 'true' && format('[{0}]', github.event.issue.number) || needs.asked.outputs.marked) }}
     concurrency:
-      group: done-check-${{ github.event.issue.number }}
+      group: done-check-${{ matrix.spec }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -690,13 +702,13 @@ jobs:
           STAGE_MINUTES: 45
           CALLED_FROM: ${{ github.workflow_ref }}
         run: |
-          tail --pid=$$ -n +1 -F .git/machine-logs/done-check-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
-          "$GITHUB_WORKSPACE/bin/done-check" ${{ github.event.issue.number }}
+          tail --pid=$$ -n +1 -F .git/machine-logs/done-check-${{ matrix.spec }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
+          "$GITHUB_WORKSPACE/bin/done-check" ${{ matrix.spec }}
 
       - if: ${{ failure() || cancelled() }}
         uses: ./.github/actions/call-owner
         with:
-          issue: ${{ github.event.issue.number }}
+          issue: ${{ matrix.spec }}
           run: the done check run
           token: ${{ steps.app.outputs.token }}
 

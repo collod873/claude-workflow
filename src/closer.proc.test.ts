@@ -7,13 +7,15 @@ import { HELD, PAUSED, STUCK } from "./spelled.ts";
 
 const REPO = join(import.meta.dirname, "..");
 
-function closeWorkflow() {
-  const { on, permissions, jobs } = parse(readFileSync(join(REPO, ".github", "workflows", "close.yml"), "utf8")) as {
-    on: Record<string, { types?: string[] }>;
-    permissions: Record<string, string>;
+const workflow = (name: string) =>
+  parse(readFileSync(join(REPO, ".github", "workflows", name), "utf8")) as {
+    on: Record<string, { workflows?: string[]; types?: string[] }>;
     jobs: Record<string, { steps: { run?: string; env?: Record<string, string> }[] }>;
   };
-  return { on, permissions, step: Object.values(jobs).flatMap((job) => job.steps).find((ran) => (ran.run ?? "").startsWith("bin/close")) };
+
+function closeWorkflow() {
+  const { close } = workflow("tickets.yml").jobs;
+  return { on: workflow("machine.yml").on, step: close?.steps.find((ran) => (ran.run ?? "").includes("bin/close")) };
 }
 
 describe("bin/close closes a ticket once its PR merges, since the PR's review and its full check already judged it (#931)", () => {
@@ -26,7 +28,7 @@ describe("bin/close closes a ticket once its PR merges, since the PR's review an
     const commented = calls().find((call) => call.startsWith("issue\ncomment\n812\n"));
     expect(commented).toContain("#812 is done: PR #900 merged");
     expect(calls().some((call) => call.startsWith("issue\nclose\n812\n") && call.includes("completed"))).toBe(true);
-    expect(calls().some((call) => call.startsWith("workflow\nrun\nfix.yml"))).toBe(false);
+    expect(calls().some((call) => call.startsWith("workflow\nrun\nmachine.yml"))).toBe(false);
   });
 });
 
@@ -125,7 +127,7 @@ describe("bin/close brings ticket PRs left behind by a merge up to date, so auto
     const result = run();
 
     expect(result.status).toBe(0);
-    const wake = calls().find((call) => call.startsWith("workflow\nrun\nfix.yml") && call.includes("ticket=822"));
+    const wake = calls().find((call) => call.startsWith("workflow\nrun\nmachine.yml") && call.includes("ticket=822"));
     expect(wake, "the ticket behind the stuck PR is told why, waking its builder").toBeDefined();
     expect(wake).toContain("903");
     expect(wake).toContain("merge conflicts");
@@ -230,7 +232,7 @@ describe("bin/close wakes a split ticket once every piece has closed, however ea
   it("runs as a queue run whenever an issue closes, so a piece closed with no PR still wakes its split ticket", () => {
     const { on, step } = closeWorkflow();
 
-    expect(on.issues).toEqual({ types: ["closed"] });
+    expect(on.issues?.types).toContain("closed");
     expect(step?.env?.QUEUE_ONLY).toBe("${{ github.event_name != 'push' && 'queue' || '' }}");
   });
 });
@@ -282,7 +284,7 @@ describe("bin/close wakes a reviewer's follow-up once its parent's PR merges or 
 });
 
 describe("bin/close wakes the ticket's builder directly, instead of reopening it or leaving it a comment, when it cannot bring the ticket up to date (#957)", () => {
-  const woken = (calls: string[], ticket: string) => calls.find((call) => call.startsWith("workflow\nrun\nfix.yml") && call.includes(`ticket=${ticket}`));
+  const woken = (calls: string[], ticket: string) => calls.find((call) => call.startsWith("workflow\nrun\nmachine.yml") && call.includes(`ticket=${ticket}`));
 
   it("wakes the ticket's builder instead of commenting, when its PR cannot be brought up to date by a merge", () => {
     const { calls, tokens, run } = closing({
@@ -294,9 +296,9 @@ describe("bin/close wakes the ticket's builder directly, instead of reopening it
 
     expect(result.status).toBe(0);
     const wake = woken(calls(), "830");
-    expect(wake, "fires the trigger fix.yml starts on, naming the ticket").toBeDefined();
+    expect(wake, "dispatches the caller file, naming the ticket").toBeDefined();
     expect(wake).toContain("merge conflicts");
-    expect(tokens()[calls().indexOf(wake ?? "")], "runs as the App, so fix.yml actually starts").toBe("app");
+    expect(tokens()[calls().indexOf(wake ?? "")], "runs as the App, so the caller file actually starts").toBe("app");
     expect(calls().some((call) => call.startsWith("issue\nreopen\n830"))).toBe(false);
     expect(calls().some((call) => call.startsWith("issue\ncomment\n830\n"))).toBe(false);
     expect(calls().some((call) => call.startsWith("pr\ncomment\n909\n")), "leaves the failed branch update comment on the PR (#980)").toBe(true);
@@ -315,7 +317,7 @@ describe("bin/close wakes no builder for a conflict on a ticket the owner was ca
 
       expect(result.status).toBe(0);
       expect(calls().some((call) => call.startsWith("pr\ncomment\n912\n"))).toBe(true);
-      expect(calls().some((call) => call.startsWith("workflow\nrun\nfix.yml"))).toBe(false);
+      expect(calls().some((call) => call.startsWith("workflow\nrun\nmachine.yml"))).toBe(false);
       expect(calls().filter((call) => /^api\n-X\n(POST|DELETE)\nrepos\/\{owner\}\/\{repo\}\/issues\/834\//.test(call))).toEqual([]);
       expect(result.stdout).toContain(`#834 is labelled ${held}`);
     });
@@ -336,7 +338,7 @@ describe("bin/close counts a ticket PR's collisions in its closing record: faile
     expect(commented, "leaves the same comment a non-ticket PR gets").toBeDefined();
     expect(commented).toContain("PR #911 could not be brought up to date with main");
     expect(commented).toContain("merge conflicts");
-    const wake = calls().find((call) => call.startsWith("workflow\nrun\nfix.yml") && call.includes("ticket=833"));
+    const wake = calls().find((call) => call.startsWith("workflow\nrun\nmachine.yml") && call.includes("ticket=833"));
     expect(wake, "still wakes the builder as today").toBeDefined();
   });
 
@@ -421,7 +423,7 @@ describe("bin/close merges machine PRs one at a time, bringing only the oldest g
 
     expect(run().status).toBe(0);
     expect(updated(calls())).toEqual(["927", "928"]);
-    expect(calls().some((call) => call.startsWith("workflow\nrun\nfix.yml") && call.includes("ticket=847"))).toBe(true);
+    expect(calls().some((call) => call.startsWith("workflow\nrun\nmachine.yml") && call.includes("ticket=847"))).toBe(true);
   });
 
   it("wakes no builder again for a conflict it already reported at the PR's head, and brings the next green PR up to date", () => {
@@ -435,7 +437,7 @@ describe("bin/close merges machine PRs one at a time, bringing only the oldest g
 
     expect(run().status).toBe(0);
     expect(updated(calls())).toEqual(["936"]);
-    expect(calls().some((call) => call.startsWith("workflow\nrun\nfix.yml"))).toBe(false);
+    expect(calls().some((call) => call.startsWith("workflow\nrun\nmachine.yml"))).toBe(false);
     expect(calls().some((call) => call.startsWith("pr\ncomment\n935\n"))).toBe(false);
   });
 
@@ -450,7 +452,7 @@ describe("bin/close merges machine PRs one at a time, bringing only the oldest g
 
     expect(run().status).toBe(0);
     expect(updated(calls())).toEqual(["938", "938", "938", "939"]);
-    expect(calls().some((call) => call.startsWith("workflow\nrun\nfix.yml")), "a builder cannot fix a network error").toBe(false);
+    expect(calls().some((call) => call.startsWith("workflow\nrun\nmachine.yml")), "a builder cannot fix a network error").toBe(false);
     expect(calls().some((call) => call.startsWith("pr\ncomment\n938\n")), "leaves no comment to pile up or count as a failed branch update").toBe(false);
   });
 
@@ -465,7 +467,7 @@ describe("bin/close merges machine PRs one at a time, bringing only the oldest g
     });
 
     expect(first.run().status).toBe(0);
-    expect(first.calls().some((call) => call.startsWith("workflow\nrun\nfix.yml") && call.includes("ticket=860"))).toBe(true);
+    expect(first.calls().some((call) => call.startsWith("workflow\nrun\nmachine.yml") && call.includes("ticket=860"))).toBe(true);
     expect(first.calls().find((call) => call.startsWith("pr\ncomment\n940\n"))).toMatch(/Head: `[0-9a-f]{40}`/);
     expect(again.run().status).toBe(0);
     expect(updated(again.calls())).toEqual(["942"]);
@@ -572,19 +574,16 @@ describe("bin/close neither queues nor merges a held ticket's PR, whose auto-mer
 });
 
 describe("a finished Check run moves the queue on, and a red one wakes its builder, so a red PR never holds the queue (#1011)", () => {
-  const workflow = (name: string) => parse(readFileSync(join(REPO, ".github", "workflows", name), "utf8")) as { on: Record<string, { workflows?: string[]; types?: string[] }>; jobs: Record<string, { steps: { run?: string; env?: Record<string, string> }[] }> };
-
   it("runs the closer's queue, closing no ticket, whenever a Check run completes, red or green", () => {
-    const { on, jobs } = workflow("close.yml");
-    const step = Object.values(jobs).flatMap((job) => job.steps).find((ran) => (ran.run ?? "").startsWith("bin/close"));
+    const { on, step } = closeWorkflow();
 
-    expect(on.workflow_run).toEqual({ workflows: ["Check"], types: ["completed"] });
+    expect(on.workflow_run).toEqual({ workflows: ["Check", "Machine"], types: ["completed"] });
     expect(step?.run).toContain("$QUEUE_ONLY");
     expect(step?.env?.QUEUE_ONLY).toBe("${{ github.event_name != 'push' && 'queue' || '' }}");
   });
 
   it("wakes the builder of a ticket whose Check run goes red, which is how a PR that fails after its update leaves the line", () => {
-    const { on } = workflow("fix.yml");
+    const { on } = workflow("machine.yml");
 
     expect(on.workflow_run?.workflows).toContain("Check");
     expect(on.workflow_run?.types).toEqual(["completed"]);
@@ -628,47 +627,6 @@ describe("bin/close writes on the PR and the ticket each run it made, so a merge
   });
 });
 
-describe("bin/close starts the re-slice itself once it closes a ticket, since its quiet close starts no workflow (#1045)", () => {
-  const dispatched = (calls: string[]) => calls.findIndex((call) => call.startsWith("workflow\nrun\nreslice.yml\n"));
-
-  it("dispatches reslice.yml for the ticket as the App, after closing it with the quiet token", () => {
-    const { calls, tokens, run } = closing({ ticket: "819" });
-
-    expect(run().status).toBe(0);
-    const closed = calls().findIndex((call) => call.startsWith("issue\nclose\n819\n"));
-    const started = dispatched(calls());
-    expect(tokens()[closed], "the close stays quiet, so the builder never hears of it").toBe("quiet");
-    expect(started).toBeGreaterThan(closed);
-    expect(calls()[started]).toBe("workflow\nrun\nreslice.yml\n-f\nissue=819\n");
-    expect(tokens()[started], "runs as the App, so reslice.yml actually starts").toBe("app");
-  });
-
-  it("dispatches reslice.yml for a ticket already closed too, so a rerun after a failed dispatch starts the re-slice", () => {
-    const { calls, run } = closing({ ticket: "820", closedAs: "COMPLETED" });
-
-    expect(run().status).toBe(0);
-    expect(calls()[dispatched(calls())]).toBe("workflow\nrun\nreslice.yml\n-f\nissue=820\n");
-  });
-
-  it("ends red when the re-slice will not start, so the Close run shows it and can be rerun", () => {
-    const { calls, run } = closing({ ticket: "822", resliceRefused: "HTTP 403: Resource not accessible by integration" });
-
-    const { status, stdout, stderr } = run();
-
-    expect(status).toBe(1);
-    expect(calls().some((call) => call.startsWith("issue\nclose\n822\n"))).toBe(true);
-    expect(stdout).toMatch(/^close: #822 closed as completed, its PR merged/);
-    expect(stderr).toBe("close: #822 closed, but the re-slice would not start: HTTP 403: Resource not accessible by integration\n");
-  });
-
-  it("dispatches nothing on a queue run, which closes no ticket", () => {
-    const { calls, run } = closing({ ticket: "821", afterCheck: true });
-
-    expect(run().status).toBe(0);
-    expect(dispatched(calls())).toBe(-1);
-  });
-});
-
 describe("bin/close marks what the queue does to each ticket, so waiting its turn, being landed and having a conflict resolved read apart (#1063)", () => {
   const CONFLICT = "GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts.";
   const labelled = (calls: string[], ticket: string) => calls.flatMap((call, at) => (call.startsWith(`api\n-X\nPOST\nrepos/{owner}/{repo}/issues/${ticket}/labels\n`) ? [{ at, labels: call.split("\n").filter((line) => line.startsWith("labels[]=")) }] : []));
@@ -678,7 +636,7 @@ describe("bin/close marks what the queue does to each ticket, so waiting its tur
     const { calls, tokens, run } = closing({ ticket: "819", openPrs: [{ number: "950", ticket: "870", labels: ["queued", "try-2"], refused: CONFLICT }] });
 
     expect(run().status).toBe(0);
-    const wake = calls().findIndex((call) => call.startsWith("workflow\nrun\nfix.yml") && call.includes("ticket=870"));
+    const wake = calls().findIndex((call) => call.startsWith("workflow\nrun\nmachine.yml") && call.includes("ticket=870"));
     const [marked] = labelled(calls(), "870");
     expect(marked?.labels).toEqual(["labels[]=resolving"]);
     expect(marked?.at).toBeLessThan(wake);
@@ -832,8 +790,8 @@ describe("bin/close marks what the queue does to each ticket, so waiting its tur
 });
 
 describe("bin/close writes each mark on the ticket's open PR too, and says in its log when a mark fails (#1077)", () => {
-  it("grants its token pull-requests write, so bin/mark can find and label the ticket's open PR", () => {
-    expect(closeWorkflow().permissions).toEqual({ contents: "read", issues: "write", "pull-requests": "write" });
+  it("runs as the App, so bin/mark can find and label the ticket's open PR", () => {
+    expect(closeWorkflow().step?.env?.GH_TOKEN).toBe("${{ steps.app.outputs.token }}");
   });
 
   it("passes on bin/mark's refusal in its log, and still brings the PR up to date", () => {
@@ -905,18 +863,17 @@ describe("bin/close, called from another repo's caller file, wakes builders thro
   const calledFrom = "collod873/Lumaria/.github/workflows/machine.yml@refs/heads/main";
   const conflicted = { number: "909", ticket: "830", refused: "GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts." };
 
-  it("dispatches the caller file for a conflicted ticket, as the App, since the caller holds no fix.yml", () => {
+  it("dispatches the caller file for a conflicted ticket, as the App", () => {
     const { calls, tokens, run } = closing({ ticket: "819", openPrs: [conflicted], calledFrom });
 
     expect(run().status).toBe(0);
     const wake = calls().find((call) => call.startsWith("workflow\nrun\nmachine.yml\n") && call.includes("ticket=830"));
     expect(wake).toContain("merge conflicts");
     expect(tokens()[calls().indexOf(wake ?? "")]).toBe("app");
-    expect(calls().some((call) => call.startsWith("workflow\nrun\nfix.yml"))).toBe(false);
   });
 
-  it("closes the ticket and starts no re-slice, since the caller holds no reslice.yml", () => {
-    const { calls, run } = closing({ ticket: "819", calledFrom });
+  it.each([calledFrom, "collod873/claude-workflow/.github/workflows/machine.yml@refs/heads/main", undefined])("closes the ticket and starts no re-slice, leaving it to the caller's own issues: closed, called from %s, or from no caller file as on a run by hand (#1220)", (called) => {
+    const { calls, run } = closing({ ticket: "819", calledFrom: called });
 
     expect(run().status).toBe(0);
     expect(calls().some((call) => call.startsWith("issue\nclose\n819\n"))).toBe(true);
@@ -959,21 +916,13 @@ describe("bin/close, called from a caller file in the machine's own repo, is hom
     expect(calls().some((call) => call.startsWith("pr\nupdate-branch\n936"))).toBe(false);
   });
 
-  it("dispatches the caller file it runs under for a conflicted ticket, never fix.yml", () => {
+  it("dispatches the caller file it runs under for a conflicted ticket", () => {
     const { calls, run } = closing({ ticket: "819", openPrs: [{ number: "909", ticket: "830", refused: "GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts." }], calledFrom });
 
     expect(run().status).toBe(0);
     expect(calls().some((call) => call.startsWith("workflow\nrun\nmachine.yml\n") && call.includes("ticket=830"))).toBe(true);
-    expect(calls().some((call) => call.startsWith("workflow\nrun\nfix.yml"))).toBe(false);
   });
 
-  it("closes the ticket and leaves the re-slice to the caller's own issues: closed, dispatching no reslice.yml", () => {
-    const { calls, run } = closing({ ticket: "819", calledFrom });
-
-    expect(run().status).toBe(0);
-    expect(calls().some((call) => call.startsWith("issue\nclose\n819\n"))).toBe(true);
-    expect(calls().some((call) => call.startsWith("workflow\nrun\n"))).toBe(false);
-  });
 });
 
 describe("bin/close names the ticket in its hands when it stops red, so the run calls the owner on it and gets its one re-run (#1206)", () => {

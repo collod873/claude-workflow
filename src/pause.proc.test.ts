@@ -67,19 +67,19 @@ describe("bin/resume picks a ticket up from where it stands once paused or stuck
     const calls = resumedWithoutBuilding(pausing({ pr: "red" }));
 
     expect(merges(calls)).toEqual([]);
-    expect(wakes(calls)).toEqual([["workflow", "run", "fix.yml", "-f", "ticket=811", "-f", expect.stringMatching(/^reason=.*PR #931 red at 4f2a9c1e/)]]);
+    expect(wakes(calls)).toEqual([["workflow", "run", "machine.yml", "-f", "ticket=811", "-f", expect.stringMatching(/^reason=.*PR #931 red at 4f2a9c1e/)]]);
   });
 
-  it("wakes the builder with exactly the inputs fix.yml and the caller file require, which fix.yml hands the builder as its reason beside the session it saved for the branch", () => {
+  it("wakes the builder with exactly the inputs the caller file requires, which tickets.yml hands the builder as its reason beside the session it saved for the branch", () => {
     const [wake] = wakes(resumedWithoutBuilding(pausing({ pr: "red" })));
     const sent = (wake ?? []).filter((arg) => arg.includes("=")).map((arg) => arg.split("=")[0]);
     const github = join(import.meta.dirname, "..", ".github");
     const declared = (file: string) => Object.entries((parse(readFileSync(join(github, file), "utf8")) as { on: { workflow_dispatch: { inputs: Record<string, { required: boolean }> } } }).on.workflow_dispatch.inputs).flatMap(([input, { required }]) => (required ? [input] : []));
-    const fix = readFileSync(join(github, "workflows", "fix.yml"), "utf8");
+    const fix = readFileSync(join(github, "workflows", "tickets.yml"), "utf8");
 
-    expect(sent).toEqual(declared("workflows/fix.yml"));
+    expect(sent).toEqual(declared("workflows/machine.yml"));
     expect(sent).toEqual(declared("caller.yml"));
-    expect(fix).toContain("REASON: ${{ github.event.inputs.reason }}");
+    expect(fix).toContain("REASON: \"${{ github.event.inputs.reason || ");
     expect(fix).toContain("restore-keys: builder-${{ env.HEAD_REF }}-");
   });
 
@@ -119,7 +119,7 @@ describe("bin/resume picks a ticket up from where it stands once paused or stuck
     const calls = resumedWithoutBuilding(pausing({ autoMerge: false, behind: true, updateRefused: "merge conflict between base and head" }));
 
     expect(updates(calls)).toEqual([["pr", "update-branch", "931"]]);
-    expect(wakes(calls)).toEqual([["workflow", "run", "fix.yml", "-f", "ticket=811", "-f", expect.stringMatching(/^reason=.*PR #931 .*merge conflict between base and head/)]]);
+    expect(wakes(calls)).toEqual([["workflow", "run", "machine.yml", "-f", "ticket=811", "-f", expect.stringMatching(/^reason=.*PR #931 .*merge conflict between base and head/)]]);
   });
 
   it("leaves the closer's failed-update comment at the head of a conflicting PR and marks it resolving, so the closer's next queue run wakes no builder again for that head (#1189)", () => {

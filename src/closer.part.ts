@@ -96,7 +96,6 @@ export function closing({
   prComments = [] as Said[],
   prCommentsUnreadable = false,
   followUps = [] as WaitingFollowUp[],
-  resliceRefused,
   prLookupRefused,
   mergedFrom = `collod873/ticket/${ticket}`,
   prUnreadable = false,
@@ -115,7 +114,6 @@ export function closing({
   prComments?: Said[];
   prCommentsUnreadable?: boolean;
   followUps?: WaitingFollowUp[];
-  resliceRefused?: string;
   prLookupRefused?: string;
   mergedFrom?: string;
   prUnreadable?: boolean;
@@ -168,7 +166,6 @@ export function closing({
       `printf '%s' "$GH_TOKEN" >"${tokensDir}/$n"`,
       'case "$*" in',
       `  "api repos/{owner}/{repo}/issues/${ticket} --jq"*) printf 'ticket\\nbuilding\\ntry-2\\nwayfinder:map\\n' ;;`,
-      ...(resliceRefused === undefined ? [] : [`  *"workflow run reslice.yml"*) printf '%s\\n' '${resliceRefused}' >&2; exit 1 ;;`]),
       `  *"issue list"*"${WAITING}"*) cat <<'LISTED'\n${JSON.stringify(waitingListed(followUps, splitFrom))}\nLISTED\n    ;;`,
       ...openPrs.filter((pr) => pr.labelsUnreadable === true).map((pr) => `  *"issue view ${pr.ticket} "*"labels"*) printf 'GraphQL: labels could not be read\\n' >&2; exit 1 ;;`),
       ...openPrs.map((pr) => ({ ticket: pr.ticket, labels: [...(pr.labels ?? []), ...(pr.held === undefined ? [] : [pr.held])] })).filter(({ ticket, labels }) => ticket !== "" && labels.length > 0).flatMap(({ ticket, labels }) => [

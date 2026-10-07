@@ -280,12 +280,12 @@ describe("bin/done-check reads the owner's reply to a sentence it put to him (#1
   });
 });
 
-describe("done-check.yml runs the done check again on the owner's reply to a sentence it put to him (#1038)", () => {
+describe("specs.yml runs the done check again on the owner's reply to a sentence it put to him (#1038)", () => {
   type Job = { if?: string; needs?: string; strategy?: { matrix: Record<string, string> }; steps: WorkflowStep[] };
   function workflow(): { on: object; asked: Job; check: Job } {
-    const { on, jobs } = parse(readFileSync(join(import.meta.dirname, "..", ".github", "workflows", "done-check.yml"), "utf8")) as { on: object; jobs: Record<string, Job> };
-    const { asked, check } = jobs;
-    if (asked === undefined || check === undefined) throw new Error("done-check.yml carries no asked and check jobs");
+    const { on } = parse(readFileSync(join(import.meta.dirname, "..", ".github", "workflows", "machine.yml"), "utf8")) as { on: object };
+    const { asked, check } = workflowJobs("specs.yml") as Record<string, Job>;
+    if (asked === undefined || check === undefined) throw new Error("specs.yml carries no asked and check jobs");
     return { on, asked, check };
   }
 
@@ -301,9 +301,9 @@ describe("done-check.yml runs the done check again on the owner's reply to a sen
 
   it("starts on the owner's comment on a spec, and on no one else's", async () => {
     const { on } = workflow();
-    const asks = (labels: string[], sender = OWNER) => starts("done-check.yml", "asked", { labels, sender, action: "created" });
+    const asks = (labels: string[], sender = OWNER) => starts("specs.yml", "asked", { labels, sender, action: "created", event: "issue_comment" });
 
-    expect(on).toEqual({ issue_comment: { types: ["created"] }, push: { branches: ["main"] } });
+    expect(on).toMatchObject({ issue_comment: { types: ["created"] }, push: { branches: ["main"] } });
     expect(await asks(["spec"])).toBe(true);
     expect(await asks(["spec"], MACHINE)).toBe(false);
     expect(await asks(["spec"], "stranger")).toBe(false);
@@ -314,7 +314,7 @@ describe("done-check.yml runs the done check again on the owner's reply to a sen
     const calledOwner = `## Done check\n\n1. **Did not hold**: one\n   saw it fail\n2. **Put to the owner**: two\n   open it on your phone\n\nSentence 1 missed again after the fix wave, so the spec is marked \`${STUCK}\`: one. Why: saw it fail\n`;
 
     expect(lastAsked([calledOwner, "an aside"])).toBe("true");
-    for (const held of HELD) expect(await starts("done-check.yml", "asked", { labels: ["spec", held], sender: OWNER, action: "created" }), held).toBe(false);
+    for (const held of HELD) expect(await starts("specs.yml", "asked", { labels: ["spec", held], sender: OWNER, action: "created", event: "issue_comment" }), held).toBe(false);
   });
 
   it("runs bin/done-check on the spec only when the last ## Done check put a sentence to the owner", () => {
@@ -337,14 +337,14 @@ describe("done-check.yml runs the done check again on the owner's reply to a sen
     expect(holds(check.if ?? "", { needs: { asked: { result: "success", outputs: { asked: "false", marked: "" } } } })).toBe(false);
     expect(check.strategy?.matrix.spec).toBe("${{ fromJSON(needs.asked.outputs.asked == 'true' && format('[{0}]', github.event.issue.number) || needs.asked.outputs.marked) }}");
     const checked = check.steps.find((step) => step.run?.includes("bin/done-check"));
-    expect(checked?.run).toContain("bin/done-check ${{ matrix.spec }}");
+    expect(checked?.run).toContain('bin/done-check" ${{ matrix.spec }}');
     expect(checked?.env?.GH_TOKEN).toBe("${{ steps.app.outputs.token }}");
   });
 });
 
-describe("done-check.yml tries again, on a push to main, each open spec the old rule left marked asked (#1213)", () => {
+describe("specs.yml tries again, on a push to main, each open spec the old rule left marked asked (#1213)", () => {
   type Job = { if?: string; strategy?: { matrix: Record<string, string> }; steps: WorkflowStep[] };
-  const { asked, check } = workflowJobs("done-check.yml") as Record<string, Job>;
+  const { asked, check } = workflowJobs("specs.yml") as Record<string, Job>;
   const marking = asked?.steps.find((step) => step.id === "marked");
 
   it("starts the asked job on a push to main whoever pushed, and lists the specs only on a push", () => {
@@ -371,7 +371,7 @@ describe("done-check.yml tries again, on a push to main, each open spec the old 
     expect(listed("[1164]")).toBe(true);
     expect(listed("[]")).toBe(false);
     expect(listed("")).toBe(false);
-    expect(check?.steps.find((step) => step.id === "done-check")?.run).toContain("bin/done-check ${{ matrix.spec }}");
+    expect(check?.steps.find((step) => step.id === "done-check")?.run).toContain('bin/done-check" ${{ matrix.spec }}');
   });
 });
 
@@ -590,7 +590,7 @@ describe("bin/done-check lets a check on this repo start a size trial to try a s
     const handed = doneChecking({ body });
     expect(handed.run().status).toBe(0);
 
-    expect(handed.handed()).toContain(`gh workflow run reslice.yml -f issue=974 -f trial_cap=${Buffer.byteLength(wellFormedSpec) + Math.floor(Buffer.byteLength(record) / 2)}\``);
+    expect(handed.handed()).toContain(`gh workflow run machine.yml -f ticket=974 -f reason=size-trial -f trial_cap=${Buffer.byteLength(wellFormedSpec) + Math.floor(Buffer.byteLength(record) / 2)}\``);
     expect(handed.handed()).toContain("the owner's bytes plus half the record's bytes");
   });
 

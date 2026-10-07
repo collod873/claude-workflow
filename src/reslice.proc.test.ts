@@ -22,7 +22,7 @@ function ended({ closed = 1102, tickets = [ticket(1101), ticket(1102)], spec = S
   return { ...sliced, ran: sliced.run("--ended", String(closed)) };
 }
 
-describe("bin/slice --ended tells reslice.yml when a closed issue ends its spec's wave, and which sentences that wave should move (#1037)", () => {
+describe("bin/slice --ended tells specs.yml when a closed issue ends its spec's wave, and which sentences that wave should move (#1037)", () => {
   it("names the spec and the sentences the last `## Wave` note moves, once the spec's last open ticket closes", () => {
     const { ran, hired } = ended();
 
@@ -406,42 +406,27 @@ interface Job {
   steps: (WorkflowStep & { id?: string; if?: string })[];
 }
 
-const RESLICE = parse(readFileSync(join(import.meta.dirname, "..", ".github", "workflows", "reslice.yml"), "utf8")) as { on: { issues?: { types?: string[] }; workflow_dispatch?: { inputs?: Record<string, { required?: boolean; type?: string }> } }; jobs: Record<string, Job> };
+const CALLER = parse(readFileSync(join(import.meta.dirname, "..", ".github", "workflows", "machine.yml"), "utf8")) as { on: { issues?: { types?: string[] }; workflow_dispatch?: { inputs?: Record<string, { required?: boolean; type?: string }> } } };
+const SPECS = workflowJobs("specs.yml") as Record<string, Job>;
 const job = (name: string): Job => {
-  const found = RESLICE.jobs[name];
-  if (found === undefined) throw new Error(`no ${name} job in reslice.yml`);
+  const found = SPECS[name];
+  if (found === undefined) throw new Error(`no ${name} job in specs.yml`);
   return found;
 };
 const stepAt = (steps: Job["steps"], id: string) => steps.findIndex((step) => step.id === id);
 const endedWith = (outputs: Record<string, string>) => ({ steps: { ended: { outcome: "success", conclusion: "success", outputs } } });
 
-describe("reslice.yml runs the wave check, then the re-slice, when a closed issue ends its spec's wave (#1037)", () => {
+describe("specs.yml runs the wave check, then the re-slice, when a closed issue ends its spec's wave (#1037)", () => {
   it("starts on every closed issue but a spec or a note, and finds whether it ended a wave spending no model", async () => {
     const ended = job("ended");
 
-    expect(RESLICE.on.issues?.types).toEqual(["closed", "unlabeled"]);
-    expect(await starts("reslice.yml", "ended", { labels: [], action: "closed" })).toBe(true);
-    expect(await starts("reslice.yml", "ended", { labels: ["spec"], action: "closed" })).toBe(false);
-    expect(await starts("reslice.yml", "ended", { labels: ["note"], action: "closed" })).toBe(false);
+    expect(CALLER.on.issues?.types).toEqual(expect.arrayContaining(["closed", "unlabeled"]));
+    expect(await starts("specs.yml", "ended", { labels: [], action: "closed" })).toBe(true);
+    expect(await starts("specs.yml", "ended", { labels: ["spec"], action: "closed" })).toBe(false);
+    expect(await starts("specs.yml", "ended", { labels: ["note"], action: "closed" })).toBe(false);
     expect(ended.steps.find((step) => step.id === "ended")?.run).toBe('bin/slice --ended "$ISSUE" >>"$GITHUB_OUTPUT"');
     expect(ended.steps.some((step) => step.env?.CLAUDE_CODE_OAUTH_TOKEN !== undefined)).toBe(false);
     expect(ended.outputs?.spec).toBe("${{ steps.ended.outputs.spec }}");
-  });
-
-  it("starts too on a dispatch naming the closed issue, which is how the closer starts it after its quiet close (#1045)", async () => {
-    expect(RESLICE.on.workflow_dispatch?.inputs?.issue).toEqual({ required: true, type: "number" });
-    expect(await starts("reslice.yml", "ended", { action: "" })).toBe(true);
-    for (const name of ["ended", "reslice"]) expect(job(name).steps.find((step) => step.id === "ended")?.env?.ISSUE).toBe("${{ github.event.issue.number || inputs.issue }}");
-  });
-
-  it("reads the issue the closer dispatches as the one bin/slice --ended is asked about, which names the spec whose last ticket it closed", () => {
-    const { calls, run } = closing({ ticket: "1102" });
-    expect(run().status).toBe(0);
-    const [input = "", number = ""] = /^workflow\nrun\nreslice\.yml\n-f\n(\w+)=(\d+)\n$/m.exec(calls().find((call) => call.startsWith("workflow\nrun\nreslice.yml\n")) ?? "")?.slice(1) ?? [];
-
-    expect(Object.entries(RESLICE.on.workflow_dispatch?.inputs ?? {}).filter(([, { required }]) => required === true).map(([name]) => name)).toEqual([input]);
-    expect(job("ended").steps.find((step) => step.id === "ended")?.env?.ISSUE).toBe(`\${{ github.event.issue.number || inputs.${input} }}`);
-    expect(ended({ closed: Number(number) }).ran).toEqual({ status: 0, stdout: "spec=968\nmoves=1,3\n", stderr: "" });
   });
 
   it("re-slices one spec at a time, checking again that the wave ended, then tries the sentences the last note moves before the re-slice", () => {
@@ -456,8 +441,8 @@ describe("reslice.yml runs the wave check, then the re-slice, when a closed issu
     expect(stepAt(steps, "wave-check")).toBeLessThan(stepAt(steps, "reslice"));
     const waveCheck = steps[stepAt(steps, "wave-check")];
     const resliced = steps[stepAt(steps, "reslice")];
-    expect(waveCheck?.run).toContain("bin/done-check ${{ steps.ended.outputs.spec }} --wave ${{ steps.ended.outputs.moves }}");
-    expect(resliced?.run).toContain("bin/slice ${{ steps.ended.outputs.spec }}");
+    expect(waveCheck?.run).toContain('bin/done-check" ${{ steps.ended.outputs.spec }} --wave ${{ steps.ended.outputs.moves }}');
+    expect(resliced?.run).toContain('bin/slice" ${{ steps.ended.outputs.spec }}');
     expect(holds(waveCheck?.if ?? "true", endedWith({ spec: "968", moves: "1,3" }))).toBe(true);
     expect(holds(waveCheck?.if ?? "true", endedWith({ spec: "968", moves: "" }))).toBe(false);
     expect(holds(resliced?.if ?? "true", endedWith({ spec: "968", moves: "" }))).toBe(true);
@@ -466,7 +451,7 @@ describe("reslice.yml runs the wave check, then the re-slice, when a closed issu
   });
 });
 
-const RESUMES = ["reslice.yml", "specs.yml"];
+const RESUMES = ["specs.yml"];
 const resumeOf = (file: string): Job => {
   const found = (workflowJobs(file) as Record<string, Job>).resume;
   if (found === undefined) throw new Error(`no resume job in ${file}`);
@@ -518,9 +503,9 @@ describe("taking paused or stuck off an open spec resumes it where it stands, wi
     expect(steps.find((one) => one.uses === "./.github/actions/call-owner")?.with?.issue).toBe("${{ steps.resumed.outputs.spec }}");
   });
 
-  it("leaves reslice.yml's wave end to closed issues and the closer's dispatch, never a label taken off", async () => {
-    expect(RESLICE.on.issues?.types).toContain("unlabeled");
-    expect(await starts("reslice.yml", "ended", { action: "unlabeled", label: "paused", labels: [] })).toBe(false);
+  it("leaves the wave end to closed issues, never a label taken off", async () => {
+    expect(CALLER.on.issues?.types).toContain("unlabeled");
+    expect(await starts("specs.yml", "ended", { action: "unlabeled", label: "paused", labels: [] })).toBe(false);
   });
 });
 
@@ -573,37 +558,37 @@ describe("bin/slice stops at a mark GitHub refused, so it hires no model on a sp
   });
 });
 
-describe("a manual run of reslice.yml given a spec and a trial cap runs that size trial on Actions, posting nothing (#1194)", () => {
+describe("a manual run of the caller file given a spec and a trial cap runs that size trial on Actions, posting nothing (#1194, #1216)", () => {
   const dispatched = (inputs: Record<string, string>) => ({ event: "workflow_dispatch", action: "", inputs });
   const trial = job("size-trial");
   const step = trial.steps.find((one) => one.id === "size-trial");
 
   it("takes the trial cap as an input the closer's dispatch leaves out, starting the trial only when it is given, while the wave's end names no spec for a spec", () => {
-    expect(RESLICE.on.workflow_dispatch?.inputs?.trial_cap).toEqual({ required: false, type: "number" });
-    expect(holds(trial.if ?? "true", dispatched({ issue: "968", trial_cap: "60000" }))).toBe(true);
-    expect(holds(trial.if ?? "true", dispatched({ issue: "1102" }))).toBe(false);
+    expect(CALLER.on.workflow_dispatch?.inputs?.trial_cap).toEqual({ required: false, type: "number" });
+    expect(holds(trial.if ?? "true", dispatched({ ticket: "968", reason: "size-trial", trial_cap: "60000" }))).toBe(true);
+    expect(holds(trial.if ?? "true", dispatched({ ticket: "1102", reason: "PR red" }))).toBe(false);
     expect(ended({ closed: 968 }).ran).toEqual({ status: 0, stdout: "", stderr: "slice: #968 is a spec, so no wave ended\n" });
     expect(holds(trial.if ?? "true", { action: "closed" })).toBe(false);
   });
 
   it("runs bin/slice --size-trial on the spec and the trial cap with the real slicer, one spec at a time beside its reslice", () => {
-    expect(step?.run).toContain('bin/slice --size-trial "$ISSUE" "$TRIAL_CAP"');
-    expect(step?.env).toMatchObject({ ISSUE: "${{ inputs.issue }}", TRIAL_CAP: "${{ inputs.trial_cap }}", GH_TOKEN: "${{ steps.app.outputs.token }}", CLAUDE_CODE_OAUTH_TOKEN: "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}" });
+    expect(step?.run).toContain('bin/slice" --size-trial "$SPEC" "$TRIAL_CAP"');
+    expect(step?.env).toMatchObject({ SPEC: "${{ github.event.inputs.ticket }}", TRIAL_CAP: "${{ github.event.inputs.trial_cap }}", GH_TOKEN: "${{ steps.app.outputs.token }}", CLAUDE_CODE_OAUTH_TOKEN: "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}" });
     expect(trial.steps.some((one) => one.uses === "./.github/actions/stage")).toBe(true);
   });
 
   it("runs one trial at a time per spec in a group of its own, so a wave check inside that spec's re-slice never queues behind itself (#1198)", () => {
-    expect(trial.concurrency).toEqual({ group: "size-trial-${{ inputs.issue }}", "cancel-in-progress": false });
-    const groups = Object.entries(RESLICE.jobs).flatMap(([name, { concurrency }]) => (name === "size-trial" || concurrency?.group === undefined ? [] : [concurrency.group.replace(/\$\{\{.*\}\}$/, "")]));
-    expect(groups).toEqual(["reslice-", "reslice-"]);
+    expect(trial.concurrency).toEqual({ group: "size-trial-${{ github.event.inputs.ticket }}", "cancel-in-progress": false });
+    const groups = Object.entries(SPECS).flatMap(([name, { concurrency }]) => (name === "size-trial" || concurrency?.group === undefined ? [] : [concurrency.group.replace(/\$\{\{.*\}\}$/, "")]));
+    expect(groups).toEqual(["reslice-", "reslice-", "done-check-"]);
     expect(trial.concurrency?.group?.startsWith("reslice-")).toBe(false);
   });
 
   it.each([
-    ["reslice.yml", "reslice", "wave-check"],
-    ["reslice.yml", "resume", "wave-check"],
-    ["done-check.yml", "check", "done-check"],
-  ])("%s's %s job hands its check the app token unnarrowed, the one the closer starts reslice.yml by hand with, so it can start a size trial (#1198)", (file, name, id) => {
+    ["specs.yml", "reslice", "wave-check"],
+    ["specs.yml", "resume", "wave-check"],
+    ["specs.yml", "check", "done-check"],
+  ])("%s's %s job hands its check the app token unnarrowed, the one the closer wakes builders with, so it can start a size trial (#1198)", (file, name, id) => {
     const appOf = (jobbed: Job) => jobbed.steps.find((one) => one.id === "app")?.with ?? {};
     const checking = (workflowJobs(file) as Record<string, Job>)[name];
     const closer = (workflowJobs("tickets.yml") as Record<string, Job>).close;
@@ -618,6 +603,5 @@ describe("a manual run of reslice.yml given a spec and a trial cap runs that siz
   it("holds a token that can only read, so the trial cannot post to the spec even by mistake", () => {
     const app = trial.steps.find((one) => one.id === "app");
     expect(app?.with).toMatchObject({ "permission-issues": "read", "permission-pull-requests": "read", "permission-contents": "read" });
-    expect(trial.permissions).toEqual({ contents: "read", issues: "read" });
   });
 });
