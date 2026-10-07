@@ -4,7 +4,7 @@ import { capped, NO_EM_DASH, onDisk } from "./brief.ts";
 import { UNFENCED } from "./fence.ts";
 import { authoredOn, commentOnTicket, commentsRead, gh, machineBin, mark, OWNER, readOrStop, STUCK, unread, type Asked } from "./post.ts";
 import { CONTRACT, FOREIGN, opened, setupRefusal, type Spent, treePathed } from "./stage.ts";
-import { ASKED, CHECKING, SPEC } from "./spelled.ts";
+import { CHECKING, SPEC } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { filedRecord, quoted, type Sentence, sentences, SPEC_CAP } from "./ticket-shape.ts";
 
@@ -247,7 +247,7 @@ function fixWave(spec: Read, found: [number, string, Try][], missed: [number, st
 
 const SELF_SETTLED = {
   missed: "This run names each other sentence that did not hold, and why.",
-  owner: "This run leaves the spec open while another sentence waits on the owner.",
+  owner: "This run closed the spec, since every other sentence held or was put to the owner.",
   held: "This run closed the spec, since every other sentence held.",
 };
 
@@ -270,16 +270,13 @@ function doneCheck(issue: string): Stop | undefined {
   const found = settled(tries);
   const missed = found.filter(([, , one]) => one.outcome === "missed");
   if (missed.length > 0) return fixWave(spec, found, missed);
-  const comment = commented(spec, posted(found));
+  const putToOwner = found.filter(([, , one]) => one.outcome === "owner");
+  const comment = commented(spec, posted(found, putToOwner.length === 0 ? [] : [`Closed with sentence ${listing(putToOwner, ", ")} put to the owner: each says what the owner could try, and a miss seen live is filed as a new ticket.`]));
   if (typeof comment === "string") return comment;
   const { said } = spec;
-  if (found.some(([, , one]) => one.outcome === "owner")) {
-    mark(issue, ASKED);
-    console.log(`${said} did not hold every sentence, so it stays open: ${comment.url}`);
-    return undefined;
-  }
-  if (gh(["issue", "close", issue, "--reason", "completed"]).status !== 0) return stoppedAt("unrecorded", `${said} held every sentence but would not close: ${comment.url}`);
-  console.log(`${said} held every sentence and is closed: ${comment.url}`);
+  const held = putToOwner.length === 0 ? "held every sentence" : "held every sentence it could try, put the rest to the owner,";
+  if (gh(["issue", "close", issue, "--reason", "completed"]).status !== 0) return stoppedAt("unrecorded", `${said} ${held} but would not close: ${comment.url}`);
+  console.log(`${said} ${held} and is closed: ${comment.url}`);
   return undefined;
 }
 

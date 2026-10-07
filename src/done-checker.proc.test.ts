@@ -40,21 +40,37 @@ describe("bin/done-check tries a spec's sentences and closes it only when every 
 });
 
 describe("bin/done-check leaves the spec open unless every sentence held (#1023)", () => {
-  it.each([
-    ["did not hold", "missed", "Did not hold", "did not hold sentence 2, so bin/slice --fix filed its one fix wave"],
-    ["was put to the owner", "owner", "Put to the owner", "did not hold every sentence, so it stays open"],
-  ])("posts the check and leaves the spec open when one sentence %s", (_, outcome, shown, line) => {
+  it("posts the check and leaves the spec open when one sentence did not hold", () => {
     const tries = [
       { sentence: 1, outcome: "held", tried: "saw the first wave under it" },
-      { sentence: 2, outcome, tried: "opened a ticket it filed" },
+      { sentence: 2, outcome: "missed", tried: "opened a ticket it filed" },
       { sentence: 3, outcome: "held", tried: "saw it close" },
     ];
     const checked = doneChecking({ body: specWith(SENTENCES), tries });
 
-    expect(heard(checked.run())).toEqual({ status: 0, stderr: "", lines: [`done-check: #974 ${line}: ${DONE_CHECK_POSTED}`] });
+    expect(heard(checked.run())).toEqual({ status: 0, stderr: "", lines: [`done-check: #974 did not hold sentence 2, so bin/slice --fix filed its one fix wave: ${DONE_CHECK_POSTED}`] });
     expect(checked.calls()).toEqual(["issue view 974", READ_COMMENTS, "issue comment 974"]);
-    expect(checked.comments()[0]).toContain(`2. **${shown}**: ${SENTENCES[1]}\n   opened a ticket it filed`);
+    expect(checked.comments()[0]).toContain(`2. **Did not hold**: ${SENTENCES[1]}\n   opened a ticket it filed`);
     expect(checked.closes()).toEqual([]);
+  });
+});
+
+describe("bin/done-check closes the spec when every sentence held or was put to the owner, saying what the owner could try (#1213)", () => {
+  it("closes the spec, its comment listing what the owner could try for each sentence put to the owner, and marks no asked", () => {
+    const tries = [
+      { sentence: 1, outcome: "held", tried: "saw the first wave under it" },
+      { sentence: 2, outcome: "owner", tried: "open a ticket it filed on your phone" },
+      { sentence: 3, outcome: "owner", tried: "watch the next red run re-run" },
+    ];
+    const checked = doneChecking({ body: specWith(SENTENCES), tries });
+
+    expect(heard(checked.run())).toEqual({ status: 0, stderr: "", lines: [`done-check: #974 held every sentence it could try, put the rest to the owner, and is closed: ${DONE_CHECK_POSTED}`] });
+    expect(checked.calls()).toEqual(["issue view 974", READ_COMMENTS, "issue comment 974", "issue close 974"]);
+    const [comment = ""] = checked.comments();
+    expect(comment).toContain(`2. **Put to the owner**: ${SENTENCES[1]}\n   open a ticket it filed on your phone`);
+    expect(comment).toContain(`3. **Put to the owner**: ${SENTENCES[2]}\n   watch the next red run re-run`);
+    expect(comment).toContain("Closed with sentence 2, 3 put to the owner: each says what the owner could try, and a miss seen live is filed as a new ticket.");
+    expect(checked.marked()).toEqual(["974 checking"]);
   });
 });
 
@@ -379,12 +395,12 @@ describe("bin/done-check settles a sentence about its own close by what this run
     expect(checked.comments()[0]).not.toContain("Sentence 3 missed");
   });
 
-  it("leaves the spec open with the self sentence held while another waits on the owner", () => {
+  it("posts the self sentence as held and closes the spec when another was put to the owner (#1213)", () => {
     const checked = doneChecking({ body: specWith(SENTENCES), tries: selfTries("owner") });
 
-    expect(heard(checked.run())).toEqual({ status: 0, stderr: "", lines: [`done-check: #974 did not hold every sentence, so it stays open: ${DONE_CHECK_POSTED}`] });
-    expect(checked.comments()[0]).toContain(`3. **Held**: ${SENTENCES[2]}\n   This run leaves the spec open while another sentence waits on the owner.`);
-    expect(checked.closes()).toEqual([]);
+    expect(heard(checked.run())).toEqual({ status: 0, stderr: "", lines: [`done-check: #974 held every sentence it could try, put the rest to the owner, and is closed: ${DONE_CHECK_POSTED}`] });
+    expect(checked.comments()[0]).toContain(`3. **Held**: ${SENTENCES[2]}\n   This run closed the spec, since every other sentence held or was put to the owner.`);
+    expect(checked.closes()).toHaveLength(1);
   });
 
   it("posts a self sentence at a wave check as waiting for the end, which the next re-slice reads as no miss", () => {
@@ -398,9 +414,7 @@ describe("bin/done-check settles a sentence about its own close by what this run
   });
 });
 
-describe("bin/done-check marks the spec checking while it runs, and asked once it puts a sentence to the owner (#1064)", () => {
-  const putting = SENTENCES.map((_, at) => ({ sentence: at + 1, outcome: at === 1 ? "owner" : "held", tried: "open it on your phone" }));
-
+describe("bin/done-check marks the spec checking while it runs (#1064)", () => {
   it("marks checking at the start of the done check and of a wave check", () => {
     const whole = doneChecking();
     const wave = doneChecking({ body: specWith(SENTENCES), tries: [{ sentence: 1, outcome: "held", tried: "saw it" }] });
@@ -409,16 +423,6 @@ describe("bin/done-check marks the spec checking while it runs, and asked once i
     expect(whole.marked()).toEqual(["974 checking"]);
     expect(wave.run("974", "--wave", "1").status).toBe(0);
     expect(wave.marked()).toEqual(["974 checking"]);
-  });
-
-  it("marks asked after its comment puts a sentence to the owner, and not when the comment will not post", () => {
-    const asked = doneChecking({ body: specWith(SENTENCES), tries: putting });
-    const unposted = doneChecking({ body: specWith(SENTENCES), tries: putting, gh: "[[ $2 == comment ]] && exit 1" });
-
-    expect(asked.run().status).toBe(0);
-    expect(asked.marked()).toEqual(["974 checking", "974 asked"]);
-    expect(unposted.run().status).toBe(1);
-    expect(unposted.marked()).toEqual(["974 checking"]);
   });
 
   it("marks nothing on an issue that is not a spec, or on a spec marked paused or stuck", () => {
