@@ -244,6 +244,86 @@ jobs:
           client-id: ${{ vars.CORE_APP_CLIENT_ID }}
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
 
+  size-trial:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.trial_cap }}
+    concurrency:
+      group: size-trial-${{ github.event.inputs.ticket }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 160
+    env:
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          permission-contents: read
+          permission-issues: read
+          permission-pull-requests: read
+
+      - id: machine
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/claude-workflow
+          ref: main
+          token: ${{ steps.app.outputs.token }}
+          persist-credentials: false
+
+      - id: checkout
+        uses: actions/checkout@v4
+        with:
+          path: tree
+          ref: main
+          fetch-depth: 0
+          token: ${{ steps.app.outputs.token }}
+          persist-credentials: false
+
+      - id: setup-node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - id: pinned
+        uses: ./.github/actions/pinned
+
+      - id: npm-ci
+        run: npm ci
+
+      - id: logs
+        run: |
+          mkdir -p tree/.git/machine-logs
+          ln -s "$PWD/tree/.git/machine-logs" .git/machine-logs
+
+      - id: stage
+        uses: ./.github/actions/stage
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+
+      - id: size-trial
+        timeout-minutes: 100
+        working-directory: tree
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          STAGE_MINUTES: 45
+          CALLED_FROM: ${{ github.workflow_ref }}
+          SPEC: ${{ github.event.inputs.ticket }}
+          TRIAL_CAP: ${{ github.event.inputs.trial_cap }}
+        run: |
+          tail --pid=$$ -n +1 -F ".git/machine-logs/slice-$SPEC.jsonl" 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
+          "$GITHUB_WORKSPACE/bin/slice" --size-trial "$SPEC" "$TRIAL_CAP"
+
+      - if: always()
+        timeout-minutes: 6
+        uses: ./.github/actions/stage-logs
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+
   resumed:
     if: ${{ github.event_name == 'issues' && github.event.action == 'unlabeled' && github.event.sender.login == github.repository_owner }}
     runs-on: ubuntu-latest

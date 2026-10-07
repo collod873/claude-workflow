@@ -89,7 +89,7 @@ function callerFor(ci: string): string {
   const caller = parseDocument(CALLER_TEXT);
   const named = caller.createNode([ci, caller.get("name")], { flow: true });
   caller.setIn(["on", "workflow_run", "workflows"], named);
-  return caller.toString({ flowCollectionPadding: false });
+  return caller.toString({ flowCollectionPadding: false, lineWidth: 0 });
 }
 
 function enrolling(repo: string): Setting[] {
