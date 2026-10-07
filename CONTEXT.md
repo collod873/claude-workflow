@@ -126,8 +126,7 @@ The one section of a spec the slicer writes, `## Decisions record` just before t
 `### Picks` and `### Shipped names`, each bullet starting `- **name**:`. It names no file path, and
 it is what gives way when the spec nears the spec cap; the owner's sections never do. Builders never
 read the spec, so tickets carry the entries they cite: code copies each cited bullet word for word
-under the ticket's `## Decisions it relies on`, and a ticket citing a pick ends its Done when asking
-for the pick's full description in `CONTEXT.md` or an ADR.
+under the ticket's `## Decisions it relies on`.
 _Avoid_: names section, spec rewrite, Names the tickets share
 
 **Pick**:
@@ -136,8 +135,8 @@ written in full under `### Picks` until its ticket merges.
 _Avoid_: decision, assumption, settled name
 
 **Shipped name**:
-A pick whose ticket merged, cut to one line under `### Shipped names` naming the `CONTEXT.md` term
-or ADR it lives under, since the code now says the rest.
+A pick whose ticket merged, cut to one line under `### Shipped names` saying what it names, since
+the code now says the rest.
 _Avoid_: done pick, built name
 
 **Wave**:

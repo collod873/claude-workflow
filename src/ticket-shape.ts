@@ -40,7 +40,7 @@ const OWNER_WORDS = /"[^"\n]{4,}"|^>[ \t]*\S/m;
 const FILE_PATH = /[\w.-]+\/[\w./-]+\.[A-Za-z0-9]+/g;
 const NUMBERED_ITEM = /^[ \t]*\d+[.)][ \t]/m;
 const FEWEST = 1;
-export const MOST = 3;
+const MOST = 3;
 const QUOTE = 80;
 
 export const DONE_SENTENCES = `${FEWEST} to ${MOST} sentences saying what done looks like`;
