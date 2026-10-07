@@ -17,11 +17,14 @@ const DATABASE = join(REPO, ".github", "actions", "database", "action.yml");
 
 interface Caller {
   name: string;
+  "run-name": string;
   on: Record<string, unknown>;
   jobs: Record<string, Record<string, unknown>>;
 }
 
 const CALLED = ["tickets.yml", "specs.yml"];
+
+type WorkflowJob = ReturnType<typeof workflowJobs>[string];
 const caller = () => parse(readFileSync(CALLER, "utf8")) as Caller;
 
 interface Fired {
@@ -31,6 +34,7 @@ interface Fired {
   conclusion?: string;
   fork?: boolean;
   own?: boolean;
+  inputs?: Record<string, string>;
   red?: string[];
   outputs?: Record<string, Record<string, string>>;
 }
@@ -62,9 +66,10 @@ function jobsRun({ red = [], outputs = {}, ...fired }: Fired, file = "tickets.ym
 
 describe("a repo's tickets build through one caller file that holds only triggers and the call (#1135)", () => {
   it("holds a name, its triggers and the jobs that call tickets.yml and specs.yml on this repo's main with the caller's secrets, and nothing else (#1151)", () => {
-    const { name, on, jobs, ...rest } = caller();
+    const { name, on, jobs, "run-name": runName, ...rest } = caller();
 
     expect(rest).toEqual({});
+    expect(typeof runName).toBe("string");
     expect(typeof name).toBe("string");
     expect(Object.keys(on).sort()).toEqual(["issue_comment", "issues", "pull_request_target", "push", "workflow_dispatch", "workflow_run"]);
     expect(on.issue_comment).toEqual({ types: ["created"] });
@@ -105,6 +110,41 @@ describe("a repo's tickets build through one caller file that holds only trigger
     expect(rerun?.env).toMatchObject({ RUN: "${{ github.event.workflow_run.id }}", ATTEMPT: "${{ github.event.workflow_run.run_attempt }}" });
   });
 
+  it.each([
+    [{ event_name: "issues", event: { action: "opened", issue: { number: 1216, title: "Name each run" } } }, "opened #1216: Name each run"],
+    [{ event_name: "issues", event: { action: "closed", issue: { number: 1216, title: "Name each run" } } }, "closed #1216: Name each run"],
+    [{ event_name: "issue_comment", event: { action: "created", issue: { number: 968, title: "A spec" } } }, "created #968: A spec"],
+    [{ event_name: "pull_request_target", event: { action: "closed", pull_request: { number: 1220, title: "Name each run" } } }, "closed PR #1220: Name each run"],
+    [{ event_name: "workflow_dispatch", event: { inputs: { ticket: "968", reason: "size-trial", trial_cap: "60000" } } }, "Size trial of #968 under 60000"],
+    [{ event_name: "workflow_dispatch", event: { inputs: { ticket: "828", reason: "PR red" } } }, "Fix #828"],
+    [{ event_name: "workflow_run", event: { action: "completed", workflow_run: { name: "CI", head_branch: "ticket/828" } } }, "After CI on ticket/828"],
+    [{ event_name: "push", event: {} }, "Push to main"],
+  ])("names each run for what it heard (#1216): %j", (github, named) => {
+    const format = (text: string, ...args: unknown[]) => text.replace(/\{(\d+)\}/g, (_, at: string) => String(args[Number(at)]));
+    const inputs = (github.event as { inputs?: Record<string, string> }).inputs ?? {};
+    const evaluate = (expression: string) => String((new Function("github", "inputs", "format", `return (${expression});`) as (...scope: unknown[]) => unknown)(github, inputs, format));
+
+    expect(caller()["run-name"].replace(/\$\{\{(.*?)\}\}/gs, (_, expression: string) => evaluate(expression))).toBe(named);
+  });
+
+  it("runs the size trial a dispatch with a trial cap names on its spec, starting no builder, with the re-slice job's checkouts and caps (#1216)", () => {
+    const trial = { event: "workflow_dispatch", action: "", inputs: { ticket: "968", reason: "size-trial", trial_cap: "60000" }, outputs: { which: { ticket: "968" } } };
+    const { "size-trial": sizeTrial, reslice } = workflowJobs("specs.yml");
+    const checkouts = (job?: WorkflowJob) => job?.steps.filter(({ uses }) => uses?.startsWith("actions/checkout@") === true);
+    const step = (job: WorkflowJob | undefined, id: string) => job?.steps.find((one) => one.id === id);
+
+    expect(jobsRun(trial)).toEqual([]);
+    expect(jobsRun(trial, "specs.yml")).toEqual(["size-trial"]);
+    expect(jobsRun({ ...trial, inputs: { ticket: "828", reason: "PR red" } }, "specs.yml")).toEqual([]);
+    expect(step(sizeTrial, "size-trial")?.run).toContain('"$GITHUB_WORKSPACE/bin/slice" --size-trial "$SPEC" "$TRIAL_CAP"');
+    expect(step(sizeTrial, "size-trial")?.env).toMatchObject({ SPEC: "${{ github.event.inputs.ticket }}", TRIAL_CAP: "${{ github.event.inputs.trial_cap }}" });
+    expect(sizeTrial?.concurrency).toEqual({ group: "size-trial-${{ github.event.inputs.ticket }}", "cancel-in-progress": false });
+    expect(checkouts(sizeTrial)).toEqual(checkouts(reslice));
+    expect(sizeTrial?.["timeout-minutes"]).toBe(reslice?.["timeout-minutes"]);
+    expect(step(sizeTrial, "size-trial")?.["timeout-minutes"]).toBe(step(reslice, "reslice")?.["timeout-minutes"]);
+    expect(step(sizeTrial, "size-trial")?.env?.STAGE_MINUTES).toBe(step(reslice, "reslice")?.env?.STAGE_MINUTES);
+  });
+
   it("fires only what the caller file declares, so a trigger dropped from it fails here", () => {
     expect(() => jobsRun({ event: "issues", action: "edited" })).toThrow(/declares issues edited/);
     expect(() => jobsRun({ event: "pull_request", action: "closed" })).toThrow(/declares pull_request/);
@@ -115,11 +155,11 @@ describe("a repo's tickets build through one caller file that holds only trigger
     expect(run().status).toBe(0);
     const wake = calls().find((call) => call.startsWith("workflow\nrun\nmachine.yml\n")) ?? "";
     const sent = [...wake.matchAll(/^-f\n(\w+)=/gm)].map(([, input]) => input ?? "");
-    const read = [...new Set([...readFileSync(TICKETS, "utf8").matchAll(/github\.event\.inputs\.(\w+)/g)].map(([, input]) => input ?? ""))];
-    const inputs = Object.keys((caller().on.workflow_dispatch as { inputs: Record<string, unknown> }).inputs);
+    const read = [...new Set(CALLED.flatMap((file) => [...readFileSync(join(REPO, ".github", "workflows", file), "utf8").matchAll(/github\.event\.inputs\.(\w+)/g)].map(([, input]) => input ?? "")))];
+    const inputs = Object.entries((caller().on.workflow_dispatch as { inputs: Record<string, { required: boolean }> }).inputs);
 
-    expect(sent.sort()).toEqual(inputs.sort());
-    expect(read.sort()).toEqual(inputs.sort());
+    expect(sent.sort()).toEqual(inputs.filter(([, { required }]) => required).map(([input]) => input).sort());
+    expect(read.sort()).toEqual(inputs.map(([input]) => input).sort());
   });
 
   it.each(CALLED)("%s checks the machine out at the workspace and the caller's tree apart under tree/, and makes every GitHub call with the App's token", (file) => {
@@ -150,7 +190,7 @@ describe("a repo's tickets build through one caller file that holds only trigger
     const closing = workflowJobs("tickets.yml").close?.steps.find(({ run }) => (run ?? "").includes("bin/close"));
 
     expect(closing?.env?.CALLED_FROM).toBe("${{ github.workflow_ref }}");
-    expect(caller().on.workflow_dispatch).toEqual({ inputs: { ticket: { required: true, type: "string" }, reason: { required: true, type: "string" } } });
+    expect(caller().on.workflow_dispatch).toEqual({ inputs: { ticket: { required: true, type: "string" }, reason: { required: true, type: "string" }, trial_cap: { required: false, type: "number" } } });
   });
 
   it("tells each builder it runs in a tree that is not the machine's, so a machine fault is filed here and not landed on the tree's main (#1143)", () => {
@@ -382,7 +422,7 @@ describe("a repo's specs and research notes run through the same caller file, on
   it("readies the tree's pinned Node before anything installs, in every job whose stage may run the done check, and tells that stage the caller file it runs under", () => {
     const trying = stageSteps().filter(({ step }) => /bin\/(slice|done-check)\b/.test(step.run ?? ""));
 
-    expect([...new Set(trying.map(({ name }) => name))].sort()).toEqual(["check", "reslice", "resume", "slice"]);
+    expect([...new Set(trying.map(({ name }) => name))].sort()).toEqual(["check", "reslice", "resume", "size-trial", "slice"]);
     for (const { name, steps, step } of trying) {
       const at = (found: (one: WorkflowStep) => boolean) => steps.findIndex(found);
       const pinned = at(({ uses }) => uses === "./.github/actions/pinned");
@@ -394,7 +434,7 @@ describe("a repo's specs and research notes run through the same caller file, on
   });
 
   it("gives every stage it runs the caller's checkout as its working directory", () => {
-    expect(stageSteps().map(({ name, step }) => `${name} ${step.id ?? ""}`).sort()).toEqual(["check done-check", "research research", "reslice reslice", "reslice wave-check", "resume reslice", "resume wave-check", "slice slice"]);
+    expect(stageSteps().map(({ name, step }) => `${name} ${step.id ?? ""}`).sort()).toEqual(["check done-check", "research research", "reslice reslice", "reslice wave-check", "resume reslice", "resume wave-check", "size-trial size-trial", "slice slice"]);
     for (const { name, step } of stageSteps()) expect((step as WorkflowStep & { "working-directory"?: string })["working-directory"], name).toBe("tree");
   });
 });

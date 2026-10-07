@@ -594,10 +594,12 @@ describe("bin/done-check lets a check on this repo start a size trial to try a s
     expect(handed.handed()).toContain("the owner's bytes plus half the record's bytes");
   });
 
-  it("tells a caller's checker nothing of a size trial, since its spec is not sliced by this repo's re-slice workflow", () => {
-    const checked = doneChecking({ contract: '{ "setup": "true", "steps": {} }\n', calledFrom: "collod873/Lumaria/.github/workflows/machine.yml@refs/heads/main" });
+  it("tells a checker under a caller file to start the size trial by dispatching that file, and to find its run under it (#1216)", () => {
+    const checked = doneChecking({ contract: '{ "setup": "true", "steps": {} }\n', calledFrom: "collod873/claude-workflow/.github/workflows/machine.yml@refs/heads/main" });
 
     expect(checked.run().status).toBe(0);
-    expect(checked.handed()).not.toContain("size trial");
+    expect(checked.handed()).toContain(`\`gh workflow run machine.yml -f ticket=974 -f reason=size-trial -f trial_cap=${Buffer.byteLength(wellFormedSpec)}\``);
+    expect(checked.handed()).toContain("`gh run list --workflow machine.yml`");
+    expect(checked.handed()).not.toContain("reslice.yml");
   });
 });

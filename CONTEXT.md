@@ -137,8 +137,8 @@ _Avoid_: proof comment, audit line, byte check
 **Size trial**:
 A slice of a real spec run under a trial cap below the spec cap, so the size refusal happens on the
 running system without padding any spec over the real cap. It is asked for with
-`bin/slice --size-trial <spec> <trial cap>`, or from a manual run of the re-slice workflow given the
-spec as `issue` and the cap as `trial_cap`. The trial cap stands in for the spec cap in the size
+`bin/slice --size-trial <spec> <trial cap>`, from a manual run of the re-slice workflow given the
+spec as `issue` and the cap as `trial_cap`, or through a caller file (see Trial through the caller). The trial cap stands in for the spec cap in the size
 refusal, its sent-back prompt and each round's log line, but not in the room line (see Trial room
 line). The real slicer is hired and sent back each round exactly as in a real slice, answering with
 the record and the wave only.
@@ -191,9 +191,32 @@ size round. The check holds the app's unnarrowed token, the one the closer start
 workflow with, so it can start the run. The trial's concurrency group is per spec and apart from the
 re-slice's, so a check running inside a re-slice never queues behind itself; a trial posts nothing,
 so it cannot race the re-slice's posting. A trial that ends red, or whose filing line gives 60
-seconds or more, is a miss, not a try left untried. A caller's check is told nothing of it, since
-its spec is not sliced by this repo's re-slice workflow.
+seconds or more, is a miss, not a try left untried. A check under a caller file starts it as
+described under Trial through the caller; one with no caller file keeps the re-slice workflow's run.
 _Avoid_: self-test, trial hook
+
+**Trial through the caller**:
+A size trial started through a caller file rather than the re-slice workflow, so this repo can drop
+its own copies of the stage workflows without losing the trials its checks start, and every enrolled
+repo can run one. The caller file's dispatch takes an optional `trial_cap` beside `ticket` and
+`reason`; a dispatch carrying it runs the `size-trial` job in `specs.yml` on the spec named in
+`ticket`, with `bin/slice --size-trial` in the concurrency group `size-trial-<spec>`, the re-slice
+job's checkouts and caps and a token that can only read, and `tickets.yml` starts no builder for it.
+A check under a caller file reads the file's name from the run it is called from and is told to
+start the trial with `gh workflow run <caller file> -f ticket=<spec> -f reason=size-trial -f
+trial_cap=<cap>` and to find its run under that file. The closer still sends only `ticket` and
+`reason`, so a dispatch without a trial cap wakes a builder as before.
+_Avoid_: caller trial, foreign trial
+
+**Run names**:
+The `run-name` the caller file carries, so every run under it names what it heard: an issue or
+comment event shows `<action> #<number>: <title>`, a closed PR `closed PR #<number>: <title>`, a
+dispatch `Size trial of #<ticket> under <trial_cap>` when it carries a trial cap and `Fix #<ticket>`
+otherwise, a heard run `After <workflow> on <head branch>`, and a push `Push to main`. This repo's
+own stage workflows named each run for its issue and the reusable path did not; the caller file
+names them once for every enrolled repo. Enrol writes the file with no line folded, so the run name
+stays one line.
+_Avoid_: run title, display name
 
 **Done check**:
 The stage that tries each of a spec's "I'll know it works when I can ___" sentences on the running

@@ -173,7 +173,7 @@ jobs:
 
   which:
     needs: build
-    if: "${{ always() && (github.event_name == 'workflow_dispatch' || needs.build.result == 'failure' || (github.event_name == 'workflow_run' && github.event.workflow_run.name != github.workflow && (github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'timed_out') && github.event.workflow_run.head_repository.full_name == github.repository)) }}"
+    if: "${{ always() && ((github.event_name == 'workflow_dispatch' && !github.event.inputs.trial_cap) || needs.build.result == 'failure' || (github.event_name == 'workflow_run' && github.event.workflow_run.name != github.workflow && (github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'timed_out') && github.event.workflow_run.head_repository.full_name == github.repository)) }}"
     runs-on: ubuntu-latest
     timeout-minutes: 3
     env:
