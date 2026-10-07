@@ -3,6 +3,7 @@ import { splitClosed, splitInto } from "./builder.ts";
 import { answered, commentOnPr, commentOnTicket, commentsRead, gh, ghAs, ghRead, git, gitRead, type Held, heldOn, labelsHeld, markWith, NOTHING_MARKED, prOfTicket, readOrStop, RESOLVING, REVIEWED_FROM, TICKET_BRANCH, ticketBranch, unread, WAITING, type MarkedLabel } from "./post.ts";
 import { FINGERPRINT } from "./reviewer.ts";
 import { CHECKING, LANDING, QUEUED } from "./spelled.ts";
+import { FOREIGN } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { quoted, why } from "./ticket-shape.ts";
 
@@ -14,7 +15,7 @@ const NAMED = /^(?:[ ,]*#\d+)+/;
 const BUILDS = /^Builds #(\d+)[ \t]*$/m;
 const MACHINE_BRANCH = new RegExp(`^(?:${ticketBranch("")}|land/)`);
 const caller = /\/([^/@]+)@/.exec(process.env.CALLED_FROM ?? "")?.[1];
-const REQUIRED_CHECKS = caller === undefined ? ["check", "review"] : ["check"];
+const REQUIRED_CHECKS = FOREIGN ? ["check"] : ["check", "review"];
 const PASSED = new Set(["SUCCESS", "SKIPPED", "NEUTRAL"]);
 
 const quietly = { ...process.env, GH_TOKEN: process.env.QUIET_GH_TOKEN };

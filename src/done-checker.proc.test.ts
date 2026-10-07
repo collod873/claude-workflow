@@ -553,6 +553,14 @@ describe("bin/done-check lets a check on this repo start a size trial to try a s
     expect(handed.handed()).toContain("the owner's bytes plus half the record's bytes");
   });
 
+  it("tells a checker called from a caller file in the machine's own repo this repo's running system and the size trial, as at home (#1215)", () => {
+    const checked = doneChecking({ calledFrom: "collod873/claude-workflow/.github/workflows/machine.yml@refs/heads/main" });
+
+    expect(checked.run().status).toBe(0);
+    expect(checked.handed()).toContain("For this repo the running system is its own Actions runs");
+    expect(checked.handed()).toContain("gh workflow run reslice.yml -f issue=974");
+  });
+
   it("tells a caller's checker nothing of a size trial, since its spec is not sliced by this repo's re-slice workflow", () => {
     const checked = doneChecking({ contract: '{ "setup": "true", "steps": {} }\n', calledFrom: "collod873/Lumaria/.github/workflows/machine.yml@refs/heads/main" });
 

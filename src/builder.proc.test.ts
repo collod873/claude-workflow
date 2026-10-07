@@ -441,6 +441,31 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(handed()[0]).toContain("- `machine`: the machine is at fault, reviewer included; it lives in collod873/claude-workflow, not this tree, so change nothing here for it: file the fault as `tickets`, and this ticket waits on them.");
   });
 
+  const HOME_CALLER = "collod873/claude-workflow/.github/workflows/machine.yml@refs/heads/main";
+
+  it("lands a `machine` answer on main when its caller file is in the machine's own repo, filing nothing, as this repo's own workflows do (#1215)", () => {
+    const answers = [{ outcome: "machine", reason: "the reviewer read a renamed export as drift" }, { outcome: "code", reason: "built on the fix" }];
+    const claude = `if [ "$CALL" = 1 ]; then ${MOVES_MAIN.trim()}; else ${FIXES.trim()}; printf '%s\\n' '${JSON.stringify({ type: "result", subtype: "success", is_error: false, session_id: "sess-fix", structured_output: answers[1] })}'; exit 0; fi\n`;
+    const { run, filed, log, handed, saved } = fixing({ calledFrom: HOME_CALLER, repo: "collod873/claude-workflow", answer: answers[0], claude });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(handed()[0]).toContain("`bin/land`");
+    expect(filed()).toEqual([]);
+    expect(log("--format=%s")).toContain("Land the reviewer fix #811 needed");
+    expect(saved()).toEqual(["811"]);
+  });
+
+  it("fails a check red only for a `(needs ...)` step when its caller file is in the machine's own repo, as this repo's own check does (#1215)", () => {
+    const unmet = "printf 'check: red integration (needs DATABASE_URL); log /nowhere/check-full.log\\n'\nexit 1\n";
+    const { run, saved, handed } = fixing({ claude: FIXES, check: unmet, calledFrom: HOME_CALLER, repo: "collod873/claude-workflow" });
+
+    expect(run("811").status).toBe(1);
+    expect(saved()).toEqual([]);
+    expect(handed()[0]).not.toContain("(needs <VAR>)");
+  });
+
   it("hands back a `machine` answer from a foreign tree that files no ticket (#1143)", () => {
     const { run, filed, handed, marked } = fixing({ calledFrom: CALLER, answer: { outcome: "machine", reason: "the check has no database" } });
 
