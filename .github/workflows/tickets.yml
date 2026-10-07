@@ -173,7 +173,7 @@ jobs:
 
   which:
     needs: build
-    if: "${{ always() && ((github.event_name == 'workflow_dispatch' && !github.event.inputs.trial_cap && !github.event.inputs.rerun) || needs.build.result == 'failure' || (github.event_name == 'workflow_run' && github.event.workflow_run.name != github.workflow && (github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'timed_out') && github.event.workflow_run.head_repository.full_name == github.repository)) }}"
+    if: "${{ always() && ((github.event_name == 'workflow_dispatch' && !github.event.inputs.trial_cap && !github.event.inputs.rerun && !github.event.inputs.probe) || needs.build.result == 'failure' || (github.event_name == 'workflow_run' && github.event.workflow_run.name != github.workflow && (github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'timed_out') && github.event.workflow_run.head_repository.full_name == github.repository)) }}"
     runs-on: ubuntu-latest
     timeout-minutes: 3
     env:
@@ -393,6 +393,96 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           RERUN: ${{ github.event.inputs.rerun }}
         run: bin/rerun "${RERUN%/*}" "${RERUN#*/}"
+
+  probe:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.probe }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    env:
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - id: machine
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/claude-workflow
+          ref: main
+          token: ${{ steps.app.outputs.token }}
+          persist-credentials: false
+
+      - id: checkout
+        uses: actions/checkout@v4
+        with:
+          path: tree
+          ref: main
+          fetch-depth: 0
+          token: ${{ steps.app.outputs.token }}
+          persist-credentials: false
+
+      - id: setup-node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - id: pinned
+        uses: ./.github/actions/pinned
+
+      - id: npm-ci
+        run: npm ci
+
+      - id: database
+        uses: ./.github/actions/database
+
+      - id: logs
+        run: |
+          mkdir -p tree/.git/machine-logs
+          ln -s "$PWD/tree/.git/machine-logs" .git/machine-logs
+
+      - id: stage
+        uses: ./.github/actions/stage
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+
+      - id: probe-script
+        if: github.event.inputs.probe_with != 'claude'
+        timeout-minutes: 30
+        working-directory: tree
+        env:
+          PROBE: ${{ github.event.inputs.probe }}
+        run: |
+          ended=0
+          "$GITHUB_WORKSPACE/bin/probe" script "$PROBE" || ended=$?
+          cat ".git/machine-logs/probe-$GITHUB_RUN_ID.out"
+          exit "$ended"
+
+      - id: probe-claude
+        if: github.event.inputs.probe_with == 'claude'
+        timeout-minutes: 50
+        working-directory: tree
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          STAGE_MINUTES: 45
+          PROBE: ${{ github.event.inputs.probe }}
+        run: |
+          tail --pid=$$ -n +1 -F .git/machine-logs/probe-${{ github.run_id }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
+          ended=0
+          "$GITHUB_WORKSPACE/bin/probe" claude "$PROBE" || ended=$?
+          cat ".git/machine-logs/probe-$GITHUB_RUN_ID.out"
+          exit "$ended"
+
+      - if: always()
+        timeout-minutes: 6
+        uses: ./.github/actions/stage-logs
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
 
   close:
     if: ${{ github.event_name == 'push' || github.event_name == 'pull_request_target' || (github.event_name == 'workflow_run' && github.event.workflow_run.name != github.workflow) || (github.event_name == 'issues' && github.event.action == 'closed') }}
