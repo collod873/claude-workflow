@@ -95,11 +95,11 @@ jobs:
           checking=$(bin/spelled CHECKING)
           building=$(bin/spelled BUILDING)
           if [[ '${{ github.event.action }}' == reopened ]] && state=$(gh pr view "$branch" --json state --jq .state 2>/dev/null) && [[ $state == OPEN ]]; then # quiet: a ticket with no PR yet builds
-            gh pr checks "$branch" --json name,bucket,link \
+            bin/github pr checks "$branch" --json name,bucket,link \
               | jq -r '.[] | select(.bucket == "fail") | .link' \
               | sed -E 's#.*/runs/([0-9]+)/.*#\1#' \
               | sort -u \
-              | while read -r run; do gh run rerun "$run" --failed; done
+              | while read -r run; do bin/github run rerun "$run" --failed; done
             bin/mark ${{ github.event.issue.number }} "$checking"
             echo rerun=true >>"$GITHUB_OUTPUT"
           elif [[ '${{ github.event.action }}' == reopened ]]; then

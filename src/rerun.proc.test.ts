@@ -21,6 +21,16 @@ describe("bin/rerun re-runs a red run once by itself, and only a second red mark
     expect(comments(calls())).toEqual([]);
   });
 
+  it("reads the run's jobs past a server error GitHub answers once, logging the retry (#1206)", () => {
+    const { calls, run } = rerunning({ blip: "gh: Server Error (HTTP 502)" });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stderr).toMatch(/^github: gh api repos\/\{owner\}\/\{repo\}\/actions\/runs\/4417\/attempts\/1\/jobs\?per_page=100 failed on try 1 of 3, so it is tried again in 0s: gh: Server Error \(HTTP 502\)$/m);
+    expect(reruns(calls())).toHaveLength(1);
+  });
+
   it("re-runs a first attempt its job's time limit cancelled, as it re-runs a red one", () => {
     const { calls, run } = rerunning({ jobs: [{ conclusion: "cancelled", annotations: [ownerCall("902", "the slice run"), { message: OUT_OF_TIME }] }] });
 

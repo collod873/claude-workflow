@@ -47,7 +47,7 @@ export interface Run {
 const SRC = import.meta.dirname;
 export const BIN = join(SRC, "..", "bin");
 const WORKFLOWS = join(SRC, "..", ".github", "workflows");
-const env = { ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_") && !name.startsWith("VITEST") && name !== "REASON")), AGENT_HOOKS_SETTINGS: "" };
+const env = { ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_") && !name.startsWith("VITEST") && name !== "REASON")), AGENT_HOOKS_SETTINGS: "", GH_RETRY_SECONDS: "0" };
 
 export interface WorkflowStep {
   id?: string;
@@ -238,7 +238,7 @@ export function stubbedMark(root: string, hiredAt?: string, refusal?: string): (
 export function copyMark(root: string): void {
   mkdirSync(join(root, "bin"), { recursive: true });
   mkdirSync(join(root, "src"), { recursive: true });
-  for (const name of ["mark", "spelled"]) copyFileSync(join(BIN, name), join(root, "bin", name));
+  for (const name of ["mark", "spelled", "github"]) copyFileSync(join(BIN, name), join(root, "bin", name));
   copyFileSync(join(SRC, "spelled.ts"), join(root, "src", "spelled.ts"));
 }
 
@@ -498,7 +498,7 @@ export const gitRefusing = (root: string, unreadable: string) =>
 export function parentSays(root: string, parent: Parent): string {
   plant(root, "parent.json", JSON.stringify(parent ?? {}));
   if (parent === undefined) return "printf 'gh: Not Found (HTTP 404)\\n' >&2; exit 1";
-  if (parent === "unreadable") return "printf 'gh: Server Error (HTTP 502)\\n' >&2; exit 1";
+  if (parent === "unreadable") return "printf 'gh: Bad credentials (HTTP 401)\\n' >&2; exit 1";
   return `cat "${join(root, "parent.json")}"`;
 }
 
@@ -750,4 +750,15 @@ export function enrolling(held: Held, env: Record<string, string> = { CORE_APP_P
     held: now,
     writes: () => now().writes.map((args) => args.slice(0, 3).join(" ")),
   };
+}
+
+export function githubCall(refusals: string[], args = ["issue", "edit", "1202", "--add-label", "landing"]) {
+  const root = scratch("github-");
+  const { setup, calls } = ghArgv(join(root, "gh-argv"));
+  script(
+    join(root, "bin", "gh"),
+    [setup, `refusals=(${refusals.map((refusal) => `'${refusal}'`).join(" ")})`, "refusal=${refusals[$((n - 1))]:-}", '[[ -z $refusal ]] && { printf "answered\\n"; exit 0; }', 'printf "partial\\n"', 'printf "%s\\n" "$refusal" >&2', "exit 1", ""].join("\n"),
+  );
+  const run = () => execute(join(BIN, "github"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}`, GH_RETRY_SECONDS: "0" }, args);
+  return { run, calls };
 }

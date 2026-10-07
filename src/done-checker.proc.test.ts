@@ -324,7 +324,7 @@ describe("done-check.yml runs the done check again on the owner's reply to a sen
 
 describe("bin/done-check --asked answers whether the last ## Done check put a sentence to the owner, through the read-or-stop (#1118)", () => {
   it("ends red at unread, printing nothing and marking nothing, when the spec's comments cannot be read", () => {
-    const checked = doneChecking({ gh: "[[ $1 == api ]] && { printf 'HTTP 502\\n' >&2; exit 1; }" });
+    const checked = doneChecking({ gh: "[[ $1 == api ]] && { printf 'HTTP 401: Bad credentials\\n' >&2; exit 1; }" });
 
     expect(checked.run("974", "--asked")).toEqual({ status: 1, stdout: "", stderr: "done-check: #974 could not read its comments, so nothing was asked\n" });
     expect(checked.calls()).toEqual([READ_COMMENTS]);
@@ -332,7 +332,7 @@ describe("bin/done-check --asked answers whether the last ## Done check put a se
   });
 
   it("ends red at unread naming the comments read, marking nothing and hiring no model, when a check cannot read the spec's comments (#1123)", () => {
-    const checked = doneChecking({ gh: "[[ $1 == api ]] && { printf 'HTTP 502\\n' >&2; exit 1; }" });
+    const checked = doneChecking({ gh: "[[ $1 == api ]] && { printf 'HTTP 401: Bad credentials\\n' >&2; exit 1; }" });
 
     expect(checked.run("974")).toEqual({ status: 1, stdout: "", stderr: "done-check: #974 could not read its comments, so nothing was tried\n" });
     expect(checked.marked()).toEqual([]);

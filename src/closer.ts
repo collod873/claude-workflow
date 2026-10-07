@@ -1,3 +1,4 @@
+import { appendFileSync } from "node:fs";
 import { splitClosed, splitInto } from "./builder.ts";
 import { answered, commentOnPr, commentOnTicket, commentsRead, gh, ghAs, ghRead, git, gitRead, type Held, heldOn, labelsHeld, markWith, NOTHING_MARKED, prOfTicket, readOrStop, RESOLVING, REVIEWED_FROM, TICKET_BRANCH, ticketBranch, unread, WAITING, type MarkedLabel } from "./post.ts";
 import { FINGERPRINT } from "./reviewer.ts";
@@ -184,6 +185,16 @@ function wantedOn(pr: QueuedPr, merging: QueuedPr | undefined, held: Held): Mark
   return pr.checks === "green" ? QUEUED : CHECKING;
 }
 
+let inHand: string | undefined;
+
+function holding<Ended>(ticket: string, run: () => Ended): Ended {
+  const was = inHand;
+  inHand = ticket;
+  const ended = run();
+  inHand = was;
+  return ended;
+}
+
 function settle(ticket: string, pr: QueuedPr, merging: QueuedPr | undefined, conflicted: boolean): void {
   const held = labelsHeld(ticket, gh);
   const wanted = conflicted || held.has(RESOLVING) ? undefined : wantedOn(pr, merging, held);
@@ -268,7 +279,7 @@ function queue(): string {
       : undefined;
   for (const pr of queued) {
     const ticket = TICKET_BRANCH.exec(pr.headRefName)?.[1];
-    if (ticket !== undefined && moved.get(pr) !== "updated") settle(ticket, pr, merging, moved.get(pr) === "conflicted");
+    if (ticket !== undefined && moved.get(pr) !== "updated") holding(ticket, () => settle(ticket, pr, merging, moved.get(pr) === "conflicted"));
   }
   if (merging?.checks === "green") return merged(merging);
   if (merging !== undefined) return `PR #${merging.number} is up to date with main, so the queue waits for it`;
@@ -317,9 +328,10 @@ function wokenAfterParents(merged?: string): string {
 }
 
 function close(): Stop | undefined {
-  const queued = queue();
   const subject = gitRead(["log", "-1", "--format=%s", "HEAD"], "the merge on main could not be read, so no ticket is closed");
   const merge = process.argv[2] === "queue" ? undefined : built(subject);
+  inHand = merge?.ticket;
+  const queued = queue();
   if (merge === undefined) {
     console.log(`close: ${queued}${wokenAfterParents()}`);
     return undefined;
@@ -342,4 +354,9 @@ function close(): Stop | undefined {
   return resliced(ticket);
 }
 
-if (import.meta.main) process.exit(exitFor(readOrStop("close", close)));
+if (import.meta.main) {
+  process.on("exit", (code) => {
+    if (code !== 0 && inHand !== undefined && process.env.GITHUB_OUTPUT !== undefined) appendFileSync(process.env.GITHUB_OUTPUT, `ticket=${inHand}\n`);
+  });
+  process.exit(exitFor(readOrStop("close", close)));
+}

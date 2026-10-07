@@ -449,7 +449,7 @@ describe("bin/close merges machine PRs one at a time, bringing only the oldest g
     });
 
     expect(run().status).toBe(0);
-    expect(updated(calls())).toEqual(["938", "939"]);
+    expect(updated(calls())).toEqual(["938", "938", "938", "939"]);
     expect(calls().some((call) => call.startsWith("workflow\nrun\nfix.yml")), "a builder cannot fix a network error").toBe(false);
     expect(calls().some((call) => call.startsWith("pr\ncomment\n938\n")), "leaves no comment to pile up or count as a failed branch update").toBe(false);
   });
@@ -949,3 +949,25 @@ describe("bin/close, called from another repo's caller file, wakes builders thro
   });
 });
 
+describe("bin/close names the ticket in its hands when it stops red, so the run calls the owner on it and gets its one re-run (#1206)", () => {
+  it("names a queued ticket whose mark stopped it, as #1202's landing mark did on 2026-10-07", () => {
+    const { output, run } = closing({ ticket: "819", openPrs: [{ number: "938", ticket: "858", upToDate: true, labels: ["queued"] }], markRefusal: "mark: #858 not labelled landing: gh: Label does not exist (HTTP 404)" });
+
+    expect(run().status).not.toBe(0);
+    expect(output()).toBe("ticket=858\n");
+  });
+
+  it("names the merged ticket when its own close stops", () => {
+    const { output, run } = closing({ ticket: "815", readable: false });
+
+    expect(run().status).not.toBe(0);
+    expect(output()).toBe("ticket=815\n");
+  });
+
+  it("names nothing on a run that ends green", () => {
+    const { output, run } = closing({ ticket: "814" });
+
+    expect(run().status).toBe(0);
+    expect(output()).toBe("");
+  });
+});

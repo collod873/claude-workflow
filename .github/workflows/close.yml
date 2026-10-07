@@ -35,8 +35,15 @@ jobs:
         with:
           node-version: 24
 
-      - env:
+      - id: close
+        env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           QUIET_GH_TOKEN: ${{ github.token }}
           QUEUE_ONLY: ${{ github.event_name != 'push' && 'queue' || '' }}
         run: bin/close $QUEUE_ONLY
+
+      - if: ${{ (failure() || cancelled()) && steps.close.outputs.ticket != '' }}
+        uses: ./.github/actions/call-owner
+        with:
+          issue: ${{ steps.close.outputs.ticket }}
+          run: the closer run

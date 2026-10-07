@@ -26,6 +26,15 @@ describe("bin/mark leaves one state on a ticket and its open PR, so one look at 
     }
   });
 
+  it("labels a ticket past a 404 GitHub answers once for a label that exists, logging the retry (#1206)", () => {
+    const marked = marking({ labels: { "811": ["ticket", "landing"] }, gh: '[[ $2 == -X && $3 == POST && ! -e blipped ]] && { touch blipped; printf "gh: Label does not exist (HTTP 404)\\n" >&2; exit 1; }' });
+    const ran = marked.run("811", "checking");
+
+    expect(ran.status, ran.stderr).toBe(0);
+    expect(ran.stderr).toBe("github: gh api -X POST repos/{owner}/{repo}/issues/811/labels -f labels[]=checking failed on try 1 of 3, so it is tried again in 0s: gh: Label does not exist (HTTP 404)\n");
+    expect(marked.labels("811")).toEqual(["checking", "ticket"]);
+  });
+
   it("refuses to set paused, the owner's alone, and asks GitHub for nothing (#1166)", () => {
     const marked = marking({ labels: { "811": ["ticket", "building"] } });
 

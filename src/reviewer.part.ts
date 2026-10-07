@@ -160,7 +160,7 @@ export function reviewing({
     [
       setup,
       'case "$*" in',
-      ...(unreadable === undefined ? [] : [`  ${unreadable}) printf 'gh: Server Error (HTTP 502)\\n' >&2; exit 1 ;;`]),
+      ...(unreadable === undefined ? [] : [`  ${unreadable}) printf 'gh: Bad credentials (HTTP 401)\\n' >&2; exit 1 ;;`]),
       `  *"api"*"issues/810/comments"*) cat "${join(root, "turns.json")}" ;;`,
       `  *"api"*"issues/810/parent"*) ${parentSays(root, spec)} ;;`,
       `  *"api"*"/comments"*) cat "${join(root, "on-pr.json")}" ;;`,

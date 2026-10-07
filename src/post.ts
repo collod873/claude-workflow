@@ -17,10 +17,11 @@ export interface Posting {
 
 export type Gh = (args: string[]) => { status: number | null; stdout: string; stderr: string };
 
+const GITHUB = join(import.meta.dirname, "..", "bin", "github");
 export const ghAs =
   (env: NodeJS.ProcessEnv): Gh =>
   (args) =>
-    spawnSync("gh", args, { encoding: "utf8", maxBuffer: Infinity, env });
+    spawnSync(GITHUB, args, { encoding: "utf8", maxBuffer: Infinity, env, stdio: ["pipe", "pipe", "pipe", 2] });
 export const gh = ghAs(process.env);
 export const git = (args: string[], input?: string) => spawnSync("git", args, { input, encoding: "utf8", maxBuffer: Infinity });
 
@@ -196,7 +197,7 @@ export interface Opened {
 export type Admission = string | undefined;
 
 export function opened(path: string, line: string, gh: Gh, repo = "{owner}/{repo}"): Opened | "missing" {
-  const got = gh(["api", `repos/${repo}/issues/${path}`]);
+  const got = gh(["--missing-answers", "api", `repos/${repo}/issues/${path}`]);
   if (got.status !== 0) return MISSING.test(got.stderr) ? "missing" : unread(line);
   try {
     return JSON.parse(got.stdout) as Opened;

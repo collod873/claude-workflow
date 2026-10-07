@@ -19,7 +19,7 @@ export function pausing({ pr = "green" as keyof typeof ROLLUPS | "none" | "unrea
     pr === "none"
       ? "printf 'no pull requests found for branch \"ticket/811\"\\n' >&2; exit 1"
       : pr === "unreadable"
-        ? "printf 'GraphQL: Server Error (HTTP 502)\\n' >&2; exit 1"
+        ? "printf 'gh: Bad credentials (HTTP 401)\\n' >&2; exit 1"
         : `printf '%s\\n' '${JSON.stringify({ number: 931, state, headRefOid: PAUSED_HEAD, autoMergeRequest: autoMerge ? { mergeMethod: "MERGE" } : null, mergeStateStatus: behind ? "BEHIND" : "CLEAN", statusCheckRollup: ROLLUPS[pr] })}'`;
   script(
     join(root, "bin", "gh"),

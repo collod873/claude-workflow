@@ -439,7 +439,7 @@ describe("fix.yml hands every red run of a ticket to its builder, however the ru
 
 describe("every step that runs gh names its repo, since gh otherwise reads it from a checkout that may never have run (#864)", () => {
   it("every step that runs gh sets GH_REPO or runs only once a checkout succeeded", () => {
-    const runsGh = (step: Step) => /(^|[\s|;&(])gh\s/.test(step.run ?? "");
+    const runsGh = (step: Step) => /(^|[\s|;&(])gh\s|\/github"?\s/.test(step.run ?? "");
     const calls = everyJob().flatMap((job) => job.steps.filter(runsGh).map((step) => ({ job, step })));
 
     expect(calls.length).toBeGreaterThan(0);
@@ -567,10 +567,14 @@ const CALLERS = [
   { file: "slice.yml", job: "slice", names: "github.event.issue.number", run: "the slice run" },
   { file: "reslice.yml", job: "reslice", names: "steps.ended.outputs.spec", run: "the wave check or reslice run" },
   { file: "done-check.yml", job: "check", names: "github.event.issue.number", run: "the done check run" },
+  { file: "close.yml", job: "close", names: "steps.close.outputs.ticket", run: "the closer run" },
+  { file: "tickets.yml", job: "close", names: "steps.close.outputs.ticket", run: "the closer run" },
+  { file: "closed.yml", job: "strip", names: "github.event.issue.number", run: "the strip run" },
+  { file: "tickets.yml", job: "strip", names: "github.event.issue.number", run: "the strip run" },
 ];
 const callsOwner = (step: Step) => step.uses === "./.github/actions/call-owner";
 
-describe("a fix, research, slice, reslice or done check run that ends red leaves its issue and run through one shared step, which bin/rerun reads once the run completes (#1057, #1067, #1178)", () => {
+describe("a fix, research, slice, reslice, done check, closer or strip run that ends red leaves its issue and run through one shared step, which bin/rerun reads once the run completes (#1057, #1067, #1178)", () => {
   const [owned] = (parse(readFileSync(CALLER, "utf8")) as { runs: { steps: Step[] } }).runs.steps;
   const calls = (labels: string, run: string) => {
     const root = scratch("called-");
@@ -604,18 +608,27 @@ describe("a fix, research, slice, reslice or done check run that ends red leaves
   for (const caller of CALLERS) {
     const job = namedJob((parse(readFileSync(join(WORKFLOWS, caller.file), "utf8")) as { jobs: Record<string, Job> }).jobs, caller.job, caller.file);
     const calling = job.steps.find(callsOwner);
-    const named = { ...allSkipped(job.steps), ended: { outcome: "success", conclusion: "success", outputs: { spec: "9" } } };
+    const named = { ...allSkipped(job.steps), ended: { outcome: "success", conclusion: "success", outputs: { spec: "9" } }, close: { outcome: "failure", conclusion: "failure", outputs: { ticket: "9" } } };
 
-    it(`${caller.file} runs the shared owner call naming its issue and run when it ends red, and not when it ends green`, () => {
+    it(`${caller.file}'s ${caller.job} job runs the shared owner call naming its issue and run when it ends red, and not when it ends green`, () => {
       expect(calling, `a step in ${caller.file} using ./.github/actions/call-owner`).toBeDefined();
       expect(String(calling?.with?.issue)).toContain(caller.names);
       expect(calling?.with?.run).toBe(caller.run);
       expect(holds(calling?.if ?? "success()", { steps: named, failed: true })).toBe(true);
       expect(holds(calling?.if ?? "success()", { steps: named, cancelled: true })).toBe(true);
       expect(holds(calling?.if ?? "success()", { steps: named })).toBe(false);
-      expect(job.steps.indexOf(calling ?? {})).toBeLessThan(job.steps.findIndex((step) => step.uses === "./.github/actions/stage-logs"));
+      const logs = job.steps.findIndex((step) => step.uses === "./.github/actions/stage-logs");
+      if (logs !== -1) expect(job.steps.indexOf(calling ?? {})).toBeLessThan(logs);
     });
   }
+
+  it("close.yml calls the owner on nothing when the closer stops before a ticket is in its hands", () => {
+    const job = namedJob((parse(readFileSync(join(WORKFLOWS, "close.yml"), "utf8")) as { jobs: Record<string, Job> }).jobs, "close", "close.yml");
+    const calling = job.steps.find(callsOwner);
+    const unnamed = { ...allSkipped(job.steps), close: { outcome: "failure", conclusion: "failure", outputs: { ticket: "" } } };
+
+    expect(holds(calling?.if ?? "false", { steps: unnamed, failed: true })).toBe(false);
+  });
 
   it("reslice.yml marks nothing when its run ends red before it names its spec", () => {
     const job = namedJob((parse(readFileSync(join(WORKFLOWS, "reslice.yml"), "utf8")) as { jobs: Record<string, Job> }).jobs, "reslice", "reslice.yml");

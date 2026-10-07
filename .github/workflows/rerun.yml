@@ -2,7 +2,7 @@ name: Rerun
 
 "on":
   workflow_run:
-    workflows: [Research, Slice, Reslice, Done check, Fix]
+    workflows: [Research, Slice, Reslice, Done check, Fix, Close, Closed]
     types: [completed]
 
 permissions:

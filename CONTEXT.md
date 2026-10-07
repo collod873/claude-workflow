@@ -246,7 +246,8 @@ _Avoid_: on hold, frozen, blocked
 
 **Stuck**:
 An issue the machine labelled `stuck`, its last resort: a stage that cannot go on marks it, and a
-research, slice, reslice, resume, done check or fix run marks it only when its re-run stops too.
+research, slice, reslice, resume, done check, fix, closer or strip run marks it only when its re-run
+stops too.
 Its comment names the run that stopped, ended red or out of time, links the first run and the
 re-run, and asks the owner to look at the re-run and take `stuck` off once the cause is fixed.
 Like `paused` it is `held`, so every stage stands down on it, and the machine adds it but never
@@ -258,8 +259,15 @@ The machine's second try at a stage run that stopped. A job that ends red or is 
 time limit leaves an `owner call` notice naming its issue, unless that issue is `held`; once the run
 completes, `bin/rerun` re-runs its failed jobs once on a first attempt, marking nothing and posting
 nothing, and marks the issue `stuck` on a later one. A run the owner cancelled is neither re-run nor
-marked.
+marked. The closer names the ticket in its hands when it stops, so its run calls the owner on that.
 _Avoid_: retry, second chance
+
+**Blip**:
+A GitHub call that fails on a server error, a rate limit, a timeout or a not-found. Every call the
+machine makes goes through `bin/github`, which tries a blip up to 3 times, 1s then 2s apart, and logs
+each try again, before the call fails; a call for which a not-found is the answer, like a ticket's
+missing parent, says `--missing-answers`. A blip is absorbed at its call, a rerun at its run.
+_Avoid_: flake, glitch
 
 **Resume**:
 Setting a held issue going again. Taking `waiting` off a ticket resumes its build. Taking `paused`

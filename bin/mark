@@ -63,7 +63,7 @@ failed() {
 
 held=()
 read_labels() {
-  said=$(gh api "repos/{owner}/{repo}/issues/$1" --jq '.labels[].name' 2>&1) || failed "$1"
+  said=$("$here/github" api "repos/{owner}/{repo}/issues/$1" --jq '.labels[].name' 3>&2 2>&1) || failed "$1"
   mapfile -t held < <(printf '%s' "$said" | grep -v '^$')
 }
 
@@ -78,11 +78,11 @@ apply() {
     adding+=(-f "labels[]=$name")
   done
   if ((${#adding[@]})); then
-    said=$(gh api -X POST "repos/{owner}/{repo}/issues/$on/labels" "${adding[@]}" 2>&1 >/dev/null) || failed "$on"
+    said=$("$here/github" api -X POST "repos/{owner}/{repo}/issues/$on/labels" "${adding[@]}" 3>&2 2>&1 >/dev/null) || failed "$on"
   fi
   for name in "${held[@]}"; do
     machine "$name" && [[ " $* " != *" $name "* ]] || continue
-    said=$(gh api -X DELETE "repos/{owner}/{repo}/issues/$on/labels/$name" 2>&1 >/dev/null) || failed "$on"
+    said=$("$here/github" api -X DELETE "repos/{owner}/{repo}/issues/$on/labels/$name" 3>&2 2>&1 >/dev/null) || failed "$on"
   done
 }
 
@@ -110,7 +110,7 @@ else
 fi
 
 apply "$number" "${target[@]}"
-if ! pr=$(gh pr list --head "$prefix$number" --state open --json number --jq '.[0].number // empty' 2>&1); then
+if ! pr=$("$here/github" pr list --head "$prefix$number" --state open --json number --jq '.[0].number // empty' 3>&2 2>&1); then
   printf "mark: #%s's open PR not labelled %s: %s\n" "$number" "$label" "$(printf '%s' "$pr" | head -n 1 | cut -c 1-120)" >&2
   pr=""
 fi

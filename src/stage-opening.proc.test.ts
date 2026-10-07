@@ -4,7 +4,7 @@ import { researching } from "./researcher.part.ts";
 import { slicing } from "./slicer.part.ts";
 import { HELD } from "./spelled.ts";
 
-const ISSUE_UNREAD = "[[ $1 == issue && $2 == view ]] && { printf 'HTTP 502: Bad Gateway\\n' >&2; exit 1; }";
+const ISSUE_UNREAD = "[[ $1 == issue && $2 == view ]] && { printf 'HTTP 401: Bad credentials\\n' >&2; exit 1; }";
 
 const STAGES = [
   { stage: "slice", issue: "968", kind: ["spec"], open: (labels: string[] | undefined, gh: string) => slicing({ labels, gh }) },

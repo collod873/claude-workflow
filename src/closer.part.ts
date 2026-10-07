@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, readFileSync, symlinkSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { authored, BIN, commitAt, execute, git, plant, refusedMark, type Said, scratch, script } from "./scenarios.ts";
 import { MACHINE } from "./spelled.ts";
@@ -125,6 +125,7 @@ export function closing({
 } = {}) {
   const root = scratch("closer-");
   const session = join(root, "session");
+  const output = join(root, "github-output");
   const callsDir = join(root, "gh-calls");
   const tokensDir = join(root, "gh-tokens");
   mkdirSync(callsDir, { recursive: true });
@@ -186,7 +187,7 @@ export function closing({
       `  *"issue view"*"createdAt"*) printf '%s\\n' '${timing.filed}' ;;`,
       `  *"issue view"*"state"*) printf '%s\\n' '${closedAs === undefined ? "OPEN REOPENED" : `CLOSED ${closedAs}`}' ;;`,
       "  *\"issue view\"*)",
-      ...(readable ? [] : ["    printf 'GraphQL: Could not resolve to an issue\\n' >&2", "    exit 1"]),
+      ...(readable ? [] : ["    printf 'gh: Bad credentials (HTTP 401)\\n' >&2", "    exit 1"]),
       "    cat <<'BODY'",
       ticketBody,
       "BODY",
@@ -195,7 +196,7 @@ export function closing({
       ...openPrs.filter((pr) => pr.refusedBefore === true).map((pr) => `  *"issues/${pr.number}/comments"*) cat "${join(root, `pr-${pr.number}-comments.json`)}" ;;`),
       ...openPrs.map((pr) => `  *"pr update-branch ${pr.number}"*) ${pr.refused === undefined ? "exit 0" : `printf '%s\\n' '${pr.refused}' >&2; exit 1`} ;;`),
       ...openPrs.filter((pr) => pr.mergeRefused !== undefined).map((pr) => `  *"pr merge ${pr.number} "*) printf '%s\\n' '${pr.mergeRefused ?? ""}' >&2; exit 1 ;;`),
-      ...(prUnreadable ? ["  *\"pr view 900 \"*) printf 'GraphQL: Could not resolve to a PullRequest\\n' >&2; exit 1 ;;"] : []),
+      ...(prUnreadable ? ["  *\"pr view 900 \"*) printf 'gh: Bad credentials (HTTP 401)\\n' >&2; exit 1 ;;"] : []),
       `  *"pr view"*) printf '%s\\n' '${timing.prOpened}' ;;`,
       `  *"pr checks"*) printf '%s\\n' '${timing.checksGreen}' ;;`,
       `  *"issues/900/comments"*) ${prCommentsUnreadable ? "printf 'GraphQL: comments could not be read\\n' >&2; exit 1" : `cat "${join(root, "pr-comments.json")}"`} ;;`,
@@ -213,6 +214,7 @@ export function closing({
     session,
     heads,
     calls: () => readdirSync(callsDir).sort((a, b) => Number(a) - Number(b)).map((file) => readFileSync(join(callsDir, file), "utf8")),
+    output: () => (existsSync(output) ? readFileSync(output, "utf8") : ""),
     tokens: () => readdirSync(tokensDir).sort((a, b) => Number(a) - Number(b)).map((file) => readFileSync(join(tokensDir, file), "utf8")),
     run: () =>
       execute(
@@ -225,6 +227,7 @@ export function closing({
           GITHUB_SERVER_URL: "https://github.com",
           GITHUB_REPOSITORY: "collod873/claude-workflow",
           GITHUB_RUN_ID: CLOSE_RUN_ID,
+          GITHUB_OUTPUT: output,
           ...(calledFrom === undefined ? {} : { CALLED_FROM: calledFrom }),
           ...(foreign ? { MACHINE_BIN: BIN } : {}),
         },
