@@ -106,6 +106,8 @@ const calledOwner = (missed: [number, string, Try][], when: string) =>
   missed.map(([number, sentence, one]) => `Sentence ${number} missed ${when}, so the spec is marked \`${STUCK}\`: ${sentence}. Why: ${one.tried}`);
 
 const listing = (missed: [number, string, Try][], between: string) => missed.map(([number]) => number).join(between);
+const CLOSED_WITH = "Closed with sentence";
+const closedWith = (putToOwner: [number, string, Try][]) => `${CLOSED_WITH} ${listing(putToOwner, ", ")} put to the owner: each says what the owner could try, and a miss seen live is filed as a new ticket.`;
 
 export const WAVE_CHECK_HEADING = "## Wave check";
 const WAVE_OUTCOMES: Record<Outcome, string> = { ...OUTCOMES, owner: "Waits for the end", self: "Waits for the end" };
@@ -271,7 +273,7 @@ function doneCheck(issue: string): Stop | undefined {
   const missed = found.filter(([, , one]) => one.outcome === "missed");
   if (missed.length > 0) return fixWave(spec, found, missed);
   const putToOwner = found.filter(([, , one]) => one.outcome === "owner");
-  const comment = commented(spec, posted(found, putToOwner.length === 0 ? [] : [`Closed with sentence ${listing(putToOwner, ", ")} put to the owner: each says what the owner could try, and a miss seen live is filed as a new ticket.`]));
+  const comment = commented(spec, posted(found, putToOwner.length === 0 ? [] : [closedWith(putToOwner)]));
   if (typeof comment === "string") return comment;
   const { said } = spec;
   const held = putToOwner.length === 0 ? "held every sentence" : "held every sentence it could try, put the rest to the owner,";
@@ -283,7 +285,7 @@ function doneCheck(issue: string): Stop | undefined {
 function askedOwner(issue: string): undefined {
   const comments = commentsRead(issue, `#${issue} could not read its comments, so nothing was asked`, gh);
   const last = comments.filter((comment) => comment.startsWith(DONE_CHECK_HEADING)).at(-1) ?? "";
-  console.log(String(last.includes(`**${OUTCOMES.owner}**`) && !spentFixWave(last)));
+  console.log(String(last.includes(`**${OUTCOMES.owner}**`) && !spentFixWave(last) && !last.includes(`\n${CLOSED_WITH} `)));
   return undefined;
 }
 

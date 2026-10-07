@@ -325,6 +325,7 @@ describe("done-check.yml runs the done check again on the owner's reply to a sen
     expect(lastAsked([`${putToOwner}\n<!-- fix-wave -->\n`, "an aside"])).toBe("false");
     expect(lastAsked([`${putToOwner}   found '<!-- fix-wave -->' spelled only in src/done-checker.ts\n`, "an aside"])).toBe("true");
     expect(lastAsked(["## Wave check\n\n- Sentence 2, **Waits for the end**: two"])).toBe("false");
+    expect(lastAsked([`${putToOwner}\nClosed with sentence 2 put to the owner: each says what the owner could try, and a miss seen live is filed as a new ticket.\n`, "an aside"])).toBe("false");
     expect(lastAsked([])).toBe("false");
     const { asked, check } = workflow();
     const reading = asked.steps.find((one) => one.id === "asked")?.run ?? "";
