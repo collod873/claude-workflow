@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { admission, doesNotBuild } from "./admit.ts";
 import { capped, handedDiff, LIST_CAP, NO_EM_DASH, onDisk, TICKET_CAP } from "./brief.ts";
 import { FULL_CHECK, UNFENCED } from "./fence.ts";
-import { type Asked, BUILDER_SPLIT, commentOnTicket, commentsRead, earlierDrift, FOLLOW_UP_OF, followUpBody, gh, ghRead, git, gitRead, machineBin, mark, NOTHING_MARKED, OWNER, post, postRefusals, prOfTicket, readOrStop, repairOf, RESOLVING, rewriteTicket, sessionLine, STUCK, ticketBranch, unread, WAITING } from "./post.ts";
+import { type Asked, BUILDER_SPLIT, commentOnTicket, commentsRead, earlierDrift, faultOf, FOLLOW_UP_OF, followUpBody, gh, ghRead, git, gitRead, machineBin, mark, NOTHING_MARKED, OWNER, post, postRefusals, prOfTicket, readOrStop, repairOf, RESOLVING, rewriteTicket, sessionLine, STUCK, ticketBranch, unread, WAITING } from "./post.ts";
 import { CONTRACT, FOREIGN, machineLogs, opened, setupRefusal, type Spent, treePathed } from "./stage.ts";
 import { BUILDING, CHECKING } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
@@ -279,7 +279,7 @@ function rewritten(ticket: string, body: string, answer: Answer): Round {
 }
 
 const faultBody = (ticket: string, { why: fault, done }: Piece): string =>
-  followUpBody([`Filed by the builder of ${process.env.GH_REPO ?? ""}#${ticket}, which waits on it, as the machine's fault.`, "", `> ${fault}`], done);
+  followUpBody([faultOf(`${process.env.GH_REPO ?? ""}#${ticket}`), "", `> ${fault}`], done);
 
 const inMachineRepo = (args: string[]) => gh([...args, "--repo", MACHINE_REPO]);
 
