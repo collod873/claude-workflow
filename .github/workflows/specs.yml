@@ -314,7 +314,7 @@ jobs:
           SPEC: ${{ github.event.inputs.ticket }}
           TRIAL_CAP: ${{ github.event.inputs.trial_cap }}
         run: |
-          tail --pid=$$ -n +1 -F ".git/machine-logs/slice-$SPEC.jsonl" 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
+          tail --pid=$$ -n +1 -F .git/machine-logs/slice-${{ github.event.inputs.ticket }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
           "$GITHUB_WORKSPACE/bin/slice" --size-trial "$SPEC" "$TRIAL_CAP"
 
       - if: always()
