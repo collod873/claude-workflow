@@ -47,7 +47,7 @@ export interface Run {
 const SRC = import.meta.dirname;
 export const BIN = join(SRC, "..", "bin");
 const WORKFLOWS = join(SRC, "..", ".github", "workflows");
-const env = { ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_") && !name.startsWith("VITEST") && name !== "REASON")), AGENT_HOOKS_SETTINGS: "" };
+const env = { ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_") && !name.startsWith("VITEST") && name !== "REASON")), AGENT_HOOKS_SETTINGS: "", GH_RETRY_SECONDS: "0" };
 
 export interface WorkflowStep {
   id?: string;

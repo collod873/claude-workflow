@@ -8,6 +8,5 @@ export default defineConfig({
     exclude: ["**/node_modules/**", ".claude/**"],
     maxWorkers: Math.max(1, Math.floor(availableParallelism() / 2)),
     testTimeout: 30_000,
-    env: { GH_RETRY_SECONDS: "0" },
   },
 });
