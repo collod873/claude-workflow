@@ -4,7 +4,7 @@ import { answered, CALLER_FILE as caller, commentOnPr, commentOnTicket, comments
 import { FINGERPRINT } from "./reviewer.ts";
 import { CHECKING, LANDING, QUEUED } from "./spelled.ts";
 import { exitFor, type Stop, stoppedAt } from "./stops.ts";
-import { quoted, why } from "./ticket-shape.ts";
+import { quoted, waitsOn, why } from "./ticket-shape.ts";
 
 const MERGED = new RegExp(`^Merge pull request #(\\d+) from \\S+?(?:/${ticketBranch("(\\d+)")})?$`);
 const NAMED = /^(?:[ ,]*#\d+)+/;
@@ -276,25 +276,33 @@ function queue(): string {
   return next === undefined ? "no green PR waits behind main" : `PR #${next.number} brought up to date with main`;
 }
 
-function wokenFromSplit(parent: string, split: string, merged: string | undefined): string {
-  const ended = (piece: string) => (piece === merged ? "CLOSED COMPLETED" : ticketState(piece, `so #${parent} is not woken`));
+const endedOrMerged = (ticket: string, merged: string | undefined, held: string) => (ticket === merged ? "CLOSED COMPLETED" : ticketState(ticket, `so #${held} is not woken`));
+const stillWaits = (ticket: string, open: string[]) => `; #${ticket} still waits for ${open.map((waited) => `#${waited}`).join(", ")}`;
+
+function openWaitedOn(ticket: string, body: string, merged: string | undefined, known: string[]): string[] {
+  return waitsOn(body).filter((waited) => waited !== ticket && !known.includes(waited) && !endedOrMerged(waited, merged, ticket).startsWith("CLOSED"));
+}
+
+function wokenFromSplit(parent: string, body: string, split: string, merged: string | undefined): string {
   const pieces = ((NAMED.exec(split.slice(splitInto(parent).length).trimStart())?.[0] ?? "").match(/#\d+/g) ?? []).map((named) => named.slice(1));
   if (pieces.length === 0) return `; #${parent} waits, and no split record names what for`;
-  const states = pieces.map((piece) => ({ piece, state: ended(piece) }));
-  const open = states.filter(({ state }) => !state.startsWith("CLOSED"));
-  if (open.length > 0) return `; #${parent} still waits for ${open.map(({ piece }) => `#${piece}`).join(", ")}`;
+  const states = pieces.map((piece) => ({ piece, state: endedOrMerged(piece, merged, parent) }));
+  const open = [...states.filter(({ state }) => !state.startsWith("CLOSED")).map(({ piece }) => piece), ...openWaitedOn(parent, body, merged, pieces)];
+  if (open.length > 0) return stillWaits(parent, open);
   const how = states.map(({ piece, state }) => `#${piece} ${state === "CLOSED COMPLETED" ? "merged" : "closed unbuilt"}`).join(", ");
   commentOnTicket(parent, `${splitClosed(parent)} ${how}. #${parent} builds now.\n\nRun: ${thisRun}`, gh);
   const woke = gh(["issue", "edit", parent, "--remove-label", WAITING]);
   return woke.status === 0 ? `; #${parent} builds now, its split tickets all closed: ${how}` : `; #${parent} could not be woken: ${quoted((woke.stderr || woke.stdout).trim().split("\n")[0] ?? "")}`;
 }
 
-function wokenAfterParent(ticket: string, body: string): string {
+function wokenAfterParent(ticket: string, body: string, merged: string | undefined): string {
   const parent = REVIEWED_FROM.exec(why(body))?.[1];
   if (parent === undefined) return "";
   const pr = prOfTicket(parent, ["state"], gh);
   const state = pr === "none" ? undefined : pr.state;
   if (state !== "MERGED" && state !== "CLOSED") return "";
+  const open = openWaitedOn(ticket, body, merged, [parent]);
+  if (open.length > 0) return stillWaits(ticket, open);
   const woke = gh(["issue", "edit", ticket, "--remove-label", WAITING]);
   return woke.status === 0 ? `; #${ticket} builds now, the PR of #${parent} ${state.toLowerCase()}` : `; #${ticket} could not be woken: ${quoted((woke.stderr || woke.stdout).trim().split("\n")[0] ?? "")}`;
 }
@@ -302,7 +310,7 @@ function wokenAfterParent(ticket: string, body: string): string {
 function wokenWaiting(ticket: string, body: string, merged: string | undefined): string {
   const comments = commentsRead(ticket, `the comments on #${ticket} could not be read, so it is not woken`, gh);
   const split = comments.find((said) => said.startsWith(splitInto(ticket)));
-  return split === undefined ? wokenAfterParent(ticket, body) : wokenFromSplit(ticket, split, merged);
+  return split === undefined ? wokenAfterParent(ticket, body, merged) : wokenFromSplit(ticket, body, split, merged);
 }
 
 function wokenAfterParents(merged?: string): string {
