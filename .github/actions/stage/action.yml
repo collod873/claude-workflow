@@ -26,6 +26,7 @@ runs:
         python3 "$hooks/hookcheck.py" --root "$hooks" --settings "$RUNNER_TEMP/unregistered.json" --emit-stages >"$RUNNER_TEMP/agent-hooks.json"
         printf 'AGENT_HOOKS_SETTINGS=%s\n' "$RUNNER_TEMP/agent-hooks.json" >>"$GITHUB_ENV"
         printf 'FEED=%s\n' "$GITHUB_ACTION_PATH/feed.jq" >>"$GITHUB_ENV"
+        printf 'HOOK_LOG_DIR=%s\n' "$RUNNER_TEMP/hook-logs" >>"$GITHUB_ENV"
 
     - id: captures-app
       continue-on-error: true

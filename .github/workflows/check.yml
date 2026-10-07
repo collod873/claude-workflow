@@ -51,10 +51,19 @@ jobs:
           set -o pipefail
           ~/bin/check --full --publish | tee "$RUNNER_TEMP/check.out"
 
-      - if: failure() && steps.check.conclusion == 'failure'
+      - id: told
+        if: failure() && steps.check.conclusion == 'failure'
         run: |
           log=$(tail -n 1 "$RUNNER_TEMP/check.out" | sed -n 's/.*; log \(.*\)$/\1/p')
+          printf 'log=%s\n' "$log" >>"$GITHUB_OUTPUT"
           [ -z "$log" ] || tail -n 60 "$log"
+
+      - if: failure() && steps.told.outputs.log != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: check-log
+          path: ${{ steps.told.outputs.log }}
+          include-hidden-files: true
 
   review:
     if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}

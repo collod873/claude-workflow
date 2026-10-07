@@ -100,6 +100,24 @@ describe("a stage started on this PC runs under the owner's hooks from the live 
     }
   });
 
+  it("leaves every prompt it was handed beside its transcript, so the machine logs show what each round was told", () => {
+    const root = onThisPc();
+    const cwd = process.cwd();
+    process.chdir(root);
+    try {
+      const stage = hired({ name: "builder", transcript: join(root, "fix-7.jsonl") });
+      if (typeof stage === "string") throw new Error(stage);
+      stage("# Ticket #7\n\nbuild it");
+      stage("## How it failed\n\ncheck: red unit");
+
+      const handed = readFileSync(join(root, "fix-7.handed.md"), "utf8");
+      expect(handed).toContain("# Ticket #7\n\nbuild it");
+      expect(handed).toContain("## How it failed\n\ncheck: red unit");
+    } finally {
+      process.chdir(cwd);
+    }
+  });
+
   it("refuses to start when nothing set AGENT_HOOKS_SETTINGS and this PC has no live release, rather than run with no owner hooks", () => {
     const root = onThisPc();
     vi.stubEnv("HOME", join(root, "elsewhere"));

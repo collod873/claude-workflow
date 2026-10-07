@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, realpathSync, rmSync, statSync } from "node:fs";
+import { appendFileSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, realpathSync, rmSync, statSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { stageArgv, type Reach, type Registration } from "./fence.ts";
@@ -124,7 +124,10 @@ export function hired(hire: Hire): ((input: string, resume?: string) => Spent) |
   const argv = [...stageArgv(hire.commands ?? [], hooks, hire.tools, hire.reach), ...(hire.answers === undefined ? [] : ["--json-schema", JSON.stringify(hire.answers)])];
   rmSync(hire.transcript, { force: true });
   const readingEnds = deadline - (hire.writeUp?.minutes ?? 0) * 60_000;
+  const handed = `${hire.transcript.replace(/\.jsonl$/, "")}.handed.md`;
+  rmSync(handed, { force: true });
   const attempt = (input: string, resume?: string, ends = readingEnds) => {
+    appendFileSync(handed, `${input}\n\n`);
     const from = existsSync(hire.transcript) ? statSync(hire.transcript).size : 0;
     const streamed = openSync(hire.transcript, "a");
     const [command, ...args] = capped([...argv, ...(resume === undefined ? [] : ["--resume", resume]), ...STREAM], minutes, ends);

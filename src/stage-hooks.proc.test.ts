@@ -51,5 +51,7 @@ describe("the hooks action's fetch survives a transient clone failure (#849)", (
     expect(existsSync(calls) ? readFileSync(calls, "utf8").trim().split("\n").length : 0).toBe(3);
     const logged = readFileSync(join(runnerTemp, "agent-hooks-unreachable.log"), "utf8");
     expect(logged.startsWith(ROW)).toBe(true);
+    expect(run.stderr).toContain(ROW);
+    expect(run.stderr).toContain("fatal: repository not found");
   });
 });
