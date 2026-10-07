@@ -1,8 +1,9 @@
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { execute, heard, holds, plant, type Said, scratch, script, starts, wellFormedSpec, type WorkflowStep } from "./scenarios.ts";
+import { execute, heard, holds, plant, type Said, scratch, script, starts, wellFormedSpec, workflowJobs, type WorkflowStep } from "./scenarios.ts";
 import { HELD, MACHINE, OWNER, STUCK } from "./spelled.ts";
 import { DONE_CHECK_POSTED, doneChecking, specWith } from "./done-checker.part.ts";
 import { missedIn } from "./done-checker.ts";
@@ -280,7 +281,7 @@ describe("bin/done-check reads the owner's reply to a sentence it put to him (#1
 });
 
 describe("done-check.yml runs the done check again on the owner's reply to a sentence it put to him (#1038)", () => {
-  type Job = { if?: string; needs?: string; steps: WorkflowStep[] };
+  type Job = { if?: string; needs?: string; strategy?: { matrix: Record<string, string> }; steps: WorkflowStep[] };
   function workflow(): { on: object; asked: Job; check: Job } {
     const { on, jobs } = parse(readFileSync(join(import.meta.dirname, "..", ".github", "workflows", "done-check.yml"), "utf8")) as { on: object; jobs: Record<string, Job> };
     const { asked, check } = jobs;
@@ -302,7 +303,7 @@ describe("done-check.yml runs the done check again on the owner's reply to a sen
     const { on } = workflow();
     const asks = (labels: string[], sender = OWNER) => starts("done-check.yml", "asked", { labels, sender, action: "created" });
 
-    expect(on).toEqual({ issue_comment: { types: ["created"] } });
+    expect(on).toEqual({ issue_comment: { types: ["created"] }, push: { branches: ["main"] } });
     expect(await asks(["spec"])).toBe(true);
     expect(await asks(["spec"], MACHINE)).toBe(false);
     expect(await asks(["spec"], "stranger")).toBe(false);
@@ -332,10 +333,45 @@ describe("done-check.yml runs the done check again on the owner's reply to a sen
     expect(reading).toContain("bin/done-check ${{ github.event.issue.number }} --asked");
     for (const spelling of ["## Done check", "fix-wave", "Put to the owner", "$SPEC", "|"]) expect(reading, spelling).not.toContain(spelling);
     expect(check.needs).toBe("asked");
-    expect(check.if).toBe("${{ needs.asked.outputs.asked == 'true' }}");
+    expect(holds(check.if ?? "", { needs: { asked: { result: "success", outputs: { asked: "true" } } } })).toBe(true);
+    expect(holds(check.if ?? "", { needs: { asked: { result: "success", outputs: { asked: "false", marked: "" } } } })).toBe(false);
+    expect(check.strategy?.matrix.spec).toBe("${{ fromJSON(needs.asked.outputs.asked == 'true' && format('[{0}]', github.event.issue.number) || needs.asked.outputs.marked) }}");
     const checked = check.steps.find((step) => step.run?.includes("bin/done-check"));
-    expect(checked?.run).toContain("bin/done-check ${{ github.event.issue.number }}");
+    expect(checked?.run).toContain("bin/done-check ${{ matrix.spec }}");
     expect(checked?.env?.GH_TOKEN).toBe("${{ steps.app.outputs.token }}");
+  });
+});
+
+describe("done-check.yml tries again, on a push to main, each open spec the old rule left marked asked (#1213)", () => {
+  type Job = { if?: string; strategy?: { matrix: Record<string, string> }; steps: WorkflowStep[] };
+  const { asked, check } = workflowJobs("done-check.yml") as Record<string, Job>;
+  const marking = asked?.steps.find((step) => step.id === "marked");
+
+  it("starts the asked job on a push to main whoever pushed, and lists the specs only on a push", () => {
+    expect(holds(asked?.if ?? "", { event: "push", sender: MACHINE })).toBe(true);
+    expect(holds(marking?.if ?? "", { event: "push" })).toBe(true);
+    expect(holds(marking?.if ?? "", { event: "issue_comment" })).toBe(false);
+  });
+
+  it("lists the open issues labelled spec and asked, by the labels spelled names", () => {
+    const root = scratch("marked-");
+    const called = join(root, "called");
+    script(join(root, "stub", "gh"), `printf '%s\\n' "$*" >"${called}"\nprintf '[1164]\\n'\n`);
+    const output = join(root, "output");
+    const ran = spawnSync("bash", ["-e", "-c", marking?.run ?? ""], { cwd: join(import.meta.dirname, ".."), env: { ...process.env, PATH: `${join(root, "stub")}:${process.env.PATH}`, GITHUB_OUTPUT: output }, encoding: "utf8" });
+
+    expect(ran.status, ran.stderr).toBe(0);
+    expect(readFileSync(output, "utf8")).toBe("marked=[1164]\n");
+    expect(readFileSync(called, "utf8")).toContain("issue list --state open --label spec --label asked");
+  });
+
+  it("checks each listed spec in a run of its own, and none when the list is empty", () => {
+    const listed = (marked: string) => holds(check?.if ?? "", { event: "push", needs: { asked: { result: "success", outputs: { marked } } } });
+
+    expect(listed("[1164]")).toBe(true);
+    expect(listed("[]")).toBe(false);
+    expect(listed("")).toBe(false);
+    expect(check?.steps.find((step) => step.id === "done-check")?.run).toContain("bin/done-check ${{ matrix.spec }}");
   });
 });
 

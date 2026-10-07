@@ -200,7 +200,8 @@ The stage that tries each of a spec's "I'll know it works when I can ___" senten
 system once nothing is left to slice, and closes the spec once every one held or was put to the
 owner. A first miss gets the spec's one fix wave; a second marks the spec `stuck`. A sentence put
 to the owner holds nothing open: the closing comment says what the owner could try for it, and a
-miss seen live later is a new ticket. It may not give a sentence `unexercised`; one it gives anyway
+miss seen live later is a new ticket; a spec an older done check left marked `asked` is tried again
+on the next push to main. It may not give a sentence `unexercised`; one it gives anyway
 ends the run red, posting and closing nothing.
 _Avoid_: audit, acceptance test, verification
 
