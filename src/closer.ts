@@ -1,5 +1,5 @@
 import { appendFileSync } from "node:fs";
-import { splitClosed, splitInto } from "./builder.ts";
+import { LABELLED_WAITING, splitClosed, splitInto } from "./builder.ts";
 import { answered, CALLER_FILE as caller, commentOnPr, commentOnTicket, commentsRead, FOREIGN, gh, ghAs, ghRead, git, gitRead, type Held, heldOn, labelsHeld, markWith, NOTHING_MARKED, prOfTicket, readOrStop, RESOLVING, REVIEWED_FROM, TICKET_BRANCH, ticketBranch, unread, WAITING, type MarkedLabel } from "./post.ts";
 import { FINGERPRINT } from "./reviewer.ts";
 import { CHECKING, LANDING, QUEUED } from "./spelled.ts";
@@ -309,8 +309,9 @@ function wokenAfterParent(ticket: string, body: string, merged: string | undefin
 
 function wokenWaiting(ticket: string, body: string, merged: string | undefined): string {
   const comments = commentsRead(ticket, `the comments on #${ticket} could not be read, so it is not woken`, gh);
-  const split = comments.find((said) => said.startsWith(splitInto(ticket)));
-  return split === undefined ? wokenAfterParent(ticket, body, merged) : wokenFromSplit(ticket, body, split, merged);
+  const parked = comments.filter((said) => said.includes(LABELLED_WAITING)).at(-1);
+  if (parked === undefined) return wokenAfterParent(ticket, body, merged);
+  return parked.startsWith(splitInto(ticket)) ? wokenFromSplit(ticket, body, parked, merged) : "";
 }
 
 function wokenAfterParents(merged?: string): string {

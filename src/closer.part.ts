@@ -50,7 +50,7 @@ const followUpBody = ({ ticket, parent, waitsOn }: WaitingFollowUp) =>
 interface SplitFrom {
   parent: string;
   labels: string;
-  said: string;
+  said: string | string[];
   siblings: Record<string, string>;
   body?: string;
 }
@@ -189,11 +189,11 @@ export function closing({
       `  *"pr list --head"*) ${prLookupRefused === undefined ? "exit 0" : `printf '%s\\n' '${prLookupRefused}' >&2; exit 1`} ;;`,
       ...followUps.map(({ parent, parentPr }) => `  *"pr view ticket/${parent} "*"state"*) printf '{"state":"%s"}\\n' '${parentPr}' ;;`),
       ...followUps.flatMap(({ waitsOn }) => (waitsOn === undefined ? [] : [`  *"issue view ${waitsOn.ticket} "*"state"*) printf '%s\\n' '${waitsOn.state}' ;;`])),
-      ...followUps.map(({ ticket, split }) => `  *"api"*"issues/${ticket}/comments"*) ${split === true ? `printf '%s\\n' '${JSON.stringify({ author: MACHINE, type: "Bot", body: `@collod873 the builder split #${ticket} into #990, which build themselves.` })}'` : "exit 0"} ;;`),
+      ...followUps.map(({ ticket, split }) => `  *"api"*"issues/${ticket}/comments"*) ${split === true ? `printf '%s\\n' '${JSON.stringify({ author: MACHINE, type: "Bot", body: `@collod873 the builder split #${ticket} into #990, which build themselves. #${ticket} keeps what must wait for them, labelled \`${WAITING}\`, and builds once they all close.` })}'` : "exit 0"} ;;`),
       ...(splitFrom === undefined
         ? []
         : [
-            `  *"api"*"issues/${splitFrom.parent}/comments"*) cat <<'SAID'\n${JSON.stringify({ author: MACHINE, type: "Bot", body: splitFrom.said })}\nSAID\n    ;;`,
+            `  *"api"*"issues/${splitFrom.parent}/comments"*) cat <<'SAID'\n${[splitFrom.said].flat().map((body) => JSON.stringify({ author: MACHINE, type: "Bot", body })).join("\n")}\nSAID\n    ;;`,
             ...Object.entries(splitFrom.siblings).map(([sibling, state]) => `  *"issue view ${sibling} "*"state"*) printf '%s\\n' '${state}' ;;`),
           ]),
       `  *"issue view"*"createdAt"*) printf '%s\\n' '${timing.filed}' ;;`,

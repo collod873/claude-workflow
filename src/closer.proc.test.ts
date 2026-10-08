@@ -243,6 +243,15 @@ describe("bin/close wakes a split ticket once every piece has closed, however ea
     expect(woken(freed.calls())).toBeGreaterThanOrEqual(0);
   });
 
+  it("leaves a split ticket waiting on a Machine fault filed after its split, though every piece has closed (#1262)", () => {
+    const fault = "@collod873 the builder of #811 found the machine at fault and filed https://github.com/collod873/claude-workflow/issues/1223. #811 waits on it, labelled `waiting`: take the label off once it merges. see #1262";
+    const held = closing({ ticket: "812", splitFrom: { parent: "811", labels: "waiting\n", said: [said, fault], siblings: { "813": "CLOSED COMPLETED" } } });
+
+    expect(held.run().status).toBe(0);
+    expect(woken(held.calls())).toBe(-1);
+    expect(told(held.calls())).toBeUndefined();
+  });
+
   it("runs as a queue run whenever an issue closes, so a piece closed with no PR still wakes its split ticket", () => {
     const { on, step } = closeWorkflow();
 
