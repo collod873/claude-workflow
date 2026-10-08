@@ -9,7 +9,7 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
   it("sends a repo's next jobs to the PC once its PC runners are online, installing none it already has", () => {
     const { run, variable, sudo } = switching({ runners: Array.from({ length: PC_RUNNER_COUNT }, (_, at) => pcRunner(`${HOST}-${at + 1}`)) });
 
-    expect(run("pc")).toEqual({ status: 0, stdout: `runner: ${REPO} runs on this PC from its next job, 6 PC runners online\n`, stderr: "" });
+    expect(run("pc")).toEqual({ status: 0, stdout: `runner: ${REPO} runs on this PC from its next job, 2 PC runners online\n`, stderr: "" });
     expect(variable()).toBe("pc");
     expect(sudo().filter((call) => call.includes("config.sh"))).toEqual([]);
   });
@@ -20,7 +20,7 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
     const result = run("pc");
 
     expect(result.stderr).toBe("");
-    expect(result.stdout).toBe(`runner: ${REPO} runs on this PC from its next job, 6 PC runners online, 6 installed\n`);
+    expect(result.stdout).toBe(`runner: ${REPO} runs on this PC from its next job, 2 PC runners online, 2 installed\n`);
     expect(variable()).toBe("pc");
     const calls = sudo();
     expect(calls[0]).toMatch(/useradd .*--groups docker ghrunner$/);
@@ -31,18 +31,18 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
       expect(calls).toContain(`bash -c cd ${dir} && ./bin/installdependencies.sh >/dev/null && ./svc.sh install ghrunner >/dev/null`);
     }
     const dir = `/home/ghrunner/runners/collod873-Lumaria/${HOST}-2`;
-    expect(placed(`${dir}/.env`).split("\n")).toEqual(expect.arrayContaining([`HOME=${dir}/home`, `TMPDIR=${dir}/tmp`, `ACTIONS_RUNNER_HOOK_JOB_STARTED=${dir}/clear.sh`, `ACTIONS_RUNNER_HOOK_JOB_COMPLETED=${dir}/clear.sh`, "CHECK_SLOTS=1", "CHECK_SLOTS_DIR=/home/ghrunner/check-slots"]));
+    expect(placed(`${dir}/.env`).split("\n")).toEqual(expect.arrayContaining([`HOME=${dir}/home`, `TMPDIR=${dir}/tmp`, `ACTIONS_RUNNER_HOOK_JOB_STARTED=${dir}/clear.sh`, `ACTIONS_RUNNER_HOOK_JOB_COMPLETED=${dir}/clear.sh`, "CHECK_SLOTS=2", "CHECK_SLOTS_DIR=/home/ghrunner/check-slots"]));
   });
 
-  it("installs only the PC runners a repo lacks, so a repo with two gains the other four", () => {
+  it("installs only the PC runners a repo lacks, so a repo with two asked for four gains the other two", () => {
     const { run, sudo } = switching({ runners: [pcRunner(`${HOST}-1`), pcRunner(`${HOST}-2`)] });
 
-    expect(run("pc").stdout).toContain(", 4 installed");
-    expect(sudo().filter((call) => call.includes("config.sh")).map((call) => /--name '([^']+)'/.exec(call)?.[1])).toEqual([3, 4, 5, 6].map((n) => `${HOST}-${n}`));
+    expect(run("pc", "4").stdout).toContain(", 2 installed");
+    expect(sudo().filter((call) => call.includes("config.sh")).map((call) => /--name '([^']+)'/.exec(call)?.[1])).toEqual([3, 4].map((n) => `${HOST}-${n}`));
   });
 
   it("keeps only as many PC runners as asked, turning the rest off for good and letting a mid-job one finish first", () => {
-    const { run, sudo } = switching({ runners: Array.from({ length: PC_RUNNER_COUNT }, (_, at) => pcRunner(`${HOST}-${at + 1}`, "online", at === 2)) });
+    const { run, sudo } = switching({ runners: Array.from({ length: 6 }, (_, at) => pcRunner(`${HOST}-${at + 1}`, "online", at === 2)) });
     const unit = (n: number) => `actions.runner.collod873-Lumaria.${HOST}-${n}.service`;
 
     const result = run("pc", "1");
@@ -113,20 +113,20 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
     expect(placed(dropIn)).toContain("Slice=pc-runners.slice");
   });
 
-  it("holds every PC runner's jobs together under a 10 GB cap with no swap on the PC's last 8 CPUs, and each runner to 7 GB on 4 of them, so a build sizes its workers to 4 and a runaway job is killed rather than slowed", () => {
+  it("holds every PC runner's jobs together under a 20 GB cap with no swap on the PC's last 8 CPUs, and each runner to 10 GB on 4 of them, so a build sizes its workers to 4 and a runaway job is killed rather than slowed", () => {
     const { run, sudo, placed } = switching();
     const cpus = availableParallelism();
     const first = Math.max(0, cpus - 8);
 
     run("pc");
 
-    expect(placed("/etc/systemd/system/pc-runners.slice").split("\n")).toEqual(["[Slice]", "MemoryMax=10G", "MemorySwapMax=0", `AllowedCPUs=${first}-${cpus - 1}`, ""]);
+    expect(placed("/etc/systemd/system/pc-runners.slice").split("\n")).toEqual(["[Slice]", "MemoryMax=20G", "MemorySwapMax=0", `AllowedCPUs=${first}-${cpus - 1}`, ""]);
     for (let n = 1; n <= PC_RUNNER_COUNT; n += 1) {
       const start = first + ((n - 1) % 2) * 4;
       expect(placed(`/etc/systemd/system/actions.runner.collod873-Lumaria.${HOST}-${n}.service.d/pc-runner.conf`).split("\n")).toEqual([
         "[Service]",
         "Slice=pc-runners.slice",
-        "MemoryMax=7G",
+        "MemoryMax=10G",
         "MemorySwapMax=0",
         `AllowedCPUs=${start}-${start + 3}`,
         "OOMPolicy=continue",
