@@ -20,14 +20,12 @@ The one workflow another repo carries to have its tickets built and its specs an
 run: its triggers and calls to `tickets.yml` and `specs.yml` here, nothing else, so no part of the
 machine is copied into it. `.github/caller.yml` is its text. Its specs are tried on its own checkout,
 readied by its contract's setup, and a ticket the closer closes there starts the re-slice through
-the caller's own `issues: closed`, since the App's close is heard. The closer wakes a builder by dispatching the caller file by its own file name with
+the caller's own `issues: closed`, since the App's close is heard. The closer wakes a builder by dispatching the caller file with
 `ticket` and `reason`, which GitHub starts only from the caller's default branch, so the file lands
 on main before any ticket there builds. A builder it reaches passes a check red only for steps
 named `(needs ...)`, which the machine's runner lacks; that repo's own CI judges them on its PR.
-The runner lacks no `DATABASE_URL`: when a step needs it, the builder's job starts `postgres:16`
-and hands its address on, so the builder sees that step red and its receipt covers the PR.
-It passes such a check even when it says its receipts were not published, as a green one saying so
-passes: that repo's CI judges its PR without them.
+A `DATABASE_URL` step is not one: the builder's job starts `postgres:16`.
+It passes such a check even when its receipts were not published, as that repo's CI judges its PR.
 _Avoid_: shim, wrapper, vendored workflow
 
 **Home**:
@@ -63,9 +61,9 @@ could not set; a missing auto-merge Save meets later is the repo's fault, never 
 _Avoid_: onboard, install, register
 
 **PC runner**:
-A runner on the owner's PC labelled `pc`, one set per private repo, installed by `bin/runner`. A
-repo's `CI_RUNNER` set to `pc` sends its stage jobs and CI there; unset, to GitHub's runners.
-_Avoid_: self-hosted mode, local runner
+A runner on the PC, labelled `pc`; a private repo's `CI_RUNNER` set to `pc` sends its jobs
+there; unset, to GitHub's. `bin/runner` installs and flips it.
+_Avoid_: local runner
 
 **Worker**:
 A part of the machine whose worth is the work it does: a step, a script, a stage.
