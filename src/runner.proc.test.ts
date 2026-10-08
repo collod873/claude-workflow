@@ -97,7 +97,7 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
   });
 
   it("leaves a mid-job PC runner on its old setup rather than kill the job under it, and gives it the new one once the job ends", () => {
-    const { run, sudo, placed } = switching({ runners: [pcRunner(`${HOST}-1`, "online", true), pcRunner(`${HOST}-2`)] });
+    const { run, sudo, placed, jobsEnded } = switching({ runners: [pcRunner(`${HOST}-1`, "online", true), pcRunner(`${HOST}-2`)] });
     const dropIn = `/etc/systemd/system/actions.runner.collod873-Lumaria.${HOST}-1.service.d/pc-runner.conf`;
 
     const result = run("pc");
@@ -106,11 +106,47 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
     expect(result.stdout).toContain(`; ${HOST}-1 kept their old setup mid-job: run this again once they finish`);
     expect(sudo().filter((call) => call.includes(`${HOST}-1 && `) && call.includes("svc.sh"))).toEqual([]);
     expect(() => placed(dropIn)).toThrow();
+    jobsEnded();
     const before = sudo().length;
 
     expect(run("pc").stdout).not.toContain("mid-job");
     expect(sudo().slice(before)).toContain(`bash -c cd /home/ghrunner/runners/collod873-Lumaria/${HOST}-1 && systemctl daemon-reload && ./svc.sh stop >/dev/null && systemctl enable --quiet actions.runner.collod873-Lumaria.${HOST}-1.service && ./svc.sh start >/dev/null`);
     expect(placed(dropIn)).toContain("Slice=pc-runners.slice");
+  });
+
+  it("gives a runner stopped by hand its new setup at once, though GitHub still shows it mid-job", () => {
+    const { run, placed } = switching({ runners: [pcRunner(`${HOST}-1`, "online", true), pcRunner(`${HOST}-2`)], stoppedByHand: [`${HOST}-1`] });
+
+    expect(run("pc").stdout).toBe(`runner: ${REPO} runs on this PC from its next job, 2 PC runners online\n`);
+    expect(placed(`/etc/systemd/system/actions.runner.collod873-Lumaria.${HOST}-1.service.d/pc-runner.conf`)).toContain("Slice=pc-runners.slice");
+  });
+
+  it("counts a repo's PC runners online only once every one asked for is up, and says how many are still starting", () => {
+    const { run } = switching({ runners: [1, 2, 3, 4].map((n) => pcRunner(`${HOST}-${n}`, "offline")), slowToStart: [`${HOST}-3`, `${HOST}-4`] });
+
+    expect(run("pc", "4").stdout).toBe(`runner: ${REPO} runs on this PC from its next job, 2 of 4 PC runners online, the rest still starting\n`);
+  });
+
+  it("keeps as many PC runners as are already online when no count is given, so a repo on four is not cut back to the default", () => {
+    const { run, sudo } = switching({ runners: [1, 2, 3, 4].map((n) => pcRunner(`${HOST}-${n}`)) });
+
+    expect(run("pc").stdout).toBe(`runner: ${REPO} runs on this PC from its next job, 4 PC runners online\n`);
+    expect(sudo().filter((call) => call.includes("systemctl disable"))).toEqual([]);
+  });
+
+  it("sets earlyoom to kill a runner's job before a session when memory runs out, so a rebuilt PC gets the same order", () => {
+    const { run, sudo, placed } = switching();
+
+    run("pc");
+
+    expect(placed("/etc/default/earlyoom")).toBe("EARLYOOM_ARGS=\"-r 3600 -m 10,5 -s 10,5 --prefer ^(MainThread|Runner.Worker|node|python3)$ --avoid ^(claude|systemd|init|dockerd|containerd|sshd|login|zsh|bash)$\"\n");
+    expect(sudo()).toContain("bash -c command -v earlyoom >/dev/null || apt-get install --yes earlyoom >/dev/null");
+    expect(sudo()).toContain("bash -c systemctl enable --quiet earlyoom && systemctl restart earlyoom");
+    const before = sudo().length;
+
+    run("pc");
+
+    expect(sudo().slice(before).filter((call) => call.includes("restart earlyoom"))).toEqual([]);
   });
 
   it("holds every PC runner's jobs together under a 20 GB cap with no swap on the PC's last 8 CPUs, and each runner to 10 GB on 4 of them, so a build sizes its workers to 4 and a runaway job is killed rather than slowed", () => {

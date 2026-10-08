@@ -772,12 +772,11 @@ export const PC_RUNNER_COUNT = 2;
 
 export const pcRunner = (name: string, status = "online", busy = false) => ({ name, status, busy, labels: [{ name: "self-hosted" }, { name: "pc" }] });
 
-export function switching({ isPrivate = true, runners = [] as object[], variable = "", startsOnline = true, userExists = true } = {}) {
+export function switching({ isPrivate = true, runners = [] as object[], variable = "", startsOnline = true, slowToStart = [] as string[], stoppedByHand = [] as string[], userExists = true } = {}) {
   const root = scratch("runner-");
   const at = (name: string) => join(root, name);
   writeFileSync(at("runners.json"), JSON.stringify({ runners }));
   if (variable !== "") writeFileSync(at("variable"), variable);
-  const online = JSON.stringify({ runners: Array.from({ length: PC_RUNNER_COUNT }, (_, at) => at + 1).map((n) => pcRunner(`${PC_HOST}-${n}`)) });
   script(
     at("bin/gh"),
     [
@@ -807,11 +806,16 @@ export function switching({ isPrivate = true, runners = [] as object[], variable
       `  kept="${at("placed")}/\${BASH_REMATCH[1]//\\//_}"`,
       '  mv "$kept.next" "$kept"',
       "fi",
-      startsOnline ? `case "$*" in *"svc.sh start"*) printf '%s' '${online}' >"${at("runners.json")}" ;; esac` : "",
+      "started='runners/[^/ ]+/([^ /]+) && .*svc\\.sh start'",
+      `if ${startsOnline} && [[ $* =~ $started ]] && [[ " ${slowToStart.join(" ")} " != *" \${BASH_REMATCH[1]} "* ]]; then`,
+      `  jq -c --arg name "\${BASH_REMATCH[1]}" '.runners |= (map(select(.name != $name)) + [{name: $name, status: "online", busy: false, labels: [{name: "self-hosted"}, {name: "pc"}]}])' "${at("runners.json")}" >"${at("runners.next")}"`,
+      `  mv "${at("runners.next")}" "${at("runners.json")}"`,
+      "fi",
       "",
     ].join("\n"),
   );
   script(at("bin/id"), `exit ${userExists ? 0 : 1}\n`);
+  script(at("bin/systemctl"), `for name in ${stoppedByHand.join(" ")}; do [[ \${@: -1} == *".$name.service" ]] && exit 3; done\nexit 0\n`);
   script(at("bin/curl"), "printf '%s\\n' '[{\"version\":\"v25.1.0\",\"lts\":false},{\"version\":\"v24.11.0\",\"lts\":\"Krypton\"}]'\n");
   script(at("bin/sleep"), "");
   const lines = (name: string) => (existsSync(at(name)) ? readFileSync(at(name), "utf8").trim().split("\n") : []);
@@ -820,6 +824,7 @@ export function switching({ isPrivate = true, runners = [] as object[], variable
     variable: () => (existsSync(at("variable")) ? readFileSync(at("variable"), "utf8") : undefined),
     sudo: () => lines("sudo-calls"),
     gh: () => lines("gh-calls"),
+    jobsEnded: () => writeFileSync(at("runners.json"), JSON.stringify({ runners: (JSON.parse(readFileSync(at("runners.json"), "utf8")) as { runners: object[] }).runners.map((runner) => ({ ...runner, busy: false })) })),
     placed: (path: string) => readFileSync(join(at("placed"), path.replaceAll("/", "_")), "utf8"),
   };
 }
