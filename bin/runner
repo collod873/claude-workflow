@@ -3,10 +3,11 @@ set -uo pipefail
 
 repo=${1:-}
 mode=${2:-}
-if [[ $# -lt 1 || $# -gt 2 || ! $repo =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ || ($# -eq 2 && $mode != pc && $mode != github) ]]; then
-  printf 'runner: usage: runner <owner/repo> [pc|github]\n' >&2
+count=${3:-}
+if [[ $# -lt 1 || $# -gt 3 || ! $repo =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ || ($# -ge 2 && $mode != pc && $mode != github) || ($# -eq 3 && ($mode != pc || ! $count =~ ^[1-9]$)) ]]; then
+  printf 'runner: usage: runner <owner/repo> [pc [1-9]|github]\n' >&2
   exit 2
 fi
 
 src="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../src" && pwd)"
-exec node "$src/runner.ts" "$repo" ${mode:+"$mode"}
+exec node "$src/runner.ts" "$repo" ${mode:+"$mode"} ${count:+"$count"}
