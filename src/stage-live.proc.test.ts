@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { scratch } from "./scenarios.ts";
@@ -26,6 +26,7 @@ const { writeFileSync } = require("fs");
 const argv = process.argv.slice(2);
 const { hooks } = JSON.parse(argv[argv.indexOf("--settings") + 1]);
 writeFileSync("stopped-by.txt", JSON.stringify(hooks.Stop ?? []));
+writeFileSync("argv.json", JSON.stringify(argv));
 const input = { tool_name: "Write", tool_input: { file_path: "notes.md", content: "A paragraph of prose." } };
 for (const { matcher, hooks: commands } of hooks.PreToolUse ?? []) {
   if (matcher !== undefined && !new RegExp(matcher).test("Write")) continue;
@@ -55,6 +56,7 @@ function onThisPc(): string {
   vi.stubEnv("HOME", join(root, "home"));
   vi.stubEnv("PATH", `${join(root, "bin")}:${process.env.PATH}`);
   vi.stubEnv("AGENT_HOOKS_SETTINGS", undefined);
+  vi.stubEnv("AGENT_SKILLS", undefined);
   vi.stubEnv("STAGE_MINUTES", undefined);
   return root;
 }
@@ -123,5 +125,33 @@ describe("a stage started on this PC runs under the owner's hooks from the live 
     vi.stubEnv("HOME", join(root, "elsewhere"));
 
     expect(hired({ name: "reviewer", transcript: join(root, "transcript.jsonl") })).toMatch(/hooks-live/);
+  });
+
+  it("hands a stage the skills it is hired with from the owner's skills, and no others", () => {
+    const root = onThisPc();
+    for (const name of ["testing", "tdd"]) {
+      mkdirSync(join(root, "home", ".agents", "skills", name), { recursive: true });
+      writeFileSync(join(root, "home", ".agents", "skills", name, "SKILL.md"), `# ${name}`);
+    }
+    const cwd = process.cwd();
+    process.chdir(root);
+    try {
+      const stage = hired({ name: "builder", transcript: join(root, "transcript.jsonl"), skills: ["testing"] });
+      if (typeof stage === "string") throw new Error(stage);
+      stage("build it");
+
+      const argv = JSON.parse(readFileSync(join(root, "argv.json"), "utf8")) as string[];
+      const added = join(argv[argv.indexOf("--add-dir") + 1] ?? "", ".claude", "skills");
+      expect(readFileSync(join(added, "testing", "SKILL.md"), "utf8")).toBe("# testing");
+      expect(readdirSync(added)).toEqual(["testing"]);
+    } finally {
+      process.chdir(cwd);
+    }
+  });
+
+  it("refuses to start a stage hired with a skill the owner's skills lack, rather than run without its standard", () => {
+    const root = onThisPc();
+
+    expect(hired({ name: "reviewer", transcript: join(root, "transcript.jsonl"), skills: ["testing"] })).toMatch(/testing skill is not in .*\.agents\/skills/);
   });
 });

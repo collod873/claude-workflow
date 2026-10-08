@@ -8,7 +8,8 @@ import { DONE_SENTENCES, quoted, why } from "./ticket-shape.ts";
 const stoppedAt = stopsOf({ drift: "The reviewer finds drift from `## Why`" });
 export type Stop = ReturnType<typeof stoppedAt>;
 
-const TOOLS = ["Read", "Grep", "Glob"];
+const TOOLS = ["Read", "Grep", "Glob", "Skill"];
+const TESTING = ["testing"];
 export const PLAIN_WORDS = "^(?:(?!`|/|[\\w-]+\\.[A-Za-z]{1,8}\\b)[\\s\\S])*$";
 const foundMatchInWave = (ticket: string) => `The reviewer read this PR against the Why of #${ticket} and found it builds it. Its spec's note for this wave reads it back to the owner.`;
 const foundNoOverlap = (ticket: string) => `The reviewer read this PR for #${ticket} against what merged to main since its last judgement and found no overlap.`;
@@ -170,6 +171,7 @@ export function handedOn(body: string, diff: string, { prBody = "", after }: { p
     ...turn,
     "## Your verdict",
     "`match` if the diff builds the Why, else `drift`. Name every gap in one pass, each a builder can act on.",
+    "A new or changed test that would stay green on the bug it guards, or go red on a refactor that keeps the behavior, is a gap. Call the Skill tool with `testing` for the standard and its fixes.",
     READBACK_PROMPT,
     ...sorted,
     "",
@@ -181,15 +183,15 @@ function isVerdict(answer: unknown): answer is Verdict {
   return verdict === "match" || verdict === "drift";
 }
 
-export function answered({ name, bin, answers }: { name: string; bin: string; answers: object }, prompt: string, pr: string): { answer: unknown; stdout: string } | string {
-  const spend = hire(bin, pr, { name, tools: TOOLS, answers });
-  if (typeof spend === "string") return `the owner's hooks could not be read from ${spend}`;
+export function answered({ name, bin, answers, skills }: { name: string; bin: string; answers: object; skills?: string[] }, prompt: string, pr: string): { answer: unknown; stdout: string } | string {
+  const spend = hire(bin, pr, { name, tools: TOOLS, answers, skills });
+  if (typeof spend === "string") return spend;
   const spent = spend(prompt);
   return spent.refusal ?? { answer: spent.answer, stdout: spent.stdout };
 }
 
 function judged(prompt: string, pr: string): Verdict | string {
-  const spent = answered({ name: "reviewer", bin: "review", answers: VERDICT }, prompt, pr);
+  const spent = answered({ name: "reviewer", bin: "review", answers: VERDICT, skills: TESTING }, prompt, pr);
   if (typeof spent === "string") return spent;
   return isVerdict(spent.answer) ? spent.answer : `the reviewer gave no verdict: ${firstLine(spent.stdout)}`;
 }

@@ -120,8 +120,8 @@ function checkRed(): string {
 const buildIt = (contract: string) => [
   "## Build it",
   "Build what the ticket's Why asks for until its `## Done when` holds.",
-  "Work red before green, one slice at a time: write one failing test, see it fail, write only enough to pass it, repeat.",
-  "Commit your own work, each message saying why. If the test count drops, give the reason on a line of its own: `Test count drop: <why>`.",
+  "Call the Skill tool with `testing` before the first test: it is the standard for which tests are worth writing and what to do when an existing one goes red. Then work red before green, one slice at a time: write one failing test, see it fail, write only enough to pass it, repeat.",
+  "Commit your own work, each message saying why. If the test count drops, give the reason on a line of its own: `Test count drop: <why>`; a test `testing` says to cut is reason enough.",
   `Run \`${FULL_CHECK}\` last: it runs every step of \`${CONTRACT}\` no receipt already covers, so running a step apart only repeats it. The steps stand in your tree as:`,
   ["```json", capped(contract, CONTRACT_CAP).trimEnd(), "```"].join("\n"),
 ];
@@ -392,7 +392,7 @@ function ownTicket(ticket: string, run: string | undefined): number {
     issue: ticket,
     state: BUILDING,
     stoppedAt,
-    hire: { name: "builder", answers: ANSWER, gated: true, reach: UNFENCED },
+    hire: { name: "builder", answers: ANSWER, skills: ["testing"], gated: true, reach: UNFENCED },
     ready: (asked) => owned(ticket, run, asked),
   });
   if (typeof owning !== "object") return exitFor(owning);

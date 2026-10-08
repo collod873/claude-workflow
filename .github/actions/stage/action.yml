@@ -28,6 +28,29 @@ runs:
         printf 'FEED=%s\n' "$GITHUB_ACTION_PATH/feed.jq" >>"$GITHUB_ENV"
         printf 'HOOK_LOG_DIR=%s\n' "$RUNNER_TEMP/hook-logs" >>"$GITHUB_ENV"
 
+    - id: skills-app
+      continue-on-error: true
+      uses: actions/create-github-app-token@v3
+      with:
+        client-id: ${{ inputs.client-id }}
+        private-key: ${{ inputs.private-key }}
+        owner: ${{ github.repository_owner }}
+        repositories: agent-skills
+        permission-contents: read
+
+    - shell: bash
+      env:
+        SKILLS_TOKEN: ${{ steps.skills-app.outputs.token }}
+      run: |
+        skills="$RUNNER_TEMP/agent-skills"
+        if git clone --quiet --depth 1 "https://x-access-token:$SKILLS_TOKEN@github.com/$GITHUB_REPOSITORY_OWNER/agent-skills" "$skills"; then
+          rm -rf "$skills/.git"
+        else
+          skills=""
+          printf '::warning::%s\n' "A job cannot fetch the owner's skills, so its builder and reviewer run without the testing standard"
+        fi
+        printf 'AGENT_SKILLS=%s\n' "$skills" >>"$GITHUB_ENV"
+
     - id: captures-app
       continue-on-error: true
       uses: actions/create-github-app-token@v3
