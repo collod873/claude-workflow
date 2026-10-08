@@ -133,7 +133,7 @@ describe("bin/review fences its shell to the fast check and its plan, which the 
     const refused = fenceSays(argv, askingBash("touch unlisted-marker"));
     expect(refused.status).toBe(2);
     expect(refused.stderr).toContain("~/bin/check, ~/bin/check --explain");
-    expect(flagValue(argv, "--tools")).toBe("Read,Grep,Glob");
+    expect(flagValue(argv, "--tools")).toBe("Read,Grep,Glob,Skill");
   });
 
   it("refuses a shell command its fence cannot read, rather than let it through", () => {
