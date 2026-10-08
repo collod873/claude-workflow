@@ -768,15 +768,16 @@ export function githubCall(refusals: string[], args = ["issue", "edit", "1202", 
 }
 export const PC_REPO = "collod873/Lumaria";
 export const PC_HOST = hostname().toLowerCase();
+export const PC_RUNNER_COUNT = 6;
 
-export const pcRunner = (name: string, status = "online") => ({ name, status, labels: [{ name: "self-hosted" }, { name: "pc" }] });
+export const pcRunner = (name: string, status = "online", busy = false) => ({ name, status, busy, labels: [{ name: "self-hosted" }, { name: "pc" }] });
 
 export function switching({ isPrivate = true, runners = [] as object[], variable = "", startsOnline = true, userExists = true } = {}) {
   const root = scratch("runner-");
   const at = (name: string) => join(root, name);
   writeFileSync(at("runners.json"), JSON.stringify({ runners }));
   if (variable !== "") writeFileSync(at("variable"), variable);
-  const online = JSON.stringify({ runners: [1, 2].map((n) => pcRunner(`${PC_HOST}-${n}`)) });
+  const online = JSON.stringify({ runners: Array.from({ length: PC_RUNNER_COUNT }, (_, at) => at + 1).map((n) => pcRunner(`${PC_HOST}-${n}`)) });
   script(
     at("bin/gh"),
     [
@@ -793,7 +794,23 @@ export function switching({ isPrivate = true, runners = [] as object[], variable
       "",
     ].join("\n"),
   );
-  script(at("bin/sudo"), [`printf '%s\\n' "$*" >>"${at("sudo-calls")}"`, startsOnline ? `case "$*" in *"svc.sh start"*) printf '%s' '${online}' >"${at("runners.json")}" ;; esac` : "", ""].join("\n"));
+  mkdirSync(at("placed"));
+  script(
+    at("bin/sudo"),
+    [
+      `printf '%s\\n' "$*" >>"${at("sudo-calls")}"`,
+      "if [[ $* =~ cat\\ \\>([^ ]+)\\.next ]]; then",
+      `  kept="${at("placed")}/\${BASH_REMATCH[1]//\\//_}"`,
+      '  cat >"$kept.next"',
+      '  cmp -s "$kept.next" "$kept" || echo changed',
+      "elif [[ $* =~ mv\\ ([^ ]+)\\.next ]]; then",
+      `  kept="${at("placed")}/\${BASH_REMATCH[1]//\\//_}"`,
+      '  mv "$kept.next" "$kept"',
+      "fi",
+      startsOnline ? `case "$*" in *"svc.sh start"*) printf '%s' '${online}' >"${at("runners.json")}" ;; esac` : "",
+      "",
+    ].join("\n"),
+  );
   script(at("bin/id"), `exit ${userExists ? 0 : 1}\n`);
   script(at("bin/curl"), "printf '%s\\n' '[{\"version\":\"v25.1.0\",\"lts\":false},{\"version\":\"v24.11.0\",\"lts\":\"Krypton\"}]'\n");
   script(at("bin/sleep"), "");
@@ -803,5 +820,6 @@ export function switching({ isPrivate = true, runners = [] as object[], variable
     variable: () => (existsSync(at("variable")) ? readFileSync(at("variable"), "utf8") : undefined),
     sudo: () => lines("sudo-calls"),
     gh: () => lines("gh-calls"),
+    placed: (path: string) => readFileSync(join(at("placed"), path.replaceAll("/", "_")), "utf8"),
   };
 }
