@@ -402,27 +402,35 @@ describe("a repo's tickets build through one caller file that holds only trigger
 
   describe("gives the builder the Postgres a step of the tree's contract needs as DATABASE_URL, so its check runs that step and leaves its receipt (#1202)", () => {
     const databaseSteps = () => (parse(readFileSync(DATABASE, "utf8")) as { runs: { steps: (WorkflowStep & { "working-directory"?: string })[] } }).runs.steps;
-    const readied = (contract: string | undefined) => {
+    const readied = (contract: string | undefined, { stale = false } = {}) => {
       const root = scratch("database-");
       const calls = join(root, "calls");
       const githubEnv = join(root, "github-env");
       mkdirSync(join(root, "tree", ".claude"), { recursive: true });
       writeFileSync(githubEnv, "");
       if (contract !== undefined) writeFileSync(join(root, "tree", ".claude", "contract.json"), contract);
-      script(join(root, "bin", "docker"), `printf '%s\\n' "$*" >>"${calls}"\n`);
+      script(join(root, "bin", "docker"), `printf '%s\\n' "$*" >>"${calls}"\ncase $1 in\n  port) printf '127.0.0.1:49153\\n' ;;\n  ps) ${stale ? "printf 'c0ffee\\n'" : ":"} ;;\nesac\n`);
       const [step, ...more] = databaseSteps();
       expect(more).toEqual([]);
-      const ran = execute("bash", join(root, step?.["working-directory"] ?? ""), { PATH: `${join(root, "bin")}:/usr/bin:/bin`, GITHUB_ENV: githubEnv }, ["-e", "-c", step?.run ?? ""]);
+      const ran = execute("bash", join(root, step?.["working-directory"] ?? ""), { PATH: `${join(root, "bin")}:/usr/bin:/bin`, GITHUB_ENV: githubEnv, RUNNER_NAME: "GitHub Actions 7" }, ["-e", "-c", step?.run ?? ""]);
       expect(ran.status, ran.stderr).toBe(0);
       return { calls: existsSync(calls) ? readFileSync(calls, "utf8").trim().split("\n") : [], handed: readFileSync(githubEnv, "utf8") };
     };
 
-    it("starts postgres:16 and hands its address on as DATABASE_URL once it takes connections, when a step needs DATABASE_URL", () => {
+    it("starts postgres:16 on a free port and hands its address on as DATABASE_URL once it takes connections, when a step needs DATABASE_URL", () => {
       const { calls, handed } = readied('{ "steps": { "lint": { "run": "true" }, "integration": { "run": "true", "needs": ["BASE_URL", "DATABASE_URL"] } } }\n');
 
-      expect(calls[0]).toMatch(/^run --quiet --detach --name database --publish 5432:5432 .*postgres:16$/);
-      expect(calls.slice(1)).toEqual(["exec database pg_isready --quiet --host 127.0.0.1"]);
-      expect(handed).toBe("DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres\n");
+      expect(calls[0]).toBe("ps --all --quiet --filter name=^database-GitHub-Actions-7$");
+      expect(calls[1]).toMatch(/^run --quiet --detach --name database-GitHub-Actions-7 --publish 127\.0\.0\.1::5432 .*postgres:16$/);
+      expect(calls.slice(2)).toEqual(["exec database-GitHub-Actions-7 pg_isready --quiet --host 127.0.0.1", "port database-GitHub-Actions-7 5432/tcp"]);
+      expect(handed).toBe("DATABASE_URL=postgres://postgres:postgres@localhost:49153/postgres\n");
+    });
+
+    it("clears the Postgres its runner's last job left, since a PC runner keeps its containers between jobs", () => {
+      const { calls } = readied('{ "steps": { "integration": { "run": "true", "needs": ["DATABASE_URL"] } } }\n', { stale: true });
+
+      expect(calls[1]).toBe("rm --force c0ffee");
+      expect(calls[2]).toMatch(/^run .*--name database-GitHub-Actions-7 /);
     });
 
     it("starts nothing and hands nothing on when no step needs DATABASE_URL, the contract has no steps, or the tree has no contract", () => {

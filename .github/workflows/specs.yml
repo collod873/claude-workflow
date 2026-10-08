@@ -8,7 +8,7 @@ permissions: {}
 jobs:
   slice:
     if: ${{ github.event_name == 'issues' && github.event.action == 'opened' && github.event.sender.login == github.repository_owner }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 60
     env:
       GH_REPO: ${{ github.repository }}
@@ -99,7 +99,7 @@ jobs:
 
   ended:
     if: ${{ github.event_name == 'issues' && github.event.action == 'closed' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
     env:
       GH_REPO: ${{ github.repository }}
@@ -146,7 +146,7 @@ jobs:
     concurrency:
       group: reslice-${{ needs.ended.outputs.spec }}
       cancel-in-progress: false
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 160
     env:
       GH_REPO: ${{ github.repository }}
@@ -249,7 +249,7 @@ jobs:
     concurrency:
       group: size-trial-${{ github.event.inputs.ticket }}
       cancel-in-progress: false
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 160
     env:
       GH_REPO: ${{ github.repository }}
@@ -326,7 +326,7 @@ jobs:
 
   resumed:
     if: ${{ github.event_name == 'issues' && github.event.action == 'unlabeled' && github.event.sender.login == github.repository_owner }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
     env:
       GH_REPO: ${{ github.repository }}
@@ -374,7 +374,7 @@ jobs:
     concurrency:
       group: reslice-${{ needs.resumed.outputs.spec }}
       cancel-in-progress: false
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 160
     env:
       GH_REPO: ${{ github.repository }}
@@ -474,7 +474,7 @@ jobs:
 
   research:
     if: ${{ github.event_name == 'issues' && github.event.action == 'opened' && github.event.sender.login == github.repository_owner }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 60
     env:
       GH_REPO: ${{ github.repository }}
@@ -583,7 +583,7 @@ jobs:
 
   asked:
     if: ${{ github.event_name == 'push' || (github.event_name == 'issue_comment' && github.event.sender.login == github.repository_owner) }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
     env:
       GH_REPO: ${{ github.repository }}
@@ -642,7 +642,7 @@ jobs:
         spec: ${{ fromJSON(needs.asked.outputs.asked == 'true' && format('[{0}]', github.event.issue.number) || needs.asked.outputs.marked) }}
     concurrency:
       group: done-check-${{ matrix.spec }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 60
     env:
       GH_REPO: ${{ github.repository }}
@@ -722,7 +722,7 @@ jobs:
   dispatch-rerun:
     needs: [slice, ended, reslice, size-trial, resumed, resume, research, asked, check]
     if: ${{ always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
     env:
       GH_REPO: ${{ github.repository }}
