@@ -596,15 +596,16 @@ describe("tickets.yml says in its logs when a mark fails, so a ticket whose labe
   });
 });
 
-describe("the PR check runs the owner's tree-wide rules from the live release, so no rule is kept here as a second copy (collod873/agent-hooks#5)", () => {
-  it("fetches the live hooks before it runs treewide.py over the checkout", () => {
+describe("the PR check judges only through the live release's ~/bin/check, which runs the owner's tree-wide rules itself (collod873/agent-hooks#24)", () => {
+  it("fetches the live hooks before the full check, and runs no rule of its own beside it", () => {
     const { check } = (parse(readFileSync(join(WORKFLOWS, "check.yml"), "utf8")) as Workflow).jobs;
     const steps = expanded(check?.steps ?? []);
     const fetched = steps.findIndex((step) => /git clone [^\n]*--branch live /.test(step.run ?? ""));
-    const ruled = steps.findIndex((step) => /treewide\.py" \.$/m.test(step.run ?? ""));
+    const checked = steps.findIndex((step) => /~\/bin\/check --full\b/.test(step.run ?? ""));
 
     expect(fetched).toBeGreaterThanOrEqual(0);
-    expect(ruled).toBeGreaterThan(fetched);
+    expect(checked).toBeGreaterThan(fetched);
+    expect(steps.filter((step) => /treewide\.py/.test(step.run ?? ""))).toEqual([]);
   });
 });
 
