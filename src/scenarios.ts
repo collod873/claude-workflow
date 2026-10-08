@@ -603,8 +603,9 @@ export function sessionExtras({
 }
 
 export const ENROLLED = "collod873/Next";
-export const CI = ["name: Gate", "on:", "  pull_request:", "jobs:", "  check:", "    runs-on: ubuntu-latest", "    steps:", "      - run: pnpm check", ""].join("\n");
-export const DEPLOY = ["name: Deploy", "on:", "  push:", "jobs:", "  ship:", "    runs-on: ubuntu-latest", "    steps:", "      - run: ./ship", ""].join("\n");
+export const PC_RUNS_ON = "${{ vars.CI_RUNNER || 'ubuntu-latest' }}";
+export const CI = ["name: Gate", "on:", "  pull_request:", "jobs:", "  check:", `    runs-on: ${PC_RUNS_ON}`, "    steps:", "      - run: ~/bin/check --full", ""].join("\n");
+export const DEPLOY = ["name: Deploy", "on:", "  push:", "jobs:", "  ship:", `    runs-on: ${PC_RUNS_ON}`, "    steps:", "      - run: ./ship", ""].join("\n");
 let appKey: { publicKey: string; privateKey: string } | undefined;
 const appKeys = () => (appKey ??= generateKeyPairSync("rsa", { modulusLength: 2048, publicKeyEncoding: { type: "spki", format: "pem" }, privateKeyEncoding: { type: "pkcs8", format: "pem" } }));
 export const key = () => appKeys().privateKey;
