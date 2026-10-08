@@ -52,6 +52,7 @@ const stoppedAt = stopsOf({ unadmitted: "Build refused: the ticket's checks woul
 
 export const splitInto = (ticket: string) => `@${OWNER} the builder split #${ticket} into`;
 export const splitClosed = (ticket: string) => `Every ticket #${ticket} was split into has closed:`;
+export const LABELLED_WAITING = `labelled \`${WAITING}\``;
 export const FILED = /\/issues\/(\d+)\s*$/;
 
 interface Handed {
@@ -259,7 +260,7 @@ function split(ticket: string, body: string, answer: Answer): Round {
   if (answer.body === undefined) return { ended: closedUnbuilt(ticket, `${splitInto(ticket)} ${named}, which build themselves, and closed it: ${answer.reason}`) };
   const written = gh(["issue", "edit", ticket, "--body", answer.body]);
   if (written.status !== 0) return { ended: calledOwner(ticket, `it filed ${named} and its rewrite of what waits would not save: ${quoted((written.stderr || written.stdout).trim().split("\n")[0] ?? "")}`) };
-  commentOnTicket(ticket, `${splitInto(ticket)} ${named}, which build themselves. #${ticket} keeps what must wait for them, labelled \`${WAITING}\`, and builds once they all close: ${answer.reason}`, gh);
+  commentOnTicket(ticket, `${splitInto(ticket)} ${named}, which build themselves. #${ticket} keeps what must wait for them, ${LABELLED_WAITING}, and builds once they all close: ${answer.reason}`, gh);
   mark(ticket, WAITING);
   gh(["pr", "close", ticketBranch(ticket), "--delete-branch"]);
   console.log(`fix: #${ticket} split into ${named}; it waits for them`);
@@ -271,7 +272,7 @@ function rewritten(ticket: string, body: string, answer: Answer): Round {
   const written = rewriteTicket(ticket, body, answer.body, gh);
   const [refusal] = written.refusals;
   if (refusal !== undefined) return { red: `Your rewrite of the ticket was refused: ${quoted(refusal)}` };
-  commentOnTicket(ticket, `@${OWNER} the builder of #${ticket} rewrote what done looks like and pushed nothing. #${ticket} waits for you, labelled \`${WAITING}\`: take the label off to build it as rewritten. ${answer.reason}`, gh);
+  commentOnTicket(ticket, `@${OWNER} the builder of #${ticket} rewrote what done looks like and pushed nothing. #${ticket} waits for you, ${LABELLED_WAITING}: take the label off to build it as rewritten. ${answer.reason}`, gh);
   mark(ticket, WAITING);
   console.log(`fix: #${ticket} rewritten; it waits for the owner`);
   return { ended: 0 };
@@ -288,7 +289,7 @@ function filedForMachine(ticket: string, answer: Answer): Round {
   if (refused.length > 0) return { red: ["Your `machine` answer was refused, and nothing was filed:", ...refused.map((refusal) => `- ${refusal}`)].join("\n") };
   const filed = postings.map((posting) => post({ kind: "ticket", ...posting }, inMachineRepo).said.trim());
   if (filed.some((said) => !FILED.test(said))) return { ended: calledOwner(ticket, `it found the machine at fault and filed ${filed.filter((said) => FILED.test(said)).length} of ${filed.length} tickets in ${MACHINE_REPO}`) };
-  commentOnTicket(ticket, `@${OWNER} the builder of #${ticket} found the machine at fault and filed ${filed.join(", ")}. #${ticket} waits on it, labelled \`${WAITING}\`: take the label off once it merges. ${answer.reason}`, gh);
+  commentOnTicket(ticket, `@${OWNER} the builder of #${ticket} found the machine at fault and filed ${filed.join(", ")}. #${ticket} waits on it, ${LABELLED_WAITING}: take the label off once it merges. ${answer.reason}`, gh);
   mark(ticket, WAITING);
   console.log(`fix: #${ticket} waits on the machine's fault, filed as ${filed.join(", ")}`);
   return { ended: 0 };
