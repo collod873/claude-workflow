@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { hostname } from "node:os";
+import { availableParallelism, hostname } from "node:os";
 
 const VARIABLE = "CI_RUNNER";
 const LABEL = "pc";
@@ -14,21 +14,37 @@ const WAIT_SECONDS = Number(process.env.RUNNER_WAIT_SECONDS ?? "60");
 const UNITS = "/etc/systemd/system";
 const SLICE = "pc-runners.slice";
 const PC_RUNNERS_MEMORY_GB = 10;
+const RUNNER_MEMORY_GB = 7;
 const CHECK_SLOTS = 1;
 const CHECK_SLOTS_DIR = `${HOME}/check-slots`;
-const slice = ["[Slice]", `MemoryHigh=${PC_RUNNERS_MEMORY_GB - 1}G`, `MemoryMax=${PC_RUNNERS_MEMORY_GB}G`, "MemorySwapMax=0", ""].join("\n");
-const confinement = ["[Service]", `Slice=${SLICE}`, "OOMPolicy=continue", "KillMode=mixed", ""].join("\n");
+const PC_RUNNERS_CPUS = 8;
+const RUNNER_CPUS = 4;
+const cpus = availableParallelism();
+const firstCpu = Math.max(0, cpus - PC_RUNNERS_CPUS);
+const slice = ["[Slice]", `MemoryMax=${PC_RUNNERS_MEMORY_GB}G`, "MemorySwapMax=0", `AllowedCPUs=${firstCpu}-${cpus - 1}`, ""].join("\n");
+const cpusOf = (at: number) => {
+  const start = Math.min(cpus - 1, firstCpu + (at % Math.max(1, PC_RUNNERS_CPUS / RUNNER_CPUS)) * RUNNER_CPUS);
+  return `${start}-${Math.min(cpus - 1, start + RUNNER_CPUS - 1)}`;
+};
+const confinement = (at: number) => ["[Service]", `Slice=${SLICE}`, `MemoryMax=${RUNNER_MEMORY_GB}G`, "MemorySwapMax=0", `AllowedCPUs=${cpusOf(at)}`, "OOMPolicy=continue", "KillMode=mixed", ""].join("\n");
 const NOT_FOUND = /\(HTTP 404\)|not found/i;
 
 class Refused extends Error {}
 
 type Mode = "pc" | "github";
 
-const clearing = (name: string) =>
+const clearing = (name: string, unit: string) =>
   [
     "#!/bin/bash",
     "set -euo pipefail",
     'own="$(cd "$(dirname "$0")" && pwd)"',
+    'cgroup="/sys/fs/cgroup$(cut -d: -f3 /proc/self/cgroup)"',
+    `if [[ $cgroup == */${unit} ]]; then`,
+    '  keep=" $$ "',
+    "  at=$$",
+    "  while [[ $at -gt 1 ]]; do at=$(awk '/^PPid:/ {print $2}' \"/proc/$at/status\"); keep+=\"$at \"; done",
+    '  for pid in $(cat "$cgroup/cgroup.procs"); do [[ $keep == *" $pid "* ]] || kill -KILL "$pid" 2>/dev/null || true; done',
+    "fi",
     'for left in "$HOME" "$TMPDIR" "$GITHUB_WORKSPACE"; do',
     "  [[ $left == \"$own\"/* ]] || { printf 'clear: %s is outside this runner, so it is not cleared\\n' \"$left\" >&2; exit 1; }",
     '  find "$left" -mindepth 1 -delete',
@@ -112,7 +128,7 @@ function provisionSlice(): void {
   if (file.changed) asRoot("systemctl daemon-reload");
 }
 
-function settle(repo: string, name: string, busy: boolean): "started" | "mid-job" {
+function settle(repo: string, name: string, at: number, busy: boolean): "started" | "mid-job" {
   const dir = dirOf(repo, name);
   const dropIns = `${UNITS}/${unitOf(repo, name)}.d`;
   asRunnerUser(`mkdir -p ${dir}/home ${dir}/tmp ${dir}/toolcache ${CHECK_SLOTS_DIR}`);
@@ -120,10 +136,10 @@ function settle(repo: string, name: string, busy: boolean): "started" | "mid-job
   const clear = `${dir}/clear.sh`;
   const env = [`HOME=${dir}/home`, `TMPDIR=${dir}/tmp`, `RUNNER_TOOL_CACHE=${dir}/toolcache`, `AGENT_TOOLSDIRECTORY=${dir}/toolcache`, `ACTIONS_RUNNER_HOOK_JOB_STARTED=${clear}`, `ACTIONS_RUNNER_HOOK_JOB_COMPLETED=${clear}`, `CHECK_SLOTS=${CHECK_SLOTS}`, `CHECK_SLOTS_DIR=${CHECK_SLOTS_DIR}`, "LANG=C.UTF-8", ""].join("\n");
   const files = [
-    staged({ as: asRunnerUser, path: clear, text: clearing(name), mode: "755" }),
+    staged({ as: asRunnerUser, path: clear, text: clearing(name, unitOf(repo, name)), mode: "755" }),
     staged({ as: asRunnerUser, path: `${dir}/.env`, text: env, mode: "644" }),
     staged({ as: asRunnerUser, path: `${dir}/.path`, text: `${PATH}\n`, mode: "644" }),
-    staged({ as: asRoot, path: `${dropIns}/pc-runner.conf`, text: confinement, mode: "644" }),
+    staged({ as: asRoot, path: `${dropIns}/pc-runner.conf`, text: confinement(at), mode: "644" }),
   ];
   const changed = files.some((file) => file.changed);
   if (changed && busy) return "mid-job";
@@ -169,7 +185,7 @@ function toPc(repo: string, wanted: number): string {
   provisionNode();
   provisionSlice();
   for (const name of missing) install(repo, name);
-  const midJob = names.filter((name) => settle(repo, name, registered.get(name) === true) === "mid-job");
+  const midJob = names.filter((name, at) => settle(repo, name, at, registered.get(name) === true) === "mid-job");
   const off = turnOff(repo, extra);
   const count = waitOnline(() => on.pcRunners().filter(({ name, status }) => names.includes(name) && status === "online").length);
   if (count === 0) throw new Refused(`no PC runner of ${repo} came online within ${WAIT_SECONDS}s, so it stays where it was: start them with \`sudo systemctl start 'actions.runner.*'\``);

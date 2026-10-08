@@ -1,4 +1,6 @@
+import { spawn } from "node:child_process";
 import { chmodSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { availableParallelism } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { execute, PC_HOST as HOST, PC_REPO as REPO, PC_RUNNER_COUNT, pcRunner, scratch, script, switching } from "./scenarios.ts";
@@ -64,7 +66,7 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
     expect(again.filter((call) => call.includes("svc.sh stop"))).toEqual([]);
   });
 
-  it("starts and ends every job on a cleared home, temp and workspace with its runner's Postgres gone, as GitHub's fresh runner does, so no job reads what the last one left", () => {
+  it("starts and ends every job on a cleared home, temp and workspace with its runner's Postgres gone, as GitHub's fresh runner does, so no job reads what the last one left, while killing nothing outside its runner's service", () => {
     const { run, placed } = switching();
     run("pc");
     const runnerDir = scratch("pc-runner-");
@@ -83,6 +85,11 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
     expect(execute(hook, runnerDir, env).status).toBe(0);
     for (const dir of Object.values(left)) expect(readdirSync(dir), dir).toEqual([]);
     expect(readFileSync(removed, "utf8")).toBe("rm --force c0ffee\n");
+
+    const neighbour = spawn("sleep", ["30"], { detached: true, stdio: "ignore" });
+    expect(execute(hook, runnerDir, env).status).toBe(0);
+    expect(() => process.kill(neighbour.pid ?? 0, 0)).not.toThrow();
+    neighbour.kill("SIGKILL");
 
     const outside = execute(hook, runnerDir, { ...env, HOME: "/home/collin" });
     expect(outside.status).toBe(1);
@@ -106,14 +113,26 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
     expect(placed(dropIn)).toContain("Slice=pc-runners.slice");
   });
 
-  it("holds every PC runner's jobs together under a 10 GB cap with no swap, so a runaway job is killed alone and the runner stays up for the next", () => {
+  it("holds every PC runner's jobs together under a 10 GB cap with no swap on the PC's last 8 CPUs, and each runner to 7 GB on 4 of them, so a build sizes its workers to 4 and a runaway job is killed rather than slowed", () => {
     const { run, sudo, placed } = switching();
+    const cpus = availableParallelism();
+    const first = Math.max(0, cpus - 8);
 
     run("pc");
 
-    expect(placed("/etc/systemd/system/pc-runners.slice").split("\n")).toEqual(["[Slice]", "MemoryHigh=9G", "MemoryMax=10G", "MemorySwapMax=0", ""]);
+    expect(placed("/etc/systemd/system/pc-runners.slice").split("\n")).toEqual(["[Slice]", "MemoryMax=10G", "MemorySwapMax=0", `AllowedCPUs=${first}-${cpus - 1}`, ""]);
     for (let n = 1; n <= PC_RUNNER_COUNT; n += 1) {
-      expect(placed(`/etc/systemd/system/actions.runner.collod873-Lumaria.${HOST}-${n}.service.d/pc-runner.conf`).split("\n")).toEqual(["[Service]", "Slice=pc-runners.slice", "OOMPolicy=continue", "KillMode=mixed", ""]);
+      const start = first + ((n - 1) % 2) * 4;
+      expect(placed(`/etc/systemd/system/actions.runner.collod873-Lumaria.${HOST}-${n}.service.d/pc-runner.conf`).split("\n")).toEqual([
+        "[Service]",
+        "Slice=pc-runners.slice",
+        "MemoryMax=7G",
+        "MemorySwapMax=0",
+        `AllowedCPUs=${start}-${start + 3}`,
+        "OOMPolicy=continue",
+        "KillMode=mixed",
+        "",
+      ]);
     }
     expect(sudo()).toContain("bash -c systemctl daemon-reload");
   });
