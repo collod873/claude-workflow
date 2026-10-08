@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { appendFileSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, realpathSync, rmSync, statSync } from "node:fs";
+import { appendFileSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, realpathSync, rmSync, statSync, symlinkSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { stageArgv, type Reach, type Registration } from "./fence.ts";
@@ -83,7 +83,18 @@ function registered(gated: boolean): Registration | string {
   const path = process.env.AGENT_HOOKS_SETTINGS;
   if (path === "") return {};
   if (path === undefined) return liveHooks(gated);
-  return hooksIn(() => readFileSync(path, "utf8"), path, gated);
+  return hooksIn(() => readFileSync(path, "utf8"), `the owner's hooks could not be read from ${path}`, gated);
+}
+
+function skillsAdded(names: string[]): string[] | string {
+  const root = process.env.AGENT_SKILLS ?? join(homedir(), ".agents", "skills");
+  if (names.length === 0 || root === "") return [];
+  const missing = names.filter((name) => !existsSync(join(root, name, "SKILL.md")));
+  if (missing.length > 0) return `the owner's ${missing.join(", ")} skill is not in ${root}`;
+  const home = mkdtempSync(join(tmpdir(), "agent-skills-"));
+  mkdirSync(join(home, ".claude", "skills"), { recursive: true });
+  for (const name of names) symlinkSync(join(root, name), join(home, ".claude", "skills", name));
+  return ["--add-dir", home];
 }
 
 export interface Hire {
@@ -92,6 +103,7 @@ export interface Hire {
   commands?: string[];
   tools?: string[];
   answers?: object;
+  skills?: string[];
   gated?: boolean;
   reach?: Reach;
   writeUp?: { minutes: number; told: string };
@@ -121,7 +133,9 @@ export function hired(hire: Hire): ((input: string, resume?: string) => Spent) |
   const deadline = Date.now() + minutes * 60_000;
   const hooks = registered(hire.gated ?? false);
   if (typeof hooks === "string") return hooks;
-  const argv = [...stageArgv(hire.commands ?? [], hooks, hire.tools, hire.reach), ...(hire.answers === undefined ? [] : ["--json-schema", JSON.stringify(hire.answers)])];
+  const skills = skillsAdded(hire.skills ?? []);
+  if (typeof skills === "string") return skills;
+  const argv = [...stageArgv(hire.commands ?? [], hooks, hire.tools, hire.reach), ...skills, ...(hire.answers === undefined ? [] : ["--json-schema", JSON.stringify(hire.answers)])];
   rmSync(hire.transcript, { force: true });
   const readingEnds = deadline - (hire.writeUp?.minutes ?? 0) * 60_000;
   const handed = `${hire.transcript.replace(/\.jsonl$/, "")}.handed.md`;
@@ -195,6 +209,6 @@ export function opened<Carried, Own extends string>({ stage, issue, state, tried
   if (typeof readied !== "object") return readied;
   if (readied.unmarked !== true) mark(issue, state, ...((readied.tried ?? tried) === true ? (["--try"] as const) : []));
   const spend = hire(stage, issue, hiring);
-  if (typeof spend === "string") return stoppedAt("modelRun", `${said} ended red, the owner's hooks could not be read from ${spend}`);
+  if (typeof spend === "string") return stoppedAt("modelRun", `${said} ended red, ${spend}`);
   return { asked, carried: readied.carrying, spend };
 }
