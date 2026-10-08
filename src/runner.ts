@@ -27,6 +27,8 @@ const cpusOf = (at: number) => {
   return `${start}-${Math.min(cpus - 1, start + RUNNER_CPUS - 1)}`;
 };
 const confinement = (at: number) => ["[Service]", `Slice=${SLICE}`, `MemoryMax=${RUNNER_MEMORY_GB}G`, "MemorySwapMax=0", `AllowedCPUs=${cpusOf(at)}`, "OOMPolicy=continue", "KillMode=mixed", ""].join("\n");
+const EARLYOOM = "/etc/default/earlyoom";
+const earlyoom = 'EARLYOOM_ARGS="-r 3600 -m 10,5 -s 10,5 --prefer ^(MainThread|Runner.Worker|node|python3)$ --avoid ^(claude|systemd|init|dockerd|containerd|sshd|login|zsh|bash)$"\n';
 const NOT_FOUND = /\(HTTP 404\)|not found/i;
 
 class Refused extends Error {}
@@ -128,6 +130,15 @@ function provisionSlice(): void {
   if (file.changed) asRoot("systemctl daemon-reload");
 }
 
+function provisionEarlyoom(): void {
+  asRoot("command -v earlyoom >/dev/null || apt-get install --yes earlyoom >/dev/null");
+  const file = staged({ as: asRoot, path: EARLYOOM, text: earlyoom, mode: "644" });
+  place(file);
+  if (file.changed) asRoot("systemctl enable --quiet earlyoom && systemctl restart earlyoom");
+}
+
+const running = (repo: string, name: string) => spawnSync("systemctl", ["is-active", "--quiet", unitOf(repo, name)]).status === 0;
+
 function settle(repo: string, name: string, at: number, busy: boolean): "started" | "mid-job" {
   const dir = dirOf(repo, name);
   const dropIns = `${UNITS}/${unitOf(repo, name)}.d`;
@@ -162,21 +173,22 @@ function stopIdle(repo: string, runners: { name: string; status: string; busy: b
   return busy === 0 ? `${ours.length} PC runners stopped` : `${ours.length - busy} PC runners stopped, ${busy} still mid-job: run this again once it finishes`;
 }
 
-function waitOnline(online: () => number): number {
+function waitOnline(online: () => number, wanted: number): number {
   const until = Date.now() + WAIT_SECONDS * 1000;
   let count = online();
-  while (count === 0 && Date.now() < until) {
+  while (count < wanted && Date.now() < until) {
     spawnSync("sleep", ["2"]);
     count = online();
   }
   return count;
 }
 
-function toPc(repo: string, wanted: number): string {
+function toPc(repo: string, asked: number | undefined): string {
   const on = onRepo(repo);
   if (!on.isPrivate()) throw new Refused(`${repo} is public, so a PC runner would run strangers' PRs on this PC; it stays on GitHub's runners`);
   const host = hostname().toLowerCase();
   const runners = on.pcRunners();
+  const wanted = asked ?? (runners.filter(({ name, status }) => name.startsWith(`${host}-`) && status === "online").length || PC_RUNNERS);
   const registered = new Map(runners.map(({ name, busy }) => [name, busy]));
   const names = Array.from({ length: wanted }, (_, at) => `${host}-${at + 1}`);
   const missing = names.filter((name) => !registered.has(name));
@@ -184,15 +196,17 @@ function toPc(repo: string, wanted: number): string {
   provisionUser();
   provisionNode();
   provisionSlice();
+  provisionEarlyoom();
   for (const name of missing) install(repo, name);
-  const midJob = names.filter((name, at) => settle(repo, name, at, registered.get(name) === true) === "mid-job");
+  const midJob = names.filter((name, at) => settle(repo, name, at, registered.get(name) === true && running(repo, name)) === "mid-job");
   const off = turnOff(repo, extra);
-  const count = waitOnline(() => on.pcRunners().filter(({ name, status }) => names.includes(name) && status === "online").length);
+  const count = waitOnline(() => on.pcRunners().filter(({ name, status }) => names.includes(name) && status === "online").length, wanted);
   if (count === 0) throw new Refused(`no PC runner of ${repo} came online within ${WAIT_SECONDS}s, so it stays where it was: start them with \`sudo systemctl start 'actions.runner.*'\``);
   if (on.current() !== "pc") gh(["variable", "set", VARIABLE, "-R", repo, "--body", LABEL]);
   const installed = missing.length > 0 ? `, ${missing.length} installed` : "";
   const waiting = midJob.length > 0 ? `; ${midJob.join(", ")} kept their old setup mid-job: run this again once they finish` : "";
-  return `${repo} runs on this PC from its next job, ${count} PC runners online${installed}${off}${waiting}`;
+  const up = count < wanted ? `${count} of ${wanted} PC runners online, the rest still starting` : `${count} PC runners online`;
+  return `${repo} runs on this PC from its next job, ${up}${installed}${off}${waiting}`;
 }
 
 function toGithub(repo: string): string {
@@ -210,7 +224,7 @@ function where(repo: string): string {
 
 function runner(repo: string, mode: string | undefined, count: string | undefined): number {
   try {
-    console.log(`runner: ${mode === "pc" ? toPc(repo, Number(count ?? PC_RUNNERS)) : mode === "github" ? toGithub(repo) : where(repo)}`);
+    console.log(`runner: ${mode === "pc" ? toPc(repo, count === undefined ? undefined : Number(count)) : mode === "github" ? toGithub(repo) : where(repo)}`);
     return 0;
   } catch (error) {
     if (!(error instanceof Refused)) throw error;
