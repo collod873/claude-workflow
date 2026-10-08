@@ -1,7 +1,7 @@
 import { execFile, execFileSync, spawnSync } from "node:child_process";
 import { generateKeyPairSync } from "node:crypto";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { hostname, tmpdir } from "node:os";
 import { dirname, join, matchesGlob } from "node:path";
 import { parse } from "yaml";
 import { onTestFinished } from "vitest";
@@ -765,4 +765,43 @@ export function githubCall(refusals: string[], args = ["issue", "edit", "1202", 
   );
   const run = () => execute(join(BIN, "github"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}`, GH_RETRY_SECONDS: "0" }, args);
   return { run, calls };
+}
+export const PC_REPO = "collod873/Lumaria";
+export const PC_HOST = hostname().toLowerCase();
+
+export const pcRunner = (name: string, status = "online") => ({ name, status, labels: [{ name: "self-hosted" }, { name: "pc" }] });
+
+export function switching({ isPrivate = true, runners = [] as object[], variable = "", startsOnline = true, userExists = true } = {}) {
+  const root = scratch("runner-");
+  const at = (name: string) => join(root, name);
+  writeFileSync(at("runners.json"), JSON.stringify({ runners }));
+  if (variable !== "") writeFileSync(at("variable"), variable);
+  const online = JSON.stringify({ runners: [1, 2].map((n) => pcRunner(`${PC_HOST}-${n}`)) });
+  script(
+    at("bin/gh"),
+    [
+      `printf '%s\\n' "$*" >>"${at("gh-calls")}"`,
+      'case "$*" in',
+      `  "api repos/${PC_REPO}/actions/runners") cat "${at("runners.json")}" ;;`,
+      `  "api repos/${PC_REPO}") printf '{"private":${isPrivate}}\\n' ;;`,
+      `  "variable get"*) [ -f "${at("variable")}" ] || { printf 'variable CI_RUNNER was not found\\n' >&2; exit 1; }; cat "${at("variable")}" ;;`,
+      `  "variable set"*) printf '%s' "\${@: -1}" >"${at("variable")}" ;;`,
+      `  "variable delete"*) rm "${at("variable")}" ;;`,
+      '  *releases/latest*) printf "v2.330.0\\n" ;;',
+      '  *registration-token*) printf "TOKEN\\n" ;;',
+      "esac",
+      "",
+    ].join("\n"),
+  );
+  script(at("bin/sudo"), [`printf '%s\\n' "$*" >>"${at("sudo-calls")}"`, startsOnline ? `case "$*" in *"svc.sh start"*) printf '%s' '${online}' >"${at("runners.json")}" ;; esac` : "", ""].join("\n"));
+  script(at("bin/id"), `exit ${userExists ? 0 : 1}\n`);
+  script(at("bin/curl"), "printf '%s\\n' '[{\"version\":\"v25.1.0\",\"lts\":false},{\"version\":\"v24.11.0\",\"lts\":\"Krypton\"}]'\n");
+  script(at("bin/sleep"), "");
+  const lines = (name: string) => (existsSync(at(name)) ? readFileSync(at(name), "utf8").trim().split("\n") : []);
+  return {
+    run: (...args: string[]) => execute(join(BIN, "runner"), root, { PATH: `${at("bin")}:${process.env.PATH}`, RUNNER_WAIT_SECONDS: "0" }, [PC_REPO, ...args]),
+    variable: () => (existsSync(at("variable")) ? readFileSync(at("variable"), "utf8") : undefined),
+    sudo: () => lines("sudo-calls"),
+    gh: () => lines("gh-calls"),
+  };
 }

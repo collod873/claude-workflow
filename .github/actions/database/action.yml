@@ -8,6 +8,9 @@ runs:
       working-directory: tree
       run: |
         jq -e 'any(.steps[]?.needs[]?; . == "DATABASE_URL")' .claude/contract.json >/dev/null 2>&1 || exit 0
-        docker run --quiet --detach --name database --publish 5432:5432 --env POSTGRES_PASSWORD=postgres postgres:16 >/dev/null
-        timeout 60 bash -c 'until docker exec database pg_isready --quiet --host 127.0.0.1; do sleep 1; done'
-        printf 'DATABASE_URL=%s\n' postgres://postgres:postgres@localhost:5432/postgres >>"$GITHUB_ENV"
+        name="database-${RUNNER_NAME//[^A-Za-z0-9_.-]/-}"
+        docker ps --all --quiet --filter "name=^$name\$" | xargs --no-run-if-empty docker rm --force >/dev/null
+        docker run --quiet --detach --name "$name" --publish 127.0.0.1::5432 --env POSTGRES_PASSWORD=postgres postgres:16 >/dev/null
+        timeout 60 bash -c "until docker exec '$name' pg_isready --quiet --host 127.0.0.1; do sleep 1; done"
+        port=$(docker port "$name" 5432/tcp | head -n 1 | sed 's/.*://')
+        printf 'DATABASE_URL=%s\n' "postgres://postgres:postgres@localhost:$port/postgres" >>"$GITHUB_ENV"

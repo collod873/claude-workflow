@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parts, type Part } from "./parts.ts";
-import { bare, CONTRACT, LINE_LIMIT, MOST_LINES, closingNote, coveredByCheck, enrolling, execute, filing, githubCall, landSession, marking, misshapenTicket, overLimit, saving, scratch, script, sessionExtras, wellFormedNote, wellFormedTicket } from "./scenarios.ts";
+import { bare, CONTRACT, LINE_LIMIT, MOST_LINES, closingNote, coveredByCheck, enrolling, execute, filing, githubCall, landSession, marking, misshapenTicket, overLimit, saving, scratch, script, sessionExtras, switching, wellFormedNote, wellFormedTicket } from "./scenarios.ts";
 import { stages, type Scenario } from "./stages.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
@@ -35,6 +35,10 @@ const listed: Record<string, Scenario[]> = {
   "bin/enrol": [
     { label: "enrolling a bare repo", run: () => enrolling(bare()).run() },
     { label: "with GitHub refusing every call", run: () => enrolling(bare({ refused: { "": NOISE } })).run() },
+  ],
+  "bin/runner": [
+    { label: "installing a repo's PC runners and sending its jobs there", run: () => switching().run("pc") },
+    { label: "refusing a public repo", run: () => switching({ isPrivate: false }).run("pc") },
   ],
   "bin/save": [
     { label: "saving a build", run: () => saving().run() },

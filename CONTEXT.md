@@ -62,6 +62,11 @@ changes only through a PR passing `check`. `bin/enrol <repo>` sets what is missi
 could not set; a missing auto-merge Save meets later is the repo's fault, never the ticket's.
 _Avoid_: onboard, install, register
 
+**PC runner**:
+A runner on the owner's PC labelled `pc`, one set per private repo, installed by `bin/runner`. A
+repo's `CI_RUNNER` set to `pc` sends its stage jobs and CI there; unset, to GitHub's runners.
+_Avoid_: self-hosted mode, local runner
+
 **Worker**:
 A part of the machine whose worth is the work it does: a step, a script, a stage.
 _Avoid_: job, component
