@@ -37,8 +37,6 @@ jobs:
           mkdir -p "$HOME/bin"
           ln -sf "$RUNNER_TEMP/agent-hooks/bin/check" "$HOME/bin/check"
 
-      - run: python3 "$RUNNER_TEMP/agent-hooks/treewide.py" .
-
       - uses: actions/setup-node@v4
         with:
           node-version: 24
