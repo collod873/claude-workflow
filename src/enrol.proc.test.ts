@@ -2,9 +2,10 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { bare, CI, DEPLOY, ENROLLED as REPO, enrolling, key } from "./scenarios.ts";
+import { bare, CI, DEPLOY, ENROLLED as REPO, enrolling, key, PC_RUNS_ON } from "./scenarios.ts";
 
 const CALLER = readFileSync(join(import.meta.dirname, "..", ".github", "caller.yml"), "utf8");
+const OFFER = `enrol: \`bin/runner ${REPO} pc\` moves its jobs to this PC; run one fresh full check there and watch its peak memory before leaving it on\n`;
 
 describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#1152)", () => {
   it("writes the caller file naming only the repo's own CI, since GitHub refuses a workflow that hears itself, reaches it with the App, sets every secret, label and auto-merge, and holds main for check", () => {
@@ -26,7 +27,7 @@ describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#11
     expect(after.allow_auto_merge).toBe(true);
     expect(after.rules.map(({ type }) => type)).toEqual(expect.arrayContaining(["pull_request", "required_status_checks"]));
     expect(JSON.stringify(after.rules)).toContain('"context":"check"');
-    expect(result.stdout).toBe(`enrol: ${REPO} enrolled, 9 settings set\n`);
+    expect(result.stdout).toBe(`enrol: ${REPO} enrolled, 9 settings set\n${OFFER}`);
   });
 
   it("writes .github/caller.yml as it stands, but for the name of the repo's CI", () => {
@@ -68,7 +69,7 @@ describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#11
 
     const again = run();
 
-    expect(again).toEqual({ status: 0, stdout: `enrol: ${REPO} was already enrolled, nothing changed\n`, stderr: "" });
+    expect(again).toEqual({ status: 0, stdout: `enrol: ${REPO} was already enrolled, nothing changed\n${OFFER}`, stderr: "" });
     expect(held().writes).toHaveLength(before);
   });
 
@@ -174,7 +175,7 @@ describe("bin/enrol keeps an enrolled repo current with the owner's own login (#
     run();
     const before = held().writes.length;
 
-    expect(run()).toEqual({ status: 0, stdout: `enrol: ${REPO} was already enrolled, nothing changed\n`, stderr: "" });
+    expect(run()).toEqual({ status: 0, stdout: `enrol: ${REPO} was already enrolled, nothing changed\n${OFFER}`, stderr: "" });
     expect(held().writes).toHaveLength(before);
   });
 
@@ -230,11 +231,54 @@ describe("bin/enrol keeps an enrolled repo current with the owner's own login (#
     const { run, held } = enrolling(bare({ rules: HELD_FOR_CHECK, allow_auto_merge: true, pending: true, files: { ".github/workflows/ci.yml": CI, ".github/workflows/machine.yml": STALE } }));
     const waiting = `- the caller file: https://github.com/${REPO}/pull/900 merges on its own once check passes`;
 
-    expect(run().stdout).toBe(`enrol: ${REPO} is enrolled once its PR merges, 7 settings set:\n${waiting}\n`);
+    expect(run().stdout).toBe(`enrol: ${REPO} is enrolled once its PR merges, 7 settings set:\n${waiting}\n${OFFER}`);
     const before = held().writes.length;
 
-    expect(run()).toEqual({ status: 0, stdout: `enrol: ${REPO} is enrolled once its PR merges, 0 settings set:\n${waiting}\n`, stderr: "" });
+    expect(run()).toEqual({ status: 0, stdout: `enrol: ${REPO} is enrolled once its PR merges, 0 settings set:\n${waiting}\n${OFFER}`, stderr: "" });
     expect(held().writes).toHaveLength(before);
     expect(held().prs.map(({ auto }) => auto)).toEqual([true]);
+  });
+});
+
+const HELD_OFF_THE_PC = [
+  "name: Gate",
+  "on:",
+  "  pull_request:",
+  "jobs:",
+  "  check:",
+  "    runs-on: ubuntu-latest",
+  "    services:",
+  "      postgres:",
+  "        image: postgres:16",
+  "        ports:",
+  '          - "5432:5432"',
+  "          - 6379",
+  "    steps:",
+  "      - run: pnpm check",
+  "  machine:",
+  "    uses: collod873/claude-workflow/.github/workflows/tickets.yml@main",
+  "",
+].join("\n");
+
+describe("bin/enrol says what a repo needs before its jobs suit this PC's runners, and how to move them (#1270)", () => {
+  it("names each job left on GitHub's runners, a check that skips ~/bin/check's slots and a pinned host port, then offers bin/runner", () => {
+    const { run } = enrolling(bare({ files: { ".github/workflows/ci.yml": HELD_OFF_THE_PC, ".github/workflows/deploy.yml": DEPLOY } }));
+
+    const result = run();
+
+    expect(result.status).toBe(0);
+    expect(result.stdout.split("\n").slice(1)).toEqual([
+      `enrol: ${REPO} needs 3 changes for PC runners:`,
+      `- ci.yml's check job runs on ubuntu-latest, not ${PC_RUNS_ON}, so it stays on GitHub's runners`,
+      "- ci.yml's check job runs its check without ~/bin/check, so it skips the PC's check slots",
+      "- ci.yml's check job pins host port 5432 for postgres, which two PC runners cannot share",
+      ...OFFER.split("\n"),
+    ]);
+  });
+
+  it("adds nothing for a repo already on this PC with nothing to change", () => {
+    const { run } = enrolling(bare({ variables: ["CI_RUNNER"] }));
+
+    expect(run().stdout).toBe(`enrol: ${REPO} enrolled, 9 settings set\n`);
   });
 });

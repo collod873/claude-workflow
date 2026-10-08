@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { createSign } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { parse, parseDocument } from "yaml";
 import { ENROLLED_CALLER } from "./post.ts";
 import { LABELS, MACHINE } from "./spelled.ts";
@@ -19,6 +19,8 @@ const HANDED = "ci: hand this repo's tickets to the machine";
 const LINE_LIMIT = 200;
 const SHOWN = 4;
 const MOST_SHOWN = 5;
+const PC_RUNS_ON = /^ {4}runs-on: (.*)$/m.exec(readFileSync(join(import.meta.dirname, "..", ".github", "workflows", "tickets.yml"), "utf8"))?.[1] ?? "";
+const PC_SWITCH = /vars\.(\w+)/.exec(PC_RUNS_ON)?.[1] ?? "";
 
 const made = () => LABELS.filter(({ kind }) => kind !== "try");
 
@@ -30,10 +32,18 @@ interface Setting {
   set: () => { waits: string; opened: boolean } | void;
 }
 
+interface Job {
+  name?: string;
+  uses?: string;
+  "runs-on"?: unknown;
+  steps?: { run?: unknown }[];
+  services?: Record<string, { ports?: unknown[] } | null>;
+}
+
 interface Flow {
   name?: string;
   on?: unknown;
-  jobs?: Record<string, { name?: string } | null>;
+  jobs?: Record<string, Job | null>;
 }
 
 interface Rule {
@@ -65,13 +75,39 @@ function found<T>(args: string[]): T | undefined {
 
 const triggers = (on: unknown): string[] => (typeof on === "string" ? [on] : Array.isArray(on) ? on.map(String) : Object.keys(on ?? {}));
 
-function checkRunner(text: string): boolean {
+const isCheck = (id: string, job: Job | null) => (job?.name ?? id) === CHECK;
+
+function flowOf(text: string): Flow | undefined {
   try {
-    const flow = parse(text) as Flow;
-    return triggers(flow.on).includes("pull_request") && Object.entries(flow.jobs ?? {}).some(([id, job]) => (job?.name ?? id) === CHECK);
+    return parse(text) as Flow;
   } catch {
-    return false;
+    return undefined;
   }
+}
+
+function checkRunner(text: string): boolean {
+  const flow = flowOf(text);
+  return flow !== undefined && triggers(flow.on).includes("pull_request") && Object.entries(flow.jobs ?? {}).some(([id, job]) => isCheck(id, job));
+}
+
+function pcGaps(path: string, text: string): string[] {
+  const flow = flowOf(text);
+  if (flow === undefined) return [];
+  const file = basename(path);
+  const runsCi = checkRunner(text);
+  return Object.entries(flow.jobs ?? {}).flatMap(([id, job]) => {
+    if (job === null || job.uses !== undefined) return [];
+    const runsOn = typeof job["runs-on"] === "string" ? job["runs-on"] : (JSON.stringify(job["runs-on"]) ?? "nothing");
+    const skipsSlots = runsCi && isCheck(id, job) && !(job.steps ?? []).some(({ run }) => /\bbin\/check\b/.test(String(run ?? "")));
+    const pinned = Object.entries(job.services ?? {}).flatMap(([service, held]) =>
+      (held?.ports ?? []).map(String).flatMap((port) => (port.includes(":") ? [`- ${file}'s ${id} job pins host port ${port.split(":").at(-2)} for ${service}, which two PC runners cannot share`] : [])),
+    );
+    return [
+      ...(runsOn === PC_RUNS_ON ? [] : [`- ${file}'s ${id} job runs on ${runsOn}, not ${PC_RUNS_ON}, so it stays on GitHub's runners`]),
+      ...(skipsSlots ? [`- ${file}'s ${id} job runs its check without ~/bin/check, so it skips the PC's check slots`] : []),
+      ...pinned,
+    ];
+  });
 }
 
 const url64 = (text: string) => Buffer.from(text).toString("base64url");
@@ -93,19 +129,20 @@ function callerFor(ci: string): string {
   return caller.toString({ flowCollectionPadding: false, lineWidth: 0 });
 }
 
-function enrolling(repo: string): Setting[] {
+function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] } {
   const contents = (path: string, ref?: string) => found<{ content: string; sha: string }>(["api", `repos/${repo}/contents/${path}${ref === undefined ? "" : `?ref=${ref}`}`]);
   const textOf = (path: string, ref?: string) => {
     const file = contents(path, ref);
     return file === undefined ? undefined : { text: Buffer.from(file.content, "base64").toString("utf8"), sha: file.sha };
   };
   const held = once(() => read<{ id: number; allow_auto_merge: boolean; default_branch: string }>(["api", `repos/${repo}`]));
+  const flows = once(() =>
+    (found<{ path: string; type: string }[]>(["api", `repos/${repo}/contents/${WORKFLOWS}`]) ?? [])
+      .filter(({ path, type }) => type === "file" && path !== CALLER && /\.ya?ml$/.test(path))
+      .map(({ path }) => ({ path, text: textOf(path)?.text ?? "" })),
+  );
   const ci = once(() => {
-    const listed = (found<{ path: string; type: string }[]>(["api", `repos/${repo}/contents/${WORKFLOWS}`]) ?? []).filter(({ path, type }) => type === "file" && path !== CALLER && /\.ya?ml$/.test(path));
-    const runners = listed.flatMap(({ path }) => {
-      const text = textOf(path)?.text ?? "";
-      return checkRunner(text) ? [(parse(text) as Flow).name ?? path] : [];
-    });
+    const runners = flows().flatMap(({ path, text }) => (checkRunner(text) ? [(parse(text) as Flow).name ?? path] : []));
     const [only, ...more] = runners;
     if (only === undefined) throw new Refused(`no workflow in ${WORKFLOWS} runs a \`${CHECK}\` job on pull requests, so there is no CI to name`);
     if (more.length > 0) throw new Refused(`more than one workflow runs a \`${CHECK}\` job on pull requests: ${runners.join(", ")}`);
@@ -177,7 +214,21 @@ function enrolling(repo: string): Setting[] {
     return textOf(CALLER)?.text === caller() ? undefined : { waits: url, opened: true };
   };
 
-  return [
+  const forPc = () => {
+    try {
+      const gaps = flows().flatMap(({ path, text }) => pcGaps(path, text).map((line) => line.slice(0, LINE_LIMIT)));
+      const onPc = variables().includes(PC_SWITCH.toLowerCase());
+      return [
+        ...(gaps.length === 0 ? [] : [`enrol: ${repo} needs ${gaps.length} ${gaps.length === 1 ? "change" : "changes"} for PC runners:`, ...gaps]),
+        ...(onPc ? [] : [`enrol: \`bin/runner ${repo} pc\` moves its jobs to this PC; run one fresh full check there and watch its peak memory before leaving it on`]),
+      ];
+    } catch (error) {
+      if (!(error instanceof Refused)) throw error;
+      return [`enrol: could not tell what ${repo} needs for PC runners: ${error.message}`.slice(0, LINE_LIMIT)];
+    }
+  };
+
+  const settings: Setting[] = [
     {
       name: "the App's access",
       held: () => found(["api", ...asApp(), `repos/${repo}/installation`]) !== undefined,
@@ -232,13 +283,15 @@ function enrolling(repo: string): Setting[] {
       set: () => (rules().some(({ type }) => type === "pull_request") ? throughPr() : write()),
     },
   ];
+  return { settings, forPc };
 }
 
 function enrol(repo: string): number {
   const set: string[] = [];
   const waiting: string[] = [];
   const refused: string[] = [];
-  for (const setting of enrolling(repo)) {
+  const { settings, forPc } = enrolling(repo);
+  for (const setting of settings) {
     try {
       if (setting.held()) continue;
       const pending = setting.set();
@@ -256,6 +309,7 @@ function enrol(repo: string): number {
   }
   if (waiting.length > 0) console.log([`enrol: ${repo} is enrolled once its PR merges, ${set.length} settings set:`, ...waiting].join("\n"));
   else console.log(set.length === 0 ? `enrol: ${repo} was already enrolled, nothing changed` : `enrol: ${repo} enrolled, ${set.length} settings set`);
+  for (const line of forPc()) console.log(line);
   return 0;
 }
 
