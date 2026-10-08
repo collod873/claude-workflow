@@ -14,6 +14,8 @@ const WAIT_SECONDS = Number(process.env.RUNNER_WAIT_SECONDS ?? "60");
 const UNITS = "/etc/systemd/system";
 const SLICE = "pc-runners.slice";
 const PC_RUNNERS_MEMORY_GB = 10;
+const CHECK_SLOTS = 1;
+const CHECK_SLOTS_DIR = `${HOME}/check-slots`;
 const slice = ["[Slice]", `MemoryHigh=${PC_RUNNERS_MEMORY_GB - 1}G`, `MemoryMax=${PC_RUNNERS_MEMORY_GB}G`, "MemorySwapMax=0", ""].join("\n");
 const confinement = ["[Service]", `Slice=${SLICE}`, "OOMPolicy=continue", "KillMode=mixed", ""].join("\n");
 const NOT_FOUND = /\(HTTP 404\)|not found/i;
@@ -80,6 +82,7 @@ function provisionNode(): void {
 }
 
 const dirOf = (repo: string, name: string) => `${HOME}/runners/${repo.replace("/", "-")}/${name}`;
+const unitOf = (repo: string, name: string) => `actions.runner.${repo.replace("/", "-")}.${name}.service`;
 
 function install(repo: string, name: string): void {
   const dir = dirOf(repo, name);
@@ -111,11 +114,11 @@ function provisionSlice(): void {
 
 function settle(repo: string, name: string, busy: boolean): "started" | "mid-job" {
   const dir = dirOf(repo, name);
-  const dropIns = `${UNITS}/actions.runner.${repo.replace("/", "-")}.${name}.service.d`;
-  asRunnerUser(`mkdir -p ${dir}/home ${dir}/tmp ${dir}/toolcache`);
+  const dropIns = `${UNITS}/${unitOf(repo, name)}.d`;
+  asRunnerUser(`mkdir -p ${dir}/home ${dir}/tmp ${dir}/toolcache ${CHECK_SLOTS_DIR}`);
   asRoot(`mkdir -p ${dropIns}`);
   const clear = `${dir}/clear.sh`;
-  const env = [`HOME=${dir}/home`, `TMPDIR=${dir}/tmp`, `RUNNER_TOOL_CACHE=${dir}/toolcache`, `AGENT_TOOLSDIRECTORY=${dir}/toolcache`, `ACTIONS_RUNNER_HOOK_JOB_STARTED=${clear}`, `ACTIONS_RUNNER_HOOK_JOB_COMPLETED=${clear}`, "LANG=C.UTF-8", ""].join("\n");
+  const env = [`HOME=${dir}/home`, `TMPDIR=${dir}/tmp`, `RUNNER_TOOL_CACHE=${dir}/toolcache`, `AGENT_TOOLSDIRECTORY=${dir}/toolcache`, `ACTIONS_RUNNER_HOOK_JOB_STARTED=${clear}`, `ACTIONS_RUNNER_HOOK_JOB_COMPLETED=${clear}`, `CHECK_SLOTS=${CHECK_SLOTS}`, `CHECK_SLOTS_DIR=${CHECK_SLOTS_DIR}`, "LANG=C.UTF-8", ""].join("\n");
   const files = [
     staged({ as: asRunnerUser, path: clear, text: clearing(name), mode: "755" }),
     staged({ as: asRunnerUser, path: `${dir}/.env`, text: env, mode: "644" }),
@@ -125,8 +128,15 @@ function settle(repo: string, name: string, busy: boolean): "started" | "mid-job
   const changed = files.some((file) => file.changed);
   if (changed && busy) return "mid-job";
   for (const file of files) place(file);
-  asRoot(`cd ${dir} && ${changed ? "systemctl daemon-reload && ./svc.sh stop >/dev/null && " : ""}./svc.sh start >/dev/null`);
+  asRoot(`cd ${dir} && ${changed ? "systemctl daemon-reload && ./svc.sh stop >/dev/null && " : ""}systemctl enable --quiet ${unitOf(repo, name)} && ./svc.sh start >/dev/null`);
   return "started";
+}
+
+function turnOff(repo: string, extra: { name: string; busy: boolean }[]): string {
+  for (const { name, busy } of extra) asRoot(`systemctl disable --quiet ${busy ? "" : "--now "}${unitOf(repo, name)}`);
+  const busy = extra.filter(({ busy }) => busy).length;
+  if (extra.length === 0) return "";
+  return busy === 0 ? `, ${extra.length} turned off` : `, ${extra.length} turned off, ${busy} once its job ends`;
 }
 
 function stopIdle(repo: string, runners: { name: string; status: string; busy: boolean }[]): string {
@@ -146,24 +156,27 @@ function waitOnline(online: () => number): number {
   return count;
 }
 
-function toPc(repo: string): string {
+function toPc(repo: string, wanted: number): string {
   const on = onRepo(repo);
   if (!on.isPrivate()) throw new Refused(`${repo} is public, so a PC runner would run strangers' PRs on this PC; it stays on GitHub's runners`);
   const host = hostname().toLowerCase();
-  const registered = new Map(on.pcRunners().map(({ name, busy }) => [name, busy]));
-  const names = Array.from({ length: PC_RUNNERS }, (_, at) => `${host}-${at + 1}`);
+  const runners = on.pcRunners();
+  const registered = new Map(runners.map(({ name, busy }) => [name, busy]));
+  const names = Array.from({ length: wanted }, (_, at) => `${host}-${at + 1}`);
   const missing = names.filter((name) => !registered.has(name));
+  const extra = runners.filter(({ name }) => name.startsWith(`${host}-`) && !names.includes(name));
   provisionUser();
   provisionNode();
   provisionSlice();
   for (const name of missing) install(repo, name);
   const midJob = names.filter((name) => settle(repo, name, registered.get(name) === true) === "mid-job");
-  const count = waitOnline(on.online);
+  const off = turnOff(repo, extra);
+  const count = waitOnline(() => on.pcRunners().filter(({ name, status }) => names.includes(name) && status === "online").length);
   if (count === 0) throw new Refused(`no PC runner of ${repo} came online within ${WAIT_SECONDS}s, so it stays where it was: start them with \`sudo systemctl start 'actions.runner.*'\``);
   if (on.current() !== "pc") gh(["variable", "set", VARIABLE, "-R", repo, "--body", LABEL]);
   const installed = missing.length > 0 ? `, ${missing.length} installed` : "";
   const waiting = midJob.length > 0 ? `; ${midJob.join(", ")} kept their old setup mid-job: run this again once they finish` : "";
-  return `${repo} runs on this PC from its next job, ${count} PC runners online${installed}${waiting}`;
+  return `${repo} runs on this PC from its next job, ${count} PC runners online${installed}${off}${waiting}`;
 }
 
 function toGithub(repo: string): string {
@@ -179,9 +192,9 @@ function where(repo: string): string {
   return `${repo} runs on ${on.current() === "pc" ? "this PC" : "GitHub's runners"}, ${on.online()} of ${on.pcRunners().length} PC runners online`;
 }
 
-function runner(repo: string, mode: string | undefined): number {
+function runner(repo: string, mode: string | undefined, count: string | undefined): number {
   try {
-    console.log(`runner: ${mode === "pc" ? toPc(repo) : mode === "github" ? toGithub(repo) : where(repo)}`);
+    console.log(`runner: ${mode === "pc" ? toPc(repo, Number(count ?? PC_RUNNERS)) : mode === "github" ? toGithub(repo) : where(repo)}`);
     return 0;
   } catch (error) {
     if (!(error instanceof Refused)) throw error;
@@ -191,7 +204,7 @@ function runner(repo: string, mode: string | undefined): number {
 }
 
 if (import.meta.main) {
-  const [repo, mode] = process.argv.slice(2);
+  const [repo, mode, count] = process.argv.slice(2);
   if (repo === undefined) throw new Error("no repo in the arguments");
-  process.exit(runner(repo, mode));
+  process.exit(runner(repo, mode, count));
 }

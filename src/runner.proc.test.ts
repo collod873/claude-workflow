@@ -29,7 +29,7 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
       expect(calls).toContain(`bash -c cd ${dir} && ./bin/installdependencies.sh >/dev/null && ./svc.sh install ghrunner >/dev/null`);
     }
     const dir = `/home/ghrunner/runners/collod873-Lumaria/${HOST}-2`;
-    expect(placed(`${dir}/.env`).split("\n")).toEqual(expect.arrayContaining([`HOME=${dir}/home`, `TMPDIR=${dir}/tmp`, `ACTIONS_RUNNER_HOOK_JOB_STARTED=${dir}/clear.sh`, `ACTIONS_RUNNER_HOOK_JOB_COMPLETED=${dir}/clear.sh`]));
+    expect(placed(`${dir}/.env`).split("\n")).toEqual(expect.arrayContaining([`HOME=${dir}/home`, `TMPDIR=${dir}/tmp`, `ACTIONS_RUNNER_HOOK_JOB_STARTED=${dir}/clear.sh`, `ACTIONS_RUNNER_HOOK_JOB_COMPLETED=${dir}/clear.sh`, "CHECK_SLOTS=1", "CHECK_SLOTS_DIR=/home/ghrunner/check-slots"]));
   });
 
   it("installs only the PC runners a repo lacks, so a repo with two gains the other four", () => {
@@ -37,6 +37,19 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
 
     expect(run("pc").stdout).toContain(", 4 installed");
     expect(sudo().filter((call) => call.includes("config.sh")).map((call) => /--name '([^']+)'/.exec(call)?.[1])).toEqual([3, 4, 5, 6].map((n) => `${HOST}-${n}`));
+  });
+
+  it("keeps only as many PC runners as asked, turning the rest off for good and letting a mid-job one finish first", () => {
+    const { run, sudo } = switching({ runners: Array.from({ length: PC_RUNNER_COUNT }, (_, at) => pcRunner(`${HOST}-${at + 1}`, "online", at === 2)) });
+    const unit = (n: number) => `actions.runner.collod873-Lumaria.${HOST}-${n}.service`;
+
+    const result = run("pc", "1");
+
+    expect(result.stdout).toBe(`runner: ${REPO} runs on this PC from its next job, 1 PC runners online, 5 turned off, 1 once its job ends\n`);
+    const calls = sudo();
+    expect(calls.filter((call) => call.includes("systemctl disable"))).toEqual([2, 3, 4, 5, 6].map((n) => `bash -c systemctl disable --quiet ${n === 3 ? "" : "--now "}${unit(n)}`));
+    expect(calls.filter((call) => call.includes("svc.sh start"))).toHaveLength(1);
+    expect(calls.some((call) => call.includes(`systemctl enable --quiet ${unit(1)}`))).toBe(true);
   });
 
   it("restarts a PC runner only when its setup changed, so a flip never kills a job it is running", () => {
@@ -89,7 +102,7 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
     const before = sudo().length;
 
     expect(run("pc").stdout).not.toContain("mid-job");
-    expect(sudo().slice(before)).toContain(`bash -c cd /home/ghrunner/runners/collod873-Lumaria/${HOST}-1 && systemctl daemon-reload && ./svc.sh stop >/dev/null && ./svc.sh start >/dev/null`);
+    expect(sudo().slice(before)).toContain(`bash -c cd /home/ghrunner/runners/collod873-Lumaria/${HOST}-1 && systemctl daemon-reload && ./svc.sh stop >/dev/null && systemctl enable --quiet actions.runner.collod873-Lumaria.${HOST}-1.service && ./svc.sh start >/dev/null`);
     expect(placed(dropIn)).toContain("Slice=pc-runners.slice");
   });
 
