@@ -14,7 +14,7 @@ export interface Prompt {
   build: (filled: Record<string, string>) => string;
 }
 
-export const PROMPTS: Prompt[] = (await stages()).flatMap((stage) => stage.prompts ?? []);
+const PROMPTS: Prompt[] = (await stages()).flatMap((stage) => stage.prompts ?? []);
 
 function ownWords(prompt: Prompt): number {
   return Buffer.byteLength(prompt.build({}));
