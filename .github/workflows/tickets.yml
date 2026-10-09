@@ -722,8 +722,6 @@ jobs:
         with:
           node-version: 24
 
-      - uses: ./.github/actions/pinned
-
       - run: npm ci
 
       - env:
