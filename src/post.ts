@@ -115,6 +115,7 @@ export const MACHINE_REPO = `${OWNER}/claude-workflow`;
 const callerRepo = /^([^/]+\/[^/]+)\//.exec(process.env.CALLED_FROM ?? "")?.[1];
 export const FOREIGN = callerRepo !== undefined && callerRepo !== MACHINE_REPO;
 export const ENROLLED_CALLER = "machine.yml";
+export const ENROLLED_REVIEW = "tickets / review";
 export const CALLER_FILE = /\/([^/@]+)@/.exec(process.env.CALLED_FROM ?? "")?.[1] ?? ENROLLED_CALLER;
 export const FAULT_FROM = new RegExp(`^${FAULT_OF}(${OWNER}/[\\w.-]+)#(\\d+)${FAULT_WAITS}\\.`, "m");
 export function followUpBody(whyLines: string[], done: string[]): string {

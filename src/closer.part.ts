@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, symlinkSync } from "n
 import { join } from "node:path";
 import { authored, BIN, commitAt, execute, git, plant, refusedMark, type Said, scratch, script } from "./scenarios.ts";
 import { MACHINE } from "./spelled.ts";
-import { WAITING } from "./post.ts";
+import { ENROLLED_REVIEW, MACHINE_REPO, WAITING } from "./post.ts";
 import { declareStage } from "./stages.ts";
 
 const CLOSER_TICKET = [
@@ -79,7 +79,7 @@ export interface QueuedPr {
 
 const RUNS = { green: ["COMPLETED", "SUCCESS"], pending: ["IN_PROGRESS", ""], red: ["COMPLETED", "FAILURE"] } as const;
 
-function listed(pr: QueuedPr, head: string) {
+function listed(pr: QueuedPr, head: string, reviewedAs: string) {
   const [status, conclusion] = RUNS[pr.checks ?? "green"];
   return {
     number: Number(pr.number),
@@ -89,7 +89,7 @@ function listed(pr: QueuedPr, head: string) {
     statusCheckRollup: [
       { __typename: "CheckRun", name: "check", status: "COMPLETED", conclusion: "SUCCESS" },
       { __typename: "CheckRun", name: "meters", status: "COMPLETED", conclusion: "FAILURE" },
-      ...(pr.unreviewed === true ? [] : [{ __typename: "CheckRun", name: "review", status, conclusion }]),
+      ...(pr.unreviewed === true ? [] : [{ __typename: "CheckRun", name: reviewedAs, status, conclusion }]),
     ],
   };
 }
@@ -204,7 +204,7 @@ export function closing({
       ticketBody,
       "BODY",
       "    ;;",
-      `  *"pr list"*) printf '%s\\n' '${JSON.stringify(openPrs.map((pr, at) => listed(pr, heads[at] ?? "")))}' ;;`,
+      `  *"pr list"*) printf '%s\\n' '${JSON.stringify(openPrs.map((pr, at) => listed(pr, heads[at] ?? "", calledFrom === undefined || calledFrom.startsWith(`${MACHINE_REPO}/`) ? "review" : ENROLLED_REVIEW)))}' ;;`,
       ...openPrs.filter((pr) => pr.refusedBefore === true).map((pr) => `  *"issues/${pr.number}/comments"*) cat "${join(root, `pr-${pr.number}-comments.json`)}" ;;`),
       ...openPrs.map((pr) => `  *"pr update-branch ${pr.number}"*) ${pr.refused === undefined ? "exit 0" : `printf '%s\\n' '${pr.refused}' >&2; exit 1`} ;;`),
       ...openPrs.filter((pr) => pr.mergeRefused !== undefined).map((pr) => `  *"pr merge ${pr.number} "*) printf '%s\\n' '${pr.mergeRefused ?? ""}' >&2; exit 1 ;;`),

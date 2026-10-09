@@ -894,7 +894,7 @@ describe("bin/close stops at a mark GitHub refused, so it closes nothing whose l
   });
 });
 
-describe("bin/close, called from another repo's caller file, wakes builders through that file and lands on its own check (#1135)", () => {
+describe("bin/close, called from another repo's caller file, wakes builders through that file and lands on its check and its review (#1135)", () => {
   const calledFrom = "collod873/Lumaria/.github/workflows/machine.yml@refs/heads/main";
   const conflicted = { number: "909", ticket: "830", refused: "GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts." };
 
@@ -915,11 +915,14 @@ describe("bin/close, called from another repo's caller file, wakes builders thro
     expect(calls().some((call) => call.startsWith("workflow\nrun\n"))).toBe(false);
   });
 
-  it("brings a PR up to date once the caller's check passed, with no review run to wait for", () => {
-    const { calls, run } = closing({ ticket: "819", afterCheck: true, openPrs: [{ number: "936", ticket: "856", unreviewed: true }], calledFrom });
+  it.each([
+    ["pending", false],
+    ["green", true],
+  ] as const)("brings a PR up to date only once the caller's own review is green as well as its check: %s (#1285)", (checks, updated) => {
+    const { calls, run } = closing({ ticket: "819", afterCheck: true, openPrs: [{ number: "936", ticket: "856", checks }], calledFrom });
 
     expect(run().status).toBe(0);
-    expect(calls().some((call) => call.startsWith("pr\nupdate-branch\n936"))).toBe(true);
+    expect(calls().some((call) => call.startsWith("pr\nupdate-branch\n936"))).toBe(updated);
   });
 
   it("marks the ticket closed with the machine's bin/mark, from a caller's tree that holds no bin/ of its own", () => {

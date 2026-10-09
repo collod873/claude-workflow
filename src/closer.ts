@@ -1,6 +1,6 @@
 import { appendFileSync } from "node:fs";
 import { LABELLED_WAITING, splitClosed, splitInto } from "./builder.ts";
-import { answered, CALLER_FILE as caller, commentOnPr, commentOnTicket, commentsRead, FOREIGN, gh, ghAs, ghRead, git, gitRead, type Held, heldOn, labelsHeld, markWith, NOTHING_MARKED, prOfTicket, readOrStop, RESOLVING, REVIEWED_FROM, TICKET_BRANCH, ticketBranch, unread, WAITING, type MarkedLabel } from "./post.ts";
+import { answered, CALLER_FILE as caller, commentOnPr, commentOnTicket, commentsRead, ENROLLED_REVIEW, FOREIGN, gh, ghAs, ghRead, git, gitRead, type Held, heldOn, labelsHeld, markWith, NOTHING_MARKED, prOfTicket, readOrStop, RESOLVING, REVIEWED_FROM, TICKET_BRANCH, ticketBranch, unread, WAITING, type MarkedLabel } from "./post.ts";
 import { FINGERPRINT } from "./reviewer.ts";
 import { CHECKING, LANDING, QUEUED } from "./spelled.ts";
 import { exitFor, type Stop, stoppedAt } from "./stops.ts";
@@ -10,7 +10,7 @@ const MERGED = new RegExp(`^Merge pull request #(\\d+) from \\S+?(?:/${ticketBra
 const NAMED = /^(?:[ ,]*#\d+)+/;
 const BUILDS = /^Builds #(\d+)[ \t]*$/m;
 const MACHINE_BRANCH = new RegExp(`^(?:${ticketBranch("")}|land/)`);
-const REQUIRED_CHECKS = FOREIGN ? ["check"] : ["check", "review"];
+const REQUIRED_CHECKS = ["check", FOREIGN ? ENROLLED_REVIEW : "review"];
 const PASSED = new Set(["SUCCESS", "SKIPPED", "NEUTRAL"]);
 
 const quietly = { ...process.env, GH_TOKEN: process.env.QUIET_GH_TOKEN };
