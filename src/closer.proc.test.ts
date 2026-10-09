@@ -975,6 +975,16 @@ describe("bin/close names the ticket in its hands when it stops red, so the run 
     expect(output()).toBe("ticket=815\n");
   });
 
+  it("ends red naming a green PR's ticket when its branch update failed and no other PR moved, as Lumaria#1010's did in the probe Wave (#1281)", () => {
+    const { output, run } = closing({ ticket: "819", afterCheck: true, openPrs: [{ number: "939", ticket: "859", refused: "unknown command \"update-branch\" for \"gh pr\"" }] });
+
+    const { status, stderr } = run();
+
+    expect(status).toBe(1);
+    expect(stderr).toContain("PR #939 could not be brought up to date with main");
+    expect(output()).toBe("ticket=859\n");
+  });
+
   it("names nothing on a run that ends green", () => {
     const { output, run } = closing({ ticket: "814" });
 

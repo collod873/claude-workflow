@@ -251,18 +251,24 @@ function merged({ number, headRefOid }: QueuedPr): string {
   return `PR #${number} could not be merged, so auto-merge is left to merge it: ${(merge.stderr || merge.stdout).trim().split("\n")[0] || "no reason given"}`;
 }
 
-function queue(): string {
+interface Queued {
+  said: string;
+  stranded?: { pr: QueuedPr; reason: string };
+}
+
+function queue(): Queued {
   gitRead(["fetch", "--quiet", "origin"], `origin could not be fetched, ${NOTHING_MARKED}`);
   const queued = queuedPrs();
   const merging = queued.find((pr) => pr.checks !== "red" && upToDate(pr));
   const moved = new Map<QueuedPr, Moved>();
+  let stranded: Queued["stranded"];
   const next =
     merging === undefined
       ? queued
           .filter((pr) => pr.checks === "green")
           .find((pr) => {
             const outcome = conflictReportedAtHead(pr) ? "conflicted" : updateBranch(pr);
-            if (typeof outcome === "object") console.log(`close: PR #${pr.number} could not be brought up to date with main, and will be tried again: ${outcome.retried}`);
+            if (typeof outcome === "object" && TICKET_BRANCH.test(pr.headRefName)) stranded ??= { pr, reason: outcome.retried };
             moved.set(pr, outcome);
             return outcome === "updated";
           })
@@ -271,9 +277,16 @@ function queue(): string {
     const ticket = TICKET_BRANCH.exec(pr.headRefName)?.[1];
     if (ticket !== undefined && moved.get(pr) !== "updated") holding(ticket, () => settle(ticket, pr, merging, moved.get(pr) === "conflicted"));
   }
-  if (merging?.checks === "green") return merged(merging);
-  if (merging !== undefined) return `PR #${merging.number} is up to date with main, so the queue waits for it`;
-  return next === undefined ? "no green PR waits behind main" : `PR #${next.number} brought up to date with main`;
+  if (merging?.checks === "green") return { said: merged(merging) };
+  if (merging !== undefined) return { said: `PR #${merging.number} is up to date with main, so the queue waits for it` };
+  if (next !== undefined) return { said: `PR #${next.number} brought up to date with main` };
+  return { said: "no green PR waits behind main", stranded };
+}
+
+function unmoved({ stranded }: Queued): Stop | undefined {
+  if (stranded === undefined) return undefined;
+  inHand = TICKET_BRANCH.exec(stranded.pr.headRefName)?.[1];
+  return stoppedAt("unmoved", `close: PR #${stranded.pr.number} could not be brought up to date with main, and no other PR moved, so this run ends red to be run again: ${stranded.reason}`);
 }
 
 const endedOrMerged = (ticket: string, merged: string | undefined, held: string) => (ticket === merged ? "CLOSED COMPLETED" : ticketState(ticket, `so #${held} is not woken`));
@@ -332,10 +345,10 @@ function close(): Stop | undefined {
   inHand = merge?.ticket;
   const queued = queue();
   if (merge === undefined) {
-    console.log(`close: ${queued}${wokenAfterParents()}`);
-    return undefined;
+    console.log(`close: ${queued.said}${wokenAfterParents()}`);
+    return unmoved(queued);
   }
-  return closeMerged(merge, "HEAD");
+  return closeMerged(merge, "HEAD") ?? unmoved(queued);
 }
 
 export function closeMerged(merge: Built, at: string, say = console.log): Stop | undefined {
