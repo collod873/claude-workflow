@@ -289,7 +289,7 @@ function filedForMachine(ticket: string, answer: Answer): Round {
   if (refused.length > 0) return { red: ["Your `machine` answer was refused, and nothing was filed:", ...refused.map((refusal) => `- ${refusal}`)].join("\n") };
   const filed = postings.map((posting) => post({ kind: "ticket", ...posting }, inMachineRepo).said.trim());
   if (filed.some((said) => !FILED.test(said))) return { ended: calledOwner(ticket, `it found the machine at fault and filed ${filed.filter((said) => FILED.test(said)).length} of ${filed.length} tickets in ${MACHINE_REPO}`) };
-  commentOnTicket(ticket, `@${OWNER} the builder of #${ticket} found the machine at fault and filed ${filed.join(", ")}. #${ticket} waits on it, ${LABELLED_WAITING}: take the label off once it merges. ${answer.reason}`, gh);
+  commentOnTicket(ticket, `The builder of #${ticket} found the machine at fault and filed ${filed.join(", ")}. #${ticket} waits on it, ${LABELLED_WAITING}, and the closer wakes it once every one of them closes: ${answer.reason}`, gh);
   mark(ticket, WAITING);
   console.log(`fix: #${ticket} waits on the machine's fault, filed as ${filed.join(", ")}`);
   return { ended: 0 };

@@ -443,7 +443,7 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(filed()[0]).toMatch(/^## Why\n\nFiled by the builder of collod873\/Lumaria#811, which waits on it/);
     expect(filed()[0]).toContain(`> ${FAULT.why}`);
     expect(filed()[0]).toContain(`## Done when\n\n- ${FAULT.done[0]}`);
-    expect(ticketComments().at(-1)).toMatch(new RegExp(`^@collod873 the builder of #811 found the machine at fault and filed https://github.com/collod873/claude-workflow/issues/901\\. #811 waits on it.*${reason}`));
+    expect(ticketComments().at(-1)).toMatch(new RegExp(`^The builder of #811 found the machine at fault and filed https://github.com/collod873/claude-workflow/issues/901\\. #811 waits on it.*${reason}`));
     expect(marked()).toEqual(["811 building --try", "811 waiting"]);
     expect(saved()).toEqual([]);
     expect(closes()).toEqual([]);

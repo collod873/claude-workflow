@@ -1,6 +1,6 @@
 import { appendFileSync } from "node:fs";
 import { LABELLED_WAITING, splitClosed, splitInto } from "./builder.ts";
-import { answered, CALLER_FILE as caller, commentOnPr, commentOnTicket, commentsRead, ENROLLED_REVIEW, FOREIGN, gh, ghAs, ghRead, git, gitRead, type Held, heldOn, labelsHeld, markWith, NOTHING_MARKED, prOfTicket, readOrStop, RESOLVING, REVIEWED_FROM, TICKET_BRANCH, ticketBranch, unread, WAITING, type MarkedLabel } from "./post.ts";
+import { answered, CALLER_FILE as caller, commentOnPr, commentOnTicket, commentsRead, ENROLLED_REVIEW, FAULT_FROM, FOREIGN, gh, ghAs, ghRead, git, gitRead, type Held, heldOn, labelsHeld, MACHINE_REPO, markWith, NOTHING_MARKED, opened, prOfTicket, readOrStop, RESOLVING, REVIEWED_FROM, TICKET_BRANCH, ticketBranch, unread, WAITING, type MarkedLabel } from "./post.ts";
 import { FINGERPRINT } from "./reviewer.ts";
 import { CHECKING, LANDING, QUEUED } from "./spelled.ts";
 import { exitFor, type Stop, stoppedAt } from "./stops.ts";
@@ -327,6 +327,24 @@ function wokenWaiting(ticket: string, body: string, merged: string | undefined):
   return parked.startsWith(splitInto(ticket)) ? wokenFromSplit(ticket, body, parked, merged) : "";
 }
 
+const FAULT_FILED = new RegExp(`https://github\\.com/${MACHINE_REPO}/issues/(\\d+)`, "g");
+
+function wokenAtFaultOrigin(fault: string, body: string): string {
+  const [, repo, origin] = FAULT_FROM.exec(why(body)) ?? [];
+  if (repo === undefined || origin === undefined) return "";
+  const at = `${repo}#${origin}`;
+  const asked = opened(origin, `${at} could not be read, so it is not woken`, gh, repo);
+  if (asked === "missing" || !(asked.labels ?? []).some(({ name }) => name === WAITING)) return "";
+  const inOrigin = ghAs({ ...process.env, GH_REPO: repo });
+  const parked = commentsRead(origin, `the comments on ${at} could not be read, so it is not woken`, inOrigin).filter((said) => said.includes(LABELLED_WAITING)).at(-1) ?? "";
+  const filed = [...new Set(Array.from(parked.matchAll(FAULT_FILED), ([, number]) => number ?? ""))];
+  if (!filed.includes(fault)) return "";
+  const open = filed.filter((other) => !endedOrMerged(other, fault, at).startsWith("CLOSED"));
+  if (open.length > 0) return `; ${at} still waits for ${open.map((other) => `#${other}`).join(", ")}`;
+  const woke = inOrigin(["issue", "edit", origin, "--remove-label", WAITING]);
+  return woke.status === 0 ? `; ${at} builds now, the machine's fault #${fault} merged` : `; ${at} could not be woken: ${quoted((woke.stderr || woke.stdout).trim().split("\n")[0] ?? "")}`;
+}
+
 function wokenAfterParents(merged?: string): string {
   const line = `the tickets labelled ${WAITING} could not be read, so none is woken`;
   const listed = ghRead(["issue", "list", "--state", "open", "--label", WAITING, "--limit", "100", "--json", "number,body"], line);
@@ -366,7 +384,7 @@ export function closeMerged(merge: Built, at: string, say = console.log): Stop |
     if (state.startsWith("CLOSED")) quietGh(["issue", "reopen", ticket]);
     if (quietGh(["issue", "close", ticket, "--reason", "completed"]).status !== 0) return stoppedAt("unrecorded", `close: #${ticket} is done but could not be closed${recorded(posted.said)}`);
   }
-  say(`close: #${ticket} closed as completed, its PR merged${recorded(posted.said)}${wokenAfterParents(ticket)}`);
+  say(`close: #${ticket} closed as completed, its PR merged${recorded(posted.said)}${wokenAfterParents(ticket)}${wokenAtFaultOrigin(ticket, asked.stdout)}`);
   return undefined;
 }
 
