@@ -268,6 +268,15 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(written.saved()).toEqual(["811"]);
   });
 
+  it("marks `stuck` with its reason a ticket the builder cannot build even rewritten, and pushes nothing", () => {
+    const { run, marked, ticketComments, saved } = fixing({ answer: { outcome: "stuck", reason: "the Why needs a runner this repo cannot reach" } });
+
+    expect(run().status).toBe(1);
+    expect(marked().at(-1)).toBe("811 stuck");
+    expect(ticketComments().at(-1)).toContain("the Why needs a runner this repo cannot reach");
+    expect(saved()).toEqual([]);
+  });
+
   it("hands back a `ticket` answer that returns the ticket unchanged, and never saves it (#1195)", () => {
     const { body } = fixing();
     const { run, edits, saved, handed } = fixing({ answer: { outcome: "ticket", reason: "it reads fine", body } });

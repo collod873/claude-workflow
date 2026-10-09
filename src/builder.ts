@@ -14,7 +14,7 @@ import { DONE_SENTENCES, doneWhen, quoted, why, whyChanged } from "./ticket-shap
 const ANSWER = {
   type: "object",
   properties: {
-    outcome: { enum: ["code", "ticket", "split", "close", "machine"] },
+    outcome: { enum: ["code", "ticket", "split", "close", "stuck", "machine"] },
     reason: { type: "string", pattern: NO_EM_DASH },
     body: { type: "string", pattern: NO_EM_DASH },
     tickets: {
@@ -42,7 +42,7 @@ interface Piece {
 }
 
 interface Answer {
-  outcome: "code" | "ticket" | "split" | "close" | "machine";
+  outcome: "code" | "ticket" | "split" | "close" | "stuck" | "machine";
   reason: string;
   body?: string;
   tickets?: Piece[];
@@ -159,9 +159,10 @@ export function handedOn({ ticket, body, red, contract = "", capture, woken, com
     "## You own it until it merges",
     "Every red on this ticket comes back to you until it merges. Read its Why first; `gh` reads any run. If the reason above names a merge conflict, merge main in and resolve it yourself, keeping the ticket's Why over main's conflicting change. Answer one outcome:",
     `- \`code\`: build or fix it, or change nothing on a flake; the machine commits, runs \`${CHECK}\`, hands back red, pushes green or reruns the red Check.`,
-    "- `ticket`: its `## Done when` is wrong; return the ticket as `body`, Why byte-identical; nothing is pushed, and it waits for the owner.",
+    "- `ticket`: its `## Done when` is wrong; return the ticket rewritten against its Why as `body`, Why byte-identical; it is posted on the ticket, and you build it in this run.",
     `- \`split\`: too big for one build; file \`tickets\` that build at once, each with \`done\` as ${DONE_SENTENCES}. What must wait for them stays as \`body\`, Why byte-identical, and builds once they merge.`,
-    "- `close`: the ticket should not exist as written, and nothing should replace it.",
+    "- `close`: the ticket should not exist as written, and nothing should replace it, as for a gate you cannot make pass, since a gate is proven first.",
+    "- `stuck`: you cannot build it, even rewritten; `reason` says why, and the ticket is marked `stuck`.",
     machineAtFault(foreign),
     "`reason`: one paragraph for the owner. Two rounds in a row that change nothing call them.",
     "",
@@ -305,6 +306,7 @@ function landedOnMain(ticket: string, reason: string, before: string): Round {
 function outcomeOf(ticket: string, body: string, answer: Answer | undefined, mainBefore: string): Round {
   if (answer === undefined) return { red: "You gave no outcome. Answer one." };
   if (answer.outcome === "close") return { ended: closedUnbuilt(ticket, `@${OWNER} the builder closed #${ticket} unbuilt and kept its branch: ${answer.reason}`) };
+  if (answer.outcome === "stuck") return { ended: calledOwner(ticket, answer.reason) };
   if (answer.outcome === "split") return split(ticket, body, answer);
   if (answer.outcome === "ticket") return rewritten(ticket, body, answer);
   if (answer.outcome === "machine" && FOREIGN) return filedForMachine(ticket, answer);
