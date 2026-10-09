@@ -549,8 +549,10 @@ jobs:
           head -n "$NEWEST_RUNS" "$sources/runs.jsonl" | jq -r .databaseId | while read -r run; do
             "$GITHUB_WORKSPACE/bin/github" api "repos/$GH_REPO/actions/runs/$run/jobs" --jq ".jobs[] | {run: $run, job: .name, conclusion, steps: [.steps[] | {name, conclusion}]}"
           done >"$sources/jobs.jsonl"
-          "$GITHUB_WORKSPACE/bin/github" api "repos/$GH_REPO/actions/artifacts?per_page=$NEWEST_LOGS" --jq '.artifacts[] | select(.expired | not) | "\(.workflow_run.id) \(.name)"' | while read -r run kept; do
-            "$GITHUB_WORKSPACE/bin/github" run download "$run" --name "$kept" --dir "$sources/machine-logs/$run-$kept"
+          "$GITHUB_WORKSPACE/bin/github" api "repos/$GH_REPO/actions/artifacts?per_page=$NEWEST_LOGS" --jq '.artifacts[] | select(.expired | not) | "\(.id) \(.workflow_run.id) \(.name)"' | while read -r id run kept; do
+            "$GITHUB_WORKSPACE/bin/github" api "repos/$GH_REPO/actions/artifacts/$id/zip" >"$sources/machine-logs/$id.zip"
+            python3 -m zipfile -e "$sources/machine-logs/$id.zip" "$sources/machine-logs/$run-$kept-$id"
+            rm "$sources/machine-logs/$id.zip"
           done
           cp -r "$SESSION_CAPTURES/." "$sources/sessions"
           printf 'RESEARCH_SOURCES=%s\n' "$sources" >>"$GITHUB_ENV"
