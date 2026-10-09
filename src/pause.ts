@@ -1,4 +1,4 @@
-import { type CheckRun, checksOf, updateBranch, wakeBuilder } from "./closer.ts";
+import { type CheckRun, checksOf, closeMerged, updateBranch, wakeBuilder } from "./closer.ts";
 import { gh, NO_PR, readOrStop, ticketBranch, unread } from "./post.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { quoted } from "./ticket-shape.ts";
@@ -16,11 +16,12 @@ interface HeldPr {
   autoMergeRequest: unknown;
   mergeStateStatus: string;
   statusCheckRollup: CheckRun[] | null;
+  mergeCommit: { oid: string } | null;
 }
 
 function prOf(ticket: string, so: string): HeldPr | undefined {
   const line = `the PR of #${ticket} could not be read, ${so}`;
-  const got = gh(["pr", "view", ticketBranch(ticket), "--json", "number,state,headRefOid,autoMergeRequest,mergeStateStatus,statusCheckRollup"]);
+  const got = gh(["pr", "view", ticketBranch(ticket), "--json", "number,state,headRefOid,autoMergeRequest,mergeStateStatus,statusCheckRollup,mergeCommit"]);
   if (got.status !== 0) return NO_PR.test(got.stderr) ? undefined : unread(line);
   try {
     return JSON.parse(got.stdout) as HeldPr;
@@ -48,6 +49,10 @@ function resume(ticket: string): Stop | undefined {
   if (pr === undefined) {
     console.log("builds=true");
     return undefined;
+  }
+  if (pr.state === "MERGED" && pr.mergeCommit !== null) {
+    console.log("builds=false");
+    return closeMerged({ ticket, pr: String(pr.number) }, pr.mergeCommit.oid, console.error);
   }
   if (pr.state !== "OPEN") {
     console.log("builds=false");
