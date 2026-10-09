@@ -7,8 +7,10 @@ const PC_RUNNERS = 2;
 const USER = "ghrunner";
 const HOME = `/home/${USER}`;
 const NODE = `${HOME}/node`;
-const PATH = `${NODE}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`;
+const GH = `${HOME}/gh`;
+const PATH = `${NODE}/bin:${GH}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`;
 const NODE_RELEASES = "https://nodejs.org/dist";
+const GH_RELEASES = "https://github.com/cli/cli/releases/download";
 const RUNNER_RELEASES = "https://github.com/actions/runner/releases/download";
 const WAIT_SECONDS = Number(process.env.RUNNER_WAIT_SECONDS ?? "60");
 const UNITS = "/etc/systemd/system";
@@ -97,6 +99,12 @@ function provisionNode(): void {
   if (lts === undefined) throw new Refused("nodejs.org lists no LTS release to give the PC runners");
   const tarball = `${NODE_RELEASES}/${lts}/node-${lts}-linux-x64.tar.xz`;
   asRunnerUser(`[ -x ${NODE}/bin/node ] || { mkdir -p ${NODE} && curl -fsSL ${tarball} | tar -xJ --strip-components 1 -C ${NODE}; }`);
+}
+
+function provisionGh(): void {
+  const version = gh(["api", "repos/cli/cli/releases/latest", "--jq", ".tag_name"]).trim().replace(/^v/, "");
+  const tarball = `${GH_RELEASES}/v${version}/gh_${version}_linux_amd64.tar.gz`;
+  asRunnerUser(`${GH}/bin/gh --version 2>/dev/null | grep -qF 'gh version ${version} ' || { rm -rf ${GH}.next && mkdir -p ${GH}.next && curl -fsSL ${tarball} | tar -xz --strip-components 1 -C ${GH}.next && rm -rf ${GH} && mv ${GH}.next ${GH}; }`);
 }
 
 const dirOf = (repo: string, name: string) => `${HOME}/runners/${repo.replace("/", "-")}/${name}`;
@@ -195,6 +203,7 @@ function toPc(repo: string, asked: number | undefined): string {
   const extra = runners.filter(({ name }) => name.startsWith(`${host}-`) && !names.includes(name));
   provisionUser();
   provisionNode();
+  provisionGh();
   provisionSlice();
   provisionEarlyoom();
   for (const name of missing) install(repo, name);
