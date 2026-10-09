@@ -722,6 +722,10 @@ jobs:
         with:
           node-version: 24
 
+      - uses: ./.github/actions/pinned
+
+      - run: npm ci
+
       - env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           CORE_APP_PRIVATE_KEY: ${{ secrets.CORE_APP_PRIVATE_KEY }}
