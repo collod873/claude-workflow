@@ -99,7 +99,7 @@ describe("a stage job on a runner shared with other jobs waits only for its own 
     const ours = capturing(join(runnerTemp, "agent-hooks"), 2);
     try {
       const began = Date.now();
-      const flushed = spawnSync("bash", ["-e", "-c", stepRunning("stage-logs", "KB_TOKEN").run ?? ""], {
+      const flushed = spawnSync("bash", ["-e", "-c", stepRunning("stage-logs", "TRANSCRIPTS_TOKEN").run ?? ""], {
         cwd: root,
         env: { ...process.env, HOME: join(root, "home"), RUNNER_TEMP: runnerTemp },
         encoding: "utf8",

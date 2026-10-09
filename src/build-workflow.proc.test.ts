@@ -256,10 +256,10 @@ describe("every job that spends a model is watched as it goes, read after it end
     }
   });
 
-  it("every job files its stages' captures into the knowledge base whatever ended it, with a write token minted only after the model is done", () => {
+  it("every job files its stages' captures into the transcripts repo whatever ended it, with a write token minted only after the model is done", () => {
     for (const { steps } of modelJobs()) {
-      const minted = steps.findIndex((step) => step.with?.repositories === "Knowledge-Base" && step.with["permission-contents"] !== "read");
-      const filed = steps.findIndex((step) => /Knowledge-Base\/raw/.test(step.run ?? ""));
+      const minted = steps.findIndex((step) => step.with?.repositories === "transcripts" && step.with["permission-contents"] !== "read");
+      const filed = steps.findIndex((step) => /captured="\$HOME\/Claude Projects\/transcripts"/.test(step.run ?? ""));
       const lastModel = steps.length - 1 - [...steps].reverse().findIndex(spendsModel);
       expect(steps[minted]?.with).toMatchObject({ owner: "${{ github.repository_owner }}", "permission-contents": "write" });
       expect(minted).toBeGreaterThan(lastModel);

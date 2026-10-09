@@ -1,5 +1,5 @@
 name: Stage logs
-description: Files a job's stage captures into the knowledge base and keeps its machine logs as a run artifact
+description: Files a job's stage captures into the transcripts repo and keeps its machine logs as a run artifact
 
 inputs:
   client-id:
@@ -12,34 +12,34 @@ inputs:
 runs:
   using: composite
   steps:
-    - id: kb-app
+    - id: transcripts-app
       uses: actions/create-github-app-token@v3
       with:
         client-id: ${{ inputs.client-id }}
         private-key: ${{ inputs.private-key }}
         owner: ${{ github.repository_owner }}
-        repositories: Knowledge-Base
+        repositories: transcripts
         permission-contents: write
 
     - if: always()
       continue-on-error: true
       shell: bash
       env:
-        KB_TOKEN: ${{ steps.kb-app.outputs.token }}
+        TRANSCRIPTS_TOKEN: ${{ steps.transcripts-app.outputs.token }}
       run: |
         OWN_CAPTURE=$(printf '%s' "$RUNNER_TEMP/agent-hooks/capture.py" | sed 's/[][\\.*^$+?(){}|]/\\&/g') timeout 120 bash -c 'while pgrep -f "$OWN_CAPTURE" >/dev/null; do sleep 1; done' || true # quiet: a capture still writing after two minutes is flushed as far as it got
-        captured="$HOME/Claude Projects/Knowledge-Base/raw"
-        [ -d "$captured" ] || exit 0
+        captured="$HOME/Claude Projects/transcripts"
+        months=$(cd "$captured" 2>/dev/null && ls -d [0-9][0-9][0-9][0-9]-[0-9][0-9] 2>/dev/null) || exit 0
         machine=$(bin/spelled MACHINE) || exit 1
-        kb="$RUNNER_TEMP/knowledge-base"
-        git clone --quiet --depth 1 "https://x-access-token:$KB_TOKEN@github.com/$GITHUB_REPOSITORY_OWNER/Knowledge-Base" "$kb"
-        git -C "$kb" config user.name "$machine"
-        git -C "$kb" config user.email "$machine@users.noreply.github.com"
-        cp -r "$captured/." "$kb/raw/"
-        git -C "$kb" add raw
-        git -C "$kb" commit --quiet -m "flush: stage captures from $GITHUB_REPOSITORY run $GITHUB_RUN_ID" || exit 0
+        clone="$RUNNER_TEMP/transcripts"
+        git clone --quiet --depth 1 "https://x-access-token:$TRANSCRIPTS_TOKEN@github.com/$GITHUB_REPOSITORY_OWNER/transcripts" "$clone"
+        git -C "$clone" config user.name "$machine"
+        git -C "$clone" config user.email "$machine@users.noreply.github.com"
+        for month in $months; do cp -r "$captured/$month" "$clone/"; done
+        git -C "$clone" add $months
+        git -C "$clone" commit --quiet -m "flush: stage captures from $GITHUB_REPOSITORY run $GITHUB_RUN_ID" || exit 0
         for attempt in 1 2 3; do
-          git -C "$kb" pull --quiet --rebase origin main && git -C "$kb" push --quiet origin HEAD:main && exit 0
+          git -C "$clone" pull --quiet --rebase origin main && git -C "$clone" push --quiet origin HEAD:main && exit 0
         done
         exit 1
 
