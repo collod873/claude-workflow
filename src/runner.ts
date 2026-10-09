@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { availableParallelism, hostname } from "node:os";
+import { hostname } from "node:os";
 
 const VARIABLE = "CI_RUNNER";
 const LABEL = "pc";
@@ -21,7 +21,7 @@ const CHECK_SLOTS = 2;
 const CHECK_SLOTS_DIR = `${HOME}/check-slots`;
 const PC_RUNNERS_CPUS = 8;
 const RUNNER_CPUS = 4;
-const cpus = availableParallelism();
+const cpus = Number(spawnSync("nproc", { encoding: "utf8" }).stdout);
 const firstCpu = Math.max(0, cpus - PC_RUNNERS_CPUS);
 const slice = ["[Slice]", `MemoryMax=${PC_RUNNERS_MEMORY_GB}G`, "MemorySwapMax=0", `AllowedCPUs=${firstCpu}-${cpus - 1}`, ""].join("\n");
 const cpusOf = (at: number) => {
