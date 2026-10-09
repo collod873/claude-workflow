@@ -26,15 +26,16 @@ on main before any ticket there builds. A builder it reaches passes a check red 
 named `(needs ...)`, which the machine's runner lacks; that repo's own CI judges them on its PR.
 A `DATABASE_URL` step is not one: the builder's job starts `postgres:16`.
 It passes such a check even when its receipts were not published, as that repo's CI judges its PR.
+`tickets.yml` judges its ticket PRs with the reviewer and meters, as `tickets / review`.
 _Avoid_: shim, wrapper, vendored workflow
 
 **Home**:
 A stage run is home when it has no caller file, or when its caller file (named by `CALLED_FROM`)
 is in the machine's own repo; it is foreign only when the caller file is in another repo. A home run
 behaves exactly as this repo's own stage workflows did before Gaps first: the builder lands a `machine` outcome on
-main and fails a check on any red step, `(needs ...)` ones included; the closer requires both
-`check` and `review`; the done check gets this repo's running-system line and is offered the size
-trial. So this repo moved onto the caller file with no difference the owner sees.
+main and fails a check on any red step, `(needs ...)` ones included; the closer requires `check`
+and `check.yml`'s `review`; the done check gets this repo's running-system line and is offered the
+size trial.
 _Avoid_: local, own-repo mode
 
 **Gaps first**:
@@ -56,8 +57,9 @@ _Avoid_: self-checkout, same tree
 **Enrol**:
 Give a repo everything its tickets need to build: the caller file naming its own CI, the App's
 reach, the App's client id and keys, every label the machine spells, auto-merge, and main taking
-changes only through a PR passing `check`. `bin/enrol <repo>` sets what is missing and names what it
-could not set; a missing auto-merge Save meets later is the repo's fault, never the ticket's.
+changes only through a PR passing `check` and, once its caller file runs it, `tickets / review`.
+`bin/enrol <repo>` sets what is missing and names what it could not set; a missing auto-merge
+Save meets later is the repo's fault, never the ticket's.
 _Avoid_: onboard, install, register
 
 **PC runner**:
@@ -217,8 +219,7 @@ size round. The check holds the app's unnarrowed token, the one the closer wakes
 it can start the run. The trial's concurrency group is per spec and apart from the
 re-slice's, so a check running inside a re-slice never queues behind itself; a trial posts nothing,
 so it cannot race the re-slice's posting. A trial that ends red, or whose filing line gives 60
-seconds or more, is a miss, not a try left untried. Every check starts it as described under Trial
-through the caller, one with no caller file through the file No caller, same file names.
+seconds or more, is a miss, not a try left untried.
 _Avoid_: self-test, trial hook
 
 **Trial through the caller**:
@@ -235,7 +236,7 @@ _Avoid_: caller trial, foreign trial
 
 **Run names**:
 The `run-name` the caller file carries, so every run under it names what it heard: an issue or
-comment event shows `<action> #<number>: <title>`, a closed PR `closed PR #<number>: <title>`, a
+comment event shows `<action> #<number>: <title>`, a PR event `<action> PR #<number>: <title>`, a
 dispatch `Probe (<how>): <probe>` for a probe, `Rerun of run <run id>/<attempt>` when it carries `rerun`, `Size trial of #<ticket> under
 <trial_cap>` when it carries a trial cap and `Fix #<ticket>` otherwise, a heard run `After <workflow>
 on <head branch>`, and a push `Push to main`. Enrol writes the file with no line folded, so the run
@@ -312,8 +313,8 @@ _Avoid_: retry, second chance
 
 **Rerun by dispatch**:
 How a stopped run reaches `bin/rerun`, as the caller cannot hear itself: each reusable workflow's
-last job needs every stage job and, when one stopped, dispatches the run's caller file with `rerun`
-set to `<run id>/<attempt>`. Only the `rerun` job runs on that dispatch: it waits for that attempt
+last job needs every stage job but the probe and review and, when one stopped,
+dispatches the run's caller file with `rerun` set to `<run id>/<attempt>`. Only the `rerun` job runs on that dispatch: it waits for that attempt
 to complete and stands down if the run has moved past it, so two hand-offs act once. A caller
 lacking the input refuses the dispatch: logged, not red.
 _Avoid_: self-heard rerun, rerun workflow

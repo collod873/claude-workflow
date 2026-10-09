@@ -3,7 +3,7 @@ import { createSign } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { parse, parseDocument } from "yaml";
-import { ENROLLED_CALLER } from "./post.ts";
+import { ENROLLED_CALLER, ENROLLED_REVIEW } from "./post.ts";
 import { LABELS, MACHINE } from "./spelled.ts";
 
 const CALLER_TEXT = readFileSync(join(import.meta.dirname, "..", ".github", "caller.yml"), "utf8");
@@ -20,6 +20,7 @@ const LINE_LIMIT = 200;
 const SHOWN = 4;
 const MOST_SHOWN = 5;
 const PC_RUNS_ON = /^ {4}runs-on: (.*)$/m.exec(readFileSync(join(import.meta.dirname, "..", ".github", "workflows", "tickets.yml"), "utf8"))?.[1] ?? "";
+const ON_MAIN = { ref_name: { include: ["~DEFAULT_BRANCH"], exclude: [] } };
 const PC_SWITCH = /vars\.(\w+)/.exec(PC_RUNS_ON)?.[1] ?? "";
 
 const made = () => LABELS.filter(({ kind }) => kind !== "try");
@@ -177,6 +178,7 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
 
   const caller = once(() => callerFor(ci()));
   const rules = () => read<Rule[]>(["api", `repos/${repo}/rules/branches/${held().default_branch}`]);
+  const requires = (context: string) => rules().some(({ type, parameters }) => type === "required_status_checks" && (parameters?.required_status_checks ?? []).some((required) => required.context === context));
   const write = (branch?: string) => {
     const sha = contents(CALLER)?.sha;
     gh(["api", "-X", "PUT", `repos/${repo}/contents/${CALLER}`, "-f", `message=${HANDED}`, ...(branch === undefined ? [] : ["-f", `branch=${branch}`]), "-f", `content=${Buffer.from(caller()).toString("base64")}`, ...(sha === undefined ? [] : ["-f", `sha=${sha}`])]);
@@ -258,7 +260,7 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
       name: `main taking changes only through a PR passing ${CHECK}`,
       held: () => {
         const ours = rules();
-        return ours.some(({ type }) => type === "pull_request") && ours.some(({ type, parameters }) => type === "required_status_checks" && (parameters?.required_status_checks ?? []).some(({ context }) => context === CHECK));
+        return ours.some(({ type }) => type === "pull_request") && requires(CHECK);
       },
       set: () => {
         ci();
@@ -266,7 +268,7 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
           name: "main lands only through a PR",
           target: "branch",
           enforcement: "active",
-          conditions: { ref_name: { include: ["~DEFAULT_BRANCH"], exclude: [] } },
+          conditions: ON_MAIN,
           rules: [
             { type: "pull_request", parameters: { required_approving_review_count: 0, dismiss_stale_reviews_on_push: false, require_code_owner_review: false, require_last_push_approval: false, required_review_thread_resolution: false } },
             { type: "non_fast_forward" },
@@ -281,6 +283,25 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
       name: "the caller file",
       held: () => textOf(CALLER)?.text === caller(),
       set: () => (rules().some(({ type }) => type === "pull_request") ? throughPr() : write()),
+    },
+    {
+      name: "main taking only a PR its review passed",
+      held: () => requires(ENROLLED_REVIEW),
+      set: () => {
+        if (textOf(CALLER)?.text !== caller()) {
+          const open = openPr();
+          if (open === undefined) throw new Refused(`the caller file on main runs no ${ENROLLED_REVIEW}, so main would wait on a review that never runs`);
+          return { waits: open.url, opened: false };
+        }
+        const ruleset = {
+          name: "main lands only once its review passes",
+          target: "branch",
+          enforcement: "active",
+          conditions: ON_MAIN,
+          rules: [{ type: "required_status_checks", parameters: { strict_required_status_checks_policy: true, required_status_checks: [{ context: ENROLLED_REVIEW }] } }],
+        };
+        return void gh(["api", "-X", "POST", `repos/${repo}/rulesets`, "--input", "-"], JSON.stringify(ruleset));
+      },
     },
   ];
   return { settings, forPc };
