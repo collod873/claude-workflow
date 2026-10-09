@@ -168,13 +168,13 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
 
     expect(placed("/etc/systemd/system/pc-runners.slice").split("\n")).toEqual(["[Slice]", "MemoryMax=20G", "MemorySwapMax=0", `AllowedCPUs=${first}-${cpus - 1}`, ""]);
     for (let n = 1; n <= PC_RUNNER_COUNT; n += 1) {
-      const start = first + ((n - 1) % 2) * 4;
+      const start = Math.min(cpus - 1, first + ((n - 1) % 2) * 4);
       expect(placed(`/etc/systemd/system/actions.runner.collod873-Lumaria.${HOST}-${n}.service.d/pc-runner.conf`).split("\n")).toEqual([
         "[Service]",
         "Slice=pc-runners.slice",
         "MemoryMax=10G",
         "MemorySwapMax=0",
-        `AllowedCPUs=${start}-${start + 3}`,
+        `AllowedCPUs=${start}-${Math.min(cpus - 1, start + 3)}`,
         "OOMPolicy=continue",
         "KillMode=mixed",
         "",
