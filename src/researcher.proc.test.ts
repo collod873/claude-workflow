@@ -70,7 +70,7 @@ describe("bin/research answers a research note on the note and closes it, with n
 
     expect(fetched).toBeGreaterThan(staged);
     expect(spent).toBeGreaterThan(fetched);
-    expect(steps.some((step) => step.with?.repositories === "Knowledge-Base")).toBe(false);
+    expect(steps.some((step) => step.with?.repositories === "transcripts")).toBe(false);
     expect(run).toContain('"$SESSION_CAPTURES/."');
     for (const held of ["runs.jsonl", "jobs.jsonl", "machine-logs", "git-log.txt", "sessions"]) expect(run).toContain(`$sources/${held}`);
     expect(fetching?.env?.GH_TOKEN).toBe("${{ steps.app.outputs.token }}");
@@ -80,14 +80,14 @@ describe("bin/research answers a research note on the note and closes it, with n
 
   it("the stage action hands every job the owner's Workflow session captures, fetched with a token that only reads and never held by the model (#931)", () => {
     const { steps } = (parse(readFileSync(STAGE_ACTION, "utf8")) as { runs: { steps: WorkflowStep[] } }).runs;
-    const minted = steps.findIndex((step) => step.with?.repositories === "Knowledge-Base");
+    const minted = steps.findIndex((step) => step.with?.repositories === "transcripts");
     const fetched = steps.findIndex((step) => /SESSION_CAPTURES=.*GITHUB_ENV/.test(step.run ?? ""));
     const run = steps[fetched]?.run ?? "";
 
     expect(steps[minted]?.with).toMatchObject({ owner: "${{ github.repository_owner }}", "permission-contents": "read" });
     expect(fetched).toBeGreaterThan(minted);
     expect(run).toContain("^project: .*(Workflow|claude-workflow|\\.agents)");
-    expect(run).toContain('rm -rf "$knowledge"');
+    expect(run).toContain('rm -rf "$transcripts"');
     expect(run).not.toMatch(/CAPTURES_TOKEN=|GITHUB_ENV.*TOKEN/);
   });
 

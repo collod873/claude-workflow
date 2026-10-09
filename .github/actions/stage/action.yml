@@ -53,7 +53,7 @@ runs:
         client-id: ${{ inputs.client-id }}
         private-key: ${{ inputs.private-key }}
         owner: ${{ github.repository_owner }}
-        repositories: Knowledge-Base
+        repositories: transcripts
         permission-contents: read
 
     - shell: bash
@@ -61,11 +61,13 @@ runs:
       env:
         CAPTURES_TOKEN: ${{ steps.captures-app.outputs.token }}
       run: |
-        knowledge="$RUNNER_TEMP/knowledge-base"
+        transcripts="$RUNNER_TEMP/transcripts"
         captures="$RUNNER_TEMP/session-captures"
-        mkdir -p "$captures"
+        mkdir -p "$captures" "$HOME/Claude Projects/transcripts"
         printf 'SESSION_CAPTURES=%s\n' "$captures" >>"$GITHUB_ENV"
-        git clone --quiet --depth 1 --filter=blob:none --sparse "https://x-access-token:$CAPTURES_TOKEN@github.com/$GITHUB_REPOSITORY_OWNER/Knowledge-Base" "$knowledge"
-        git -C "$knowledge" sparse-checkout set raw/sessions
-        grep -lE '^project: .*(Workflow|claude-workflow|\.agents)' "$knowledge"/raw/sessions/*.md | xargs -r cp -t "$captures"
-        rm -rf "$knowledge"
+        git clone --quiet --depth 1 --filter=blob:none --sparse "https://x-access-token:$CAPTURES_TOKEN@github.com/$GITHUB_REPOSITORY_OWNER/transcripts" "$transcripts"
+        git -C "$transcripts" sparse-checkout set --no-cone '/*/*/session.md'
+        grep -lE '^project: .*(Workflow|claude-workflow|\.agents)' "$transcripts"/*/*/session.md | while read -r page; do
+          cp "$page" "$captures/$(basename "$(dirname "$page")").md"
+        done
+        rm -rf "$transcripts"
