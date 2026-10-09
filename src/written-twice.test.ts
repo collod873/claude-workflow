@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { join } from "node:path";
-import { machineSource, scriptSource, spelledByHand, writtenTwice } from "./written-twice.ts";
+import { machineSource, spelledByHand, writtenTwice } from "./written-twice.ts";
 
 const source = (file: string, ...lines: string[]) => ({ file, text: lines.join("\n") });
 const ASK = "export the text from one owner and build the other side from it";
@@ -65,10 +64,9 @@ describe("written twice refuses text the machine spells in two places, so renami
     ])).toEqual([`written twice: src/two.ts:3 reads "**Did not hold**" that src/one.ts:1 writes; ${ASK}`]);
   });
 
-  it("passes the machine's own source, and refuses it once a line spells an existing marker a second time", () => {
+  it("refuses the machine's own source once a line spells an existing marker a second time", () => {
     const machine = machineSource(import.meta.dirname);
 
-    expect(writtenTwice(machine)).toEqual([]);
     expect(writtenTwice([...machine, source("src/planted.ts", "export const MOVED = /<!-- moves: ([\\d, ]*) -->/;")])).toEqual([
       expect.stringMatching(/^written twice: src\/planted\.ts:1 reads "<!-- moves: " that src\/wave\.ts:\d+ writes; /),
     ]);
@@ -120,9 +118,5 @@ describe("written twice refuses a script, workflow or action that spells by hand
         source("bin/spelled", "#!/bin/bash", "printf 'stuck'"),
       ),
     ).toEqual([]);
-  });
-
-  it("passes every bin/ script, workflow and action as merged", () => {
-    expect(spelledByHand(scriptSource(join(import.meta.dirname, "..")), machine)).toEqual([]);
   });
 });

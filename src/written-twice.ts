@@ -229,7 +229,7 @@ export function spelledByHand(scripts: Source[], machine: Source[]): string[] {
     });
 }
 
-export const scriptSource = (repo: string): Source[] =>
+const scriptSource = (repo: string): Source[] =>
   [
     ...readdirSync(join(repo, "bin")).map((name) => `bin/${name}`),
     ...readdirSync(join(repo, ".github", "workflows")).map((name) => `.github/workflows/${name}`),
