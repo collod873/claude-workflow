@@ -9,7 +9,7 @@ import { answered, type Asked, BUILDER_SPLIT, commentOnTicket, commentsRead, ear
 import { CONTRACT, machineLogs, opened, setupRefusal, type Spent, treePathed } from "./stage.ts";
 import { BUILDING, CHECKING } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
-import { DONE_SENTENCES, quoted, why, whyChanged } from "./ticket-shape.ts";
+import { DONE_SENTENCES, doneWhen, quoted, why, whyChanged } from "./ticket-shape.ts";
 
 const ANSWER = {
   type: "object",
@@ -66,7 +66,7 @@ interface Handed {
   foreign?: boolean;
 }
 
-type Round = { red?: string; ended?: number };
+type Round = { red?: string; ended?: number; body?: string };
 
 type Spend = (input: string, resume?: string) => Spent;
 
@@ -272,10 +272,9 @@ function rewritten(ticket: string, body: string, answer: Answer): Round {
   const written = rewriteTicket(ticket, body, answer.body, gh);
   const [refusal] = written.refusals;
   if (refusal !== undefined) return { red: `Your rewrite of the ticket was refused: ${quoted(refusal)}` };
-  commentOnTicket(ticket, `@${OWNER} the builder of #${ticket} rewrote what done looks like and pushed nothing. #${ticket} waits for you, ${LABELLED_WAITING}: take the label off to build it as rewritten. ${answer.reason}`, gh);
-  mark(ticket, WAITING);
-  console.log(`fix: #${ticket} rewritten; it waits for the owner`);
-  return { ended: 0 };
+  commentOnTicket(ticket, `The builder of #${ticket} rewrote what done looks like against its Why, and builds it as rewritten in this run: ${answer.reason}\n\n## Done when\n\n${doneWhen(answer.body)}`, gh);
+  console.log(`fix: #${ticket} rewritten; it builds as rewritten`);
+  return { red: `Your rewrite is posted on #${ticket}, and its body is now:\n\n${capped(answer.body, TICKET_CAP)}\n\nBuild it as rewritten and answer \`code\`; answer \`stuck\` or \`close\` if you cannot.`, body: answer.body };
 }
 
 const faultBody = (ticket: string, { why: fault, done }: Piece): string =>
@@ -399,7 +398,7 @@ function ownTicket(ticket: string, run: string | undefined): number {
   if (typeof owning !== "object") return exitFor(owning);
   const { asked, spend } = owning;
   const { logs, failed, judged, onTicket, diff, opensPr } = owning.carried;
-  const body = asked.body;
+  let body = asked.body;
   let session = savedSession(ticket);
   if (session === undefined && failed !== undefined) console.error(`fix: #${ticket} has no session of its builder saved, so it starts fresh`);
   const contract = onDisk(join(process.cwd(), CONTRACT)) ?? "";
@@ -428,8 +427,9 @@ function ownTicket(ticket: string, run: string | undefined): number {
     const answer = spent.answer as Answer | undefined;
     const round = outcomeOf(ticket, body, answer, before.main);
     if (round.ended !== undefined) return round.ended;
+    body = round.body ?? body;
     committed(commitOf(ticket, failed !== undefined, commitlint));
-    const changed = head() !== before.head || fetchedMain() !== before.main;
+    const changed = round.body !== undefined || head() !== before.head || fetchedMain() !== before.main;
     const verdict = round.red === undefined ? redOrSaved(ticket, logs) : { red: round.red };
     if (verdict.ended !== undefined) return verdict.ended;
     const { red } = verdict;

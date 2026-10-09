@@ -8,6 +8,7 @@ import { HELD } from "./spelled.ts";
 const DRIFT = "The reviewer read this PR against the Why of #811 and found drift.\n\n- src/builder.ts never resumes its session\n";
 const FIXES = "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n";
 const RED_FOUR_TIMES = ["n=$(cat ../reds 2>/dev/null || echo 0)", `[ "$n" -ge 4 ] && { ${CHECK_PASSES.trim()}; exit 0; }`, "echo $((n + 1)) >../reds", CHECK_RED].join("\n");
+const BUILDS_THE_REWRITE = `[ "$CALL" = 2 ] && { ${FIXES.trim()}; sed -i 's/"outcome":"ticket"/"outcome":"code"/' ../answer.jsonl; }\n`;
 const FIXES_EACH_ROUND = "printf 'export const shaped = %s;\\n' \"$((CALL + 1))\" >src/ticket-shape.ts\n";
 const MOVES_MAIN = 'git update-ref refs/heads/main "$(git commit-tree -p main -m "Land the reviewer fix #811 needed" "$(git rev-parse "main^{tree}")")"\n';
 const FILED_IN_SESSION = "## Why\n\nThe owner: \"read what I said\".\n\nSession: `ca2517b0-5e2d-46e7-a894-7fc3a4b978b2`\n\n## Done when\n\n- The builder reads it.\n";
@@ -245,7 +246,7 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(prompt).not.toContain("delete the fence");
   });
 
-  it("refuses a rewrite that changes one byte of the Why, and writes one that changes only what done looks like, then parks it for the owner with no Save, where Lumaria #931 looped on a PR with no commits (#1195)", () => {
+  it("refuses a rewrite that changes one byte of the Why, and posts one that changes only what done looks like, then builds it as rewritten in the same run, never parked on the owner, where Lumaria #1015 and #1286 waited on him against ADR-0005", () => {
     const { body } = fixing();
     const refused = fixing({ answer: { outcome: "ticket", reason: "the Why reads better this way", body: body.replace("never the owner", "never The owner") } });
 
@@ -254,14 +255,17 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(refused.saved()).toEqual([]);
 
     const redone = body.replace("The builder clears a red ticket", "The builder clears a ticket red at any stage");
-    const written = fixing({ answer: { outcome: "ticket", reason: "Done when named one stage where the Why means every stage", body: redone } });
+    const written = fixing({ answer: { outcome: "ticket", reason: "Done when named one stage where the Why means every stage", body: redone }, claude: BUILDS_THE_REWRITE });
 
-    expect(written.run().status).toBe(0);
+    const result = written.run();
+
+    expect(result.status, result.stderr).toBe(0);
     expect(written.edits()).toEqual([redone]);
-    expect(written.ticketComments().at(-1)).toMatch(/^@collod873 .*waiting.*every stage/s);
-    expect(written.marked().at(-1)).toBe("811 waiting");
-    expect(written.saved()).toEqual([]);
-    expect(written.handed()).toHaveLength(1);
+    expect(written.ticketComments().at(-1)).toContain("The builder clears a ticket red at any stage");
+    expect(written.ticketComments().at(-1)).toContain("where the Why means every stage");
+    expect(written.marked()).not.toContain("811 waiting");
+    expect(written.handed()[1]).toContain("The builder clears a ticket red at any stage");
+    expect(written.saved()).toEqual(["811"]);
   });
 
   it("hands back a `ticket` answer that returns the ticket unchanged, and never saves it (#1195)", () => {
@@ -286,12 +290,11 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
   it("rewrites past `## Done when` when a builder corrects the body around it, and posts why (#942)", () => {
     const { body } = fixing();
     const corrected = `${body.replace("The builder clears a red ticket", "The builder clears a ticket red at any stage")}\n## Out of scope\n\n- The post door.\n`;
-    const { run, edits, ticketComments, saved } = fixing({ answer: { outcome: "ticket", reason: "the ticket named the shape rules, but the fault it names sits in src/post.ts", body: corrected } });
+    const { run, edits, ticketComments } = fixing({ answer: { outcome: "ticket", reason: "the ticket named the shape rules, but the fault it names sits in src/post.ts", body: corrected }, claude: BUILDS_THE_REWRITE });
 
     expect(run().status).toBe(0);
     expect(edits()).toEqual([corrected]);
     expect(ticketComments().at(-1)).toContain("the fault it names sits in src/post.ts");
-    expect(saved()).toEqual([]);
   });
 
   it("keeps `resolving` with no try when woken on a conflict, since a conflict is not the ticket failing, and marks checking once it pushes", () => {
