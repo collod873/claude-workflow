@@ -33,10 +33,6 @@ jobs:
           client-id: ${{ vars.CORE_APP_CLIENT_ID }}
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
 
-      - run: |
-          mkdir -p "$HOME/bin"
-          ln -sf "$RUNNER_TEMP/agent-hooks/bin/check" "$HOME/bin/check"
-
       - uses: actions/setup-node@v4
         with:
           node-version: 24

@@ -74,11 +74,10 @@ describe("a stage job's uploaded machine logs carry its check logs and the owner
     const githubEnv = join(root, "github-env");
     mkdirSync(runnerTemp, { recursive: true });
     writeFileSync(githubEnv, "");
-    script(join(root, "bin", "python3"), "echo '{}'");
 
-    const readied = spawnSync("bash", ["-e", "-c", stepRunning("stage", "--emit-stages").run ?? ""], {
+    const readied = spawnSync("bash", ["-e", "-c", stepRunning("stage", "HOOK_LOG_DIR=").run ?? ""], {
       cwd: root,
-      env: { ...process.env, PATH: `${join(root, "bin")}:${process.env.PATH}`, HOME: join(root, "home"), RUNNER_TEMP: runnerTemp, GITHUB_ENV: githubEnv, GITHUB_ACTION_PATH: root },
+      env: { ...process.env, HOME: join(root, "home"), RUNNER_TEMP: runnerTemp, GITHUB_ENV: githubEnv, GITHUB_ACTION_PATH: root },
       encoding: "utf8",
     });
 

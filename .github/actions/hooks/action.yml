@@ -1,5 +1,5 @@
 name: Hooks
-description: Fetches the owner's live hooks release into $RUNNER_TEMP/agent-hooks, with the Python they run on
+description: Fetches the owner's live hooks release into $RUNNER_TEMP/agent-hooks, with the Python they run on, and hands its check and settings to every later step
 
 inputs:
   client-id:
@@ -41,3 +41,11 @@ runs:
           attempt=$((attempt + 1))
         done
         rm -rf "$hooks/.git"
+
+    - shell: bash
+      run: |
+        hooks="$RUNNER_TEMP/agent-hooks"
+        mkdir -p "$HOME/bin"
+        ln -sf "$hooks/bin/check" "$HOME/bin/check"
+        python3 "$hooks/hookcheck.py" --root "$hooks" --settings "$RUNNER_TEMP/unregistered.json" --emit-stages >"$RUNNER_TEMP/agent-hooks.json"
+        printf 'AGENT_HOOKS_SETTINGS=%s\n' "$RUNNER_TEMP/agent-hooks.json" >>"$GITHUB_ENV"
