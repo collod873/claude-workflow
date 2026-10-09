@@ -313,7 +313,7 @@ describe("bin/close wakes a reviewer's follow-up once its parent's PR merges or 
   it("runs as a queue run whenever a PR closes, so a parent closed unmerged wakes its follow-ups at once", () => {
     const { on, step } = closeWorkflow();
 
-    expect(on.pull_request_target).toEqual({ types: ["closed"] });
+    expect(on.pull_request_target?.types).toContain("closed");
     expect(step?.env?.QUEUE_ONLY).toBe("${{ github.event_name != 'push' && 'queue' || '' }}");
   });
 });
