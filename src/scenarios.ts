@@ -788,6 +788,7 @@ export function switching({ isPrivate = true, runners = [] as object[], variable
       `  "variable get"*) [ -f "${at("variable")}" ] || { printf 'variable CI_RUNNER was not found\\n' >&2; exit 1; }; cat "${at("variable")}" ;;`,
       `  "variable set"*) printf '%s' "\${@: -1}" >"${at("variable")}" ;;`,
       `  "variable delete"*) rm "${at("variable")}" ;;`,
+      '  *cli/cli/releases/latest*) printf "v2.96.0\\n" ;;',
       '  *releases/latest*) printf "v2.330.0\\n" ;;',
       '  *registration-token*) printf "TOKEN\\n" ;;',
       "esac",

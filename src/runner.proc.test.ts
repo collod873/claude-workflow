@@ -134,6 +134,16 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
     expect(sudo().filter((call) => call.includes("systemctl disable"))).toEqual([]);
   });
 
+  it("gives every PC runner GitHub's current gh ahead of Ubuntu's, which lacks commands the closer runs", () => {
+    const { run, sudo, placed } = switching();
+
+    run("pc");
+
+    expect(sudo().join("\n")).toContain("https://github.com/cli/cli/releases/download/v2.96.0/gh_2.96.0_linux_amd64.tar.gz");
+    expect(sudo().join("\n")).toContain("/home/ghrunner/gh/bin/gh --version 2>/dev/null | grep -qF 'gh version 2.96.0 '");
+    expect(placed(`/home/ghrunner/runners/collod873-Lumaria/${HOST}-1/.path`)).toBe("/home/ghrunner/node/bin:/home/ghrunner/gh/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n");
+  });
+
   it("sets earlyoom to kill a runner's job before a session when memory runs out, so a rebuilt PC gets the same order", () => {
     const { run, sudo, placed } = switching();
 
