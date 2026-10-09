@@ -5,6 +5,7 @@ import { dirname, join, normalize, resolve } from "node:path";
 import ts from "typescript";
 import { parse } from "yaml";
 import { describe, expect, it, onTestFinished } from "vitest";
+import { FAILURE_LINK } from "./part-links.ts";
 import { parts, type Part } from "./parts.ts";
 import { CONTRACT, coveredByCheck } from "./scenarios.ts";
 
@@ -51,7 +52,7 @@ function wiredIn(repo: string): Set<string> {
   );
 }
 
-function unregisteredFiles(repo: string, registry: Part[]): string[] {
+function unlinkedParts(repo: string, registry: Part[]): string[] {
   const registered = new Set(registry.map((part) => part.file));
   const files = ["src", "bin"]
     .flatMap((dir) => readdirSync(join(repo, dir), { recursive: true, encoding: "utf8" }).map((path) => join(dir, path)))
@@ -60,11 +61,13 @@ function unregisteredFiles(repo: string, registry: Part[]): string[] {
   const imported = importedWithin(repo, files);
   const runByPart = new Set(registry.flatMap((part) => (existsSync(join(repo, part.file)) ? readFileSync(join(repo, part.file), "utf8").match(SRC_OR_BIN) ?? [] : [])));
   const wired = wiredIn(repo);
-  return files
+  const unregistered = files
     .filter((path) => !registered.has(path))
     .filter((path) => (statSync(join(repo, path)).mode & 0o111) !== 0 || wired.has(path) || !(covered(path) || imported.has(path) || runByPart.has(path)))
     .sort()
     .map((path) => `${path} can run but is not a registered part`);
+  const unlinked = registry.filter((part) => !FAILURE_LINK.test(part.stops)).map((part) => `${part.name} links no failure: ${part.stops}`);
+  return [...unregistered, ...unlinked];
 }
 
 function timedWorkflows(repo: string): string[] {
@@ -122,8 +125,8 @@ describe("the machine holds its growth limits", () => {
     expect(missingFiles(scratch(), [planted])).toEqual(["planted names src/planted.ts, which does not exist"]);
   });
 
-  it("2. everything under src/ and bin/ that can run is a registered part", () => {
-    expect(unregisteredFiles(REPO, parts)).toEqual([]);
+  it("2. every registered part links the failure it stops, and everything under src/ and bin/ that can run is registered", () => {
+    expect(unlinkedParts(REPO, parts)).toEqual([]);
 
     const copy = scratch();
     plant(copy, "bin/unregistered", "#!/bin/bash\n", 0o755);
@@ -136,11 +139,14 @@ describe("the machine holds its growth limits", () => {
     plant(copy, "src/wired.mjs", "export const decide = () => 0;\n");
     plant(copy, "src/wired.test.ts", "import { decide } from \"./wired.mjs\";\n");
     plant(copy, "package.json", "{\"scripts\": {\"go\": \"node src/wired.mjs\"}}\n");
-    expect(unregisteredFiles(copy, [planted])).toEqual([
+    const cleanup = { ...planted, name: "cleanup", stops: "https://github.com/collod873/claude-workflow/commit/c7fa969" };
+    expect(unlinkedParts(copy, [{ ...planted, stops: "the owner said so" }, cleanup])).toEqual([
       "bin/unregistered can run but is not a registered part",
       "src/planted.config.js can run but is not a registered part",
       "src/unwired.mjs can run but is not a registered part",
       "src/wired.mjs can run but is not a registered part",
+      "planted links no failure: the owner said so",
+      "cleanup links no failure: https://github.com/collod873/claude-workflow/commit/c7fa969",
     ]);
   });
 

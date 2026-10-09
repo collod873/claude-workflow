@@ -3,7 +3,7 @@ import { promisify } from "node:util";
 import { parts, type Part } from "./parts.ts";
 import { MISSING } from "./post.ts";
 
-const FAILURE_LINK = /^https:\/\/github\.com\/(collod873\/[\w.-]+)\/(issues|pull|actions\/runs)\/(\d+)$/;
+export const FAILURE_LINK = /^https:\/\/github\.com\/(collod873\/[\w.-]+)\/(issues|pull|actions\/runs)\/(\d+)$/;
 const COMMIT_LINK = /^https:\/\/github\.com\/collod873\/[\w.-]+\/commit\/[0-9a-f]{7,40}$/;
 const ENDPOINT: Record<string, string> = { issues: "issues", pull: "pulls", "actions/runs": "actions/runs" };
 
