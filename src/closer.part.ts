@@ -125,6 +125,7 @@ export function closing({
   calledFrom,
   foreign = false,
   faultOrigin,
+  closedIssue,
 }: {
   ticket?: string;
   ticketBody?: string;
@@ -144,6 +145,7 @@ export function closing({
   calledFrom?: string;
   foreign?: boolean;
   faultOrigin?: FaultOrigin;
+  closedIssue?: string;
 } = {}) {
   const root = scratch("closer-");
   const session = join(root, "session");
@@ -264,7 +266,7 @@ export function closing({
           ...(calledFrom === undefined ? {} : { CALLED_FROM: calledFrom }),
           ...(foreign ? { MACHINE_BIN: BIN } : {}),
         },
-        afterCheck ? ["queue"] : [],
+        closedIssue !== undefined ? ["queue", closedIssue] : afterCheck ? ["queue"] : [],
       ),
   };
 }

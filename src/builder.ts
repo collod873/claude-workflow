@@ -53,6 +53,8 @@ const stoppedAt = stopsOf({ unadmitted: "Build refused: the ticket's checks woul
 export const splitInto = (ticket: string) => `@${OWNER} the builder split #${ticket} into`;
 export const splitClosed = (ticket: string) => `Every ticket #${ticket} was split into has closed:`;
 export const LABELLED_WAITING = `labelled \`${WAITING}\``;
+export const waitsOnFault = (ticket: string, filed: string[]) => `The builder of #${ticket} found the machine at fault and filed ${filed.join(", ")}. #${ticket} waits on it, ${LABELLED_WAITING}, and the closer wakes it once every one of them closes:`;
+export const faultsClosed = (ticket: string) => `Every machine fault #${ticket} waits on has closed:`;
 export const FILED = /\/issues\/(\d+)\s*$/;
 
 interface Handed {
@@ -289,7 +291,7 @@ function filedForMachine(ticket: string, answer: Answer): Round {
   if (refused.length > 0) return { red: ["Your `machine` answer was refused, and nothing was filed:", ...refused.map((refusal) => `- ${refusal}`)].join("\n") };
   const filed = postings.map((posting) => post({ kind: "ticket", ...posting }, inMachineRepo).said.trim());
   if (filed.some((said) => !FILED.test(said))) return { ended: calledOwner(ticket, `it found the machine at fault and filed ${filed.filter((said) => FILED.test(said)).length} of ${filed.length} tickets in ${MACHINE_REPO}`) };
-  commentOnTicket(ticket, `The builder of #${ticket} found the machine at fault and filed ${filed.join(", ")}. #${ticket} waits on it, ${LABELLED_WAITING}, and the closer wakes it once every one of them closes: ${answer.reason}`, gh);
+  commentOnTicket(ticket, `${waitsOnFault(ticket, filed)} ${answer.reason}`, gh);
   mark(ticket, WAITING);
   console.log(`fix: #${ticket} waits on the machine's fault, filed as ${filed.join(", ")}`);
   return { ended: 0 };

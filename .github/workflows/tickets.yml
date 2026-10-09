@@ -685,8 +685,9 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           QUIET_GH_TOKEN: ${{ steps.app.outputs.token }}
           QUEUE_ONLY: ${{ github.event_name != 'push' && 'queue' || '' }}
+          CLOSED_ISSUE: ${{ github.event_name == 'issues' && github.event.issue.number || '' }}
           CALLED_FROM: ${{ github.workflow_ref }}
-        run: '"$GITHUB_WORKSPACE/bin/close" $QUEUE_ONLY'
+        run: '"$GITHUB_WORKSPACE/bin/close" $QUEUE_ONLY $CLOSED_ISSUE'
 
       - if: ${{ (failure() || cancelled()) && steps.close.outputs.ticket != '' }}
         uses: ./.github/actions/call-owner
