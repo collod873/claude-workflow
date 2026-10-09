@@ -473,7 +473,7 @@ describe("tickets.yml strips the machine's labels from every issue and PR that c
     };
 
     expect(on.issues?.types).toContain("closed");
-    expect(on.pull_request_target?.types).toEqual(["closed"]);
+    expect(on.pull_request_target?.types).toContain("closed");
     expect(String(strip.env?.NUMBER)).toMatch(/github\.event\.issue\.number \|\| github\.event\.pull_request\.number/);
     expect(stripped({ NUMBER: "811" })).toBe("811 --closed\n");
   });

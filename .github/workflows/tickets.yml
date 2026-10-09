@@ -172,9 +172,170 @@ jobs:
           client-id: ${{ vars.CORE_APP_CLIENT_ID }}
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
 
+  review:
+    if: ${{ github.event_name == 'pull_request_target' && github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository && github.repository != format('{0}/claude-workflow', github.repository_owner) }}
+    concurrency:
+      group: review-${{ github.event.pull_request.number }}
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 45
+    env:
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - id: machine
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/claude-workflow
+          ref: main
+          token: ${{ steps.app.outputs.token }}
+          persist-credentials: false
+
+      - id: setup-node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - id: labelled
+        run: |
+          prefix=$(bin/spelled TICKET_PREFIX)
+          held=$(jq --arg prefix "$prefix" '.pull_request.head.ref | startswith($prefix)' "$GITHUB_EVENT_PATH")
+          printf 'held=%s\n' "$held" | tee -a "$GITHUB_OUTPUT"
+
+      - id: checkout
+        if: steps.labelled.outputs.held == 'true'
+        uses: actions/checkout@v4
+        with:
+          path: tree
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+          token: ${{ steps.app.outputs.token }}
+
+      - id: npm-ci
+        if: steps.labelled.outputs.held == 'true'
+        run: npm ci
+
+      - id: logs
+        if: steps.labelled.outputs.held == 'true'
+        run: |
+          mkdir -p tree/.git/machine-logs
+          ln -s "$PWD/tree/.git/machine-logs" .git/machine-logs
+
+      - id: stage
+        if: steps.labelled.outputs.held == 'true'
+        uses: ./.github/actions/stage
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+
+      - id: review
+        if: steps.labelled.outputs.held == 'true'
+        timeout-minutes: 12
+        working-directory: tree
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          STAGE_MINUTES: 10
+        run: |
+          tail --pid=$$ -n +1 -F .git/machine-logs/review-${{ github.event.pull_request.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
+          "$GITHUB_WORKSPACE/bin/review" ${{ github.event.pull_request.number }}
+
+      - if: always() && steps.labelled.outputs.held != 'false'
+        timeout-minutes: 6
+        uses: ./.github/actions/stage-logs
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          artifact: review-logs
+
+  meters:
+    if: ${{ github.event_name == 'pull_request_target' && github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository && github.repository != format('{0}/claude-workflow', github.repository_owner) }}
+    continue-on-error: true
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 30
+    env:
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - id: machine
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/claude-workflow
+          ref: main
+          token: ${{ steps.app.outputs.token }}
+          persist-credentials: false
+
+      - id: setup-node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - id: labelled
+        run: |
+          prefix=$(bin/spelled TICKET_PREFIX)
+          held=$(jq --arg prefix "$prefix" '.pull_request.head.ref | startswith($prefix)' "$GITHUB_EVENT_PATH")
+          printf 'held=%s\n' "$held" | tee -a "$GITHUB_OUTPUT"
+
+      - id: checkout
+        if: steps.labelled.outputs.held == 'true'
+        uses: actions/checkout@v4
+        with:
+          path: tree
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+          token: ${{ steps.app.outputs.token }}
+
+      - id: npm-ci
+        if: steps.labelled.outputs.held == 'true'
+        run: npm ci
+
+      - id: logs
+        if: steps.labelled.outputs.held == 'true'
+        run: |
+          mkdir -p tree/.git/machine-logs
+          ln -s "$PWD/tree/.git/machine-logs" .git/machine-logs
+
+      - id: stage
+        if: steps.labelled.outputs.held == 'true'
+        uses: ./.github/actions/stage
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+
+      - id: meters
+        if: steps.labelled.outputs.held == 'true'
+        timeout-minutes: 12
+        working-directory: tree
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          STAGE_MINUTES: 10
+        run: |
+          tail --pid=$$ -n +1 -F .git/machine-logs/meters-${{ github.event.pull_request.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
+          "$GITHUB_WORKSPACE/bin/meters" ${{ github.event.pull_request.number }}
+
+      - if: always() && steps.labelled.outputs.held != 'false'
+        timeout-minutes: 6
+        uses: ./.github/actions/stage-logs
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          artifact: meter-logs
+
   which:
-    needs: build
-    if: "${{ always() && ((github.event_name == 'workflow_dispatch' && !github.event.inputs.trial_cap && !github.event.inputs.rerun && !github.event.inputs.probe) || needs.build.result == 'failure' || (github.event_name == 'workflow_run' && github.event.workflow_run.name != github.workflow && (github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'timed_out') && github.event.workflow_run.head_repository.full_name == github.repository)) }}"
+    needs: [build, review]
+    if: "${{ always() && ((github.event_name == 'workflow_dispatch' && !github.event.inputs.trial_cap && !github.event.inputs.rerun && !github.event.inputs.probe) || needs.build.result == 'failure' || needs.review.result == 'failure' || (github.event_name == 'workflow_run' && github.event.workflow_run.name != github.workflow && (github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'timed_out') && github.event.workflow_run.head_repository.full_name == github.repository)) }}"
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 3
     env:
@@ -206,7 +367,7 @@ jobs:
         env:
           DISPATCHED: ${{ github.event.inputs.ticket }}
           BUILT: ${{ needs.build.result == 'failure' && github.event.issue.number || '' }}
-          RAN_ON: ${{ github.event.workflow_run.head_branch }}
+          RAN_ON: ${{ github.event.workflow_run.head_branch || github.event.pull_request.head.ref }}
           GH_TOKEN: ${{ steps.app.outputs.token }}
         run: |
           paused=$(bin/spelled PAUSED)
@@ -260,8 +421,7 @@ jobs:
       - id: branch
         working-directory: tree
         env:
-          EVENT: ${{ github.event_name }}
-          RAN_AT: ${{ github.event.workflow_run.head_sha }}
+          RAN_AT: ${{ github.event.workflow_run.head_sha || github.event.pull_request.head.sha }}
         run: |
           git config user.name "core-app[bot]"
           git config user.email "core-app[bot]@users.noreply.github.com"
@@ -270,7 +430,7 @@ jobs:
             exit 0
           fi
           git checkout --quiet -B "$HEAD_REF" FETCH_HEAD
-          if [[ $EVENT == workflow_run && $(git rev-parse HEAD) != "$RAN_AT" ]]; then
+          if [[ -n $RAN_AT && $(git rev-parse HEAD) != "$RAN_AT" ]]; then
             printf 'fix: %s moved since its run went red, so a newer run judges it\n' "$HEAD_REF"
             echo stale=true >>"$GITHUB_OUTPUT"
           fi
@@ -334,7 +494,7 @@ jobs:
           STAGE_MINUTES: 45
           CALLED_FROM: ${{ github.workflow_ref }}
           RUN: ${{ github.event.workflow_run.id }}
-          REASON: "${{ github.event.inputs.reason || (github.event_name == 'issues' && format('The build of #{0} ended red: {1}/{2}/actions/runs/{3}', needs.which.outputs.ticket, github.server_url, github.repository, github.run_id) || '') }}"
+          REASON: "${{ github.event.inputs.reason || (github.event_name == 'issues' && format('The build of #{0} ended red: {1}/{2}/actions/runs/{3}', needs.which.outputs.ticket, github.server_url, github.repository, github.run_id) || github.event_name == 'pull_request_target' && format('The review of PR #{0} ended red: {1}/{2}/actions/runs/{3}', github.event.pull_request.number, github.server_url, github.repository, github.run_id) || '') }}"
         run: |
           tail --pid=$$ -n +1 -F ".git/machine-logs/fix-$TICKET.jsonl" 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
           "$GITHUB_WORKSPACE/bin/fix" "$TICKET" $RUN
@@ -486,7 +646,8 @@ jobs:
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
 
   close:
-    if: ${{ github.event_name == 'push' || github.event_name == 'pull_request_target' || (github.event_name == 'workflow_run' && github.event.workflow_run.name != github.workflow) || (github.event_name == 'issues' && github.event.action == 'closed') }}
+    needs: review
+    if: ${{ !cancelled() && (github.event_name == 'push' || (github.event_name == 'pull_request_target' && (github.event.action == 'closed' || needs.review.result == 'success')) || (github.event_name == 'workflow_run' && github.event.workflow_run.name != github.workflow) || (github.event_name == 'issues' && github.event.action == 'closed')) }}
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 20
     env:
