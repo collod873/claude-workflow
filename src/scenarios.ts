@@ -191,6 +191,7 @@ export function holds(
     .replace(/github\.event\.pull_request\.head\.repo\.full_name\s*==\s*github\.repository/g, JSON.stringify(!fork))
     .replace(/contains\(\s*github\.event\.issue\.body\s*,\s*('[^']*')\s*\)/g, `${JSON.stringify(body)}.includes($1)`)
     .replace(/github\.repository\s*!=\s*format\('\{0\}\/claude-workflow',\s*github\.repository_owner\)/g, JSON.stringify(!home))
+    .replace(/github\.repository\s*==\s*format\('\{0\}\/claude-workflow',\s*github\.repository_owner\)/g, JSON.stringify(home))
     .replace(/github\.repository_owner/g, JSON.stringify(OWNER))
     .replace(/contains\(\s*github\.event\.issue\.labels\.\*\.name\s*,\s*('[^']*')\s*\)/g, "labels.includes($1)")
     .replace(/steps\.([\w-]+)\.(outcome|conclusion)/g, 'steps["$1"].$2')
