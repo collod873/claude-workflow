@@ -696,6 +696,41 @@ jobs:
           run: the closer run
           token: ${{ steps.app.outputs.token }}
 
+  enrol:
+    if: ${{ github.event_name == 'push' && github.repository == format('{0}/claude-workflow', github.repository_owner) }}
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 10
+    env:
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - id: machine
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/claude-workflow
+          ref: main
+          token: ${{ steps.app.outputs.token }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          CORE_APP_PRIVATE_KEY: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+        run: |
+          gh api installation/repositories --paginate --jq '.repositories[].full_name' | grep -vx "$GITHUB_REPOSITORY" | while read -r repo; do
+            gh api "repos/$repo/contents/.github/workflows/machine.yml" --silent 2>/dev/null || continue
+            printf '%s\n' "$repo"
+          done | xargs -r -n1 bin/enrol
+
   strip:
     if: ${{ github.event.action == 'closed' }}
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
@@ -735,7 +770,7 @@ jobs:
           token: ${{ steps.app.outputs.token }}
 
   dispatch-rerun:
-    needs: [build, which, fix, close, strip]
+    needs: [build, which, fix, close, enrol, strip]
     if: ${{ always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) }}
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5

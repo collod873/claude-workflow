@@ -89,6 +89,7 @@ describe("a repo's tickets build through one caller file that holds only trigger
     expect(jobsRun({ event: "issues", action: "closed" })).toEqual(["close", "strip"]);
     expect(jobsRun({ event: "pull_request_target", action: "closed" })).toEqual(["close", "strip"]);
     expect(jobsRun({ event: "push", action: "" })).toEqual(["close"]);
+    expect(jobsRun({ event: "push", action: "", home: true })).toEqual(["close", "enrol"]);
     expect(jobsRun({ event: "workflow_run", action: "completed", conclusion: "success" })).toEqual(["close"]);
   });
 
