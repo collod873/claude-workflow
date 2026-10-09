@@ -607,6 +607,19 @@ describe("the PR check judges only through the live release's ~/bin/check, which
     expect(checked).toBeGreaterThan(fetched);
     expect(steps.filter((step) => /treewide\.py/.test(step.run ?? ""))).toEqual([]);
   });
+
+  it("runs the full check under the hooks settings the Builder's own full check folded into its receipts, so a tree the Builder checked is covered", () => {
+    const { check } = (parse(readFileSync(join(WORKFLOWS, "check.yml"), "utf8")) as Workflow).jobs;
+    const steps = expanded(check?.steps ?? []);
+    const handing = (step: Step) => /AGENT_HOOKS_SETTINGS=.*GITHUB_ENV/.test(step.run ?? "");
+    const built = expanded(workflow().job.steps).find(handing);
+    const handed = steps.findIndex(handing);
+    const checked = steps.findIndex((step) => /~\/bin\/check --full\b/.test(step.run ?? ""));
+
+    expect(handed).toBeGreaterThanOrEqual(0);
+    expect(handed).toBeLessThan(checked);
+    expect(steps[handed]?.run).toBe(built?.run);
+  });
 });
 
 describe("a red PR check keeps its whole log, not only the last 60 lines it prints", () => {
