@@ -20,10 +20,10 @@ export function pausing({ pr = "green" as keyof typeof ROLLUPS | "none" | "unrea
       ? "printf 'no pull requests found for branch \"ticket/811\"\\n' >&2; exit 1"
       : pr === "unreadable"
         ? "printf 'gh: Bad credentials (HTTP 401)\\n' >&2; exit 1"
-        : `printf '%s\\n' '${JSON.stringify({ number: 931, state, headRefOid: PAUSED_HEAD, autoMergeRequest: autoMerge ? { mergeMethod: "MERGE" } : null, mergeStateStatus: behind ? "BEHIND" : "CLEAN", statusCheckRollup: ROLLUPS[pr] })}'`;
+        : `printf '%s\\n' '${JSON.stringify({ number: 931, state, headRefOid: PAUSED_HEAD, autoMergeRequest: autoMerge ? { mergeMethod: "MERGE" } : null, mergeStateStatus: behind ? "BEHIND" : "CLEAN", statusCheckRollup: ROLLUPS[pr], mergeCommit: state === "MERGED" ? { oid: PAUSED_HEAD } : null })}'`;
   script(
     join(root, "bin", "gh"),
-    [setup, 'case "$*" in', `  *"pr view"*) ${viewed} ;;`, `  *"issue view"*) printf '%s' '${held}' ;;`, ...(updateRefused === "" ? [] : [`  *"pr update-branch"*) printf '%s\\n' '${updateRefused}' >&2; exit 1 ;;`]), ...(refused === "" ? [] : [`  *"pr merge"*|*"workflow run"*) printf '%s\\n' '${refused}' >&2; exit 1 ;;`]), "esac", ""].join("\n"),
+    [setup, 'case "$*" in', `  *"pr view"*) ${viewed} ;;`, `  *"issue view"*) printf '%s' '${held}' ;;`, "  *\"issue list\"*) printf '[]' ;;", ...(updateRefused === "" ? [] : [`  *"pr update-branch"*) printf '%s\\n' '${updateRefused}' >&2; exit 1 ;;`]), ...(refused === "" ? [] : [`  *"pr merge"*|*"workflow run"*) printf '%s\\n' '${refused}' >&2; exit 1 ;;`]), "esac", ""].join("\n"),
   );
   script(join(root, "bin", "mark"), `printf '%s\\n' "$*" >>"${marks}"\n`);
   script(join(root, "bin", "git"), `case "$*" in\n  *merge-tree*) exit ${conflicted ? 1 : 0} ;;\nesac\n`);

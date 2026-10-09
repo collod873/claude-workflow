@@ -73,16 +73,16 @@ function built(subject: string): Built | undefined {
 
 const leftAsItIs = (ticket: string) => `so #${ticket} is left as it is`;
 
-function marksFor({ ticket, pr }: Built): Marks {
+function marksFor({ ticket, pr }: Built, at: string): Marks {
   const left = leftAsItIs(ticket);
   return {
     filed: ghRead(["issue", "view", ticket, "--json", "createdAt", "--jq", ".createdAt"], `when #${ticket} was filed could not be read, ${left}`),
-    firstCommit: gitRead(["log", "--format=%aI", "--reverse", "HEAD^1..HEAD^2"], `the commits PR #${pr} merged could not be read, ${left}`)
+    firstCommit: gitRead(["log", "--format=%aI", "--reverse", `${at}^1..${at}^2`], `the commits PR #${pr} merged could not be read, ${left}`)
       .split("\n")
       .find((line) => line !== ""),
     prOpened: ghRead(["pr", "view", pr, "--json", "createdAt", "--jq", ".createdAt"], `when PR #${pr} opened could not be read, ${left}`),
     checksGreen: ghRead(["pr", "checks", pr, "--json", "completedAt", "--jq", "[.[].completedAt] | sort | last"], `when the checks of PR #${pr} ended could not be read, ${left}`),
-    merged: gitRead(["log", "-1", "--format=%cI", "HEAD"], `when PR #${pr} merged could not be read, ${left}`),
+    merged: gitRead(["log", "-1", "--format=%cI", at], `when PR #${pr} merged could not be read, ${left}`),
   };
 }
 
@@ -335,11 +335,15 @@ function close(): Stop | undefined {
     console.log(`close: ${queued}${wokenAfterParents()}`);
     return undefined;
   }
+  return closeMerged(merge, "HEAD");
+}
+
+export function closeMerged(merge: Built, at: string, say = console.log): Stop | undefined {
   const { ticket, pr } = merge;
   const asked = gh(["issue", "view", ticket, "--json", "body", "--jq", ".body"]);
   if (asked.status !== 0) return stoppedAt("unread", `close: ticket ${ticket} could not be read, so nothing judged it`);
   const prComments = commentsRead(pr, `the comments on PR #${pr} could not be read, ${leftAsItIs(ticket)}`, gh);
-  const speed = speedReport(marksFor(merge), collisions(prComments));
+  const speed = speedReport(marksFor(merge, at), collisions(prComments));
   const posted = commentOnTicket(ticket, record(merge, speed), gh);
   const [refusal] = posted.refusals;
   if (refusal !== undefined) return stoppedAt("unrecorded", `close: #${ticket} got no closing record: ${quoted(refusal)}`);
@@ -349,7 +353,7 @@ function close(): Stop | undefined {
     if (state.startsWith("CLOSED")) quietGh(["issue", "reopen", ticket]);
     if (quietGh(["issue", "close", ticket, "--reason", "completed"]).status !== 0) return stoppedAt("unrecorded", `close: #${ticket} is done but could not be closed${recorded(posted.said)}`);
   }
-  console.log(`close: #${ticket} closed as completed, its PR merged${recorded(posted.said)}${wokenAfterParents(ticket)}`);
+  say(`close: #${ticket} closed as completed, its PR merged${recorded(posted.said)}${wokenAfterParents(ticket)}`);
   return undefined;
 }
 

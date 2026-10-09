@@ -55,12 +55,20 @@ describe("bin/resume picks a ticket up from where it stands once paused or stuck
     expect([...merges(calls()), ...wakes(calls())]).toEqual([]);
   });
 
-  it("does nothing for a ticket whose PR already merged or was closed, so no fresh build starts beside it", () => {
-    for (const state of ["MERGED", "CLOSED"]) {
-      const calls = resumedWithoutBuilding(pausing({ state }));
+  it("does nothing for a ticket whose PR was closed unmerged, so no fresh build starts beside it", () => {
+    const calls = resumedWithoutBuilding(pausing({ state: "CLOSED" }));
 
-      expect([...merges(calls), ...wakes(calls)], state).toEqual([]);
-    }
+    expect([...merges(calls), ...wakes(calls)]).toEqual([]);
+  });
+
+  it("closes as the closer would a ticket whose PR already merged, so it waits on no push to main (#1276)", () => {
+    const scenario = pausing({ state: "MERGED" });
+    const calls = resumedWithoutBuilding(scenario);
+
+    expect(calls.find((args) => args[0] === "issue" && args[1] === "comment")).toEqual(["issue", "comment", "811", "--body", expect.stringMatching(/^#811 is done: PR #931 merged\n/)]);
+    expect(calls).toContainEqual(["issue", "close", "811", "--reason", "completed"]);
+    expect(scenario.marks()).toEqual(["811 --closed"]);
+    expect([...merges(calls), ...wakes(calls)]).toEqual([]);
   });
 
   it("wakes the builder on a red PR, so its session resumes on it, and builds nothing new", () => {
