@@ -16,6 +16,8 @@ const JWT_LIFE = 540;
 const APP = MACHINE.replace(/\[bot\]$/, "");
 const NOT_FOUND = /\(HTTP 404\)/;
 const HANDED = "ci: hand this repo's tickets to the machine";
+const CALLER_SETTING = "the caller file";
+const CALLER_ONLY = "--caller";
 const LINE_LIMIT = 200;
 const SHOWN = 4;
 const MOST_SHOWN = 5;
@@ -280,7 +282,7 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
       },
     },
     {
-      name: "the caller file",
+      name: CALLER_SETTING,
       held: () => textOf(CALLER)?.text === caller(),
       set: () => (rules().some(({ type }) => type === "pull_request") ? throughPr() : write()),
     },
@@ -307,12 +309,12 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
   return { settings, forPc };
 }
 
-function enrol(repo: string): number {
+function enrol(repo: string, callerOnly: boolean): number {
   const set: string[] = [];
   const waiting: string[] = [];
   const refused: string[] = [];
   const { settings, forPc } = enrolling(repo);
-  for (const setting of settings) {
+  for (const setting of settings.filter(({ name }) => !callerOnly || name === CALLER_SETTING)) {
     try {
       if (setting.held()) continue;
       const pending = setting.set();
@@ -330,12 +332,12 @@ function enrol(repo: string): number {
   }
   if (waiting.length > 0) console.log([`enrol: ${repo} is enrolled once its PR merges, ${set.length} settings set:`, ...waiting].join("\n"));
   else console.log(set.length === 0 ? `enrol: ${repo} was already enrolled, nothing changed` : `enrol: ${repo} enrolled, ${set.length} settings set`);
-  for (const line of forPc()) console.log(line);
+  if (!callerOnly) for (const line of forPc()) console.log(line);
   return 0;
 }
 
 if (import.meta.main) {
-  const [repo] = process.argv.slice(2);
+  const [repo, mode] = process.argv.slice(2);
   if (repo === undefined) throw new Error("no repo in the arguments");
-  process.exit(enrol(repo));
+  process.exit(enrol(repo, mode === CALLER_ONLY));
 }

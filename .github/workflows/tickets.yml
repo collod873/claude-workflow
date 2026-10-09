@@ -731,7 +731,7 @@ jobs:
           gh api installation/repositories --paginate --jq '.repositories[].full_name' | grep -vx "$GITHUB_REPOSITORY" | while read -r repo; do
             gh api "repos/$repo/contents/.github/workflows/machine.yml" --silent 2>/dev/null || continue
             printf '%s\n' "$repo"
-          done | xargs -r -n1 bin/enrol
+          done | xargs -r -I {} bin/enrol {} --caller
 
   strip:
     if: ${{ github.event.action == 'closed' }}

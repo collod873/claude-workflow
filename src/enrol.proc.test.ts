@@ -129,7 +129,8 @@ describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#11
   it("refuses anything but one owner/name", () => {
     const { run, writes } = enrolling(bare());
 
-    expect(run("Next")).toEqual({ status: 2, stdout: "", stderr: "enrol: usage: enrol <owner/repo>\n" });
+    expect(run("Next")).toEqual({ status: 2, stdout: "", stderr: "enrol: usage: enrol <owner/repo> [--caller]\n" });
+    expect(run(REPO, "--labels")).toEqual({ status: 2, stdout: "", stderr: "enrol: usage: enrol <owner/repo> [--caller]\n" });
     expect(writes()).toEqual([]);
   });
 });
@@ -148,6 +149,21 @@ describe("bin/enrol keeps an enrolled repo current with the owner's own login (#
     expect(held().files[".github/workflows/machine.yml"]).toBe(CALLER);
     const merged = held().writes.find((args) => args[0] === "pr" && args[1] === "merge") ?? [];
     expect(merged).toEqual(expect.arrayContaining(["--auto"]));
+  });
+
+  it("brings only the caller file current under --caller, as the machine's own token can from a push to its main, leaving the owner's secrets, labels and rules alone (#1297)", () => {
+    const { run, held } = enrolling(bare({ rules: HELD_FOR_CHECK, allow_auto_merge: true, files: { ".github/workflows/ci.yml": CI.replace("name: Gate", "name: CI"), ".github/workflows/machine.yml": STALE } }), {});
+
+    const result = run(REPO, "--caller");
+
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+    expect(held().files[".github/workflows/machine.yml"]).toBe(CALLER);
+    expect(held().variables).toEqual([]);
+    expect(held().secrets).toEqual([]);
+    expect(held().labels).not.toContain("ticket");
+    expect(JSON.stringify(held().rules)).not.toContain(ENROLLED_REVIEW);
+    expect(result.stdout).toBe(`enrol: ${REPO} enrolled, 1 settings set\n`);
   });
 
   it("opens the PR afresh from main when a branch is left from an earlier enrolment", () => {
