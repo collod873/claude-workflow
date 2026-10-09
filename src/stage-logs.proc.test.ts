@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -84,5 +84,36 @@ describe("a stage job's uploaded machine logs carry its check logs and the owner
 
     expect(readied.status, readied.stderr).toBe(0);
     expect(readFileSync(githubEnv, "utf8")).toContain(`HOOK_LOG_DIR=${join(runnerTemp, "hook-logs")}\n`);
+  });
+});
+
+describe("a stage job on a runner shared with other jobs waits only for its own log captures (#1282)", () => {
+  const capturing = (hooks: string, seconds: number) => {
+    script(join(hooks, "capture.py"), `sleep ${seconds}`);
+    return spawn("bash", [join(hooks, "capture.py")], { stdio: "ignore" });
+  };
+
+  it("files as soon as its own capture ends, while another job's capture on the same machine still runs", () => {
+    const root = scratch("stage-logs-");
+    const runnerTemp = join(root, "runner one", "_work", "_temp");
+    const theirs = capturing(join(root, "runner two", "_work", "_temp", "agent-hooks"), 60);
+    const ours = capturing(join(runnerTemp, "agent-hooks"), 2);
+    try {
+      const began = Date.now();
+      const flushed = spawnSync("bash", ["-e", "-c", stepRunning("stage-logs", "KB_TOKEN").run ?? ""], {
+        cwd: root,
+        env: { ...process.env, HOME: join(root, "home"), RUNNER_TEMP: runnerTemp },
+        encoding: "utf8",
+        timeout: 20_000,
+      });
+      const waited = Date.now() - began;
+
+      expect(flushed.status, flushed.stderr).toBe(0);
+      expect(waited).toBeGreaterThanOrEqual(1_500);
+      expect(waited).toBeLessThan(15_000);
+    } finally {
+      theirs.kill();
+      ours.kill();
+    }
   });
 });
