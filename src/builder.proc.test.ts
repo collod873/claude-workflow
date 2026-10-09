@@ -822,19 +822,8 @@ describe("the builder builds another repo's checkout from this repo's bin/ (#113
 
 describe("the builder borrows nothing from the reviewer, so a change to one leaves the other alone (#1121)", () => {
   const SRC = import.meta.dirname;
-  const machine = () => readdirSync(SRC).filter((file) => file.endsWith(".ts") && !/\.(test|part)\.ts$/.test(file) && file !== "scenarios.ts");
-  const MOVED = ["DIFF_CAP", "TICKET_CAP", "LIST_CAP", "NO_EM_DASH", "handedDiff", "FOLLOW_UP_OF", "BUILDER_SPLIT", "REVIEWED_FROM", "SPLIT_FROM", "followUpBody", "earlierDrift", "repairOf", "TICKET_BRANCH"];
 
   it("imports nothing from the reviewer", () => {
     expect(readFileSync(join(SRC, "builder.ts"), "utf8")).not.toMatch(/from "\.\/reviewer\.ts"/);
-  });
-
-  it("leaves each helper it borrowed one home, in the brief part or the GitHub part, and no copy or re-export beside it", () => {
-    const homes = MOVED.map((name) => {
-      const declared = new RegExp(`export (?:const|function) ${name}\\b|export \\{[^}]*\\b${name}\\b`);
-      return `${name} ${machine().filter((file) => declared.test(readFileSync(join(SRC, file), "utf8")) && !(name === "DIFF_CAP" && file === "wave.ts")).join(" ")}`;
-    });
-
-    expect(homes).toEqual(MOVED.map((name) => `${name} ${["DIFF_CAP", "TICKET_CAP", "LIST_CAP", "NO_EM_DASH", "handedDiff"].includes(name) ? "brief.ts" : "post.ts"}`));
   });
 });

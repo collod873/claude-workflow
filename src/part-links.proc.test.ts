@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parts, type Part } from "./parts.ts";
-import { FAILURE_LINK, refusedLinks } from "./part-links.ts";
+import { refusedLinks } from "./part-links.ts";
 import { scratch, script } from "./scenarios.ts";
 
 const REPO = "https://github.com/collod873/claude-workflow";

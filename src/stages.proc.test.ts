@@ -5,7 +5,7 @@ import { execute, plant, scratch, script } from "./scenarios.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
 const FAILURE = "https://github.com/collod873/claude-workflow/issues/1031";
-const LISTED = ["import { parts } from './src/parts.ts';", "import { PROMPTS } from './src/prompt-bytes.ts';", "console.log(JSON.stringify({ parts: parts.map((part) => part.name), prompts: PROMPTS.length }));"].join(" ");
+const LISTED = ["import { parts } from './src/parts.ts';", "import { stages } from './src/stages.ts';", "console.log(JSON.stringify({ parts: parts.map((part) => part.name), prompts: (await stages()).flatMap((stage) => stage.prompts ?? []).length }));"].join(" ");
 
 function machineCopy(): string {
   const copy = scratch("stages-");
