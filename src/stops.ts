@@ -3,6 +3,7 @@ const STOPS = {
   unwritten: "A stage's mark is refused: the mark command ends non-zero",
   modelRun: "A stage's model run exits non-zero, or gives no answer",
   unrecorded: "Close: the closing record is refused, or the ticket will not close",
+  unmoved: "Close: a green PR behind main could not be brought up to date, and no other PR moved",
 } as const;
 
 export type Stop = keyof typeof STOPS;

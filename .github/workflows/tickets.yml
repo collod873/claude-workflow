@@ -104,6 +104,7 @@ jobs:
         working-directory: tree
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
+          QUIET_GH_TOKEN: ${{ steps.app.outputs.token }}
           CALLED_FROM: ${{ github.workflow_ref }}
         run: '"$GITHUB_WORKSPACE/bin/resume" ${{ github.event.issue.number }} >>"$GITHUB_OUTPUT"'
 

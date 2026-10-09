@@ -1,6 +1,5 @@
 import { spawn } from "node:child_process";
 import { chmodSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { availableParallelism } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { execute, PC_HOST as HOST, PC_REPO as REPO, PC_RUNNER_COUNT, pcRunner, scratch, script, switching } from "./scenarios.ts";
@@ -161,20 +160,17 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
 
   it("holds every PC runner's jobs together under a 20 GB cap with no swap on the PC's last 8 CPUs, and each runner to 10 GB on 4 of them, so a build sizes its workers to 4 and a runaway job is killed rather than slowed", () => {
     const { run, sudo, placed } = switching();
-    const cpus = availableParallelism();
-    const first = Math.max(0, cpus - 8);
 
     run("pc");
 
-    expect(placed("/etc/systemd/system/pc-runners.slice").split("\n")).toEqual(["[Slice]", "MemoryMax=20G", "MemorySwapMax=0", `AllowedCPUs=${first}-${cpus - 1}`, ""]);
-    for (let n = 1; n <= PC_RUNNER_COUNT; n += 1) {
-      const start = Math.min(cpus - 1, first + ((n - 1) % 2) * 4);
+    expect(placed("/etc/systemd/system/pc-runners.slice").split("\n")).toEqual(["[Slice]", "MemoryMax=20G", "MemorySwapMax=0", "AllowedCPUs=8-15", ""]);
+    for (const [n, cpus] of [[1, "8-11"], [2, "12-15"]] as const) {
       expect(placed(`/etc/systemd/system/actions.runner.collod873-Lumaria.${HOST}-${n}.service.d/pc-runner.conf`).split("\n")).toEqual([
         "[Service]",
         "Slice=pc-runners.slice",
         "MemoryMax=10G",
         "MemorySwapMax=0",
-        `AllowedCPUs=${start}-${Math.min(cpus - 1, start + 3)}`,
+        `AllowedCPUs=${cpus}`,
         "OOMPolicy=continue",
         "KillMode=mixed",
         "",
