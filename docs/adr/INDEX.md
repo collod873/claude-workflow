@@ -6,4 +6,4 @@
 - [ADR-0004](0004-every-shared-tool-lives-in-one-global-home.md): Every shared tool lives in one global home
 - [ADR-0005](0005-build-work-runs-from-decisions-the-owner-made-ahead-of-time.md): Build work runs from decisions the owner made ahead of time
 - [ADR-0006](0006-an-obvious-fix-goes-straight-in-and-a-gate-is-proven-first.md): An obvious fix goes straight in, and a gate is proven first
-- [ADR-0007](0007-the-machine-runs-on-standard-hosted-runners-and-the-owner-watches-minutes.md): The machine runs on standard hosted runners, and the owner watches minutes
+- [ADR-0007](0007-the-machine-runs-on-the-owners-pc-while-he-is-home-and-on-hosted-runners-otherwise.md): The machine runs on the owner's PC while he is home, and on hosted runners otherwise

@@ -9,6 +9,12 @@ itself*, not any project it ships.
 A way the machine broke, linked as an issue, PR or failed run. Every part names the one it stops.
 _Avoid_: problem, antipattern
 
+**Bucket**:
+Failures with one cause, a row in `docs/buckets.md` with their evidence, the one change that
+prevents them, and where it stands. A change to the machine names its bucket; one failure alone
+is fixed where it is.
+_Avoid_: theme, category, epic
+
 ### The machine
 
 **Machine**:
@@ -93,8 +99,8 @@ the review and the meters beside it.
 _Avoid_: gate (for a step), gauntlet, a repo-local check script, static check
 
 **Meter**:
-A rule that reports in the PR body what it would have refused, and refuses nothing. An unproven rule
-enters as one; run on 30 merged PRs, it becomes a gate or is deleted.
+A rule that reports in the PR body what it would have refused, and refuses nothing. A rule in doubt
+enters as one; on 30 merged PRs it becomes a gate or is deleted (ADR-0006).
 _Avoid_: soft gate, warning, advisory check
 
 **Refusal**:
@@ -177,9 +183,7 @@ refused after the rounds back ends red without marking `stuck` or commenting. A 
 nothing left to slice goes through Record at the hand-off under its trial cap and logs
 `slice: trial #N would hand it to the done check` instead. A trial cap at or above
 the spec cap, or below the owner's bytes, is refused before any model is hired, since the first can
-never refuse and the second can never fit. A wave check trying the over-cap sentence runs one on the
-spec with the cap described under Trial cap a check sets and reads its log. A trial
-runs one at a time per spec in a concurrency group of its own, apart from the re-slice's.
+never refuse and the second can never fit.
 _Avoid_: dry run, size test, fake cap
 
 **Trial room line**:
@@ -216,18 +220,16 @@ as leaving GitHub as it is. The checker waits for that run
 to end and answers from its log: each size round with the bytes over and the bytes the record had to
 lose, and the `slice: trial #N` line saying the owner's bytes stand and the seconds from the first
 size round. The check holds the app's unnarrowed token, the one the closer wakes builders with, so
-it can start the run. The trial's concurrency group is per spec and apart from the
-re-slice's, so a check running inside a re-slice never queues behind itself; a trial posts nothing,
-so it cannot race the re-slice's posting. A trial that ends red, or whose filing line gives 60
-seconds or more, is a miss, not a try left untried.
+it can start the run. The trial's concurrency group is apart from the re-slice's, so a check inside
+a re-slice never queues behind itself, and a trial posts nothing, so it cannot race the re-slice.
+A trial that ends red, or whose filing line gives 60 seconds or more, is a miss.
 _Avoid_: self-test, trial hook
 
 **Trial through the caller**:
 A size trial started through a caller file, so every repo on the caller file can run one. The
-caller file's dispatch takes an optional `trial_cap` beside `ticket` and
-`reason`; a dispatch carrying it runs the `size-trial` job in `specs.yml` on the spec named in
-`ticket`, with `bin/slice --size-trial` in the concurrency group `size-trial-<spec>`, the re-slice
-job's checkouts and caps and a token that can only read, and `tickets.yml` starts no builder for it.
+caller file's dispatch takes an optional `trial_cap` beside `ticket` and `reason`; a dispatch
+carrying it runs the `size-trial` job in `specs.yml` on the spec named in `ticket`, with the
+re-slice job's checkouts and caps and a token that can only read, and starts no builder.
 A check under a caller file reads the file's name from the run it is called from and is told to
 start the trial with `gh workflow run <caller file> -f ticket=<spec> -f reason=size-trial -f
 trial_cap=<cap>` and to find its run under that file. A dispatch with no trial cap, `rerun` or
