@@ -2,7 +2,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { CLOSE_RUN, closing } from "./closer.part.ts";
+import { waitsOnFault } from "./builder.ts";
+import { CLOSE_RUN, closing, type FaultOrigin } from "./closer.part.ts";
+import { faultOf } from "./post.ts";
 import { HELD, PAUSED, STUCK } from "./spelled.ts";
 
 const REPO = join(import.meta.dirname, "..");
@@ -993,5 +995,44 @@ describe("bin/close names the ticket in its hands when it stops red, so the run 
 
     expect(run().status).toBe(0);
     expect(output()).toBe("");
+  });
+});
+
+describe("bin/close wakes a foreign ticket waiting on a machine fault its builder filed, once every fault it filed has closed, since ADR-0005 leaves nothing waiting on the owner", () => {
+  const fault = (filed: string) => `https://github.com/collod873/claude-workflow/issues/${filed}`;
+  const parked = `${waitsOnFault("1015", [fault("812"), fault("813")])} its stage hooks were missing`;
+  const faultBody = ["## Why", "", faultOf("collod873/Lumaria#1015"), "", "> The stage hooks were missing.", "", "## Done when", "", "- They are there.", ""].join("\n");
+  const origin = (filed: Record<string, string>): FaultOrigin => ({ repo: "collod873/Lumaria", ticket: "1015", labels: ["ticket", "waiting"], said: [parked], filed });
+  const woken = (calls: string[]) => calls.findIndex((call) => call.trimEnd() === "issue\nedit\n1015\n--remove-label\nwaiting");
+  const told = (calls: string[]) => calls.findIndex((call) => call.startsWith("issue\ncomment\n1015\n"));
+
+  it("wakes it in its own repo when the last fault merges, telling it how each fault ended first, and leaves it waiting while another is open", () => {
+    const last = closing({ ticket: "812", ticketBody: faultBody, faultOrigin: origin({ "813": "CLOSED NOT_PLANNED" }) });
+    const early = closing({ ticket: "812", ticketBody: faultBody, faultOrigin: origin({ "813": "OPEN " }) });
+
+    const result = last.run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(woken(last.calls())).toBeGreaterThanOrEqual(0);
+    expect(last.repos()[woken(last.calls())]).toBe("collod873/Lumaria");
+    expect(last.calls()[told(last.calls())]).toContain("#812 merged, #813 closed unbuilt");
+    expect(last.repos()[told(last.calls())]).toBe("collod873/Lumaria");
+    expect(told(last.calls())).toBeLessThan(woken(last.calls()));
+    expect(result.stdout).toContain("collod873/Lumaria#1015 builds now");
+    const held = early.run();
+    expect(held.status, held.stderr).toBe(0);
+    expect(woken(early.calls())).toBe(-1);
+    expect(told(early.calls())).toBe(-1);
+    expect(held.stdout).toContain("collod873/Lumaria#1015 still waits for #813");
+  });
+
+  it("wakes it when its last fault closes unbuilt and no PR merges in the run", () => {
+    const { run, calls } = closing({ ticket: "812", ticketBody: faultBody, closedIssue: "813", faultOrigin: origin({ "812": "CLOSED COMPLETED", "813": "CLOSED NOT_PLANNED" }) });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(woken(calls())).toBeGreaterThanOrEqual(0);
+    expect(calls()[told(calls())]).toContain("#812 merged, #813 closed unbuilt");
   });
 });

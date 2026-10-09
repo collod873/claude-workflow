@@ -47,6 +47,14 @@ const followUpBody = ({ ticket, parent, waitsOn }: WaitingFollowUp) =>
     "",
   ].join("\n");
 
+export interface FaultOrigin {
+  repo: string;
+  ticket: string;
+  labels: string[];
+  said: string[];
+  filed: Record<string, string>;
+}
+
 interface SplitFrom {
   parent: string;
   labels: string;
@@ -116,6 +124,8 @@ export function closing({
   markRefusal,
   calledFrom,
   foreign = false,
+  faultOrigin,
+  closedIssue,
 }: {
   ticket?: string;
   ticketBody?: string;
@@ -134,12 +144,16 @@ export function closing({
   markRefusal?: string;
   calledFrom?: string;
   foreign?: boolean;
+  faultOrigin?: FaultOrigin;
+  closedIssue?: string;
 } = {}) {
   const root = scratch("closer-");
   const session = join(root, "session");
   const output = join(root, "github-output");
   const callsDir = join(root, "gh-calls");
   const tokensDir = join(root, "gh-tokens");
+  const reposDir = join(root, "gh-repos");
+  mkdirSync(reposDir, { recursive: true });
   mkdirSync(callsDir, { recursive: true });
   mkdirSync(tokensDir, { recursive: true });
   mkdirSync(session, { recursive: true });
@@ -178,7 +192,15 @@ export function closing({
       `n=$(( $(ls "${callsDir}" 2>/dev/null | wc -l) + 1 ))`,
       `printf '%s\\n' "$@" >"${callsDir}/$n"`,
       `printf '%s' "$GH_TOKEN" >"${tokensDir}/$n"`,
+      `printf '%s' "$GH_REPO" >"${reposDir}/$n"`,
       'case "$*" in',
+      ...(faultOrigin === undefined
+        ? []
+        : [
+            `  *"repos/${faultOrigin.repo}/issues/${faultOrigin.ticket}"*) printf '%s\\n' '${JSON.stringify({ number: Number(faultOrigin.ticket), state: "open", labels: faultOrigin.labels.map((name) => ({ name })) })}' ;;`,
+            `  *"issues/${faultOrigin.ticket}/comments"*) [ "$GH_REPO" = "${faultOrigin.repo}" ] || exit 1; cat <<'SAID'\n${faultOrigin.said.map((body) => JSON.stringify({ author: MACHINE, type: "Bot", body })).join("\n")}\nSAID\n    ;;`,
+            ...Object.entries(faultOrigin.filed).map(([filed, state]) => `  *"issue view ${filed} "*"state"*) printf '%s\\n' '${state}' ;;`),
+          ]),
       `  "api repos/{owner}/{repo}/issues/${ticket} --jq"*) printf 'ticket\\nbuilding\\ntry-2\\nwayfinder:map\\n' ;;`,
       `  *"issue list"*"${WAITING}"*) cat <<'LISTED'\n${JSON.stringify(waitingListed(followUps, splitFrom))}\nLISTED\n    ;;`,
       ...openPrs.filter((pr) => pr.labelsUnreadable === true).map((pr) => `  *"issue view ${pr.ticket} "*"labels"*) printf 'GraphQL: labels could not be read\\n' >&2; exit 1 ;;`),
@@ -227,6 +249,7 @@ export function closing({
     heads,
     calls: () => readdirSync(callsDir).sort((a, b) => Number(a) - Number(b)).map((file) => readFileSync(join(callsDir, file), "utf8")),
     output: () => (existsSync(output) ? readFileSync(output, "utf8") : ""),
+    repos: () => readdirSync(reposDir).sort((a, b) => Number(a) - Number(b)).map((file) => readFileSync(join(reposDir, file), "utf8")),
     tokens: () => readdirSync(tokensDir).sort((a, b) => Number(a) - Number(b)).map((file) => readFileSync(join(tokensDir, file), "utf8")),
     run: () =>
       execute(
@@ -243,7 +266,7 @@ export function closing({
           ...(calledFrom === undefined ? {} : { CALLED_FROM: calledFrom }),
           ...(foreign ? { MACHINE_BIN: BIN } : {}),
         },
-        afterCheck ? ["queue"] : [],
+        closedIssue !== undefined ? ["queue", closedIssue] : afterCheck ? ["queue"] : [],
       ),
   };
 }
