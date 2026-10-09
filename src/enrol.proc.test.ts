@@ -2,13 +2,14 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
+import { ENROLLED_REVIEW } from "./post.ts";
 import { bare, CI, DEPLOY, ENROLLED as REPO, enrolling, key, PC_RUNS_ON } from "./scenarios.ts";
 
 const CALLER = readFileSync(join(import.meta.dirname, "..", ".github", "caller.yml"), "utf8");
 const OFFER = `enrol: \`bin/runner ${REPO} pc\` moves its jobs to this PC; run one fresh full check there and watch its peak memory before leaving it on\n`;
 
 describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#1152)", () => {
-  it("writes the caller file naming only the repo's own CI, since GitHub refuses a workflow that hears itself, reaches it with the App, sets every secret, label and auto-merge, and holds main for check", () => {
+  it("writes the caller file naming only the repo's own CI, since GitHub refuses a workflow that hears itself, reaches it with the App, sets every secret, label and auto-merge, and holds main for check and the caller's review", () => {
     const { run, held } = enrolling(bare());
 
     const result = run();
@@ -27,7 +28,8 @@ describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#11
     expect(after.allow_auto_merge).toBe(true);
     expect(after.rules.map(({ type }) => type)).toEqual(expect.arrayContaining(["pull_request", "required_status_checks"]));
     expect(JSON.stringify(after.rules)).toContain('"context":"check"');
-    expect(result.stdout).toBe(`enrol: ${REPO} enrolled, 9 settings set\n${OFFER}`);
+    expect(JSON.stringify(after.rules)).toContain(`"context":"${ENROLLED_REVIEW}"`);
+    expect(result.stdout).toBe(`enrol: ${REPO} enrolled, 10 settings set\n${OFFER}`);
   });
 
   it("writes .github/caller.yml as it stands, but for the name of the repo's CI", () => {
@@ -80,10 +82,11 @@ describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#11
 
     expect(result.status).toBe(1);
     expect(result.stderr.trimEnd().split("\n")).toEqual([
-      `enrol: ${REPO} is not enrolled, 3 could not be set and 6 were:`,
+      `enrol: ${REPO} is not enrolled, 4 could not be set and 6 were:`,
       "- CLAUDE_CODE_OAUTH_TOKEN: no CLAUDE_CODE_OAUTH_TOKEN in the environment to set it from",
       "- auto-merge: gh: Must have admin rights to Repository. (HTTP 403)",
       "- the caller file: auto-merge is off, so a PR for it would never merge on its own",
+      `- main taking only a PR its review passed: the caller file on main runs no ${ENROLLED_REVIEW}, so main would wait on a review that never runs`,
     ]);
     expect(held().labels).toContain("ticket");
     expect(held().dependabot).toEqual(["CORE_APP_PRIVATE_KEY"]);
@@ -96,12 +99,12 @@ describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#11
 
     expect(result.status).toBe(1);
     expect(result.stderr.trimEnd().split("\n")).toEqual([
-      `enrol: ${REPO} is not enrolled, 9 could not be set and 0 were:`,
+      `enrol: ${REPO} is not enrolled, 10 could not be set and 0 were:`,
       "- the App's access: gh: Bad credentials (HTTP 401)",
       "- CORE_APP_CLIENT_ID: gh: Bad credentials (HTTP 401)",
       "- CORE_APP_PRIVATE_KEY: gh: Bad credentials (HTTP 401)",
       "- CORE_APP_PRIVATE_KEY for Dependabot: gh: Bad credentials (HTTP 401)",
-      "- and 5 more",
+      "- and 6 more",
     ]);
   });
 
@@ -227,9 +230,17 @@ describe("bin/enrol keeps an enrolled repo current with the owner's own login (#
     expect(held().branches).toEqual({});
   });
 
-  it("names the caller PR still waiting on check, and leaves it alone on a re-run", () => {
+  it("holds main for the caller's review in a repo enrolled before it, once its caller file is current (#1285)", () => {
+    const { run, held } = enrolling(bare({ rules: HELD_FOR_CHECK, allow_auto_merge: true, files: { ".github/workflows/ci.yml": CI, ".github/workflows/machine.yml": STALE } }));
+
+    expect(run().status).toBe(0);
+    expect(JSON.stringify(held().rules)).toContain(`"context":"${ENROLLED_REVIEW}"`);
+  });
+
+  it("names the caller PR still waiting on check, holding main for the caller's review only once that PR merges, and leaves it alone on a re-run (#1285)", () => {
     const { run, held } = enrolling(bare({ rules: HELD_FOR_CHECK, allow_auto_merge: true, pending: true, files: { ".github/workflows/ci.yml": CI, ".github/workflows/machine.yml": STALE } }));
-    const waiting = `- the caller file: https://github.com/${REPO}/pull/900 merges on its own once check passes`;
+    const pr = `https://github.com/${REPO}/pull/900 merges on its own once check passes`;
+    const waiting = `- the caller file: ${pr}\n- main taking only a PR its review passed: ${pr}`;
 
     expect(run().stdout).toBe(`enrol: ${REPO} is enrolled once its PR merges, 7 settings set:\n${waiting}\n${OFFER}`);
     const before = held().writes.length;
@@ -237,6 +248,7 @@ describe("bin/enrol keeps an enrolled repo current with the owner's own login (#
     expect(run()).toEqual({ status: 0, stdout: `enrol: ${REPO} is enrolled once its PR merges, 0 settings set:\n${waiting}\n${OFFER}`, stderr: "" });
     expect(held().writes).toHaveLength(before);
     expect(held().prs.map(({ auto }) => auto)).toEqual([true]);
+    expect(JSON.stringify(held().rules)).not.toContain(ENROLLED_REVIEW);
   });
 });
 
@@ -279,6 +291,6 @@ describe("bin/enrol says what a repo needs before its jobs suit this PC's runner
   it("adds nothing for a repo already on this PC with nothing to change", () => {
     const { run } = enrolling(bare({ variables: ["CI_RUNNER"] }));
 
-    expect(run().stdout).toBe(`enrol: ${REPO} enrolled, 9 settings set\n`);
+    expect(run().stdout).toBe(`enrol: ${REPO} enrolled, 10 settings set\n`);
   });
 });

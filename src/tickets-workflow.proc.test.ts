@@ -7,7 +7,7 @@ import { fixing } from "./builder.part.ts";
 import { closing } from "./closer.part.ts";
 import { execute, heldBy, holds, labelledAs, labelledStep, scratch, script, workflowJobs, type WorkflowStep } from "./scenarios.ts";
 import { HELD, MACHINE, OWNER } from "./spelled.ts";
-import { ENROLLED_CALLER } from "./post.ts";
+import { ENROLLED_CALLER, ENROLLED_REVIEW } from "./post.ts";
 import { probeRunName } from "./probe.ts";
 
 const REPO = join(import.meta.dirname, "..");
@@ -37,6 +37,7 @@ interface Fired {
   conclusion?: string;
   fork?: boolean;
   own?: boolean;
+  home?: boolean;
   inputs?: Record<string, string>;
   red?: string[];
   stopped?: string[];
@@ -91,6 +92,22 @@ describe("a repo's tickets build through one caller file that holds only trigger
     expect(jobsRun({ event: "workflow_run", action: "completed", conclusion: "success" })).toEqual(["close"]);
   });
 
+  it("judges a PR opened, reopened or pushed in an enrolled repo with the reviewer and the meter reviewer, then lands the queue once its review is green (#1285)", () => {
+    for (const action of ["opened", "synchronize", "reopened"]) expect(jobsRun({ event: "pull_request_target", action }), action).toEqual(["review", "meters", "close"]);
+    expect(jobsRun({ event: "pull_request_target", action: "opened", fork: true })).toEqual([]);
+  });
+
+  it("hands a ticket PR back to its builder when its review in an enrolled repo ends red, landing nothing (#1285)", () => {
+    expect(jobsRun({ event: "pull_request_target", action: "synchronize", red: ["review"], outputs: { which: { ticket: "828" } } })).toEqual(["review", "meters", "which", "fix"]);
+  });
+
+  it("names the review the closer waits on in an enrolled repo as GitHub names it: the caller's job calling tickets.yml, then the job that runs bin/review (#1285)", () => {
+    const [calling] = Object.entries(caller().jobs).find(([, job]) => String(job.uses).includes("/tickets.yml@")) ?? [];
+    const [reviewing] = Object.entries(workflowJobs("tickets.yml")).find(([, { steps }]) => steps.some(({ run }) => /bin\/review\b/.test(run ?? ""))) ?? [];
+
+    expect(`${calling} / ${reviewing}`).toBe(ENROLLED_REVIEW);
+  });
+
   it("hands a ticket back to its builder when the caller's own CI ends red on its branch, when its build ends red, or when the closer dispatches the caller", () => {
     const named = { which: { ticket: "828" } };
 
@@ -134,6 +151,7 @@ describe("a repo's tickets build through one caller file that holds only trigger
     [{ event_name: "issues", event: { action: "closed", issue: { number: 1216, title: "Name each run" } } }, "closed #1216: Name each run"],
     [{ event_name: "issue_comment", event: { action: "created", issue: { number: 968, title: "A spec" } } }, "created #968: A spec"],
     [{ event_name: "pull_request_target", event: { action: "closed", pull_request: { number: 1220, title: "Name each run" } } }, "closed PR #1220: Name each run"],
+    [{ event_name: "pull_request_target", event: { action: "synchronize", pull_request: { number: 1285, title: "Review every repo" } } }, "synchronize PR #1285: Review every repo"],
     [{ event_name: "workflow_dispatch", event: { inputs: { ticket: "968", reason: "size-trial", trial_cap: "60000" } } }, "Size trial of #968 under 60000"],
     [{ event_name: "workflow_dispatch", event: { inputs: { ticket: "828", reason: "PR red" } } }, "Fix #828"],
     [{ event_name: "workflow_dispatch", event: { inputs: { ticket: "828", reason: "red", rerun: "4417/1" } } }, "Rerun of run 4417/1"],
@@ -540,7 +558,12 @@ describe("this repo reaches the machine through the caller file bin/enrol writes
     const others = readdirSync(WORKFLOWS).filter((file) => file !== ENROLLED_CALLER && !Object.hasOwn(triggersOf(file), "workflow_call"));
     const twice = others.flatMap((file) => {
       const triggers = triggersOf(file);
-      return HEARD.filter((event) => Object.hasOwn(triggers, event) && Object.hasOwn(caller, event) && overlaps(typesOf(triggers, event), typesOf(caller, event))).map((event) => `${file} ${event}`);
+      return HEARD.filter((event) => Object.hasOwn(triggers, event) && Object.hasOwn(caller, event) && overlaps(typesOf(triggers, event), typesOf(caller, event))).flatMap((event) => {
+        const theirs = typesOf(triggers, event);
+        const ours = typesOf(caller, event);
+        if (theirs === undefined || ours === undefined) return [`${file} ${event}`];
+        return theirs.filter((action) => ours.includes(action) && CALLED.some((called) => jobsRun({ event, action, home: true }, called).length > 0)).map((action) => `${file} ${event} ${action}`);
+      });
     });
 
     expect(others.length).toBeGreaterThan(0);
