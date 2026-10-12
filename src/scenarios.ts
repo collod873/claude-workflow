@@ -280,6 +280,19 @@ export const misshapenTicket = [
   "",
 ].join("\n");
 
+export const wellFormedBug = [
+  "## Why",
+  "",
+  "The Signals of session 7a2c read:",
+  "",
+  '> hookkit: check-gate crashed 3 times: "TypeError: Cannot read properties of undefined (reading \'steps\')"',
+  "",
+  "## Done when",
+  "",
+  "- check-gate reads a contract with no steps and says so instead of crashing.",
+  "",
+].join("\n");
+
 export const wellFormedNote = ["## Why", "", "Three passes over the standards left four proposals nobody can build until the owner weighs them.", ""].join("\n");
 
 export const wellFormedSpec = [

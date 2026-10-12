@@ -79,7 +79,7 @@ export function slicing({
     calls: () => calls().map((args) => args.slice(0, 3).join(" ")),
     hired: () => each("hired").map((argv) => argv.split("\0")),
     handed: () => each("handed"),
-    rewrites: () => calls().filter((args) => args[1] === "edit" && args.includes("--body")).map(bodyOf),
+    rewrites: (spec = "968") => calls().filter((args) => args[1] === "edit" && args[2] === spec && args.includes("--body")).map(bodyOf),
     filed: () => calls().filter((args) => args[1] === "create").map((args) => ({ title: args[args.indexOf("--title") + 1], body: bodyOf(args) })),
     linked: () => calls().filter((args) => args.includes("POST")).map((args) => args.filter((arg) => arg.includes("sub_issues") || arg.startsWith("sub_issue_id=")).join(" ")),
     comments: () => calls().filter((args) => args[1] === "comment").map(bodyOf),

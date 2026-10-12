@@ -24,7 +24,7 @@ const each = (senders: string[], actions: Omit<IssueEvent, "labels" | "sender">[
 const BUILT_ON = each(
   [OWNER, MACHINE, "stranger"],
   [{ action: "opened" }, { action: "reopened" }, { action: "unlabeled", label: "waiting" }, { action: "unlabeled", label: "building" }, { action: "unlabeled", label: "paused" }, { action: "unlabeled", label: "stuck" }, { action: "labeled", label: "paused" }],
-  [[], ["ticket"], ["ticket", "note"], ["spec"], ["ticket", "waiting"], ["ticket", "paused"], ["ticket", "stuck"]],
+  [[], ["ticket"], ["ticket", "bug"], ["ticket", "note"], ["spec"], ["ticket", "waiting"], ["ticket", "paused"], ["ticket", "stuck"]],
 );
 
 const GATED = [

@@ -3,6 +3,7 @@ import { authoredOn, labelsHeld, opened, post, readOrStop, RESEARCH, RESOLVING, 
 import { wellFormedNote as NOTE, wellFormedSpec as SPEC } from "./scenarios.ts";
 
 const URL = "https://github.com/collod873/claude-workflow/issues/700";
+const PAGE = "[sessions](https://github.com/collod873/transcripts/blob/main/issues/claude-workflow-700.md)";
 const TICKET = [
   "## Why",
   "",
@@ -11,6 +12,18 @@ const TICKET = [
   "## Done when",
   "",
   "- The door files a well-formed ticket.",
+  "",
+].join("\n");
+const BUG = [
+  "## Why",
+  "",
+  "The Signals of session 7a2c read:",
+  "",
+  "> hookkit: check-gate crashed 3 times: TypeError: Cannot read properties of undefined",
+  "",
+  "## Done when",
+  "",
+  "- check-gate reads a contract with no steps and says so.",
   "",
 ].join("\n");
 
@@ -23,6 +36,9 @@ function github(result: { status?: number; stdout?: string; stderr?: string } = 
   return { gh, calls };
 }
 
+const linked = (body: string, before = "") => (before === "" ? `${body.trimEnd()}\n\n${PAGE}\n\n` : body.replace(before, `${PAGE}\n\n${before}`));
+const edit = (body: string) => ["issue", "edit", "700", "--body", body];
+
 const posting = (fields: Partial<Posting>): Posting => ({ kind: "ticket", text: TICKET, title: "A ticket", ...fields });
 
 describe("src/post.ts is the one way the machine writes text to GitHub (#662)", () => {
@@ -30,14 +46,14 @@ describe("src/post.ts is the one way the machine writes text to GitHub (#662)", 
     const { gh, calls } = github();
 
     expect(post(posting({}), gh)).toEqual({ refusals: [], said: URL });
-    expect(calls).toEqual([["issue", "create", "--title", "A ticket", "--label", "ticket", "--body", TICKET]]);
+    expect(calls).toEqual([["issue", "create", "--title", "A ticket", "--label", "ticket", "--body", TICKET], edit(linked(TICKET, "## Done when"))]);
   });
 
   it("files a follow-up labelled ticket beside waiting (#1056)", () => {
     const { gh, calls } = github();
 
     expect(post(posting({ labels: ["waiting"] }), gh)).toEqual({ refusals: [], said: URL });
-    expect(calls).toEqual([["issue", "create", "--title", "A ticket", "--label", "ticket", "--body", TICKET, "--label", "waiting"]]);
+    expect(calls).toEqual([["issue", "create", "--title", "A ticket", "--label", "ticket", "--body", TICKET, "--label", "waiting"], edit(linked(TICKET, "## Done when"))]);
   });
 
   it("judges a ticket by the ticket shape rather than by the message limit", () => {
@@ -48,14 +64,26 @@ describe("src/post.ts is the one way the machine writes text to GitHub (#662)", 
       "the body carries no '## Why', so nothing says what the owner asked for",
     ]);
     expect(post(posting({ title: undefined }), gh).refusals).toEqual(["a ticket carries no title"]);
-    expect(calls).toHaveLength(1);
+    expect(calls).toHaveLength(2);
   });
 
   it("refuses a kind the table does not carry", () => {
     const { gh, calls } = github();
 
-    expect(post(posting({ kind: "memo" }), gh).refusals).toEqual(["memo is not a kind src/post.ts writes: ticket, note, research, spec, judgement"]);
+    expect(post(posting({ kind: "memo" }), gh).refusals).toEqual(["memo is not a kind src/post.ts writes: ticket, bug, note, research, spec, judgement"]);
     expect(calls).toEqual([]);
+  });
+
+  it("files a bug labelled ticket and bug, so the machine builds it like a ticket and the label says a log, test or Signal proved it, not the owner", () => {
+    const { gh, calls } = github();
+    const bug = (fields: Partial<Posting>) => post(posting({ kind: "bug", text: BUG, title: "check-gate crashes on a contract with no steps", ...fields }), gh);
+
+    expect(bug({})).toEqual({ refusals: [], said: URL });
+    expect(calls).toEqual([["issue", "create", "--title", "check-gate crashes on a contract with no steps", "--label", "ticket", "--label", "bug", "--body", BUG], edit(linked(BUG, "## Done when"))]);
+    expect(bug({ title: undefined }).refusals).toEqual(["a bug carries no title"]);
+    expect(bug({ text: BUG.replace("> ", "") }).refusals).toEqual(['\'## Why\' quotes no evidence: it carries no "..." quote and no > quoted line from a log, a test or a Signal']);
+    expect(bug({ text: BUG.replace("## Why", "## Background") }).refusals).toEqual(["the body carries no '## Why', so nothing shows the fault"]);
+    expect(calls).toHaveLength(2);
   });
 
   it("files a spec labelled spec, refusing it by the spec shape rather than the ticket shape", () => {
@@ -63,12 +91,12 @@ describe("src/post.ts is the one way the machine writes text to GitHub (#662)", 
     const spec = (fields: Partial<Posting>) => post(posting({ kind: "spec", text: SPEC, title: "A spec the slicer can read", ...fields }), gh);
 
     expect(spec({})).toEqual({ refusals: [], said: URL });
-    expect(calls).toEqual([["issue", "create", "--title", "A spec the slicer can read", "--label", "spec", "--body", SPEC]]);
+    expect(calls).toEqual([["issue", "create", "--title", "A spec the slicer can read", "--label", "spec", "--body", SPEC], edit(linked(SPEC, "## Solution"))]);
     expect(spec({ title: undefined }).refusals).toEqual(["a spec carries no title"]);
     expect(spec({ text: SPEC.replace("## Problem Statement", "## Background") }).refusals).toEqual([
       "the body carries no '## Problem Statement', so nothing says what the owner asked for",
     ]);
-    expect(calls).toHaveLength(1);
+    expect(calls).toHaveLength(2);
   });
 
   it("labels a note, so the stub that starts a build from issues: opened can tell it from a ticket", () => {
@@ -76,19 +104,19 @@ describe("src/post.ts is the one way the machine writes text to GitHub (#662)", 
     const note = (fields: Partial<Posting>) => post(posting({ kind: "note", text: NOTE, title: "What the audit found", ...fields }), gh);
 
     expect(note({})).toEqual({ refusals: [], said: URL });
-    expect(calls).toEqual([["issue", "create", "--title", "What the audit found", "--label", "note", "--body", NOTE]]);
+    expect(calls).toEqual([["issue", "create", "--title", "What the audit found", "--label", "note", "--body", NOTE], edit(linked(NOTE))]);
     expect(note({ title: undefined }).refusals).toEqual(["a note carries no title"]);
     expect(note({ text: "Four proposals, with no heading over them." }).refusals).toEqual([
       "the body carries no '## Why', so nothing says why this was worth keeping",
     ]);
-    expect(calls).toHaveLength(1);
+    expect(calls).toHaveLength(2);
   });
 
   it("labels a research note both note and research, so no build starts and the research workflow does (#902)", () => {
     const { gh, calls } = github();
 
     expect(post(posting({ kind: "research", text: NOTE, title: "What does the closer judge" }), gh)).toEqual({ refusals: [], said: URL });
-    expect(calls).toEqual([["issue", "create", "--title", "What does the closer judge", "--label", "note", "--label", "research", "--body", NOTE]]);
+    expect(calls).toEqual([["issue", "create", "--title", "What does the closer judge", "--label", "note", "--label", "research", "--body", NOTE], edit(linked(NOTE))]);
     expect(post(posting({ kind: "research", text: "What does the closer judge?" }), gh).refusals).toEqual([
       "the body carries no '## Why', so nothing says why this was worth keeping",
     ]);
@@ -120,6 +148,53 @@ describe("src/post.ts is the one way the machine writes text to GitHub (#662)", 
     const { gh } = github({ status: 1, stdout: "", stderr: "GraphQL: Resource not accessible by integration\nsecond line\n" });
 
     expect(post(posting({}), gh).refusals).toEqual(["gh issue create failed: GraphQL: Resource not accessible by integration"]);
+  });
+});
+
+describe("every filing links the transcripts page listing the sessions that filed, built or touched it, with one edit once its number is known", () => {
+  it("puts the link beside the session id on the Session line, and on its own line when no session is named", () => {
+    const stamped = github();
+    const unstamped = github();
+
+    expect(post(posting({ sessionId: "sess-abc" }), stamped.gh)).toEqual({ refusals: [], said: URL });
+    expect(post(posting({}), unstamped.gh)).toEqual({ refusals: [], said: URL });
+    expect(stamped.calls.map((args) => args.at(-1))).toEqual([TICKET.replace("## Done when", "Session: `sess-abc`\n\n## Done when"), TICKET.replace("## Done when", `Session: \`sess-abc\` · ${PAGE}\n\n## Done when`)]);
+    expect(unstamped.calls.map((args) => args.at(-1))).toEqual([TICKET, linked(TICKET, "## Done when")]);
+  });
+
+  it("names the page after the repo gh filed in, lower-cased as the transcripts repo names it, and the issue's number", () => {
+    const { gh, calls } = github({ stdout: "https://github.com/collod873/Lumaria/issues/12\n" });
+
+    expect(post(posting({}), gh)).toEqual({ refusals: [], said: "https://github.com/collod873/Lumaria/issues/12" });
+    expect(calls[1]).toEqual(["issue", "edit", "12", "--body", TICKET.replace("## Done when", "[sessions](https://github.com/collod873/transcripts/blob/main/issues/lumaria-12.md)\n\n## Done when")]);
+  });
+
+  it("edits nothing when the body already carries the link, and links nothing when gh prints no issue URL", () => {
+    const carried = github();
+    const unnumbered = github({ stdout: "filed\n" });
+
+    expect(post(posting({ text: linked(TICKET, "## Done when"), sessionId: "sess-abc" }), carried.gh)).toEqual({ refusals: [], said: URL });
+    expect(post(posting({}), unnumbered.gh)).toEqual({ refusals: [], said: "filed" });
+    expect(carried.calls).toHaveLength(1);
+    expect(unnumbered.calls).toHaveLength(1);
+  });
+
+  it("posts a judgement with no link, since a PR comment is no issue", () => {
+    const { gh, calls } = github();
+
+    expect(post(posting({ kind: "judgement", title: undefined, pr: "901", text: "The reviewer found no drift.\n" }), gh)).toEqual({ refusals: [], said: URL });
+    expect(calls).toHaveLength(1);
+  });
+
+  it("names the filing that stands unlinked when the edit fails, so the URL is not lost with the refusal", () => {
+    const calls: string[][] = [];
+    const gh = (args: string[]) => {
+      calls.push(args);
+      return args[1] === "edit" ? { status: 1, stdout: "", stderr: "GraphQL: Resource not accessible by integration\n" } : { status: 0, stdout: `${URL}\n`, stderr: "" };
+    };
+
+    expect(post(posting({}), gh)).toEqual({ refusals: [`${URL} was filed, but gh issue edit failed: GraphQL: Resource not accessible by integration, so it carries no sessions link`], said: "" });
+    expect(calls).toHaveLength(2);
   });
 });
 

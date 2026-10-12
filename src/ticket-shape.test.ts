@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { handedOn as builderBrief } from "./builder.ts";
 import { handedOn as reviewerBrief } from "./reviewer.ts";
-import { DONE_SENTENCES, NOTE_SHAPE, SPEC_CAP, SPEC_SHAPE, TICKET_SHAPE, noteRefusals, specRefusals, ticketRefusals } from "./ticket-shape.ts";
+import { BUG_SHAPE, DONE_SENTENCES, NOTE_SHAPE, SPEC_CAP, SPEC_SHAPE, TICKET_SHAPE, bugRefusals, noteRefusals, specRefusals, ticketRefusals } from "./ticket-shape.ts";
 
 const DASH = "\u2014";
 const TEST_CHECK = "npx vitest run --config vitest.config.ts ticket-shape";
 const QUOTED = 'The owner, in session: "file a ticket the machine can build".';
+const SIGNAL = "The Signals of the session read:\n\n> hookkit: check-gate crashed 3 times: TypeError: Cannot read properties of undefined";
+const FAILING_TEST = 'test_release.py::test_follow failed: "AssertionError: the link still names the old release".';
 
 function body({ why = QUOTED, done = ["- Filing a body with no why files nothing."] }: { why?: string; done?: string[] } = {}): string {
   return ["## Why", "", why, "", "## Done when", "", ...done, ""].join("\n");
@@ -44,6 +46,36 @@ describe("src/ticket-shape refuses a ticket body that hides what was meant (#662
   it("names every defect at once, so one filing does not trickle them out", () => {
     expect(ticketRefusals("nothing shaped like a ticket at all")).toEqual([
       "the body carries no '## Why', so nothing says what the owner asked for",
+      "the body carries no '## Done when', so nothing says what done looks like",
+    ]);
+  });
+});
+
+const misshapenBug: [string, string, string[]][] = [
+  ["a body with no '## Why'", body({ why: SIGNAL }).replace("## Why", "## Background"), ["the body carries no '## Why', so nothing shows the fault"]],
+  [
+    "a '## Why' quoting no evidence",
+    body({ why: "The check went red near the end of the session and nobody looked." }),
+    ['\'## Why\' quotes no evidence: it carries no "..." quote and no > quoted line from a log, a test or a Signal'],
+  ],
+  ["a body with no '## Done when'", body({ why: SIGNAL }).replace("## Done when", "## Fix"), ["the body carries no '## Done when', so nothing says what done looks like"]],
+  ["four sentences", body({ why: SIGNAL, done: [1, 2, 3, 4].map((n) => `- check-gate survives fault ${n}.`) }), ["'## Done when' carries 4 '- ' sentences, not 1 to 3"]],
+  ["an em dash in the body", body({ why: `${SIGNAL} ${DASH} still standing` }), ["line 5 carries an em dash"]],
+];
+
+describe("src/ticket-shape refuses a bug body that proves no fault, since no owner spoke for it", () => {
+  it("accepts a Why quoting a Signal line, a log line or a failing test in \"...\" or a > line, with the ticket's Done when and no owner words", () => {
+    expect(bugRefusals(body({ why: SIGNAL }))).toEqual([]);
+    expect(bugRefusals(body({ why: FAILING_TEST, done: ["- test_follow passes.", "- The link names the new release."] }))).toEqual([]);
+  });
+
+  it.each(misshapenBug)("refuses %s", (_defect, planted, reasons) => {
+    expect(bugRefusals(planted)).toEqual(reasons);
+  });
+
+  it("names every defect at once, as a ticket's refusal does", () => {
+    expect(bugRefusals("nothing shaped like a bug at all")).toEqual([
+      "the body carries no '## Why', so nothing shows the fault",
       "the body carries no '## Done when', so nothing says what done looks like",
     ]);
   });
@@ -200,6 +232,7 @@ describe("the shape bin/file-issue --help prints names every heading its kind is
 
   it.each([
     ["ticket", TICKET_SHAPE, ticketRefusals],
+    ["bug", BUG_SHAPE, bugRefusals],
     ["note", NOTE_SHAPE, noteRefusals],
     ["spec", SPEC_SHAPE, specRefusals],
   ])("%s", (_, shape, refusals) => {
@@ -213,6 +246,7 @@ describe("the shape bin/file-issue --help prints names every heading its kind is
 describe("the builder's split, the reviewer's follow-ups and bin/file-issue --help read one Done when phrase, not hand copies (#1004)", () => {
   it.each([
     ["bin/file-issue --help", TICKET_SHAPE],
+    ["bin/file-issue --help, for a bug", BUG_SHAPE],
     ["the builder's split", builderBrief({ ticket: "1", body: body() })],
     ["the reviewer's follow-ups", reviewerBrief(body(), "", { after: { earlier: "", fix: "" } })],
   ])("%s", (_, text) => {

@@ -11,7 +11,7 @@ const RED_FOUR_TIMES = ["n=$(cat ../reds 2>/dev/null || echo 0)", `[ "$n" -ge 4 
 const BUILDS_THE_REWRITE = `[ "$CALL" = 2 ] && { ${FIXES.trim()}; sed -i 's/"outcome":"ticket"/"outcome":"code"/' ../answer.jsonl; }\n`;
 const FIXES_EACH_ROUND = "printf 'export const shaped = %s;\\n' \"$((CALL + 1))\" >src/ticket-shape.ts\n";
 const MOVES_MAIN = 'git update-ref refs/heads/main "$(git commit-tree -p main -m "Land the reviewer fix #811 needed" "$(git rev-parse "main^{tree}")")"\n';
-const FILED_IN_SESSION = "## Why\n\nThe owner: \"read what I said\".\n\nSession: `ca2517b0-5e2d-46e7-a894-7fc3a4b978b2`\n\n## Done when\n\n- The builder reads it.\n";
+const FILED_IN_SESSION = "## Why\n\nThe owner: \"read what I said\".\n\nSession: `ca2517b0-5e2d-46e7-a894-7fc3a4b978b2` · [sessions](https://github.com/collod873/transcripts/blob/main/issues/claude-workflow-811.md)\n\n## Done when\n\n- The builder reads it.\n";
 const untouched = ({ marked, handed, calls }: ReturnType<typeof fixing>) => {
   expect(marked()).toEqual([]);
   expect(handed()).toEqual([]);
@@ -348,7 +348,7 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
       expect(piece).toContain("> The owner, in session: \"a red ticket stays with its builder until it merges, never the owner\".");
       for (const sentence of ticket.done) expect(piece).toContain(`## Done when\n\n- ${sentence}`);
     }
-    expect(edits()).toEqual([waits]);
+    expect(edits()).toEqual([...filed().map((piece, at) => (piece ?? "").replace("## Done when", `[sessions](https://github.com/collod873/transcripts/blob/main/issues/claude-workflow-90${at + 1}.md)\n\n## Done when`)), waits]);
     expect(ticketComments().at(-1)).toMatch(new RegExp(`^@collod873 the builder split #811 into #901, #902, which build themselves\\..*${reason}`));
     expect(labelled()).toEqual([]);
     expect(marked()).toEqual(["811 building --try", "811 waiting"]);

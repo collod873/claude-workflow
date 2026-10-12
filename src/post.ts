@@ -2,8 +2,8 @@ import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { text as read } from "node:stream/consumers";
 import { emDashLines } from "./em-dash.ts";
-import { NEXT_HEADING, NOTE_SHAPE, SPEC_SHAPE, TICKET_SHAPE, matchEnd, noteRefusals, rewriteRefusals, specRefusals, ticketRefusals } from "./ticket-shape.ts";
-import { HELD, MACHINE, NOTE, OWNER, RESEARCH, RESOLVING, SPEC, STUCK, TICKET, TICKET_PREFIX, WAITING, type LabelName, type MarkedLabel } from "./spelled.ts";
+import { BUG_SHAPE, NEXT_HEADING, NOTE_SHAPE, SPEC_SHAPE, TICKET_SHAPE, bugRefusals, matchEnd, noteRefusals, rewriteRefusals, specRefusals, ticketRefusals } from "./ticket-shape.ts";
+import { BUG, HELD, MACHINE, NOTE, OWNER, RESEARCH, RESOLVING, SPEC, STUCK, TICKET, TICKET_PREFIX, WAITING, type LabelName, type MarkedLabel } from "./spelled.ts";
 import { type Stop, stoppedAt } from "./stops.ts";
 
 export interface Posting {
@@ -131,6 +131,7 @@ export { OWNER, RESEARCH, RESOLVING, STUCK, WAITING, type MarkedLabel };
 
 const KINDS: Record<string, Kind> = {
   ticket: filed(ticketRefusals, [TICKET], TICKET_SHAPE),
+  bug: filed(bugRefusals, [TICKET, BUG], BUG_SHAPE),
   note: filed(noteRefusals, [NOTE], NOTE_SHAPE),
   research: filed(noteRefusals, [NOTE, RESEARCH], NOTE_SHAPE),
   spec: filed(specRefusals, [SPEC], SPEC_SHAPE),
@@ -141,18 +142,35 @@ export const POSTING_KINDS = Object.keys(KINDS);
 
 const FIRST_HEADING = /^##[ \t].*$/m;
 
-export const sessionLine = (sessionId: string) => `Session: \`${sessionId}\``;
+const BESIDE = " · ";
+const FILED_AT = /github\.com\/[^/\s]+\/([^/\s]+)\/issues\/(\d+)/;
 
-function stampedWithSession(text: string, sessionId: string): string {
-  const line = sessionLine(sessionId);
+const sessionLine = (sessionId: string) => `Session: \`${sessionId}\``;
+export const FILED_IN = new RegExp(`^${sessionLine("([^`]+)")}(?:${BESIDE}.*)?\\s*$`, "m");
+const sessionsPage = (repo: string, number: string) => `[sessions](https://github.com/${OWNER}/transcripts/blob/main/issues/${repo.toLowerCase()}-${number}.md)`;
+
+function stampedWithSession(text: string, sessionId: string | undefined, page?: string): string {
   const found = FIRST_HEADING.exec(text);
   if (found === null) return text;
   const start = matchEnd(found);
   const next = NEXT_HEADING.exec(text.slice(start));
   const end = next === null ? text.length : start + next.index;
   const section = text.slice(start, end).replace(/\s+$/, "");
-  if (section.includes(line)) return text;
-  return `${text.slice(0, start)}${section}\n\n${line}\n\n${text.slice(end)}`;
+  const session = sessionId ? sessionLine(sessionId) : undefined;
+  const stamp = [session, page].filter((part) => part !== undefined).join(BESIDE);
+  const carried = page ?? session;
+  if (stamp === "" || (carried !== undefined && section.includes(carried))) return text;
+  const stamped = session !== undefined && section.includes(session) ? section.replace(session, stamp) : `${section}\n\n${stamp}`;
+  return `${text.slice(0, start)}${stamped}\n\n${text.slice(end)}`;
+}
+
+function linkedToSessions(posting: Posting, text: string, url: string, gh: Gh): { refusals: string[]; said: string } {
+  const [, repo, number] = FILED_AT.exec(url) ?? [];
+  if (repo === undefined || number === undefined) return { refusals: [], said: url };
+  const linked = stampedWithSession(text, posting.sessionId, sessionsPage(repo, number));
+  if (linked === text) return { refusals: [], said: url };
+  const edited = written(gh, ["issue", "edit", number, "--body", linked]);
+  return edited.refusals.length > 0 ? { refusals: edited.refusals.map((refusal) => `${url} was filed, but ${refusal}, so it carries no sessions link`), said: "" } : { refusals: [], said: url };
 }
 
 function written(gh: Gh, args: string[]): { refusals: string[]; said: string } {
@@ -262,16 +280,17 @@ export function rewriteTicket(ticket: string, read: string, rewrite: string, gh:
   return refused.length > 0 ? { refusals: refused, said: "" } : written(gh, ["issue", "edit", ticket, "--body", rewrite]);
 }
 
-function prepared(posting: Posting): { refusals: string[]; args: string[] } {
+function prepared(posting: Posting): { refusals: string[]; args: string[]; text: string; filed: boolean } {
   const { kind, sessionId } = posting;
   const shape = KINDS[kind];
-  if (shape === undefined) return { refusals: [`${kind} is not a kind src/post.ts writes: ${Object.keys(KINDS).join(", ")}`], args: [] };
+  if (shape === undefined) return { refusals: [`${kind} is not a kind src/post.ts writes: ${Object.keys(KINDS).join(", ")}`], args: [], text: "", filed: false };
+  const filed = shape.on === "title";
   const on = posting[shape.on];
-  if (on === undefined) return { refusals: [`a ${kind} carries no ${shape.on}`], args: [] };
-  const text = shape.on === "title" && sessionId ? stampedWithSession(posting.text, sessionId) : posting.text;
+  if (on === undefined) return { refusals: [`a ${kind} carries no ${shape.on}`], args: [], text: "", filed };
+  const text = filed ? stampedWithSession(posting.text, sessionId) : posting.text;
   const refused = shape.refuses(text);
   const labelled = (posting.labels ?? []).flatMap((label) => ["--label", label]);
-  return refused.length > 0 ? { refusals: refused, args: [] } : { refusals: [], args: [...shape.args(on, text), ...labelled] };
+  return refused.length > 0 ? { refusals: refused, args: [], text, filed } : { refusals: [], args: [...shape.args(on, text), ...labelled], text, filed };
 }
 
 function shapesFiled(): string[] {
@@ -283,8 +302,10 @@ function shapesFiled(): string[] {
 export const postRefusals = (posting: Posting): string[] => prepared(posting).refusals;
 
 export function post(posting: Posting, gh: Gh): { refusals: string[]; said: string } {
-  const { refusals, args } = prepared(posting);
-  return refusals.length > 0 ? { refusals, said: "" } : written(gh, args);
+  const { refusals, args, text, filed } = prepared(posting);
+  if (refusals.length > 0) return { refusals, said: "" };
+  const created = written(gh, args);
+  return created.refusals.length > 0 || !filed ? created : linkedToSessions(posting, text, created.said, gh);
 }
 
 if (import.meta.main) {
