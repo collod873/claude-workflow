@@ -12,6 +12,7 @@ const STATE_BLUE = "1d76db";
 
 export const LABELS = [
   { name: "ticket", kind: "kind", colour: KIND_GREY, description: "A ticket the machine builds" },
+  { name: "bug", kind: "kind", colour: KIND_GREY, description: "A fault proven by a log, test or Signal; the machine builds the fix" },
   { name: "spec", kind: "kind", colour: KIND_GREY, description: "A spec: the whole statement of a big job, sliced into tickets, never built itself" },
   { name: "note", kind: "kind", colour: KIND_GREY, description: "Filed to be kept, never built" },
   { name: "research", kind: "kind", colour: KIND_GREY, description: "A note the machine answers and closes when filed" },
@@ -33,6 +34,7 @@ export type LabelName = (typeof LABELS)[number]["name"];
 export type MarkedLabel = Exclude<Extract<(typeof LABELS)[number], { kind: "state" | "parked" | "owner" | "held" }>["name"], typeof PAUSED>;
 
 export const TICKET = "ticket" as const satisfies LabelName;
+export const BUG = "bug" as const satisfies LabelName;
 export const SPEC = "spec" as const satisfies LabelName;
 export const NOTE = "note" as const satisfies LabelName;
 export const RESEARCH = "research" as const satisfies LabelName;
@@ -52,14 +54,14 @@ export const TICKET_PREFIX = "ticket/";
 export const OWNER = "collod873";
 export const MACHINE = "collod873-machine[bot]";
 export const OWNER_CALL = "owner call";
-const KEYED: Record<string, string> = { TICKET, SPEC, NOTE, RESEARCH, BUILDING, CHECKING, QUEUED, RESOLVING, LANDING, SLICING, RESEARCHING, WAITING, ASKED, PAUSED, STUCK, TICKET_PREFIX, OWNER, MACHINE, OWNER_CALL };
+const KEYED: Record<string, string> = { TICKET, BUG, SPEC, NOTE, RESEARCH, BUILDING, CHECKING, QUEUED, RESOLVING, LANDING, SLICING, RESEARCHING, WAITING, ASKED, PAUSED, STUCK, TICKET_PREFIX, OWNER, MACHINE, OWNER_CALL };
 
 export const SPELLINGS: [key: string, spelling: string][] = [
   ...Object.entries(KEYED),
   ...LABELS.filter(({ name }) => !Object.values(KEYED).includes(name)).map(({ name }): [string, string] => ["labels", name]),
 ];
 
-const USAGE = `spelled: usage: spelled labels | spelled <${Object.keys(KEYED).join("|")}>\n`;
+const USAGE = `spelled: usage: spelled labels | <${Object.keys(KEYED).join("|")}>\n`;
 
 if (import.meta.main) {
   const asked = process.argv.slice(2);

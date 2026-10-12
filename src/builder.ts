@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { admission, doesNotBuild } from "./admit.ts";
 import { capped, handedDiff, LIST_CAP, NO_EM_DASH, onDisk, TICKET_CAP } from "./brief.ts";
 import { FULL_CHECK, UNFENCED } from "./fence.ts";
-import { answered, type Asked, BUILDER_SPLIT, commentOnTicket, commentsRead, earlierDrift, faultOf, FOLLOW_UP_OF, FOREIGN, followUpBody, gh, ghRead, git, gitRead, MACHINE_REPO, machineBin, mark, NOTHING_MARKED, OWNER, post, postRefusals, prOfTicket, readOrStop, repairOf, RESOLVING, rewriteTicket, sessionLine, STUCK, ticketBranch, unread, WAITING } from "./post.ts";
+import { answered, type Asked, BUILDER_SPLIT, commentOnTicket, commentsRead, earlierDrift, faultOf, FOLLOW_UP_OF, FOREIGN, followUpBody, gh, ghRead, git, gitRead, MACHINE_REPO, machineBin, mark, NOTHING_MARKED, OWNER, post, postRefusals, prOfTicket, readOrStop, repairOf, RESOLVING, rewriteTicket, FILED_IN, STUCK, ticketBranch, unread, WAITING } from "./post.ts";
 import { CONTRACT, machineLogs, opened, setupRefusal, type Spent, treePathed } from "./stage.ts";
 import { BUILDING, CHECKING } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
@@ -77,7 +77,6 @@ export const CONTRACT_CAP = 4 * 1024;
 const CHECK = `${FULL_CHECK} --publish`;
 const PASSED = /^check: ok\b/;
 const LOGGED = /; log (.+?)\s*$/;
-const FILED_IN = new RegExp(`^${sessionLine("([^`]+)")}\\s*$`, "m");
 
 function captureOf(body: string, captures: string | undefined): string | undefined {
   const session = FILED_IN.exec(body)?.[1];

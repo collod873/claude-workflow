@@ -44,7 +44,9 @@ const MOST = 3;
 const QUOTE = 80;
 
 export const DONE_SENTENCES = `${FEWEST} to ${MOST} sentences saying what done looks like`;
-export const TICKET_SHAPE = `## ${NAMED.why}, quoting the owner in "..." or a > line; ## ${NAMED.doneWhen}, ${DONE_SENTENCES}, each on a '- ' line`;
+const DONE_SHAPE = `## ${NAMED.doneWhen}, ${DONE_SENTENCES}, each on a '- ' line`;
+export const TICKET_SHAPE = `## ${NAMED.why}, quoting the owner in "..." or a > line; ${DONE_SHAPE}`;
+export const BUG_SHAPE = `## ${NAMED.why}, quoting the evidence in "..." or a > line: a log line, a failing test's message, a Signal, error text; ${DONE_SHAPE}`;
 export const NOTE_SHAPE = `## ${NAMED.why}, saying why it is worth keeping`;
 export const SPEC_SHAPE = [
   `## ${NAMED.problem} quoting the owner, ## ${NAMED.solution}, ## ${NAMED.stories} numbered, ## ${NAMED.decisions} naming no file paths,`,
@@ -193,11 +195,30 @@ export function noteRefusals(body: string): string[] {
   return [...refusals, ...emDashLines(text).map((line) => `line ${line} carries an em dash`)];
 }
 
-export function ticketRefusals(body: string): string[] {
+interface WhyAsked {
+  missing: string;
+  unquoted: string;
+}
+
+const OWNER_ASKED: WhyAsked = {
+  missing: "the body carries no '## Why', so nothing says what the owner asked for",
+  unquoted: '\'## Why\' quotes no owner words: it carries no "..." quote and no > quoted line',
+};
+
+const EVIDENCE_ASKED: WhyAsked = {
+  missing: "the body carries no '## Why', so nothing shows the fault",
+  unquoted: '\'## Why\' quotes no evidence: it carries no "..." quote and no > quoted line from a log, a test or a Signal',
+};
+
+export const ticketRefusals = (body: string): string[] => builtRefusals(body, OWNER_ASKED);
+
+export const bugRefusals = (body: string): string[] => builtRefusals(body, EVIDENCE_ASKED);
+
+function builtRefusals(body: string, why: WhyAsked): string[] {
   const text = body.replaceAll(/\r\n?/g, "\n");
   const refusals: string[] = [];
-  if (!WHY.test(text)) refusals.push("the body carries no '## Why', so nothing says what the owner asked for");
-  else if (!OWNER_WORDS.test(section(text, WHY))) refusals.push('\'## Why\' quotes no owner words: it carries no "..." quote and no > quoted line');
+  if (!WHY.test(text)) refusals.push(why.missing);
+  else if (!OWNER_WORDS.test(section(text, WHY))) refusals.push(why.unquoted);
   if (!DONE_WHEN.test(text)) refusals.push("the body carries no '## Done when', so nothing says what done looks like");
   else {
     const said = itemsUnder(text, DONE_WHEN, BULLET).length;

@@ -173,6 +173,7 @@ export function reviewing({
       prCommentFails ? "  *\"pr comment\"*) printf 'the readback could not be posted\\n' >&2; exit 1 ;;" : `  *"pr comment"*) printf '%s\\n' '${JUDGEMENT}' ;;`,
       `  *"issue comment"*) printf '%s\\n' '${LATER_POSTED}' ;;`,
       `  *"issue create"*) printf '%s\\n' '${FOLLOW_UP_FILED}' ;;`,
+      '  *"issue edit"*) exit 0 ;;',
       "  *) exit 22 ;;",
       "esac",
       "",
