@@ -1,16 +1,16 @@
 #!/bin/bash
 set -uo pipefail
 
-usage="file-issue: usage: file-issue ticket|bug|note|research|spec --title <title> --body-file <path>"
 shown_refusals=4
 most_shown=5
 
 src="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../src" && pwd)"
 
-if [[ ${1:-} == --help ]]; then
-  printf '%s\n' "$usage"
-  exec node "$src/post.ts" --help
-fi
+[[ ${1:-} == --help ]] && exec node "$src/post.ts" --help
+
+usage=$(node "$src/post.ts" --usage) || exit 1
+kinds=${usage#*usage: file-issue }
+kinds="|${kinds%% *}|"
 
 kind=${1:-}
 shift 2>/dev/null
@@ -24,7 +24,7 @@ while (( $# > 0 )); do
   esac
 done
 
-if [[ ($kind != ticket && $kind != bug && $kind != note && $kind != research && $kind != spec) || -z $title || -z $body || ! -f $body || $# -gt 0 ]]; then
+if [[ -z $kind || $kinds != *"|$kind|"* || -z $title || -z $body || ! -f $body || $# -gt 0 ]]; then
   printf '%s\n' "$usage" >&2
   exit 2
 fi

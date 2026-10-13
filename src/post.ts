@@ -2,7 +2,24 @@ import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { text as read } from "node:stream/consumers";
 import { emDashLines } from "./em-dash.ts";
-import { BUG_SHAPE, NEXT_HEADING, NOTE_SHAPE, SPEC_SHAPE, TICKET_SHAPE, bugRefusals, matchEnd, noteRefusals, rewriteRefusals, specRefusals, ticketRefusals } from "./ticket-shape.ts";
+import {
+  BUG_SHAPE,
+  BUILD_SHAPE,
+  IDEA_SHAPE,
+  LOOK_INTO_SHAPE,
+  NEXT_HEADING,
+  SPEC_SHAPE,
+  SPOKEN_SHAPE,
+  bugRefusals,
+  filedFromSpoken,
+  inSpokenWords,
+  matchEnd,
+  noteRefusals,
+  rewriteRefusals,
+  specRefusals,
+  spokenRefusals,
+  ticketRefusals,
+} from "./ticket-shape.ts";
 import { BUG, HELD, MACHINE, NOTE, OWNER, RESEARCH, RESOLVING, SPEC, STUCK, TICKET, TICKET_PREFIX, WAITING, type LabelName, type MarkedLabel } from "./spelled.ts";
 import { type Stop, stoppedAt } from "./stops.ts";
 
@@ -87,12 +104,10 @@ interface Kind {
   refuses: (text: string) => string[];
   on: "title" | "pr";
   args: (on: string, text: string) => string[];
-  shape?: string;
 }
 
-const filed = (refuses: (text: string) => string[], labels: LabelName[], shape: string): Kind => ({
+const filed = (refuses: (text: string) => string[], labels: LabelName[]): Kind => ({
   refuses,
-  shape,
   on: "title",
   args: (title, text) => ["issue", "create", "--title", title, ...labels.flatMap((label) => ["--label", label]), "--body", text],
 });
@@ -130,15 +145,42 @@ export const repairOf = (ticket: string) => `Repair #${ticket} as its builder`;
 export { OWNER, RESEARCH, RESOLVING, STUCK, WAITING, type MarkedLabel };
 
 const KINDS: Record<string, Kind> = {
-  ticket: filed(ticketRefusals, [TICKET], TICKET_SHAPE),
-  bug: filed(bugRefusals, [TICKET, BUG], BUG_SHAPE),
-  note: filed(noteRefusals, [NOTE], NOTE_SHAPE),
-  research: filed(noteRefusals, [NOTE, RESEARCH], NOTE_SHAPE),
-  spec: filed(specRefusals, [SPEC], SPEC_SHAPE),
+  ticket: filed(ticketRefusals, [TICKET]),
+  bug: filed(bugRefusals, [TICKET, BUG]),
+  note: filed(noteRefusals, [NOTE]),
+  research: filed(noteRefusals, [NOTE, RESEARCH]),
+  spec: filed(specRefusals, [SPEC]),
   judgement: { refuses: judgementRefusals, on: "pr", args: (pr, text) => ["pr", "comment", pr, "--body", text] },
 };
 
-export const POSTING_KINDS = Object.keys(KINDS);
+interface DoorKind {
+  files: string;
+  says: string;
+  spoken: boolean;
+}
+
+const DOOR: Record<string, DoorKind> = {
+  idea: { files: "note", says: IDEA_SHAPE, spoken: true },
+  "look-into": { files: "research", says: LOOK_INTO_SHAPE, spoken: true },
+  build: { files: "ticket", says: BUILD_SHAPE, spoken: true },
+  bug: { files: "bug", says: BUG_SHAPE, spoken: false },
+  spec: { files: "spec", says: SPEC_SHAPE, spoken: false },
+};
+
+const DOOR_USAGE = `file-issue: usage: file-issue ${Object.keys(DOOR).join("|")} --title <title> --body-file <path>`;
+
+function doorHelp(): string[] {
+  const spoken = Object.keys(DOOR).filter((kind) => DOOR[kind]?.spoken);
+  return [DOOR_USAGE, `${spoken.join(", ")}: ${SPOKEN_SHAPE}`, ...Object.entries(DOOR).map(([kind, { says }]) => `${kind}: ${says}`)];
+}
+
+function filedAtDoor(door: DoorKind, posting: Omit<Posting, "kind">, gh: Gh): { refusals: string[]; said: string } {
+  if (!door.spoken) return post({ ...posting, kind: door.files }, gh);
+  const unspoken = spokenRefusals(posting.text);
+  if (unspoken.length > 0) return { refusals: unspoken, said: "" };
+  const { refusals, said } = post({ ...posting, kind: door.files, text: filedFromSpoken(posting.text) }, gh);
+  return { refusals: refusals.map(inSpokenWords), said };
+}
 
 const FIRST_HEADING = /^##[ \t].*$/m;
 
@@ -293,12 +335,6 @@ function prepared(posting: Posting): { refusals: string[]; args: string[]; text:
   return refused.length > 0 ? { refusals: refused, args: [], text, filed } : { refusals: [], args: [...shape.args(on, text), ...labelled], text, filed };
 }
 
-function shapesFiled(): string[] {
-  const kindsOf = new Map<string, string[]>();
-  for (const [kind, { shape }] of Object.entries(KINDS)) if (shape !== undefined) kindsOf.set(shape, [...(kindsOf.get(shape) ?? []), kind]);
-  return [...kindsOf].map(([shape, kinds]) => `${kinds.join(", ")}: ${shape}`);
-}
-
 export const postRefusals = (posting: Posting): string[] => prepared(posting).refusals;
 
 export function post(posting: Posting, gh: Gh): { refusals: string[]; said: string } {
@@ -311,11 +347,13 @@ export function post(posting: Posting, gh: Gh): { refusals: string[]; said: stri
 if (import.meta.main) {
   const [kind, title, sessionId] = process.argv.slice(2);
   if (kind === undefined) throw new Error("no kind of posting in the arguments to post");
-  if (kind === "--help") {
-    console.log(shapesFiled().join("\n"));
+  if (kind === "--help" || kind === "--usage") {
+    console.log((kind === "--help" ? doorHelp() : [DOOR_USAGE]).join("\n"));
     process.exit(0);
   }
-  const { refusals, said } = post({ kind, text: await read(process.stdin), title, sessionId }, gh);
+  const door = DOOR[kind];
+  if (door === undefined) throw new Error(`${kind} is not a kind file-issue files`);
+  const { refusals, said } = filedAtDoor(door, { text: await read(process.stdin), title, sessionId }, gh);
   for (const refusal of refusals) console.error(refusal);
   if (said !== "") console.log(said);
   process.exit(refusals.length > 0 ? 1 : 0);

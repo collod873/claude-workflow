@@ -271,7 +271,8 @@ _Avoid_: issue, sub-issue, card, item
 
 **Note**:
 An issue labelled `note`: filed to be kept, never built, with a `## Why` saying why. A research
-note, labelled `research` too, the machine answers and closes.
+note, labelled `research` too, the machine answers and closes. `file-issue` files a note as
+`idea`, a research note as `look-into`, a ticket as `build`.
 _Avoid_: idea, bug, backlog item, memo
 
 **Stage**:

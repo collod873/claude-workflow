@@ -109,12 +109,11 @@ describe("written twice refuses a script, workflow or action that spells by hand
     ]);
   });
 
-  it("stays quiet on a label inside a sentence, a YAML name or id, the posting kinds in bin/file-issue and bin/spelled itself", () => {
+  it("stays quiet on a label inside a sentence, a YAML name or id and bin/spelled itself", () => {
     expect(
       refused(
         source("bin/planted", "#!/bin/bash", "printf 'planted: #%s is not a note; a ticket closes when its PR merges\\n' \"$n\""),
         source(".github/workflows/planted.yml", "jobs:", "  research:", "    steps:", "      - id: asked", "        with:", "          run: the research run"),
-        source("bin/file-issue", "#!/bin/bash", "[[ $kind != ticket && $kind != note && $kind != research && $kind != spec ]]"),
         source("bin/spelled", "#!/bin/bash", "printf 'stuck'"),
       ),
     ).toEqual([]);

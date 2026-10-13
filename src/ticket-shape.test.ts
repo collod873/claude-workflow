@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { handedOn as builderBrief } from "./builder.ts";
 import { handedOn as reviewerBrief } from "./reviewer.ts";
-import { BUG_SHAPE, DONE_SENTENCES, NOTE_SHAPE, SPEC_CAP, SPEC_SHAPE, TICKET_SHAPE, bugRefusals, noteRefusals, specRefusals, ticketRefusals } from "./ticket-shape.ts";
+import { BUG_SHAPE, BUILD_SHAPE, DONE_SENTENCES, IDEA_SHAPE, SPEC_CAP, SPEC_SHAPE, SPOKEN_SHAPE, bugRefusals, inSpokenWords, noteRefusals, specRefusals, spokenRefusals, ticketRefusals } from "./ticket-shape.ts";
 
 const DASH = "\u2014";
 const TEST_CHECK = "npx vitest run --config vitest.config.ts ticket-shape";
@@ -231,9 +231,9 @@ describe("the shape bin/file-issue --help prints names every heading its kind is
   const HEADING_NAMED = /'## (.+?)'(?=[,\s]|$)/g;
 
   it.each([
-    ["ticket", TICKET_SHAPE, ticketRefusals],
+    ["build", `${SPOKEN_SHAPE} ${BUILD_SHAPE}`, (body: string) => [...spokenRefusals(body), ...ticketRefusals(body).map(inSpokenWords)]],
     ["bug", BUG_SHAPE, bugRefusals],
-    ["note", NOTE_SHAPE, noteRefusals],
+    ["idea", `${SPOKEN_SHAPE} ${IDEA_SHAPE}`, (body: string) => [...spokenRefusals(body), ...noteRefusals(body).map(inSpokenWords)]],
     ["spec", SPEC_SHAPE, specRefusals],
   ])("%s", (_, shape, refusals) => {
     const named = refusals("").flatMap((refusal) => [...refusal.matchAll(HEADING_NAMED)].map(([, name]) => name ?? ""));
@@ -245,7 +245,6 @@ describe("the shape bin/file-issue --help prints names every heading its kind is
 
 describe("the builder's split, the reviewer's follow-ups and bin/file-issue --help read one Done when phrase, not hand copies (#1004)", () => {
   it.each([
-    ["bin/file-issue --help", TICKET_SHAPE],
     ["bin/file-issue --help, for a bug", BUG_SHAPE],
     ["the builder's split", builderBrief({ ticket: "1", body: body() })],
     ["the reviewer's follow-ups", reviewerBrief(body(), "", { after: { earlier: "", fix: "" } })],

@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
 import { isMap, isPair, isScalar, isSeq, LineCounter, parseDocument, Scalar, visit } from "yaml";
-import { ENROLLED_CALLER, POSTING_KINDS } from "./post.ts";
+import { ENROLLED_CALLER } from "./post.ts";
 import { MACHINE, SPELLINGS } from "./spelled.ts";
 
 interface Source {
@@ -221,10 +221,9 @@ export function spelledByHand(scripts: Source[], machine: Source[]): string[] {
   return scripts
     .filter(({ file }) => !KEPT_BY_HAND.includes(file))
     .flatMap(({ file, text }) => {
-      const kept = file === "bin/file-issue" ? POSTING_KINDS : [];
       const lines = file.endsWith(".yml") ? yamlCode(text) : scriptCode(text);
       return lines.flatMap((code) =>
-        spellings.filter((spelling) => !kept.includes(spelling.text) && standsIn(code, spelling.text)).map((spelling) => `written twice: ${file}:${code.line} spells ${JSON.stringify(spelling.text)} that ${spelling.owner}; ${spelling.ask}`),
+        spellings.filter((spelling) => standsIn(code, spelling.text)).map((spelling) => `written twice: ${file}:${code.line} spells ${JSON.stringify(spelling.text)} that ${spelling.owner}; ${spelling.ask}`),
       );
     });
 }
