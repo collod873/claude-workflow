@@ -523,16 +523,6 @@ export function parentSays(root: string, parent: Parent): string {
   return `cat "${join(root, "parent.json")}"`;
 }
 
-function onGh(command: string, gh: string) {
-  const root = scratch(`${command}-`);
-  const calls = join(root, "gh-calls");
-  script(join(root, "bin", "gh"), `printf '%s\\n' "$*" >>"${calls}"\n${gh}`);
-  return {
-    calls: () => (existsSync(calls) ? readFileSync(calls, "utf8").trimEnd().split("\n") : []),
-    run: (...args: string[]) => execute(join(BIN, command), root, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, args),
-  };
-}
-
 export function marking({ gh = "", labels = {}, pr = "", repo = [] }: { gh?: string; labels?: Record<string, string[]>; pr?: string; repo?: string[] } = {}) {
   const root = scratch("mark-");
   const calls = join(root, "gh-calls");
@@ -565,10 +555,6 @@ export function marking({ gh = "", labels = {}, pr = "", repo = [] }: { gh?: str
     made: () => readFileSync(join(root, "repo"), "utf8").split("\n").filter(Boolean),
     run: (...args: string[]) => execute(join(BIN, "mark"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, args),
   };
-}
-
-export function closingNote(labels: string, { gh = "exit 0\n" }: { gh?: string } = {}) {
-  return onGh("close-note", `[[ $2 == view ]] && { printf '${labels}'; exit 0; }\n${gh}`);
 }
 
 export function issueStage(prefix: string, issue: object, answer: object, posted: string, gh: string, cutOff = "") {

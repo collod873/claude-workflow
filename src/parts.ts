@@ -100,11 +100,6 @@ const FIXED: Part[] = [
     printsData: true,
   },
   {
-    name: "bin/close-note",
-    file: "bin/close-note",
-    stops: "https://github.com/collod873/claude-workflow/issues/879",
-  },
-  {
     name: "tickets.yml",
     file: ".github/workflows/tickets.yml",
     stops: "https://github.com/collod873/claude-workflow/issues/387",
