@@ -105,9 +105,9 @@ function sessionAheadOfMain(
   );
   chmodSync(join(githubRefusingAutoMerge, "gh"), 0o755);
   const ghDir = prIsAlreadyClean ? githubRefusingAutoMerge : dirname(gh.path);
-  const run = () =>
+  const run = (from = session) =>
     spawnSync(land, [], {
-      cwd: session,
+      cwd: from,
       encoding: "utf8",
       env: { ...env, PATH: `${ghDir}:${process.env.PATH}`, LAND_WAIT_SECONDS: waitSeconds, ...(stallSeconds === undefined ? {} : { LAND_STALL_SECONDS: stallSeconds }) },
     });
@@ -139,6 +139,22 @@ describe("bin/land turns a session's commits into a PR that merges itself", () =
     expect(git(session, "rev-parse", "HEAD")).toBe(git(remote, "rev-parse", "main"));
     expect(git(session, "rev-parse", "HEAD^2")).toBe(head);
     expect(result.stdout).toContain("Landed");
+  });
+
+  it("brings the main checkout, detached as the session launcher leaves it, up to the merged main when landing from a session worktree (#1309)", () => {
+    const { root, remote, session: main, run } = sessionAheadOfMain(0, { githubMerges: "at once" });
+    git(main, "checkout", "--quiet", "--detach");
+    const worktree = join(root, "worktree");
+    git(main, "worktree", "add", "--quiet", "-b", "ticket", worktree);
+    writeFileSync(join(worktree, "tool"), "merged\n");
+    git(worktree, "add", "tool");
+    git(worktree, "commit", "--quiet", "-m", "change a tool");
+
+    const result = run(worktree);
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(git(main, "rev-parse", "HEAD")).toBe(git(remote, "rev-parse", "main"));
+    expect(readFileSync(join(main, "tool"), "utf8")).toBe("merged\n");
   });
 
   it("merges straight away when GitHub refuses auto-merge because the PR has nothing left to wait for", () => {
