@@ -38,7 +38,7 @@ class Refused extends Error {}
 
 type Mode = "pc" | "github";
 
-const clearing = (name: string, unit: string) =>
+const clearing = (repo: string, name: string, unit: string) =>
   [
     "#!/bin/bash",
     "set -euo pipefail",
@@ -55,7 +55,7 @@ const clearing = (name: string, unit: string) =>
     "  [[ $left == \"$own\"/* || $left == \"$temp\" ]] || { printf 'clear: %s is outside this runner, so it is not cleared\\n' \"$left\" >&2; exit 1; }",
     '  find "$left" -mindepth 1 -delete',
     "done",
-    `docker ps --all --quiet --filter 'name=^database-${name}$' | xargs --no-run-if-empty docker rm --force >/dev/null`,
+    `docker ps --all --quiet --filter 'name=^database-${repo.replace("/", "-")}-${name}$' | xargs --no-run-if-empty docker rm --force >/dev/null`,
     "",
   ].join("\n");
 
@@ -159,7 +159,7 @@ function settle(repo: string, name: string, at: number, busy: boolean): "started
   const clear = `${dir}/clear.sh`;
   const env = [`HOME=${dir}/home`, `TMPDIR=${temp}`, `RUNNER_TOOL_CACHE=${dir}/toolcache`, `AGENT_TOOLSDIRECTORY=${dir}/toolcache`, `ACTIONS_RUNNER_HOOK_JOB_STARTED=${clear}`, `ACTIONS_RUNNER_HOOK_JOB_COMPLETED=${clear}`, `CHECK_SLOTS=${CHECK_SLOTS}`, `CHECK_SLOTS_DIR=${CHECK_SLOTS_DIR}`, "LANG=C.UTF-8", ""].join("\n");
   const files = [
-    staged({ as: asRunnerUser, path: clear, text: clearing(name, unitOf(repo, name)), mode: "755" }),
+    staged({ as: asRunnerUser, path: clear, text: clearing(repo, name, unitOf(repo, name)), mode: "755" }),
     staged({ as: asRunnerUser, path: `${dir}/.env`, text: env, mode: "644" }),
     staged({ as: asRunnerUser, path: `${dir}/.path`, text: `${PATH}\n`, mode: "644" }),
     staged({ as: asRoot, path: `${dropIns}/pc-runner.conf`, text: confinement(at), mode: "644" }),

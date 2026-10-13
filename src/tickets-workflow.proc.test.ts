@@ -431,7 +431,7 @@ describe("a repo's tickets build through one caller file that holds only trigger
       script(join(root, "bin", "docker"), `printf '%s\\n' "$*" >>"${calls}"\ncase $1 in\n  port) printf '127.0.0.1:49153\\n' ;;\n  ps) ${stale ? "printf 'c0ffee\\n'" : ":"} ;;\nesac\n`);
       const [step, ...more] = databaseSteps();
       expect(more).toEqual([]);
-      const ran = execute("bash", join(root, step?.["working-directory"] ?? ""), { PATH: `${join(root, "bin")}:/usr/bin:/bin`, GITHUB_ENV: githubEnv, RUNNER_NAME: "GitHub Actions 7" }, ["-e", "-c", step?.run ?? ""]);
+      const ran = execute("bash", join(root, step?.["working-directory"] ?? ""), { PATH: `${join(root, "bin")}:/usr/bin:/bin`, GITHUB_ENV: githubEnv, GITHUB_REPOSITORY: "collod873/Lumaria", RUNNER_NAME: "GitHub Actions 7" }, ["-e", "-c", step?.run ?? ""]);
       expect(ran.status, ran.stderr).toBe(0);
       return { calls: existsSync(calls) ? readFileSync(calls, "utf8").trim().split("\n") : [], handed: readFileSync(githubEnv, "utf8") };
     };
@@ -439,9 +439,9 @@ describe("a repo's tickets build through one caller file that holds only trigger
     it("starts postgres:16 on a free port and hands its address on as DATABASE_URL once it takes connections, when a step needs DATABASE_URL", () => {
       const { calls, handed } = readied('{ "steps": { "lint": { "run": "true" }, "integration": { "run": "true", "needs": ["BASE_URL", "DATABASE_URL"] } } }\n');
 
-      expect(calls[0]).toBe("ps --all --quiet --filter name=^database-GitHub-Actions-7$");
-      expect(calls[1]).toMatch(/^run --quiet --detach --name database-GitHub-Actions-7 --publish 127\.0\.0\.1::5432 .*postgres:16$/);
-      expect(calls.slice(2)).toEqual(["exec database-GitHub-Actions-7 pg_isready --quiet --host 127.0.0.1", "port database-GitHub-Actions-7 5432/tcp"]);
+      expect(calls[0]).toBe("ps --all --quiet --filter name=^database-collod873-Lumaria-GitHub-Actions-7$");
+      expect(calls[1]).toMatch(/^run --quiet --detach --name database-collod873-Lumaria-GitHub-Actions-7 --publish 127\.0\.0\.1::5432 .*postgres:16$/);
+      expect(calls.slice(2)).toEqual(["exec database-collod873-Lumaria-GitHub-Actions-7 pg_isready --quiet --host 127.0.0.1", "port database-collod873-Lumaria-GitHub-Actions-7 5432/tcp"]);
       expect(handed).toBe("DATABASE_URL=postgres://postgres:postgres@localhost:49153/postgres\n");
     });
 
@@ -449,7 +449,7 @@ describe("a repo's tickets build through one caller file that holds only trigger
       const { calls } = readied('{ "steps": { "integration": { "run": "true", "needs": ["DATABASE_URL"] } } }\n', { stale: true });
 
       expect(calls[1]).toBe("rm --force c0ffee");
-      expect(calls[2]).toMatch(/^run .*--name database-GitHub-Actions-7 /);
+      expect(calls[2]).toMatch(/^run .*--name database-collod873-Lumaria-GitHub-Actions-7 /);
     });
 
     it("starts nothing and hands nothing on when no step needs DATABASE_URL, the contract has no steps, or the tree has no contract", () => {
