@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { execute, PC_HOST as HOST, PC_REPO as REPO, PC_RUNNER_COUNT, pcRunner, scratch, script, switching } from "./scenarios.ts";
 
+const SOCKET_PATH_MAX = 107;
+
 describe("bin/runner moves a private repo's jobs between this PC and GitHub's runners", () => {
   it("sends a repo's next jobs to the PC once its PC runners are online, installing none it already has", () => {
     const { run, variable, sudo } = switching({ runners: Array.from({ length: PC_RUNNER_COUNT }, (_, at) => pcRunner(`${HOST}-${at + 1}`)) });
@@ -30,7 +32,20 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
       expect(calls).toContain(`bash -c cd ${dir} && ./bin/installdependencies.sh >/dev/null && ./svc.sh install ghrunner >/dev/null`);
     }
     const dir = `/home/ghrunner/runners/collod873-Lumaria/${HOST}-2`;
-    expect(placed(`${dir}/.env`).split("\n")).toEqual(expect.arrayContaining([`HOME=${dir}/home`, `TMPDIR=${dir}/tmp`, `ACTIONS_RUNNER_HOOK_JOB_STARTED=${dir}/clear.sh`, `ACTIONS_RUNNER_HOOK_JOB_COMPLETED=${dir}/clear.sh`, "CHECK_SLOTS=2", "CHECK_SLOTS_DIR=/home/ghrunner/check-slots"]));
+    expect(placed(`${dir}/.env`).split("\n")).toEqual(expect.arrayContaining([`HOME=${dir}/home`, `ACTIONS_RUNNER_HOOK_JOB_STARTED=${dir}/clear.sh`, `ACTIONS_RUNNER_HOOK_JOB_COMPLETED=${dir}/clear.sh`, "CHECK_SLOTS=2", "CHECK_SLOTS_DIR=/home/ghrunner/check-slots"]));
+  });
+
+  it("gives each PC runner its own temp folder short enough that a socket a job opens under it fits Linux's 107 characters, however long the repo's name", () => {
+    const { run, placed } = switching({ userExists: false });
+    run("pc");
+
+    const temps = Array.from({ length: PC_RUNNER_COUNT }, (_, at) => /^TMPDIR=(.+)$/m.exec(placed(`/home/ghrunner/runners/collod873-Lumaria/${HOST}-${at + 1}/.env`))?.[1] ?? "");
+
+    expect(new Set(temps).size).toBe(PC_RUNNER_COUNT);
+    for (const temp of temps) {
+      expect(temp).not.toContain("Lumaria");
+      expect(`${temp}/runs-1001/0d5ca037/tsx-1001/4194304.pipe`.length).toBeLessThanOrEqual(SOCKET_PATH_MAX);
+    }
   });
 
   it("installs only the PC runners a repo lacks, so a repo with two asked for four gains the other two", () => {
@@ -74,7 +89,9 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
     chmodSync(hook, 0o755);
     const removed = join(runnerDir, "removed");
     script(join(runnerDir, "bin", "docker"), `case $1 in\n  ps) [[ $* == *"name=^database-${HOST}-1$"* ]] && printf 'c0ffee\\n' ;;\n  rm) printf '%s\\n' "$*" >>"${removed}" ;;\nesac\n`);
-    const left = { HOME: join(runnerDir, "home"), TMPDIR: join(runnerDir, "tmp"), GITHUB_WORKSPACE: join(runnerDir, "_work", "Lumaria", "Lumaria") };
+    const temp = scratch("pc-temp-");
+    writeFileSync(join(runnerDir, ".env"), `HOME=${join(runnerDir, "home")}\nTMPDIR=${temp}\n`);
+    const left = { HOME: join(runnerDir, "home"), TMPDIR: temp, GITHUB_WORKSPACE: join(runnerDir, "_work", "Lumaria", "Lumaria") };
     const env = { ...left, PATH: `${join(runnerDir, "bin")}:${process.env.PATH}` };
     for (const dir of Object.values(left)) {
       mkdirSync(join(dir, ".claude", "projects"), { recursive: true });
@@ -93,6 +110,10 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
     const outside = execute(hook, runnerDir, { ...env, HOME: "/home/collin" });
     expect(outside.status).toBe(1);
     expect(outside.stderr).toContain("/home/collin is outside this runner");
+
+    const sharedTemp = execute(hook, runnerDir, { ...env, TMPDIR: "/tmp" });
+    expect(sharedTemp.status).toBe(1);
+    expect(sharedTemp.stderr).toContain("/tmp is outside this runner");
   });
 
   it("leaves a mid-job PC runner on its old setup rather than kill the job under it, and gives it the new one once the job ends", () => {
