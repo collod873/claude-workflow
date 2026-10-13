@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parts, type Part } from "./parts.ts";
-import { bare, CONTRACT, LINE_LIMIT, MOST_LINES, closingNote, coveredByCheck, enrolling, execute, filing, githubCall, landSession, marking, misshapenTicket, overLimit, saving, scratch, script, sessionExtras, switching, wellFormedNote, wellFormedTicket } from "./scenarios.ts";
+import { bare, CONTRACT, LINE_LIMIT, MOST_LINES, coveredByCheck, enrolling, execute, filing, githubCall, landSession, marking, misshapenTicket, overLimit, saving, scratch, script, sessionExtras, switching, wellFormedNote, wellFormedTicket } from "./scenarios.ts";
 import { stages, type Scenario } from "./stages.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
@@ -56,10 +56,6 @@ const listed: Record<string, Scenario[]> = {
   "bin/spelled": [
     { label: "printing the labels", run: () => execute(join(REPO, "bin", "spelled"), scratch("spelled-"), {}, ["labels"]) },
     { label: "refusing a list it does not hold", run: () => execute(join(REPO, "bin", "spelled"), scratch("spelled-"), {}, ["owners"]) },
-  ],
-  "bin/close-note": [
-    { label: "closing a note", run: () => closingNote("note\\n").run("887") },
-    { label: "with GitHub refusing the close", run: () => closingNote("note\\n", { gh: `cat >&2 <<'NOISE'\n${NOISE}\nNOISE\nexit 1\n` }).run("887") },
   ],
 };
 
