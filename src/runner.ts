@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { hostname } from "node:os";
 
 const VARIABLE = "CI_RUNNER";
@@ -42,6 +43,7 @@ const clearing = (name: string, unit: string) =>
     "#!/bin/bash",
     "set -euo pipefail",
     'own="$(cd "$(dirname "$0")" && pwd)"',
+    "temp=\"$(sed -n 's/^TMPDIR=//p' \"$own/.env\")\"",
     'cgroup="/sys/fs/cgroup$(cut -d: -f3 /proc/self/cgroup)"',
     `if [[ $cgroup == */${unit} ]]; then`,
     '  keep=" $$ "',
@@ -50,7 +52,7 @@ const clearing = (name: string, unit: string) =>
     '  for pid in $(cat "$cgroup/cgroup.procs"); do [[ $keep == *" $pid "* ]] || kill -KILL "$pid" 2>/dev/null || true; done',
     "fi",
     'for left in "$HOME" "$TMPDIR" "$GITHUB_WORKSPACE"; do',
-    "  [[ $left == \"$own\"/* ]] || { printf 'clear: %s is outside this runner, so it is not cleared\\n' \"$left\" >&2; exit 1; }",
+    "  [[ $left == \"$own\"/* || $left == \"$temp\" ]] || { printf 'clear: %s is outside this runner, so it is not cleared\\n' \"$left\" >&2; exit 1; }",
     '  find "$left" -mindepth 1 -delete',
     "done",
     `docker ps --all --quiet --filter 'name=^database-${name}$' | xargs --no-run-if-empty docker rm --force >/dev/null`,
@@ -108,6 +110,7 @@ function provisionGh(): void {
 }
 
 const dirOf = (repo: string, name: string) => `${HOME}/runners/${repo.replace("/", "-")}/${name}`;
+const tempOf = (repo: string, name: string) => `${HOME}/tmp/${createHash("sha256").update(`${repo}/${name}`).digest("hex").slice(0, 8)}`;
 const unitOf = (repo: string, name: string) => `actions.runner.${repo.replace("/", "-")}.${name}.service`;
 
 function install(repo: string, name: string): void {
@@ -150,10 +153,11 @@ const running = (repo: string, name: string) => spawnSync("systemctl", ["is-acti
 function settle(repo: string, name: string, at: number, busy: boolean): "started" | "mid-job" {
   const dir = dirOf(repo, name);
   const dropIns = `${UNITS}/${unitOf(repo, name)}.d`;
-  asRunnerUser(`mkdir -p ${dir}/home ${dir}/tmp ${dir}/toolcache ${CHECK_SLOTS_DIR}`);
+  const temp = tempOf(repo, name);
+  asRunnerUser(`mkdir -p ${dir}/home ${temp} ${dir}/toolcache ${CHECK_SLOTS_DIR}`);
   asRoot(`mkdir -p ${dropIns}`);
   const clear = `${dir}/clear.sh`;
-  const env = [`HOME=${dir}/home`, `TMPDIR=${dir}/tmp`, `RUNNER_TOOL_CACHE=${dir}/toolcache`, `AGENT_TOOLSDIRECTORY=${dir}/toolcache`, `ACTIONS_RUNNER_HOOK_JOB_STARTED=${clear}`, `ACTIONS_RUNNER_HOOK_JOB_COMPLETED=${clear}`, `CHECK_SLOTS=${CHECK_SLOTS}`, `CHECK_SLOTS_DIR=${CHECK_SLOTS_DIR}`, "LANG=C.UTF-8", ""].join("\n");
+  const env = [`HOME=${dir}/home`, `TMPDIR=${temp}`, `RUNNER_TOOL_CACHE=${dir}/toolcache`, `AGENT_TOOLSDIRECTORY=${dir}/toolcache`, `ACTIONS_RUNNER_HOOK_JOB_STARTED=${clear}`, `ACTIONS_RUNNER_HOOK_JOB_COMPLETED=${clear}`, `CHECK_SLOTS=${CHECK_SLOTS}`, `CHECK_SLOTS_DIR=${CHECK_SLOTS_DIR}`, "LANG=C.UTF-8", ""].join("\n");
   const files = [
     staged({ as: asRunnerUser, path: clear, text: clearing(name, unitOf(repo, name)), mode: "755" }),
     staged({ as: asRunnerUser, path: `${dir}/.env`, text: env, mode: "644" }),
