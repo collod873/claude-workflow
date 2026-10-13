@@ -29,8 +29,9 @@
     },
     "test": {
       "run": "node_modules/.bin/vitest run --config vitest.config.ts",
+      "fast": false,
       "settings": true,
-      "why": "The whole suite, which drives real processes and takes minutes, so it runs in the full check only."
+      "why": "The whole suite, which drives real processes and takes minutes, so it runs in the full check only; fast false keeps the related tests the fast check would find out of the turn end, where one changed file reaches 19 test files and a minute."
     },
     "prompts": {
       "run": "node src/prompt-bytes.ts",
