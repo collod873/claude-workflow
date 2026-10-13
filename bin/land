@@ -152,3 +152,8 @@ if [[ $(git rev-parse HEAD) == "$head" ]] && git merge --quiet --ff-only origin/
 else
   printf 'Landed %s, but this checkout could not fast-forward; run git pull.\n' "$url"
 fi
+
+main_checkout=$(git worktree list --porcelain | sed -n '1s/^worktree //p')
+if [[ $main_checkout != "$top" ]] && ! git -C "$main_checkout" merge --quiet --ff-only origin/main >/dev/null 2>&1; then # quiet: the line below names the checkout left behind
+  printf 'land: the main checkout %s could not fast-forward, so the tools ~/bin links into it are not the merged ones\n' "$main_checkout" >&2
+fi
