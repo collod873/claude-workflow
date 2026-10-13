@@ -4,7 +4,10 @@ import { admitting } from "./admit.part.ts";
 const SPEC = { state: "open", user: { login: "collod873" }, labels: [{ name: "spec" }] };
 const APP = "collod873-machine[bot]";
 const FAULT = ["## Why", "", "Filed by the builder of collod873/Lumaria#931, which waits on it, as the machine's fault.", "", "> Save runs on a ticket outcome.", "", "## Done when", "", "- Save never runs on a ticket outcome.", ""].join("\n");
-const fromLumaria = (opener: string, parent: object | undefined) => ({ repo: "collod873/Lumaria", ticket: "931", opener, parent });
+const followUp = (line: string) => ["## Why", "", line, "", "> The Day clock spans and punches.", "", "## Done when", "", "- Riley clocks in on /team/timesheets.", ""].join("\n");
+const SPLIT_PIECE = followUp("Follow-up of #1089: its builder split it, since it does not fit one build.");
+const REVIEW_FOLLOW_UP = followUp("Follow-up of #1089: its review found");
+const fromLumaria = (opener: string, parent: object | undefined, body?: string) => ({ repo: "collod873/Lumaria", ticket: "931", opener, parent, body });
 const parentReads = (calls: string[][]) => calls.filter((args) => args.some((arg) => arg.endsWith("/parent")));
 
 describe("bin/admit lets a ticket into its build before anything marks it (#1022)", () => {
@@ -53,6 +56,18 @@ describe("bin/admit lets a ticket into its build before anything marks it (#1022
 
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toBe("admitted=true\n");
+  });
+
+  it("admits a machine fault the App filed from a split piece or a review follow-up, which builds in its own repo with no spec above it (Lumaria #1090)", () => {
+    for (const body of [SPLIT_PIECE, REVIEW_FOLLOW_UP]) {
+      const { run, comments } = admitting({ opener: APP, body: FAULT, origin: fromLumaria(APP, undefined, body) });
+
+      const result = run();
+
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).toBe("admitted=true\n");
+      expect(comments()).toEqual([]);
+    }
   });
 
   it("refuses a machine fault whose origin ticket was itself opened by the App under no spec, naming the origin (#1203)", () => {

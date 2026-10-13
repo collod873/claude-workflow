@@ -88,7 +88,7 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
     writeFileSync(hook, placed(`/home/ghrunner/runners/collod873-Lumaria/${HOST}-1/clear.sh`));
     chmodSync(hook, 0o755);
     const removed = join(runnerDir, "removed");
-    script(join(runnerDir, "bin", "docker"), `case $1 in\n  ps) [[ $* == *"name=^database-${HOST}-1$"* ]] && printf 'c0ffee\\n' ;;\n  rm) printf '%s\\n' "$*" >>"${removed}" ;;\nesac\n`);
+    script(join(runnerDir, "bin", "docker"), `case $1 in\n  ps) [[ $* == *"name=^database-collod873-Lumaria-${HOST}-1$"* ]] && printf 'c0ffee\\n' ;;\n  rm) printf '%s\\n' "$*" >>"${removed}" ;;\nesac\n`);
     const temp = scratch("pc-temp-");
     writeFileSync(join(runnerDir, ".env"), `HOME=${join(runnerDir, "home")}\nTMPDIR=${temp}\n`);
     const left = { HOME: join(runnerDir, "home"), TMPDIR: temp, GITHUB_WORKSPACE: join(runnerDir, "_work", "Lumaria", "Lumaria") };
