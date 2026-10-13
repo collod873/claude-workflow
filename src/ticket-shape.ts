@@ -2,6 +2,9 @@ import { emDashLines } from "./em-dash.ts";
 
 const NAMED = {
   why: "Why",
+  ownerWords: "Owner's words",
+  suggestions: "Agent's suggestions",
+  open: "Open",
   doneWhen: "Done when",
   problem: "Problem Statement",
   solution: "Solution",
@@ -17,6 +20,8 @@ const NAMED = {
 } as const;
 const heading = (name: string): RegExp => new RegExp(`^##[ \\t]+${name.replace("'", "[’']")}[ \\t]*(?=\\r?$)`, "m");
 const WHY = heading(NAMED.why);
+const OWNER_WORDS_HEADING = heading(NAMED.ownerWords);
+const SPOKEN_SECTIONS = [NAMED.ownerWords, NAMED.suggestions, NAMED.open];
 const DONE_WHEN = heading(NAMED.doneWhen);
 const PROBLEM_STATEMENT = heading(NAMED.problem);
 const SOLUTION = heading(NAMED.solution);
@@ -45,11 +50,25 @@ const QUOTE = 80;
 
 export const DONE_SENTENCES = `${FEWEST} to ${MOST} sentences saying what done looks like`;
 const DONE_SHAPE = `## ${NAMED.doneWhen}, ${DONE_SENTENCES}, each on a '- ' line`;
-export const TICKET_SHAPE = `## ${NAMED.why}, quoting the owner in "..." or a > line; ${DONE_SHAPE}`;
-export const BUG_SHAPE = `## ${NAMED.why}, quoting the evidence in "..." or a > line: a log line, a failing test's message, a Signal, error text; ${DONE_SHAPE}`;
-export const NOTE_SHAPE = `## ${NAMED.why}, saying why it is worth keeping`;
+export const SPOKEN_SHAPE = [
+  "three sections.",
+  `## ${NAMED.ownerWords}: his exact sentences from the session that set this, quoted, including any hedge or doubt he voiced.`,
+  `## ${NAMED.suggestions}: anything the agent proposed that he did not say yes to, or said yes to without seeing; empty is fine.`,
+  `## ${NAMED.open}: questions he left unanswered.`,
+].join(" ");
+export const IDEA_SHAPE = "something he floated; nothing builds it.";
+export const LOOK_INTO_SHAPE = "a question he wants answered before deciding; a research agent answers it and nothing builds.";
+export const BUILD_SHAPE = [
+  `he said in his own words to build it. Adds ## ${NAMED.doneWhen}, ${FEWEST} to ${MOST} '- ' lines written from his words only.`,
+  "A build starts the moment it is filed, so file one only on an explicit decision; when unsure, file idea or look-into.",
+].join(" ");
+export const BUG_SHAPE = [
+  "a fault still standing, with evidence; it builds the moment it is filed.",
+  `Carries only ## ${NAMED.why}, quoting the evidence in "..." or a > line: a log line, a failing test's message, a Signal, error text; and ${DONE_SHAPE}`,
+].join(" ");
 export const SPEC_SHAPE = [
-  `## ${NAMED.problem} quoting the owner, ## ${NAMED.solution}, ## ${NAMED.stories} numbered, ## ${NAMED.decisions} naming no file paths,`,
+  "he asked for a spec in his own words: the whole statement of a big job, sliced into tickets and never built itself.",
+  `  ## ${NAMED.problem} quoting the owner, ## ${NAMED.solution}, ## ${NAMED.stories} numbered, ## ${NAMED.decisions} naming no file paths,`,
   `  ## ${NAMED.testing}, ## ${NAMED.outOfScope}, ## ${NAMED.furtherNotes}, and last ## ${NAMED.sentences}, as '- [ ]' items`,
 ].join("\n");
 
@@ -186,6 +205,15 @@ export function rewriteRefusals(read: string, written: string): string[] {
 export function quoted(text: string): string {
   return text.length > QUOTE ? `${text.slice(0, QUOTE - 1)}…` : text;
 }
+
+export function spokenRefusals(body: string): string[] {
+  const text = body.replaceAll(/\r\n?/g, "\n");
+  return SPOKEN_SECTIONS.filter((name) => !heading(name).test(text)).map((name) => `the body carries no '## ${name}'`);
+}
+
+export const filedFromSpoken = (body: string): string => body.replace(OWNER_WORDS_HEADING, `## ${NAMED.why}`);
+
+export const inSpokenWords = (refusal: string): string => refusal.replaceAll(`'## ${NAMED.why}'`, `'## ${NAMED.ownerWords}'`);
 
 export function noteRefusals(body: string): string[] {
   const text = body.replaceAll(/\r\n?/g, "\n");

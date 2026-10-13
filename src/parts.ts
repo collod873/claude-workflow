@@ -65,6 +65,7 @@ const FIXED: Part[] = [
     file: "bin/file-issue",
     stops: "https://github.com/collod873/claude-workflow/issues/662",
     lines: 6,
+    printsData: true,
   },
   {
     name: "bin/save",

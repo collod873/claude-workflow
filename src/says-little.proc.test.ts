@@ -2,14 +2,14 @@ import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parts, type Part } from "./parts.ts";
-import { bare, CONTRACT, LINE_LIMIT, MOST_LINES, coveredByCheck, enrolling, execute, filing, githubCall, landSession, marking, misshapenTicket, overLimit, saving, scratch, script, sessionExtras, switching, wellFormedNote, wellFormedTicket } from "./scenarios.ts";
+import { bare, CONTRACT, LINE_LIMIT, MOST_LINES, coveredByCheck, enrolling, execute, filing, githubCall, landSession, marking, overLimit, saving, scratch, script, sessionExtras, spokenBuild, spokenIdea, spokenMisshapen, switching } from "./scenarios.ts";
 import { stages, type Scenario } from "./stages.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
 const NOISE = "a line a tool prints that nobody needed to read\n".repeat(40).trim();
 const URL = "https://github.com/collod873/claude-workflow/pull/1";
 const FILED = `printf '%s\\n' ${URL}\n`;
-const NOTE_CALL = ["note", "--title", "What the audit found", "--body-file", "body.md"];
+const NOTE_CALL = ["idea", "--title", "What the audit found", "--body-file", "body.md"];
 
 const listed: Record<string, Scenario[]> = {
   "bin/land": [
@@ -24,13 +24,13 @@ const listed: Record<string, Scenario[]> = {
     { label: "with the land PR lookup refused", run: () => sessionExtras({ gh: "printf 'gh: authentication required\\n' >&2\nexit 4\n" }).run() },
   ],
   "bin/file-issue": [
-    { label: "filing a ticket", run: () => filing({ gh: FILED, body: wellFormedTicket }).run() },
-    { label: "refusing a body with one defect", run: () => filing({ gh: FILED, body: wellFormedTicket.replace("## Why", "## Background") }).run() },
-    { label: "refusing a body defective more ways than it shows", run: () => filing({ gh: FILED, body: misshapenTicket }).run() },
-    { label: "refusing a call it does not file", run: () => filing({ gh: FILED, body: wellFormedTicket }).run(["judgement", "--title", "A judgement"]) },
-    { label: "filing a note", run: () => filing({ gh: FILED, body: wellFormedNote }).run(NOTE_CALL) },
+    { label: "filing a ticket", run: () => filing({ gh: FILED, body: spokenBuild }).run() },
+    { label: "refusing a body with one defect", run: () => filing({ gh: FILED, body: spokenBuild.replace("## Owner's words", "## Background") }).run() },
+    { label: "refusing a body defective more ways than it shows", run: () => filing({ gh: FILED, body: spokenMisshapen }).run() },
+    { label: "refusing a call it does not file", run: () => filing({ gh: FILED, body: spokenBuild }).run(["judgement", "--title", "A judgement"]) },
+    { label: "filing a note", run: () => filing({ gh: FILED, body: spokenIdea }).run(NOTE_CALL) },
     { label: "refusing a note that says no why", run: () => filing({ gh: FILED, body: "Four proposals, with no heading over them.\n" }).run(NOTE_CALL) },
-    { label: "showing its help", run: () => filing({ gh: FILED, body: wellFormedTicket }).run(["--help"]) },
+    { label: "showing its help", run: () => filing({ gh: FILED, body: spokenBuild }).run(["--help"]) },
   ],
   "bin/enrol": [
     { label: "enrolling a bare repo", run: () => enrolling(bare()).run() },
