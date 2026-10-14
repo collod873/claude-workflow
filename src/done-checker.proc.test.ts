@@ -89,33 +89,6 @@ describe("bin/done-check posts nothing it did not try (#1023)", () => {
   });
 });
 
-describe("bin/done-check runs a sentence's own check command itself (#1023)", () => {
-  const checked = (command: string) => `${SENTENCES[0]} – check: \`${command}\``;
-
-  it("spends no model when every sentence carries a command, and holds each on its command's exit", () => {
-    const passing = doneChecking({ body: specWith([checked("true"), checked("test -d .git")]), tries: [] });
-    const failing = doneChecking({ body: specWith([checked("true"), checked("exit 3")]), tries: [] });
-
-    expect(passing.run().status).toBe(0);
-    expect(passing.hired()).toEqual([]);
-    expect(passing.comments()[0]).toContain(`1. **Held**: ${SENTENCES[0]}\n   Ran \`true\`, which exited 0.`);
-    expect(passing.closes()).toHaveLength(1);
-    expect(failing.run().status).toBe(0);
-    expect(failing.hired()).toEqual([]);
-    expect(failing.comments()[0]).toContain(`2. **Did not hold**: ${SENTENCES[0]}\n   Ran \`exit 3\`, which exited 3.`);
-    expect(failing.closes()).toEqual([]);
-  });
-
-  it("hands the model only the sentences with no command, by their number in the spec", () => {
-    const mixed = doneChecking({ body: specWith([checked("true"), SENTENCES[1] ?? ""]), tries: [{ sentence: 2, outcome: "held", tried: "opened a ticket it filed" }] });
-
-    expect(mixed.run().status).toBe(0);
-    expect(mixed.handed()).toContain("Sentence 1 carries a check command the machine ran itself; give no try for it.");
-    expect(mixed.comments()[0]).toContain(`2. **Held**: ${SENTENCES[1]}\n   opened a ticket it filed`);
-    expect(mixed.closes()).toHaveLength(1);
-  });
-});
-
 describe("bin/done-check refuses before spending a model (#1023)", () => {
   it("refuses an issue not labelled spec, and a spec with no sentence to try, trying nothing and posting nothing", () => {
     const ticket = doneChecking({ labels: ["ticket"] });
@@ -281,7 +254,7 @@ describe("bin/done-check reads the owner's reply to a sentence it put to him (#1
 });
 
 describe("specs.yml runs the done check again on the owner's reply to a sentence it put to him (#1038)", () => {
-  type Job = { if?: string; needs?: string; strategy?: { matrix: Record<string, string> }; steps: WorkflowStep[] };
+  type Job = { if?: string; needs?: string; steps: WorkflowStep[] };
   function workflow(): { on: object; asked: Job; check: Job } {
     const { on } = parse(readFileSync(join(import.meta.dirname, "..", ".github", "workflows", "machine.yml"), "utf8")) as { on: object };
     const { asked, check } = workflowJobs("specs.yml") as Record<string, Job>;
@@ -334,44 +307,10 @@ describe("specs.yml runs the done check again on the owner's reply to a sentence
     for (const spelling of ["## Done check", "fix-wave", "Put to the owner", "$SPEC", "|"]) expect(reading, spelling).not.toContain(spelling);
     expect(check.needs).toBe("asked");
     expect(holds(check.if ?? "", { needs: { asked: { result: "success", outputs: { asked: "true" } } } })).toBe(true);
-    expect(holds(check.if ?? "", { needs: { asked: { result: "success", outputs: { asked: "false", marked: "" } } } })).toBe(false);
-    expect(check.strategy?.matrix.spec).toBe("${{ fromJSON(needs.asked.outputs.asked == 'true' && format('[{0}]', github.event.issue.number) || needs.asked.outputs.marked) }}");
+    expect(holds(check.if ?? "", { needs: { asked: { result: "success", outputs: { asked: "false" } } } })).toBe(false);
     const checked = check.steps.find((step) => step.run?.includes("bin/done-check"));
-    expect(checked?.run).toContain('bin/done-check" ${{ matrix.spec }}');
+    expect(checked?.run).toContain('bin/done-check" ${{ github.event.issue.number }}');
     expect(checked?.env?.GH_TOKEN).toBe("${{ steps.app.outputs.token }}");
-  });
-});
-
-describe("specs.yml tries again, on a push to main, each open spec the old rule left marked asked (#1213)", () => {
-  type Job = { if?: string; strategy?: { matrix: Record<string, string> }; steps: WorkflowStep[] };
-  const { asked, check } = workflowJobs("specs.yml") as Record<string, Job>;
-  const marking = asked?.steps.find((step) => step.id === "marked");
-
-  it("starts the asked job on a push to main whoever pushed, and lists the specs only on a push", () => {
-    expect(holds(asked?.if ?? "", { event: "push", sender: MACHINE })).toBe(true);
-    expect(holds(marking?.if ?? "", { event: "push" })).toBe(true);
-    expect(holds(marking?.if ?? "", { event: "issue_comment" })).toBe(false);
-  });
-
-  it("lists the open issues labelled spec and asked, by the labels spelled names", () => {
-    const root = scratch("marked-");
-    const called = join(root, "called");
-    script(join(root, "stub", "gh"), `printf '%s\\n' "$*" >"${called}"\nprintf '[1164]\\n'\n`);
-    const output = join(root, "output");
-    const ran = spawnSync("bash", ["-e", "-c", marking?.run ?? ""], { cwd: join(import.meta.dirname, ".."), env: { ...process.env, PATH: `${join(root, "stub")}:${process.env.PATH}`, GITHUB_OUTPUT: output }, encoding: "utf8" });
-
-    expect(ran.status, ran.stderr).toBe(0);
-    expect(readFileSync(output, "utf8")).toBe("marked=[1164]\n");
-    expect(readFileSync(called, "utf8")).toContain("issue list --state open --label spec --label asked");
-  });
-
-  it("checks each listed spec in a run of its own, and none when the list is empty", () => {
-    const listed = (marked: string) => holds(check?.if ?? "", { event: "push", needs: { asked: { result: "success", outputs: { marked } } } });
-
-    expect(listed("[1164]")).toBe(true);
-    expect(listed("[]")).toBe(false);
-    expect(listed("")).toBe(false);
-    expect(check?.steps.find((step) => step.id === "done-check")?.run).toContain('bin/done-check" ${{ matrix.spec }}');
   });
 });
 

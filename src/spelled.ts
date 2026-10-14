@@ -1,4 +1,4 @@
-type LabelKind = "kind" | "state" | "parked" | "owner" | "held" | "try";
+type LabelKind = "kind" | "state" | "parked" | "held" | "try";
 
 interface Label {
   name: string;
@@ -25,14 +25,13 @@ export const LABELS = [
   { name: "slicing", kind: "state", colour: STATE_BLUE, description: "The slicer is writing the next wave" },
   { name: "researching", kind: "state", colour: STATE_BLUE, description: "The researcher is answering this note" },
   { name: "waiting", kind: "parked", colour: "fbca04", description: "Waits for other tickets before it builds" },
-  { name: "asked", kind: "owner", colour: "5319e7", description: "The machine put the owner a question and resumes on the owner's reply" },
   { name: "paused", kind: "held", colour: "0e8a16", description: "The owner paused it; the machine never adds or removes it" },
   { name: "stuck", kind: "held", colour: "b60205", description: "The machine stopped and needs the owner; the machine never removes it" },
   { name: "try-", kind: "try", colour: "f66a0a", description: "A builder run after a failure, or a spec's fix wave" },
 ] as const satisfies readonly Label[];
 
 export type LabelName = (typeof LABELS)[number]["name"];
-export type MarkedLabel = Exclude<Extract<(typeof LABELS)[number], { kind: "state" | "parked" | "owner" | "held" }>["name"], typeof PAUSED>;
+export type MarkedLabel = Exclude<Extract<(typeof LABELS)[number], { kind: "state" | "parked" | "held" }>["name"], typeof PAUSED>;
 
 export const TICKET = "ticket" as const satisfies LabelName;
 export const BUG = "bug" as const satisfies LabelName;
@@ -48,7 +47,6 @@ export const LANDING = "landing" as const satisfies MarkedLabel;
 export const SLICING = "slicing" as const satisfies MarkedLabel;
 export const RESEARCHING = "researching" as const satisfies MarkedLabel;
 export const WAITING = "waiting" as const satisfies MarkedLabel;
-export const ASKED = "asked" as const satisfies MarkedLabel;
 export const PAUSED = "paused" as const satisfies LabelName;
 export const STUCK = "stuck" as const satisfies MarkedLabel;
 export const HELD = [PAUSED, STUCK] as const;
@@ -56,7 +54,7 @@ export const TICKET_PREFIX = "ticket/";
 export const OWNER = "collod873";
 export const MACHINE = "collod873-machine[bot]";
 export const OWNER_CALL = "owner call";
-const KEYED: Record<string, string> = { TICKET, BUG, SPEC, NOTE, RESEARCH, OWNER_STEP, BUILDING, CHECKING, QUEUED, RESOLVING, LANDING, SLICING, RESEARCHING, WAITING, ASKED, PAUSED, STUCK, TICKET_PREFIX, OWNER, MACHINE, OWNER_CALL };
+const KEYED: Record<string, string> = { TICKET, BUG, SPEC, NOTE, RESEARCH, OWNER_STEP, BUILDING, CHECKING, QUEUED, RESOLVING, LANDING, SLICING, RESEARCHING, WAITING, PAUSED, STUCK, TICKET_PREFIX, OWNER, MACHINE, OWNER_CALL };
 
 export const SPELLINGS: [key: string, spelling: string][] = [
   ...Object.entries(KEYED),

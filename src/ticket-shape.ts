@@ -38,10 +38,7 @@ export const NEXT_HEADING = /^##[ \t]/m;
 const NEXT_SUBHEADING = /^###?[ \t]/m;
 const ITEM = /^[ \t]*-[ \t]*\[[ xX]\][ \t]*/;
 const BULLET = /^[ \t]*-(?:[ \t]*\[[ xX]\])?[ \t]+/;
-const MARKER = /(?:–|(?<=[ \t])-{1,2}(?=[ \t]))[ \t]*check:[ \t]*`([^`\n]+)`[ \t]*$/;
-const ATTEMPT = /check:/gi;
 const OWNER_WORDS = /"[^"\n]{4,}"|^>[ \t]*\S/m;
-const FILE_PATH = /[\w.-]+\/[\w./-]+\.[A-Za-z0-9]+/g;
 const NUMBERED_ITEM = /^[ \t]*\d+[.)][ \t]/m;
 const FEWEST = 1;
 const MOST = 3;
@@ -195,7 +192,7 @@ export function recordRefusals(recorded: Recorded, cap: Cap = SPEC_CAPPED): stri
   const headed = NEXT_HEADING.test(recorded.record) ? ["the record carries a '## ' heading, which would end it: head its parts with '### '"] : [];
   const bytes = Buffer.byteLength(spliced(recorded));
   const over = bytes > cap.bytes ? [`the spec would be ${bytes} bytes, over the ${cap.named} of ${cap.bytes}: the record must lose at least ${bytes - cap.bytes} bytes`] : [];
-  return [...pathRefusals(recorded.record, "the record"), ...headed, ...entryRefusals(recorded.record), ...over];
+  return [...headed, ...entryRefusals(recorded.record), ...over];
 }
 
 export const whyChanged = (read: string, written: string): string[] => (why(written) === why(read) ? [] : ["the rewrite changes '## Why', the owner's words, which stay byte-identical"]);
@@ -258,24 +255,6 @@ function builtRefusals(body: string, why: WhyAsked): string[] {
   return refusals;
 }
 
-function pathRefusals(text: string, where: string): string[] {
-  const found = [...new Set([...text.matchAll(FILE_PATH)].map(([path]) => path))];
-  return found.map((path) => `${where} names \`${path}\`, a file path`);
-}
-
-function sentenceRefusals(items: string[]): string[] {
-  const refusals: string[] = [];
-  items.forEach((item, index) => {
-    const attempts = item.match(ATTEMPT)?.length ?? 0;
-    if (attempts === 0) return;
-    const command = MARKER.exec(item)?.[1];
-    const at = `sentence ${index + 1}`;
-    if (attempts > 1) refusals.push(`${at} carries ${attempts} check: markers, not one: ${quoted(item)}`);
-    else if (command === undefined) refusals.push(`${at} carries a check: marker that does not parse: ${quoted(item)}`);
-  });
-  return refusals;
-}
-
 export const SPEC_CAP = 64 * 1024;
 
 export interface Cap {
@@ -287,14 +266,10 @@ export const SPEC_CAPPED: Cap = { bytes: SPEC_CAP, named: "spec cap" };
 
 export interface Sentence {
   said: string;
-  check?: string;
 }
 
 export function sentences(body: string): Sentence[] {
-  return itemsUnder(body.replaceAll(/\r\n?/g, "\n"), SENTENCES).map((item) => {
-    const check = MARKER.exec(item);
-    return check === null ? { said: item } : { said: item.slice(0, check.index).trim(), check: check[1] };
-  });
+  return itemsUnder(body.replaceAll(/\r\n?/g, "\n"), SENTENCES).map((said) => ({ said }));
 }
 
 export function specRefusals(body: string): string[] {
@@ -307,7 +282,6 @@ export function specRefusals(body: string): string[] {
   if (!USER_STORIES.test(text)) refusals.push("the body carries no '## User Stories'");
   else if (!NUMBERED_ITEM.test(section(text, USER_STORIES))) refusals.push("'## User Stories' carries no numbered item");
   if (!IMPLEMENTATION_DECISIONS.test(text)) refusals.push("the body carries no '## Implementation Decisions'");
-  else refusals.push(...pathRefusals(section(text, IMPLEMENTATION_DECISIONS), `'## ${NAMED.decisions}'`));
   if (!TESTING_DECISIONS.test(text)) refusals.push("the body carries no '## Testing Decisions'");
   else if (section(text, TESTING_DECISIONS).trim() === "") refusals.push("'## Testing Decisions' says nothing");
   if (!OUT_OF_SCOPE.test(text)) refusals.push("the body carries no '## Out of Scope'");
@@ -319,9 +293,7 @@ export function specRefusals(body: string): string[] {
     const found = SENTENCES.exec(text);
     const after = found === null ? "" : text.slice(matchEnd(found));
     if (NEXT_HEADING.test(after)) refusals.push("a heading follows '## I'll know it works when I can', which must be last");
-    const sentences = itemsUnder(text, SENTENCES);
-    if (sentences.length === 0) refusals.push("'## I'll know it works when I can' carries no '- [ ]' item, so the done check has nothing to try");
-    else refusals.push(...sentenceRefusals(sentences));
+    if (itemsUnder(text, SENTENCES).length === 0) refusals.push("'## I'll know it works when I can' carries no '- [ ]' item, so the done check has nothing to try");
   }
   const bytes = Buffer.byteLength(text);
   if (bytes > SPEC_CAP) refusals.push(`the body is ${bytes} bytes, over the spec cap of ${SPEC_CAP}: cut at least ${bytes - SPEC_CAP} bytes`);

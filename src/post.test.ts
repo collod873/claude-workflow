@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
-import { authoredOn, labelsHeld, opened, post, readOrStop, RESEARCH, RESOLVING, STUCK, WAITING, type Posting } from "./post.ts";
+import { authoredOn, commentOnPr, labelsHeld, opened, post, readOrStop, RESEARCH, RESOLVING, STUCK, WAITING, type Posting } from "./post.ts";
 import { wellFormedNote as NOTE, wellFormedSpec as SPEC } from "./scenarios.ts";
 
 const URL = "https://github.com/collod873/claude-workflow/issues/700";
@@ -70,7 +70,7 @@ describe("src/post.ts is the one way the machine writes text to GitHub (#662)", 
   it("refuses a kind the table does not carry", () => {
     const { gh, calls } = github();
 
-    expect(post(posting({ kind: "memo" }), gh).refusals).toEqual(["memo is not a kind src/post.ts writes: ticket, bug, note, research, owner, spec, judgement"]);
+    expect(post(posting({ kind: "memo" }), gh).refusals).toEqual(["memo is not a kind src/post.ts writes: ticket, bug, note, research, owner, spec"]);
     expect(calls).toEqual([]);
   });
 
@@ -132,15 +132,12 @@ describe("src/post.ts is the one way the machine writes text to GitHub (#662)", 
     ]);
   });
 
-  it("posts a judgement on the PR it judged, and refuses one with no PR", () => {
+  it("comments on a PR with each em dash taken out, as a filing is", () => {
     const { gh, calls } = github();
-    const text = "The reviewer found drift.\n\n- the Why asks for more than was built\n";
-    const judgement = (fields: Partial<Posting>) => post(posting({ kind: "judgement", text, title: undefined, pr: "901", ...fields }), gh);
+    const dash = String.fromCodePoint(0x2014);
 
-    expect(judgement({})).toEqual({ refusals: [], said: URL });
-    expect(calls).toEqual([["pr", "comment", "901", "--body", text]]);
-    expect(judgement({ pr: undefined }).refusals).toEqual(["a judgement carries no pr"]);
-    expect(calls).toHaveLength(1);
+    expect(commentOnPr("901", `The reviewer found drift ${dash} the Why asks for more than was built.\n`, gh)).toEqual({ refusals: [], said: URL });
+    expect(calls).toEqual([["pr", "comment", "901", "--body", "The reviewer found drift, the Why asks for more than was built.\n"]]);
   });
 
   it("files with each em dash taken out rather than refusing, since a cold filing to PW-Rosters was lost to one on 2026-10-12", () => {
@@ -207,13 +204,6 @@ describe("every filing links the transcripts page listing the sessions that file
     expect(post(posting({}), unnumbered.gh)).toEqual({ refusals: [], said: "filed" });
     expect(carried.calls).toHaveLength(1);
     expect(unnumbered.calls).toHaveLength(1);
-  });
-
-  it("posts a judgement with no link, since a PR comment is no issue", () => {
-    const { gh, calls } = github();
-
-    expect(post(posting({ kind: "judgement", title: undefined, pr: "901", text: "The reviewer found no drift.\n" }), gh)).toEqual({ refusals: [], said: URL });
-    expect(calls).toHaveLength(1);
   });
 
   it("answers the URL of a filing whose link edit fails, naming it unlinked on stderr, so a caller never files it again", () => {
