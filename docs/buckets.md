@@ -4,6 +4,8 @@ The machine's failures, grouped by cause. A change to the machine names its row 
 that row's state in the same change. A row's evidence is a measured Spec, segmented by the
 machine version it ran under; a row with no measured member gets no change. A session that
 finds a failure no row holds adds the row with its evidence, not a fix.
+A check that refuses a machine change naming no row waits to see whether `CLAUDE.md`'s steps
+(#1322) get sessions here alone (Collin, 2026-10-14).
 
 Last measured: Lumaria#902 Waves 12 to 16 to its done check, 2026-10-09
 ([waves-12-16-2026-10.md](research/waves-12-16-2026-10.md)): 289 min for 8 tickets, 169 of them
@@ -21,4 +23,4 @@ rework after the done check, 53 stalled.
 | Each check writes its own browser driver | wave and done checks took 106 of 289 min and 39% of model spend in Waves 12-16; one wave check spent 39 of 42 min on its driver | the check stages carry one browser driver | unruled |
 | Jobs on the PC share Docker, /tmp and processes | Waves 12-16: a wave check reset and lost another job's Postgres twice (about 8 min); a builder's `kill` matched the owner's Next servers; on 2026-10-13 three repos each had a runner named `desktop-7vv7k71-1` and the Postgres was named after the runner alone, so a PW-Onboarding or workout-tracker job deleted Lumaria #1090's twice and parked it behind a fault | each job gets its own Postgres, ports and paths | unruled; the Postgres is named per repo and runner since 2026-10-13 |
 | A fix spanning two repos carried by the owner | 8 of 14 by hand in a week (#1233) | one owning repo per kind of fix; agent-hooks reachable from a machine session | unruled (#1237) |
-| Spot fixes outrun measurement | 97 machine PRs in a week, no Spec measured on one version (#1226); eight machine merges during Waves 12-16 and one 55 min before them, which shipped the review hold without Lumaria's caller; nine jobs ran one commit's workflow with another's code | the machine holds still while a Spec runs; the machine measures each Spec at its done check | CLAUDE.md rule broken in Waves 12-16; measurement unbuilt |
+| Spot fixes outrun measurement | 97 machine PRs in a week, no Spec measured on one version (#1226); eight machine merges during Waves 12-16 and one 55 min before them, which shipped the review hold without Lumaria's caller; nine jobs ran one commit's workflow with another's code | the machine measures each Spec at its done check | measurement unbuilt; holding the machine still while a Spec runs is ruled out (2026-10-14), since a broken Spec needs its fixes landed to finish |
