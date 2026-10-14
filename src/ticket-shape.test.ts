@@ -3,7 +3,6 @@ import { handedOn as builderBrief } from "./builder.ts";
 import { handedOn as reviewerBrief } from "./reviewer.ts";
 import { BUG_SHAPE, BUILD_SHAPE, DONE_SENTENCES, IDEA_SHAPE, SPEC_CAP, SPEC_SHAPE, SPOKEN_SHAPE, bugRefusals, inSpokenWords, noteRefusals, specRefusals, spokenRefusals, ticketRefusals } from "./ticket-shape.ts";
 
-const DASH = "\u2014";
 const TEST_CHECK = "npx vitest run --config vitest.config.ts ticket-shape";
 const QUOTED = 'The owner, in session: "file a ticket the machine can build".';
 const SIGNAL = "The Signals of the session read:\n\n> hookkit: check-gate crashed 3 times: TypeError: Cannot read properties of undefined";
@@ -23,7 +22,6 @@ const misshapen: [string, string, string[]][] = [
   ["a body with no '## Done when'", body().replace("## Done when", "## Plan"), ["the body carries no '## Done when', so nothing says what done looks like"]],
   ["a '## Done when' with no sentence under it", body({ done: ["Filing refuses a bad body."] }), ["'## Done when' carries 0 '- ' sentences, not 1 to 3"]],
   ["four sentences", body({ done: [1, 2, 3, 4].map((n) => `- Filing refuses defect ${n}.`) }), ["'## Done when' carries 4 '- ' sentences, not 1 to 3"]],
-  ["an em dash in the body", body({ why: `The owner, in session: "file a ticket ${DASH} the machine builds it".` }), ["line 3 carries an em dash"]],
 ];
 
 describe("src/ticket-shape refuses a ticket body that hides what was meant (#662, #931)", () => {
@@ -60,7 +58,6 @@ const misshapenBug: [string, string, string[]][] = [
   ],
   ["a body with no '## Done when'", body({ why: SIGNAL }).replace("## Done when", "## Fix"), ["the body carries no '## Done when', so nothing says what done looks like"]],
   ["four sentences", body({ why: SIGNAL, done: [1, 2, 3, 4].map((n) => `- check-gate survives fault ${n}.`) }), ["'## Done when' carries 4 '- ' sentences, not 1 to 3"]],
-  ["an em dash in the body", body({ why: `${SIGNAL} ${DASH} still standing` }), ["line 5 carries an em dash"]],
 ];
 
 describe("src/ticket-shape refuses a bug body that proves no fault, since no owner spoke for it", () => {
@@ -94,10 +91,6 @@ describe("a note asks for a why and nothing else, so a session at its end can fi
     expect(noteRefusals("## Why\n\n\n## Findings\n\nFour proposals.\n")).toEqual([
       "'## Why' says nothing, so nothing says why this was worth keeping",
     ]);
-  });
-
-  it("refuses an em dash, which no filing may carry whatever its kind", () => {
-    expect(noteRefusals(`## Why\n\nA finding ${DASH} worth keeping.\n`)).toEqual(["line 3 carries an em dash"]);
   });
 });
 
@@ -208,11 +201,6 @@ const misshapenSpec: [string, string, unknown[]][] = [
     "a spec over the spec cap, which no stage cuts",
     specBody({ furtherNotes: "x".repeat(SPEC_CAP) }),
     [expect.stringMatching(/^the body is (\d+) bytes, over the spec cap of 65536: cut at least \d+ bytes$/)],
-  ],
-  [
-    "a spec with an em dash",
-    specBody({ solution: `File a spec kind ${DASH} sharing the ticket pipeline.` }),
-    ["line 7 carries an em dash"],
   ],
 ];
 

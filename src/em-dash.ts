@@ -1,6 +1,12 @@
 import { text } from "node:stream/consumers";
 
-export function emDashLines(written: string): number[] {
+export const dedashed = (written: string): string =>
+  written
+    .replaceAll(/(?<=\d)\u2014(?=\d)/g, "-")
+    .replaceAll(/(?<=\w)[ \t]*\u2014[ \t]*(?=\w)/g, ", ")
+    .replaceAll("\u2014", "-");
+
+function emDashLines(written: string): number[] {
   return written.split("\n").flatMap((line, index) => (line.includes("\u2014") ? [index + 1] : []));
 }
 

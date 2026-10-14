@@ -224,8 +224,8 @@ export function git(cwd: string, ...args: string[]): string {
   return execFileSync("git", args, { cwd, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 }
 
-export function commitAt(cwd: string, date: string, args: string[], committed = date): string {
-  return execFileSync("git", args, { cwd, env: { ...env, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: committed }, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+export function commitAt(cwd: string, date: string, args: string[]): string {
+  return execFileSync("git", args, { cwd, env: { ...env, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date }, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 }
 
 export function script(path: string, body: string): void {
@@ -266,19 +266,7 @@ const wellFormedTicket = [
   "",
 ].join("\n");
 
-const misshapenTicket = [
-  "## Why",
-  "",
-  "The session decided this was worth building \u2014 at once.",
-  "",
-  "## Done when",
-  "",
-  "- one \u2014 first",
-  "- two \u2014 second",
-  "- three \u2014 third",
-  "- four \u2014 fourth",
-  "",
-].join("\n");
+export const misshapenSpec = "## Nothing to slice\n";
 
 export const wellFormedBug = [
   "## Why",
@@ -302,7 +290,6 @@ const spoken = (filed: string): string => {
 };
 export const asFiled = (body: string): string => body.replace("## Owner's words", "## Why");
 export const spokenBuild = spoken(wellFormedTicket);
-export const spokenMisshapen = spoken(misshapenTicket);
 export const spokenIdea = spoken(wellFormedNote);
 
 export const wellFormedSpec = [

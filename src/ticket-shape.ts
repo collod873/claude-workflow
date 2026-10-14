@@ -1,4 +1,3 @@
-import { emDashLines } from "./em-dash.ts";
 
 const NAMED = {
   why: "Why",
@@ -224,7 +223,7 @@ export function noteRefusals(body: string): string[] {
   const refusals: string[] = [];
   if (!WHY.test(text)) refusals.push("the body carries no '## Why', so nothing says why this was worth keeping");
   else if (section(text, WHY).trim() === "") refusals.push("'## Why' says nothing, so nothing says why this was worth keeping");
-  return [...refusals, ...emDashLines(text).map((line) => `line ${line} carries an em dash`)];
+  return refusals;
 }
 
 interface WhyAsked {
@@ -256,7 +255,7 @@ function builtRefusals(body: string, why: WhyAsked): string[] {
     const said = itemsUnder(text, DONE_WHEN, BULLET).length;
     if (said < FEWEST || said > MOST) refusals.push(`'## Done when' carries ${said} '- ' sentences, not ${FEWEST} to ${MOST}`);
   }
-  return [...refusals, ...emDashLines(text).map((line) => `line ${line} carries an em dash`)];
+  return refusals;
 }
 
 function pathRefusals(text: string, where: string): string[] {
@@ -326,5 +325,5 @@ export function specRefusals(body: string): string[] {
   }
   const bytes = Buffer.byteLength(text);
   if (bytes > SPEC_CAP) refusals.push(`the body is ${bytes} bytes, over the spec cap of ${SPEC_CAP}: cut at least ${bytes - SPEC_CAP} bytes`);
-  return [...refusals, ...emDashLines(text).map((line) => `line ${line} carries an em dash`)];
+  return refusals;
 }

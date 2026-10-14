@@ -132,7 +132,7 @@ describe("src/post.ts is the one way the machine writes text to GitHub (#662)", 
     ]);
   });
 
-  it("posts a judgement on the PR it judged, and refuses one with no PR or an em dash", () => {
+  it("posts a judgement on the PR it judged, and refuses one with no PR", () => {
     const { gh, calls } = github();
     const text = "The reviewer found drift.\n\n- the Why asks for more than was built\n";
     const judgement = (fields: Partial<Posting>) => post(posting({ kind: "judgement", text, title: undefined, pr: "901", ...fields }), gh);
@@ -140,8 +140,38 @@ describe("src/post.ts is the one way the machine writes text to GitHub (#662)", 
     expect(judgement({})).toEqual({ refusals: [], said: URL });
     expect(calls).toEqual([["pr", "comment", "901", "--body", text]]);
     expect(judgement({ pr: undefined }).refusals).toEqual(["a judgement carries no pr"]);
-    expect(judgement({ text: `${text}- one gap ${String.fromCodePoint(0x2014)} dashed\n` }).refusals).toEqual(["line 4 carries an em dash"]);
     expect(calls).toHaveLength(1);
+  });
+
+  it("files with each em dash taken out rather than refusing, since a cold filing to PW-Rosters was lost to one on 2026-10-12", () => {
+    const { gh, calls } = github();
+    const dash = String.fromCodePoint(0x2014);
+
+    expect(post(posting({ title: `A ticket ${dash} dashed`, text: TICKET.replace("takes a ticket and", `takes a ticket ${dash} and builds it ${dash} and`).replace("well-formed ticket.", `well-formed ticket, 1${dash}3 sentences.`) }), gh)).toEqual({ refusals: [], said: URL });
+    expect(calls[0]?.[3]).toBe("A ticket, dashed");
+    expect(calls[0]?.at(-1)).toBe(TICKET.replace("takes a ticket and", "takes a ticket, and builds it, and").replace("well-formed ticket.", "well-formed ticket, 1-3 sentences."));
+  });
+
+  it("creates the labels a repo lacks and files again, since five of eleven refused filings were a label not found", () => {
+    const calls: string[][] = [];
+    let refused = false;
+    const gh = (args: string[]) => {
+      calls.push(args);
+      if (args[1] === "create" && !refused) {
+        refused = true;
+        return { status: 1, stdout: "", stderr: "could not add label: 'note' not found\n" };
+      }
+      return { status: 0, stdout: `${URL}\n`, stderr: "" };
+    };
+
+    expect(post(posting({ kind: "research", text: NOTE, title: "Look into it" }), gh)).toEqual({ refusals: [], said: URL });
+    expect(calls.map((args) => args.slice(0, 3))).toEqual([
+      ["issue", "create", "--title"],
+      ["label", "create", "note"],
+      ["label", "create", "research"],
+      ["issue", "create", "--title"],
+      ["issue", "edit", "700"],
+    ]);
   });
 
   it("hands back what gh said when the write itself fails", () => {
@@ -186,14 +216,22 @@ describe("every filing links the transcripts page listing the sessions that file
     expect(calls).toHaveLength(1);
   });
 
-  it("names the filing that stands unlinked when the edit fails, so the URL is not lost with the refusal", () => {
+  it("answers the URL of a filing whose link edit fails, naming it unlinked on stderr, so a caller never files it again", () => {
     const calls: string[][] = [];
     const gh = (args: string[]) => {
       calls.push(args);
       return args[1] === "edit" ? { status: 1, stdout: "", stderr: "GraphQL: Resource not accessible by integration\n" } : { status: 0, stdout: `${URL}\n`, stderr: "" };
     };
 
-    expect(post(posting({}), gh)).toEqual({ refusals: [`${URL} was filed, but gh issue edit failed: GraphQL: Resource not accessible by integration, so it carries no sessions link`], said: "" });
+    const said: string[] = [];
+    const error = console.error;
+    console.error = (text: string) => said.push(text);
+    try {
+      expect(post(posting({}), gh)).toEqual({ refusals: [], said: URL });
+    } finally {
+      console.error = error;
+    }
+    expect(said).toEqual([`${URL} was filed, but gh issue edit failed: GraphQL: Resource not accessible by integration, so it carries no sessions link`]);
     expect(calls).toHaveLength(2);
   });
 });
