@@ -1,5 +1,5 @@
 import { execFile, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
@@ -401,8 +401,8 @@ function runOf(step: Step, ticket: string, action: string): string {
   return (step.run ?? "").replaceAll(/\$\{\{ github\.event\.issue\.number \}\}/g, ticket).replaceAll(/\$\{\{ github\.event\.action \}\}/g, action);
 }
 
-describe("tickets.yml re-runs an open PR's failed checks instead of building, when the owner reopens a ticket whose PR is open (#851)", () => {
-  it("builds nothing and re-runs the failed checks when the owner reopens a ticket whose PR is open, but still builds when it has none", () => {
+describe("tickets.yml re-runs an open PR's failed checks instead of building, when the owner reopens or the closer wakes a ticket whose PR is open (#851, #1108)", () => {
+  it("builds nothing and re-runs the failed checks when a reopened or woken ticket has an open PR, but still builds when it has none", () => {
     const { job } = workflow();
     const start = stageStep(job, "start");
     const started = (cwd: string, output: string, action: string) =>
@@ -425,15 +425,18 @@ describe("tickets.yml re-runs an open PR's failed checks instead of building, wh
         "",
       ].join("\n"),
     );
-    const opened = started(withOpenPr, openOutput, "reopened");
+    for (const action of ["reopened", "unlabeled"]) {
+      rmSync(openCalls, { force: true });
+      const opened = started(withOpenPr, openOutput, action);
 
-    expect(opened.status, opened.stderr).toBe(0);
-    const openLog = readFileSync(openCalls, "utf8");
-    expect(openLog).toContain("mark 9 checking\n");
-    expect(openLog).not.toContain("mark 9 building");
-    expect(openLog).toMatch(/rerun/i);
-    expect(stagesRun(job, undefined, { start: parseOutput(openOutput) })).toEqual(["start"]);
-    expect(parseOutput(openOutput).branch).toBe("ticket/9");
+      expect(opened.status, opened.stderr).toBe(0);
+      const openLog = readFileSync(openCalls, "utf8");
+      expect(openLog, action).toContain("mark 9 checking\n");
+      expect(openLog, action).not.toContain("mark 9 building");
+      expect(openLog, action).toMatch(/rerun/i);
+      expect(stagesRun(job, undefined, { start: parseOutput(openOutput) })).toEqual(["start"]);
+      expect(parseOutput(openOutput).branch).toBe("ticket/9");
+    }
 
     const withNoPr = scratch("reopen-none-");
     const noCalls = join(withNoPr, "calls");
