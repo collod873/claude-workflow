@@ -52,7 +52,7 @@ function resume(ticket: string): Stop | undefined {
   }
   if (pr.state === "MERGED" && pr.mergeCommit !== null) {
     console.log("builds=false");
-    return closeMerged({ ticket, pr: String(pr.number) }, pr.mergeCommit.oid, console.error);
+    return closeMerged({ ticket, pr: String(pr.number) }, console.error);
   }
   if (pr.state !== "OPEN") {
     console.log("builds=false");

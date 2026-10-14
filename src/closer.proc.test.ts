@@ -34,50 +34,6 @@ describe("bin/close closes a ticket once its PR merges, since the PR's review an
   });
 });
 
-describe("bin/close names how long filing took to reach merged, and never gates on it (#809)", () => {
-  it("carries a speed report from filing to merged, naming the longest wait, and still closes a ticket over an hour late", () => {
-    const { calls, run } = closing({
-      ticket: "814",
-      timing: {
-        filed: "2026-01-01T00:00:00Z",
-        firstCommit: "2026-01-01T00:10:00Z",
-        prOpened: "2026-01-01T01:40:00Z",
-        checksGreen: "2026-01-01T01:45:00Z",
-        merged: "2026-01-01T01:48:00Z",
-      },
-    });
-
-    const result = run();
-
-    expect(result.status).toBe(0);
-    const commented = calls().find((call) => call.startsWith("issue\ncomment\n814\n"));
-    expect(commented).toBeDefined();
-    expect(commented).toMatch(/speed report/i);
-    expect(commented).toMatch(/longest[^\n]*PR opened/i);
-    expect(commented).toMatch(/\d+\s*(m|min|h|hour)/i);
-    expect(calls().some((call) => call.startsWith("issue\nclose\n814"))).toBe(true);
-  });
-
-  it("dates the first commit by when it was written, so a rebase after the PR opened gives no negative wait", () => {
-    const { calls, run } = closing({
-      ticket: "816",
-      timing: {
-        filed: "2026-01-01T00:00:00Z",
-        firstCommit: "2026-01-01T00:10:00Z",
-        rebased: "2026-01-01T01:45:00Z",
-        prOpened: "2026-01-01T01:40:00Z",
-        checksGreen: "2026-01-01T01:50:00Z",
-        merged: "2026-01-01T01:52:00Z",
-      },
-    });
-
-    expect(run().status).toBe(0);
-    const commented = calls().find((call) => call.startsWith("issue\ncomment\n816\n"));
-    expect(commented).toContain("first commit to PR opened: 1h 30m");
-    expect(commented).not.toMatch(/: -\d/);
-  });
-});
-
 describe("bin/close ends a done ticket closed as completed with no state label (#851, #1055)", () => {
   it("re-closes as completed and strips the state label, even when the merge finds the ticket already closed as not planned", () => {
     const { calls, tokens, run } = closing({ ticket: "817", closedAs: "NOT_PLANNED" });
@@ -361,7 +317,7 @@ describe("bin/close wakes no builder for a conflict on a ticket the owner was ca
   }
 });
 
-describe("bin/close counts a ticket PR's collisions in its closing record: failed branch updates and re-reviews (#980)", () => {
+describe("bin/close names on a ticket PR the branch update it could not make (#980)", () => {
   it("leaves a failed branch update on a ticket PR", () => {
     const { calls, run } = closing({
       ticket: "819",
@@ -377,38 +333,6 @@ describe("bin/close counts a ticket PR's collisions in its closing record: faile
     expect(commented).toContain("merge conflicts");
     const wake = calls().find((call) => call.startsWith("workflow\nrun\nmachine.yml") && call.includes("ticket=833"));
     expect(wake, "still wakes the builder as today").toBeDefined();
-  });
-
-  it("counts failed branch updates and re-reviews", () => {
-    const { calls, run } = closing({
-      ticket: "836",
-      prComments: [
-        "PR #900 could not be brought up to date with main: GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts.",
-        "The reviewer read this PR against the Why of #836 and found drift.\n\n- a gap\n\nFingerprint: `judged-1`\n",
-        "PR #900 could not be brought up to date with main: GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts.",
-        "Fingerprint: `judged-2`\n\nIt now reads a green build. Did this build what you meant, yes or no?",
-        "Fingerprint: `judged-3`\n\nIt now reads a green build. Did this build what you meant, yes or no?",
-      ],
-    });
-
-    const result = run();
-
-    expect(result.status).toBe(0);
-    const commented = calls().find((call) => call.startsWith("issue\ncomment\n836\n"));
-    expect(commented).toBeDefined();
-    expect(commented).toMatch(/speed report/i);
-    expect(commented).toMatch(/failed branch update[^\n]*2/i);
-    expect(commented).toMatch(/re-review[^\n]*2/i);
-  });
-
-  it("ends red naming its PR's comments when they cannot be read, and writes no record with counts it never read (#1099)", () => {
-    const { calls, run } = closing({ ticket: "837", prCommentsUnreadable: true });
-
-    const { status, stderr } = run();
-
-    expect(status).toBe(1);
-    expect(stderr).toBe("close: the comments on PR #900 could not be read, so #837 is left as it is\n");
-    expect(calls().some((call) => /^issue\n(comment|close)\n837\n/.test(call))).toBe(false);
   });
 });
 
@@ -645,23 +569,6 @@ describe("bin/close writes on the PR and the ticket each run it made, so a merge
     expect(run().status).toBe(0);
     expect(calls().find((call) => call.startsWith("pr\ncomment\n941\n"))).toContain(CLOSE_RUN);
   });
-
-  it("links the Close run that wrote the closing record, and counts the branch updates that worked next to the failed ones", () => {
-    const { calls, run } = closing({
-      ticket: "838",
-      prComments: [
-        `PR #900 brought up to date with main by ${CLOSE_RUN}`,
-        "PR #900 could not be brought up to date with main: GraphQL: merge conflicts.",
-        `PR #900 brought up to date with main by ${CLOSE_RUN}`,
-      ],
-    });
-
-    expect(run().status).toBe(0);
-    const commented = calls().find((call) => call.startsWith("issue\ncomment\n838\n"));
-    expect(commented).toMatch(/^- branch updates: 2$/m);
-    expect(commented).toMatch(/^- failed branch updates: 1$/m);
-    expect(commented).toContain(`Written by ${CLOSE_RUN}`);
-  });
 });
 
 describe("bin/close marks what the queue does to each ticket, so waiting its turn, being landed and having a conflict resolved read apart (#1063)", () => {
@@ -872,16 +779,6 @@ describe("bin/close stops red at the first read it cannot make, and marks nothin
     expect(stderr).toBe("close: the body of the merged PR #900 could not be read, so the ticket it built is left as it is\n");
     expect(calls().some((call) => call.startsWith("issue\nclose\n"))).toBe(false);
   });
-
-  it("ends red naming the merged PR when its opening cannot be read, closing nothing", () => {
-    const { calls, run } = closing({ ticket: "838", prUnreadable: true });
-
-    const { status, stderr } = run();
-
-    expect(status).toBe(1);
-    expect(stderr).toBe("close: when PR #900 opened could not be read, so #838 is left as it is\n");
-    expect(calls().some((call) => /^issue\n(comment|close)\n838\n/.test(call))).toBe(false);
-  });
 });
 
 describe("bin/close stops at a mark GitHub refused, so it closes nothing whose labels lag (#1107)", () => {
@@ -962,7 +859,6 @@ describe("bin/close, called from a caller file in the machine's own repo, is hom
     expect(run().status).toBe(0);
     expect(calls().some((call) => call.startsWith("workflow\nrun\nmachine.yml\n") && call.includes("ticket=830"))).toBe(true);
   });
-
 });
 
 describe("bin/close names the ticket in its hands when it stops red, so the run calls the owner on it and gets its one re-run (#1206)", () => {

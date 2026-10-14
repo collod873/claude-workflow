@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parts, type Part } from "./parts.ts";
-import { bare, CONTRACT, LINE_LIMIT, MOST_LINES, coveredByCheck, enrolling, execute, filing, githubCall, landSession, marking, overLimit, saving, scratch, script, sessionExtras, spokenBuild, spokenIdea, spokenMisshapen, switching } from "./scenarios.ts";
+import { bare, CONTRACT, LINE_LIMIT, MOST_LINES, coveredByCheck, enrolling, execute, filing, githubCall, landSession, marking, overLimit, saving, scratch, script, sessionExtras, spokenBuild, spokenIdea, misshapenSpec, switching } from "./scenarios.ts";
 import { stages, type Scenario } from "./stages.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
@@ -26,7 +26,7 @@ const listed: Record<string, Scenario[]> = {
   "bin/file-issue": [
     { label: "filing a ticket", run: () => filing({ gh: FILED, body: spokenBuild }).run() },
     { label: "refusing a body with one defect", run: () => filing({ gh: FILED, body: spokenBuild.replace("## Owner's words", "## Background") }).run() },
-    { label: "refusing a body defective more ways than it shows", run: () => filing({ gh: FILED, body: spokenMisshapen }).run() },
+    { label: "refusing a body defective more ways than it shows", run: () => filing({ gh: FILED, body: misshapenSpec }).run(["spec", "--title", "A spec", "--body-file", "body.md"]) },
     { label: "refusing a call it does not file", run: () => filing({ gh: FILED, body: spokenBuild }).run(["judgement", "--title", "A judgement"]) },
     { label: "filing a note", run: () => filing({ gh: FILED, body: spokenIdea }).run(NOTE_CALL) },
     { label: "refusing a note that says no why", run: () => filing({ gh: FILED, body: "Four proposals, with no heading over them.\n" }).run(NOTE_CALL) },

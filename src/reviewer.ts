@@ -38,7 +38,7 @@ function fingerprintOf(pr: string, { diff, body, prBody }: Read): string {
 }
 
 const fingerprintLine = (fingerprint: string) => `Fingerprint: \`${fingerprint}\``;
-export const FINGERPRINT = /Fingerprint: `([^`]+)`/;
+const FINGERPRINT = /Fingerprint: `([^`]+)`/;
 const headLine = (head: string) => `Head: \`${head}\``;
 const HEAD_LINE = /^Head: `([0-9a-f]{40,64})`$/m;
 const mainLine = (main: string) => `Main: \`${main}\``;

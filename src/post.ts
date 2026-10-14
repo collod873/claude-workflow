@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { text as read } from "node:stream/consumers";
-import { emDashLines } from "./em-dash.ts";
+import { dedashed } from "./em-dash.ts";
 import {
   BUG_SHAPE,
   BUILD_SHAPE,
@@ -21,7 +21,7 @@ import {
   spokenRefusals,
   ticketRefusals,
 } from "./ticket-shape.ts";
-import { BUG, HELD, MACHINE, NOTE, OWNER, OWNER_STEP, RESEARCH, RESOLVING, SPEC, STUCK, TICKET, TICKET_PREFIX, WAITING, type LabelName, type MarkedLabel } from "./spelled.ts";
+import { BUG, HELD, LABELS, MACHINE, NOTE, OWNER, OWNER_STEP, RESEARCH, RESOLVING, SPEC, STUCK, TICKET, TICKET_PREFIX, WAITING, type LabelName, type MarkedLabel } from "./spelled.ts";
 import { type Stop, stoppedAt } from "./stops.ts";
 
 export interface Posting {
@@ -113,8 +113,6 @@ const filed = (refuses: (text: string) => string[], labels: LabelName[]): Kind =
   args: (title, text) => ["issue", "create", "--title", title, ...labels.flatMap((label) => ["--label", label]), "--body", text],
 });
 
-const judgementRefusals = (text: string): string[] => emDashLines(text).map((line) => `line ${line} carries an em dash`);
-
 export const MISSING = /HTTP 404/;
 export const ticketBranch = (ticket: string) => `${TICKET_PREFIX}${ticket}`;
 export const TICKET_BRANCH = new RegExp(`^${ticketBranch("(\\d+)")}$`);
@@ -152,7 +150,7 @@ const KINDS: Record<string, Kind> = {
   research: filed(noteRefusals, [NOTE, RESEARCH]),
   owner: filed(noteRefusals, [NOTE, OWNER_STEP]),
   spec: filed(specRefusals, [SPEC]),
-  judgement: { refuses: judgementRefusals, on: "pr", args: (pr, text) => ["pr", "comment", pr, "--body", text] },
+  judgement: { refuses: () => [], on: "pr", args: (pr, text) => ["pr", "comment", pr, "--body", text] },
 };
 
 interface DoorKind {
@@ -214,8 +212,8 @@ function linkedToSessions(posting: Posting, text: string, url: string, gh: Gh): 
   if (repo === undefined || number === undefined) return { refusals: [], said: url };
   const linked = stampedWithSession(text, posting.sessionId, sessionsPage(repo, number));
   if (linked === text) return { refusals: [], said: url };
-  const edited = written(gh, ["issue", "edit", number, "--body", linked]);
-  return edited.refusals.length > 0 ? { refusals: edited.refusals.map((refusal) => `${url} was filed, but ${refusal}, so it carries no sessions link`), said: "" } : { refusals: [], said: url };
+  for (const refusal of written(gh, ["issue", "edit", number, "--body", linked]).refusals) console.error(`${url} was filed, but ${refusal}, so it carries no sessions link`);
+  return { refusals: [], said: url };
 }
 
 function written(gh: Gh, args: string[]): { refusals: string[]; said: string } {
@@ -321,8 +319,8 @@ export function askedIssue(stdout: string): Asked | undefined {
 export const commentOnPr = (pr: string, text: string, gh: Gh) => written(gh, ["pr", "comment", pr, "--body", text]);
 
 export function rewriteTicket(ticket: string, read: string, rewrite: string, gh: Gh): { refusals: string[]; said: string } {
-  const refused = rewriteRefusals(read, rewrite);
-  return refused.length > 0 ? { refusals: refused, said: "" } : written(gh, ["issue", "edit", ticket, "--body", rewrite]);
+  const refused = rewriteRefusals(read, dedashed(rewrite));
+  return refused.length > 0 ? { refusals: refused, said: "" } : written(gh, ["issue", "edit", ticket, "--body", dedashed(rewrite)]);
 }
 
 function prepared(posting: Posting): { refusals: string[]; args: string[]; text: string; filed: boolean } {
@@ -332,18 +330,32 @@ function prepared(posting: Posting): { refusals: string[]; args: string[]; text:
   const filed = shape.on === "title";
   const on = posting[shape.on];
   if (on === undefined) return { refusals: [`a ${kind} carries no ${shape.on}`], args: [], text: "", filed };
-  const text = filed ? stampedWithSession(posting.text, sessionId) : posting.text;
+  const text = dedashed(filed ? stampedWithSession(posting.text, sessionId) : posting.text);
   const refused = shape.refuses(text);
   const labelled = (posting.labels ?? []).flatMap((label) => ["--label", label]);
-  return refused.length > 0 ? { refusals: refused, args: [], text, filed } : { refusals: [], args: [...shape.args(on, text), ...labelled], text, filed };
+  return refused.length > 0 ? { refusals: refused, args: [], text, filed } : { refusals: [], args: [...shape.args(dedashed(on), text), ...labelled], text, filed };
 }
 
 export const postRefusals = (posting: Posting): string[] => prepared(posting).refusals;
 
+const LABEL_MISSING = /could not add label: '[^']+' not found/;
+
+function labelsCreated(args: string[], gh: Gh): void {
+  const named = new Set(args.filter((_, at) => args[at - 1] === "--label"));
+  for (const { name, colour, description } of LABELS.filter(({ name }) => named.has(name))) gh(["label", "create", name, "--color", colour, "--description", description]);
+}
+
+function createdLabelled(args: string[], gh: Gh): { refusals: string[]; said: string } {
+  const created = written(gh, args);
+  if (!created.refusals.some((refusal) => LABEL_MISSING.test(refusal))) return created;
+  labelsCreated(args, gh);
+  return written(gh, args);
+}
+
 export function post(posting: Posting, gh: Gh): { refusals: string[]; said: string } {
   const { refusals, args, text, filed } = prepared(posting);
   if (refusals.length > 0) return { refusals, said: "" };
-  const created = written(gh, args);
+  const created = createdLabelled(args, gh);
   return created.refusals.length > 0 || !filed ? created : linkedToSessions(posting, text, created.said, gh);
 }
 

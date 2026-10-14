@@ -1,7 +1,6 @@
 import { appendFileSync } from "node:fs";
 import { faultsClosed, LABELLED_WAITING, splitClosed, splitInto } from "./builder.ts";
 import { answered, CALLER_FILE as caller, commentOnPr, commentOnTicket, commentsRead, ENROLLED_REVIEW, FAULT_FROM, FOREIGN, gh, ghAs, ghRead, git, gitRead, type Held, heldOn, labelsHeld, MACHINE_REPO, markWith, NOTHING_MARKED, opened, prOfTicket, readOrStop, RESOLVING, REVIEWED_FROM, TICKET_BRANCH, ticketBranch, unread, WAITING, type MarkedLabel } from "./post.ts";
-import { FINGERPRINT } from "./reviewer.ts";
 import { CHECKING, LANDING, QUEUED } from "./spelled.ts";
 import { exitFor, type Stop, stoppedAt } from "./stops.ts";
 import { quoted, waitsOn, why } from "./ticket-shape.ts";
@@ -18,46 +17,11 @@ const quietGh = ghAs(quietly);
 
 const ticketState = (ticket: string, line: string) => ghRead(["issue", "view", ticket, "--json", "state,stateReason", "--jq", '.state + " " + .stateReason'], `the state of #${ticket} could not be read, ${line}`);
 
-interface Marks {
-  filed?: string;
-  firstCommit?: string;
-  prOpened?: string;
-  checksGreen?: string;
-  merged?: string;
-}
-
-interface Wait {
-  label: string;
-  ms: number;
-}
-
-interface Collisions {
-  branchUpdates: number;
-  failedBranchUpdates: number;
-  reReviews: number;
-}
-
 const failedBranchUpdate = (pr: string) => `PR #${pr} could not be brought up to date with main:`;
 const branchUpdate = (pr: string) => `PR #${pr} brought up to date with main by`;
 const FAILED_BRANCH_UPDATE = new RegExp(`^${failedBranchUpdate("\\d+")}`);
-const BRANCH_UPDATE = new RegExp(`^${branchUpdate("\\d+")} `);
 const { GITHUB_SERVER_URL: server, GITHUB_REPOSITORY: repository, GITHUB_RUN_ID: runId } = process.env;
 const thisRun = server && repository && runId ? `${server}/${repository}/actions/runs/${runId}` : "a run outside Actions";
-
-function collisions(comments: string[]): Collisions {
-  const branchUpdates = comments.filter((comment) => BRANCH_UPDATE.test(comment)).length;
-  const failedBranchUpdates = comments.filter((comment) => FAILED_BRANCH_UPDATE.test(comment)).length;
-  const judged = comments.filter((comment) => FINGERPRINT.test(comment)).length;
-  return { branchUpdates, failedBranchUpdates, reReviews: Math.max(judged - 1, 0) };
-}
-
-const STEPS: { key: keyof Marks; label: string }[] = [
-  { key: "filed", label: "filed" },
-  { key: "firstCommit", label: "first commit" },
-  { key: "prOpened", label: "PR opened" },
-  { key: "checksGreen", label: "checks green" },
-  { key: "merged", label: "merged" },
-];
 
 interface Built {
   ticket: string;
@@ -71,61 +35,7 @@ function built(subject: string): Built | undefined {
   return ticket === undefined ? undefined : { ticket, pr };
 }
 
-const leftAsItIs = (ticket: string) => `so #${ticket} is left as it is`;
-
-function marksFor({ ticket, pr }: Built, at: string): Marks {
-  const left = leftAsItIs(ticket);
-  return {
-    filed: ghRead(["issue", "view", ticket, "--json", "createdAt", "--jq", ".createdAt"], `when #${ticket} was filed could not be read, ${left}`),
-    firstCommit: gitRead(["log", "--format=%aI", "--reverse", `${at}^1..${at}^2`], `the commits PR #${pr} merged could not be read, ${left}`)
-      .split("\n")
-      .find((line) => line !== ""),
-    prOpened: ghRead(["pr", "view", pr, "--json", "createdAt", "--jq", ".createdAt"], `when PR #${pr} opened could not be read, ${left}`),
-    checksGreen: ghRead(["pr", "checks", pr, "--json", "completedAt", "--jq", "[.[].completedAt] | sort | last"], `when the checks of PR #${pr} ended could not be read, ${left}`),
-    merged: gitRead(["log", "-1", "--format=%cI", at], `when PR #${pr} merged could not be read, ${left}`),
-  };
-}
-
-function waits(marks: Marks): Wait[] {
-  const found: Wait[] = [];
-  STEPS.reduce((before, after) => {
-    const from = marks[before.key];
-    const to = marks[after.key];
-    const ms = from === undefined || to === undefined ? Number.NaN : Date.parse(to) - Date.parse(from);
-    if (!Number.isNaN(ms)) found.push({ label: `${before.label} to ${after.label}`, ms });
-    return after;
-  });
-  return found;
-}
-
-function human(ms: number): string {
-  const minutes = Math.round(ms / 60_000);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-  return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
-}
-
-function speedReport(marks: Marks, collided: Collisions): string {
-  const found = waits(marks);
-  const lines = ["Speed report", ""];
-  if (found.length === 0) {
-    lines.push("- timing not available");
-  } else {
-    const total = found.reduce((sum, wait) => sum + wait.ms, 0);
-    const longest = found.reduce((slowest, wait) => (wait.ms > slowest.ms ? wait : slowest));
-    lines.push(...found.map((wait) => `- ${wait.label}: ${human(wait.ms)}`));
-    lines.push(`- total, filed to merged: ${human(total)}`);
-    lines.push(`- longest wait: ${human(longest.ms)}, ${longest.label}`);
-  }
-  lines.push(`- branch updates: ${collided.branchUpdates}`);
-  lines.push(`- failed branch updates: ${collided.failedBranchUpdates}`);
-  lines.push(`- re-reviews: ${collided.reReviews}`);
-  lines.push("", `Written by ${thisRun}`);
-  return lines.join("\n");
-}
-
-const record = ({ ticket, pr }: Built, speed: string): string => [`#${ticket} is done: PR #${pr} merged`, "", speed].join("\n");
+const record = ({ ticket, pr }: Built): string => `#${ticket} is done: PR #${pr} merged`;
 
 const recorded = (said: string) => (said === "" ? "" : `; record ${said}`);
 
@@ -377,16 +287,14 @@ function close(): Stop | undefined {
     console.log(`close: ${queued.said}${wokenAfterParents()}${wokenByClosedFault(process.argv[3])}`);
     return unmoved(queued);
   }
-  return closeMerged(merge, "HEAD") ?? unmoved(queued);
+  return closeMerged(merge) ?? unmoved(queued);
 }
 
-export function closeMerged(merge: Built, at: string, say = console.log): Stop | undefined {
+export function closeMerged(merge: Built, say = console.log): Stop | undefined {
   const { ticket, pr } = merge;
   const asked = gh(["issue", "view", ticket, "--json", "body", "--jq", ".body"]);
   if (asked.status !== 0) return stoppedAt("unread", `close: ticket ${ticket} could not be read, so nothing judged it`);
-  const prComments = commentsRead(pr, `the comments on PR #${pr} could not be read, ${leftAsItIs(ticket)}`, gh);
-  const speed = speedReport(marksFor(merge, at), collisions(prComments));
-  const posted = commentOnTicket(ticket, record(merge, speed), gh);
+  const posted = commentOnTicket(ticket, record(merge), gh);
   const [refusal] = posted.refusals;
   if (refusal !== undefined) return stoppedAt("unrecorded", `close: #${ticket} got no closing record: ${quoted(refusal)}`);
   const state = ticketState(ticket, "so it is not closed");

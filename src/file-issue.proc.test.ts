@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { asFiled, filing, spokenBuild, spokenIdea, spokenMisshapen, wellFormedBug, wellFormedNote, wellFormedSpec } from "./scenarios.ts";
+import { asFiled, filing, spokenBuild, spokenIdea, misshapenSpec, wellFormedBug, wellFormedNote, wellFormedSpec } from "./scenarios.ts";
 import { BUG_SHAPE, BUILD_SHAPE, IDEA_SHAPE, LOOK_INTO_SHAPE, OWNER_SHAPE, SPEC_SHAPE, SPOKEN_SHAPE, why } from "./ticket-shape.ts";
 
 const URL = "https://github.com/collod873/claude-workflow/issues/700";
@@ -76,9 +76,9 @@ describe("bin/file-issue files a ticket, or refuses it and files nothing (#662)"
   });
 
   it("shows five lines of a body refused more ways than that, and keeps the rest and the count in a log it names", () => {
-    const { repo, run } = filing({ gh: RECORDS, body: spokenMisshapen });
+    const { repo, run } = filing({ gh: RECORDS, body: misshapenSpec });
 
-    const result = run();
+    const result = run(["spec", "--title", "A spec", "--body-file", "body.md"]);
 
     expect(result.status).toBe(1);
     const said = result.stderr.trim().split("\n");

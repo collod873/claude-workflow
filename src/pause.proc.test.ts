@@ -65,7 +65,7 @@ describe("bin/resume picks a ticket up from where it stands once paused or stuck
     const scenario = pausing({ state: "MERGED" });
     const calls = resumedWithoutBuilding(scenario);
 
-    expect(calls.find((args) => args[0] === "issue" && args[1] === "comment")).toEqual(["issue", "comment", "811", "--body", expect.stringMatching(/^#811 is done: PR #931 merged\n/)]);
+    expect(calls.find((args) => args[0] === "issue" && args[1] === "comment")).toEqual(["issue", "comment", "811", "--body", "#811 is done: PR #931 merged"]);
     expect(calls).toContainEqual(["issue", "close", "811", "--reason", "completed"]);
     expect(scenario.marks()).toEqual(["811 --closed"]);
     expect([...merges(calls), ...wakes(calls)]).toEqual([]);

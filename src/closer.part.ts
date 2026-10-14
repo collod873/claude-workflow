@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
-import { authored, BIN, commitAt, execute, git, plant, refusedMark, type Said, scratch, script } from "./scenarios.ts";
+import { authored, BIN, commitAt, execute, git, plant, refusedMark, scratch, script } from "./scenarios.ts";
 import { MACHINE } from "./spelled.ts";
 import { ENROLLED_REVIEW, MACHINE_REPO, WAITING } from "./post.ts";
 import { declareStage } from "./stages.ts";
@@ -17,10 +17,8 @@ const CLOSER_TICKET = [
 ].join("\n");
 
 const FAST_TIMING = {
-  filed: "2026-01-01T00:00:00Z",
   firstCommit: "2026-01-01T00:00:01Z",
   prOpened: "2026-01-01T00:00:02Z",
-  checksGreen: "2026-01-01T00:00:03Z",
   merged: "2026-01-01T00:00:04Z",
 };
 
@@ -110,13 +108,10 @@ export function closing({
   ticket = "812",
   ticketBody = CLOSER_TICKET,
   readable = true,
-  timing = FAST_TIMING,
   closedAs,
   openPrs = [] as QueuedPr[],
   splitFrom,
   afterCheck = false,
-  prComments = [] as Said[],
-  prCommentsUnreadable = false,
   followUps = [] as WaitingFollowUp[],
   prLookupRefused,
   mergedFrom = `collod873/ticket/${ticket}`,
@@ -130,13 +125,10 @@ export function closing({
   ticket?: string;
   ticketBody?: string;
   readable?: boolean;
-  timing?: { filed: string; firstCommit: string; rebased?: string; prOpened: string; checksGreen: string; merged: string };
   closedAs?: "COMPLETED" | "NOT_PLANNED";
   openPrs?: QueuedPr[];
   splitFrom?: SplitFrom;
   afterCheck?: boolean;
-  prComments?: Said[];
-  prCommentsUnreadable?: boolean;
   followUps?: WaitingFollowUp[];
   prLookupRefused?: string;
   mergedFrom?: string;
@@ -166,9 +158,9 @@ export function closing({
   git(session, "checkout", "--quiet", "-b", `ticket/${ticket}`);
   if (openPrs.some((pr) => pr.conflicts === true)) plant(session, "src/clash.ts", "export const clash = \"main\";\n");
   git(session, "add", "-A");
-  commitAt(session, timing.firstCommit, ["commit", "--quiet", "--allow-empty", "-m", `Build #${ticket} against its failing tests`], timing.rebased);
+  commitAt(session, FAST_TIMING.firstCommit, ["commit", "--quiet", "--allow-empty", "-m", `Build #${ticket} against its failing tests`]);
   git(session, "checkout", "--quiet", "main");
-  commitAt(session, timing.merged, ["merge", "--quiet", "--no-ff", "-m", `Merge pull request #900 from ${mergedFrom}`, `ticket/${ticket}`]);
+  commitAt(session, FAST_TIMING.merged, ["merge", "--quiet", "--no-ff", "-m", `Merge pull request #900 from ${mergedFrom}`, `ticket/${ticket}`]);
   const origin = join(root, "origin.git");
   git(root, "init", "--quiet", "--bare", origin);
   git(session, "remote", "add", "origin", origin);
@@ -185,7 +177,6 @@ export function closing({
   openPrs.forEach((pr, at) => {
     if (pr.refusedBefore === true) plant(root, `pr-${pr.number}-comments.json`, authored([`PR #${pr.number} could not be brought up to date with main: ${pr.refused ?? ""}\n\nHead: \`${heads[at] ?? ""}\``]));
   });
-  plant(root, "pr-comments.json", authored(prComments));
   script(
     join(root, "bin", "gh"),
     [
@@ -218,7 +209,6 @@ export function closing({
             `  *"api"*"issues/${splitFrom.parent}/comments"*) cat <<'SAID'\n${[splitFrom.said].flat().map((body) => JSON.stringify({ author: MACHINE, type: "Bot", body })).join("\n")}\nSAID\n    ;;`,
             ...Object.entries(splitFrom.siblings).map(([sibling, state]) => `  *"issue view ${sibling} "*"state"*) printf '%s\\n' '${state}' ;;`),
           ]),
-      `  *"issue view"*"createdAt"*) printf '%s\\n' '${timing.filed}' ;;`,
       `  *"issue view"*"state"*) printf '%s\\n' '${closedAs === undefined ? "OPEN REOPENED" : `CLOSED ${closedAs}`}' ;;`,
       "  *\"issue view\"*)",
       ...(readable ? [] : ["    printf 'gh: Bad credentials (HTTP 401)\\n' >&2", "    exit 1"]),
@@ -231,9 +221,7 @@ export function closing({
       ...openPrs.map((pr) => `  *"pr update-branch ${pr.number}"*) ${pr.refused === undefined ? "exit 0" : `printf '%s\\n' '${pr.refused}' >&2; exit 1`} ;;`),
       ...openPrs.filter((pr) => pr.mergeRefused !== undefined).map((pr) => `  *"pr merge ${pr.number} "*) printf '%s\\n' '${pr.mergeRefused ?? ""}' >&2; exit 1 ;;`),
       ...(prUnreadable ? ["  *\"pr view 900 \"*) printf 'gh: Bad credentials (HTTP 401)\\n' >&2; exit 1 ;;"] : []),
-      `  *"pr view"*) printf '%s\\n' '${timing.prOpened}' ;;`,
-      `  *"pr checks"*) printf '%s\\n' '${timing.checksGreen}' ;;`,
-      `  *"issues/900/comments"*) ${prCommentsUnreadable ? "printf 'GraphQL: comments could not be read\\n' >&2; exit 1" : `cat "${join(root, "pr-comments.json")}"`} ;;`,
+      `  *"pr view"*) printf '%s\\n' '${FAST_TIMING.prOpened}' ;;`,
       "  *) exit 0 ;;",
       "esac",
       "",
