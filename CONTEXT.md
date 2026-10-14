@@ -11,8 +11,8 @@ _Avoid_: problem, antipattern
 
 **Bucket**:
 Failures with one cause, a row in `docs/buckets.md` with their evidence, the one change that
-prevents them, and where it stands. A change to the machine names its bucket; one failure alone
-is fixed where it is.
+prevents them, and where it stands. A change to the machine names its bucket; a failure no
+bucket holds gets one before it gets a fix.
 _Avoid_: theme, category, epic
 
 ### The machine
