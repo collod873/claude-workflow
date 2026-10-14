@@ -1,6 +1,8 @@
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { appendFileSync } from "node:fs";
 import { capped, DIFF_CAP, handedDiff, LIST_CAP, NO_EM_DASH, TICKET_CAP } from "./brief.ts";
-import { answered as readAnswered, commentOnTicket, commentsRead, drifted, earlierDrift, FOLLOW_UP_OF, followUpBody, foundDrift, foundOverlap, gh, ghRead, ghWhole, git, gitRead, post, readOrStop, REVIEW_FOUND, REVIEWED_FROM, TICKET_BRANCH, underOwnerSpec, unread, WAITING } from "./post.ts";
+import { answered as readAnswered, commentOnTicket, commentsRead, drifted, earlierDrift, FOLLOW_UP_OF, followUpBody, foundDrift, foundOverlap, gh, ghRead, git, gitRead, post, readOrStop, REVIEW_FOUND, REVIEWED_FROM, TICKET_BRANCH, underOwnerSpec, unread, WAITING } from "./post.ts";
 import { hire } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { DONE_SENTENCES, quoted, why } from "./ticket-shape.ts";
@@ -14,7 +16,8 @@ export const PLAIN_WORDS = "^(?:(?!`|/|[\\w-]+\\.[A-Za-z]{1,8}\\b)[\\s\\S])*$";
 const foundMatchInWave = (ticket: string) => `The reviewer read this PR against the Why of #${ticket} and found it builds it. Its spec's note for this wave reads it back to the owner.`;
 const foundNoOverlap = (ticket: string) => `The reviewer read this PR for #${ticket} against what merged to main since its last judgement and found no overlap.`;
 
-const unspent = (pr: string, read: string) => `#${pr} ended red, ${read} could not be read, so no model was spent`;
+const unspentOn = (pr: string, unreadable: string) => `#${pr} stopped at a machine fault, not a red PR: ${unreadable}, so no model was spent`;
+const unspent = (pr: string, read: string) => unspentOn(pr, `${read} could not be read`);
 
 export const METER_MARK = " (meter): ";
 
@@ -235,11 +238,26 @@ function recordedLater(ticket: string, body: string, later: Later[], turns: stri
   return `, ${later.length} later finds posted: ${posted.said}; follow-ups filed: ${filed.map(({ said }) => said).filter((said) => said !== "").join(" ") || "none"}`;
 }
 
-function bodyAndDiff(pr: string, ticket: string): Read {
-  const body = ghWhole(["issue", "view", ticket, "--json", "body", "--jq", ".body"], unspent(pr, `ticket #${ticket}`));
-  const diff = ghWhole(["pr", "diff", pr], unspent(pr, "its diff"));
-  const prBody = withoutMeterLines(ghWhole(["pr", "view", pr, "--json", "body", "--jq", ".body"], unspent(pr, "its body")));
-  return { body, diff, prBody };
+const READ_TRIES = 3;
+const retrySeconds = Number(process.env.GH_RETRY_SECONDS ?? "1");
+
+function readTried(args: string[], read: string): string | { unread: string } {
+  for (let tried = 1; ; tried++) {
+    const got = gh(args);
+    if (got.status === 0) return got.stdout;
+    if (tried === READ_TRIES) return { unread: `${read} could not be read in ${READ_TRIES} tries: ${firstLine(got.stderr || got.stdout)}` };
+    spawnSync("sleep", [String(retrySeconds * tried)]);
+  }
+}
+
+function bodyAndDiff(pr: string, ticket: string): Read | { unread: string } {
+  const body = readTried(["issue", "view", ticket, "--json", "body", "--jq", ".body"], `ticket #${ticket}`);
+  if (typeof body !== "string") return body;
+  const diff = readTried(["pr", "diff", pr], "its diff");
+  if (typeof diff !== "string") return diff;
+  const prBody = readTried(["pr", "view", pr, "--json", "body", "--jq", ".body"], "its body");
+  if (typeof prBody !== "string") return prBody;
+  return { body, diff, prBody: withoutMeterLines(prBody) };
 }
 
 export function ticketPr(pr: string, said: string): ({ ticket: string } & Read) | undefined {
@@ -249,7 +267,8 @@ export function ticketPr(pr: string, said: string): ({ ticket: string } & Read) 
     console.log(`${said} is not a ticket PR, so there is no Why to read it against`);
     return undefined;
   }
-  return { ticket, ...bodyAndDiff(pr, ticket) };
+  const read = bodyAndDiff(pr, ticket);
+  return "unread" in read ? unread(unspentOn(pr, read.unread)) : { ticket, ...read };
 }
 
 interface Judging {
@@ -261,6 +280,10 @@ interface Judging {
 
 function movedUnder({ pr, ticket, said, fingerprint }: Judging): { ended: Stop | undefined } | undefined {
   const now = bodyAndDiff(pr, ticket);
+  if ("unread" in now) {
+    console.log(`${said} keeps the judgement its model gave on #${ticket}, as ${now.unread}, so whether the PR moved under it is left to a newer run`);
+    return undefined;
+  }
   if (fingerprintOf(pr, now) === fingerprint) return undefined;
   console.log(`${said} writes nothing, a newer run judges #${ticket}: the PR moved under it while its model answered`);
   return { ended: undefined };
@@ -337,5 +360,7 @@ function review(pr: string): Stop | undefined {
 if (import.meta.main) {
   const pr = process.argv[2];
   if (pr === undefined) throw new Error("no PR number in the arguments");
-  process.exit(exitFor(readOrStop("review", () => review(pr))));
+  const ended = readOrStop("review", () => review(pr));
+  if (ended === "unread" && process.env.GITHUB_OUTPUT !== undefined) appendFileSync(process.env.GITHUB_OUTPUT, "fault=true\n");
+  process.exit(exitFor(ended));
 }

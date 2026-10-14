@@ -180,6 +180,8 @@ jobs:
     timeout-minutes: 45
     env:
       GH_REPO: ${{ github.repository }}
+    outputs:
+      fault: ${{ steps.review.outputs.fault }}
     steps:
       - id: app
         uses: actions/create-github-app-token@v3
@@ -206,6 +208,7 @@ jobs:
           prefix=$(bin/spelled TICKET_PREFIX)
           held=$(jq --arg prefix "$prefix" '.pull_request.head.ref | startswith($prefix)' "$GITHUB_EVENT_PATH")
           printf 'held=%s\n' "$held" | tee -a "$GITHUB_OUTPUT"
+          jq -r --arg prefix "$prefix" '"ticket=" + (.pull_request.head.ref | ltrimstr($prefix))' "$GITHUB_EVENT_PATH" >>"$GITHUB_OUTPUT"
 
       - id: checkout
         if: steps.labelled.outputs.held == 'true'
@@ -244,6 +247,13 @@ jobs:
         run: |
           tail --pid=$$ -n +1 -F .git/machine-logs/review-${{ github.event.pull_request.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
           "$GITHUB_WORKSPACE/bin/review" ${{ github.event.pull_request.number }}
+
+      - if: failure() && steps.review.outputs.fault == 'true'
+        uses: ./.github/actions/call-owner
+        with:
+          issue: ${{ steps.labelled.outputs.ticket }}
+          run: the review
+          token: ${{ steps.app.outputs.token }}
 
       - if: always() && steps.labelled.outputs.held != 'false'
         timeout-minutes: 6
@@ -335,7 +345,7 @@ jobs:
 
   which:
     needs: [build, review]
-    if: "${{ always() && ((github.event_name == 'workflow_dispatch' && !github.event.inputs.trial_cap && !github.event.inputs.rerun && !github.event.inputs.probe) || needs.build.result == 'failure' || needs.review.result == 'failure' || (github.event_name == 'workflow_run' && github.event.workflow_run.name != github.workflow && (github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'timed_out') && github.event.workflow_run.head_repository.full_name == github.repository)) }}"
+    if: "${{ always() && ((github.event_name == 'workflow_dispatch' && !github.event.inputs.trial_cap && !github.event.inputs.rerun && !github.event.inputs.probe) || needs.build.result == 'failure' || (needs.review.result == 'failure' && needs.review.outputs.fault != 'true') || (github.event_name == 'workflow_run' && github.event.workflow_run.name != github.workflow && (github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'timed_out') && github.event.workflow_run.head_repository.full_name == github.repository)) }}"
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 3
     env:
@@ -772,8 +782,8 @@ jobs:
           token: ${{ steps.app.outputs.token }}
 
   dispatch-rerun:
-    needs: [build, which, fix, close, enrol, strip]
-    if: ${{ always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) }}
+    needs: [build, review, which, fix, close, enrol, strip]
+    if: ${{ always() && (needs.review.outputs.fault == 'true' || needs.build.result == 'failure' || needs.which.result == 'failure' || needs.fix.result == 'failure' || needs.close.result == 'failure' || needs.enrol.result == 'failure' || needs.strip.result == 'failure' || contains(needs.*.result, 'cancelled')) }}
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
     env:

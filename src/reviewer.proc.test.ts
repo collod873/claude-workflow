@@ -623,6 +623,25 @@ describe("bin/review writes nothing when the PR moved under it while its model a
   });
 });
 
+describe("bin/review keeps a judgement its model gave from a GitHub read that fails (#1317)", () => {
+  it("reads the ticket again when its first read fails, and passes the match it then judges", () => {
+    const { run, comments } = reviewing({ unreadableOnce: '*"issue view"*' });
+
+    expect(run().status).toBe(0);
+    expect(comments()).toHaveLength(1);
+  });
+
+  it("posts a match with no gaps and ends green when the ticket cannot be read again after the verdict", () => {
+    const { run, comments } = reviewing({ unreadableAfterJudged: '*"issue view"*' });
+
+    const result = run();
+
+    expect(result.status).toBe(0);
+    expect(comments()).toHaveLength(1);
+    expect(comments()[0]).toContain("It now reads a green build against what was meant before it merges.");
+  });
+});
+
 describe("bin/review posts its judgement when only main moved under it while its model answered (#973)", () => {
   it("posts when only main moved under it: a PR brought up to date with main mid-run, its fingerprint unchanged, posts its judgement as today so the review queued behind it reuses it", () => {
     const { before, after } = diffsAcrossMerge();
@@ -714,29 +733,31 @@ describe("check.yml judges a PR with main's reviewer and main's test count, what
   });
 });
 
-describe("bin/review ends red at a GitHub or git read that fails, spending no model and posting nothing (#1112)", () => {
+describe("bin/review stops at a machine fault, not a red PR, at a GitHub or git read that fails, spending no model and posting nothing (#1112, #1317)", () => {
   const LANDED_MAIN = { diff: fileDiff("src/done-when.ts", "export const doneWhenOf = 1;"), landed: LANDED };
   const sinceMatched = { ...LANDED_MAIN, onPr: ({ before }: { before: string }) => [matchedAt(fingerprintOf(LANDED_MAIN.diff, REVIEWED_TICKET), before)] };
   const READS = [
     { read: "the PR's branch", options: { unreadable: '*"pr view"*' }, line: "#9810 could not be read, so nothing read it" },
-    { read: "the ticket", options: { unreadable: '*"issue view"*' }, line: "#9810 ended red, ticket #810 could not be read, so no model was spent" },
-    { read: "the diff", options: { unreadable: '*"pr diff"*' }, line: "#9810 ended red, its diff could not be read, so no model was spent" },
-    { read: "the PR's comments", options: { unreadable: '*"api"*"/comments"*' }, line: "#9810 ended red, the comments on its PR could not be read, so no model was spent" },
-    { read: "the ticket's comments", options: { unreadable: '*"issues/810/comments"*' }, line: "#9810 ended red, the comments on #810 could not be read, so no model was spent" },
-    { read: "the ticket's spec", options: { unreadable: '*"issues/810/parent"*' }, line: "#9810 ended red, the parent of #810 could not be read, so no model was spent" },
-    { read: "the owner's words", options: { body: FOLLOW_UP_TICKET, parent: { ticket: "700" } }, line: "#9810 ended red, the owner's words on #700 could not be read, so no model was spent" },
-    { read: "where it stands on main", options: { gitUnreadable: '"merge-base origin/main HEAD"' }, line: "#9810 ended red, where it stands on main could not be read, so no model was spent" },
-    { read: "its head", options: { gitUnreadable: '"rev-parse HEAD"' }, line: "#9810 ended red, its head could not be read, so no model was spent" },
-    { read: "its fingerprint", options: { gitUnreadable: '"patch-id"*' }, line: "#9810 ended red, the patch id of its diff could not be read, so no model was spent" },
-    { read: "the fix's own diff", options: { judged: "merged" as const, gitUnreadable: '"diff "*" HEAD"' }, line: "#9810 ended red, the fix's own diff could not be read, so no model was spent" },
-    { read: "what merged since", options: { ...sinceMatched, gitUnreadable: '"log --first-parent"*' }, line: "#9810 ended red, what merged to main since its last judgement could not be read, so no model was spent" },
+    { read: "the ticket", options: { unreadable: '*"issue view"*' }, line: "#9810 stopped at a machine fault, not a red PR: ticket #810 could not be read in 3 tries: gh: Bad credentials (HTTP 401), so no model was spent" },
+    { read: "the diff", options: { unreadable: '*"pr diff"*' }, line: "#9810 stopped at a machine fault, not a red PR: its diff could not be read in 3 tries: gh: Bad credentials (HTTP 401), so no model was spent" },
+    { read: "the PR's comments", options: { unreadable: '*"api"*"/comments"*' }, line: "#9810 stopped at a machine fault, not a red PR: the comments on its PR could not be read, so no model was spent" },
+    { read: "the ticket's comments", options: { unreadable: '*"issues/810/comments"*' }, line: "#9810 stopped at a machine fault, not a red PR: the comments on #810 could not be read, so no model was spent" },
+    { read: "the ticket's spec", options: { unreadable: '*"issues/810/parent"*' }, line: "#9810 stopped at a machine fault, not a red PR: the parent of #810 could not be read, so no model was spent" },
+    { read: "the owner's words", options: { body: FOLLOW_UP_TICKET, parent: { ticket: "700" } }, line: "#9810 stopped at a machine fault, not a red PR: the owner's words on #700 could not be read, so no model was spent" },
+    { read: "where it stands on main", options: { gitUnreadable: '"merge-base origin/main HEAD"' }, line: "#9810 stopped at a machine fault, not a red PR: where it stands on main could not be read, so no model was spent" },
+    { read: "its head", options: { gitUnreadable: '"rev-parse HEAD"' }, line: "#9810 stopped at a machine fault, not a red PR: its head could not be read, so no model was spent" },
+    { read: "its fingerprint", options: { gitUnreadable: '"patch-id"*' }, line: "#9810 stopped at a machine fault, not a red PR: the patch id of its diff could not be read, so no model was spent" },
+    { read: "the fix's own diff", options: { judged: "merged" as const, gitUnreadable: '"diff "*" HEAD"' }, line: "#9810 stopped at a machine fault, not a red PR: the fix's own diff could not be read, so no model was spent" },
+    { read: "what merged since", options: { ...sinceMatched, gitUnreadable: '"log --first-parent"*' }, line: "#9810 stopped at a machine fault, not a red PR: what merged to main since its last judgement could not be read, so no model was spent" },
     { read: "the log directory", options: { gitUnreadable: '*"--git-common-dir"*' }, line: "the log directory could not be named by git, so no model was hired" },
   ];
 
-  it.each(READS)("bin/review ends red at unread naming $read", ({ options, line }) => {
-    const { run, spent, comments, ticketComments, filed } = reviewing(options);
+  it.each(READS)("bin/review stops at a machine fault naming $read", ({ options, line }) => {
+    const { run, spent, comments, ticketComments, filed, root } = reviewing(options);
+    const output = join(root, "github-output");
 
-    expect(run()).toMatchObject({ status: 1, stderr: `review: ${line}\n` });
+    expect(run("9810", { GITHUB_OUTPUT: output })).toMatchObject({ status: 1, stderr: `review: ${line}\n` });
+    expect(readFileSync(output, "utf8")).toBe("fault=true\n");
     expect(spent()).toBe(false);
     expect([...comments(), ...ticketComments(), ...filed().map(({ body }) => body)]).toEqual([]);
   });
