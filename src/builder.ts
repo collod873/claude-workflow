@@ -395,7 +395,7 @@ function ownTicket(ticket: string, run: string | undefined): number {
     issue: ticket,
     state: BUILDING,
     stoppedAt,
-    hire: { name: "builder", answers: ANSWER, skills: ["testing"], gated: true, reach: UNFENCED },
+    hire: { name: "builder", answers: ANSWER, gated: true, reach: UNFENCED },
     ready: (asked) => owned(ticket, run, asked),
   });
   if (typeof owning !== "object") return exitFor(owning);

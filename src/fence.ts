@@ -2,7 +2,7 @@ const FAST_CHECK = "~/bin/check";
 export const FULL_CHECK = `${FAST_CHECK} --full`;
 const CHECKS = [FAST_CHECK, `${FAST_CHECK} --explain`];
 
-const TOOLS = ["Read", "Edit", "Write", "Grep", "Glob", "Bash"];
+const TOOLS = ["Read", "Edit", "Write", "Grep", "Glob", "Bash", "Skill"];
 
 const FENCE = [
   "const runs = JSON.parse(process.argv[1]);",
