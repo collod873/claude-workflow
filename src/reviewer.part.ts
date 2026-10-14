@@ -90,6 +90,7 @@ export function reviewing({
   prEditFails = false,
   diffAfter = undefined as string | undefined,
   bodyAfter = undefined as string | undefined,
+  prBodyAfter = undefined as string | undefined,
   judged = undefined as "merged" | "ticket" | undefined,
   parent = undefined as { ticket: string; body?: string } | undefined,
   spec = undefined as Parent,
@@ -113,6 +114,7 @@ export function reviewing({
   prEditFails?: boolean;
   diffAfter?: string;
   bodyAfter?: string;
+  prBodyAfter?: string;
   judged?: "merged" | "ticket";
   parent?: { ticket: string; body?: string };
   spec?: Parent;
@@ -156,6 +158,7 @@ export function reviewing({
   plant(root, "ticket.md", body);
   plant(root, "ticket-after.md", bodyAfter ?? body);
   plant(root, "pr-body.md", prBody);
+  plant(root, "pr-body-after.md", prBodyAfter ?? prBody);
   plant(root, "parent.md", parent?.body ?? "");
   plant(root, "turns.json", authored(turns));
   plant(root, "on-pr.json", authored(judgedSaid));
@@ -171,7 +174,7 @@ export function reviewing({
       `  *"api"*"issues/810/comments"*) cat "${join(root, "turns.json")}" ;;`,
       `  *"api"*"issues/810/parent"*) ${parentSays(root, spec)} ;;`,
       `  *"api"*"/comments"*) cat "${join(root, "on-pr.json")}" ;;`,
-      `  *"pr view"*"--json body"*) ${prBodyUnreadable ? "printf 'the PR body could not be read\\n' >&2; exit 1" : `cat "${join(root, "pr-body.md")}"`} ;;`,
+      `  *"pr view"*"--json body"*) ${prBodyUnreadable ? "printf 'the PR body could not be read\\n' >&2; exit 1" : `[ -f "${judgedOnce}" ] && cat "${join(root, "pr-body-after.md")}" || cat "${join(root, "pr-body.md")}"`} ;;`,
       `  *"pr edit"*) ${prEditFails ? "printf 'the PR body could not be edited\\n' >&2; exit 1" : "exit 0"} ;;`,
       `  *"pr view"*) printf '%s\\n' '${branch}' ;;`,
       ...(parent === undefined ? [] : [`  *"issue view ${parent.ticket} "*) ${parent.body === undefined ? "exit 1" : `cat "${join(root, "parent.md")}"`} ;;`]),

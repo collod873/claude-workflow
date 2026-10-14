@@ -26,6 +26,12 @@ const withoutMeterLines = (body: string) =>
     .filter((line) => !line.includes(METER_MARK))
     .join("\n");
 
+const withoutBlankLines = (body: string) =>
+  body
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    .join("\n");
+
 interface Read {
   body: string;
   diff: string;
@@ -34,7 +40,7 @@ interface Read {
 
 function fingerprintOf(pr: string, { diff, body, prBody }: Read): string {
   const id = (gitRead(["patch-id", "--stable"], unspent(pr, "the patch id of its diff"), diff).match(/^\S+/) ?? [""])[0];
-  return `${id}-${createHash("sha256").update(body).update(prBody).digest("hex").slice(0, 12)}`;
+  return `${id}-${createHash("sha256").update(body).update(withoutBlankLines(prBody)).digest("hex").slice(0, 12)}`;
 }
 
 const fingerprintLine = (fingerprint: string) => `Fingerprint: \`${fingerprint}\``;
