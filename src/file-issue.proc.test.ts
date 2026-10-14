@@ -2,14 +2,14 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { asFiled, filing, spokenBuild, spokenIdea, spokenMisshapen, wellFormedBug, wellFormedNote, wellFormedSpec } from "./scenarios.ts";
-import { BUG_SHAPE, BUILD_SHAPE, IDEA_SHAPE, LOOK_INTO_SHAPE, SPEC_SHAPE, SPOKEN_SHAPE, why } from "./ticket-shape.ts";
+import { BUG_SHAPE, BUILD_SHAPE, IDEA_SHAPE, LOOK_INTO_SHAPE, OWNER_SHAPE, SPEC_SHAPE, SPOKEN_SHAPE, why } from "./ticket-shape.ts";
 
 const URL = "https://github.com/collod873/claude-workflow/issues/700";
 const PAGE = "[sessions](https://github.com/collod873/transcripts/blob/main/issues/claude-workflow-700.md)";
 const RECORDS = `python3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "$@" >>"$PWD/gh-argv"\nprintf '%s\\n' ${URL}\n`;
 const REFUSES = "printf 'nothing filed\\n' >&2\nexit 1\n";
 const UNSTAMPED = "file-issue: CLAUDE_CODE_SESSION_ID is empty, so the filing names no session\n";
-const USAGE = "file-issue: usage: file-issue idea|look-into|build|bug|spec --title <title> --body-file <path>";
+const USAGE = "file-issue: usage: file-issue idea|look-into|build|bug|spec|owner --title <title> --body-file <path>";
 const SUGGESTIONS = "## Agent's suggestions";
 const filedBuild = asFiled(spokenBuild);
 const filedIdea = asFiled(spokenIdea);
@@ -127,6 +127,13 @@ describe("bin/file-issue files a ticket, or refuses it and files nothing (#662)"
     expect(ghSaw(repo)).toEqual([["issue", "create", "--title", "What does the closer judge", "--label", "note", "--label", "research", "--body", filedIdea], edit(linked(filedIdea, SUGGESTIONS))]);
   });
 
+  it("files an owner step as a note labelled owner-step, so neither the builder nor the researcher picks it up (#1324)", () => {
+    const { repo, run } = filing({ gh: RECORDS, body: spokenIdea });
+
+    expect(run(["owner", "--title", "Set the Resend key on Railway", "--body-file", "body.md"])).toMatchObject({ status: 0, stdout: `${URL}\n` });
+    expect(ghSaw(repo)[0]).toEqual(["issue", "create", "--title", "Set the Resend key on Railway", "--label", "note", "--label", "owner-step", "--body", filedIdea]);
+  });
+
   it("files a spec through src/post.ts and labels it spec (#965)", () => {
     const { repo, run } = filing({ gh: RECORDS, body: wellFormedSpec });
 
@@ -199,7 +206,7 @@ describe("bin/file-issue files a ticket, or refuses it and files nothing (#662)"
 
     expect(result).toMatchObject({
       status: 0,
-      stdout: [USAGE, `idea, look-into, build: ${SPOKEN_SHAPE}`, `idea: ${IDEA_SHAPE}`, `look-into: ${LOOK_INTO_SHAPE}`, `build: ${BUILD_SHAPE}`, `bug: ${BUG_SHAPE}`, `spec: ${SPEC_SHAPE}`, ""].join("\n"),
+      stdout: [USAGE, `idea, look-into, build, owner: ${SPOKEN_SHAPE}`, `idea: ${IDEA_SHAPE}`, `look-into: ${LOOK_INTO_SHAPE}`, `build: ${BUILD_SHAPE}`, `bug: ${BUG_SHAPE}`, `spec: ${SPEC_SHAPE}`, `owner: ${OWNER_SHAPE}`, ""].join("\n"),
       stderr: "",
     });
     expect(ghSaw(repo)).toEqual([]);

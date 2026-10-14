@@ -70,7 +70,7 @@ describe("src/post.ts is the one way the machine writes text to GitHub (#662)", 
   it("refuses a kind the table does not carry", () => {
     const { gh, calls } = github();
 
-    expect(post(posting({ kind: "memo" }), gh).refusals).toEqual(["memo is not a kind src/post.ts writes: ticket, bug, note, research, spec, judgement"]);
+    expect(post(posting({ kind: "memo" }), gh).refusals).toEqual(["memo is not a kind src/post.ts writes: ticket, bug, note, research, owner, spec, judgement"]);
     expect(calls).toEqual([]);
   });
 
