@@ -11,7 +11,7 @@ runs:
   using: composite
   steps:
     - shell: bash
-      run: npm install --global @anthropic-ai/claude-code
+      run: npm install --global @anthropic-ai/claude-code playwright-core@1.64.0
 
     - uses: ./.github/actions/hooks
       with:
@@ -40,9 +40,11 @@ runs:
         skills="$RUNNER_TEMP/agent-skills"
         if git clone --quiet --depth 1 "https://x-access-token:$SKILLS_TOKEN@github.com/$GITHUB_REPOSITORY_OWNER/agent-skills" "$skills"; then
           rm -rf "$skills/.git"
+          mkdir -p "$HOME/bin"
+          find "$skills/bin" -maxdepth 1 -type f -perm -u+x -exec ln -sf {} "$HOME/bin/" \;
         else
           skills=""
-          printf '::warning::%s\n' "A job cannot fetch the owner's skills, so its builder and reviewer run without the testing standard"
+          printf '::warning::%s\n' "A job cannot fetch the owner's skills, so its stages run without the owner's craft skills and bin tools"
         fi
         printf 'AGENT_SKILLS=%s\n' "$skills" >>"$GITHUB_ENV"
 

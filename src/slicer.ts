@@ -22,7 +22,7 @@ const stoppedAt = stopsOf({
 });
 type Stop = ReturnType<typeof stoppedAt>;
 
-const TOOLS = ["Read", "Grep", "Glob"];
+const TOOLS = ["Read", "Grep", "Glob", "Skill"];
 const ROUNDS_BACK = 2;
 export const COMMENTS_CAP = 16 * 1024;
 const DONE_CHECK = join(import.meta.dirname, "..", "bin", "done-check");

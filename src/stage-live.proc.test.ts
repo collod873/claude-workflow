@@ -42,8 +42,14 @@ writeFileSync(input.tool_input.file_path, input.tool_input.content);
 console.log(JSON.stringify({ type: "result", result: "wrote" }));
 `;
 
-function onThisPc(): string {
+const CRAFT = ["codebase-design", "diagnosing-bugs", "domain-modeling", "tdd", "testing", "writing-for-agents"];
+
+function onThisPc(skills = [...CRAFT, "load-calc"]): string {
   const root = scratch("stage-live-");
+  for (const name of skills) {
+    mkdirSync(join(root, "home", ".agents", "skills", name), { recursive: true });
+    writeFileSync(join(root, "home", ".agents", "skills", name, "SKILL.md"), `# ${name}`);
+  }
   const release = join(root, "releases", "a9884a2");
   mkdirSync(join(release, "hooks"), { recursive: true });
   writeFileSync(join(release, "hookcheck.py"), HOOKCHECK);
@@ -127,31 +133,27 @@ describe("a stage started on this PC runs under the owner's hooks from the live 
     expect(hired({ name: "reviewer", transcript: join(root, "transcript.jsonl") })).toMatch(/hooks-live/);
   });
 
-  it("hands a stage the skills it is hired with from the owner's skills, and no others", () => {
+  it("hands every stage the owner's craft skills, and none of his personal ones", () => {
     const root = onThisPc();
-    for (const name of ["testing", "tdd"]) {
-      mkdirSync(join(root, "home", ".agents", "skills", name), { recursive: true });
-      writeFileSync(join(root, "home", ".agents", "skills", name, "SKILL.md"), `# ${name}`);
-    }
     const cwd = process.cwd();
     process.chdir(root);
     try {
-      const stage = hired({ name: "builder", transcript: join(root, "transcript.jsonl"), skills: ["testing"] });
+      const stage = hired({ name: "slicer", transcript: join(root, "transcript.jsonl") });
       if (typeof stage === "string") throw new Error(stage);
       stage("build it");
 
       const argv = JSON.parse(readFileSync(join(root, "argv.json"), "utf8")) as string[];
       const added = join(argv[argv.indexOf("--add-dir") + 1] ?? "", ".claude", "skills");
       expect(readFileSync(join(added, "testing", "SKILL.md"), "utf8")).toBe("# testing");
-      expect(readdirSync(added)).toEqual(["testing"]);
+      expect(readdirSync(added).sort()).toEqual(CRAFT);
     } finally {
       process.chdir(cwd);
     }
   });
 
-  it("refuses to start a stage hired with a skill the owner's skills lack, rather than run without its standard", () => {
-    const root = onThisPc();
+  it("refuses to start a stage when the owner's skills lack a craft skill, rather than run without its standard", () => {
+    const root = onThisPc(CRAFT.filter((name) => name !== "testing"));
 
-    expect(hired({ name: "reviewer", transcript: join(root, "transcript.jsonl"), skills: ["testing"] })).toMatch(/testing skill is not in .*\.agents\/skills/);
+    expect(hired({ name: "reviewer", transcript: join(root, "transcript.jsonl") })).toMatch(/owner's testing skill is not in .*\.agents\/skills/);
   });
 });
