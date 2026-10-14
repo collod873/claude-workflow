@@ -7,6 +7,7 @@ import {
   BUILD_SHAPE,
   IDEA_SHAPE,
   LOOK_INTO_SHAPE,
+  OWNER_SHAPE,
   NEXT_HEADING,
   SPEC_SHAPE,
   SPOKEN_SHAPE,
@@ -20,7 +21,7 @@ import {
   spokenRefusals,
   ticketRefusals,
 } from "./ticket-shape.ts";
-import { BUG, HELD, MACHINE, NOTE, OWNER, RESEARCH, RESOLVING, SPEC, STUCK, TICKET, TICKET_PREFIX, WAITING, type LabelName, type MarkedLabel } from "./spelled.ts";
+import { BUG, HELD, MACHINE, NOTE, OWNER, OWNER_STEP, RESEARCH, RESOLVING, SPEC, STUCK, TICKET, TICKET_PREFIX, WAITING, type LabelName, type MarkedLabel } from "./spelled.ts";
 import { type Stop, stoppedAt } from "./stops.ts";
 
 export interface Posting {
@@ -149,6 +150,7 @@ const KINDS: Record<string, Kind> = {
   bug: filed(bugRefusals, [TICKET, BUG]),
   note: filed(noteRefusals, [NOTE]),
   research: filed(noteRefusals, [NOTE, RESEARCH]),
+  owner: filed(noteRefusals, [NOTE, OWNER_STEP]),
   spec: filed(specRefusals, [SPEC]),
   judgement: { refuses: judgementRefusals, on: "pr", args: (pr, text) => ["pr", "comment", pr, "--body", text] },
 };
@@ -165,6 +167,7 @@ const DOOR: Record<string, DoorKind> = {
   build: { files: "ticket", says: BUILD_SHAPE, spoken: true },
   bug: { files: "bug", says: BUG_SHAPE, spoken: false },
   spec: { files: "spec", says: SPEC_SHAPE, spoken: false },
+  owner: { files: "owner", says: OWNER_SHAPE, spoken: true },
 };
 
 const DOOR_USAGE = `file-issue: usage: file-issue ${Object.keys(DOOR).join("|")} --title <title> --body-file <path>`;

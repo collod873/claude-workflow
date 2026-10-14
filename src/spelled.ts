@@ -16,6 +16,7 @@ export const LABELS = [
   { name: "spec", kind: "kind", colour: KIND_GREY, description: "A spec: the whole statement of a big job, sliced into tickets, never built itself" },
   { name: "note", kind: "kind", colour: KIND_GREY, description: "Filed to be kept, never built" },
   { name: "research", kind: "kind", colour: KIND_GREY, description: "A note the machine answers and closes when filed" },
+  { name: "owner-step", kind: "kind", colour: KIND_GREY, description: "A note naming a step only the owner can take; nothing builds or researches it" },
   { name: "building", kind: "state", colour: STATE_BLUE, description: "The builder is writing the ticket's code, or a spec's wave is building" },
   { name: "checking", kind: "state", colour: STATE_BLUE, description: "The check and the reviewer judge the head, or the done check tries a spec's sentences" },
   { name: "queued", kind: "state", colour: STATE_BLUE, description: "Check and the review passed; it waits in the closer's queue" },
@@ -38,6 +39,7 @@ export const BUG = "bug" as const satisfies LabelName;
 export const SPEC = "spec" as const satisfies LabelName;
 export const NOTE = "note" as const satisfies LabelName;
 export const RESEARCH = "research" as const satisfies LabelName;
+export const OWNER_STEP = "owner-step" as const satisfies LabelName;
 export const BUILDING = "building" as const satisfies MarkedLabel;
 export const CHECKING = "checking" as const satisfies MarkedLabel;
 export const QUEUED = "queued" as const satisfies MarkedLabel;
@@ -54,14 +56,14 @@ export const TICKET_PREFIX = "ticket/";
 export const OWNER = "collod873";
 export const MACHINE = "collod873-machine[bot]";
 export const OWNER_CALL = "owner call";
-const KEYED: Record<string, string> = { TICKET, BUG, SPEC, NOTE, RESEARCH, BUILDING, CHECKING, QUEUED, RESOLVING, LANDING, SLICING, RESEARCHING, WAITING, ASKED, PAUSED, STUCK, TICKET_PREFIX, OWNER, MACHINE, OWNER_CALL };
+const KEYED: Record<string, string> = { TICKET, BUG, SPEC, NOTE, RESEARCH, OWNER_STEP, BUILDING, CHECKING, QUEUED, RESOLVING, LANDING, SLICING, RESEARCHING, WAITING, ASKED, PAUSED, STUCK, TICKET_PREFIX, OWNER, MACHINE, OWNER_CALL };
 
 export const SPELLINGS: [key: string, spelling: string][] = [
   ...Object.entries(KEYED),
   ...LABELS.filter(({ name }) => !Object.values(KEYED).includes(name)).map(({ name }): [string, string] => ["labels", name]),
 ];
 
-const USAGE = `spelled: usage: spelled labels | <${Object.keys(KEYED).join("|")}>\n`;
+const USAGE = `spelled: usage: spelled labels | <key>\nspelled: keys: ${Object.keys(KEYED).join("|")}\n`;
 
 if (import.meta.main) {
   const asked = process.argv.slice(2);
