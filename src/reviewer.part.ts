@@ -94,6 +94,8 @@ export function reviewing({
   parent = undefined as { ticket: string; body?: string } | undefined,
   spec = undefined as Parent,
   unreadable = undefined as string | undefined,
+  unreadableOnce = undefined as string | undefined,
+  unreadableAfterJudged = undefined as string | undefined,
   gitUnreadable = undefined as string | undefined,
 }: {
   bin?: string;
@@ -115,6 +117,8 @@ export function reviewing({
   parent?: { ticket: string; body?: string };
   spec?: Parent;
   unreadable?: string;
+  unreadableOnce?: string;
+  unreadableAfterJudged?: string;
   gitUnreadable?: string;
 } = {}) {
   const root = scratch("review-");
@@ -122,6 +126,7 @@ export function reviewing({
   const handed = join(root, "claude-stdin");
   const hired = join(root, "claude-argv");
   const judgedOnce = join(root, "model-answered");
+  const failedOnce = join(root, "failed-once");
   const { setup, calls } = ghArgv(argvDir);
   git(root, "init", "--quiet", "--initial-branch=ticket/810");
   git(root, "config", "user.email", "review@test");
@@ -161,6 +166,8 @@ export function reviewing({
       setup,
       'case "$*" in',
       ...(unreadable === undefined ? [] : [`  ${unreadable}) printf 'gh: Bad credentials (HTTP 401)\\n' >&2; exit 1 ;;`]),
+      ...(unreadableOnce === undefined ? [] : [`  ${unreadableOnce}) [ -f "${failedOnce}" ] || { touch "${failedOnce}"; printf 'gh: connection reset by peer\\n' >&2; exit 1; } ;;&`]),
+      ...(unreadableAfterJudged === undefined ? [] : [`  ${unreadableAfterJudged}) [ -f "${judgedOnce}" ] && { printf 'gh: connection reset by peer\\n' >&2; exit 1; } ;;&`]),
       `  *"api"*"issues/810/comments"*) cat "${join(root, "turns.json")}" ;;`,
       `  *"api"*"issues/810/parent"*) ${parentSays(root, spec)} ;;`,
       `  *"api"*"/comments"*) cat "${join(root, "on-pr.json")}" ;;`,

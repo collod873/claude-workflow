@@ -102,6 +102,14 @@ describe("a repo's tickets build through one caller file that holds only trigger
     expect(jobsRun({ event: "pull_request_target", action: "synchronize", red: ["review"], outputs: { which: { ticket: "828" } } })).toEqual(["review", "meters", "which", "fix"]);
   });
 
+  it("re-runs a review that stopped at a machine fault once, through the owner call it leaves, and hands nothing to the builder (#1317)", () => {
+    const faulted = { event: "pull_request_target", action: "synchronize", red: ["review"], outputs: { review: { fault: "true" }, which: { ticket: "828" } } };
+    const reviewJob = workflowJobs("tickets.yml").review;
+
+    expect(jobsRun(faulted)).toEqual(["review", "meters", "dispatch-rerun"]);
+    expect(reviewJob?.steps.find(({ uses }) => uses === "./.github/actions/call-owner")?.if).toBe("failure() && steps.review.outputs.fault == 'true'");
+  });
+
   it("names the review the closer waits on in an enrolled repo as GitHub names it: the caller's job calling tickets.yml, then the job that runs bin/review (#1285)", () => {
     const [calling] = Object.entries(caller().jobs).find(([, job]) => String(job.uses).includes("/tickets.yml@")) ?? [];
     const [reviewing] = Object.entries(workflowJobs("tickets.yml")).find(([, { steps }]) => steps.some(({ run }) => /bin\/review\b/.test(run ?? ""))) ?? [];
