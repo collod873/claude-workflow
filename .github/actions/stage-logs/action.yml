@@ -56,6 +56,10 @@ runs:
           mkdir -p "$logs/hooks"
           cp -r "$HOOK_LOG_DIR/." "$logs/hooks/"
         fi
+        if [ -d "$HOME/.claude/projects" ] && [ -f "${GITHUB_EVENT_PATH:-}" ]; then
+          mkdir -p "$logs/claude"
+          (cd "$HOME/.claude/projects" && find . -type f -newer "$GITHUB_EVENT_PATH" -exec cp --parents {} "$logs/claude/" \;)
+        fi
 
     - if: always()
       uses: actions/upload-artifact@v7

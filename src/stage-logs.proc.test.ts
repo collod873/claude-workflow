@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
@@ -66,6 +66,33 @@ describe("a stage job's uploaded machine logs carry its check logs and the owner
     mkdirSync(join(bare, ".git", "machine-logs"), { recursive: true });
     expect(keeping(bare, join(bare, "absent")).status).toBe(0);
     expect(stepRunning("stage-logs", "HOOK_LOG_DIR").if).toBe("always()");
+  });
+
+  it("carries the Claude Code session logs this job wrote, and none a cache restored from an earlier run", () => {
+    const root = scratch("stage-logs-");
+    const home = join(root, "home");
+    const project = join(home, ".claude", "projects", "-home-runner-work-Lumaria-Lumaria");
+    const event = join(root, "event.json");
+    mkdirSync(join(root, ".git", "machine-logs"), { recursive: true });
+    mkdirSync(join(project, "a1b2c3d4", "subagents"), { recursive: true });
+    writeFileSync(join(project, "0ld5e551.jsonl"), "{}\n");
+    utimesSync(join(project, "0ld5e551.jsonl"), new Date("2026-10-01"), new Date("2026-10-01"));
+    writeFileSync(event, "{}");
+    utimesSync(event, new Date("2026-10-07T10:00:00Z"), new Date("2026-10-07T10:00:00Z"));
+    writeFileSync(join(project, "a1b2c3d4.jsonl"), '{"type":"user"}\n');
+    writeFileSync(join(project, "a1b2c3d4", "subagents", "agent-9f.jsonl"), '{"type":"assistant"}\n');
+
+    const kept = spawnSync("bash", ["-e", "-c", stepRunning("stage-logs", "HOOK_LOG_DIR").run ?? ""], {
+      cwd: root,
+      env: { ...process.env, HOME: home, GITHUB_EVENT_PATH: event, HOOK_LOG_DIR: join(root, "absent") },
+      encoding: "utf8",
+    });
+
+    const claude = join(root, ".git", "machine-logs", "claude", "-home-runner-work-Lumaria-Lumaria");
+    expect(kept.status, kept.stderr).toBe(0);
+    expect(readFileSync(join(claude, "a1b2c3d4.jsonl"), "utf8")).toContain("user");
+    expect(readFileSync(join(claude, "a1b2c3d4", "subagents", "agent-9f.jsonl"), "utf8")).toContain("assistant");
+    expect(existsSync(join(claude, "0ld5e551.jsonl"))).toBe(false);
   });
 
   it("points the owner's hooks at a log folder the job keeps, rather than the runner's home it throws away", () => {
