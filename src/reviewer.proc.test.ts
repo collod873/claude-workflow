@@ -426,7 +426,11 @@ function patchId(diff: string): string {
 }
 
 function fingerprintOf(diff: string, body: string, prBody = "Builds #810\n"): string {
-  return `${patchId(diff)}-${createHash("sha256").update(body).update(prBody).digest("hex").slice(0, 12)}`;
+  const unspaced = prBody
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    .join("\n");
+  return `${patchId(diff)}-${createHash("sha256").update(body).update(unspaced).digest("hex").slice(0, 12)}`;
 }
 
 const matchComment = (fingerprint: string) => `It builds what the ticket asked.\n\nFingerprint: \`${fingerprint}\`\n`;
@@ -620,6 +624,29 @@ describe("bin/review writes nothing when the PR moved under it while its model a
     expect(ticketMoved.ticketComments()).toEqual([]);
     expect(ticketMoved.filed()).toEqual([]);
     expect(ticketMovedResult.stdout + ticketMovedResult.stderr).toMatch(/newer run judges/i);
+  });
+});
+
+describe("bin/review judges a PR whose meter reviewer wrote its body while the model answered (Lumaria#902, Lumaria#1086)", () => {
+  it("posts its drift when the only move is the meters' first write, its blank lines and trailing newline included, and ends red so the builder repairs", () => {
+    const metered = "Builds #810\n\nconsent-only quote (meter): would refuse nothing\ndepth (meter): would refuse, a finding\n\n";
+    const { run, comments } = reviewing({ prBodyAfter: metered, verdict: { verdict: "drift", gaps: ["the guard its tests claim is never tried"] } });
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(comments()).toEqual([expect.stringContaining("the guard its tests claim is never tried")]);
+    expect(result.stdout + result.stderr).not.toMatch(/newer run judges/i);
+  });
+
+  it("still writes nothing when the PR body moved outside its meter lines", () => {
+    const { run, comments } = reviewing({ prBodyAfter: "Builds #810\n\nthe builder's account, rewritten\n" });
+
+    const result = run();
+
+    expect(result.status).toBe(0);
+    expect(comments()).toEqual([]);
+    expect(result.stdout + result.stderr).toMatch(/newer run judges/i);
   });
 });
 
