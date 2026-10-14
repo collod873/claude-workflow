@@ -58,6 +58,10 @@ export const SPOKEN_SHAPE = [
 ].join(" ");
 export const IDEA_SHAPE = "something he floated; nothing builds it.";
 export const LOOK_INTO_SHAPE = "a question he wants answered before deciding; a research agent answers it and nothing builds.";
+export const OWNER_SHAPE = [
+  "a step only he can take, such as a dashboard setting, an env var, sending a file or a hand check on a real device; nothing builds or researches it.",
+  "Says what to do, where, and what stays broken until it is done.",
+].join(" ");
 export const BUILD_SHAPE = [
   `he said in his own words to build it. Adds ## ${NAMED.doneWhen}, ${FEWEST} to ${MOST} '- ' lines written from his words only.`,
   "A build starts the moment it is filed, so file one only on an explicit decision; when unsure, file idea or look-into.",

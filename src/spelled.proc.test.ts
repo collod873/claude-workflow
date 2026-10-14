@@ -15,6 +15,7 @@ const KEYS = [
   ["SPEC", "spec"],
   ["NOTE", "note"],
   ["RESEARCH", "research"],
+  ["OWNER_STEP", "owner-step"],
   ["BUILDING", "building"],
   ["CHECKING", "checking"],
   ["QUEUED", "queued"],
@@ -28,7 +29,7 @@ const KEYS = [
   ["STUCK", "stuck"],
 ] as const;
 const SPELLED = [...KEYS, ["TICKET_PREFIX", "ticket/"], ["OWNER", "collod873"], ["MACHINE", "collod873-machine[bot]"], ["OWNER_CALL", "owner call"]] as const;
-const USAGE = `spelled: usage: spelled labels | <${SPELLED.map(([key]) => key).join("|")}>\n`;
+const USAGE = `spelled: usage: spelled labels | <key>\nspelled: keys: ${SPELLED.map(([key]) => key).join("|")}\n`;
 const NAMING = ["post.ts", "slicer.ts", "done-checker.ts", "researcher.ts", "closer.ts", "wave.ts", "builder.ts"].map((file) => join(BIN, "..", "src", file));
 
 function rawLabels(files: string[], names: string[]): string[] {
@@ -68,6 +69,7 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
       "spec kind",
       "note kind",
       "research kind",
+      "owner-step kind",
       "building state",
       "checking state",
       "queued state",
