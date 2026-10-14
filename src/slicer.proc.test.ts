@@ -59,7 +59,7 @@ describe("bin/slice turns a filed spec into its first wave of tickets under it, 
     const [hired = []] = sliced.hired();
     const [handed = ""] = sliced.handed();
     expect(hired[hired.indexOf("--model") + 1]).toBe("opus");
-    expect(hired[hired.indexOf("--tools") + 1]).toBe("Read,Grep,Glob");
+    expect(hired[hired.indexOf("--tools") + 1]).toBe("Read,Grep,Glob,Skill");
     expect(handed).toContain(SPEC.trim());
     expect(handed).toContain(`1. ${ATTRIBUTION}`);
     expect(handed).toContain(`3. ${WATCHING}`);

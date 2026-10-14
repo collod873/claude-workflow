@@ -86,9 +86,11 @@ function registered(gated: boolean): Registration | string {
   return hooksIn(() => readFileSync(path, "utf8"), `the owner's hooks could not be read from ${path}`, gated);
 }
 
-function skillsAdded(names: string[]): string[] | string {
+const CRAFT_SKILLS = ["codebase-design", "diagnosing-bugs", "domain-modeling", "tdd", "testing", "writing-for-agents"];
+
+function skillsAdded(names = CRAFT_SKILLS): string[] | string {
   const root = process.env.AGENT_SKILLS ?? join(homedir(), ".agents", "skills");
-  if (names.length === 0 || root === "") return [];
+  if (root === "") return [];
   const missing = names.filter((name) => !existsSync(join(root, name, "SKILL.md")));
   if (missing.length > 0) return `the owner's ${missing.join(", ")} skill is not in ${root}`;
   const home = mkdtempSync(join(tmpdir(), "agent-skills-"));
@@ -103,7 +105,6 @@ export interface Hire {
   commands?: string[];
   tools?: string[];
   answers?: object;
-  skills?: string[];
   gated?: boolean;
   reach?: Reach;
   writeUp?: { minutes: number; told: string };
@@ -133,7 +134,7 @@ export function hired(hire: Hire): ((input: string, resume?: string) => Spent) |
   const deadline = Date.now() + minutes * 60_000;
   const hooks = registered(hire.gated ?? false);
   if (typeof hooks === "string") return hooks;
-  const skills = skillsAdded(hire.skills ?? []);
+  const skills = skillsAdded();
   if (typeof skills === "string") return skills;
   const argv = [...stageArgv(hire.commands ?? [], hooks, hire.tools, hire.reach), ...skills, ...(hire.answers === undefined ? [] : ["--json-schema", JSON.stringify(hire.answers)])];
   rmSync(hire.transcript, { force: true });
