@@ -499,14 +499,9 @@ describe("a repo's specs and research notes run through the same caller file, on
   });
 
   it("runs the done check again on the owner's comment, once the last done check put a sentence to him", () => {
-    expect(specs({ event: "issue_comment", action: "created", outputs: { asked: { asked: "", marked: "" } } })).toEqual(["asked"]);
-    expect(specs({ event: "issue_comment", action: "created", outputs: { asked: { asked: "true", marked: "" } } })).toEqual(["asked", "check"]);
+    expect(specs({ event: "issue_comment", action: "created", outputs: { asked: { asked: "" } } })).toEqual(["asked"]);
+    expect(specs({ event: "issue_comment", action: "created", outputs: { asked: { asked: "true" } } })).toEqual(["asked", "check"]);
     expect(specs({ event: "issue_comment", action: "created", sender: MACHINE })).toEqual([]);
-  });
-
-  it("tries again on a push to main each open spec an older done check left marked asked, and checks nothing when none is (#1213)", () => {
-    expect(specs({ event: "push", action: "", outputs: { asked: { asked: "", marked: "[1164]" } } })).toEqual(["asked", "check"]);
-    expect(specs({ event: "push", action: "", outputs: { asked: { asked: "", marked: "[]" } } })).toEqual(["asked"]);
   });
 
   it("starts nothing on a ticket's events, and tickets.yml nothing on a comment", () => {

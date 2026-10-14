@@ -112,12 +112,11 @@ describe("bin/slice turns a filed spec into its first wave of tickets under it, 
     expect(sliced.rewrites()).toEqual([REWRITE]);
   });
 
-  it("refuses a record naming a file path or carrying a `## ` heading, as Implementation Decisions refuses a path (#1182)", () => {
-    const sliced = slicing({ body: SPEC, answers: [wave(undefined, `${RECORD}\n- read src/slicer.ts\n\n## Testing Decisions\n\nmore`), wave()] });
+  it("refuses a record carrying a `## ` heading (#1182)", () => {
+    const sliced = slicing({ body: SPEC, answers: [wave(undefined, `${RECORD}\n\n## Testing Decisions\n\nmore`), wave()] });
 
     expect(sliced.run().status).toBe(0);
     const [, sentBack = ""] = sliced.handed();
-    expect(sentBack).toContain("the record names `src/slicer.ts`, a file path");
     expect(sentBack).toContain("the record carries a '## ' heading");
     expect(sliced.rewrites()).toEqual([REWRITE]);
   });

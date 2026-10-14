@@ -24,7 +24,6 @@ const KEYS = [
   ["SLICING", "slicing"],
   ["RESEARCHING", "researching"],
   ["WAITING", "waiting"],
-  ["ASKED", "asked"],
   ["PAUSED", "paused"],
   ["STUCK", "stuck"],
 ] as const;
@@ -78,7 +77,6 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
       "slicing state",
       "researching state",
       "waiting parked",
-      "asked owner",
       "paused held",
       "stuck held",
       "try- try",

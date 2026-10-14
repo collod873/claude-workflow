@@ -28,7 +28,6 @@ export interface Posting {
   kind: string;
   text: string;
   title?: string;
-  pr?: string;
   sessionId?: string;
   labels?: LabelName[];
 }
@@ -103,13 +102,11 @@ export function labelsHeld(issue: string, gh: Gh): Held {
 
 interface Kind {
   refuses: (text: string) => string[];
-  on: "title" | "pr";
-  args: (on: string, text: string) => string[];
+  args: (title: string, text: string) => string[];
 }
 
 const filed = (refuses: (text: string) => string[], labels: LabelName[]): Kind => ({
   refuses,
-  on: "title",
   args: (title, text) => ["issue", "create", "--title", title, ...labels.flatMap((label) => ["--label", label]), "--body", text],
 });
 
@@ -150,7 +147,6 @@ const KINDS: Record<string, Kind> = {
   research: filed(noteRefusals, [NOTE, RESEARCH]),
   owner: filed(noteRefusals, [NOTE, OWNER_STEP]),
   spec: filed(specRefusals, [SPEC]),
-  judgement: { refuses: () => [], on: "pr", args: (pr, text) => ["pr", "comment", pr, "--body", text] },
 };
 
 interface DoorKind {
@@ -316,24 +312,22 @@ export function askedIssue(stdout: string): Asked | undefined {
   }
 }
 
-export const commentOnPr = (pr: string, text: string, gh: Gh) => written(gh, ["pr", "comment", pr, "--body", text]);
+export const commentOnPr = (pr: string, text: string, gh: Gh) => written(gh, ["pr", "comment", pr, "--body", dedashed(text)]);
 
 export function rewriteTicket(ticket: string, read: string, rewrite: string, gh: Gh): { refusals: string[]; said: string } {
   const refused = rewriteRefusals(read, dedashed(rewrite));
   return refused.length > 0 ? { refusals: refused, said: "" } : written(gh, ["issue", "edit", ticket, "--body", dedashed(rewrite)]);
 }
 
-function prepared(posting: Posting): { refusals: string[]; args: string[]; text: string; filed: boolean } {
-  const { kind, sessionId } = posting;
+function prepared(posting: Posting): { refusals: string[]; args: string[]; text: string } {
+  const { kind, sessionId, title } = posting;
   const shape = KINDS[kind];
-  if (shape === undefined) return { refusals: [`${kind} is not a kind src/post.ts writes: ${Object.keys(KINDS).join(", ")}`], args: [], text: "", filed: false };
-  const filed = shape.on === "title";
-  const on = posting[shape.on];
-  if (on === undefined) return { refusals: [`a ${kind} carries no ${shape.on}`], args: [], text: "", filed };
-  const text = dedashed(filed ? stampedWithSession(posting.text, sessionId) : posting.text);
+  if (shape === undefined) return { refusals: [`${kind} is not a kind src/post.ts writes: ${Object.keys(KINDS).join(", ")}`], args: [], text: "" };
+  if (title === undefined) return { refusals: [`a ${kind} carries no title`], args: [], text: "" };
+  const text = dedashed(stampedWithSession(posting.text, sessionId));
   const refused = shape.refuses(text);
   const labelled = (posting.labels ?? []).flatMap((label) => ["--label", label]);
-  return refused.length > 0 ? { refusals: refused, args: [], text, filed } : { refusals: [], args: [...shape.args(dedashed(on), text), ...labelled], text, filed };
+  return refused.length > 0 ? { refusals: refused, args: [], text } : { refusals: [], args: [...shape.args(dedashed(title), text), ...labelled], text };
 }
 
 export const postRefusals = (posting: Posting): string[] => prepared(posting).refusals;
@@ -353,10 +347,10 @@ function createdLabelled(args: string[], gh: Gh): { refusals: string[]; said: st
 }
 
 export function post(posting: Posting, gh: Gh): { refusals: string[]; said: string } {
-  const { refusals, args, text, filed } = prepared(posting);
+  const { refusals, args, text } = prepared(posting);
   if (refusals.length > 0) return { refusals, said: "" };
   const created = createdLabelled(args, gh);
-  return created.refusals.length > 0 || !filed ? created : linkedToSessions(posting, text, created.said, gh);
+  return created.refusals.length > 0 ? created : linkedToSessions(posting, text, created.said, gh);
 }
 
 if (import.meta.main) {

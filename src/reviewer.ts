@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { appendFileSync } from "node:fs";
 import { capped, DIFF_CAP, handedDiff, LIST_CAP, NO_EM_DASH, TICKET_CAP } from "./brief.ts";
-import { answered as readAnswered, commentOnTicket, commentsRead, drifted, earlierDrift, FOLLOW_UP_OF, followUpBody, foundDrift, foundOverlap, gh, ghRead, git, gitRead, post, readOrStop, REVIEW_FOUND, REVIEWED_FROM, TICKET_BRANCH, underOwnerSpec, unread, WAITING } from "./post.ts";
+import { answered as readAnswered, commentOnPr, commentOnTicket, commentsRead, drifted, earlierDrift, FOLLOW_UP_OF, followUpBody, foundDrift, foundOverlap, gh, ghRead, git, gitRead, post, readOrStop, REVIEW_FOUND, REVIEWED_FROM, TICKET_BRANCH, underOwnerSpec, unread, WAITING } from "./post.ts";
 import { hire } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { DONE_SENTENCES, quoted, why } from "./ticket-shape.ts";
@@ -300,11 +300,11 @@ function reviewedSince(judging: Judging & { body: string; diff: string }, from: 
   if (moved !== undefined) return moved.ended;
   const { finds } = spent.answer;
   if (finds.length === 0) {
-    const posted = post({ kind: "judgement", pr, text: [foundNoOverlap(ticket), "", ...stamped(fingerprint, to), ""].join("\n") }, gh);
+    const posted = commentOnPr(pr, [foundNoOverlap(ticket), "", ...stamped(fingerprint, to), ""].join("\n"), gh);
     console.log(`${said} overlaps nothing merged to main since its last judgement on #${ticket}: ${posted.said || quoted(posted.refusals[0] ?? "")}`);
     return undefined;
   }
-  const posted = post({ kind: "judgement", pr, text: judgement(foundOverlap(ticket), finds, stamped(fingerprint, to, headNow(pr))) }, gh);
+  const posted = commentOnPr(pr, judgement(foundOverlap(ticket), finds, stamped(fingerprint, to, headNow(pr))), gh);
   const [refusal] = posted.refusals;
   if (refusal !== undefined) return stoppedAt("drift", `${said} overlaps what merged to main since its last judgement on #${ticket}, and its judgement was refused: ${quoted(refusal)}`);
   return stoppedAt("drift", `${said} overlaps what merged to main since its last judgement on #${ticket}, ${finds.length} finds posted: ${posted.said}`);
@@ -344,13 +344,13 @@ function review(pr: string): Stop | undefined {
   const recorded = recordedLater(ticket, body, after === undefined ? [] : (verdict.later ?? []), turns);
   if (verdict.verdict === "match") {
     const text = inWave ? [foundMatchInWave(ticket), "", ...stamped(fingerprint, main), ""].join("\n") : readbackText(words, verdict.readback, fingerprint, main);
-    const posted = post({ kind: "judgement", pr, text }, gh);
+    const posted = commentOnPr(pr, text, gh);
     const [refusal] = posted.refusals;
     const kind = inWave ? "judgement, its readback left to its spec's wave note," : "readback";
     console.log(`${said} matches the Why of #${ticket}${recorded}, ${refusal === undefined ? `its ${kind} posted: ${posted.said}` : `its ${kind} was refused: ${quoted(refusal)}`}`);
     return undefined;
   }
-  const posted = post({ kind: "judgement", pr, text: judgement(foundDrift(ticket), blocking, stamped(fingerprint, main, head)) }, gh);
+  const posted = commentOnPr(pr, judgement(foundDrift(ticket), blocking, stamped(fingerprint, main, head)), gh);
   const [refusal] = posted.refusals;
   if (refusal !== undefined) return stoppedAt("drift", `${said} drifts from the Why of #${ticket}, and its judgement was refused: ${quoted(refusal)}${recorded}`);
   return stoppedAt("drift", `${said} drifts from the Why of #${ticket}, ${blocking.length} gaps posted: ${posted.said}${recorded}`);

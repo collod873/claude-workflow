@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { capped, NO_EM_DASH, onDisk } from "./brief.ts";
 import { UNFENCED } from "./fence.ts";
 import { authoredOn, CALLER_FILE, ENROLLED_CALLER, commentOnTicket, commentsRead, FOREIGN, gh, machineBin, mark, OWNER, readOrStop, STUCK, unread, type Asked } from "./post.ts";
-import { CONTRACT, opened, setupRefusal, type Spent, treePathed } from "./stage.ts";
+import { CONTRACT, opened, setupRefusal, type Spent } from "./stage.ts";
 import { CHECKING, SPEC } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { filedRecord, quoted, type Sentence, sentences, SPEC_CAP } from "./ticket-shape.ts";
@@ -16,7 +16,6 @@ const stoppedAt = stopsOf({
 });
 type Stop = ReturnType<typeof stoppedAt>;
 
-const CHECK_MINUTES = 10;
 const OUTCOMES = { held: "Held", missed: "Did not hold", owner: "Put to the owner", self: "Held", unexercised: "Not tried yet" } as const;
 type Outcome = keyof typeof OUTCOMES;
 const DONE_OUTCOMES = Object.keys(OUTCOMES).filter((outcome) => outcome !== "unexercised");
@@ -48,8 +47,6 @@ interface Try {
   tried: string;
 }
 
-const numbered = (ran: number[]) => (ran.length === 1 ? `Sentence ${ran.join("")} carries a check command the machine ran itself; give no try for it.` : `Sentences ${ran.join(", ")} carry a check command the machine ran itself; give no try for them.`);
-
 const waveOnly = (wave: number[]) =>
   `This is a wave check: try only sentences ${wave.join(", ")}, the ones the wave just closed should have moved, and give no try for any other. Answer \`owner\` for one only the owner can try, without trying it; it waits for the end. Answer \`unexercised\` for one nothing on main could have shown yet, since what it needs has not run or merged; \`tried\` then says what would have to happen for it to be seen, and the next wave check tries it again.`;
 
@@ -74,12 +71,11 @@ const sizeTrial = (issue: string, body: string, caller: string) => {
   return `To try a sentence about a wave going over the spec cap, start a size trial on this spec with a trial cap of the owner's bytes plus half the record's bytes, so the slicer's own folding cannot fit without being sent back: \`${start}\`. Starting a size trial counts as leaving GitHub as it is, since a trial posts nothing. Find its run with \`gh run list --workflow ${file}\`, wait for it with \`gh run watch <run> --exit-status\`, and answer from \`gh run view <run> --log\`: each size round with the bytes over and the bytes the record had to lose, and the \`slice: trial #${issue}\` line saying the owner's bytes stand and the seconds from the first size round. A trial that ends red, or whose filing line gives 60 seconds or more, is \`missed\`.`;
 };
 
-export function handedOn(title: string, body: string, { issue, ran = [], wave, replies = "", foreign = false, caller = ENROLLED_CALLER }: { issue?: string; ran?: number[]; wave?: number[]; replies?: string; foreign?: boolean; caller?: string } = {}): string {
+export function handedOn(title: string, body: string, { issue, wave, replies = "", foreign = false, caller = ENROLLED_CALLER }: { issue?: string; wave?: number[]; replies?: string; foreign?: boolean; caller?: string } = {}): string {
   return [
     `Try each sentence under \`## I'll know it works when I can\` in this spec on the running system, not on its tests, and say how each came out. ${foreign ? RUNNING_THERE : RUNNING_HERE} Read and run what you need, and leave the repo and GitHub as they are.`,
     ...(issue === undefined ? [] : [sizeTrial(issue, body, caller)]),
     ...(wave === undefined ? [] : [waveOnly(wave)]),
-    ...(ran.length === 0 ? [] : [numbered(ran)]),
     "## The spec",
     capped(`# ${title}\n\n${body}`, SPEC_CAP),
     ...answered(replies),
@@ -87,12 +83,6 @@ export function handedOn(title: string, body: string, { issue, ran = [], wave, r
     "`tries`: one item per sentence, `sentence` its number counting from 1 in the order the spec lists them. `outcome`: `held` when you saw it hold, `missed` when you saw it fail, `owner` when only the owner can try it, needing the owner's phone, eyes or a real customer. `self`, without trying it, for a sentence about the spec closing itself or the owner being told which sentence did not hold: this run is the one that closes the spec or names the miss, so the machine settles it from the other sentences. `tried`: what you did to try it and what you saw, or for `owner`, what the owner should do to try it.",
     "",
   ].join("\n\n");
-}
-
-function ranItself(check: string, sentence: number): Try {
-  const { status } = spawnSync("bash", ["-c", check], { stdio: "ignore", env: treePathed(), timeout: CHECK_MINUTES * 60_000 });
-  const exited = status === null ? `ran past its ${CHECK_MINUTES} minute cap` : `exited ${status}`;
-  return { sentence, outcome: status === 0 ? "held" : "missed", tried: `Ran \`${check}\`, which ${exited}.` };
 }
 
 const isTry = (given: unknown): given is Try => {
@@ -134,12 +124,12 @@ const wavePosted = (tried: [number, string, Try][], repeated: [number, string, T
     "",
   ].join("\n");
 
-function triedByModel({ issue, asked, replies: owners, spend }: Read, ran: number[], wave?: number[]): Try[] | string {
+function triedByModel({ issue, asked, replies: owners, spend }: Read, wave?: number[]): Try[] | string {
   const replies = wave === undefined ? owners : "";
-  const spent = spend(handedOn(asked.title, asked.body, { issue, ran, wave, replies, foreign: FOREIGN, caller: CALLER_FILE }));
+  const spent = spend(handedOn(asked.title, asked.body, { issue, wave, replies, foreign: FOREIGN, caller: CALLER_FILE }));
   if (spent.refusal !== undefined) return spent.refusal;
   const given = (spent.answer as { tries?: unknown } | undefined)?.tries;
-  return Array.isArray(given) ? given.filter(isTry).filter(({ sentence }) => !ran.includes(sentence)) : [];
+  return Array.isArray(given) ? given.filter(isTry) : [];
 }
 
 interface Read {
@@ -181,13 +171,8 @@ function read(issue: string, wave?: number[]): Read | Stop | undefined {
 
 function tried(spec: Read, numbers: number[], wave?: number[]): [number, string, Try][] | Stop {
   const { said, listed } = spec;
-  const ran = numbers.flatMap((number) => {
-    const check = listed[number - 1]?.check;
-    return check === undefined ? [] : [ranItself(check, number)];
-  });
-  const given = ran.length === numbers.length ? [] : triedByModel(spec, ran.map(({ sentence }) => sentence), wave);
-  if (typeof given === "string") return stoppedAt("modelRun", `${said} ended red, ${given}`);
-  const tries = [...ran, ...given];
+  const tries = triedByModel(spec, wave);
+  if (typeof tries === "string") return stoppedAt("modelRun", `${said} ended red, ${tries}`);
   const found: [number, string, Try][] = [];
   for (const number of numbers) {
     const one = tries.find(({ sentence }) => sentence === number);

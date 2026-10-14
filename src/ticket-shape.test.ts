@@ -3,7 +3,6 @@ import { handedOn as builderBrief } from "./builder.ts";
 import { handedOn as reviewerBrief } from "./reviewer.ts";
 import { BUG_SHAPE, BUILD_SHAPE, DONE_SENTENCES, IDEA_SHAPE, SPEC_CAP, SPEC_SHAPE, SPOKEN_SHAPE, bugRefusals, inSpokenWords, noteRefusals, specRefusals, spokenRefusals, ticketRefusals } from "./ticket-shape.ts";
 
-const TEST_CHECK = "npx vitest run --config vitest.config.ts ticket-shape";
 const QUOTED = 'The owner, in session: "file a ticket the machine can build".';
 const SIGNAL = "The Signals of the session read:\n\n> hookkit: check-gate crashed 3 times: TypeError: Cannot read properties of undefined";
 const FAILING_TEST = 'test_release.py::test_follow failed: "AssertionError: the link still names the old release".';
@@ -105,7 +104,7 @@ function specBody({
   outOfScope = "The slicer and the done check.",
   furtherNotes = "",
   sharedNames,
-  sentences = [`- [ ] see a spec land as its own issue - check: \`${TEST_CHECK}\``],
+  sentences = ["- [ ] see a spec land as its own issue"],
 }: {
   problem?: string;
   solution?: string;
@@ -178,11 +177,6 @@ const misshapenSpec: [string, string, unknown[]][] = [
     ["'## User Stories' carries no numbered item"],
   ],
   [
-    "a spec naming a file path in '## Implementation Decisions'",
-    specBody({ implementation: "Change `src/post.ts` to add the kind." }),
-    ["'## Implementation Decisions' names `src/post.ts`, a file path"],
-  ],
-  [
     "a spec with a heading after \"## I'll know it works when I can\"",
     `${specBody()}## Extra\n\nsomething after the sentences\n`,
     ["a heading follows '## I'll know it works when I can', which must be last"],
@@ -191,11 +185,6 @@ const misshapenSpec: [string, string, unknown[]][] = [
     "a spec with no sentence under \"## I'll know it works when I can\"",
     specBody({ sentences: [] }),
     ["'## I'll know it works when I can' carries no '- [ ]' item, so the done check has nothing to try"],
-  ],
-  [
-    "a spec whose sentence carries a check: marker that does not parse",
-    specBody({ sentences: ["- [ ] see a spec land - check: npx vitest run"] }),
-    [expect.stringContaining("sentence 1 carries a check: marker that does not parse: see a spec land")],
   ],
   [
     "a spec over the spec cap, which no stage cuts",
