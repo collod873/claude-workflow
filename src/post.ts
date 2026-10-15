@@ -220,6 +220,12 @@ function written(gh: Gh, args: string[]): { refusals: string[]; said: string } {
 
 export const commentOnTicket = (ticket: string, text: string, gh: Gh) => written(gh, ["issue", "comment", ticket, "--body", text]);
 
+const COMMENT_ID = /#issuecomment-(\d+)$/;
+export function commentEdited(url: string, text: string, gh: Gh): { refusals: string[]; said: string } {
+  const id = COMMENT_ID.exec(url)?.[1];
+  return id === undefined ? { refusals: [`${url} names no comment`], said: "" } : written(gh, ["api", "-X", "PATCH", `repos/{owner}/{repo}/issues/comments/${id}`, "-f", `body=${text}`]);
+}
+
 const TRUSTED = new Set([`User ${OWNER}`, `Bot ${MACHINE}`]);
 
 const trusted = (said: unknown): said is { author: string; body: string } =>

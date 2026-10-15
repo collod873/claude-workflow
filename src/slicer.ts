@@ -85,7 +85,7 @@ const WATCHED = "Read the repo as you need. No one is watching and no one will a
 const listed = (numbers: number[]) => numbers.join(", ");
 
 const fixing = (missed: number[]) =>
-  `Slice this spec's one fix wave: the done check found sentence ${listed(missed)} did not hold with every ticket closed. Read what the waves did below, and slice the fewest tickets that make ${missed.length === 1 ? "it" : "them"} hold; \`moves\` names exactly ${missed.length === 1 ? "that sentence" : "those sentences"}.`;
+  `Slice this spec's one fix wave: the done check found sentence ${listed(missed)} did not hold with every ticket closed. Its \`## Done check\` comment, the newest below, says what it saw fail for each: start from the cause it names and confirm it in the code before you look for another. Read what the waves did below, and slice the fewest tickets that make ${missed.length === 1 ? "it" : "them"} hold; \`moves\` names exactly ${missed.length === 1 ? "that sentence" : "those sentences"}.`;
 
 const owed = (missed: number[]) => `The last wave check missed sentence ${listed(missed)}: this wave carries at least one ticket, and its \`moves\` name each of them.`;
 

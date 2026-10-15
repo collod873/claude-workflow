@@ -205,7 +205,7 @@ jobs:
         run: bin/slice --ended "$ISSUE" >>"$GITHUB_OUTPUT"
 
       - id: wave-check
-        if: steps.ended.outputs.spec != '' && steps.ended.outputs.moves != ''
+        if: steps.ended.outputs.spec != '' && (steps.ended.outputs.moves != '' || steps.ended.outputs.held != '')
         timeout-minutes: 50
         working-directory: tree
         env:
@@ -215,7 +215,7 @@ jobs:
           CALLED_FROM: ${{ github.workflow_ref }}
         run: |
           tail --pid=$$ -n +1 -F .git/machine-logs/done-check-${{ steps.ended.outputs.spec }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
-          "$GITHUB_WORKSPACE/bin/done-check" ${{ steps.ended.outputs.spec }} --wave ${{ steps.ended.outputs.moves }}
+          "$GITHUB_WORKSPACE/bin/done-check" ${{ steps.ended.outputs.spec }} --wave "${{ steps.ended.outputs.moves }}"
 
       - id: reslice
         if: steps.ended.outputs.spec != ''
@@ -433,7 +433,7 @@ jobs:
         run: bin/slice --resumed "$ISSUE" >>"$GITHUB_OUTPUT"
 
       - id: wave-check
-        if: steps.resumed.outputs.spec != '' && steps.resumed.outputs.moves != ''
+        if: steps.resumed.outputs.spec != '' && (steps.resumed.outputs.moves != '' || steps.resumed.outputs.held != '')
         timeout-minutes: 50
         working-directory: tree
         env:
@@ -443,7 +443,7 @@ jobs:
           CALLED_FROM: ${{ github.workflow_ref }}
         run: |
           tail --pid=$$ -n +1 -F .git/machine-logs/done-check-${{ steps.resumed.outputs.spec }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
-          "$GITHUB_WORKSPACE/bin/done-check" ${{ steps.resumed.outputs.spec }} --wave ${{ steps.resumed.outputs.moves }}
+          "$GITHUB_WORKSPACE/bin/done-check" ${{ steps.resumed.outputs.spec }} --wave "${{ steps.resumed.outputs.moves }}"
 
       - id: reslice
         if: steps.resumed.outputs.spec != ''

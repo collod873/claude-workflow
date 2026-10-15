@@ -255,7 +255,8 @@ ends the run red, posting and closing nothing.
 _Avoid_: audit, acceptance test, verification
 
 **Wave check**:
-The done check at a wave's end, trying only the sentences that wave should have moved. It skips
+The done check at a wave's end, trying the sentences that wave should have moved and every one
+that held before, so a wave moving none still gets one once any has held. It skips
 the ones only the owner can try and closes nothing. A sentence that misses at a wave check and
 again at the next wave check or at the end marks the spec `stuck`. A sentence nothing on
 main could have shown yet it gives `unexercised`, listed as **Not tried yet** with what would have

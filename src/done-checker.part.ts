@@ -29,7 +29,7 @@ export function doneChecking({
   plant(root, "comments.json", authored(said));
   const sliced = join(root, "sliced");
   const marked = stubbedMark(root, undefined, markRefusal);
-  script(join(root, "bin", "slice"), `printf '%s\\n' "$*" >>"${sliced}"\n${slice}`);
+  script(join(root, "bin", "slice"), `printf '%s\\n' "$*" >>"${sliced}"\ncat "${root}"/gh-argv/* | tr '\\0' ' ' >"${root}/seen-by-slice"\n${slice}`);
   if (contract !== undefined) plant(root, ".claude/contract.json", contract);
   return {
     ...stage,
@@ -37,7 +37,9 @@ export function doneChecking({
     closes: () => argv().filter((args) => args[1] === "close"),
     labelled: () => argv().filter((args) => args[1] === "edit").map((args) => args.slice(2).join(" ")),
     marked,
+    seenBySlice: () => (existsSync(join(root, "seen-by-slice")) ? readFileSync(join(root, "seen-by-slice"), "utf8") : ""),
     sliced: () => (existsSync(sliced) ? readFileSync(sliced, "utf8").trimEnd().split("\n") : []),
+    edited: () => argv().filter((args) => args[0] === "api" && args[2] === "PATCH").map((args) => [args[3], args[5]?.replace(/^body=/, "")]),
     run: (...args: string[]) => execute(join(BIN, "done-check"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}`, ...(calledFrom === undefined ? {} : { CALLED_FROM: calledFrom }) }, args.length > 0 ? args : ["974"]),
   };
 }

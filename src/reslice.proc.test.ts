@@ -26,7 +26,7 @@ describe("bin/slice --ended tells specs.yml when a closed issue ends its spec's 
   it("names the spec and the sentences the last `## Wave` note moves, once the spec's last open ticket closes", () => {
     const { ran, hired } = ended();
 
-    expect(ran).toEqual({ status: 0, stdout: "spec=968\nmoves=1,3\n", stderr: "" });
+    expect(ran).toEqual({ status: 0, stdout: "spec=968\nmoves=1,3\nheld=\n", stderr: "" });
     expect(hired()).toEqual([]);
   });
 
@@ -48,13 +48,19 @@ describe("bin/slice --ended tells specs.yml when a closed issue ends its spec's 
   it("finds the spec through a closed follow-up's ticket, since a follow-up is not filed under the spec", () => {
     const { ran } = ended({ closed: 1201, extra: { "1201": followUp(1201, 1101, "closed") }, open: [followUp(1300, 999)] });
 
-    expect(ran).toEqual({ status: 0, stdout: "spec=968\nmoves=1,3\n", stderr: "" });
+    expect(ran).toEqual({ status: 0, stdout: "spec=968\nmoves=1,3\nheld=\n", stderr: "" });
+  });
+
+  it("names the sentences that held at an earlier check, so a wave that moved none still gets its wave check (#1302)", () => {
+    const { ran } = ended({ said: ["## Done check\n\n2. **Held**: two\n   saw it\n", NOTE, "## Wave check\n\n- Sentence 1, **Held**: one\n  saw it\n- Sentence 3, **Did not hold**: three\n  saw it fail\n"] });
+
+    expect(ran.stdout).toBe("spec=968\nmoves=1,3\nheld=1,2\n");
   });
 
   it("names the spec with no sentences to move when no `## Wave` note carries a marker", () => {
     const { ran } = ended({ said: [CHECKED] });
 
-    expect(ran.stdout).toBe("spec=968\nmoves=\n");
+    expect(ran.stdout).toBe("spec=968\nmoves=\nheld=\n");
   });
 
   it("names no spec for an issue under no spec, or under a spec that is closed", () => {
@@ -84,16 +90,16 @@ describe("bin/slice --resumed tells the resume where a spec the owner took pause
   it("names the spec and the sentences its last note moves, when its wave closed during the pause and no wave check followed", () => {
     const { ran, hired } = resumed();
 
-    expect(ran).toEqual({ status: 0, stdout: "spec=968\nmoves=1,3\n", stderr: "" });
+    expect(ran).toEqual({ status: 0, stdout: "spec=968\nmoves=1,3\nheld=\n", stderr: "" });
     expect(hired()).toEqual([]);
   });
 
   it("names the spec with no sentences to move when its wave was already checked, so it only slices", () => {
-    expect(resumed({ said: [NOTE, CHECKED] }).ran.stdout).toBe("spec=968\nmoves=\n");
+    expect(resumed({ said: [NOTE, CHECKED] }).ran.stdout).toBe("spec=968\nmoves=\nheld=\n");
   });
 
   it("names the spec with no sentences to move when its first slice was cut short before any ticket was filed", () => {
-    expect(resumed({ tickets: [], said: [] }).ran.stdout).toBe("spec=968\nmoves=\n");
+    expect(resumed({ tickets: [], said: [] }).ran.stdout).toBe("spec=968\nmoves=\nheld=\n");
   });
 
   it("names no spec while its wave is still open, since its last close starts the rest", () => {
@@ -429,7 +435,7 @@ describe("specs.yml runs the wave check, then the re-slice, when a closed issue 
     expect(ended.outputs?.spec).toBe("${{ steps.ended.outputs.spec }}");
   });
 
-  it("re-slices one spec at a time, checking again that the wave ended, then tries the sentences the last note moves before the re-slice", () => {
+  it("re-slices one spec at a time, checking again that the wave ended, then tries the sentences the last note moves and every one that held before the re-slice", () => {
     const reslice = job("reslice");
     const { steps } = reslice;
 
@@ -441,10 +447,11 @@ describe("specs.yml runs the wave check, then the re-slice, when a closed issue 
     expect(stepAt(steps, "wave-check")).toBeLessThan(stepAt(steps, "reslice"));
     const waveCheck = steps[stepAt(steps, "wave-check")];
     const resliced = steps[stepAt(steps, "reslice")];
-    expect(waveCheck?.run).toContain('bin/done-check" ${{ steps.ended.outputs.spec }} --wave ${{ steps.ended.outputs.moves }}');
+    expect(waveCheck?.run).toContain('bin/done-check" ${{ steps.ended.outputs.spec }} --wave "${{ steps.ended.outputs.moves }}"');
     expect(resliced?.run).toContain('bin/slice" ${{ steps.ended.outputs.spec }}');
     expect(holds(waveCheck?.if ?? "true", endedWith({ spec: "968", moves: "1,3" }))).toBe(true);
-    expect(holds(waveCheck?.if ?? "true", endedWith({ spec: "968", moves: "" }))).toBe(false);
+    expect(holds(waveCheck?.if ?? "true", endedWith({ spec: "968", moves: "", held: "2" }))).toBe(true);
+    expect(holds(waveCheck?.if ?? "true", endedWith({ spec: "968", moves: "", held: "" }))).toBe(false);
     expect(holds(resliced?.if ?? "true", endedWith({ spec: "968", moves: "" }))).toBe(true);
     expect(holds(resliced?.if ?? "true", endedWith({ spec: "", moves: "" }))).toBe(false);
     for (const step of [waveCheck, resliced]) expect(step?.env?.GH_TOKEN).toBe("${{ steps.app.outputs.token }}");
@@ -457,7 +464,7 @@ const resumeOf = (file: string): Job => {
   if (found === undefined) throw new Error(`no resume job in ${file}`);
   return found;
 };
-const said = (stdout: string) => ({ spec: "", moves: "", ...Object.fromEntries(stdout.split("\n").filter((line) => line !== "").map((line) => line.split("=") as [string, string])) });
+const said = (stdout: string) => ({ spec: "", moves: "", held: "", ...Object.fromEntries(stdout.split("\n").filter((line) => line !== "").map((line) => line.split("=") as [string, string])) });
 
 function resumedRuns(file: string, stdout: string): string[] {
   const resume = resumeOf(file);
@@ -496,7 +503,7 @@ describe("taking paused or stuck off an open spec resumes it where it stands, wi
     expect(resume.needs).toBe("resumed");
     expect(resume.concurrency).toEqual({ group: "reslice-${{ needs.resumed.outputs.spec }}", "cancel-in-progress": false });
     expect(step("resumed")?.run).toBe('bin/slice --resumed "$ISSUE" >>"$GITHUB_OUTPUT"');
-    expect(step("wave-check")?.run).toMatch(/bin\/done-check"? \$\{\{ steps\.resumed\.outputs\.spec \}\} --wave \$\{\{ steps\.resumed\.outputs\.moves \}\}/);
+    expect(step("wave-check")?.run).toMatch(/bin\/done-check"? \$\{\{ steps\.resumed\.outputs\.spec \}\} --wave "\$\{\{ steps\.resumed\.outputs\.moves \}\}"/);
     expect(step("reslice")?.run).toMatch(/bin\/slice"? \$\{\{ steps\.resumed\.outputs\.spec \}\}/);
     expect(stepAt(steps, "resumed")).toBeLessThan(stepAt(steps, "wave-check"));
     expect(stepAt(steps, "wave-check")).toBeLessThan(stepAt(steps, "reslice"));
