@@ -1,6 +1,6 @@
 import { capped } from "./brief.ts";
 import { commentsRead, gh, ghRead, ghWhole, heldOf, opened, type Opened, prOfTicket, readOrStop, REVIEWED_FROM, SPLIT_FROM, ticketBranch, unread } from "./post.ts";
-import { WAVE_CHECK_HEADING } from "./done-checker.ts";
+import { heldBefore, WAVE_CHECK_HEADING } from "./done-checker.ts";
 import { HELD, NOTE, SPEC, type LabelName } from "./spelled.ts";
 import { exitFor, stoppedAt, type Stop } from "./stops.ts";
 import { why } from "./ticket-shape.ts";
@@ -158,7 +158,7 @@ function waveEnded(issue: string): Stop | undefined {
     return undefined;
   }
   const comments = commentsRead(number, `the comments on #${number} could not be read, ${NO_WAVE_ENDED}`, gh);
-  console.log(`spec=${number}\nmoves=${moved(comments)}`);
+  console.log(`spec=${number}\nmoves=${moved(comments)}\nheld=${heldBefore(comments).join(",")}`);
   return undefined;
 }
 
@@ -179,7 +179,8 @@ function waveResumed(spec: string): Stop | undefined {
     return undefined;
   }
   const comments = commentsRead(spec, `the comments on #${spec} could not be read, ${NOTHING_RESUMED}`, gh);
-  console.log(`spec=${spec}\nmoves=${checkedSinceNote(comments) ? "" : moved(comments)}`);
+  const checked = checkedSinceNote(comments);
+  console.log(`spec=${spec}\nmoves=${checked ? "" : moved(comments)}\nheld=${checked ? "" : heldBefore(comments).join(",")}`);
   return undefined;
 }
 

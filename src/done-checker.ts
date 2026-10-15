@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { capped, NO_EM_DASH, onDisk } from "./brief.ts";
 import { UNFENCED } from "./fence.ts";
-import { authoredOn, CALLER_FILE, ENROLLED_CALLER, commentOnTicket, commentsRead, FOREIGN, gh, machineBin, mark, OWNER, readOrStop, STUCK, unread, type Asked } from "./post.ts";
+import { authoredOn, CALLER_FILE, ENROLLED_CALLER, commentEdited, commentOnTicket, commentsRead, FOREIGN, gh, machineBin, mark, OWNER, readOrStop, STUCK, unread, type Asked } from "./post.ts";
 import { CONTRACT, opened, setupRefusal, type Spent } from "./stage.ts";
 import { CHECKING, SPEC } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
@@ -47,8 +47,11 @@ interface Try {
   tried: string;
 }
 
-const waveOnly = (wave: number[]) =>
-  `This is a wave check: try only sentences ${wave.join(", ")}, the ones the wave just closed should have moved, and give no try for any other. Answer \`owner\` for one only the owner can try, without trying it; it waits for the end. Answer \`unexercised\` for one nothing on main could have shown yet, since what it needs has not run or merged; \`tried\` then says what would have to happen for it to be seen, and the next wave check tries it again.`;
+const retrying = (retried: number[]) =>
+  retried.length === 0 ? "" : ` Sentence ${retried.join(", ")} held at an earlier check and ${retried.length === 1 ? "is" : "are"} tried again, since a later wave can break a sentence that held; try ${retried.length === 1 ? "it" : "each"} as you would at the end.`;
+
+const waveOnly = (wave: number[], retried: number[]) =>
+  `This is a wave check: try only sentences ${[...wave, ...retried].sort((one, other) => one - other).join(", ")}, and give no try for any other.${wave.length === 0 ? "" : ` Sentence ${wave.join(", ")} ${wave.length === 1 ? "is" : "are"} the ones the wave just closed should have moved.`}${retrying(retried)} Answer \`owner\` for one only the owner can try, without trying it; it waits for the end. Answer \`unexercised\` for one nothing on main could have shown yet, since what it needs has not run or merged; \`tried\` then says what would have to happen for it to be seen, and the next wave check tries it again.`;
 
 export const REPLIES_CAP = 8 * 1024;
 
@@ -71,11 +74,11 @@ const sizeTrial = (issue: string, body: string, caller: string) => {
   return `To try a sentence about a wave going over the spec cap, start a size trial on this spec with a trial cap of the owner's bytes plus half the record's bytes, so the slicer's own folding cannot fit without being sent back: \`${start}\`. Starting a size trial counts as leaving GitHub as it is, since a trial posts nothing. Find its run with \`gh run list --workflow ${file}\`, wait for it with \`gh run watch <run> --exit-status\`, and answer from \`gh run view <run> --log\`: each size round with the bytes over and the bytes the record had to lose, and the \`slice: trial #${issue}\` line saying the owner's bytes stand and the seconds from the first size round. A trial that ends red, or whose filing line gives 60 seconds or more, is \`missed\`.`;
 };
 
-export function handedOn(title: string, body: string, { issue, wave, replies = "", foreign = false, caller = ENROLLED_CALLER }: { issue?: string; wave?: number[]; replies?: string; foreign?: boolean; caller?: string } = {}): string {
+export function handedOn(title: string, body: string, { issue, wave, retried = [], replies = "", foreign = false, caller = ENROLLED_CALLER }: { issue?: string; wave?: number[]; retried?: number[]; replies?: string; foreign?: boolean; caller?: string } = {}): string {
   return [
     `Try each sentence under \`## I'll know it works when I can\` in this spec on the running system, not on its tests, and say how each came out. ${foreign ? RUNNING_THERE : RUNNING_HERE} Read and run what you need, and leave the repo and GitHub as they are.`,
     ...(issue === undefined ? [] : [sizeTrial(issue, body, caller)]),
-    ...(wave === undefined ? [] : [waveOnly(wave)]),
+    ...(wave === undefined ? [] : [waveOnly(wave, retried)]),
     "## The spec",
     capped(`# ${title}\n\n${body}`, SPEC_CAP),
     ...answered(replies),
@@ -114,6 +117,12 @@ const givenIn = (outcome: string) => {
 };
 export const missedIn = givenIn(OUTCOMES.missed);
 const unexercisedIn = givenIn(OUTCOMES.unexercised);
+const heldAtWave = givenIn(OUTCOMES.held);
+const HELD_AT_DONE = new RegExp(`^(\\d+)\\. \\*\\*${OUTCOMES.held}\\*\\*:`, "gm");
+const heldAtDone = (doneCheck: string) => new Set([...doneCheck.matchAll(HELD_AT_DONE)].map(([, number]) => Number(number)));
+
+export const heldBefore = (comments: string[]): number[] =>
+  [...new Set(comments.flatMap((comment) => [...(comment.startsWith(WAVE_CHECK_HEADING) ? heldAtWave(comment) : comment.startsWith(DONE_CHECK_HEADING) ? heldAtDone(comment) : [])]))].sort((one, other) => one - other);
 
 const wavePosted = (tried: [number, string, Try][], repeated: [number, string, Try][]) =>
   [
@@ -124,12 +133,25 @@ const wavePosted = (tried: [number, string, Try][], repeated: [number, string, T
     "",
   ].join("\n");
 
-function triedByModel({ issue, asked, replies: owners, spend }: Read, wave?: number[]): Try[] | string {
-  const replies = wave === undefined ? owners : "";
-  const spent = spend(handedOn(asked.title, asked.body, { issue, wave, replies, foreign: FOREIGN, caller: CALLER_FILE }));
+function triedByModel({ issue, asked, replies: owners, spend, trying }: Read): Try[] | string {
+  const replies = trying === undefined ? owners : "";
+  const spent = spend(handedOn(asked.title, asked.body, { issue, wave: trying?.moved, retried: trying?.retried, replies, foreign: FOREIGN, caller: CALLER_FILE }));
   if (spent.refusal !== undefined) return spent.refusal;
   const given = (spent.answer as { tries?: unknown } | undefined)?.tries;
   return Array.isArray(given) ? given.filter(isTry) : [];
+}
+
+interface Trying {
+  moved: number[];
+  retried: number[];
+}
+
+const sorted = (numbers: Iterable<number>) => [...new Set(numbers)].sort((one, other) => one - other);
+
+function tryingAt(wave: number[], comments: string[]): Trying {
+  const lastWave = comments.filter((comment) => comment.startsWith(WAVE_CHECK_HEADING)).at(-1) ?? "";
+  const moved = sorted([...wave, ...unexercisedIn(lastWave)]);
+  return { moved, retried: heldBefore(comments).filter((number) => !moved.includes(number)) };
 }
 
 interface Read {
@@ -140,6 +162,7 @@ interface Read {
   replies: string;
   listed: Sentence[];
   spend: (input: string) => Spent;
+  trying?: Trying;
 }
 
 function read(issue: string, wave?: number[]): Read | Stop | undefined {
@@ -156,22 +179,28 @@ function read(issue: string, wave?: number[]): Read | Stop | undefined {
       if (listed.length === 0) return stoppedAt("notSpec", `${said} carries no sentence to try, so nothing was tried or closed`);
       const beyond = wave?.find((number) => number < 1 || number > listed.length);
       if (beyond !== undefined) return stoppedAt("notSpec", `${said} carries no sentence ${beyond}, so nothing was tried`);
-      return { carrying: { listed, authored: authoredOn(issue, `#${issue} could not read its comments, so nothing was tried`, gh) } };
+      const authored = authoredOn(issue, `#${issue} could not read its comments, so nothing was tried`, gh);
+      const trying = wave === undefined ? undefined : tryingAt(wave, authored.map(({ body }) => body));
+      if (trying !== undefined && trying.moved.length + trying.retried.length === 0) {
+        console.log(`${said} wave check has no sentence to try, since the wave moved none and none has held yet`);
+        return undefined;
+      }
+      return { carrying: { listed, authored, trying } };
     },
   });
   if (typeof opening !== "object") return opening;
   const unready = setupRefusal(onDisk(join(process.cwd(), CONTRACT)) ?? "");
   if (unready !== undefined) return stoppedAt("unready", `${said} ended red, its tree's setup failed: ${quoted(unready)}`);
-  const { asked, spend, carried: { listed, authored } } = opening;
+  const { asked, spend, carried: { listed, authored, trying } } = opening;
   const comments = authored.map(({ body }) => body);
   const since = comments.map((comment) => comment.startsWith(DONE_CHECK_HEADING)).lastIndexOf(true);
   const replies = since === -1 ? "" : authored.slice(since + 1).flatMap(({ author, body }) => (author === OWNER ? [body] : [])).join("\n\n");
-  return { issue, said, asked, comments, replies, listed, spend };
+  return { issue, said, asked, comments, replies, listed, spend, trying };
 }
 
-function tried(spec: Read, numbers: number[], wave?: number[]): [number, string, Try][] | Stop {
+function tried(spec: Read, numbers: number[]): [number, string, Try][] | Stop {
   const { said, listed } = spec;
-  const tries = triedByModel(spec, wave);
+  const tries = triedByModel(spec);
   if (typeof tries === "string") return stoppedAt("modelRun", `${said} ended red, ${tries}`);
   const found: [number, string, Try][] = [];
   for (const number of numbers) {
@@ -192,8 +221,7 @@ function waveCheck(issue: string, wave: number[]): Stop | undefined {
   const spec = read(issue, wave);
   if (typeof spec !== "object") return spec;
   const lastWave = spec.comments.filter((comment) => comment.startsWith(WAVE_CHECK_HEADING)).at(-1) ?? "";
-  const trying = [...new Set([...wave, ...unexercisedIn(lastWave)])].sort((one, other) => one - other);
-  const found = tried(spec, trying, trying);
+  const found = tried(spec, sorted([...(spec.trying?.moved ?? []), ...(spec.trying?.retried ?? [])]));
   if (!Array.isArray(found)) return found;
   const missedBefore = missedIn(lastWave);
   const missed = found.filter(([, , one]) => one.outcome === "missed");
@@ -228,11 +256,13 @@ function fixWave(spec: Read, found: [number, string, Try][], missed: [number, st
     mark(issue, STUCK);
     return stoppedAt("calledOwner", `${said} marked ${STUCK}, sentence ${listing(missed, ", ")} missed again after the fix wave: ${comment.url}`);
   }
-  const fixed = spawnSync(machineBin("slice"), [issue, "--fix", listing(missed, ",")], { encoding: "utf8" });
-  const comment = commented(spec, posted(found, fixed.status === 0 ? [FIX_WAVE] : []));
+  const comment = commented(spec, posted(found));
   if (typeof comment === "string") return comment;
+  const fixed = spawnSync(machineBin("slice"), [issue, "--fix", listing(missed, ",")], { encoding: "utf8" });
   const [why = ""] = `${fixed.stderr}${fixed.stdout}`.trim().split("\n");
   if (fixed.status !== 0) return stoppedAt("unfixed", `${said} did not hold sentence ${listing(missed, ", ")}, and bin/slice --fix filed no fix wave: ${JSON.stringify(quoted(why))}: ${comment.url}`);
+  const [refusal] = commentEdited(comment.url, posted(found, [FIX_WAVE]), gh).refusals;
+  if (refusal !== undefined) return stoppedAt("unrecorded", `${said} filed its fix wave, but its comment would not take the fix wave mark, so the next miss would file another: ${quoted(refusal)}: ${comment.url}`);
   console.log(`${said} did not hold sentence ${listing(missed, ", ")}, so bin/slice --fix filed its one fix wave: ${comment.url}`);
   return undefined;
 }
