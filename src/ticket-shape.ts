@@ -55,7 +55,8 @@ export const SPOKEN_SHAPE = [
 export const IDEA_SHAPE = "something he floated; nothing builds it.";
 export const LOOK_INTO_SHAPE = "a question he wants answered before deciding; a research agent answers it and nothing builds.";
 export const OWNER_SHAPE = [
-  "a step only he can take, such as a dashboard setting, an env var, sending a file or a hand check on a real device; nothing builds or researches it.",
+  "a step only he can take before shipped work can run, such as a dashboard setting, an env var or key, signing in or sending a file; nothing builds or researches it.",
+  "Trying finished work by hand, confirming a deploy or watching for something next time is not one: nothing stays broken until he does it.",
   "Says what to do, where, and what stays broken until it is done.",
 ].join(" ");
 export const BUILD_SHAPE = [
