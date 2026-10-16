@@ -11,7 +11,7 @@ const files = () => [
 ];
 
 const BEFORE = {
-  build: "${{ (github.event.action == 'opened' || github.event.action == 'reopened' || (github.event.action == 'unlabeled' && (github.event.label.name == 'waiting' || github.event.label.name == 'paused' || github.event.label.name == 'stuck'))) && (github.event.sender.login == github.repository_owner || (github.event.sender.login == 'collod873-machine[bot]' && (github.event.action == 'unlabeled' || github.event.action == 'opened'))) && !contains(github.event.issue.labels.*.name, 'note') && !contains(github.event.issue.labels.*.name, 'spec') && !contains(github.event.issue.labels.*.name, 'waiting') && !contains(github.event.issue.labels.*.name, 'paused') && !contains(github.event.issue.labels.*.name, 'stuck') }}",
+  build: "${{ (github.event.action == 'opened' || github.event.action == 'reopened' || (github.event.action == 'unlabeled' && (github.event.label.name == 'waiting' || github.event.label.name == 'paused' || github.event.label.name == 'stuck'))) && (github.event.sender.login == github.repository_owner || (github.event.sender.login == 'collod873-machine[bot]' && (github.event.action == 'unlabeled' || github.event.action == 'opened'))) && contains(github.event.issue.labels.*.name, 'ticket') && !contains(github.event.issue.labels.*.name, 'note') && !contains(github.event.issue.labels.*.name, 'spec') && !contains(github.event.issue.labels.*.name, 'waiting') && !contains(github.event.issue.labels.*.name, 'paused') && !contains(github.event.issue.labels.*.name, 'stuck') }}",
   slice: "${{ github.event.sender.login == github.repository_owner && contains(github.event.issue.labels.*.name, 'spec') }}",
   research: "${{ github.event.sender.login == github.repository_owner && contains(github.event.issue.labels.*.name, 'research') }}",
   doneCheck: "${{ github.event.sender.login == github.repository_owner && contains(github.event.issue.labels.*.name, 'spec') && !contains(github.event.issue.labels.*.name, 'paused') && !contains(github.event.issue.labels.*.name, 'stuck') }}",
@@ -90,6 +90,17 @@ describe("the workflows ask spelled for each label they test, so a renamed label
 
   it("lets a refused mark end its job red, following no mark with || true", () => {
     for (const file of files()) expect(readFileSync(file, "utf8"), file).not.toMatch(/bin\/mark\b[^\n]*\|\|\s*true/);
+  });
+});
+
+describe("tickets.yml builds only an issue labelled ticket, so one opened by hand without it is kept and never built (collod873/agent-hooks#38)", () => {
+  it("builds what file-issue files as build or bug, and nothing the owner opens bare or another tool files under its own labels", async () => {
+    const opened = (labels: string[]) => starts("tickets.yml", "build", { sender: OWNER, action: "opened", labels });
+
+    expect(await opened(["ticket"])).toBe(true);
+    expect(await opened(["ticket", "bug"])).toBe(true);
+    expect(await opened([])).toBe(false);
+    expect(await opened(["bug", "from-app"])).toBe(false);
   });
 });
 

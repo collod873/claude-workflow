@@ -264,9 +264,8 @@ to happen for it to be seen; that is never a miss, and the next wave check tries
 _Avoid_: wave review, checkpoint, interim check
 
 **Ticket**:
-The unit the machine builds: an issue carrying `## Why` in the owner's words and, under
-`## Done when`, sentences saying what done looks like. Filing one starts its build; its PR
-merging closes it.
+The unit the machine builds: an issue labelled `ticket` carrying `## Why` in the owner's words and,
+under `## Done when`, sentences of what done looks like. Filing one builds it; its PR merging closes it.
 _Avoid_: issue, sub-issue, card, item
 
 **Note**:

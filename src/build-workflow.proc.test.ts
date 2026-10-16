@@ -74,13 +74,13 @@ function stagesRun(job: Job, failing: Stage | undefined, given: Record<string, R
 }
 
 describe("tickets.yml builds a ticket the moment it is filed (#826)", () => {
-  const starts = (event: IssueEvent) => startsJob("tickets.yml", "build", event);
+  const starts = ({ labels = ["ticket"], ...event }: IssueEvent) => startsJob("tickets.yml", "build", { ...event, labels });
 
-  it("an issue labelled note starts no build", async () => {
+  it("an issue not labelled ticket, or labelled note, starts no build (collod873/agent-hooks#38)", async () => {
     const { on } = workflow();
 
     expect(on.issues?.types).toContain("opened");
-    expect(await starts({ labels: [] })).toBe(true);
+    expect(await starts({ labels: [] })).toBe(false);
     expect(await starts({ labels: ["ticket"] })).toBe(true);
     expect(await starts({ labels: ["note"] })).toBe(false);
     expect(await starts({ labels: ["ticket", "note"] })).toBe(false);
@@ -122,7 +122,7 @@ describe("tickets.yml builds a ticket the moment it is filed (#826)", () => {
   });
 
   it("a follow-up the reviewer files labelled `waiting` starts no build when opened, only once `waiting` comes off (#1033)", async () => {
-    expect(await starts({ sender: "collod873-machine[bot]", action: "opened", labels: ["waiting"] })).toBe(false);
+    expect(await starts({ sender: "collod873-machine[bot]", action: "opened", labels: ["ticket", "waiting"] })).toBe(false);
     expect(await starts({ sender: "collod873-machine[bot]", action: "unlabeled", label: "waiting" })).toBe(true);
   });
 

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { holds, labelledOutputs, labelledStep, starts, workflowJobs, type IssueEvent, type StepOutcome } from "./scenarios.ts";
-import { HELD, MACHINE, PAUSED, STUCK, WAITING } from "./spelled.ts";
+import { HELD, MACHINE, PAUSED, STUCK, TICKET, WAITING } from "./spelled.ts";
 
 const REPO = join(import.meta.dirname, "..");
 const WATCHED = ["pause", "resume", "start", "fix"] as const;
@@ -29,7 +29,7 @@ async function stepsRun(file: string, event: IssueEvent, builds = ""): Promise<s
 }
 
 describe.each(["tickets.yml"])("%s pauses a ticket's PR and resumes the ticket from where it stands (#1174)", (file) => {
-  const owner = (action: string, label: string, labels: string[] = []): IssueEvent => ({ action, label, labels });
+  const owner = (action: string, label: string, labels: string[] = []): IssueEvent => ({ action, label, labels: [TICKET, ...labels] });
 
   it("hears the labelled event, and adding paused turns auto-merge off and builds nothing", async () => {
     const heard = join(REPO, ".github", "caller.yml");
