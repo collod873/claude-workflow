@@ -7,3 +7,4 @@
 - [ADR-0005](0005-build-work-runs-from-decisions-the-owner-made-ahead-of-time.md): Build work runs from decisions the owner made ahead of time
 - [ADR-0006](0006-an-obvious-fix-goes-straight-in-and-a-gate-is-proven-first.md): An obvious fix goes straight in, and a gate is proven first
 - [ADR-0007](0007-the-machine-runs-on-the-owners-pc-while-he-is-home-and-on-hosted-runners-otherwise.md): The machine runs on the owner's PC while he is home, and on hosted runners otherwise
+- [ADR-0008](0008-a-session-landing-is-judged-on-the-owners-pc-before-the-push-and-github-runs-nothing-for-it.md): A session landing is judged on the owner's PC before the push, and GitHub runs nothing for it
