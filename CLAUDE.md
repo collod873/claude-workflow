@@ -25,10 +25,10 @@ it, and needs no row.
   `bin/`. knip runs with no baseline and counts no test as a caller: wire it to one or delete it.
 - The why goes in the commit message, or in `CONTEXT.md` when it is vocabulary. Commit messages
   carry no em dash.
-- Mid-session, run `check`, the fast check check-gate waits on; `check --full` is what
-  pre-push and the PR's `check` job run. Both read their steps from `.claude/contract.json`.
-- Land a commit with `bin/land`: it rebases, pushes through the pre-push, whose green `check` status
-  is the whole gate, and merges its PR at once. `main` takes no direct push.
+- Mid-session, run `check`, the fast check check-gate waits on; `check --full` is what the
+  pre-push, the builder and the closer run. Both read their steps from `.claude/contract.json`.
+- Land a commit with `bin/land`: it rebases, pushes through the pre-push, posts that pass as the
+  commit's `check` status, the whole gate, and merges its PR at once. `main` takes no direct push.
 - A worktree's `node_modules` links to the main checkout's: `rm node_modules && npm ci` before
   editing packages.
 

@@ -1,10 +1,11 @@
 #!/bin/bash
 set -uo pipefail
 
-usage="save: usage: save <ticket number>"
+usage="save: usage: save <ticket number> [--unjudged]"
 
 ticket=${1:-}
-if [[ $# -ne 1 || ! $ticket =~ ^[0-9]+$ ]]; then
+unjudged=${2:-}
+if [[ $# -lt 1 || $# -gt 2 || ! $ticket =~ ^[0-9]+$ || ( -n $unjudged && $unjudged != --unjudged ) ]]; then
   printf '%s\n' "$usage" >&2
   exit 2
 fi
@@ -48,6 +49,11 @@ call git push --no-verify --quiet origin "refs/heads/$branch:refs/heads/$branch"
   exit 1
 }
 head=$(git rev-parse "refs/heads/$branch")
+if [[ -z $unjudged ]] && ! call gh api -X POST "repos/{owner}/{repo}/statuses/$head" -f state=success -f context=check -f "description=judged by its builder's full check before the push (#1345)"; then
+  stopped "Save: the check status is refused"
+  printf 'save: #%s pushed to %s, but its green check could not be posted as the status its PR merges on; log %s\n' "$ticket" "$branch" "$shown" >&2
+  exit 1
+fi
 
 opened() {
   call gh issue view "$ticket" --json body,title --jq '.title + "\u0001" + .body' || return 1

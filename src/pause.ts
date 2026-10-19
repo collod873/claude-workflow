@@ -82,6 +82,7 @@ function updated(ticket: string, pr: HeldPr): Stop | undefined {
   if (typeof moved === "object") return stoppedAt("unresumed", `resume: PR #${number} of #${ticket} has auto-merge back on but could not be brought up to date with main: ${quoted(moved.retried)}`);
   console.log("builds=false");
   if (moved === "conflicted") console.error(`resume: PR #${number} of #${ticket} is in conflict with main, so its builder resolves it unless #${ticket} is held`);
+  else if (moved === "red") console.error(`resume: PR #${number} of #${ticket} is red on the full check after its update with main, so its builder takes it up again unless #${ticket} is held`);
   else console.error(`resume: PR #${number} of #${ticket} has auto-merge back on and was behind main, so it is brought up to date for the closer's queue`);
   return undefined;
 }

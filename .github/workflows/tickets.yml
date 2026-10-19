@@ -690,6 +690,36 @@ jobs:
         with:
           node-version: 24
 
+      - id: queued
+        working-directory: tree
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          prefix=$("$GITHUB_WORKSPACE/bin/spelled" TICKET_PREFIX)
+          behind=$("$GITHUB_WORKSPACE/bin/github" pr list --state open --json headRefName,autoMergeRequest | jq --arg prefix "$prefix" 'any(.[]; (.headRefName | startswith($prefix)) and .autoMergeRequest != null)')
+          printf 'behind=%s\n' "$behind" | tee -a "$GITHUB_OUTPUT"
+
+      - if: steps.queued.outputs.behind == 'true'
+        uses: ./.github/actions/hooks
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+
+      - id: pinned
+        if: steps.queued.outputs.behind == 'true'
+        uses: ./.github/actions/pinned
+
+      - id: database
+        if: steps.queued.outputs.behind == 'true'
+        uses: ./.github/actions/database
+
+      - id: git-config
+        if: steps.queued.outputs.behind == 'true'
+        working-directory: tree
+        run: |
+          git config user.name "core-app[bot]"
+          git config user.email "core-app[bot]@users.noreply.github.com"
+
       - id: close
         working-directory: tree
         env:

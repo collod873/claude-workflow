@@ -38,6 +38,7 @@ interface Setting {
 
 interface Job {
   name?: string;
+  if?: unknown;
   uses?: string;
   "runs-on"?: unknown;
   steps?: { run?: unknown }[];
@@ -125,6 +126,15 @@ function pcGaps(path: string, text: string): string[] {
       ...(skipsSlots ? [`- ${file}'s ${id} job runs its check without check, so it skips the PC's check slots`] : []),
       ...pinned,
     ];
+  });
+}
+
+function queueGaps(path: string, text: string): string[] {
+  const flow = flowOf(text);
+  if (flow === undefined || !checkRunner(text)) return [];
+  return Object.entries(flow.jobs ?? {}).flatMap(([id, job]) => {
+    if (job === null || !isCheck(id, job) || String(job.if ?? "").includes(MACHINE)) return [];
+    return [`- ${basename(path)}'s ${id} job runs on the machine's pushes too, which GitHub then holds until it ends though the machine posted the check: skip and rename it there as check.yml here does (#1345)`];
   });
 }
 
@@ -245,9 +255,11 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
 
   const forPc = () => {
     try {
+      const held = flows().flatMap(({ path, text }) => queueGaps(path, text).map((line) => line.slice(0, LINE_LIMIT)));
       const gaps = flows().flatMap(({ path, text }) => pcGaps(path, text).map((line) => line.slice(0, LINE_LIMIT)));
       const onPc = variables().includes(PC_SWITCH.toLowerCase());
       return [
+        ...(held.length === 0 ? [] : [`enrol: ${repo} needs ${held.length} ${held.length === 1 ? "change" : "changes"} before its ticket PRs merge on the builder's check alone:`, ...held]),
         ...(gaps.length === 0 ? [] : [`enrol: ${repo} needs ${gaps.length} ${gaps.length === 1 ? "change" : "changes"} for PC runners:`, ...gaps]),
         ...(onPc ? [] : [`enrol: \`bin/runner ${repo} pc\` moves its jobs to this PC; run one fresh full check there and watch its peak memory before leaving it on`]),
       ];

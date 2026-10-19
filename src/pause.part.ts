@@ -1,38 +1,53 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { BIN, execute, ghArgv, scratch, script } from "./scenarios.ts";
+import { BIN, cloned, execute, ghArgv, git, plant, scratch, script } from "./scenarios.ts";
 import { declareStage } from "./stages.ts";
 
-export const PAUSED_HEAD = "4f2a9c1e0b7d6a5f3e2c1b0a9f8e7d6c5b4a3f2e";
-
 const ROLLUPS = {
-  green: [{ name: "check", status: "COMPLETED", conclusion: "SUCCESS" }, { name: "review", status: "COMPLETED", conclusion: "SUCCESS" }],
-  pending: [{ name: "check", status: "IN_PROGRESS", conclusion: "" }],
-  red: [{ name: "check", status: "COMPLETED", conclusion: "FAILURE" }, { name: "review", status: "COMPLETED", conclusion: "SUCCESS" }],
+  green: [{ context: "check", state: "SUCCESS" }, { name: "review", status: "COMPLETED", conclusion: "SUCCESS" }],
+  pending: [{ context: "check", state: "PENDING" }],
+  red: [{ context: "check", state: "FAILURE" }, { name: "review", status: "COMPLETED", conclusion: "SUCCESS" }],
 } as const;
 
-export function pausing({ pr = "green" as keyof typeof ROLLUPS | "none" | "unreadable", state = "OPEN", autoMerge = true, refused = "", calledFrom = "", behind = false, updateRefused = "", held = "", conflicted = true } = {}) {
+export function pausing({ pr = "green" as keyof typeof ROLLUPS | "none" | "unreadable", state = "OPEN", autoMerge = true, refused = "", calledFrom = "", behind = false, pushRefused = "", held = "", conflicted = false } = {}) {
   const root = scratch("pause-");
+  const { remote, session } = cloned(root, "base");
   const { setup, calls } = ghArgv(join(root, "gh-argv"));
   const marks = join(root, "marks");
+  git(session, "checkout", "--quiet", "-b", "ticket/811");
+  if (conflicted) plant(session, "src/clash.ts", 'export const clash = "ticket";\n');
+  git(session, "add", "-A");
+  git(session, "commit", "--quiet", "--allow-empty", "-m", "Build #811 against its failing tests");
+  git(session, "push", "--quiet", "origin", "ticket/811");
+  const head = git(session, "rev-parse", "HEAD");
+  git(session, "checkout", "--quiet", "main");
+  if (behind) {
+    if (conflicted) plant(session, "src/clash.ts", 'export const clash = "main";\n');
+    git(session, "add", "-A");
+    git(session, "commit", "--quiet", "--allow-empty", "-m", "main moved on");
+    git(session, "push", "--quiet", "origin", "main");
+  }
+  if (pushRefused !== "") script(join(remote, "hooks", "pre-receive"), `cat >/dev/null\nprintf '%s\\n' '${pushRefused}' >&2\nexit 1\n`);
   const viewed =
     pr === "none"
       ? "printf 'no pull requests found for branch \"ticket/811\"\\n' >&2; exit 1"
       : pr === "unreadable"
         ? "printf 'gh: Bad credentials (HTTP 401)\\n' >&2; exit 1"
-        : `printf '%s\\n' '${JSON.stringify({ number: 931, state, headRefOid: PAUSED_HEAD, autoMergeRequest: autoMerge ? { mergeMethod: "MERGE" } : null, mergeStateStatus: behind ? "BEHIND" : "CLEAN", statusCheckRollup: ROLLUPS[pr], mergeCommit: state === "MERGED" ? { oid: PAUSED_HEAD } : null })}'`;
+        : `printf '%s\\n' '${JSON.stringify({ number: 931, state, headRefOid: head, autoMergeRequest: autoMerge ? { mergeMethod: "MERGE" } : null, mergeStateStatus: behind ? "BEHIND" : "CLEAN", statusCheckRollup: ROLLUPS[pr], mergeCommit: state === "MERGED" ? { oid: head } : null })}'`;
   script(
     join(root, "bin", "gh"),
-    [setup, 'case "$*" in', `  *"pr view"*) ${viewed} ;;`, `  *"issue view"*) printf '%s' '${held}' ;;`, "  *\"issue list\"*) printf '[]' ;;", ...(updateRefused === "" ? [] : [`  *"pr update-branch"*) printf '%s\\n' '${updateRefused}' >&2; exit 1 ;;`]), ...(refused === "" ? [] : [`  *"pr merge"*|*"workflow run"*) printf '%s\\n' '${refused}' >&2; exit 1 ;;`]), "esac", ""].join("\n"),
+    [setup, 'case "$*" in', `  *"pr view"*) ${viewed} ;;`, `  *"issue view"*) printf '%s' '${held}' ;;`, "  *\"issue list\"*) printf '[]' ;;", ...(refused === "" ? [] : [`  *"pr merge"*|*"workflow run"*) printf '%s\\n' '${refused}' >&2; exit 1 ;;`]), "esac", ""].join("\n"),
   );
   script(join(root, "bin", "mark"), `printf '%s\\n' "$*" >>"${marks}"\n`);
-  script(join(root, "bin", "git"), `case "$*" in\n  *merge-tree*) exit ${conflicted ? 1 : 0} ;;\nesac\n`);
-  const env = { PATH: `${join(root, "bin")}:${process.env.PATH}`, ...(calledFrom === "" ? {} : { CALLED_FROM: calledFrom }) };
+  script(join(root, "bin", "check"), "printf 'check: ok, 2 steps in 0.3s\\n'\n");
+  const env = { PATH: `${join(root, "bin")}:${process.env.PATH}`, MACHINE_BIN: join(root, "bin"), ...(calledFrom === "" ? {} : { CALLED_FROM: calledFrom }) };
   return {
+    head,
     calls,
     marks: () => (existsSync(marks) ? readFileSync(marks, "utf8").trim().split("\n") : []),
-    pause: () => execute(join(BIN, "pause"), root, env, ["811"]),
-    resume: () => execute(join(BIN, "resume"), root, env, ["811"]),
+    branchHead: () => git(session, "--git-dir", remote, "rev-parse", "refs/heads/ticket/811"),
+    pause: () => execute(join(BIN, "pause"), session, env, ["811"]),
+    resume: () => execute(join(BIN, "resume"), session, env, ["811"]),
   };
 }
 

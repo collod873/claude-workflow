@@ -1,5 +1,5 @@
 import { appendFileSync } from "node:fs";
-import { faultsClosed, LABELLED_WAITING, splitClosed, splitInto } from "./builder.ts";
+import { checked, faultsClosed, readiedTree, LABELLED_WAITING, splitClosed, splitInto } from "./builder.ts";
 import { answered, CALLER_FILE as caller, commentOnPr, commentOnTicket, commentsRead, ENROLLED_REVIEW, FAULT_FROM, FOREIGN, gh, ghAs, ghRead, git, gitRead, type Held, heldOn, labelsHeld, MACHINE_REPO, markWith, NOTHING_MARKED, opened, prOfTicket, readOrStop, RESOLVING, REVIEWED_FROM, TICKET_BRANCH, ticketBranch, unread, WAITING, type MarkedLabel } from "./post.ts";
 import { CHECKING, LANDING, QUEUED } from "./spelled.ts";
 import { exitFor, type Stop, stoppedAt } from "./stops.ts";
@@ -8,9 +8,9 @@ import { quoted, waitsOn, why } from "./ticket-shape.ts";
 const MERGED = new RegExp(`^Merge pull request #(\\d+) from \\S+?(?:/${ticketBranch("(\\d+)")})?$`);
 const NAMED = /^(?:[ ,]*#\d+)+/;
 const BUILDS = /^Builds #(\d+)[ \t]*$/m;
-const MACHINE_BRANCH = new RegExp(`^(?:${ticketBranch("")}|land/)`);
 const REQUIRED_CHECKS = ["check", FOREIGN ? ENROLLED_REVIEW : "review"];
 const PASSED = new Set(["SUCCESS", "SKIPPED", "NEUTRAL"]);
+const ENDED_STATES = new Set(["SUCCESS", "FAILURE", "ERROR"]);
 
 const quietly = { ...process.env, GH_TOKEN: process.env.QUIET_GH_TOKEN };
 const quietGh = ghAs(quietly);
@@ -53,14 +53,22 @@ type Checks = "green" | "pending" | "red";
 
 export interface CheckRun {
   name?: string;
+  context?: string;
   status?: string;
   conclusion?: string;
+  state?: string;
 }
 
+const ranAs = (run: CheckRun) => ({
+  name: run.name ?? run.context ?? "",
+  ended: run.state === undefined ? run.status === "COMPLETED" : ENDED_STATES.has(run.state),
+  passed: run.state === undefined ? PASSED.has(run.conclusion ?? "") : run.state === "SUCCESS",
+});
+
 export function checksOf(rollup: CheckRun[]): Checks {
-  const latest = REQUIRED_CHECKS.map((name) => rollup.filter((ran) => ran.name === name).at(-1));
-  if (latest.some((ran) => ran?.status === "COMPLETED" && !PASSED.has(ran.conclusion ?? ""))) return "red";
-  return latest.every((ran) => ran?.status === "COMPLETED") ? "green" : "pending";
+  const required = REQUIRED_CHECKS.map((name) => rollup.map(ranAs).filter((run) => run.name === name));
+  if (required.some((runs) => runs.some((run) => run.ended && !run.passed))) return "red";
+  return required.every((runs) => runs.length > 0 && runs.every((run) => run.ended)) ? "green" : "pending";
 }
 
 
@@ -69,7 +77,7 @@ function queuedPrs(): QueuedPr[] {
   const listed = ghRead(["pr", "list", "--state", "open", "--json", "number,headRefName,headRefOid,autoMergeRequest,statusCheckRollup"], line);
   try {
     return (JSON.parse(listed) as { number: number; headRefName: string; headRefOid: string; autoMergeRequest: unknown; statusCheckRollup: CheckRun[] | null }[])
-      .filter((pr) => MACHINE_BRANCH.test(pr.headRefName) && pr.autoMergeRequest !== null)
+      .filter((pr) => TICKET_BRANCH.test(pr.headRefName) && pr.autoMergeRequest !== null)
       .sort((a, b) => a.number - b.number)
       .map((pr) => ({ number: String(pr.number), headRefName: pr.headRefName, headRefOid: pr.headRefOid, checks: checksOf(pr.statusCheckRollup ?? []) }));
   } catch {
@@ -129,19 +137,28 @@ interface Retried {
   retried: string;
 }
 
-type Moved = "updated" | "conflicted" | Retried;
+type Moved = "updated" | "conflicted" | "red" | Retried;
 
-export function updateBranch(pr: BehindPr, say = console.log): Moved {
-  const { number, headRefName, headRefOid } = pr;
-  const ticket = TICKET_BRANCH.exec(headRefName)?.[1];
-  const updated = gh(["pr", "update-branch", number]);
-  if (updated.status === 0) {
-    commentOnPr(number, `${branchUpdate(number)} ${thisRun}`, gh);
-    if (ticket !== undefined) markOnce(ticket, LANDING);
-    return "updated";
+const firstLine = (got: { stdout: string; stderr: string }) => (got.stderr || got.stdout).trim().split("\n")[0] || "no reason given";
+
+function mergedWithMain(headRefName: string): { head: string } | Retried {
+  const fetched = git(["fetch", "--quiet", "origin", "main", headRefName]);
+  if (fetched.status !== 0) return { retried: firstLine(fetched) };
+  const checkedOut = git(["checkout", "--quiet", "--detach", `origin/${headRefName}`]);
+  if (checkedOut.status !== 0) return { retried: firstLine(checkedOut) };
+  const merged = git(["merge", "--quiet", "--no-edit", "origin/main"]);
+  if (merged.status !== 0) {
+    git(["merge", "--abort"]);
+    const named = `${merged.stdout}${merged.stderr}`.split("\n").filter((line) => line.startsWith("CONFLICT")).join("; ");
+    return { retried: named || firstLine(merged) };
   }
-  const reason = (updated.stderr || updated.stdout).trim().split("\n")[0] || "no reason given";
-  if (!conflicts(pr, reason)) return { retried: reason };
+  return { head: gitRead(["rev-parse", "HEAD"], `the head of ${headRefName} merged with main could not be read, ${NOTHING_MARKED}`) };
+}
+
+const checkStatus = (head: string, state: "success" | "failure", description: string) => gh(["api", "-X", "POST", `repos/{owner}/{repo}/statuses/${head}`, "-f", `state=${state}`, "-f", "context=check", "-f", `description=${description}`]);
+
+function wokenOnConflict(pr: BehindPr, ticket: string | undefined, reason: string, say: (line: string) => void): void {
+  const { number, headRefOid } = pr;
   commentOnPr(number, `${failedBranchUpdate(number)} ${reason}\n\n${headLine(headRefOid)}\n\nRun: ${thisRun}`, gh);
   const held = ticket === undefined ? undefined : heldOn(labelsHeld(ticket, gh));
   if (held !== undefined) say(`close: #${ticket ?? ""} is labelled ${held}, so the conflict on PR #${number} wakes no builder`);
@@ -149,7 +166,47 @@ export function updateBranch(pr: BehindPr, say = console.log): Moved {
     mark(ticket, RESOLVING);
     wakeBuilder(ticket, `#${ticket}'s ${failedBranchUpdate(number)} ${reason}`);
   }
-  return "conflicted";
+}
+
+function wokenOnRed(pr: BehindPr, ticket: string | undefined, verdict: string, say: (line: string) => void): void {
+  const { number } = pr;
+  const held = ticket === undefined ? undefined : heldOn(labelsHeld(ticket, gh));
+  if (ticket !== undefined) commentOnTicket(ticket, `PR #${number} was brought up to date with main and the full check of the result ended red, so it carries no green check and does not merge: ${quoted(verdict)}\n\nRun: ${thisRun}`, gh);
+  if (held !== undefined) say(`close: #${ticket ?? ""} is labelled ${held}, so the red check on PR #${number} wakes no builder`);
+  else if (ticket !== undefined) {
+    mark(ticket, RESOLVING);
+    wakeBuilder(ticket, `#${ticket}'s PR #${number} was brought up to date with main and the full check of the result ended red: ${quoted(verdict)}`);
+  }
+}
+
+export function updateBranch(pr: BehindPr, say = console.log): Moved {
+  const { number, headRefName } = pr;
+  const ticket = TICKET_BRANCH.exec(headRefName)?.[1];
+  const merged = mergedWithMain(headRefName);
+  if ("retried" in merged) {
+    if (!conflicts(pr, merged.retried)) return merged;
+    wokenOnConflict(pr, ticket, merged.retried, say);
+    return "conflicted";
+  }
+  const { unready } = readiedTree();
+  if (unready !== undefined) return { retried: `the tree's setup failed: ${unready}` };
+  const judged = checked();
+  const pushed = git(["push", "--quiet", "origin", `HEAD:refs/heads/${headRefName}`]);
+  if (pushed.status !== 0) return { retried: firstLine(pushed) };
+  if ("red" in judged) {
+    const posted = checkStatus(merged.head, "failure", `red on the closer's full check after its update with main: ${quoted(judged.verdict)}`);
+    if (posted.status !== 0) return { retried: firstLine(posted) };
+    commentOnPr(number, `${branchUpdate(number)} ${thisRun}, and the full check of the result ended red: ${quoted(judged.verdict)}`, gh);
+    wokenOnRed(pr, ticket, judged.verdict, say);
+    return "red";
+  }
+  if (!judged.unjudged) {
+    const posted = checkStatus(merged.head, "success", "judged by the closer's full check after its update with main (#1345)");
+    if (posted.status !== 0) return { retried: firstLine(posted) };
+  }
+  commentOnPr(number, `${branchUpdate(number)} ${thisRun}`, gh);
+  if (ticket !== undefined) markOnce(ticket, LANDING);
+  return "updated";
 }
 
 const upToDate = (pr: QueuedPr) =>
@@ -185,7 +242,7 @@ function queue(): Queued {
       : undefined;
   for (const pr of queued) {
     const ticket = TICKET_BRANCH.exec(pr.headRefName)?.[1];
-    if (ticket !== undefined && moved.get(pr) !== "updated") holding(ticket, () => settle(ticket, pr, merging, moved.get(pr) === "conflicted"));
+    if (ticket !== undefined && moved.get(pr) !== "updated") holding(ticket, () => settle(ticket, pr, merging, moved.get(pr) === "conflicted" || moved.get(pr) === "red"));
   }
   if (merging?.checks === "green") return { said: merged(merging) };
   if (merging !== undefined) return { said: `PR #${merging.number} is up to date with main, so the queue waits for it` };

@@ -16,6 +16,7 @@ function git(cwd: string, ...args: string[]): string {
 
 const PR = "https://github.com/collod873/claude-workflow/pull/1";
 const REFUSAL = "GraphQL: Pull Request is not mergeable (mergePullRequest)";
+const JUDGED_CHECK = "description=judged on the owner's PC by its pre-push, before the push (ADR-0008)";
 const SKIPPED_REVIEW = "description=skipped: a session landing is judged by its pre-push, not reviewed (ADR-0008)";
 
 type Merge = "merged" | "refused";
@@ -36,6 +37,10 @@ function recordingGh(root: string, remote: string, { merges, views, mainMovesOnR
       `views=(${views.join(" ")})`,
       'case "$1 $2" in',
       `  "pr create") echo ${PR} ;;`,
+      '  "api -X")',
+      "    sha=${4##*/}",
+      '    git -C "$remote" cat-file -e "$sha^{commit}" 2>/dev/null || { printf "gh: No commit found for SHA: %s (HTTP 422)\\n" "$sha" >&2; exit 1; }',
+      "    ;;",
       '  "pr view")',
       `    n=${counted("view")}; touch ${JSON.stringify(dir)}/view-$n`,
       "    (( n > ${#views[@]} )) && n=${#views[@]}",
@@ -69,7 +74,7 @@ function recordingGh(root: string, remote: string, { merges, views, mainMovesOnR
   return { path, calls };
 }
 
-function sessionAheadOfMain(commits: number, { merges = ["merged"], views = ["BLOCKED"], mainMovesOnRefusal = false, rounds = "3" }: { merges?: Merge[]; views?: string[]; mainMovesOnRefusal?: boolean; rounds?: string } = {}) {
+function sessionAheadOfMain(commits: number, { merges = ["merged"], views = ["BLOCKED"], mainMovesOnRefusal = false, rounds = "3", covered = true }: { merges?: Merge[]; views?: string[]; mainMovesOnRefusal?: boolean; rounds?: string; covered?: boolean } = {}) {
   const root = mkdtempSync(join(tmpdir(), "land-"));
   onTestFinished(() => rmSync(root, { recursive: true, force: true }));
   const { remote, session } = cloned(root, "base");
@@ -79,6 +84,9 @@ function sessionAheadOfMain(commits: number, { merges = ["merged"], views = ["BL
     git(session, "commit", "--quiet", "--allow-empty", "-m", `change ${n}`);
   }
   const gh = recordingGh(root, remote, { merges, views, mainMovesOnRefusal });
+  const checks = join(root, "gh", "check-calls");
+  writeFileSync(join(root, "gh", "check"), `#!/bin/bash\nprintf '%s\\n' "$*" >>${JSON.stringify(checks)}\n${covered ? "printf 'check: covered, all 9 steps\\n'" : "printf 'check: due test\\n'\nexit 3"}\n`);
+  chmodSync(join(root, "gh", "check"), 0o755);
   const run = (from = session) =>
     spawnSync(land, [], {
       cwd: from,
@@ -87,8 +95,9 @@ function sessionAheadOfMain(commits: number, { merges = ["merged"], views = ["BL
     });
   const head = git(session, "rev-parse", "HEAD");
   const merged = (call: string[]) => call[0] === "pr" && call[1] === "merge";
-  const posted = (call: string[]) => call[0] === "api" && call.includes("context=review");
-  return { root, remote, session, head, branch: `land/${head.slice(0, 12)}`, run, calls: gh.calls, merged, posted };
+  const posted = (call: string[]) => call[0] === "api" && call[3]?.startsWith("repos/{owner}/{repo}/statuses/") === true;
+  const checked = () => (existsSync(checks) ? readFileSync(checks, "utf8").trim().split("\n") : []);
+  return { root, remote, session, head, branch: `land/${head.slice(0, 12)}`, run, calls: gh.calls, merged, posted, checked };
 }
 
 function landedElsewhere(root: string, remote: string, file: string, content: string): string {
@@ -103,20 +112,36 @@ function landedElsewhere(root: string, remote: string, file: string, content: st
   return git(other, "rev-parse", "HEAD");
 }
 
-describe("bin/land turns a session's commits into a PR it merges at once, on the check its pre-push posted (#1344)", () => {
-  it("opens a merge-commit PR from a land branch, posts review as skipped for the head, merges matching that head, and brings local main up to the merged main", () => {
+describe("bin/land turns a session's commits into a PR it merges at once, posting the check its pre-push passed as the head's status once the push has put the head on GitHub, which takes no status for a commit it lacks (#1344, #1345)", () => {
+  it("opens a merge-commit PR from a land branch, posts check as judged and review as skipped for the head after the push, merges matching that head, and brings local main up to the merged main", () => {
     const { remote, session, head, branch, run, calls, merged, posted } = sessionAheadOfMain(2);
 
     const result = run();
 
     expect(result.status, result.stderr).toBe(0);
     expect(calls()).toContainEqual(["pr", "create", "--base", "main", "--head", branch, "--title", "change 2", "--body", "- change 1\n- change 2"]);
-    expect(calls().filter(posted)).toEqual([["api", "-X", "POST", `repos/{owner}/{repo}/statuses/${head}`, "-f", "state=success", "-f", "context=review", "-f", SKIPPED_REVIEW]]);
+    expect(calls().filter(posted)).toEqual([
+      ["api", "-X", "POST", `repos/{owner}/{repo}/statuses/${head}`, "-f", "state=success", "-f", "context=check", "-f", JUDGED_CHECK],
+      ["api", "-X", "POST", `repos/{owner}/{repo}/statuses/${head}`, "-f", "state=success", "-f", "context=review", "-f", SKIPPED_REVIEW],
+    ]);
     expect(calls().filter(merged)).toEqual([["pr", "merge", branch, "--merge", "--match-head-commit", head]]);
-    expect(calls().map((call) => call[1])).toEqual(["-X", "create", "merge"]);
+    expect(calls().map((call) => call[1])).toEqual(["-X", "-X", "create", "merge"]);
     expect(git(session, "rev-parse", "HEAD")).toBe(git(remote, "rev-parse", "main"));
     expect(git(session, "rev-parse", "HEAD^2")).toBe(head);
     expect(result.stdout).toBe(`Landed ${PR}\n`);
+  });
+
+  it("posts the check only once receipts cover the pushed tree, so a push that skipped the pre-push lands nothing and says so", () => {
+    const { run, calls, checked, remote, branch } = sessionAheadOfMain(1, { covered: false });
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe("land: no receipt covers the pushed tree, so no check status is posted and nothing merges; run check --full and land again\n");
+    expect(checked()).toEqual(["--full --covered"]);
+    expect(git(remote, "rev-parse", branch)).toMatch(/^[0-9a-f]{40}$/);
+    expect(calls()).toEqual([]);
   });
 
   it("brings the main checkout, detached as the session launcher leaves it, up to the merged main when landing from a session worktree (#1309)", () => {
@@ -161,7 +186,7 @@ describe("bin/land turns a session's commits into a PR it merges at once, on the
       ["pr", "merge", branch, "--merge", "--match-head-commit", head],
       ["pr", "merge", branch, "--merge", "--match-head-commit", rebased],
     ]);
-    expect(calls().filter(posted).map((call) => call[3])).toEqual([`repos/{owner}/{repo}/statuses/${head}`, `repos/{owner}/{repo}/statuses/${rebased}`]);
+    expect(calls().filter(posted).map((call) => `${call[3]} ${call[7]}`)).toEqual([`repos/{owner}/{repo}/statuses/${head} context=check`, `repos/{owner}/{repo}/statuses/${head} context=review`, `repos/{owner}/{repo}/statuses/${rebased} context=check`, `repos/{owner}/{repo}/statuses/${rebased} context=review`]);
     expect(calls().filter((call) => call[1] === "create")).toHaveLength(1);
     expect(git(session, "rev-parse", "HEAD")).toBe(git(remote, "rev-parse", "main"));
     expect(result.stdout).toBe(`Landed ${PR}\n`);

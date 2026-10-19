@@ -232,7 +232,7 @@ describe("a repo's tickets build through one caller file that holds only trigger
   });
 
   it("takes from a dispatch exactly the inputs the closer sends and tickets.yml reads", () => {
-    const { calls, run } = closing({ ticket: "819", openPrs: [{ number: "909", ticket: "830", refused: "GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts." }], calledFrom: "collod873/Lumaria/.github/workflows/machine.yml@refs/heads/main" });
+    const { calls, run } = closing({ ticket: "819", openPrs: [{ number: "909", ticket: "830", conflicts: true }], calledFrom: "collod873/Lumaria/.github/workflows/machine.yml@refs/heads/main" });
     expect(run().status).toBe(0);
     const wake = calls().find((call) => call.startsWith("workflow\nrun\nmachine.yml\n")) ?? "";
     const sent = [...wake.matchAll(/^-f\n(\w+)=/gm)].map(([, input]) => input ?? "");
@@ -265,6 +265,22 @@ describe("a repo's tickets build through one caller file that holds only trigger
       for (const step of steps.filter((later) => later.uses?.startsWith("./.github/actions/call-owner") === true)) expect(step.with?.token, name).toBe(APP);
       for (const step of steps.filter((later) => (later.run ?? "").includes("$GITHUB_WORKSPACE/bin/"))) expect((step as WorkflowStep & { "working-directory"?: string })["working-directory"], `${name} ${step.id ?? ""}`).toBe("tree");
     }
+  });
+
+  it("readies the closer's tree for the full check it runs on a PR it brings up to date, only once a ticket PR with auto-merge waits, so a close run with nothing queued pays nothing for it (#1345)", () => {
+    const close = workflowJobs("tickets.yml").close;
+    const steps = close?.steps ?? [];
+    const queued = steps.find(({ id }) => id === "queued");
+    const readying = steps.filter(({ uses, id }) => ["./.github/actions/hooks", "./.github/actions/pinned", "./.github/actions/database"].includes(uses ?? "") || id === "git-config");
+    const closing = steps.findIndex(({ run }) => (run ?? "").includes("bin/close"));
+    const waits = (behind: string) => readying.filter((step) => holds(step.if ?? "success()", { steps: { queued: { outcome: "success", conclusion: "success", outputs: { behind } } } })).length;
+
+    expect(queued?.env?.GH_TOKEN).toBe(APP);
+    expect(queued?.run).toContain("autoMergeRequest != null");
+    expect(readying.map(({ uses, id }) => uses ?? id)).toEqual(["./.github/actions/hooks", "./.github/actions/pinned", "./.github/actions/database", "git-config"]);
+    expect(readying.every((step) => steps.indexOf(step) > steps.indexOf(queued as WorkflowStep) && steps.indexOf(step) < closing)).toBe(true);
+    expect(waits("true")).toBe(4);
+    expect(waits("false")).toBe(0);
   });
 
   it("tells the closer which caller file it runs under, so a builder it wakes starts through that file", () => {
@@ -587,7 +603,7 @@ describe("this repo reaches the machine through the caller file bin/enrol writes
   });
 
   it("wakes a builder and starts a size trial through that caller file when no caller file is named, as on a run by hand", () => {
-    const { calls, run } = closing({ ticket: "819", openPrs: [{ number: "909", ticket: "830", refused: "GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts." }] });
+    const { calls, run } = closing({ ticket: "819", openPrs: [{ number: "909", ticket: "830", conflicts: true }] });
 
     expect(run().status).toBe(0);
     expect(calls().filter((call) => call.startsWith("workflow\nrun\n")).map((call) => call.split("\n")[2])).toEqual([ENROLLED_CALLER]);

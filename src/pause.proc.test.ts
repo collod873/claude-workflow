@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse } from "yaml";
-import { PAUSED_HEAD, pausing } from "./pause.part.ts";
+import { pausing } from "./pause.part.ts";
 
 const merges = (calls: string[][]) => calls.filter((args) => args[0] === "pr" && args[1] === "merge");
-const updates = (calls: string[][]) => calls.filter((args) => args[0] === "pr" && args[1] === "update-branch");
+const statuses = (calls: string[][]) => calls.filter((args) => args[0] === "api" && args.includes("context=check"));
 const comments = (calls: string[][]) => calls.filter((args) => args[0] === "pr" && args[1] === "comment");
 const wakes = (calls: string[][]) => calls.filter((args) => args[0] === "workflow" && args[1] === "run");
 
@@ -72,10 +72,11 @@ describe("bin/resume picks a ticket up from where it stands once paused or stuck
   });
 
   it("wakes the builder on a red PR, so its session resumes on it, and builds nothing new", () => {
-    const calls = resumedWithoutBuilding(pausing({ pr: "red" }));
+    const scenario = pausing({ pr: "red" });
+    const calls = resumedWithoutBuilding(scenario);
 
     expect(merges(calls)).toEqual([]);
-    expect(wakes(calls)).toEqual([["workflow", "run", "machine.yml", "-f", "ticket=811", "-f", expect.stringMatching(/^reason=.*PR #931 red at 4f2a9c1e/)]]);
+    expect(wakes(calls)).toEqual([["workflow", "run", "machine.yml", "-f", "ticket=811", "-f", expect.stringMatching(new RegExp(`^reason=.*PR #931 red at ${scenario.head}`))]]);
   });
 
   it("wakes the builder with exactly the inputs the caller file requires, which tickets.yml hands the builder as its reason beside the session it saved for the branch", () => {
@@ -100,18 +101,22 @@ describe("bin/resume picks a ticket up from where it stands once paused or stuck
 
   it("turns auto-merge back on at the head of a green or still-checking PR, so the closer's queue takes it", () => {
     for (const pr of ["green", "pending"] as const) {
-      const calls = resumedWithoutBuilding(pausing({ pr, autoMerge: false }));
+      const scenario = pausing({ pr, autoMerge: false });
+      const calls = resumedWithoutBuilding(scenario);
 
-      expect(merges(calls)).toEqual([["pr", "merge", "931", "--auto", "--merge", "--match-head-commit", PAUSED_HEAD]]);
+      expect(merges(calls)).toEqual([["pr", "merge", "931", "--auto", "--merge", "--match-head-commit", scenario.head]]);
       expect(wakes(calls)).toEqual([]);
     }
   });
 
-  it("brings a green PR GitHub calls behind main up to date once auto-merge is back on, leaving the closer's branch-update comment (#1186)", () => {
-    const calls = resumedWithoutBuilding(pausing({ autoMerge: false, behind: true }));
+  it("brings a green PR GitHub calls behind main up to date once auto-merge is back on, as the closer does: main merged in, the full check run, the merge pushed with its check status, and the closer's branch-update comment left (#1186, #1345)", () => {
+    const scenario = pausing({ autoMerge: false, behind: true });
+    const calls = resumedWithoutBuilding(scenario);
 
-    expect(merges(calls)).toEqual([["pr", "merge", "931", "--auto", "--merge", "--match-head-commit", PAUSED_HEAD]]);
-    expect(updates(calls)).toEqual([["pr", "update-branch", "931"]]);
+    expect(merges(calls)).toEqual([["pr", "merge", "931", "--auto", "--merge", "--match-head-commit", scenario.head]]);
+    const head = scenario.branchHead();
+    expect(head).not.toBe(scenario.head);
+    expect(statuses(calls)).toEqual([["api", "-X", "POST", `repos/{owner}/{repo}/statuses/${head}`, "-f", "state=success", "-f", "context=check", "-f", "description=judged by the closer's full check after its update with main (#1345)"]]);
     expect(comments(calls)).toEqual([["pr", "comment", "931", "--body", expect.stringMatching(/^PR #931 brought up to date with main by /)]]);
     expect(wakes(calls)).toEqual([]);
   });
@@ -119,28 +124,28 @@ describe("bin/resume picks a ticket up from where it stands once paused or stuck
   it("leaves a green PR already up to date with main as it is beyond auto-merge (#1186)", () => {
     const calls = resumedWithoutBuilding(pausing({ autoMerge: false }));
 
-    expect(updates(calls)).toEqual([]);
+    expect(statuses(calls)).toEqual([]);
     expect(comments(calls)).toEqual([]);
   });
 
-  it("wakes the builder when GitHub refuses the update for a conflict, as on a red PR (#1186)", () => {
-    const calls = resumedWithoutBuilding(pausing({ autoMerge: false, behind: true, updateRefused: "merge conflict between base and head" }));
+  it("wakes the builder when main does not merge into the PR for a conflict, as on a red PR (#1186)", () => {
+    const calls = resumedWithoutBuilding(pausing({ autoMerge: false, behind: true, conflicted: true }));
 
-    expect(updates(calls)).toEqual([["pr", "update-branch", "931"]]);
-    expect(wakes(calls)).toEqual([["workflow", "run", "machine.yml", "-f", "ticket=811", "-f", expect.stringMatching(/^reason=.*PR #931 .*merge conflict between base and head/)]]);
+    expect(statuses(calls)).toEqual([]);
+    expect(wakes(calls)).toEqual([["workflow", "run", "machine.yml", "-f", "ticket=811", "-f", expect.stringMatching(/^reason=.*PR #931 .*Merge conflict in src\/clash\.ts/)]]);
   });
 
   it("leaves the closer's failed-update comment at the head of a conflicting PR and marks it resolving, so the closer's next queue run wakes no builder again for that head (#1189)", () => {
-    const scenario = pausing({ autoMerge: false, behind: true, updateRefused: "merge conflict between base and head" });
+    const scenario = pausing({ autoMerge: false, behind: true, conflicted: true });
     const calls = resumedWithoutBuilding(scenario);
 
-    expect(comments(calls)).toEqual([["pr", "comment", "931", "--body", expect.stringMatching(new RegExp(`^PR #931 could not be brought up to date with main: merge conflict between base and head\n\nHead: \`${PAUSED_HEAD}\``))]]);
+    expect(comments(calls)).toEqual([["pr", "comment", "931", "--body", expect.stringMatching(new RegExp(`^PR #931 could not be brought up to date with main: CONFLICT \\(add/add\\): Merge conflict in src/clash\\.ts\n\nHead: \`${scenario.head}\``))]]);
     expect(scenario.marks()).toEqual(["811 resolving"]);
     expect(wakes(calls)).toHaveLength(1);
   });
 
   it("wakes no builder for a conflict on a ticket still held, leaving the conflict comment for the owner (#1189)", () => {
-    const scenario = pausing({ autoMerge: false, behind: true, updateRefused: "merge conflict between base and head", held: "paused" });
+    const scenario = pausing({ autoMerge: false, behind: true, conflicted: true, held: "paused" });
     const calls = resumedWithoutBuilding(scenario);
 
     expect(comments(calls)).toHaveLength(1);
@@ -155,8 +160,8 @@ describe("bin/resume picks a ticket up from where it stands once paused or stuck
     expect(scenario.marks()).toEqual(["811 landing"]);
   });
 
-  it("ends red at unresumed, naming GitHub's refusal, when the update is refused for anything but a conflict (#1186)", () => {
-    const { calls, resume } = pausing({ autoMerge: false, behind: true, updateRefused: "GraphQL: Resource not accessible by integration", conflicted: false });
+  it("ends red at unresumed, naming GitHub's refusal, when the push of the update is refused for anything but a conflict (#1186)", () => {
+    const { calls, resume } = pausing({ autoMerge: false, behind: true, pushRefused: "GraphQL: Resource not accessible by integration" });
 
     const refused = resume();
 

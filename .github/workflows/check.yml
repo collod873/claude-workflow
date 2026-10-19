@@ -8,8 +8,8 @@ permissions:
 
 jobs:
   check:
-    name: "${{ startsWith(github.head_ref, 'land/') && 'judged on the owner PC before the push (ADR-0008)' || 'check' }}"
-    if: ${{ !startsWith(github.head_ref, 'land/') }}
+    name: "${{ startsWith(github.head_ref, 'land/') && 'judged on the owner PC before the push (ADR-0008)' || github.event.sender.login == 'collod873-machine[bot]' && 'judged by the machine before its push (#1345)' || 'check' }}"
+    if: ${{ !startsWith(github.head_ref, 'land/') && !(github.event.sender.login == 'collod873-machine[bot]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:

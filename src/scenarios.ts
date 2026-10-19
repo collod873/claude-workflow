@@ -382,6 +382,7 @@ export function landSession({ gh, remoteRefuses, messages = ["change"] }: { gh: 
   for (const message of messages) git(session, "commit", "--quiet", "--allow-empty", "-m", message);
   if (remoteRefuses !== undefined) script(join(remote, "hooks", "pre-receive"), `cat >/dev/null\ncat >&2 <<'REFUSAL'\n${remoteRefuses}\nREFUSAL\nexit 1\n`);
   script(join(root, "bin", "gh"), gh);
+  script(join(root, "bin", "check"), "printf 'check: covered, all 9 steps\\n'\n");
   return {
     remote,
     session,
@@ -429,6 +430,7 @@ export function saving({
   autoMergeOff = false,
   held = "",
   why = CONSENT_ONLY_WHY,
+  statusRefused = false,
 }: {
   remoteRefuses?: string;
   alreadyOpen?: boolean;
@@ -436,6 +438,7 @@ export function saving({
   autoMergeOff?: boolean;
   held?: string;
   why?: string;
+  statusRefused?: boolean;
 } = {}) {
   const root = scratch("save-");
   const { remote, session } = cloned(root, "base");
@@ -461,6 +464,7 @@ export function saving({
       `printf '%s|%s\\n' "$(printf '%s' "$*" | tr '\\n' ' ')" "$(git --git-dir="${remote}" rev-parse --verify --quiet refs/heads/ticket/726)" >>"${calls}"`,
       setup,
       'case "$*" in',
+      statusRefused ? "  *\"api -X POST\"*\"/statuses/\"*) printf 'gh: Resource not accessible by integration (HTTP 403)\\n' >&2; exit 1 ;;" : "",
       "  *\"issue view\"*\"--json body\"*)",
       "    cat <<'TICKET_BODY'",
       ticketBody,
@@ -488,7 +492,7 @@ export function saving({
       const at = call?.indexOf("--body") ?? -1;
       return at === -1 ? undefined : call?.[at + 1];
     },
-    run: (ticket = "726") => execute(join(BIN, "save"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, [ticket]),
+    run: (ticket = "726", ...flags: string[]) => execute(join(BIN, "save"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, [ticket, ...flags]),
   };
 }
 
@@ -604,7 +608,8 @@ export function sessionExtras({
 
 export const ENROLLED = "collod873/Next";
 export const PC_RUNS_ON = "${{ vars.CI_RUNNER || 'ubuntu-latest' }}";
-export const CI = ["name: Gate", "on:", "  pull_request:", "jobs:", "  check:", `    runs-on: ${PC_RUNS_ON}`, "    steps:", "      - run: check --full", ""].join("\n");
+export const CI = ["name: Gate", "on:", "  pull_request:", "jobs:", "  check:", `    if: \${{ !startsWith(github.head_ref, 'land/') && !(github.event.sender.login == '${MACHINE}') }}`, `    runs-on: ${PC_RUNS_ON}`, "    steps:", "      - run: check --full", ""].join("\n");
+export const CI_ON_EVERY_PR = CI.split("\n").filter((line) => !line.startsWith("    if:")).join("\n");
 export const DEPLOY = ["name: Deploy", "on:", "  push:", "jobs:", "  ship:", `    runs-on: ${PC_RUNS_ON}`, "    steps:", "      - run: ./ship", ""].join("\n");
 let appKey: { publicKey: string; privateKey: string } | undefined;
 const appKeys = () => (appKey ??= generateKeyPairSync("rsa", { modulusLength: 2048, publicKeyEncoding: { type: "spki", format: "pem" }, privateKeyEncoding: { type: "pkcs8", format: "pem" } }));

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { cloned, copyMark, git, holds, labelledAs, scratch, script, starts as startsJob, type IssueEvent, type StepOutcome } from "./scenarios.ts";
-import { HELD, OWNER_CALL } from "./spelled.ts";
+import { HELD, MACHINE, OWNER, OWNER_CALL } from "./spelled.ts";
 
 const REPO = join(import.meta.dirname, "..");
 const WORKFLOWS = join(REPO, ".github", "workflows");
@@ -622,6 +622,27 @@ describe("the PR check judges only through the live release's check, which runs 
     expect(handed).toBeGreaterThanOrEqual(0);
     expect(handed).toBeLessThan(checked);
     expect(steps[handed]?.run).toBe(built?.run);
+  });
+});
+
+describe("the PR check runs no check job on a landing's PR or on one the machine pushed, which its pre-push, its builder or the closer judged before the push, and the job it skips carries a name the ruleset does not require, since a pending check run named check holds the PR though a green check status is posted (ADR-0008, #1345)", () => {
+  const { check } = (parse(readFileSync(join(WORKFLOWS, "check.yml"), "utf8")) as Workflow & { jobs: Record<string, Job & { name?: string }> }).jobs;
+  const runs = (head: string, sender: string) => holds(check?.if ?? "success()", { head, sender });
+
+  it("skips a land/ head and a push by the machine, and runs on any other", () => {
+    expect(runs("land/0123456789ab", OWNER)).toBe(false);
+    expect(runs("ticket/811", MACHINE)).toBe(false);
+    expect(runs("ticket/811", OWNER), "a hand push to a ticket branch was judged by no one").toBe(true);
+    expect(runs("probe/1345", OWNER)).toBe(true);
+    expect(runs("dependabot/npm_and_yarn/vitest-5.0.0", "dependabot[bot]")).toBe(true);
+  });
+
+  it("names the skipped job after who judged the head, and keeps the name check for the heads it runs on", () => {
+    const named = [...String(check?.name ?? "").matchAll(/(startsWith\(github\.head_ref, 'land\/'\)|github\.event\.sender\.login == '[^']+') && '([^']+)'/g)].map(([, by, name]): [string, string] => [by ?? "", name ?? ""]);
+
+    expect(named.map(([by]) => by)).toEqual(["startsWith(github.head_ref, 'land/')", `github.event.sender.login == '${MACHINE}'`]);
+    expect(named.every(([, name]) => name !== "check" && name.length > 0)).toBe(true);
+    expect(check?.name).toMatch(/\|\| 'check' \}\}"?$/);
   });
 });
 
