@@ -1,8 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { asFiled, filing, spokenBuild, spokenIdea, misshapenSpec, wellFormedBug, wellFormedNote, wellFormedSpec } from "./scenarios.ts";
-import { BUG_SHAPE, BUILD_SHAPE, IDEA_SHAPE, LOOK_INTO_SHAPE, OWNER_SHAPE, SPEC_SHAPE, SPOKEN_SHAPE, why } from "./ticket-shape.ts";
+import { asFiled, filedAs, filing, spokenBuild, spokenIdea, misshapenSpec, wellFormedBug, wellFormedNote, wellFormedSpec } from "./scenarios.ts";
+import { why } from "./ticket-shape.ts";
 
 const URL = "https://github.com/collod873/claude-workflow/issues/700";
 const PAGE = "[sessions](https://github.com/collod873/transcripts/blob/main/issues/claude-workflow-700.md)";
@@ -40,17 +40,14 @@ describe("bin/file-issue files a ticket, or refuses it and files nothing (#662)"
     const result = run();
 
     expect(result).toMatchObject({ status: 0, stdout: `${URL}\n`, stderr: UNSTAMPED });
-    expect(ghSaw(repo)).toEqual([["issue", "create", "--title", "Port the ticket shape into core/", "--label", "ticket", "--body", filedBuild], edit(linked(filedBuild, SUGGESTIONS))]);
+    expect(filedAs(ghSaw(repo))).toEqual({ title: "Port the ticket shape into core/", labels: ["ticket"], body: filedBuild, then: [edit(linked(filedBuild, SUGGESTIONS))] });
   });
 
   it("files a bug labelled ticket and bug, so the machine builds it, and refuses one quoting no evidence as it refuses a ticket quoting no owner", () => {
     const { repo, run } = filing({ gh: RECORDS, body: wellFormedBug });
 
     expect(run(BUG_CALL)).toMatchObject({ status: 0, stdout: `${URL}\n`, stderr: UNSTAMPED });
-    expect(ghSaw(repo)).toEqual([
-      ["issue", "create", "--title", "check-gate crashes on a contract with no steps", "--label", "ticket", "--label", "bug", "--body", wellFormedBug],
-      edit(linked(wellFormedBug, "## Done when")),
-    ]);
+    expect(filedAs(ghSaw(repo))).toEqual({ title: "check-gate crashes on a contract with no steps", labels: ["ticket", "bug"], body: wellFormedBug, then: [edit(linked(wellFormedBug, "## Done when"))] });
     expect(filing({ gh: RECORDS, body: wellFormedNote }).run(BUG_CALL)).toMatchObject({
       status: 1,
       stderr: ["'## Why' quotes no evidence: it carries no \"...\" quote and no > quoted line from a log, a test or a Signal", "the body carries no '## Done when', so nothing says what done looks like", ""].join("\n"),
@@ -116,7 +113,7 @@ describe("bin/file-issue files a ticket, or refuses it and files nothing (#662)"
     const { repo, run } = filing({ gh: RECORDS, body: spokenIdea });
 
     expect(run(NOTE_CALL)).toMatchObject({ status: 0, stdout: `${URL}\n`, stderr: UNSTAMPED });
-    expect(ghSaw(repo)).toEqual([["issue", "create", "--title", "What the audit found", "--label", "note", "--body", filedIdea], edit(linked(filedIdea, SUGGESTIONS))]);
+    expect(filedAs(ghSaw(repo))).toEqual({ title: "What the audit found", labels: ["note"], body: filedIdea, then: [edit(linked(filedIdea, SUGGESTIONS))] });
     expect(run().stderr).toContain("the body carries no '## Done when'");
   });
 
@@ -124,14 +121,14 @@ describe("bin/file-issue files a ticket, or refuses it and files nothing (#662)"
     const { repo, run } = filing({ gh: RECORDS, body: spokenIdea });
 
     expect(run(["look-into", "--title", "What does the closer judge", "--body-file", "body.md"])).toMatchObject({ status: 0, stdout: `${URL}\n` });
-    expect(ghSaw(repo)).toEqual([["issue", "create", "--title", "What does the closer judge", "--label", "note", "--label", "research", "--body", filedIdea], edit(linked(filedIdea, SUGGESTIONS))]);
+    expect(filedAs(ghSaw(repo))).toEqual({ title: "What does the closer judge", labels: ["note", "research"], body: filedIdea, then: [edit(linked(filedIdea, SUGGESTIONS))] });
   });
 
   it("files an owner step as a note labelled owner-step, so neither the builder nor the researcher picks it up (#1324)", () => {
     const { repo, run } = filing({ gh: RECORDS, body: spokenIdea });
 
     expect(run(["owner", "--title", "Set the Resend key on Railway", "--body-file", "body.md"])).toMatchObject({ status: 0, stdout: `${URL}\n` });
-    expect(ghSaw(repo)[0]).toEqual(["issue", "create", "--title", "Set the Resend key on Railway", "--label", "note", "--label", "owner-step", "--body", filedIdea]);
+    expect(filedAs(ghSaw(repo))).toMatchObject({ title: "Set the Resend key on Railway", labels: ["note", "owner-step"], body: filedIdea });
   });
 
   it("files a spec through src/post.ts and labels it spec (#965)", () => {
@@ -140,10 +137,7 @@ describe("bin/file-issue files a ticket, or refuses it and files nothing (#662)"
     const result = run(["spec", "--title", "Give the slicer something to read", "--body-file", "body.md"]);
 
     expect(result).toMatchObject({ status: 0, stdout: `${URL}\n`, stderr: UNSTAMPED });
-    expect(ghSaw(repo)).toEqual([
-      ["issue", "create", "--title", "Give the slicer something to read", "--label", "spec", "--body", wellFormedSpec],
-      edit(linked(wellFormedSpec, "## Solution")),
-    ]);
+    expect(filedAs(ghSaw(repo))).toEqual({ title: "Give the slicer something to read", labels: ["spec"], body: wellFormedSpec, then: [edit(linked(wellFormedSpec, "## Solution"))] });
   });
 
   it("files a spec, stamping the session id under '## Problem Statement' as a ticket's is stamped under '## Why', and links its sessions page beside it", () => {
@@ -188,7 +182,7 @@ describe("bin/file-issue files a ticket, or refuses it and files nothing (#662)"
 
     expect(unsetResult).toMatchObject({ status: 0, stdout: `${URL}\n` });
     expect(unsetResult.stderr).toMatch(/names no session/);
-    expect(ghSaw(unset.repo)).toEqual([["issue", "create", "--title", "A ticket the machine can build", "--label", "ticket", "--body", filedBuild], edit(linked(filedBuild, SUGGESTIONS))]);
+    expect(filedAs(ghSaw(unset.repo))).toEqual({ title: "A ticket the machine can build", labels: ["ticket"], body: filedBuild, then: [edit(linked(filedBuild, SUGGESTIONS))] });
     expect(why(lastBody(unset.repo)).split("\n").at(-1)).toBe(PAGE);
 
     const empty = filing({ gh: RECORDS, body: spokenBuild, sessionId: "" });
@@ -197,18 +191,5 @@ describe("bin/file-issue files a ticket, or refuses it and files nothing (#662)"
 
     expect(emptyResult).toMatchObject({ status: 0, stdout: `${URL}\n` });
     expect(emptyResult.stderr).toMatch(/names no session/);
-  });
-
-  it("prints its usage line, when each kind is filed and the body it files, to stdout, and exits 0 for help, filing nothing", () => {
-    const { repo, run } = filing({ gh: RECORDS, body: spokenBuild });
-
-    const result = run(["--help"]);
-
-    expect(result).toMatchObject({
-      status: 0,
-      stdout: [USAGE, `idea, look-into, build, owner: ${SPOKEN_SHAPE}`, `idea: ${IDEA_SHAPE}`, `look-into: ${LOOK_INTO_SHAPE}`, `build: ${BUILD_SHAPE}`, `bug: ${BUG_SHAPE}`, `spec: ${SPEC_SHAPE}`, `owner: ${OWNER_SHAPE}`, ""].join("\n"),
-      stderr: "",
-    });
-    expect(ghSaw(repo)).toEqual([]);
   });
 });

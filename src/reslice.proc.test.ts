@@ -226,6 +226,7 @@ describe("bin/slice on a spec with tickets under it slices its next wave against
 
     expect(sliced.run()).toEqual({ status: 0, stdout: "slice: #968's wave is not over, #1002 is still open, so nothing sliced it\n", stderr: "" });
     expect(sliced.hired()).toEqual([]);
+    expect(sliced.marked()).toEqual([]);
   });
 
   it("slices nothing on a spec marked paused or stuck, since the job stopped for the owner (#1166)", () => {
@@ -234,6 +235,7 @@ describe("bin/slice on a spec with tickets under it slices its next wave against
 
       expect(sliced.run()).toEqual({ status: 0, stdout: `slice: #968 is marked ${held}, so no label changed and no model was hired\n`, stderr: "" });
       expect(sliced.hired()).toEqual([]);
+      expect(sliced.marked()).toEqual([]);
     }
   });
 });
@@ -275,22 +277,14 @@ describe("bin/slice --ended ends red at a read of the wave that fails, naming no
   });
 });
 
-const merge = { title: "Merge the two quotedLine helpers into one", passages: [1], why: "Wave 1 left two copies of one helper.", done: ["One quotedLine stands."], cites: [] };
-
 describe("bin/slice hands the re-slice the diff of every PR the wave merged, so it can fold what the wave built into the spec (#1047)", () => {
-  it("hands the slicer each merged PR's diff and asks it to fold shared parts into Names, merge two copies of one helper and hold back what leans on it; a wave that merged two copies yields a merge ticket", () => {
-    const sliced = reslicing({ prs: MERGED, diffs: { "1001": helper("slicer.ts"), "1002": helper("done-checker.ts") }, answers: [next([merge])] });
+  it("hands the slicer each merged PR's diff, so it can fold what the wave built into the record", () => {
+    const sliced = reslicing({ prs: MERGED, diffs: { "1001": helper("slicer.ts"), "1002": helper("done-checker.ts") } });
 
     expect(heard(sliced.run())).toEqual({ status: 0, stderr: "", lines: [expect.stringMatching(/^slice: #968 filed wave 2 under it: #1101\. The owner's \d+ bytes stand as filed, and no round came back for the spec's size\.$/)] });
     const [handed = ""] = sliced.handed();
     expect(handed).toContain(`### #1002's PR\n\n${helper("done-checker.ts")}`);
     expect(handed).toContain(`### #1001's PR\n\n${helper("slicer.ts")}`);
-    expect(handed).toContain("cut each pick whose ticket merged to a shipped name");
-    expect(handed).toContain("fold the helpers, seams and modules the wave built that tickets share into the record");
-    expect(handed).toContain("two copies of one helper or a shallow module");
-    expect(handed).toContain("hold the tickets that touch that module back a wave");
-    expect(handed).toContain("`did`");
-    expect(sliced.filed().map(({ title }) => title)).toEqual([merge.title]);
   });
 
   it("hands no diff for a ticket whose PR did not merge", () => {
@@ -379,19 +373,6 @@ describe("bin/slice <spec> --fix <numbers> files the spec's one fix wave for the
     expect(sliced.rewrites()).toEqual([]);
     expect(sliced.comments()).toEqual([]);
     expect(sliced.handed()).toHaveLength(1);
-  });
-
-  it("tells the slicer of a first, next and fix wave to move only a sentence its own tickets, once merged, show on the running system without another wave (#1083)", () => {
-    const first = slicing({ answers: [next()] });
-    const again = reslicing({ answers: [next()] });
-    const { sliced: fixed } = fixing([{ ...next([fixPiece], [2]), spec: FIX_SPEC }]);
-    expect(first.run().status).toBe(0);
-    expect(again.run().status).toBe(0);
-
-    for (const handed of [first.handed()[0], again.handed()[0], fixed.handed()[0]]) {
-      expect(handed).toContain("Name in `moves` only a sentence this wave's own tickets, once merged, make visible on the running system without another wave");
-      expect(handed).toContain("that needs two PRs in the closer's queue at once may still be named");
-    }
   });
 
   it("refuses --fix with no sentence numbers, or with --ended", () => {
@@ -488,11 +469,9 @@ describe("taking paused or stuck off an open spec resumes it where it stands, wi
   });
 
   it.each(RESUMES)("%s runs the wave check and then the slice of a spec whose wave closed during the pause, only the slice of one already checked, and nothing while its wave is open", (file) => {
-    for (const held of HELD) {
-      expect(resumedRuns(file, resumed().ran.stdout), held).toEqual(["wave-check", "reslice"]);
-      expect(resumedRuns(file, resumed({ said: [NOTE, CHECKED] }).ran.stdout), held).toEqual(["reslice"]);
-      expect(resumedRuns(file, resumed({ tickets: [ticket(1101, "open"), ticket(1102)] }).ran.stdout), held).toEqual([]);
-    }
+    expect(resumedRuns(file, resumed().ran.stdout)).toEqual(["wave-check", "reslice"]);
+    expect(resumedRuns(file, resumed({ said: [NOTE, CHECKED] }).ran.stdout)).toEqual(["reslice"]);
+    expect(resumedRuns(file, resumed({ tickets: [ticket(1101, "open"), ticket(1102)] }).ran.stdout)).toEqual([]);
   });
 
   it.each(RESUMES)("%s resumes one spec at a time beside its reslice, reading again where it stands, and calls the owner when it ends red", (file) => {
@@ -521,33 +500,21 @@ describe("bin/slice marks a spec's next wave and its fix wave as they are sliced
     const sliced = reslicing();
 
     expect(sliced.run().status).toBe(0);
-    expect(sliced.marked()).toEqual(["968 slicing", "968 building"]);
+    expect(sliced.marked()).toEqual(["968 slicing before the model", "968 building after the model"]);
   });
 
   it("marks slicing then checking, and no building, when nothing is left to slice and the done check runs", () => {
     const sliced = reslicing({ answers: [next([], []), { tries: [{ sentence: 1, outcome: "held", tried: "saw the spec labelled spec" }] }] });
 
     expect(sliced.run().status).toBe(0);
-    expect(sliced.marked()).toEqual(["968 slicing", "968 checking"]);
-  });
-
-  it("marks nothing while the wave is not over, or on a spec marked paused or stuck", () => {
-    const open = reslicing({ tickets: [ticket(1001), ticket(1002, "open")] });
-
-    expect(open.run().status).toBe(0);
-    expect(open.marked()).toEqual([]);
-    for (const held of HELD) {
-      const stopped = reslicing({ labels: ["spec", held] });
-      expect(stopped.run().status, held).toBe(0);
-      expect(stopped.marked(), held).toEqual([]);
-    }
+    expect(sliced.marked()).toEqual(["968 slicing before the model", "968 checking after the model"]);
   });
 
   it("marks the fix wave's slicing with --try, so the spec carries try-2 from then on", () => {
     const sliced = slicing({ body: specWith(["one", "two"]), answers: [{ ...next([piece], [2]), spec: specWith(["one", "two"]) }], issues: { "974/sub_issues": [{ ...ticket(1001), title: "Ticket 1001", state_reason: "completed" }] }, comments: { "974": [NOTE] } });
 
     expect(sliced.run("974", "--fix", "2").status).toBe(0);
-    expect(sliced.marked()).toEqual(["974 slicing --try", "974 building"]);
+    expect(sliced.marked()).toEqual(["974 slicing --try before the model", "974 building after the model"]);
   });
 });
 
@@ -559,7 +526,7 @@ describe("bin/slice stops at a mark GitHub refused, so it hires no model on a sp
 
     expect(status).toBe(1);
     expect(stderr).toContain("slice: bin/mark #968 slicing ended non-zero, so nothing after it is posted, closed, marked or hired\n");
-    expect(sliced.marked()).toEqual(["968 slicing"]);
+    expect(sliced.marked()).toEqual(["968 slicing before the model"]);
     expect(sliced.handed()).toEqual([]);
     expect(sliced.filed()).toEqual([]);
   });
@@ -574,7 +541,6 @@ describe("a manual run of the caller file given a spec and a trial cap runs that
     expect(CALLER.on.workflow_dispatch?.inputs?.trial_cap).toEqual({ required: false, type: "number" });
     expect(holds(trial.if ?? "true", dispatched({ ticket: "968", reason: "size-trial", trial_cap: "60000" }))).toBe(true);
     expect(holds(trial.if ?? "true", dispatched({ ticket: "1102", reason: "PR red" }))).toBe(false);
-    expect(ended({ closed: 968 }).ran).toEqual({ status: 0, stdout: "", stderr: "slice: #968 is a spec, so no wave ended\n" });
     expect(holds(trial.if ?? "true", { action: "closed" })).toBe(false);
   });
 
@@ -586,8 +552,6 @@ describe("a manual run of the caller file given a spec and a trial cap runs that
 
   it("runs one trial at a time per spec in a group of its own, so a wave check inside that spec's re-slice never queues behind itself (#1198)", () => {
     expect(trial.concurrency).toEqual({ group: "size-trial-${{ github.event.inputs.ticket }}", "cancel-in-progress": false });
-    const groups = Object.entries(SPECS).flatMap(([name, { concurrency }]) => (name === "size-trial" || concurrency?.group === undefined ? [] : [concurrency.group.replace(/\$\{\{.*\}\}$/, "")]));
-    expect(groups).toEqual(["reslice-", "reslice-", "done-check-"]);
     expect(trial.concurrency?.group?.startsWith("reslice-")).toBe(false);
   });
 

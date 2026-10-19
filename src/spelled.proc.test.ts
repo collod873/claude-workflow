@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import ts from "typescript";
 import { parse } from "yaml";
 import { BIN, execute, heard, plant, scratch, script, type WorkflowStep } from "./scenarios.ts";
+import { LABELS } from "./spelled.ts";
 
 const WORKFLOWS = join(BIN, "..", ".github", "workflows");
 
@@ -62,25 +63,7 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
   it("prints every machine label once as name, kind, colour and description, tab separated", () => {
     const printed = rows();
 
-    expect(printed.map(([name, kind]) => `${name} ${kind}`)).toEqual([
-      "ticket kind",
-      "bug kind",
-      "spec kind",
-      "note kind",
-      "research kind",
-      "owner-step kind",
-      "building state",
-      "checking state",
-      "queued state",
-      "resolving state",
-      "landing state",
-      "slicing state",
-      "researching state",
-      "waiting parked",
-      "paused held",
-      "stuck held",
-      "try- try",
-    ]);
+    expect(printed.map(([name, kind]) => `${name} ${kind}`)).toEqual(LABELS.map(({ name, kind }) => `${name} ${kind}`));
     for (const row of printed) {
       expect(row, row.join(" ")).toHaveLength(4);
       expect(row[2], row.join(" ")).toMatch(/^[0-9a-f]{6}$/);
@@ -138,9 +121,9 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
       ["src", "bin", ".github"].flatMap(machine).flatMap((file) =>
         readFileSync(file, "utf8")
           .split("\n")
-          .flatMap((line, at) => (line.includes("collod873-machine") && !line.startsWith("export const MACHINE = ") ? [`${file.slice(REPO.length + 1)}:${at + 1}`] : [])),
+          .flatMap((line) => (line.includes("collod873-machine") && !line.startsWith("export const MACHINE = ") ? [file.slice(REPO.length + 1)] : [])),
       ),
-    ).toEqual([".github/workflows/check.yml:11", ".github/workflows/check.yml:12", ".github/workflows/tickets.yml:10"]);
+    ).toEqual([".github/workflows/check.yml", ".github/workflows/check.yml", ".github/workflows/tickets.yml"]);
     expect(readFileSync(join(ACTIONS, "stage-logs", "action.yml"), "utf8")).toMatch(/bin\/spelled MACHINE/);
   });
 
@@ -224,6 +207,6 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
 
     const { stdout } = execute(join(BIN, "..", "node_modules", ".bin", "tsc"), copy, {}, ["--noEmit", "--pretty", "false", "-p", "tsconfig.json"]);
 
-    expect(stdout.split("\n").filter((line) => line.startsWith("src/")).map((line) => /^src\/([\w.]+)\(/.exec(line)?.[1])).toEqual(["post.test.ts"]);
+    expect(stdout.split("\n").filter((line) => line.startsWith("src/")).map((line) => /^src\/([\w.]+)\(/.exec(line)?.[1])).toEqual(["spelled.ts"]);
   });
 });

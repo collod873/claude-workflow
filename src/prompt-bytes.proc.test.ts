@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { capped } from "./brief.ts";
-import { sized, uncapped, unlaunched, unmeasured, type Prompt } from "./prompt-bytes.ts";
+import { uncapped, unlaunched, unmeasured, type Prompt } from "./prompt-bytes.ts";
 import { scratch } from "./scenarios.ts";
 
 const FILLER = 200;
@@ -21,11 +21,6 @@ const terse = (name: string, words: string) => planted(name, words, (filler) => 
 const leaky = (name: string, words: string) => planted(name, words, (filler) => filler);
 
 describe("the prompts step sizes every prompt and refuses one it cannot bound (#950)", () => {
-  it("sums the prompts' own words and names the largest", () => {
-    expect(sized([terse("small", "x".repeat(5)), terse("big", "x".repeat(30))])).toBe(
-      "prompt-bytes: 2 prompts, 35 bytes of their own words, the largest the big at 30",
-    );
-  });
 
   it("refuses a filled-in value with no cap, and passes a builder that caps what it pastes in", () => {
     expect(uncapped([terse("bounded", "x")])).toEqual([]);

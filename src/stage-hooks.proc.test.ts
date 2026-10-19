@@ -45,9 +45,11 @@ describe("the hooks action's fetch survives a transient clone failure (#849)", (
         RUNNER_TEMP: runnerTemp,
       },
       encoding: "utf8",
+      timeout: 10_000,
     });
 
-    expect(run.status).not.toBe(0);
+    expect(run.signal).toBeNull();
+    expect(run.status).toBe(1);
     expect(existsSync(calls) ? readFileSync(calls, "utf8").trim().split("\n").length : 0).toBe(3);
     const logged = readFileSync(join(runnerTemp, "agent-hooks-unreachable.log"), "utf8");
     expect(logged.startsWith(ROW)).toBe(true);

@@ -24,7 +24,13 @@ describe("bin/session-extras keeps what only Workflow needs at session start bes
     expect(run()).toMatchObject({ status: 1, stdout: "npm ci failed in the main checkout, so every worktree shares stale node_modules\n" });
   });
   it("names the land PRs that failed a check or conflict with main", () => {
-    const { run } = sessionExtras({ gh: "[[ \"$1 $2\" == \"pr list\" ]] && printf '#12\\n#15\\n'\nexit 0\n" });
+    const listed = JSON.stringify([
+      { number: 12, headRefName: "land/aaa", mergeStateStatus: "DIRTY", statusCheckRollup: [] },
+      { number: 15, headRefName: "land/bbb", mergeStateStatus: "CLEAN", statusCheckRollup: [{ conclusion: "FAILURE" }] },
+      { number: 16, headRefName: "land/ccc", mergeStateStatus: "CLEAN", statusCheckRollup: [{ conclusion: "SUCCESS" }] },
+      { number: 17, headRefName: "ticket/811", mergeStateStatus: "DIRTY", statusCheckRollup: [] },
+    ]);
+    const { run } = sessionExtras({ gh: `[[ "$1 $2" == "pr list" ]] && jq -r "\${@: -1}" <<'LISTED'\n${listed}\nLISTED\nexit 0\n` });
     expect(run().stdout).toBe("land PRs #12, #15 failed a check or conflict with main; ask Claude to look\n");
   });
   it("names at most eight stuck land PRs so the note stays one line", () => {

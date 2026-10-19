@@ -54,7 +54,10 @@ export const TICKET_PREFIX = "ticket/";
 export const OWNER = "collod873";
 export const MACHINE = "collod873-machine[bot]";
 export const OWNER_CALL = "owner call";
-const KEYED: Record<string, string> = { TICKET, BUG, SPEC, NOTE, RESEARCH, OWNER_STEP, BUILDING, CHECKING, QUEUED, RESOLVING, LANDING, SLICING, RESEARCHING, WAITING, PAUSED, STUCK, TICKET_PREFIX, OWNER, MACHINE, OWNER_CALL };
+type SpelledAs<Key extends string> = Lowercase<Key> extends `${infer Head}_${infer Tail}` ? `${Head}-${Tail}` : Lowercase<Key>;
+const namedAsSpelled = <Keyed extends { [Key in keyof Keyed & string]: SpelledAs<Key> }>(keyed: Keyed): Keyed => keyed;
+const LABEL_KEYS = namedAsSpelled({ TICKET, BUG, SPEC, NOTE, RESEARCH, OWNER_STEP, BUILDING, CHECKING, QUEUED, RESOLVING, LANDING, SLICING, RESEARCHING, WAITING, PAUSED, STUCK });
+const KEYED: Record<string, string> = { ...LABEL_KEYS, TICKET_PREFIX, OWNER, MACHINE, OWNER_CALL };
 
 export const SPELLINGS: [key: string, spelling: string][] = [
   ...Object.entries(KEYED),

@@ -47,7 +47,7 @@ export interface Run {
 const SRC = import.meta.dirname;
 export const BIN = join(SRC, "..", "bin");
 const WORKFLOWS = join(SRC, "..", ".github", "workflows");
-const env = { ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_") && !name.startsWith("VITEST") && name !== "REASON" && name !== "TREE_PATH")), AGENT_HOOKS_SETTINGS: "", AGENT_SKILLS: "", GH_RETRY_SECONDS: "0" };
+const env = { ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_") && !name.startsWith("VITEST") && name !== "REASON" && name !== "TREE_PATH" && name !== "CLAUDE_CODE_SESSION_ID")), AGENT_HOOKS_SETTINGS: "", AGENT_SKILLS: "", GH_RETRY_SECONDS: "0" };
 
 export interface WorkflowStep {
   id?: string;
@@ -345,7 +345,7 @@ export function filing({
   return {
     repo,
     run: (args = ["build", "--title", title, "--body-file", "body.md"]) =>
-      execute(join(BIN, "file-issue"), repo, { PATH: `${join(root, "bin")}:${process.env.PATH}`, CLAUDE_CODE_SESSION_ID: sessionId ?? "" }, args),
+      execute(join(BIN, "file-issue"), repo, { PATH: `${join(root, "bin")}:${process.env.PATH}`, ...(sessionId === undefined ? {} : { CLAUDE_CODE_SESSION_ID: sessionId }) }, args),
   };
 }
 
@@ -471,6 +471,11 @@ export function fenceSays(argv: string, input: string) {
   const command = bash?.hooks[0]?.command;
   if (command === undefined) throw new Error("no Bash hook command in --settings");
   return spawnSync("bash", ["-c", command], { input, encoding: "utf8" });
+}
+
+export function filedAs(calls: string[][]): { title: string | undefined; labels: string[]; body: string | undefined; then: string[][] } {
+  const [call = [], ...then] = calls;
+  return { title: call[call.indexOf("--title") + 1], labels: call.filter((_, at) => call[at - 1] === "--label"), body: call[call.indexOf("--body") + 1], then };
 }
 
 export const askingBash = (command: unknown) => JSON.stringify({ tool_name: "Bash", tool_input: { command } });
