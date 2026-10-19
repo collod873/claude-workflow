@@ -109,14 +109,22 @@ const onlyUnmet = (verdict: string) => {
   return named.includes(NEEDS) && named.replace(UNMET, "").replace(/[\s,]/g, "") === "";
 };
 
-function checkRed(): string {
+export function readiedTree(): { contract: string; unready: string | undefined } {
+  const contract = onDisk(join(process.cwd(), CONTRACT)) ?? "";
+  return { contract, unready: setupRefusal(contract) };
+}
+
+type Checked = { red: string; verdict: string } | { unjudged: boolean };
+
+export function checked(): Checked {
   const { GITHUB_ACTIONS: _annotating, ...env } = process.env;
   const { stdout, stderr } = spawnSync("bash", ["-c", CHECK], { env: treePathed(env), encoding: "utf8" });
   const output = `${stdout}${stderr}`.trim();
   const verdict = stdout.trim().split("\n").at(-1) ?? "";
-  if (PASSED.test(verdict) || (FOREIGN && onlyUnmet(verdict))) return "";
+  if (PASSED.test(verdict)) return { unjudged: false };
+  if (FOREIGN && onlyUnmet(verdict)) return { unjudged: true };
   const log = LOGGED.exec(verdict)?.[1];
-  return [output, log === undefined ? "" : (onDisk(resolve(log)) ?? "")].join("\n");
+  return { red: [output, log === undefined ? "" : (onDisk(resolve(log)) ?? "")].join("\n"), verdict };
 }
 
 const buildIt = (contract: string) => [
@@ -159,7 +167,7 @@ export function handedOn({ ticket, body, red, contract = "", capture, woken, com
     ...linted(commitlint),
     "## You own it until it merges",
     "Every red on this ticket comes back to you until it merges. Read its Why first; `gh` reads any run. If the reason above names a merge conflict, merge main in and resolve it yourself, keeping the ticket's Why over main's conflicting change. Answer one outcome:",
-    `- \`code\`: build or fix it, or change nothing on a flake; the machine commits, runs \`${CHECK}\`, hands back red, pushes green or reruns the red Check.`,
+    `- \`code\`: build or fix it, or change nothing on a flake; the machine commits, runs \`${CHECK}\`, hands back red, or pushes green with its check posted as the head's status and reruns a red review.`,
     "- `ticket`: its `## Done when` is wrong; return the ticket rewritten against its Why as `body`, Why byte-identical; it is posted on the ticket, and you build it in this run.",
     `- \`split\`: too big for one build; file \`tickets\` that build at once, each with \`done\` as ${DONE_SENTENCES}. What must wait for them stays as \`body\`, Why byte-identical, and builds once they merge.`,
     "- `close`: the ticket should not exist as written, and nothing should replace it, as for a gate you cannot make pass, since a gate is proven first.",
@@ -338,8 +346,8 @@ function unconflicted(ticket: string): Round {
   return { red: `The PR of #${ticket} is open in conflict with main, so no check runs on it: merge origin/main into this branch, resolve the conflict, and answer \`code\`.` };
 }
 
-function saved(ticket: string, logs: string): Round {
-  const save = spawnSync(machineBin("save"), [ticket], { encoding: "utf8" });
+function saved(ticket: string, logs: string, unjudged: boolean): Round {
+  const save = spawnSync(machineBin("save"), [ticket, ...(unjudged ? ["--unjudged"] : [])], { encoding: "utf8" });
   if (save.status === 0) return unconflicted(ticket);
   if (save.status === REPO_FAULT) return { ended: calledOwner(ticket, save.stderr.trim()) };
   return { red: `Save could not push this branch or open its PR:\n\n${tailOf(onDisk(join(logs, `save-${ticket}.log`)) ?? save.stderr, TAIL_CAP)}` };
@@ -347,8 +355,8 @@ function saved(ticket: string, logs: string): Round {
 
 function redOrSaved(ticket: string, logs: string): Round {
   if (gitRead(["rev-list", "--count", "origin/main..HEAD"], "the commits past main could not be read, so nothing is pushed") === "0") return { red: "You answered `code`, and this branch has no commits past main, so there is nothing to push: build the ticket, or answer `close` if main already does what it asks." };
-  const red = checkRed();
-  return red === "" ? saved(ticket, logs) : { red: repaired(red) };
+  const judged = checked();
+  return "red" in judged ? { red: repaired(judged.red) } : saved(ticket, logs, judged.unjudged);
 }
 
 const ranAs = (run: string | undefined) =>
@@ -357,17 +365,21 @@ const ranAs = (run: string | undefined) =>
 function checkingAgain(ticket: string, run: string | undefined, start: string, opensPr: boolean): number {
   const [event, at, attempt, ...named] = ranAs(run).split(" ");
   const workflow = named.join(" ");
-  if (head() !== start || opensPr) mark(ticket, CHECKING);
-  else if (event === "issues" || at !== head()) return calledOwner(ticket, "it is green unchanged and pushed nothing new, with no red check run of this head to rerun, so no check runs again");
-  else {
-    if (attempt !== "1") return calledOwner(ticket, `its red ${workflow} already reran once, and it is green here unchanged`);
-    const again = gh(["run", "rerun", String(run), "--failed"]);
-    if (again.status !== 0) return calledOwner(ticket, `it is green unchanged and the rerun of its red ${workflow} was refused: ${quoted((again.stderr || again.stdout).trim().split("\n")[0] ?? "")}`);
-    mark(ticket, CHECKING, "--untry");
-    console.log(`fix: #${ticket} is green unchanged, so its red ${workflow} reruns`);
+  if (head() !== start || opensPr) {
+    mark(ticket, CHECKING);
+    console.log(`fix: #${ticket} is green and pushed with its check posted, so its PR merges once reviewed`);
     return 0;
   }
-  console.log(`fix: #${ticket} is green and pushed, so its PR checks run again`);
+  if (event === "issues" || at !== head()) {
+    mark(ticket, CHECKING);
+    console.log(`fix: #${ticket} is green unchanged with its check posted anew, so its PR merges once reviewed`);
+    return 0;
+  }
+  if (attempt !== "1") return calledOwner(ticket, `its red ${workflow} already reran once, and it is green here unchanged`);
+  const again = gh(["run", "rerun", String(run), "--failed"]);
+  if (again.status !== 0) return calledOwner(ticket, `it is green unchanged and the rerun of its red ${workflow} was refused: ${quoted((again.stderr || again.stdout).trim().split("\n")[0] ?? "")}`);
+  mark(ticket, CHECKING, "--untry");
+  console.log(`fix: #${ticket} is green unchanged, so its red ${workflow} reruns`);
   return 0;
 }
 
@@ -404,8 +416,7 @@ function ownTicket(ticket: string, run: string | undefined): number {
   let body = asked.body;
   let session = savedSession(ticket);
   if (session === undefined && failed !== undefined) console.error(`fix: #${ticket} has no session of its builder saved, so it starts fresh`);
-  const contract = onDisk(join(process.cwd(), CONTRACT)) ?? "";
-  const unready = setupRefusal(contract);
+  const { contract, unready } = readiedTree();
   if (unready !== undefined) return calledOwner(ticket, `its tree's setup failed: ${quoted(unready)}`);
   const commitlint = commitlinted();
   const opening = handedOn({

@@ -28,9 +28,9 @@ machine is copied into it. `.github/caller.yml` is its text. Its specs are tried
 readied by its contract's setup, and a ticket the closer closes there starts the re-slice through
 the caller's own `issues: closed`, since the App's close is heard. The closer wakes a builder by dispatching the caller file with
 `ticket` and `reason`, which GitHub starts only from the caller's default branch, so the file lands
-on main before any ticket there builds. A builder it reaches passes a check red only for steps
-named `(needs ...)`, which the machine's runner lacks, or whose receipts were not published; that
-repo's own CI judges its PR. A `DATABASE_URL` step is not one: the builder's job starts `postgres:16`.
+on main before any ticket there builds. A builder it reaches passes a check red only for
+`(needs ...)` steps, which the machine's runner lacks, or unpublished receipts; that repo's own CI
+judges its PR. A `DATABASE_URL` step is not one: the builder's job starts Postgres.
 `tickets.yml` judges its ticket PRs with the reviewer and meters, as `tickets / review`.
 _Avoid_: shim, wrapper, vendored workflow
 
@@ -89,13 +89,13 @@ reader, only a trigger. A step the check runs is one; call it a step.
 _Avoid_: validator, guardrail, lint
 
 **Check**, **step**, **receipt**:
-agent-hooks' words, as there. A check is one run of `check`, the one runner; a step is one named
-entry in `.claude/contract.json`, which is all the machine knows of any repo it builds, this
-one included; a receipt records a step's pass for exactly its inputs, so no step runs twice on
-one tree. The fast check runs mid-session; the full check (`--full`) at push, in the
-builder, and in `Check`'s `check` job on a ticket PR, beside the review and the meters. A landing's
-pre-push posts its pass as the commit's `check` status, the whole gate; `bin/land` merges at once
-(ADR-0008).
+agent-hooks' words. A check is one run of `check`; a step is one named entry in
+`.claude/contract.json`, all the machine knows of a repo it builds; a receipt records a step's pass
+for exactly its inputs, so no step runs twice on one tree. The fast check runs mid-session; the
+full check (`--full`) at push, in the builder and in the closer's branch update. Its pass, posted
+after the push as the head's `check` status by whoever pushed, is the whole check a PR merges on;
+`Check` runs no `check` job on a landing's or a ticket's PR, since a pending run of that name
+holds it (ADR-0008).
 _Avoid_: gate (for a step), gauntlet, a repo-local check script, static check
 
 **Meter**:
@@ -339,7 +339,7 @@ off once every piece of its split, fault it filed and issue its `## Waits on` na
 or `stuck` off a ticket that then holds neither picks it up from where it stands: with no PR it
 builds, with a red PR its builder resumes its session, with a green PR auto-merge comes back on at
 its head, and a green PR behind main gets the closer's own branch update: marked landing, or on a
-conflict reported at its head, marked resolving and its builder woken once. Taking either off an open spec that then holds neither reads where it stands, as a wave's
+conflict reported at its head or a red check, marked resolving and its builder woken once. Taking either off an open spec that then holds neither reads where it stands, as a wave's
 end does: a slice cut short slices again; a wave closed during the hold gets its wave check, then its
 slice, or only its slice once checked; with nothing left to slice, the done check runs. A wave still
 open waits for its last close.

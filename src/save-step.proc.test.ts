@@ -8,6 +8,7 @@ function savedWithAutoMerge<Saved extends ReturnType<typeof saving>>(saved: Save
   expect(heard(saved.run())).toEqual({ status: 0, stderr: "", lines: [expect.stringContaining(SAVED_PR)] });
   expect(saved.pushed()).toBe(saved.built);
   expect(saved.calls()).toEqual([
+    [expect.stringMatching(new RegExp(`^api -X POST repos/{owner}/{repo}/statuses/${saved.built} -f state=success -f context=check -f description=judged by its builder's full check before the push \\(#1345\\)$`)), saved.built],
     [expect.stringMatching(/^issue view 726\b/), saved.built],
     ...opening.map((call) => [expect.stringMatching(call), saved.built]),
     [expect.stringMatching(/^issue view 726 --json labels\b/), saved.built],
@@ -39,6 +40,36 @@ describe("the save step pushes the branch before anything can refuse it, and ope
     expect(result.stderr).toMatch(/kept/);
     expect(pushed()).toBe("");
     expect(calls()).toEqual([]);
+  });
+});
+
+describe("bin/save posts the builder's green check as the pushed head's check status, the whole check a ticket PR merges on, once the push has put the head on GitHub (#1345)", () => {
+  it("posts no status when the builder says the check left steps to the repo's own CI, so that CI's check is the one GitHub waits for", () => {
+    const saved = saving();
+
+    const result = saved.run("726", "--unjudged");
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(saved.pushed()).toBe(saved.built);
+    expect(saved.calls().some(([call]) => call?.startsWith("api -X POST") === true)).toBe(false);
+    expect(saved.calls().some(([call]) => call?.startsWith("pr merge") === true)).toBe(true);
+  });
+
+  it("ends red naming the stop, with the branch pushed and no PR opened, when GitHub refuses the status, since a head without it never merges", () => {
+    const saved = saving({ statusRefused: true });
+
+    const result = saved.run();
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr.trimEnd().split("\n")).toEqual([expect.stringMatching(/^save: #726 pushed to ticket\/726, but its green check could not be posted as the status its PR merges on; log /)]);
+    expect(saved.pushed()).toBe(saved.built);
+    expect(saved.calls().some(([call]) => call?.startsWith("pr create") === true)).toBe(false);
+    expect(saved.log().split("\n")[0]).toBe("1 refusals, stopped at: Save: the check status is refused");
+  });
+
+  it("refuses a second argument that is not --unjudged", () => {
+    expect(saving().run("726", "--judged")).toMatchObject({ status: 2, stdout: "", stderr: "save: usage: save <ticket number> [--unjudged]\n" });
   });
 });
 

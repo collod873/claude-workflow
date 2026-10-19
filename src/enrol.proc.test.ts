@@ -3,7 +3,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { ENROLLED_REVIEW } from "./post.ts";
-import { bare, CI, DEPLOY, ENROLLED as REPO, enrolling, key, PC_RUNS_ON } from "./scenarios.ts";
+import { MACHINE } from "./spelled.ts";
+import { bare, CI, CI_ON_EVERY_PR, DEPLOY, ENROLLED as REPO, enrolling, key, PC_RUNS_ON } from "./scenarios.ts";
 
 const CALLER = readFileSync(join(import.meta.dirname, "..", ".github", "caller.yml"), "utf8");
 const OFFER = `enrol: \`bin/runner ${REPO} pc\` moves its jobs to this PC; run one fresh full check there and watch its peak memory before leaving it on\n`;
@@ -291,6 +292,7 @@ const HELD_OFF_THE_PC = [
   "  pull_request:",
   "jobs:",
   "  check:",
+  `    if: \${{ !(github.event.sender.login == '${MACHINE}') }}`,
   "    runs-on: ubuntu-latest",
   "    services:",
   "      postgres:",
@@ -325,5 +327,17 @@ describe("bin/enrol says what a repo needs before its jobs suit this PC's runner
     const { run } = enrolling(bare({ variables: ["CI_RUNNER"] }));
 
     expect(run().stdout).toBe(`enrol: ${REPO} enrolled, 10 settings set\n`);
+  });
+});
+
+describe("bin/enrol names a CI check job that still runs on every PR, since GitHub holds a ticket PR behind a queued check run of the name the builder's status carries (#1345)", () => {
+  it("says to skip and rename the job on ticket and land branches, as check.yml does, before the PC lines", () => {
+    const { run } = enrolling(bare({ variables: ["CI_RUNNER"], files: { ".github/workflows/ci.yml": CI_ON_EVERY_PR } }));
+
+    expect(run().stdout.split("\n").slice(1)).toEqual([
+      `enrol: ${REPO} needs 1 change before its ticket PRs merge on the builder's check alone:`,
+      "- ci.yml's check job runs on the machine's pushes too, which GitHub then holds until it ends though the machine posted the check: skip and rename it there as check.yml here does (#1345)",
+      "",
+    ]);
   });
 });

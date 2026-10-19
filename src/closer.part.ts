@@ -73,6 +73,8 @@ export interface QueuedPr {
   refused?: string;
   upToDate?: boolean;
   checks?: "green" | "pending" | "red";
+  checkStatus?: "SUCCESS" | "FAILURE" | "PENDING";
+  checkRun?: "IN_PROGRESS" | "COMPLETED";
   autoMerge?: boolean;
   refusedBefore?: boolean;
   conflicts?: boolean;
@@ -93,7 +95,8 @@ function listed(pr: QueuedPr, head: string, reviewedAs: string) {
     headRefOid: head,
     autoMergeRequest: pr.autoMerge === false ? null : { mergeMethod: "MERGE" },
     statusCheckRollup: [
-      { __typename: "CheckRun", name: "check", status: "COMPLETED", conclusion: "SUCCESS" },
+      { __typename: "StatusContext", context: "check", state: pr.checkStatus ?? "SUCCESS" },
+      ...(pr.checkRun === undefined ? [] : [{ __typename: "CheckRun", name: "check", status: pr.checkRun, conclusion: pr.checkRun === "COMPLETED" ? "SUCCESS" : "" }]),
       { __typename: "CheckRun", name: "meters", status: "COMPLETED", conclusion: "FAILURE" },
       ...(pr.unreviewed === true ? [] : [{ __typename: "CheckRun", name: reviewedAs, status, conclusion }]),
     ],
@@ -121,6 +124,8 @@ export function closing({
   foreign = false,
   faultOrigin,
   closedIssue,
+  check = "green" as "green" | "red",
+  statusRefused = false,
 }: {
   ticket?: string;
   ticketBody?: string;
@@ -138,6 +143,8 @@ export function closing({
   foreign?: boolean;
   faultOrigin?: FaultOrigin;
   closedIssue?: string;
+  check?: "green" | "red";
+  statusRefused?: boolean;
 } = {}) {
   const root = scratch("closer-");
   const session = join(root, "session");
@@ -177,6 +184,16 @@ export function closing({
   openPrs.forEach((pr, at) => {
     if (pr.refusedBefore === true) plant(root, `pr-${pr.number}-comments.json`, authored([`PR #${pr.number} could not be brought up to date with main: ${pr.refused ?? ""}\n\nHead: \`${heads[at] ?? ""}\``]));
   });
+  const pushes = join(root, "pushes");
+  const refusing = openPrs.filter((pr) => pr.refused !== undefined);
+  if (refusing.length > 0) {
+    script(
+      join(origin, "hooks", "pre-receive"),
+      ["while read -r _old _new ref; do", `  printf '%s\\n' "$ref" >>"${pushes}"`, "  case $ref in", ...refusing.map((pr) => `    refs/heads/${pr.branch ?? `ticket/${pr.ticket}`}) printf '%s\\n' '${pr.refused ?? ""}' >&2; exit 1 ;;`), "  esac", "done", ""].join("\n"),
+    );
+  }
+  const checks = join(root, "check-calls");
+  script(join(root, "bin", "check"), `printf '%s %s\\n' "$PWD" "$*" >>"${checks}"\n${check === "green" ? "printf 'check: ok, 2 steps in 0.3s\\n'" : "printf 'check: red test src/stops.test.ts:4; log /nowhere/check-full.log\\n'\nexit 1"}\n`);
   script(
     join(root, "bin", "gh"),
     [
@@ -218,7 +235,7 @@ export function closing({
       "    ;;",
       `  *"pr list"*) printf '%s\\n' '${JSON.stringify(openPrs.map((pr, at) => listed(pr, heads[at] ?? "", calledFrom === undefined || calledFrom.startsWith(`${MACHINE_REPO}/`) ? "review" : ENROLLED_REVIEW)))}' ;;`,
       ...openPrs.filter((pr) => pr.refusedBefore === true).map((pr) => `  *"issues/${pr.number}/comments"*) cat "${join(root, `pr-${pr.number}-comments.json`)}" ;;`),
-      ...openPrs.map((pr) => `  *"pr update-branch ${pr.number}"*) ${pr.refused === undefined ? "exit 0" : `printf '%s\\n' '${pr.refused}' >&2; exit 1`} ;;`),
+      ...(statusRefused ? ["  *\"api -X POST repos/{owner}/{repo}/statuses/\"*) printf 'gh: Server Error (HTTP 502)\\n' >&2; exit 1 ;;"] : []),
       ...openPrs.filter((pr) => pr.mergeRefused !== undefined).map((pr) => `  *"pr merge ${pr.number} "*) printf '%s\\n' '${pr.mergeRefused ?? ""}' >&2; exit 1 ;;`),
       ...(prUnreadable ? ["  *\"pr view 900 \"*) printf 'gh: Bad credentials (HTTP 401)\\n' >&2; exit 1 ;;"] : []),
       `  *"pr view"*) printf '%s\\n' '${FAST_TIMING.prOpened}' ;;`,
@@ -232,9 +249,14 @@ export function closing({
     if (markRefusal === undefined) symlinkSync(join(BIN, "mark"), join(session, "bin", "mark"));
     else script(join(session, "bin", "mark"), refusedMark(markRefusal));
   }
+  const lines = (file: string) => (existsSync(file) ? readFileSync(file, "utf8").trimEnd().split("\n") : []);
   return {
     session,
     heads,
+    branchHead: (branch: string) => git(session, "--git-dir", origin, "rev-parse", `refs/heads/${branch}`),
+    parentsOf: (sha: string) => git(session, "--git-dir", origin, "rev-list", "--parents", "-n", "1", sha).split(" ").slice(1),
+    checked: () => lines(checks),
+    pushes: () => lines(pushes),
     calls: () => readdirSync(callsDir).sort((a, b) => Number(a) - Number(b)).map((file) => readFileSync(join(callsDir, file), "utf8")),
     output: () => (existsSync(output) ? readFileSync(output, "utf8") : ""),
     repos: () => readdirSync(reposDir).sort((a, b) => Number(a) - Number(b)).map((file) => readFileSync(join(reposDir, file), "utf8")),
@@ -251,6 +273,7 @@ export function closing({
           GITHUB_REPOSITORY: "collod873/claude-workflow",
           GITHUB_RUN_ID: CLOSE_RUN_ID,
           GITHUB_OUTPUT: output,
+          GH_RETRY_SECONDS: "0",
           ...(calledFrom === undefined ? {} : { CALLED_FROM: calledFrom }),
           ...(foreign ? { MACHINE_BIN: BIN } : {}),
         },

@@ -51,6 +51,10 @@ onto_main() {
 
 onto_main
 
+posted() {
+  call "gh api statuses" gh api -X POST "repos/{owner}/{repo}/statuses/$head" -f state=success -f "context=$1" -f "description=$2"
+}
+
 if [[ -z $(git rev-list origin/main..HEAD) ]]; then
   printf 'Nothing to land: HEAD is already on origin/main.\n'
   exit 0
@@ -84,7 +88,13 @@ branch="land/${head:0:12}"
 url=
 for (( round = 1; ; round++ )); do
   call "git push" git push --quiet --force origin "HEAD:refs/heads/$branch"
-  call "gh api statuses" gh api -X POST "repos/{owner}/{repo}/statuses/$head" -f state=success -f context=review -f "description=skipped: a session landing is judged by its pre-push, not reviewed (ADR-0008)"
+  if ! check --full --covered >/dev/null 2>"$err"; then
+    { printf -- '--- check --full --covered ---\n'; cat "$err"; } >>"$log"
+    printf 'land: no receipt covers the pushed tree, so no check status is posted and nothing merges; run check --full and land again\n' >&2
+    exit 1
+  fi
+  posted check "judged on the owner's PC by its pre-push, before the push (ADR-0008)"
+  posted review "skipped: a session landing is judged by its pre-push, not reviewed (ADR-0008)"
   if [[ -z $url ]]; then
     call "gh pr create" gh pr create --base main --head "$branch" \
       --title "$(git log -1 --format=%s HEAD)" \

@@ -203,7 +203,7 @@ function yamlCode(text: string): Code[] {
       const shell = key === "run" && isMap(path.at(-1)) && isSeq(path.at(-2)) && isPair(steps) && isScalar(steps.key) && steps.key.value === "steps";
       const block = pair.value.type === Scalar.BLOCK_LITERAL || pair.value.type === Scalar.BLOCK_FOLDED;
       const first = counter.linePos(pair.value.range[0]).line + (block ? 1 : 0);
-      const value = key === "if" ? pair.value.value.replace(SENDER_TEST, "") : pair.value.value;
+      const value = key === "if" || key === "name" ? pair.value.value.replace(SENDER_TEST, "") : pair.value.value;
       value.split("\n").forEach((line, at) => found.push({ line: first + at, text: shell ? uncommented(line) : line, shell }));
     },
   });

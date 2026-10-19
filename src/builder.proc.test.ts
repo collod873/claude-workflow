@@ -63,7 +63,7 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     const own = fixing({ claude: FIXES, check: unmet });
 
     expect(foreign.run("811").status).toBe(0);
-    expect(foreign.saved()).toEqual(["811"]);
+    expect(foreign.saved(), "tells save the check left steps to the repo's CI, so save posts no check status").toEqual(["811 --unjudged"]);
     expect(foreign.marked()).toEqual(["811 building", "811 checking"]);
     expect(foreign.handed()[0]).toContain("`<step> (needs <VAR>)`");
     expect(own.run("811").status).toBe(1);
@@ -81,9 +81,10 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
 
     expect(result.status, result.stderr).toBe(0);
     expect(readFileSync(join(session, "..", "check-out"), "utf8")).toMatch(/^check: red integration \(needs DATABASE_URL\)/m);
-    expect(saved()).toEqual(["811"]);
+    expect(saved()).toEqual(["811 --unjudged"]);
     expect(opened()).toEqual(["collod873/Lumaria https://github.com/collod873/Lumaria/pull/9811"]);
     expect(calls().filter((args) => args[0] === "pr").map((args) => args.slice(0, 3).join(" "))).toEqual(["pr view ticket/811", "pr create --base", "pr merge ticket/811"]);
+    expect(calls().some((args) => args[0] === "api" && args.includes("context=check")), "a check left to the repo's CI posts no status").toBe(false);
   });
 
   it("passes a foreign tree red only for an unmet need though its receipts were not published, as a green check whose receipts were not is passed (#1147)", () => {
@@ -91,7 +92,7 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     const { run, saved } = fixing({ claude: FIXES, check: unpublished, calledFrom: "collod873/Lumaria/.github/workflows/machine.yml@refs/heads/main" });
 
     expect(run("811").status).toBe(0);
-    expect(saved()).toEqual(["811"]);
+    expect(saved()).toEqual(["811 --unjudged"]);
   });
 
   it("holds a foreign tree red when anything beside an unmet need is red (#1142)", () => {
@@ -492,7 +493,7 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(handed()[1]).toContain("files the machine's fault as one ticket or more in `tickets`");
   });
 
-  it("reruns only the red jobs of a Check it left unchanged and green, and never restarts a Build", () => {
+  it("reruns only the red jobs of a review it left unchanged and green, and never restarts a Build, whose unchanged green head merges on the check save posts anew (#1345)", () => {
     const flake = fixing({ ranAs: "Check", ranOn: "pull_request_target" });
     const fixed = fixing({ ranAs: "Check", ranOn: "pull_request_target", claude: FIXES });
     const built = fixing({ ranAs: "Build" });
@@ -503,10 +504,13 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(fixed.run("811", "555").status).toBe(0);
     expect(fixed.marked()).toEqual(["811 building --try", "811 checking"]);
     expect(fixed.reruns()).toEqual([]);
-    expect(built.run("811", "555").status).toBe(1);
+    const result = built.run("811", "555");
+    expect(result.status, result.stderr).toBe(0);
     expect(built.reruns()).toEqual([]);
     expect(built.saved()).toEqual(["811"]);
-    expect(built.ticketComments().at(-1), "a red Build of an unchanged branch leaves nothing to rerun, and says so").toContain("no check runs again");
+    expect(built.marked()).toEqual(["811 building --try", "811 checking"]);
+    expect(built.ticketComments()).toEqual([]);
+    expect(result.stdout).toContain("green unchanged with its check posted anew");
   });
 
   it("reruns the red check of an enrolled repo whose check workflow is named CI, not Check, still only once (#1208)", () => {
@@ -521,13 +525,16 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(again.ticketComments().at(-1)).toContain("its red CI already reran once");
   });
 
-  it("says on the ticket that no check runs again when it pushes nothing new and has no red check to rerun, instead of marking it checking (#1208)", () => {
-    const { run, marked, reruns, ticketComments } = fixing({ reason: "the owner asked for another look" });
+  it("marks checking and calls no one when it pushes nothing new and has no red run to rerun, since save posted its check for the unchanged head and the PR merges on it (#1208, #1345)", () => {
+    const { run, marked, reruns, ticketComments, saved } = fixing({ reason: "the owner asked for another look" });
 
-    expect(run("811").status).toBe(1);
+    const result = run("811");
+
+    expect(result.status, result.stderr).toBe(0);
     expect(reruns()).toEqual([]);
-    expect(marked()).not.toContain("811 checking");
-    expect(ticketComments().at(-1)).toContain("no check runs again");
+    expect(saved()).toEqual(["811"]);
+    expect(marked()).toContain("811 checking");
+    expect(ticketComments()).toEqual([]);
   });
 
   it("reruns a red Check only once, then calls the owner, so an unchanged branch cannot loop through Check", () => {
