@@ -1,7 +1,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, isAbsolute, join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { agedLogs, cloned } from "./scenarios.ts";
@@ -10,60 +10,50 @@ const land = fileURLToPath(new URL("../bin/land", import.meta.url));
 
 const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_")));
 
-const githubMergesLandBranches = `#!/bin/bash
-set -euo pipefail
-while read -r _ pushed ref; do
-  [[ $ref == refs/heads/land/* ]] || continue
-  merge=$(git commit-tree "$pushed^{tree}" -p "$(git rev-parse main)" -p "$pushed" -m merged)
-  git update-ref refs/heads/main "$merge"
-done
-`;
-
-const githubMergesLandBranchesAfterAMoment = `#!/bin/bash
-set -euo pipefail
-read -r _ pushed ref
-( sleep 1; git update-ref refs/heads/main "$(git commit-tree "$pushed^{tree}" -p "$(git rev-parse main)" -p "$pushed" -m merged)" ) >/dev/null 2>&1 &
-`;
-
 function git(cwd: string, ...args: string[]): string {
   return execFileSync("git", args, { cwd, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 }
 
 const PR = "https://github.com/collod873/claude-workflow/pull/1";
+const REFUSAL = "GraphQL: Pull Request is not mergeable (mergePullRequest)";
+const SKIPPED_REVIEW = "description=skipped: a session landing is judged by its pre-push, not reviewed (ADR-0008)";
 
-interface PrView {
-  state?: "OPEN" | "MERGED" | "CLOSED";
-  mergeStateStatus?: string;
-  headRefOid?: string;
-  statusCheckRollup?: { name?: string; context?: string; status?: string; conclusion?: string; state?: string }[];
-}
+type Merge = "merged" | "refused";
 
-const checking: PrView = { statusCheckRollup: [{ name: "check", status: "IN_PROGRESS", conclusion: "" }] };
-
-function recordingGh(root: string, prViews: PrView[] | "unreadable") {
+function recordingGh(root: string, remote: string, { merges, views, mainMovesOnRefusal }: { merges: Merge[]; views: string[]; mainMovesOnRefusal: boolean }) {
   const dir = join(root, "gh");
   mkdirSync(dir);
   const path = join(dir, "gh");
   const log = join(dir, "argv.jsonl");
-  const views = join(dir, "views");
-  mkdirSync(views);
-  if (prViews !== "unreadable") prViews.forEach((view, at) => writeFileSync(join(views, String(at + 1)), JSON.stringify({ state: "OPEN", mergeStateStatus: "BLOCKED", headRefOid: "a".repeat(40), statusCheckRollup: [], ...view })));
+  const counted = (name: string) => `$(( $(ls ${JSON.stringify(dir)} | grep -c ${name}-) + 1 ))`;
   writeFileSync(
     path,
     [
       "#!/bin/bash",
       `python3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "$@" >> ${JSON.stringify(log)}`,
-      `[[ "$1 $2" == "pr create" ]] && echo ${PR}`,
-      'if [[ "$1 $2" == "pr view" ]]; then',
-      ...(prViews === "unreadable"
-        ? ["  printf 'HTTP 401: Bad credentials\\n' >&2", "  exit 1"]
-        : [
-            "  for (( at = 1; at <= $#; at++ )); do [[ ${!at} == --jq ]] && { next=$(( at + 1 )); query=${!next}; }; done",
-            `  seen=$(( $(ls ${JSON.stringify(views)} | grep -c seen) + 1 )); touch ${JSON.stringify(views)}/seen-$seen`,
-            `  view=${JSON.stringify(views)}/$seen; [[ -e $view ]] || view=${JSON.stringify(views)}/${prViews.length}`,
-            '  jq -r "$query" "$view"',
-          ]),
-      "fi",
+      `remote=${JSON.stringify(remote)}`,
+      `merges=(${merges.join(" ")})`,
+      `views=(${views.join(" ")})`,
+      'case "$1 $2" in',
+      `  "pr create") echo ${PR} ;;`,
+      '  "pr view")',
+      `    n=${counted("view")}; touch ${JSON.stringify(dir)}/view-$n`,
+      "    (( n > ${#views[@]} )) && n=${#views[@]}",
+      '    echo "${views[n - 1]}"',
+      "    ;;",
+      '  "pr merge")',
+      `    n=${counted("merge")}; touch ${JSON.stringify(dir)}/merge-$n`,
+      "    (( n > ${#merges[@]} )) && n=${#merges[@]}",
+      "    if [[ ${merges[n - 1]} == merged ]]; then",
+      "      for (( at = 1; at <= $#; at++ )); do [[ ${!at} == --match-head-commit ]] && { next=$(( at + 1 )); sha=${!next}; }; done",
+      '      git -C "$remote" update-ref refs/heads/main "$(git -C "$remote" commit-tree "$sha^{tree}" -p main -p "$sha" -m merged)"',
+      "    else",
+      `      printf '%s\\n' ${JSON.stringify(REFUSAL)} >&2`,
+      ...(mainMovesOnRefusal ? ['      git -C "$remote" update-ref refs/heads/main "$(git -C "$remote" commit-tree "main^{tree}" -p main -m "another session landed")"'] : []),
+      "      exit 1",
+      "    fi",
+      "    ;;",
+      "esac",
       "exit 0",
       "",
     ].join("\n"),
@@ -79,10 +69,7 @@ function recordingGh(root: string, prViews: PrView[] | "unreadable") {
   return { path, calls };
 }
 
-function sessionAheadOfMain(
-  commits: number,
-  { githubMerges, prIsAlreadyClean = false, prViews = [checking], waitSeconds = "2", stallSeconds }: { githubMerges: "at once" | "after a moment" | "never"; prIsAlreadyClean?: boolean; prViews?: PrView[] | "unreadable"; waitSeconds?: string; stallSeconds?: string },
-) {
+function sessionAheadOfMain(commits: number, { merges = ["merged"], views = ["BLOCKED"], mainMovesOnRefusal = false, rounds = "3" }: { merges?: Merge[]; views?: string[]; mainMovesOnRefusal?: boolean; rounds?: string } = {}) {
   const root = mkdtempSync(join(tmpdir(), "land-"));
   onTestFinished(() => rmSync(root, { recursive: true, force: true }));
   const { remote, session } = cloned(root, "base");
@@ -91,28 +78,17 @@ function sessionAheadOfMain(
   for (let n = 1; n <= commits; n++) {
     git(session, "commit", "--quiet", "--allow-empty", "-m", `change ${n}`);
   }
-  if (githubMerges !== "never") {
-    const hook = githubMerges === "after a moment" ? githubMergesLandBranchesAfterAMoment : githubMergesLandBranches;
-    writeFileSync(join(remote, "hooks", "post-receive"), hook);
-    chmodSync(join(remote, "hooks", "post-receive"), 0o755);
-  }
-  const gh = recordingGh(root, prViews);
-  const githubRefusingAutoMerge = join(root, "refuses-auto-merge");
-  execFileSync("mkdir", [githubRefusingAutoMerge]);
-  writeFileSync(
-    join(githubRefusingAutoMerge, "gh"),
-    `#!/bin/bash\n[[ " $* " == *" --auto "* ]] && { printf 'Pull request is in clean status\\n' >&2; ${JSON.stringify(gh.path)} "$@"; exit 1; }\nexec ${JSON.stringify(gh.path)} "$@"\n`,
-  );
-  chmodSync(join(githubRefusingAutoMerge, "gh"), 0o755);
-  const ghDir = prIsAlreadyClean ? githubRefusingAutoMerge : dirname(gh.path);
+  const gh = recordingGh(root, remote, { merges, views, mainMovesOnRefusal });
   const run = (from = session) =>
     spawnSync(land, [], {
       cwd: from,
       encoding: "utf8",
-      env: { ...env, PATH: `${ghDir}:${process.env.PATH}`, LAND_WAIT_SECONDS: waitSeconds, ...(stallSeconds === undefined ? {} : { LAND_STALL_SECONDS: stallSeconds }) },
+      env: { ...env, PATH: `${join(root, "gh")}:${process.env.PATH}`, LAND_ROUNDS: rounds, LAND_PAUSE_SECONDS: "0" },
     });
   const head = git(session, "rev-parse", "HEAD");
-  return { root, remote, session, head, branch: `land/${head.slice(0, 12)}`, run, calls: gh.calls };
+  const merged = (call: string[]) => call[0] === "pr" && call[1] === "merge";
+  const posted = (call: string[]) => call[0] === "api" && call.includes("context=review");
+  return { root, remote, session, head, branch: `land/${head.slice(0, 12)}`, run, calls: gh.calls, merged, posted };
 }
 
 function landedElsewhere(root: string, remote: string, file: string, content: string): string {
@@ -127,22 +103,24 @@ function landedElsewhere(root: string, remote: string, file: string, content: st
   return git(other, "rev-parse", "HEAD");
 }
 
-describe("bin/land turns a session's commits into a PR that merges itself", () => {
-  it("opens a merge-commit PR from a land branch and brings local main up to the merged main", () => {
-    const { remote, session, head, branch, run, calls } = sessionAheadOfMain(2, { githubMerges: "at once" });
+describe("bin/land turns a session's commits into a PR it merges at once, on the check its pre-push posted (#1344)", () => {
+  it("opens a merge-commit PR from a land branch, posts review as skipped for the head, merges matching that head, and brings local main up to the merged main", () => {
+    const { remote, session, head, branch, run, calls, merged, posted } = sessionAheadOfMain(2);
 
     const result = run();
 
     expect(result.status, result.stderr).toBe(0);
     expect(calls()).toContainEqual(["pr", "create", "--base", "main", "--head", branch, "--title", "change 2", "--body", "- change 1\n- change 2"]);
-    expect(calls()).toContainEqual(["pr", "merge", branch, "--auto", "--merge", "--match-head-commit", head]);
+    expect(calls().filter(posted)).toEqual([["api", "-X", "POST", `repos/{owner}/{repo}/statuses/${head}`, "-f", "state=success", "-f", "context=review", "-f", SKIPPED_REVIEW]]);
+    expect(calls().filter(merged)).toEqual([["pr", "merge", branch, "--merge", "--match-head-commit", head]]);
+    expect(calls().map((call) => call[1])).toEqual(["-X", "create", "merge"]);
     expect(git(session, "rev-parse", "HEAD")).toBe(git(remote, "rev-parse", "main"));
     expect(git(session, "rev-parse", "HEAD^2")).toBe(head);
-    expect(result.stdout).toContain("Landed");
+    expect(result.stdout).toBe(`Landed ${PR}\n`);
   });
 
   it("brings the main checkout, detached as the session launcher leaves it, up to the merged main when landing from a session worktree (#1309)", () => {
-    const { root, remote, session: main, run } = sessionAheadOfMain(0, { githubMerges: "at once" });
+    const { root, remote, session: main, run } = sessionAheadOfMain(0);
     git(main, "checkout", "--quiet", "--detach");
     const worktree = join(root, "worktree");
     git(main, "worktree", "add", "--quiet", "-b", "ticket", worktree);
@@ -157,39 +135,8 @@ describe("bin/land turns a session's commits into a PR that merges itself", () =
     expect(readFileSync(join(main, "tool"), "utf8")).toBe("merged\n");
   });
 
-  it("merges straight away when GitHub refuses auto-merge because the PR has nothing left to wait for", () => {
-    const { remote, session, head, branch, run, calls } = sessionAheadOfMain(1, { githubMerges: "at once", prIsAlreadyClean: true });
-
-    const result = run();
-
-    expect(result.status, result.stderr).toBe(0);
-    expect(calls()).toContainEqual(["pr", "merge", branch, "--merge", "--match-head-commit", head]);
-    expect(git(session, "rev-parse", "HEAD")).toBe(git(remote, "rev-parse", "main"));
-  });
-
-  it("waits for a merge GitHub finishes a moment after auto-merge is switched on", () => {
-    const { remote, session, run } = sessionAheadOfMain(1, { githubMerges: "after a moment" });
-
-    const result = run();
-
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toContain("Landed");
-    expect(git(session, "rev-parse", "HEAD")).toBe(git(remote, "rev-parse", "main"));
-  });
-
-  it("leaves local main alone and ends red naming what it still waits on once it reaches its cap (#1171)", () => {
-    const { session, head, run } = sessionAheadOfMain(1, { githubMerges: "never" });
-
-    const result = run();
-
-    expect(result.status).toBe(1);
-    expect(git(session, "rev-parse", "HEAD")).toBe(head);
-    expect(result.stdout).toBe("");
-    expect(result.stderr).toMatch(/^land: still waiting on \S+ after 2s: check in_progress; it is left open\n$/);
-  });
-
   it("rebases the session's commits onto a main that moved since the session started, and lands them (#869)", () => {
-    const { root, remote, session, run, calls } = sessionAheadOfMain(1, { githubMerges: "at once" });
+    const { root, remote, session, run, calls, merged } = sessionAheadOfMain(1);
     const moved = landedElsewhere(root, remote, "theirs.txt", "theirs\n");
 
     const result = run();
@@ -197,12 +144,71 @@ describe("bin/land turns a session's commits into a PR that merges itself", () =
     expect(result.status, result.stderr).toBe(0);
     const rebased = git(remote, "rev-parse", "main^2");
     expect(git(remote, "rev-parse", "main^2^")).toBe(moved);
-    expect(calls()).toContainEqual(["pr", "merge", `land/${rebased.slice(0, 12)}`, "--auto", "--merge", "--match-head-commit", rebased]);
+    expect(calls().filter(merged)).toEqual([["pr", "merge", `land/${rebased.slice(0, 12)}`, "--merge", "--match-head-commit", rebased]]);
     expect(git(session, "rev-parse", "HEAD")).toBe(git(remote, "rev-parse", "main"));
   });
 
+  it("rebases, re-pushes the same branch and merges again when GitHub refuses the merge as behind a main that moved after the push", () => {
+    const { remote, session, head, branch, run, calls, merged, posted } = sessionAheadOfMain(1, { merges: ["refused", "merged"], views: ["BEHIND"], mainMovesOnRefusal: true });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    const rebased = git(remote, "rev-parse", "main^2");
+    expect(rebased).not.toBe(head);
+    expect(git(remote, "log", "-1", "--format=%s", "main^2^")).toBe("another session landed");
+    expect(calls().filter(merged)).toEqual([
+      ["pr", "merge", branch, "--merge", "--match-head-commit", head],
+      ["pr", "merge", branch, "--merge", "--match-head-commit", rebased],
+    ]);
+    expect(calls().filter(posted).map((call) => call[3])).toEqual([`repos/{owner}/{repo}/statuses/${head}`, `repos/{owner}/{repo}/statuses/${rebased}`]);
+    expect(calls().filter((call) => call[1] === "create")).toHaveLength(1);
+    expect(git(session, "rev-parse", "HEAD")).toBe(git(remote, "rev-parse", "main"));
+    expect(result.stdout).toBe(`Landed ${PR}\n`);
+  });
+
+  it("tries the merge again when GitHub has not yet worked out whether the PR is behind", () => {
+    const { head, branch, run, calls, merged } = sessionAheadOfMain(1, { merges: ["refused", "merged"], views: ["UNKNOWN"] });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(calls().filter(merged)).toEqual([
+      ["pr", "merge", branch, "--merge", "--match-head-commit", head],
+      ["pr", "merge", branch, "--merge", "--match-head-commit", head],
+    ]);
+  });
+
+  it.each<[string, { merges: Merge[]; views: string[]; rounds?: string }, string, number]>([
+    ["once its rounds of rebase and push are spent", { merges: ["refused"], views: ["BEHIND"], rounds: "2" }, `land: ${PR} did not merge in 2 rounds of rebase and push: ${REFUSAL}; it is left open\n`, 2],
+    ["at once on a refusal that is neither behind nor a conflict, such as a push that skipped the pre-push and so carries no check status", { merges: ["refused"], views: ["BLOCKED"] }, `land: GitHub refused to merge ${PR}: ${REFUSAL}; it is left open\n`, 1],
+  ])("ends red naming GitHub's refusal and leaves the PR open %s", (_, options, said, tried) => {
+    const { session, head, run, calls, merged } = sessionAheadOfMain(1, options);
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe(said);
+    expect(calls().filter(merged)).toHaveLength(tried);
+    expect(calls().some((call) => call[1] === "close")).toBe(false);
+    expect(git(session, "rev-parse", "HEAD")).toBe(head);
+  });
+
+  it("closes the PR and says to land again when GitHub refuses the merge over a conflict with main", () => {
+    const { session, head, branch, run, calls } = sessionAheadOfMain(1, { merges: ["refused"], views: ["DIRTY"] });
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe(`land: ${PR} conflicts with main; closed it, so land again to rebase\n`);
+    expect(calls()).toContainEqual(["pr", "close", branch, "--delete-branch"]);
+    expect(git(session, "rev-parse", "HEAD")).toBe(head);
+  });
+
   it("lands nothing and says to rebase by hand when the session's commits conflict with a main that moved (#869)", () => {
-    const { root, remote, session, run, calls } = sessionAheadOfMain(0, { githubMerges: "at once" });
+    const { root, remote, session, run, calls } = sessionAheadOfMain(0);
     writeFileSync(join(session, "shared.txt"), "mine\n");
     git(session, "add", "shared.txt");
     git(session, "commit", "--quiet", "-m", "this session's change");
@@ -222,7 +228,7 @@ describe("bin/land turns a session's commits into a PR that merges itself", () =
   });
 
   it("lands nothing, and leaves it be, while the session is partway through a rebase of its own (#869)", () => {
-    const { root, remote, session, run, calls } = sessionAheadOfMain(1, { githubMerges: "at once" });
+    const { root, remote, session, run, calls } = sessionAheadOfMain(1);
     landedElsewhere(root, remote, "theirs.txt", "theirs\n");
     mkdirSync(join(session, ".git", "rebase-merge"));
 
@@ -234,95 +240,8 @@ describe("bin/land turns a session's commits into a PR that merges itself", () =
     expect(calls()).toEqual([]);
   });
 
-  it.each<[string, PrView, RegExp]>([
-    ["a required check failed", { statusCheckRollup: [{ name: "check", status: "COMPLETED", conclusion: "FAILURE" }] }, /^land: check failed on \S+; closed it, so fix it and land again\n$/],
-    ["a required check was cancelled (#1171)", { statusCheckRollup: [{ name: "check", status: "COMPLETED", conclusion: "CANCELLED" }] }, /^land: check ended cancelled on \S+; closed it, so land again\n$/],
-    ["a required check went stale (#1171)", { statusCheckRollup: [{ name: "review", status: "COMPLETED", conclusion: "STALE" }] }, /^land: review ended stale on \S+; closed it, so land again\n$/],
-    ["main moved under it with a conflict", { mergeStateStatus: "DIRTY" }, /^land: \S+ conflicts with main; closed it, so land again to rebase\n$/],
-    ["someone closed it", { state: "CLOSED" }, /^land: \S+ was closed without merging\n$/],
-  ])("waits no further, says why and exits non-zero when %s (#869)", (_, prView, said) => {
-    const { session, head, branch, run, calls } = sessionAheadOfMain(1, { githubMerges: "never", prViews: [prView] });
-
-    const result = run();
-
-    expect(result.status).toBe(1);
-    expect(result.stdout).toBe("");
-    expect(result.stderr).toMatch(said);
-    expect(git(session, "rev-parse", "HEAD")).toBe(head);
-    expect(calls().some((call) => call[0] === "pr" && call[1] === "close" && call[2] === branch)).toBe(prView.state !== "CLOSED");
-  });
-
-  it("reports landed when its PR merged in a way that left its head off main, such as a squash (#1171)", () => {
-    const { session, head, run } = sessionAheadOfMain(1, { githubMerges: "never", prViews: [checking, { state: "MERGED" }] });
-
-    const result = run();
-
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/^Landed \S+/);
-    expect(git(session, "rev-parse", "HEAD")).toBe(head);
-  });
-
-  it("merges its own PR, matching the head GitHub holds, once it is green, up to date and still open, and lands when that merge shows (#1171)", () => {
-    const green = "b".repeat(40);
-    const { branch, run, calls } = sessionAheadOfMain(1, {
-      githubMerges: "never",
-      waitSeconds: "10",
-      prViews: [checking, { mergeStateStatus: "CLEAN", headRefOid: green, statusCheckRollup: [{ name: "check", status: "COMPLETED", conclusion: "SUCCESS" }, { context: "meters", state: "SUCCESS" }] }, { state: "MERGED" }],
-    });
-
-    const result = run();
-
-    expect(result.status, result.stderr).toBe(0);
-    expect(calls()).toContainEqual(["pr", "merge", branch, "--merge", "--match-head-commit", green]);
-    expect(result.stdout).toMatch(/^Landed /);
-  });
-
-  it("merges nothing itself while GitHub says the PR is behind main, even with its checks green (#1171)", () => {
-    const { branch, run, calls } = sessionAheadOfMain(1, { githubMerges: "never", prViews: [{ mergeStateStatus: "BEHIND", statusCheckRollup: [{ name: "check", status: "COMPLETED", conclusion: "SUCCESS" }] }] });
-
-    const result = run();
-
-    expect(result.status).toBe(1);
-    expect(calls().filter((call) => call[0] === "pr" && call[1] === "merge" && call[2] === branch && !call.includes("--auto"))).toEqual([]);
-    expect(result.stderr).toContain("its merge, with GitHub calling it behind");
-  });
-
-  it.each([
-    ["no check ever started", [{}] as PrView[] | "unreadable", "no check has started"],
-    ["a check sat queued", [{ statusCheckRollup: [{ name: "check", status: "QUEUED", conclusion: "" }] }] as PrView[] | "unreadable", "check queued"],
-    ["every lookup of the PR failed", "unreadable" as PrView[] | "unreadable", "its lookups failing, last with: HTTP 401: Bad credentials"],
-  ])("ends red naming the cause, well before its cap, once nothing has moved for its stall time because %s (#1171)", (_, prViews, cause) => {
-    const { run } = sessionAheadOfMain(1, { githubMerges: "never", prViews, waitSeconds: "60", stallSeconds: "4" });
-
-    const result = run();
-
-    expect(result.status).toBe(1);
-    expect(result.stdout).toBe("");
-    expect(result.stderr).toBe(`land: nothing moved on ${PR} for 4s: ${cause}; it is left open\n`);
-  });
-
-  it("keeps waiting past its stall time while a check starts, finishes or the head moves (#1171)", () => {
-    const { run } = sessionAheadOfMain(1, {
-      githubMerges: "never",
-      waitSeconds: "8",
-      stallSeconds: "3",
-      prViews: [
-        {},
-        { statusCheckRollup: [{ name: "check", status: "QUEUED", conclusion: "" }] },
-        { statusCheckRollup: [{ name: "check", status: "IN_PROGRESS", conclusion: "" }] },
-        { statusCheckRollup: [{ name: "check", status: "COMPLETED", conclusion: "SUCCESS" }, { name: "review", status: "IN_PROGRESS", conclusion: "" }] },
-        { headRefOid: "c".repeat(40), statusCheckRollup: [{ name: "check", status: "QUEUED", conclusion: "" }] },
-      ],
-    });
-
-    const result = run();
-
-    expect(result.status).toBe(1);
-    expect(result.stderr).toMatch(/^land: still waiting on \S+ after 8s: check queued; it is left open\n$/);
-  });
-
   it("keeps a failing call's own output in a log and says one line naming it", () => {
-    const { remote, session, run } = sessionAheadOfMain(1, { githubMerges: "never" });
+    const { remote, session, run } = sessionAheadOfMain(1);
     writeFileSync(join(remote, "hooks", "pre-receive"), "#!/bin/bash\ncat >/dev/null\necho 'branch protection refused this push' >&2\nexit 1\n");
     chmodSync(join(remote, "hooks", "pre-receive"), 0o755);
 
@@ -335,7 +254,7 @@ describe("bin/land turns a session's commits into a PR that merges itself", () =
   });
 
   it("deletes its logs older than 7 days, keeps today's, and says nothing about either (#693)", () => {
-    const { session, run } = sessionAheadOfMain(0, { githubMerges: "at once" });
+    const { session, run } = sessionAheadOfMain(0);
     const { stale, fresh } = agedLogs(join(session, ".git", "machine-logs"), "land");
 
     const result = run();
@@ -346,7 +265,7 @@ describe("bin/land turns a session's commits into a PR that merges itself", () =
   });
 
   it("opens nothing when there is nothing past origin/main", () => {
-    const { run, calls } = sessionAheadOfMain(0, { githubMerges: "at once" });
+    const { run, calls } = sessionAheadOfMain(0);
 
     const result = run();
 

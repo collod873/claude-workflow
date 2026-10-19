@@ -29,9 +29,8 @@ readied by its contract's setup, and a ticket the closer closes there starts the
 the caller's own `issues: closed`, since the App's close is heard. The closer wakes a builder by dispatching the caller file with
 `ticket` and `reason`, which GitHub starts only from the caller's default branch, so the file lands
 on main before any ticket there builds. A builder it reaches passes a check red only for steps
-named `(needs ...)`, which the machine's runner lacks; that repo's own CI judges them on its PR.
-A `DATABASE_URL` step is not one: the builder's job starts `postgres:16`.
-It passes such a check even when its receipts were not published, as that repo's CI judges its PR.
+named `(needs ...)`, which the machine's runner lacks, or whose receipts were not published; that
+repo's own CI judges its PR. A `DATABASE_URL` step is not one: the builder's job starts `postgres:16`.
 `tickets.yml` judges its ticket PRs with the reviewer and meters, as `tickets / review`.
 _Avoid_: shim, wrapper, vendored workflow
 
@@ -90,12 +89,13 @@ reader, only a trigger. A step the check runs is one; call it a step.
 _Avoid_: validator, guardrail, lint
 
 **Check**, **step**, **receipt**:
-agent-hooks' words, used here exactly as there. A check is one run of `check`, the one
-runner; a step is one named entry in `.claude/contract.json`, which is all the machine knows of
-any repo it builds, this one included; a receipt records that a step passed for exactly its
-inputs, so no step runs twice for the same tree. The fast check runs mid-session, the full check
-(`--full`) at push, in the builder and in the `check` job of `Check`, the PR workflow, which runs
-the review and the meters beside it.
+agent-hooks' words, as there. A check is one run of `check`, the one runner; a step is one named
+entry in `.claude/contract.json`, which is all the machine knows of any repo it builds, this
+one included; a receipt records a step's pass for exactly its inputs, so no step runs twice on
+one tree. The fast check runs mid-session; the full check (`--full`) at push, in the
+builder, and in `Check`'s `check` job on a ticket PR, beside the review and the meters. A landing's
+pre-push posts its pass as the commit's `check` status, the whole gate; `bin/land` merges at once
+(ADR-0008).
 _Avoid_: gate (for a step), gauntlet, a repo-local check script, static check
 
 **Meter**:

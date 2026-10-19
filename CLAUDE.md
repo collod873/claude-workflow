@@ -27,8 +27,8 @@ it, and needs no row.
   carry no em dash.
 - Mid-session, run `check`, the fast check check-gate waits on; `check --full` is what
   pre-push and the PR's `check` job run. Both read their steps from `.claude/contract.json`.
-- Land a commit with `bin/land`: it rebases and waits until its PR merges or fails. `main` takes
-  no direct push.
+- Land a commit with `bin/land`: it rebases, pushes through the pre-push, whose green `check` status
+  is the whole gate, and merges its PR at once. `main` takes no direct push.
 - A worktree's `node_modules` links to the main checkout's: `rm node_modules && npm ci` before
   editing packages.
 

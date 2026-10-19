@@ -8,6 +8,8 @@ permissions:
 
 jobs:
   check:
+    name: "${{ startsWith(github.head_ref, 'land/') && 'judged on the owner PC before the push (ADR-0008)' || 'check' }}"
+    if: ${{ !startsWith(github.head_ref, 'land/') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -60,6 +62,7 @@ jobs:
           include-hidden-files: true
 
   review:
+    name: "${{ startsWith(github.head_ref, 'land/') && 'not reviewed, a session landing (ADR-0008)' || 'review' }}"
     if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
     timeout-minutes: 45

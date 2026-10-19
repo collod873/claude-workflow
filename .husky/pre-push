@@ -1,11 +1,22 @@
 only_side_refs=1
-while read -r _local_ref _local_sha remote_ref _remote_sha; do
+landings=
+while read -r _local_ref local_sha remote_ref _remote_sha; do
   case "$remote_ref" in
     refs/notes/* | refs/check/*) ;;
+    refs/heads/land/*)
+      only_side_refs=0
+      landings="$landings $local_sha"
+      ;;
     *) only_side_refs=0 ;;
   esac
 done
 if [ "$only_side_refs" = 1 ]; then
   exit 0
 fi
-check --full --publish
+check --full --publish || exit 1
+for sha in $landings; do
+  gh api -X POST "repos/{owner}/{repo}/statuses/$sha" -f state=success -f context=check -f "description=judged on the owner's PC by pre-push (ADR-0008)" >/dev/null || {
+    printf 'pre-push: the check passed but its status for %s could not be posted, so the push is refused: a landing without it never merges\n' "$sha" >&2
+    exit 1
+  }
+done

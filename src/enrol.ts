@@ -50,9 +50,23 @@ interface Flow {
   jobs?: Record<string, Job | null>;
 }
 
+interface RequiredCheck {
+  context: string;
+  integration_id?: number;
+}
+
 interface Rule {
   type: string;
-  parameters?: { required_status_checks?: { context: string }[] };
+  ruleset_id?: number;
+  parameters?: { required_status_checks?: RequiredCheck[] };
+}
+
+interface Ruleset {
+  name: string;
+  target: string;
+  enforcement: string;
+  conditions: unknown;
+  rules: Rule[];
 }
 
 function gh(args: string[], input?: string): string {
@@ -181,7 +195,17 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
 
   const caller = once(() => callerFor(ci()));
   const rules = () => read<Rule[]>(["api", `repos/${repo}/rules/branches/${held().default_branch}`]);
-  const requires = (context: string) => rules().some(({ type, parameters }) => type === "required_status_checks" && (parameters?.required_status_checks ?? []).some((required) => required.context === context));
+  const requiring = (context: string) => rules().filter(({ type, parameters }) => type === "required_status_checks" && (parameters?.required_status_checks ?? []).some((required) => required.context === context));
+  const requires = (context: string) => requiring(context).some(({ parameters }) => (parameters?.required_status_checks ?? []).some((required) => required.context === context && required.integration_id === undefined));
+  const fromAnySource = ({ integration_id: _pinned, ...required }: RequiredCheck): RequiredCheck => required;
+  const unpinned = (rule: Rule): Rule => (rule.parameters?.required_status_checks === undefined ? rule : { ...rule, parameters: { ...rule.parameters, required_status_checks: rule.parameters.required_status_checks.map(fromAnySource) } });
+  const unpin = (context: string): boolean => {
+    const pinned = requiring(context)[0]?.ruleset_id;
+    if (pinned === undefined) return false;
+    const { name, target, enforcement, conditions, rules: held } = read<Ruleset>(["api", `repos/${repo}/rulesets/${pinned}`]);
+    gh(["api", "-X", "PUT", `repos/${repo}/rulesets/${pinned}`, "--input", "-"], JSON.stringify({ name, target, enforcement, conditions, rules: held.map(unpinned) }));
+    return true;
+  };
   const write = (branch?: string) => {
     const sha = contents(CALLER)?.sha;
     gh(["api", "-X", "PUT", `repos/${repo}/contents/${CALLER}`, "-f", `message=${HANDED}`, ...(branch === undefined ? [] : ["-f", `branch=${branch}`]), "-f", `content=${Buffer.from(caller()).toString("base64")}`, ...(sha === undefined ? [] : ["-f", `sha=${sha}`])]);
@@ -266,6 +290,7 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
         return ours.some(({ type }) => type === "pull_request") && requires(CHECK);
       },
       set: () => {
+        if (unpin(CHECK)) return;
         ci();
         const ruleset = {
           name: "main lands only through a PR",
@@ -291,6 +316,7 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
       name: "main taking only a PR its review passed",
       held: () => requires(ENROLLED_REVIEW),
       set: () => {
+        if (unpin(ENROLLED_REVIEW)) return;
         if (textOf(CALLER)?.text !== caller()) {
           const open = openPr();
           if (open === undefined) throw new Refused(`the caller file on main runs no ${ENROLLED_REVIEW}, so main would wait on a review that never runs`);

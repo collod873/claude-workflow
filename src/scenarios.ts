@@ -624,7 +624,7 @@ interface Held {
   dependabot: string[];
   labels: string[];
   appKey: string;
-  rules: { type: string; parameters?: unknown }[];
+  rules: { type: string; ruleset_id?: number; parameters?: unknown }[];
   refused: Record<string, string>;
   writes: string[][];
 }
@@ -712,6 +712,20 @@ else if (args[0] === "api" && method === "PUT" && route === "user/installations/
 else if (args[0] === "api" && route === "apps/${MACHINE.replace("[bot]", "")}") out({ client_id: "Iv23client" });
 else if (args[0] === "api" && route === "repos/" + repo + "/rules/branches/main") out(held.rules);
 else if (args[0] === "api" && method === "POST" && route === "repos/" + repo + "/rulesets") { wrote(); held.rules.push(...JSON.parse(stdin()).rules); held.writes.at(-1).push("ruleset"); save(); out({}); }
+else if (args[0] === "api" && method === "GET" && route.startsWith("repos/" + repo + "/rulesets/")) {
+  const id = Number(route.split("/").at(-1));
+  const rules = held.rules.filter((rule) => rule.ruleset_id === id);
+  if (rules.length === 0) { process.stderr.write("gh: Not Found (HTTP 404)\n"); process.exit(1); }
+  out({ id, name: "main lands only through a PR", target: "branch", enforcement: "active", conditions: { ref_name: { include: ["~DEFAULT_BRANCH"], exclude: [] } }, rules });
+}
+else if (args[0] === "api" && method === "PUT" && route.startsWith("repos/" + repo + "/rulesets/")) {
+  wrote();
+  const id = Number(route.split("/").at(-1));
+  held.rules = [...held.rules.filter((rule) => rule.ruleset_id !== id), ...JSON.parse(stdin()).rules.map((rule) => ({ ...rule, ruleset_id: id }))];
+  held.writes.at(-1).push("ruleset");
+  save();
+  out({});
+}
 else if (args[0] === "variable" && args[1] === "list") out(held.variables.map((name) => ({ name })));
 else if (args[0] === "variable" && args[1] === "set") { wrote(); held.variables.push(args[2]); save(); }
 else if (args[0] === "secret" && args[1] === "list") out((args.includes("dependabot") ? held.dependabot : held.secrets).map((name) => ({ name })));

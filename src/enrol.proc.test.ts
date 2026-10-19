@@ -139,6 +139,23 @@ const STALE = CALLER.replace("    types: [created]\n", "");
 const HELD_FOR_CHECK = [{ type: "pull_request" }, { type: "required_status_checks", parameters: { required_status_checks: [{ context: "check" }] } }];
 
 describe("bin/enrol keeps an enrolled repo current with the owner's own login (#1155)", () => {
+  it("unpins check and the review from GitHub Actions in the ruleset main already has, so the status a pre-push posts satisfies it, and adds no second ruleset (#1344)", () => {
+    const pinned = [
+      { type: "pull_request", ruleset_id: 7 },
+      { type: "required_status_checks", ruleset_id: 7, parameters: { strict_required_status_checks_policy: true, required_status_checks: [{ context: "check", integration_id: 15368 }, { context: ENROLLED_REVIEW, integration_id: 15368 }] } },
+    ];
+    const { run, held } = enrolling(bare({ rules: pinned, allow_auto_merge: true, files: { ".github/workflows/ci.yml": CI.replace("name: Gate", "name: CI"), ".github/workflows/machine.yml": CALLER } }));
+
+    const result = run();
+
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+    const after = held();
+    expect(JSON.stringify(after.rules)).not.toContain("integration_id");
+    expect(after.rules.filter(({ type }) => type === "required_status_checks")).toHaveLength(1);
+    expect(after.writes.filter((args) => args.includes("ruleset")).map((args) => args.slice(0, 4).join(" "))).toEqual([`api -X PUT repos/${REPO}/rulesets/7`]);
+  });
+
   it("brings a stale caller file up to date through a PR that merges on its own once check passes, where main takes changes only through a PR", () => {
     const { run, held } = enrolling(bare({ rules: HELD_FOR_CHECK, allow_auto_merge: true, files: { ".github/workflows/ci.yml": CI.replace("name: Gate", "name: CI"), ".github/workflows/machine.yml": STALE } }));
 
