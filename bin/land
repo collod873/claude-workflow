@@ -1,6 +1,10 @@
 #!/bin/bash
 set -uo pipefail
 
+if [[ ${1:-} == -h || ${1:-} == --help ]]; then
+  printf 'land: usage: land, with no arguments; it lands HEAD on main through a PR\n'
+  exit 0
+fi
 if [[ $# -ne 0 ]]; then
   printf 'land: usage: land, with no arguments; it lands HEAD on main through a PR\n' >&2
   exit 2
@@ -155,5 +159,5 @@ fi
 
 main_checkout=$(git worktree list --porcelain | sed -n '1s/^worktree //p')
 if [[ $main_checkout != "$top" ]] && ! git -C "$main_checkout" merge --quiet --ff-only origin/main >/dev/null 2>&1; then # quiet: the line below names the checkout left behind
-  printf 'land: the main checkout %s could not fast-forward, so the tools ~/bin links into it are not the merged ones\n' "$main_checkout" >&2
+  printf 'land: the main checkout %s could not fast-forward, so the tools launched from it are not the merged ones\n' "$main_checkout" >&2
 fi
