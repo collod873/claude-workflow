@@ -3,13 +3,14 @@ import { createSign } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { parse, parseDocument } from "yaml";
+import { FAST_CHECK, FULL_CHECK } from "./fence.ts";
 import { ENROLLED_CALLER, ENROLLED_REVIEW } from "./post.ts";
 import { LABELS, MACHINE } from "./spelled.ts";
 
 const CALLER_TEXT = readFileSync(join(import.meta.dirname, "..", ".github", "caller.yml"), "utf8");
 const WORKFLOWS = ".github/workflows";
 const CALLER = `${WORKFLOWS}/${ENROLLED_CALLER}`;
-const CHECK = "check";
+const CHECK = FAST_CHECK;
 const BRANCH = "enrol/caller";
 const KEY = "CORE_APP_PRIVATE_KEY";
 const JWT_LIFE = 540;
@@ -101,13 +102,13 @@ function pcGaps(path: string, text: string): string[] {
   return Object.entries(flow.jobs ?? {}).flatMap(([id, job]) => {
     if (job === null || job.uses !== undefined) return [];
     const runsOn = typeof job["runs-on"] === "string" ? job["runs-on"] : (JSON.stringify(job["runs-on"]) ?? "nothing");
-    const skipsSlots = runsCi && isCheck(id, job) && !(job.steps ?? []).some(({ run }) => /\bbin\/check\b/.test(String(run ?? "")));
+    const skipsSlots = runsCi && isCheck(id, job) && !(job.steps ?? []).some(({ run }) => new RegExp(`\\b${FULL_CHECK}\\b`).test(String(run ?? "")));
     const pinned = Object.entries(job.services ?? {}).flatMap(([service, held]) =>
       (held?.ports ?? []).map(String).flatMap((port) => (port.includes(":") ? [`- ${file}'s ${id} job pins host port ${port.split(":").at(-2)} for ${service}, which two PC runners cannot share`] : [])),
     );
     return [
       ...(runsOn === PC_RUNS_ON ? [] : [`- ${file}'s ${id} job runs on ${runsOn}, not ${PC_RUNS_ON}, so it stays on GitHub's runners`]),
-      ...(skipsSlots ? [`- ${file}'s ${id} job runs its check without ~/bin/check, so it skips the PC's check slots`] : []),
+      ...(skipsSlots ? [`- ${file}'s ${id} job runs its check without check, so it skips the PC's check slots`] : []),
       ...pinned,
     ];
   });

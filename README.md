@@ -7,7 +7,7 @@ The machine that takes what the owner wants done and ships it very fast as very 
 
 ```
 .
-├── .claude/contract.json    # the steps ~/bin/check runs here
+├── .claude/contract.json    # the steps check runs here
 ├── bin/                     # the commands: bin/land, bin/file-issue, ...
 └── src/                     # the code they run, and its tests
 ```
