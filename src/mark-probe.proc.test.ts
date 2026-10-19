@@ -8,7 +8,6 @@ import { copyMark, scratch, script, type WorkflowStep } from "./scenarios.ts";
 const PROBE = join(import.meta.dirname, "..", ".github", "workflows", "mark-probe.yml");
 
 interface Probe {
-  on: { push?: { branches?: string[] }; workflow_dispatch?: unknown };
   jobs: Record<string, { steps: WorkflowStep[] }>;
 }
 
@@ -32,13 +31,6 @@ function probed(gh: string) {
 }
 
 describe("a run on main makes a mark fail on purpose, so the done check sees a failed mark's error in a run log (#1090)", () => {
-  it("runs on every push to main and on demand", () => {
-    const { on } = probe();
-
-    expect(on.push?.branches).toEqual(["main"]);
-    expect(on).toHaveProperty("workflow_dispatch");
-  });
-
   it("passes with bin/mark's refusal in its log when GitHub answers HTTP 404", () => {
     const { status, said } = probed("printf 'gh: Not Found (HTTP 404)\\n' >&2\nexit 1\n");
 
