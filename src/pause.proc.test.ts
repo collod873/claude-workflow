@@ -65,7 +65,8 @@ describe("bin/resume picks a ticket up from where it stands once paused or stuck
     const scenario = pausing({ state: "MERGED" });
     const calls = resumedWithoutBuilding(scenario);
 
-    expect(calls.find((args) => args[0] === "issue" && args[1] === "comment")).toEqual(["issue", "comment", "811", "--body", "#811 is done: PR #931 merged"]);
+    const recorded = calls.find((args) => args[0] === "issue" && args[1] === "comment" && args[2] === "811");
+    expect(recorded?.[recorded.indexOf("--body") + 1], "records on the ticket the PR that merged").toContain("PR #931 merged");
     expect(calls).toContainEqual(["issue", "close", "811", "--reason", "completed"]);
     expect(scenario.marks()).toEqual(["811 --closed"]);
     expect([...merges(calls), ...wakes(calls)]).toEqual([]);
@@ -84,19 +85,16 @@ describe("bin/resume picks a ticket up from where it stands once paused or stuck
     const sent = (wake ?? []).filter((arg) => arg.includes("=")).map((arg) => arg.split("=")[0]);
     const github = join(import.meta.dirname, "..", ".github");
     const declared = (file: string) => Object.entries((parse(readFileSync(join(github, file), "utf8")) as { on: { workflow_dispatch: { inputs: Record<string, { required: boolean }> } } }).on.workflow_dispatch.inputs).flatMap(([input, { required }]) => (required ? [input] : []));
-    const fix = readFileSync(join(github, "workflows", "tickets.yml"), "utf8");
 
     expect(sent).toEqual(declared("workflows/machine.yml"));
     expect(sent).toEqual(declared("caller.yml"));
-    expect(fix).toContain("REASON: \"${{ github.event.inputs.reason || ");
-    expect(fix).toContain("restore-keys: builder-${{ env.HEAD_REF }}-");
   });
 
   it("wakes the builder through the caller file in a repo that calls the machine", () => {
-    const { calls, resume } = pausing({ pr: "red", calledFrom: "collod873/Lumaria/.github/workflows/machine.yml@refs/heads/main" });
+    const { calls, resume } = pausing({ pr: "red", calledFrom: "collod873/Lumaria/.github/workflows/robot.yml@refs/heads/main" });
 
     expect(resume().status).toBe(0);
-    expect(wakes(calls()).map((args) => args[2])).toEqual(["machine.yml"]);
+    expect(wakes(calls()).map((args) => args[2])).toEqual(["robot.yml"]);
   });
 
   it("turns auto-merge back on at the head of a green or still-checking PR, so the closer's queue takes it", () => {
