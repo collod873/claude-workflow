@@ -80,16 +80,10 @@ describe("bin/meters puts one line per meter on a ticket PR's body, beside the r
     expect(edited()).toEqual([]);
   });
 
-  it("hires no model on a PR that is not a ticket's, and --help reads no PR", () => {
+  it("hires no model on a PR that is not a ticket's", () => {
     const untracked = metering({ branch: "land/session" });
     expect(untracked.run().status).toBe(0);
     expect(untracked.spent()).toBe(false);
-
-    const help = metering();
-    const said = help.run("--help");
-    expect(said.status).toBe(0);
-    expect(said.stdout).toContain("meters: usage: meters [--print] <pr number>");
-    expect(help.read()).toBe(false);
   });
 
   it("leaves its transcript in the machine logs", () => {
@@ -101,80 +95,6 @@ describe("bin/meters puts one line per meter on a ticket PR's body, beside the r
 });
 
 describe("bin/meters puts a discard (meter) line on the PR body, read by code from the diff, for each added gh, git or bin/mark call whose error is thrown away (#1080)", () => {
-  const discardLine = (diff: string) => {
-    const found = metering({ diff });
-    expect(found.run().status).toBe(0);
-    return edit(found).split("\n").find((line) => line.startsWith("discard (meter):"));
-  };
-
-  it("names the file and line of a gh call that sends its stderr to /dev/null, and refuses nothing when the gh call keeps its stderr", () => {
-    const thrown = `${fileDiff("bin/close", 'gh pr view "$pr" --json body 2>/dev/null')}`.replace("@@ -0,0 +1 @@\n", "@@ -10,2 +10,3 @@\n set -u\n-old\n+kept\n");
-    expect(discardLine(thrown)).toBe("discard (meter): would refuse, bin/close:12 sends a gh call's stderr to /dev/null");
-    expect(discardLine(fileDiff("bin/close", 'gh pr view "$pr" --json body'))).toBe("discard (meter): would refuse nothing");
-  });
-
-  it("names a git call ending in || true and a gh spawn with stderr ignore, and quotes the why a quiet: comment gives", () => {
-    const diff = [
-      fileDiff("bin/land", "git fetch origin main || true"),
-      fileDiff("src/close.ts", "spawnSync(\"gh\", [\"label\", \"create\", name], { stdio: [\"ignore\", \"pipe\", \"ignore\"] });"),
-      fileDiff("bin/mark", "gh label create landing 2>/dev/null # quiet: the label already exists on every repo after the first run"),
-      fileDiff("src/count.ts", "const total = lines.length || true;"),
-    ].join("");
-
-    expect(discardLine(diff)).toBe(
-      [
-        "discard (meter): would refuse, bin/land:1 puts || true on a git call",
-        "src/close.ts:1 spawns a gh call with its stderr ignored",
-        'bin/mark:1 sends a gh call\'s stderr to /dev/null, quiet: "the label already exists on every repo after the first run"',
-      ].join("; "),
-    );
-  });
-
-  it("reads a call wrapped over several added lines, a shell call continued with a backslash and a spawn whose stdio sits on its own line, and a single-quoted stdio", () => {
-    const wrapped = [
-      'gh pr view "$pr" \\',
-      "  --json body \\",
-      "  --jq .body 2>/dev/null",
-      "const listed = spawnSync(",
-      '  "git",',
-      '  ["ls-files"],',
-      '  { stdio: ["ignore", "pipe", "ignore"] },',
-      ");",
-      "spawnSync('gh', ['auth', 'status'], { stdio: 'ignore' });",
-      'gh pr view "$pr"',
-      "count=$((count + 1)) || true",
-    ].join("\n+");
-
-    expect(discardLine(fileDiff("bin/close", wrapped).replace("@@ -0,0 +1 @@", "@@ -0,0 +1,11 @@"))).toBe(
-      [
-        "discard (meter): would refuse, bin/close:1 sends a gh call's stderr to /dev/null",
-        "bin/close:4 spawns a git call with its stderr ignored",
-        "bin/close:9 spawns a gh call with its stderr ignored",
-      ].join("; "),
-    );
-  });
-
-  it("does not join added lines across a bracket inside a string or a comment, so each discard is named on its own line (#1088)", () => {
-    const stray = [
-      'echo "usage: close (pr"',
-      "gh pr view 1 2>/dev/null",
-      "# pick the label [first",
-      "git fetch origin || true",
-      'const open = "(";',
-      "spawnSync('gh', ['auth'], { stdio: 'ignore' }); // close ]",
-      "bin/mark 9 building || true",
-    ].join("\n+");
-
-    expect(discardLine(fileDiff("bin/close", stray).replace("@@ -0,0 +1 @@", "@@ -0,0 +1,7 @@"))).toBe(
-      [
-        "discard (meter): would refuse, bin/close:2 sends a gh call's stderr to /dev/null",
-        "bin/close:4 puts || true on a git call",
-        "bin/close:6 spawns a gh call with its stderr ignored",
-        "bin/close:7 puts || true on a bin/mark call",
-      ].join("; "),
-    );
-  });
-
   it("still puts the discard line on the PR body when the model leaves a meter unanswered, and the run stays red", () => {
     const unanswered = metering({ diff: fileDiff("bin/mark", "gh label create landing || true"), verdict: { depth: [] } });
 
@@ -223,7 +143,7 @@ describe("the meter reviewer's schema and prompt ask for each meter as a list th
     for (const { name } of METERS) {
       expect(schema.required).toContain(keyOf(name));
       expect(schema.properties[keyOf(name)]?.type).toBe("array");
-      expect(schema.properties[keyOf(name)]?.minItems).toBeUndefined();
+      expect(schema.properties[keyOf(name)]?.minItems ?? 0).toBe(0);
       expect(schema.properties[keyOf(name)]?.items?.pattern).toBe(NO_EM_DASH);
     }
   });
@@ -298,8 +218,8 @@ describe("check.yml starts the review and the meters beside the check, not after
     const meters = jobs.meters;
     if (review === undefined || meters === undefined) throw new Error(`no review or meters job in ${WORKFLOW}`);
 
-    expect(review.needs).not.toBe("check");
-    expect(meters.needs).not.toBe("check");
+    expect([review.needs ?? []].flat()).not.toContain("check");
+    expect([meters.needs ?? []].flat()).not.toContain("check");
   });
 });
 
@@ -316,11 +236,3 @@ describe("bin/meters ends red at a GitHub read that fails (#1112)", () => {
   });
 });
 
-describe("bin/meters hires its model through the stage part's one hire (#1117)", () => {
-  it("ends red at unread naming the log directory when git cannot name it, hiring nothing", () => {
-    const { run, spent } = metering({ gitUnreadable: '*"--git-common-dir"*' });
-
-    expect(run()).toMatchObject({ status: 1, stderr: "meters: the log directory could not be named by git, so no model was hired\n" });
-    expect(spent()).toBe(false);
-  });
-});

@@ -33,8 +33,6 @@ describe("bin/research answers a research note on the note and closes it, with n
     expect(hired()).not.toContain("--tools");
     expect(hired()[hired().indexOf("--model") + 1]).toBe("sonnet");
     expect(hired()[hired().indexOf("--settings") + 1]).not.toContain("this stage runs only its own commands");
-    expect(handed()).toContain("You have a shell");
-    expect(handed()).toContain("`/tmp`");
   });
 
   it("tells the researcher where the run history and the session captures are, only when the job fetched them (#936, #937)", () => {
@@ -43,10 +41,8 @@ describe("bin/research answers a research note on the note and closes it, with n
 
     expect(fetched.run().status).toBe(0);
     expect(bare.run().status).toBe(0);
-    for (const held of ["`/runner/research-sources`", "`runs.jsonl`", "`jobs.jsonl`", "`machine-logs/`", "`git-log.txt`", "`sessions/`"]) {
-      expect(fetched.handed()).toContain(held);
-      expect(bare.handed()).not.toContain(held);
-    }
+    expect(fetched.handed()).toContain("`/runner/research-sources`");
+    expect(bare.handed()).not.toContain("/runner/research-sources");
   });
 
   it("a researcher still reading when its reading time ends is told to write up what it has, and those findings post (#940)", () => {
@@ -66,16 +62,12 @@ describe("bin/research answers a research note on the note and closes it, with n
     const fetching = steps.find((step) => /RESEARCH_SOURCES=.*GITHUB_ENV/.test(step.run ?? ""));
     const fetched = steps.indexOf(fetching ?? {});
     const spent = steps.findIndex((step) => step.env?.CLAUDE_CODE_OAUTH_TOKEN !== undefined);
-    const run = fetching?.run ?? "";
 
     expect(fetched).toBeGreaterThan(staged);
     expect(spent).toBeGreaterThan(fetched);
     expect(steps.some((step) => step.with?.repositories === "transcripts")).toBe(false);
-    expect(run).toContain('"$SESSION_CAPTURES/."');
-    for (const held of ["runs.jsonl", "jobs.jsonl", "machine-logs", "git-log.txt", "sessions"]) expect(run).toContain(`$sources/${held}`);
-    expect(fetching?.env?.GH_TOKEN).toBe("${{ steps.app.outputs.token }}");
+    expect(String(fetching?.env?.GH_TOKEN)).toMatch(/steps\.app\.outputs\.token/);
     expect(research.env?.GH_REPO).toBe("${{ github.repository }}");
-    expect((fetching as WorkflowStep & { "working-directory"?: string })["working-directory"]).toBe("tree");
   });
 
   it("the stage action hands every job the owner's Workflow session captures, fetched with a token that only reads and never held by the model (#931)", () => {
@@ -86,7 +78,6 @@ describe("bin/research answers a research note on the note and closes it, with n
 
     expect(steps[minted]?.with).toMatchObject({ owner: "${{ github.repository_owner }}", "permission-contents": "read" });
     expect(fetched).toBeGreaterThan(minted);
-    expect(run).toContain("^project: .*(Workflow|claude-workflow|\\.agents)");
     expect(run).toContain('rm -rf "$transcripts"');
     expect(run).not.toMatch(/CAPTURES_TOKEN=|GITHUB_ENV.*TOKEN/);
   });

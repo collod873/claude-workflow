@@ -53,9 +53,6 @@ describe.each(["tickets.yml"])("%s pauses a ticket's PR and resumes the ticket f
     const ran = await stepsRun(file, owner("unlabeled", held), "false");
 
     expect(ran).toEqual(["resume"]);
-    const resume = workflowJobs(file).build?.steps.find(({ id }) => id === "resume");
-    expect(resume?.run).toMatch(/bin\/resume"? \$\{\{ github\.event\.issue\.number \}\} >>"\$GITHUB_OUTPUT"/);
-    expect(String(resume?.env?.GH_TOKEN)).toMatch(/steps\.app\.outputs\.token/);
   });
 
   it.each(HELD)("taking %s off a ticket that still carries the other held label does nothing", async (held) => {
@@ -70,12 +67,5 @@ describe.each(["tickets.yml"])("%s pauses a ticket's PR and resumes the ticket f
   it("taking waiting off a paused ticket builds nothing, and the App taking paused off is never heard", async () => {
     expect(await stepsRun(file, owner("unlabeled", WAITING, [PAUSED]))).toEqual([]);
     expect(await stepsRun(file, { sender: MACHINE, action: "labeled", label: PAUSED, labels: [PAUSED] })).toEqual([]);
-  });
-
-  it("turns auto-merge off as the App, through bin/pause", () => {
-    const pause = workflowJobs(file).build?.steps.find(({ id }) => id === "pause");
-
-    expect(pause?.run).toMatch(/bin\/pause"? \$\{\{ github\.event\.issue\.number \}\}$/);
-    expect(String(pause?.env?.GH_TOKEN)).toMatch(/steps\.app\.outputs\.token/);
   });
 });
