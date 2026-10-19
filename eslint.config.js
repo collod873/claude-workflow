@@ -14,6 +14,22 @@ export default tseslint.config(
     },
   },
   {
+    files: ["src/builder.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "./reviewer.ts",
+              message: "The builder borrows nothing from the reviewer, so a change to one leaves the other alone (#1121).",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ["**/*.test.ts"],
     ignores: ["**/*.proc.test.ts"],
     rules: {

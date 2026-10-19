@@ -8,11 +8,16 @@ const followUp = (line: string) => ["## Why", "", line, "", "> The Day clock spa
 const SPLIT_PIECE = followUp("Follow-up of #1089: its builder split it, since it does not fit one build.");
 const REVIEW_FOLLOW_UP = followUp("Follow-up of #1089: its review found");
 const fromLumaria = (opener: string, parent: object | undefined, body?: string) => ({ repo: "collod873/Lumaria", ticket: "931", opener, parent, body });
+const ticketWhy = (line: string) => `## Why\n\n${line}\n\n## Done when\n\n- The builder builds it.\n`;
 const parentReads = (calls: string[][]) => calls.filter((args) => args.some((arg) => arg.endsWith("/parent")));
 
 describe("bin/admit lets a ticket into its build before anything marks it (#1022)", () => {
-  it("admits the owner's own ticket without reading any parent", () => {
-    const { run, calls, comments } = admitting();
+  it.each([
+    ["the owner's own ticket", {}],
+    ["the reviewer's follow-up under no spec", { opener: APP, body: ticketWhy("Follow-up of #865: its review found this after its builder's repair.") }],
+    ["the builder's follow-up under no spec", { opener: APP, body: ticketWhy("Follow-up of #865: its builder split it, since it does not fit one build.") }],
+  ])("admits %s without reading any parent", (_, scenario) => {
+    const { run, calls, comments } = admitting(scenario);
 
     const result = run();
 
@@ -77,6 +82,31 @@ describe("bin/admit lets a ticket into its build before anything marks it (#1022
 
     expect(result.stdout).toBe("admitted=false\n");
     expect(comments()[0]).toContain("collod873/Lumaria#931");
+    expect(comments()[0]).toContain("no spec");
+  });
+});
+
+describe("bin/admit lets the App's ticket in only under an open spec the owner opened, or as a follow-up the reviewer or the builder wrote (#1022)", () => {
+
+  it.each([
+    ["a closed spec", { ...SPEC, state: "closed" }, "open"],
+    ["a spec the App opened", { ...SPEC, user: { login: APP } }, "the owner"],
+    ["an issue not labelled spec", { ...SPEC, labels: [{ name: "ticket" }] }, "spec"],
+  ])("refuses a ticket the App opened under %s, saying why on the ticket", (_, parent, why) => {
+    const { run, comments } = admitting({ opener: APP, parent });
+
+    expect(run().stdout).toBe("admitted=false\n");
+    expect(comments()).toHaveLength(1);
+    expect(comments()[0]).toContain(why);
+  });
+
+  it.each([
+    ["only quotes a follow-up line", ticketWhy("> Follow-up of #865: its review found this after the builder's one turn.")],
+    ["has a follow-up line neither the reviewer nor the builder writes", ticketWhy("Follow-up of #865: its notes.")],
+  ])("refuses a ticket the App opened under no spec whose Why %s", (_, body) => {
+    const { run, comments } = admitting({ opener: APP, body });
+
+    expect(run().stdout).toBe("admitted=false\n");
     expect(comments()[0]).toContain("no spec");
   });
 });
