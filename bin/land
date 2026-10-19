@@ -37,15 +37,19 @@ if [[ -d $(git rev-parse --git-path rebase-merge) || -d $(git rev-parse --git-pa
   exit 1
 fi
 
-if [[ -n $(git rev-list origin/main..HEAD) ]] && ! git merge-base --is-ancestor origin/main HEAD; then
-  if ! git rebase --quiet --autostash origin/main >/dev/null 2>"$err"; then
-    { printf -- '--- git rebase origin/main ---\n'; cat "$err"; } >>"$log"
-    git rebase --abort >/dev/null 2>&1 # quiet: the rebase's own error is already in the log
-    printf 'land: HEAD does not rebase cleanly onto origin/main, so nothing landed; run git rebase origin/main, resolve it, and land again\n' >&2
-    exit 1
+onto_main() {
+  if [[ -n $(git rev-list origin/main..HEAD) ]] && ! git merge-base --is-ancestor origin/main HEAD; then
+    if ! git rebase --quiet --autostash origin/main >/dev/null 2>"$err"; then
+      { printf -- '--- git rebase origin/main ---\n'; cat "$err"; } >>"$log"
+      git rebase --abort >/dev/null 2>&1 # quiet: the rebase's own error is already in the log
+      printf 'land: HEAD does not rebase cleanly onto origin/main, so nothing landed; run git rebase origin/main, resolve it, and land again\n' >&2
+      exit 1
+    fi
+    head=$(git rev-parse HEAD)
   fi
-  head=$(git rev-parse HEAD)
-fi
+}
+
+onto_main
 
 if [[ -z $(git rev-list origin/main..HEAD) ]]; then
   printf 'Nothing to land: HEAD is already on origin/main.\n'
@@ -77,80 +81,45 @@ for commit in $(git rev-list origin/main..HEAD); do
 done
 
 branch="land/${head:0:12}"
-call "git push" git push --quiet origin "HEAD:refs/heads/$branch"
-
-call "gh pr create" gh pr create --base main --head "$branch" \
-  --title "$(git log -1 --format=%s HEAD)" \
-  --body "$(git log --reverse --format='- %s' origin/main..HEAD)"
-url=$said
-gh pr merge "$branch" --auto --merge --match-head-commit "$head" >/dev/null 2>&1 || # quiet: a PR with nothing left to wait on refuses auto-merge, and the plain merge below names its own failure
-  call "gh pr merge" gh pr merge "$branch" --merge --match-head-commit "$head"
-
-verdict='
-  def red: "FAILURE", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE", "ERROR", "CANCELLED", "STALE";
-  def passed: "SUCCESS", "SKIPPED", "NEUTRAL";
-  [.statusCheckRollup[]? | {name: (.name // .context), status: (.status // .state // "" | ascii_downcase), conclusion: (.conclusion // .state // "")}] as $runs
-  | (first($runs[] | select(.conclusion | IN(red))) // null) as $failed
-  | [$runs[] | select(.conclusion | IN(red, passed) | not)] as $pending
-  | (if .state == "MERGED" then ["merged", "merged"]
-     elif .state == "CLOSED" then ["closed", "closed"]
-     elif .mergeStateStatus == "DIRTY" then ["conflicts", "conflicts"]
-     elif $failed != null then ["failed", (if $failed.conclusion == "FAILURE" then "\($failed.name) failed" else "\($failed.name) ended \($failed.conclusion | ascii_downcase)" end)]
-     elif ($runs | length) == 0 then ["pending", "no check has started"]
-     elif ($pending | length) > 0 then ["pending", ($pending | map("\(.name) \(.status)") | join(", "))]
-     elif .mergeStateStatus == "CLEAN" then ["ready", "its merge"]
-     else ["pending", "its merge, with GitHub calling it \(.mergeStateStatus | ascii_downcase)"] end)
-    + [.headRefOid, ([.headRefOid, .mergeStateStatus, $runs] | tostring)]
-  | join("\t")'
-
-span() { (( $1 % 60 )) && printf '%ss' "$1" || printf '%s minutes' $(( $1 / 60 )); }
-
-seen=
-moved=0
-for (( waited = 0; ; waited += pause )); do
-  call "git fetch" git fetch --quiet origin main
-  git merge-base --is-ancestor "$head" origin/main && break
-  if said=$(gh pr view "$branch" --json state,mergeStateStatus,statusCheckRollup,headRefOid --jq "$verdict" 2>"$err"); then
-    IFS=$'\t' read -r state detail oid signature <<<"$said"
-    [[ $signature == "$seen" ]] || { seen=$signature; moved=$waited; }
-  else
-    { printf -- '--- gh pr view %s ---\n' "$branch"; cat "$err"; } >>"$log"
-    state=unread
-    detail="its lookups failing, last with: $(head -n 1 "$err")"
+url=
+for (( round = 1; ; round++ )); do
+  call "git push" git push --quiet --force origin "HEAD:refs/heads/$branch"
+  call "gh api statuses" gh api -X POST "repos/{owner}/{repo}/statuses/$head" -f state=success -f context=review -f "description=skipped: a session landing is judged by its pre-push, not reviewed (ADR-0008)"
+  if [[ -z $url ]]; then
+    call "gh pr create" gh pr create --base main --head "$branch" \
+      --title "$(git log -1 --format=%s HEAD)" \
+      --body "$(git log --reverse --format='- %s' origin/main..HEAD)"
+    url=$said
   fi
+  if gh pr merge "$branch" --merge --match-head-commit "$head" >/dev/null 2>"$err"; then
+    break
+  fi
+  { printf -- '--- gh pr merge %s ---\n' "$branch"; cat "$err"; } >>"$log"
+  refusal=$(head -n 1 "$err")
+  state=$(gh pr view "$branch" --json mergeStateStatus --jq .mergeStateStatus 2>>"$log") || state=unread
   case $state in
-    merged) break ;;
-    closed)
-      printf 'land: %s was closed without merging\n' "$url" >&2
-      exit 1
+    BEHIND | UNKNOWN)
+      if (( round >= ${LAND_ROUNDS:-3} )); then
+        printf 'land: %s did not merge in %s rounds of rebase and push: %s; it is left open\n' "$url" "$round" "$refusal" >&2
+        exit 1
+      fi
+      [[ $state == UNKNOWN ]] && sleep "${LAND_PAUSE_SECONDS:-2}"
+      call "git fetch" git fetch --quiet origin main
+      onto_main
       ;;
-    conflicts)
+    DIRTY)
       gh pr close "$branch" --delete-branch >/dev/null
       printf 'land: %s conflicts with main; closed it, so land again to rebase\n' "$url" >&2
       exit 1
       ;;
-    failed)
-      gh pr close "$branch" --delete-branch >/dev/null
-      [[ $detail == *" failed" ]] && again="fix it and land again" || again="land again"
-      printf 'land: %s on %s; closed it, so %s\n' "$detail" "$url" "$again" >&2
+    *)
+      printf 'land: GitHub refused to merge %s: %s; it is left open\n' "$url" "$refusal" >&2
       exit 1
       ;;
-    ready)
-      gh pr merge "$branch" --merge --match-head-commit "$oid" >/dev/null 2>>"$log" || true # quiet: a refused merge goes to the log and auto-merge stays on
-      ;;
   esac
-  if (( waited - moved >= ${LAND_STALL_SECONDS:-600} )); then
-    printf 'land: nothing moved on %s for %s: %s; it is left open\n' "$url" "$(span $(( waited - moved )))" "$detail" >&2
-    exit 1
-  fi
-  if (( waited >= ${LAND_WAIT_SECONDS:-1800} )); then
-    printf 'land: still waiting on %s after %s: %s; it is left open\n' "$url" "$(span "$waited")" "$detail" >&2
-    exit 1
-  fi
-  pause=$(( waited < 60 ? 2 : 15 ))
-  sleep "$pause"
 done
 
+call "git fetch" git fetch --quiet origin main
 if [[ $(git rev-parse HEAD) == "$head" ]] && git merge --quiet --ff-only origin/main >/dev/null 2>&1; then # quiet: the else branch says the checkout could not fast-forward
   printf 'Landed %s\n' "$url"
 else
