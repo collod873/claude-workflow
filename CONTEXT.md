@@ -90,7 +90,7 @@ reader, only a trigger. A step the check runs is one; call it a step.
 _Avoid_: validator, guardrail, lint
 
 **Check**, **step**, **receipt**:
-agent-hooks' words, used here exactly as there. A check is one run of `~/bin/check`, the one
+agent-hooks' words, used here exactly as there. A check is one run of `check`, the one
 runner; a step is one named entry in `.claude/contract.json`, which is all the machine knows of
 any repo it builds, this one included; a receipt records that a step passed for exactly its
 inputs, so no step runs twice for the same tree. The fast check runs mid-session, the full check

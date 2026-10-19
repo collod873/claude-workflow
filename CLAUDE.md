@@ -25,7 +25,7 @@ it, and needs no row.
   `bin/`. knip runs with no baseline and counts no test as a caller: wire it to one or delete it.
 - The why goes in the commit message, or in `CONTEXT.md` when it is vocabulary. Commit messages
   carry no em dash.
-- Mid-session, run `~/bin/check`, the fast check check-gate waits on; `~/bin/check --full` is what
+- Mid-session, run `check`, the fast check check-gate waits on; `check --full` is what
   pre-push and the PR's `check` job run. Both read their steps from `.claude/contract.json`.
 - Land a commit with `bin/land`: it rebases and waits until its PR merges or fails. `main` takes
   no direct push.

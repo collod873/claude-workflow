@@ -599,12 +599,12 @@ describe("tickets.yml says in its logs when a mark fails, so a ticket whose labe
   });
 });
 
-describe("the PR check judges only through the live release's ~/bin/check, which runs the owner's tree-wide rules itself (collod873/agent-hooks#24)", () => {
+describe("the PR check judges only through the live release's check, which runs the owner's tree-wide rules itself (collod873/agent-hooks#24)", () => {
   it("fetches the live hooks before the full check, and runs no rule of its own beside it", () => {
     const { check } = (parse(readFileSync(join(WORKFLOWS, "check.yml"), "utf8")) as Workflow).jobs;
     const steps = expanded(check?.steps ?? []);
     const fetched = steps.findIndex((step) => /git clone [^\n]*--branch live /.test(step.run ?? ""));
-    const checked = steps.findIndex((step) => /~\/bin\/check --full\b/.test(step.run ?? ""));
+    const checked = steps.findIndex((step) => /\bcheck --full\b/.test(step.run ?? ""));
 
     expect(fetched).toBeGreaterThanOrEqual(0);
     expect(checked).toBeGreaterThan(fetched);
@@ -617,7 +617,7 @@ describe("the PR check judges only through the live release's ~/bin/check, which
     const handing = (step: Step) => /AGENT_HOOKS_SETTINGS=.*GITHUB_ENV/.test(step.run ?? "");
     const built = expanded(workflow().job.steps).find(handing);
     const handed = steps.findIndex(handing);
-    const checked = steps.findIndex((step) => /~\/bin\/check --full\b/.test(step.run ?? ""));
+    const checked = steps.findIndex((step) => /\bcheck --full\b/.test(step.run ?? ""));
 
     expect(handed).toBeGreaterThanOrEqual(0);
     expect(handed).toBeLessThan(checked);

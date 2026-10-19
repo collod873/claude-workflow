@@ -8,4 +8,4 @@ done
 if [ "$only_side_refs" = 1 ]; then
   exit 0
 fi
-~/bin/check --full --publish
+check --full --publish

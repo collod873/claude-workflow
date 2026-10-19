@@ -1,11 +1,10 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { existsSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { fixing } from "./builder.part.ts";
 import { closing } from "./closer.part.ts";
-import { execute, heldBy, holds, labelledAs, labelledStep, scratch, script, workflowJobs, type WorkflowStep } from "./scenarios.ts";
+import { execute, heldBy, holds, labelledAs, labelledStep, onPath, scratch, script, workflowJobs, type WorkflowStep } from "./scenarios.ts";
 import { HELD, MACHINE, OWNER } from "./spelled.ts";
 import { ENROLLED_CALLER, ENROLLED_REVIEW } from "./post.ts";
 import { probeRunName } from "./probe.ts";
@@ -164,9 +163,9 @@ describe("a repo's tickets build through one caller file that holds only trigger
     [{ event_name: "workflow_dispatch", event: { inputs: { ticket: "968", reason: "size-trial", trial_cap: "60000" } } }, "Size trial of #968 under 60000"],
     [{ event_name: "workflow_dispatch", event: { inputs: { ticket: "828", reason: "PR red" } } }, "Fix #828"],
     [{ event_name: "workflow_dispatch", event: { inputs: { ticket: "828", reason: "red", rerun: "4417/1" } } }, "Rerun of run 4417/1"],
-    [{ event_name: "workflow_dispatch", event: { inputs: { ticket: "0", reason: "probe", probe: "~/bin/check", probe_with: "script" } } }, probeRunName("script", "~/bin/check")],
+    [{ event_name: "workflow_dispatch", event: { inputs: { ticket: "0", reason: "probe", probe: "check", probe_with: "script" } } }, probeRunName("script", "check")],
     [{ event_name: "workflow_dispatch", event: { inputs: { ticket: "0", reason: "probe", probe: "Say hi", probe_with: "claude" } } }, probeRunName("claude", "Say hi")],
-    [{ event_name: "workflow_dispatch", event: { inputs: { ticket: "0", reason: "probe", probe: "~/bin/check" } } }, probeRunName("script", "~/bin/check")],
+    [{ event_name: "workflow_dispatch", event: { inputs: { ticket: "0", reason: "probe", probe: "check" } } }, probeRunName("script", "check")],
     [{ event_name: "workflow_run", event: { action: "completed", workflow_run: { name: "CI", head_branch: "ticket/828" } } }, "After CI on ticket/828"],
     [{ event_name: "push", event: {} }, "Push to main"],
   ])("names each run for what it heard (#1216): %j", (github, named) => {
@@ -196,7 +195,7 @@ describe("a repo's tickets build through one caller file that holds only trigger
   });
 
   describe("runs a probe a dispatch names in the builder's own environment, and nothing else (#1251)", () => {
-    const probed = { event: "workflow_dispatch", action: "", inputs: { ticket: "0", reason: "probe", probe: "~/bin/check" }, outputs: { which: { ticket: "0" } } };
+    const probed = { event: "workflow_dispatch", action: "", inputs: { ticket: "0", reason: "probe", probe: "check" }, outputs: { which: { ticket: "0" } } };
     const steps = () => workflowJobs("tickets.yml").probe?.steps ?? [];
     const step = (id: string) => steps().find((one) => one.id === id);
     const readying = (job: string) =>
@@ -298,7 +297,7 @@ describe("a repo's tickets build through one caller file that holds only trigger
     const steps = { ...labelledAs(job?.steps ?? [], held), admit: { outcome: "success", conclusion: "success", outputs: { admitted: "true" } }, start: { outcome: "success", conclusion: "success", outputs: { branch: "ticket/828" } } };
     const lumaria: Record<string, string> = { "github.repository": "collod873/Lumaria", "github.workflow_ref": "collod873/Lumaria/.github/workflows/machine.yml@refs/heads/main" };
     const resolved = (value: unknown) => (typeof value !== "string" ? undefined : value.replace(/^\$\{\{ ([\w.]+) \}\}$/, (_, name: string) => lumaria[name] ?? ""));
-    const real = realpathSync(join(homedir(), "bin", "check"));
+    const real = onPath("check");
     const contract = '{ "steps": { "integration": { "run": "true", "needs": ["DATABASE_URL"] } } }\n';
     const check = `env -u DATABASE_URL CI=true "${real}" "$@"\n`;
 

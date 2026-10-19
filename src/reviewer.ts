@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { appendFileSync } from "node:fs";
+import { FULL_CHECK } from "./fence.ts";
 import { capped, DIFF_CAP, handedDiff, LIST_CAP, NO_EM_DASH, TICKET_CAP } from "./brief.ts";
 import { answered as readAnswered, commentOnPr, commentOnTicket, commentsRead, drifted, earlierDrift, FOLLOW_UP_OF, followUpBody, foundDrift, foundOverlap, gh, ghRead, git, gitRead, post, readOrStop, REVIEW_FOUND, REVIEWED_FROM, TICKET_BRANCH, underOwnerSpec, unread, WAITING } from "./post.ts";
 import { hire } from "./stage.ts";
@@ -169,7 +170,7 @@ export function handedOn(body: string, diff: string, { prBody = "", after }: { p
           `Each \`later\` item becomes its own ticket: the \`gap\` in one sentence, a \`title\`, and \`done\` as ${DONE_SENTENCES}.`,
         ];
   return [
-    "Review this PR against the `## Why` and its `## Done when`. Change nothing; `~/bin/check --full` is green. Read the repo if the diff is unclear.",
+    `Review this PR against the \`## Why\` and its \`## Done when\`. Change nothing; \`${FULL_CHECK}\` is green. Read the repo if the diff is unclear.`,
     capped(body, TICKET_CAP),
     "## Diff",
     handedDiff(diff),

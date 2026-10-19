@@ -56,9 +56,9 @@ declareStage({
   scenarios: [
     { label: "probing a script", run: () => probing().run("script", "printf 'check: ok\\n'") },
     { label: "probing a script that ends red", run: () => probing().run("script", "printf 'check: red typecheck\\n'; exit 3") },
-    { label: "probing through claude", run: () => probing().run("claude", "Run ~/bin/check and say how long it took") },
+    { label: "probing through claude", run: () => probing().run("claude", "Run check and say how long it took") },
     { label: "with the tree's setup failing", run: () => probing({ contract: '{ "setup": "printf \'npm ci: lockfile out of date\\\\n\' >&2; exit 1" }' }).run("script", "true") },
-    { label: "dispatching a probe and reading its output", run: () => probing().dispatch("script", "~/bin/check") },
-    { label: "dispatching a probe that ends red", run: () => probing({ concluded: "failure" }).dispatch("script", "~/bin/check") },
+    { label: "dispatching a probe and reading its output", run: () => probing().dispatch("script", "check") },
+    { label: "dispatching a probe that ends red", run: () => probing({ concluded: "failure" }).dispatch("script", "check") },
   ],
 });

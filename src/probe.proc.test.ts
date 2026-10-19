@@ -26,10 +26,10 @@ describe("a probe runs one command or prompt in a stage's real environment and e
   it("hands a claude probe its prompt alone through the builder's own launch, keeping the transcript and the answer with the machine logs", () => {
     const probe = probing({ said: "check took 6.2s" });
 
-    const ended = probe.run("claude", "Run ~/bin/check and say how long it took");
+    const ended = probe.run("claude", "Run check and say how long it took");
 
     expect(ended.status, ended.stderr).toBe(0);
-    expect(probe.handed()).toBe("Run ~/bin/check and say how long it took");
+    expect(probe.handed()).toBe("Run check and say how long it took");
     expect(probe.hired()).toEqual(expect.arrayContaining(["--print", "--model", "opus", "--setting-sources", "project", "--permission-mode", "bypassPermissions"]));
     expect(probe.hired()).not.toContain("--tools");
     expect(probe.transcripts()).toEqual([`probe-${PROBE_RUN}.jsonl`]);
@@ -49,17 +49,17 @@ describe("a probe runs one command or prompt in a stage's real environment and e
   it("dispatches a probe to a repo's caller file, finds its run by name, waits for it and points at its output", () => {
     const probe = probing();
 
-    const ended = probe.dispatch("script", "~/bin/check");
+    const ended = probe.dispatch("script", "check");
 
     expect(ended.status, ended.stderr).toBe(0);
-    expect(probe.calls()[0]).toEqual(["workflow", "run", "machine.yml", "--repo", "collod873/Lumaria", "-f", "ticket=0", "-f", "reason=probe", "-f", "probe=~/bin/check", "-f", "probe_with=script"]);
+    expect(probe.calls()[0]).toEqual(["workflow", "run", "machine.yml", "--repo", "collod873/Lumaria", "-f", "ticket=0", "-f", "reason=probe", "-f", "probe=check", "-f", "probe_with=script"]);
     expect(probe.calls().map((call) => call.slice(0, 2).join(" "))).toEqual(["workflow run", "run list", "run watch", "run view", "run download"]);
     expect(ended.stdout).toMatch(new RegExp(`^probe: https://github.com/collod873/Lumaria/actions/runs/${PROBE_RUN} ended success; its output is in /.*/${probeOutput(PROBE_RUN)}\\n$`));
   });
 
   it("ends red when the probe's run does, or when no run names the probe", () => {
-    expect(probing({ concluded: "failure" }).dispatch("script", "~/bin/check").stderr).toMatch(/ended failure; its output is in \//);
-    expect(probing({ concluded: "failure", keptOutput: false }).dispatch("script", "~/bin/check").stderr).toMatch(/its output is in nowhere, as the run kept no probe output\n$/);
+    expect(probing({ concluded: "failure" }).dispatch("script", "check").stderr).toMatch(/ended failure; its output is in \//);
+    expect(probing({ concluded: "failure", keptOutput: false }).dispatch("script", "check").stderr).toMatch(/its output is in nowhere, as the run kept no probe output\n$/);
     const unlisted = probing({ listed: false }).dispatch("claude", "Say hi");
     expect(unlisted.status).toBe(1);
     expect(unlisted.stderr).toBe("probe: no run of machine.yml in collod873/Lumaria named the probe after 24 looks\n");

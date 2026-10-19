@@ -1,4 +1,4 @@
-const FAST_CHECK = "~/bin/check";
+export const FAST_CHECK = "check";
 export const FULL_CHECK = `${FAST_CHECK} --full`;
 const CHECKS = [FAST_CHECK, `${FAST_CHECK} --explain`];
 

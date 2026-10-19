@@ -43,7 +43,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -o pipefail
-          ~/bin/check --full --publish | tee "$RUNNER_TEMP/check.out"
+          check --full --publish | tee "$RUNNER_TEMP/check.out"
 
       - id: told
         if: failure() && steps.check.conclusion == 'failure'
