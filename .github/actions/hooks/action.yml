@@ -45,7 +45,6 @@ runs:
     - shell: bash
       run: |
         hooks="$RUNNER_TEMP/agent-hooks"
-        mkdir -p "$HOME/bin"
-        ln -sf "$hooks/bin/check" "$HOME/bin/check"
+        printf '%s\n' "$hooks/bin" >>"$GITHUB_PATH"
         python3 "$hooks/hookcheck.py" --root "$hooks" --settings "$RUNNER_TEMP/unregistered.json" --emit-stages >"$RUNNER_TEMP/agent-hooks.json"
         printf 'AGENT_HOOKS_SETTINGS=%s\n' "$RUNNER_TEMP/agent-hooks.json" >>"$GITHUB_ENV"
