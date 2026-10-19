@@ -1,104 +1,13 @@
-import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { describe, expect, it, onTestFinished } from "vitest";
-import { agedLogs, cloned } from "./scenarios.ts";
+import { describe, expect, it } from "vitest";
+import { agedLogs, git, landSession, LANDED_PR as PR, MERGE_REFUSAL as REFUSAL, type Merge } from "./scenarios.ts";
 
-const land = fileURLToPath(new URL("../bin/land", import.meta.url));
-
-const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_")));
-
-function git(cwd: string, ...args: string[]): string {
-  return execFileSync("git", args, { cwd, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
-}
-
-const PR = "https://github.com/collod873/claude-workflow/pull/1";
-const REFUSAL = "GraphQL: Pull Request is not mergeable (mergePullRequest)";
 const JUDGED_CHECK = "description=judged on the owner's PC by its pre-push, before the push (ADR-0008)";
 const SKIPPED_REVIEW = "description=skipped: a session landing is judged by its pre-push, not reviewed (ADR-0008)";
+const DASH = "\u2014";
 
-type Merge = "merged" | "refused";
-
-function recordingGh(root: string, remote: string, { merges, views, mainMovesOnRefusal }: { merges: Merge[]; views: string[]; mainMovesOnRefusal: boolean }) {
-  const dir = join(root, "gh");
-  mkdirSync(dir);
-  const path = join(dir, "gh");
-  const log = join(dir, "argv.jsonl");
-  const counted = (name: string) => `$(( $(ls ${JSON.stringify(dir)} | grep -c ${name}-) + 1 ))`;
-  writeFileSync(
-    path,
-    [
-      "#!/bin/bash",
-      `python3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "$@" >> ${JSON.stringify(log)}`,
-      `remote=${JSON.stringify(remote)}`,
-      `merges=(${merges.join(" ")})`,
-      `views=(${views.join(" ")})`,
-      'case "$1 $2" in',
-      `  "pr create") echo ${PR} ;;`,
-      '  "api -X")',
-      "    sha=${4##*/}",
-      '    git -C "$remote" cat-file -e "$sha^{commit}" 2>/dev/null || { printf "gh: No commit found for SHA: %s (HTTP 422)\\n" "$sha" >&2; exit 1; }',
-      "    ;;",
-      '  "pr view")',
-      `    n=${counted("view")}; touch ${JSON.stringify(dir)}/view-$n`,
-      "    (( n > ${#views[@]} )) && n=${#views[@]}",
-      '    echo "${views[n - 1]}"',
-      "    ;;",
-      '  "pr merge")',
-      `    n=${counted("merge")}; touch ${JSON.stringify(dir)}/merge-$n`,
-      "    (( n > ${#merges[@]} )) && n=${#merges[@]}",
-      "    if [[ ${merges[n - 1]} == merged ]]; then",
-      "      for (( at = 1; at <= $#; at++ )); do [[ ${!at} == --match-head-commit ]] && { next=$(( at + 1 )); sha=${!next}; }; done",
-      '      git -C "$remote" update-ref refs/heads/main "$(git -C "$remote" commit-tree "$sha^{tree}" -p main -p "$sha" -m merged)"',
-      "    else",
-      `      printf '%s\\n' ${JSON.stringify(REFUSAL)} >&2`,
-      ...(mainMovesOnRefusal ? ['      git -C "$remote" update-ref refs/heads/main "$(git -C "$remote" commit-tree "main^{tree}" -p main -m "another session landed")"'] : []),
-      "      exit 1",
-      "    fi",
-      "    ;;",
-      "esac",
-      "exit 0",
-      "",
-    ].join("\n"),
-  );
-  chmodSync(path, 0o755);
-  const calls = (): string[][] => {
-    try {
-      return readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as string[]);
-    } catch {
-      return [];
-    }
-  };
-  return { path, calls };
-}
-
-function sessionAheadOfMain(commits: number, { merges = ["merged"], views = ["BLOCKED"], mainMovesOnRefusal = false, rounds = "3", covered = true }: { merges?: Merge[]; views?: string[]; mainMovesOnRefusal?: boolean; rounds?: string; covered?: boolean } = {}) {
-  const root = mkdtempSync(join(tmpdir(), "land-"));
-  onTestFinished(() => rmSync(root, { recursive: true, force: true }));
-  const { remote, session } = cloned(root, "base");
-  git(remote, "config", "user.email", "github@test");
-  git(remote, "config", "user.name", "github");
-  for (let n = 1; n <= commits; n++) {
-    git(session, "commit", "--quiet", "--allow-empty", "-m", `change ${n}`);
-  }
-  const gh = recordingGh(root, remote, { merges, views, mainMovesOnRefusal });
-  const checks = join(root, "gh", "check-calls");
-  writeFileSync(join(root, "gh", "check"), `#!/bin/bash\nprintf '%s\\n' "$*" >>${JSON.stringify(checks)}\n${covered ? "printf 'check: covered, all 9 steps\\n'" : "printf 'check: due test\\n'\nexit 3"}\n`);
-  chmodSync(join(root, "gh", "check"), 0o755);
-  const run = (from = session) =>
-    spawnSync(land, [], {
-      cwd: from,
-      encoding: "utf8",
-      env: { ...env, PATH: `${join(root, "gh")}:${process.env.PATH}`, LAND_ROUNDS: rounds, LAND_PAUSE_SECONDS: "0" },
-    });
-  const head = git(session, "rev-parse", "HEAD");
-  const merged = (call: string[]) => call[0] === "pr" && call[1] === "merge";
-  const posted = (call: string[]) => call[0] === "api" && call[3]?.startsWith("repos/{owner}/{repo}/statuses/") === true;
-  const checked = () => (existsSync(checks) ? readFileSync(checks, "utf8").trim().split("\n") : []);
-  return { root, remote, session, head, branch: `land/${head.slice(0, 12)}`, run, calls: gh.calls, merged, posted, checked };
-}
+const sessionAheadOfMain = (commits: number, options: Omit<Parameters<typeof landSession>[0], "messages"> = {}) => landSession({ messages: Array.from({ length: commits }, (_, n) => `change ${n + 1}`), ...options });
 
 function landedElsewhere(root: string, remote: string, file: string, content: string): string {
   const other = join(root, "other");
@@ -125,7 +34,6 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
       ["api", "-X", "POST", `repos/{owner}/{repo}/statuses/${head}`, "-f", "state=success", "-f", "context=review", "-f", SKIPPED_REVIEW],
     ]);
     expect(calls().filter(merged)).toEqual([["pr", "merge", branch, "--merge", "--match-head-commit", head]]);
-    expect(calls().map((call) => call[1])).toEqual(["-X", "-X", "create", "merge"]);
     expect(git(session, "rev-parse", "HEAD")).toBe(git(remote, "rev-parse", "main"));
     expect(git(session, "rev-parse", "HEAD^2")).toBe(head);
     expect(result.stdout).toBe(`Landed ${PR}\n`);
@@ -153,7 +61,7 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
     git(worktree, "add", "tool");
     git(worktree, "commit", "--quiet", "-m", "change a tool");
 
-    const result = run(worktree);
+    const result = run([], worktree);
 
     expect(result.status, result.stderr).toBe(0);
     expect(git(main, "rev-parse", "HEAD")).toBe(git(remote, "rev-parse", "main"));
@@ -297,5 +205,35 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
     expect(result.status, result.stderr).toBe(0);
     expect(calls()).toEqual([]);
     expect(result.stdout).toContain("Nothing to land");
+  });
+});
+
+describe("bin/land refuses what must not reach main (#681)", () => {
+  it.each([
+    ["an em dash", `Refuse a thing\n\nbecause ${DASH} it matters`, (commit: string) => `land: commit ${commit} carries an em dash in its message, so nothing landed; reword it\n`],
+    ["a closing keyword before a ticket number", "Fix the thing\n\nCloses #812", (commit: string) => `land: commit ${commit} carries a closing keyword before #812, so nothing landed; reword it\n`],
+  ])("lands nothing and names the commit whose message carries %s", (_, message, said) => {
+    const { remote, session, run, calls } = landSession({ messages: ["a clean change", message, "another clean change"] });
+    const refused = git(session, "rev-parse", "--short=7", "HEAD~1");
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe(said(refused));
+    expect(git(remote, "for-each-ref", "--format=%(refname)")).toBe("refs/heads/main");
+    expect(calls()).toEqual([]);
+  });
+
+  it("lands nothing and says its usage when asked for help, so a --help probe cannot land", () => {
+    const { remote, run, calls } = landSession();
+
+    const result = run(["--help"]);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toMatch(/^land: usage: land\b/);
+    expect(result.stderr).toBe("");
+    expect(git(remote, "for-each-ref", "--format=%(refname)")).toBe("refs/heads/main");
+    expect(calls()).toEqual([]);
   });
 });

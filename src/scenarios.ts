@@ -376,17 +376,81 @@ export function agedLogs(logs: string, tool: string) {
   return { stale, fresh };
 }
 
-export function landSession({ gh, remoteRefuses, messages = ["change"] }: { gh: string; remoteRefuses?: string; messages?: string[] }) {
+export const LANDED_PR = "https://github.com/collod873/claude-workflow/pull/1";
+export const MERGE_REFUSAL = "GraphQL: Pull Request is not mergeable (mergePullRequest)";
+
+export type Merge = "merged" | "refused";
+
+export function landSession({
+  gh,
+  remoteRefuses,
+  messages = ["change"],
+  merges = ["merged"],
+  views = ["BLOCKED"],
+  mainMovesOnRefusal = false,
+  rounds = "3",
+  covered = true,
+}: { gh?: string; remoteRefuses?: string; messages?: string[]; merges?: Merge[]; views?: string[]; mainMovesOnRefusal?: boolean; rounds?: string; covered?: boolean } = {}) {
   const root = scratch("land-");
   const { remote, session } = cloned(root, "base");
+  git(remote, "config", "user.email", "github@test");
+  git(remote, "config", "user.name", "github");
   for (const message of messages) git(session, "commit", "--quiet", "--allow-empty", "-m", message);
   if (remoteRefuses !== undefined) script(join(remote, "hooks", "pre-receive"), `cat >/dev/null\ncat >&2 <<'REFUSAL'\n${remoteRefuses}\nREFUSAL\nexit 1\n`);
-  script(join(root, "bin", "gh"), gh);
-  script(join(root, "bin", "check"), "printf 'check: covered, all 9 steps\\n'\n");
+  const state = join(root, "gh-state");
+  mkdirSync(state);
+  const log = join(state, "argv.jsonl");
+  const counted = (name: string) => `$(( $(ls ${JSON.stringify(state)} | grep -c ${name}-) + 1 ))`;
+  script(
+    join(root, "bin", "gh"),
+    gh ??
+      [
+        `python3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "$@" >> ${JSON.stringify(log)}`,
+        `remote=${JSON.stringify(remote)}`,
+        `merges=(${merges.join(" ")})`,
+        `views=(${views.join(" ")})`,
+        'case "$1 $2" in',
+        `  "pr create") echo ${LANDED_PR} ;;`,
+        '  "api -X")',
+        "    sha=${4##*/}",
+        '    git -C "$remote" cat-file -e "$sha^{commit}" 2>/dev/null || { printf "gh: No commit found for SHA: %s (HTTP 422)\\n" "$sha" >&2; exit 1; }',
+        "    ;;",
+        '  "pr view")',
+        `    n=${counted("view")}; touch ${JSON.stringify(state)}/view-$n`,
+        "    (( n > ${#views[@]} )) && n=${#views[@]}",
+        '    echo "${views[n - 1]}"',
+        "    ;;",
+        '  "pr merge")',
+        `    n=${counted("merge")}; touch ${JSON.stringify(state)}/merge-$n`,
+        "    (( n > ${#merges[@]} )) && n=${#merges[@]}",
+        "    if [[ ${merges[n - 1]} == merged ]]; then",
+        "      for (( at = 1; at <= $#; at++ )); do [[ ${!at} == --match-head-commit ]] && { next=$(( at + 1 )); sha=${!next}; }; done",
+        '      git -C "$remote" update-ref refs/heads/main "$(git -C "$remote" commit-tree "$sha^{tree}" -p main -p "$sha" -m merged)"',
+        "    else",
+        `      printf '%s\\n' ${JSON.stringify(MERGE_REFUSAL)} >&2`,
+        ...(mainMovesOnRefusal ? ['      git -C "$remote" update-ref refs/heads/main "$(git -C "$remote" commit-tree "main^{tree}" -p main -m "another session landed")"'] : []),
+        "      exit 1",
+        "    fi",
+        "    ;;",
+        "esac",
+        "exit 0",
+        "",
+      ].join("\n"),
+  );
+  const checks = join(state, "check-calls");
+  script(join(root, "bin", "check"), `printf '%s\\n' "$*" >>${JSON.stringify(checks)}\n${covered ? "printf 'check: covered, all 9 steps\\n'" : "printf 'check: due test\\n'\nexit 3"}\n`);
+  const head = git(session, "rev-parse", "HEAD");
   return {
+    root,
     remote,
     session,
-    run: (args: string[] = []) => execute(join(BIN, "land"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}`, LAND_WAIT_SECONDS: "0" }, args),
+    head,
+    branch: `land/${head.slice(0, 12)}`,
+    run: (args: string[] = [], from = session) => execute(join(BIN, "land"), from, { PATH: `${join(root, "bin")}:${process.env.PATH}`, LAND_ROUNDS: rounds, LAND_PAUSE_SECONDS: "0" }, args),
+    calls: (): string[][] => (existsSync(log) ? readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as string[]) : []),
+    merged: (call: string[]) => call[0] === "pr" && call[1] === "merge",
+    posted: (call: string[]) => call[0] === "api" && call[3]?.startsWith("repos/{owner}/{repo}/statuses/") === true,
+    checked: () => (existsSync(checks) ? readFileSync(checks, "utf8").trim().split("\n") : []),
   };
 }
 

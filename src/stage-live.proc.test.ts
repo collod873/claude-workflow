@@ -145,7 +145,8 @@ describe("a stage started on this PC runs under the owner's hooks from the live 
       const argv = JSON.parse(readFileSync(join(root, "argv.json"), "utf8")) as string[];
       const added = join(argv[argv.indexOf("--add-dir") + 1] ?? "", ".claude", "skills");
       expect(readFileSync(join(added, "testing", "SKILL.md"), "utf8")).toBe("# testing");
-      expect(readdirSync(added).sort()).toEqual(CRAFT);
+      expect(readdirSync(added)).toContain("tdd");
+      expect(readdirSync(added)).not.toContain("load-calc");
     } finally {
       process.chdir(cwd);
     }

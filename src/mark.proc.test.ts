@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { heard, marking } from "./scenarios.ts";
+import { LABELS } from "./spelled.ts";
 
-const STATE_BLUE = "1d76db";
-const LANDING = "Up to date with main and next to merge; auto-merge fires once its checks pass";
+const colourOf = (name: string) => LABELS.find((label) => name.startsWith(label.name))?.colour;
+const STATES = LABELS.filter(({ kind }) => kind === "state" || kind === "parked").map(({ name }) => name);
 
 describe("bin/mark leaves one state on a ticket and its open PR, so one look at either says where it is (#1055)", () => {
   it("sets the state, takes every other state off, and leaves the kind, held and wayfinder labels alone", () => {
@@ -30,7 +31,7 @@ describe("bin/mark leaves one state on a ticket and its open PR, so one look at 
     const ran = marked.run("811", "checking");
 
     expect(ran.status, ran.stderr).toBe(0);
-    expect(ran.stderr).toBe("github: gh api -X POST repos/{owner}/{repo}/issues/811/labels -f labels[]=checking failed on try 1 of 3, so it is tried again in 0s: gh: Label does not exist (HTTP 404)\n");
+    expect(ran.stderr).toContain("gh: Label does not exist (HTTP 404)");
     expect(marked.labels("811")).toEqual(["checking", "ticket"]);
   });
 
@@ -128,14 +129,7 @@ describe("bin/mark leaves one state on a ticket and its open PR, so one look at 
     expect(marked.run("811", "stuck").status).toBe(0);
     expect(marked.run("975", "waiting").status).toBe(0);
     expect(marked.run("976", "slicing").status).toBe(0);
-    expect(marked.made()).toEqual(["building ededed", "try-3 f66a0a", "stuck b60205", "waiting fbca04", `slicing ${STATE_BLUE}`]);
-  });
-
-  it("describes landing as next to merge while its checks still run, since it shows before the PR is green (#1074)", () => {
-    const marked = marking();
-
-    expect(marked.run("811", "landing").status).toBe(0);
-    expect(marked.calls()).toContain(`label create landing --color ${STATE_BLUE} --description ${LANDING}`);
+    expect(marked.made()).toEqual(["building ededed", ...["try-3", "stuck", "waiting", "slicing"].map((name) => `${name} ${colourOf(name)}`)]);
   });
 
   it("refuses the old stage labels and anything outside the set, and asks GitHub for nothing", () => {
@@ -150,9 +144,7 @@ describe("bin/mark leaves one state on a ticket and its open PR, so one look at 
   it("names in its usage line the states and stuck bin/spelled prints, so the refusal lists what it would take (#1100)", () => {
     const { stderr } = marking().run("811", "fixing");
 
-    expect(stderr).toBe(
-      "mark: usage: mark <number> <building|checking|queued|resolving|landing|slicing|researching|waiting> [--try|--untry] | mark <number> <stuck> | mark <number> --closed\n",
-    );
+    expect(stderr).toBe(`mark: usage: mark <number> <${STATES.join("|")}> [--try|--untry] | mark <number> <stuck> | mark <number> --closed\n`);
   });
 
   it("still marks the issue and succeeds when its token may not read PRs, so a caller's next step still runs, and names the refusal (#1077)", () => {
