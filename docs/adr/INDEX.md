@@ -8,3 +8,5 @@
 - [ADR-0006](0006-an-obvious-fix-goes-straight-in-and-a-gate-is-proven-first.md): An obvious fix goes straight in, and a gate is proven first
 - [ADR-0007](0007-the-machine-runs-on-the-owners-pc-while-he-is-home-and-on-hosted-runners-otherwise.md): The machine runs on the owner's PC while he is home, and on hosted runners otherwise
 - [ADR-0008](0008-a-session-landing-is-judged-on-the-owners-pc-before-the-push-and-github-runs-nothing-for-it.md): A session landing is judged on the owner's PC before the push, and GitHub runs nothing for it
+- [ADR-0009](0009-every-wait-in-the-machine-ends-on-an-event-it-hears-and-a-clock-is-the-last-resort.md): Every wait in the machine ends on an event it hears, and a clock is the last resort
+- [ADR-0010](0010-the-machine-keeps-changing-while-a-spec-runs-and-a-measurement-counts-one-machine-version.md): The machine keeps changing while a spec runs, and a measurement counts one machine version
