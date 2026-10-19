@@ -1,8 +1,8 @@
 import { readdirSync, readFileSync, realpathSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { BUILDER_SESSION, CHECK_PASSES, CHECK_RED, FULL_CHECK_RED_ONCE, fixing } from "./builder.part.ts";
+import { onPath } from "./scenarios.ts";
 import { HELD } from "./spelled.ts";
 
 const DRIFT = "The reviewer read this PR against the Why of #811 and found drift.\n\n- src/builder.ts never resumes its session\n";
@@ -54,7 +54,7 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
 
     expect(run("811").status).toBe(0);
     expect(handed()[0]).toContain(contract.trim());
-    expect(handed()[0]).toContain("~/bin/check --full");
+    expect(handed()[0]).toContain("check --full");
   });
 
   it("passes a foreign tree whose check is red only for steps the runner lacks what they need for, leaving them to its own CI, and keeps this repo's own check judging them (#1142)", () => {
@@ -72,7 +72,7 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
   });
 
   it("reads the unmet need off the real check's verdict, which names it red in CI, and opens the foreign tree's PR in its own repo through the real save (#1142, #1146)", () => {
-    const real = realpathSync(join(homedir(), "bin", "check"));
+    const real = onPath("check");
     const contract = '{ "steps": { "integration": { "run": "true", "needs": ["DATABASE_URL"] } } }\n';
     const check = `env -u DATABASE_URL CI=true "${real}" "$@" | tee -a ../check-out\nexit "\${PIPESTATUS[0]}"\n`;
     const { run, saved, opened, calls, session } = fixing({ claude: FIXES, contract, check, realSave: true, reason: "waiting came off", calledFrom: "collod873/Lumaria/.github/workflows/machine.yml@refs/heads/main" });

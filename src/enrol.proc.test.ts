@@ -289,7 +289,7 @@ const HELD_OFF_THE_PC = [
 ].join("\n");
 
 describe("bin/enrol says what a repo needs before its jobs suit this PC's runners, and how to move them (#1270)", () => {
-  it("names each job left on GitHub's runners, a check that skips ~/bin/check's slots and a pinned host port, then offers bin/runner", () => {
+  it("names each job left on GitHub's runners, a check that skips check's slots and a pinned host port, then offers bin/runner", () => {
     const { run } = enrolling(bare({ files: { ".github/workflows/ci.yml": HELD_OFF_THE_PC, ".github/workflows/deploy.yml": DEPLOY } }));
 
     const result = run();
@@ -298,7 +298,7 @@ describe("bin/enrol says what a repo needs before its jobs suit this PC's runner
     expect(result.stdout.split("\n").slice(1)).toEqual([
       `enrol: ${REPO} needs 3 changes for PC runners:`,
       `- ci.yml's check job runs on ubuntu-latest, not ${PC_RUNS_ON}, so it stays on GitHub's runners`,
-      "- ci.yml's check job runs its check without ~/bin/check, so it skips the PC's check slots",
+      "- ci.yml's check job runs its check without check, so it skips the PC's check slots",
       "- ci.yml's check job pins host port 5432 for postgres, which two PC runners cannot share",
       ...OFFER.split("\n"),
     ]);
