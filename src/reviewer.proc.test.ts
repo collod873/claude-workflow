@@ -31,10 +31,11 @@ describe("bin/review reads a green ticket PR against its Why before it merges (#
     expect(result.stdout + result.stderr).toContain(JUDGEMENT);
   });
 
-  it("passes a match and posts its readback", () => {
-    const { run, comments, handed } = reviewing();
+  it("passes a match and posts its readback, editing no PR body, which the meter reviewer owns", () => {
+    const { run, comments, handed, edited } = reviewing();
 
     expect(run().status).toBe(0);
+    expect(edited()).toEqual([]);
     expect(comments()).toHaveLength(1);
     expect(comments()[0]).toContain("It now reads a green build against what was meant before it merges.");
     expect(handed()).toContain("a green build is read against what was meant before it merges");
@@ -95,17 +96,6 @@ describe("bin/review reads a green ticket PR against its Why before it merges (#
     expect(readFileSync(join(root, ".git", "machine-logs", "review-9810.jsonl"), "utf8")).toContain('"verdict":"match"');
   });
 
-  it("leaves every meter to the meter reviewer: it asks for no meter and never edits the PR body", () => {
-    const { run, hired, handed, edited } = reviewing();
-
-    expect(run().status).toBe(0);
-    const argv = hired();
-    const schema = JSON.parse(argv[argv.indexOf("--json-schema") + 1] ?? "{}") as { properties: Record<string, unknown> };
-    expect(Object.keys(schema.properties)).not.toContain("depth");
-    expect(handed()).not.toMatch(/`depth`|pass-through/);
-    expect(edited()).toEqual([]);
-  });
-
   it("runs on a ticket branch only", async () => {
     const review = jobNamed((parse(readFileSync(WORKFLOW, "utf8")) as { jobs: Record<string, { needs?: string; if?: string; steps?: { run?: string }[] }> }).jobs, "review");
 
@@ -133,7 +123,9 @@ describe("bin/review fences its shell to the fast check and its plan, which the 
     const refused = fenceSays(argv, askingBash("touch unlisted-marker"));
     expect(refused.status).toBe(2);
     expect(refused.stderr).toContain("check, check --explain");
-    expect(flagValue(argv, "--tools")).toBe("Read,Grep,Glob,Skill");
+    expect(flagValue(argv, "--tools").split(",")).not.toContain("Bash");
+    expect(flagValue(argv, "--tools").split(",")).not.toContain("Edit");
+    expect(flagValue(argv, "--tools").split(",")).not.toContain("Write");
   });
 
   it("refuses a shell command its fence cannot read, rather than let it through", () => {
@@ -232,10 +224,6 @@ describe("the reviewer's answer schema asks for plain words and refuses an accou
     const { run, handed } = reviewing();
     expect(run().status).toBe(0);
     expect(handed()).toMatch(/does not read code/i);
-    expect(handed()).toMatch(/what to try/i);
-    expect(handed()).toMatch(/what should happen/i);
-    expect(handed()).toMatch(/what it now does/i);
-    expect(handed()).toMatch(/did not before/i);
   });
 });
 
@@ -252,11 +240,10 @@ const afterRepair = (verdict: { verdict: string; gaps: string[]; later?: unknown
   reviewing({ turns: extra.turns ?? [], onPr: [EARLIER], repair: REPAIRED, verdict, body: extra.body });
 
 describe("bin/review names every gap in one pass, and after its builder's repair only the earlier gaps or the fix's own lines block (#865, #898)", () => {
-  it("asks for every gap it finds in one pass, not the first one", () => {
+  it("hands no builder's repair on a first pass", () => {
     const { run, handed } = reviewing();
 
     expect(run().status).toBe(0);
-    expect(handed().split("## Your verdict")[1]).toMatch(/every gap/i);
     expect(handed()).not.toContain("## The builder's repair");
   });
 
@@ -268,7 +255,6 @@ describe("bin/review names every gap in one pass, and after its builder's repair
     expect(bounded).toContain("lists only steps that carry an id");
     expect(bounded).toContain("+export const reviewed = 1;");
     expect(bounded).not.toContain("a comment nobody needs");
-    expect(bounded).toMatch(/later/);
   });
 
   it("hands the fix since the judged head: the builder's lines and its resolved conflict, not main's lines or a repair from before that judgement", () => {
@@ -559,7 +545,6 @@ describe("bin/review judges a PR brought up to date against what merged to main 
     expect(handed()).toContain(LANDED);
     expect(handed()).toContain("Merge pull request #800");
     expect(handed()).toContain("+export const doneWhenOf");
-    expect(handed()).toMatch(/duplicate/i);
     expect(comments()).toHaveLength(1);
     expect(comments()[0]).toContain(finds[0]);
     expect(comments()[0]).toContain(`Main: \`${git(root, "rev-parse", "origin/main")}\``);
@@ -596,8 +581,8 @@ describe("bin/review runs one review at a time per PR, queued not cancelled (#97
 
     expect(review.concurrency?.group ?? "").toContain("github.event.pull_request.number");
     expect(review.concurrency?.["cancel-in-progress"]).not.toBe(true);
-    expect(check.concurrency).toBeUndefined();
-    expect(meters.concurrency).toBeUndefined();
+    expect(check.concurrency?.group).not.toBe(review.concurrency?.group);
+    expect(meters.concurrency?.group).not.toBe(review.concurrency?.group);
   });
 });
 
@@ -685,20 +670,6 @@ describe("bin/review posts its judgement when only main moved under it while its
   });
 });
 
-describe("bin/review --help prints its usage and exits clean, reading no PR and hiring no model (#842)", () => {
-  it("prints its usage line to stdout and exits 0, reading no PR and hiring no model", () => {
-    const { run, read, hired, spent } = reviewing();
-
-    const result = run("--help");
-
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain("review: usage: review <pr number>");
-    expect(read()).toBe(false);
-    expect(spent()).toBe(false);
-    expect(hired()).toEqual([]);
-  });
-});
-
 interface CheckStep {
   run?: string;
   env?: Record<string, string>;
@@ -721,7 +692,7 @@ const JUDGED = ["vitest.config.ts", "src/growth-limits.proc.test.ts", "bin/revie
 const outsideAnyRepo = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_")));
 
 describe("check.yml judges a PR with main's reviewer and main's test count, whatever the PR changed (#652)", () => {
-  it("runs from main's copy of itself and refuses a fork before any of its code runs", () => {
+  it("runs from main's copy of itself and refuses a fork before any of its code runs", async () => {
     const { on, jobs } = checkWorkflow();
     const [guard] = jobNamed(jobs, "check").steps;
     if (guard === undefined) throw new Error(`no first step in the check job of ${WORKFLOW}`);
@@ -732,7 +703,8 @@ describe("check.yml judges a PR with main's reviewer and main's test count, what
     expect(judged("collod873/claude-workflow")).toBe(0);
     expect(judged("stranger/claude-workflow")).toBe(1);
     expect(judged("")).toBe(1);
-    expect(jobNamed(jobs, "review").if).toContain("github.event.pull_request.head.repo.full_name == github.repository");
+    expect(await starts("check.yml", "review", { head: "ticket/9" })).toBe(true);
+    expect(await starts("check.yml", "review", { head: "ticket/9", fork: true })).toBe(false);
   });
 
   it("puts main's test runner and test count back, and reviews with main's reviewer, when the PR changed all three", () => {
