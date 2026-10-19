@@ -20,7 +20,7 @@ function ownWords(prompt: Prompt): number {
   return Buffer.byteLength(prompt.build({}));
 }
 
-export function sized(prompts: Prompt[]): string {
+function sized(prompts: Prompt[]): string {
   const sizes = prompts.map((prompt) => ({ name: prompt.name, bytes: ownWords(prompt) }));
   const total = sizes.reduce((sum, { bytes }) => sum + bytes, 0);
   const largest = sizes.reduce((most, size) => (size.bytes > most.bytes ? size : most));

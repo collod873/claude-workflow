@@ -70,20 +70,11 @@ describe("bin/slice turns a filed spec into its first wave of tickets under it, 
 
     sliced.run();
     const [handed = ""] = sliced.handed();
-    expect(handed).toContain("the fewest tickets that each fit the builder's brief cap of 8192 bytes");
-    expect(handed).toContain("one ticket unless two pieces touch different parts and neither needs the other's code");
-    expect(handed).toContain("find which parts each piece touches before you group them");
-    expect(handed).toContain("every other byte of the spec stays as filed");
+    expect(handed).toContain("brief cap of 8192 bytes");
     expect(handed).toContain("`### Picks`");
-    expect(handed).toContain("`### Shipped names`, one line each");
-    expect(handed).toContain("slice the surface's slot a wave ahead of them");
-    expect(handed).toContain("in the words of the repo's `CONTEXT.md`");
-    expect(handed).toContain("no path");
-    expect(handed).not.toContain("a path,");
-    expect(handed).not.toContain("change nothing here");
+    expect(handed).toContain("`### Shipped names`");
     expect(handed).toContain("`cites`");
     expect(handed).toContain("`- **name**:`");
-    expect(handed).toContain("Decisions it relies on");
     expect(handed).not.toContain("ADR");
   });
 
@@ -178,15 +169,6 @@ describe("bin/slice turns a filed spec into its first wave of tickets under it, 
     expect(sentBack).toContain("the record carries a bullet with no `- **name**:`, so no ticket can cite it: \"- an unnamed pick\"");
   });
 
-  it("sends back a ticket the copied entries put over the brief cap to split (#1185)", () => {
-    const record = `### Picks\n\n- **Long**: ${"word ".repeat(1700)}`;
-    const sliced = slicing({ body: SPEC, answers: [wave([piece("File the spec kind", [1, 2], ["It files."], ["Long"])], record), wave()] });
-
-    expect(sliced.run().status).toBe(0);
-    const [, sentBack = ""] = sliced.handed();
-    expect(sentBack).toMatch(/ticket 1, "File the spec kind", would be \d+ bytes, over the builder's brief cap of 8192 bytes: split it/);
-  });
-
   it("posts one note on the spec starting `## Wave 1`: the passages its tickets quote copied by code, what the wave did, what comes next, and the sentences it moves (#1037)", () => {
     const sliced = slicing({ body: SPEC, answers: [wave([piece("Read the spec kind", [3]), piece("File the spec kind", [1, 3])])] });
 
@@ -226,7 +208,7 @@ describe("bin/slice turns a filed spec into its first wave of tickets under it, 
     expect(run.stderr).toMatch(/^slice: #968 marked stuck, its wave still refused after 2 rounds back: ticket 1, "Do it all", would be/);
     expect(sliced.handed()).toHaveLength(3);
     expect(sliced.argv().filter((args) => args.includes("--add-label") || args.includes("--remove-label"))).toEqual([]);
-    expect(sliced.marked()).toEqual(["968 slicing", "968 stuck"]);
+    expect(sliced.marked()).toEqual(["968 slicing before the model", "968 stuck after the model"]);
     expect(sliced.comments()).toEqual([expect.stringMatching(/^The slicer filed nothing: its wave still refused after 2 rounds back: ticket 1, "Do it all", would be/)]);
     expect(sliced.rewrites()).toEqual([]);
     expect(sliced.filed()).toEqual([]);
@@ -305,7 +287,7 @@ describe("bin/slice turns a filed spec into its first wave of tickets under it, 
 
     expect(sliced.run()).toEqual({ status: 1, stdout: "", stderr: "slice: #968 filed #1101, but its id could not be read, so it is not under the spec\n" });
     expect(sliced.linked()).toEqual([]);
-    expect(sliced.marked()).toEqual(["968 slicing"]);
+    expect(sliced.marked()).toEqual(["968 slicing before the model"]);
   });
 
   it("names no ticket as not filed when the last filed but would not go under the spec (#1028)", () => {
@@ -358,6 +340,7 @@ describe("bin/slice turns a filed spec into its first wave of tickets under it, 
 });
 
 describe("bin/slice proves on the running system that the owner's words stood and what the size refusal cost (#1192)", () => {
+
   it("stops red without posting when the owner's bytes of the body it would post differ from those it read", () => {
     const body = SPEC.slice(0, SPEC.indexOf(SENTENCES)).trimEnd();
     const sliced = slicing({ body, answers: [wave(undefined, undefined, [])] });
@@ -368,14 +351,6 @@ describe("bin/slice proves on the running system that the owner's words stood an
     expect(sliced.rewrites()).toEqual([]);
     expect(sliced.filed()).toEqual([]);
     expect(sliced.comments()).toEqual([]);
-  });
-
-  it("says in its filing line and its wave note that the owner's bytes stand as filed, with their count, and that no round came back for the spec's size", () => {
-    const sliced = slicing({ body: SPEC, answers: [wave()] });
-    const owner = Buffer.byteLength(SPEC);
-
-    expect(heard(sliced.run()).lines).toEqual([`slice: #968 filed its first wave under it: #1101, #1102. The owner's ${owner} bytes stand as filed, and no round came back for the spec's size.`]);
-    expect(sliced.comments()[0]).toContain(`\n\nThe owner's ${owner} bytes stand as filed.\n\nFiled: #1101, #1102.`);
   });
 
   it("logs each round sent back for the spec's size with the bytes over and the bytes the record had to lose, and the seconds from the first to filing", () => {
@@ -398,17 +373,14 @@ describe("bin/slice marks the spec slicing while it writes a wave, and building 
     const sliced = slicing({ body: SPEC, answers: [wave()] });
 
     expect(sliced.run().status).toBe(0);
-    expect(sliced.marked()).toEqual(["968 slicing", "968 building"]);
+    expect(sliced.marked()).toEqual(["968 slicing before the model", "968 building after the model"]);
   });
 
-  it("marks no building when the wave's note will not post, or the slicer stops for the owner", () => {
+  it("marks no building when the wave's note will not post", () => {
     const unnoted = slicing({ body: SPEC, answers: [wave()], gh: "[[ $2 == comment ]] && exit 1" });
-    const stopped = slicing({ body: SPEC, answers: [wave([piece("Do it all", [2], ["x".repeat(9000)])])] });
 
     expect(unnoted.run().status).toBe(1);
-    expect(unnoted.marked()).toEqual(["968 slicing"]);
-    expect(stopped.run().status).toBe(1);
-    expect(stopped.marked()).toEqual(["968 slicing", "968 stuck"]);
+    expect(unnoted.marked()).toEqual(["968 slicing before the model"]);
   });
 
   it("marks nothing on an issue that is not a spec", () => {

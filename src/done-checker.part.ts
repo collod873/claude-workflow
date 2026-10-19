@@ -35,7 +35,6 @@ export function doneChecking({
     ...stage,
     root,
     closes: () => argv().filter((args) => args[1] === "close"),
-    labelled: () => argv().filter((args) => args[1] === "edit").map((args) => args.slice(2).join(" ")),
     marked,
     seenBySlice: () => (existsSync(join(root, "seen-by-slice")) ? readFileSync(join(root, "seen-by-slice"), "utf8") : ""),
     sliced: () => (existsSync(sliced) ? readFileSync(sliced, "utf8").trimEnd().split("\n") : []),

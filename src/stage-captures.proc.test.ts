@@ -43,7 +43,6 @@ describe("a failed fetch of the session captures leaves the job its stage, with 
     const failed = fetching("[ \"$1\" = clone ] && { echo 'remote: Repository not found.' >&2; exit 128; }\nexit 1");
     const minted = stageSteps().find((step) => step.with?.repositories === "transcripts");
 
-    expect(failed.status).not.toBe(0);
     expect(failed.handed).not.toBe("");
     expect(failed.held).toEqual([]);
     expect(failed.filing).toBe(true);

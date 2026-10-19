@@ -34,7 +34,7 @@ export function slicing({
   for (const [number, pr] of Object.entries(prs)) plant(root, `prs/${number}`, JSON.stringify({ ...pr, files: (pr as { files?: string[] }).files?.map((path) => ({ path })) }));
   for (const [number, diff] of Object.entries(diffs)) plant(root, `diffs/${number}`, diff);
   plant(root, "open.json", JSON.stringify(open));
-  const marked = stubbedMark(root, undefined, markRefusal);
+  const marked = stubbedMark(root, join(root, "hired"), markRefusal);
   answers.forEach((answer, at) => plant(root, `answers/${at + 1}.json`, `${JSON.stringify({ type: "result", subtype: "success", is_error: false, session_id: SLICING_SESSION, structured_output: answer })}\n`));
   script(
     join(root, "bin", "gh"),

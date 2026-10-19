@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { PROBE_RUN, probing } from "./probe.part.ts";
 import { probeOutput, probeRunName } from "./probe.ts";
@@ -65,7 +67,11 @@ describe("a probe runs one command or prompt in a stage's real environment and e
     expect(unlisted.stderr).toBe("probe: no run of machine.yml in collod873/Lumaria named the probe after 24 looks\n");
   });
 
-  it("names its run as the caller file's run name does", () => {
-    expect(probeRunName("claude", "Say hi")).toBe("Probe (claude): Say hi");
+  it("names its run as the caller file's run name does, so a renamed run-name cannot leave the probe looking for a run that is never listed", () => {
+    for (const file of [".github/caller.yml", ".github/workflows/machine.yml"]) {
+      const runName = /format\('(Probe [^']*)', inputs\.probe_with \|\| 'script', inputs\.probe\)/.exec(readFileSync(join(import.meta.dirname, "..", file), "utf8"))?.[1];
+      expect(runName, file).toBeDefined();
+      expect(probeRunName("claude", "Say hi"), file).toBe((runName ?? "").replace("{0}", "claude").replace("{1}", "Say hi"));
+    }
   });
 });

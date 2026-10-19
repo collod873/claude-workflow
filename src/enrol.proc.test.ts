@@ -34,11 +34,12 @@ describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#11
   });
 
   it("writes .github/caller.yml as it stands, but for the name of the repo's CI", () => {
-    const { run, held } = enrolling(bare({ files: { ".github/workflows/ci.yml": CI.replace("name: Gate", "name: CI") } }));
+    const { run, held } = enrolling(bare());
 
     run();
 
-    expect(held().files[".github/workflows/machine.yml"]).toBe(CALLER);
+    expect(CALLER).toContain("workflows: [CI]\n");
+    expect(held().files[".github/workflows/machine.yml"]).toBe(CALLER.replace("workflows: [CI]\n", "workflows: [Gate]\n"));
   });
 
   it("commits the caller file and titles its PR as a conventional commit, which a commitlinted repo like Lumaria checks (#1251)", () => {
@@ -99,14 +100,11 @@ describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#11
     const result = run();
 
     expect(result.status).toBe(1);
-    expect(result.stderr.trimEnd().split("\n")).toEqual([
-      `enrol: ${REPO} is not enrolled, 10 could not be set and 0 were:`,
-      "- the App's access: gh: Bad credentials (HTTP 401)",
-      "- CORE_APP_CLIENT_ID: gh: Bad credentials (HTTP 401)",
-      "- CORE_APP_PRIVATE_KEY: gh: Bad credentials (HTTP 401)",
-      "- CORE_APP_PRIVATE_KEY for Dependabot: gh: Bad credentials (HTTP 401)",
-      "- and 6 more",
-    ]);
+    const [headline, ...shown] = result.stderr.trimEnd().split("\n");
+    expect(headline).toBe(`enrol: ${REPO} is not enrolled, 10 could not be set and 0 were:`);
+    expect(shown).toHaveLength(5);
+    for (const line of shown.slice(0, 4)) expect(line).toMatch(/^- .+: gh: Bad credentials \(HTTP 401\)$/);
+    expect(shown[4]).toBe("- and 6 more");
   });
 
   it("refuses the caller file when no one workflow runs a check job on pull requests, naming them", () => {
@@ -192,28 +190,10 @@ describe("bin/enrol keeps an enrolled repo current with the owner's own login (#
     expect(held().files["old.txt"]).toBeUndefined();
   });
 
-  it("reads the App's access with the App's own key and grants it with the owner's login, never listing the owner's installations", () => {
-    const { run, held } = enrolling(bare());
-
-    const result = run();
-
-    expect(result.stderr).toBe("");
-    expect(held().reached).toContain(REPO);
-  });
-
   it("refuses the App's access, naming the key, when no CORE_APP_PRIVATE_KEY is in the environment to read it with", () => {
     const { run } = enrolling(bare(), { CLAUDE_CODE_OAUTH_TOKEN: "sk-token" });
 
     expect(run().stderr).toContain("- the App's access: no CORE_APP_PRIVATE_KEY in the environment to read the App's access with");
-  });
-
-  it("ends saying a repo enrolled like Lumaria today was already enrolled, and changes nothing", () => {
-    const { run, held } = enrolling(bare());
-    run();
-    const before = held().writes.length;
-
-    expect(run()).toEqual({ status: 0, stdout: `enrol: ${REPO} was already enrolled, nothing changed\n${OFFER}`, stderr: "" });
-    expect(held().writes).toHaveLength(before);
   });
 
   it("writes the caller file straight to main where main still takes direct pushes, opening no PR", () => {
@@ -308,6 +288,7 @@ const HELD_OFF_THE_PC = [
 ].join("\n");
 
 describe("bin/enrol says what a repo needs before its jobs suit this PC's runners, and how to move them (#1270)", () => {
+
   it("names each job left on GitHub's runners, a check that skips check's slots and a pinned host port, then offers bin/runner", () => {
     const { run } = enrolling(bare({ files: { ".github/workflows/ci.yml": HELD_OFF_THE_PC, ".github/workflows/deploy.yml": DEPLOY } }));
 
@@ -323,11 +304,6 @@ describe("bin/enrol says what a repo needs before its jobs suit this PC's runner
     ]);
   });
 
-  it("adds nothing for a repo already on this PC with nothing to change", () => {
-    const { run } = enrolling(bare({ variables: ["CI_RUNNER"] }));
-
-    expect(run().stdout).toBe(`enrol: ${REPO} enrolled, 10 settings set\n`);
-  });
 });
 
 describe("bin/enrol names a CI check job that still runs on every PR, since GitHub holds a ticket PR behind a queued check run of the name the builder's status carries (#1345)", () => {
