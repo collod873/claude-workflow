@@ -263,7 +263,7 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
       : { ...rule, parameters: { ...rule.parameters, required_status_checks: rule.parameters.required_status_checks.map((required) => (required.context === HOME_REVIEW ? { context: ENROLLED_REVIEW } : required)) } };
   const reviewsHome = () => {
     const review = flowOf(textOf(TICKETS)?.text ?? "")?.jobs?.review;
-    return review != null && !String(review.if ?? "").includes(`/${HOME}'`);
+    return review != null && !String(review.if ?? "").includes(HOME);
   };
   const write = (branch?: string) => {
     for (const { path, text } of pieces().filter((piece) => textOf(piece.path, branch)?.text !== piece.text)) {
@@ -397,11 +397,9 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
       ? [
           {
             name: SWAP_SETTING,
-            waits: () => (reviewsHome() ? undefined : `swapping ${HOME_REVIEW} for ${ENROLLED_REVIEW} in main's required checks waits on ${basename(TICKETS)} running its review here`),
+            waits: () => (requiring(HOME_REVIEW).length === 0 || reviewsHome() ? undefined : `swapping ${HOME_REVIEW} for ${ENROLLED_REVIEW} in main's required checks waits on ${basename(TICKETS)} running its review here`),
             held: () => requiring(HOME_REVIEW).length === 0,
-            set: () => {
-              if (!reshape(HOME_REVIEW, swapped)) throw new Refused(`no ruleset requires ${HOME_REVIEW} to swap`);
-            },
+            set: () => void reshape(HOME_REVIEW, swapped),
           },
         ]
       : []),

@@ -312,8 +312,14 @@ const TWO_JOBS = CI_ON_EVERY_PR.replace("jobs:\n", "jobs:\n  lint: # kept as wri
 const RULED_TWO_JOBS = TWO_JOBS.replace("  check:\n", ["  check:", ...checkJobRule(), ""].join("\n"));
 
 describe("bin/enrol brings an enrolled repo's CI check job and pre-push to this repo's, in the one PR its caller file goes through, so a change to either lands once here (#1368)", () => {
-  it("adds the check-job rule to the check job alone, keeping every other byte, and writes this repo's pre-push over a differing one, all in one PR", () => {
-    const { run, held } = enrolling(bare({ ...LANDED, pending: true, files: { ".github/workflows/ci.yml": TWO_JOBS, ".github/workflows/machine.yml": CALLER.replace("[CI]", "[Gate]"), ".husky/pre-push": "pnpm check\n" } }), {});
+  const STALE_MAIN = { ".github/workflows/ci.yml": TWO_JOBS, ".github/workflows/machine.yml": STALE, ".husky/pre-push": "pnpm check\n" };
+  const CALLER_ONLY_BRANCH = { ...STALE_MAIN, ".github/workflows/machine.yml": CALLER.replace("[CI]", "[Gate]") };
+
+  it.each([
+    ["opens one PR", {}],
+    ["updates the open PR that carries only the caller file", { branches: { "enrol/caller": CALLER_ONLY_BRANCH }, prs: [{ number: 900, head: "enrol/caller", auto: true }] }],
+  ])("%s adding the check-job rule to the check job alone, keeping every other byte, and this repo's pre-push over a differing one", (_, open) => {
+    const { run, held } = enrolling(bare({ ...LANDED, pending: true, files: STALE_MAIN, ...open }), {});
 
     const result = run(REPO, "--caller");
 
@@ -370,6 +376,23 @@ describe("bin/enrol on this repo swaps the review main requires for tickets / re
     expect(result.status).toBe(0);
     expect(result.stdout).toBe(`enrol: ${HOME} was already enrolled, nothing changed\nenrol: ${HOME}: swapping review for ${ENROLLED_REVIEW} in main's required checks waits on tickets.yml running its review here\n`);
     expect(held().writes).toEqual([]);
+  });
+
+  it("still waits where tickets.yml words its skip of this repo another way, or has no review job", () => {
+    const reworded = AT_HOME.replace("  review:\n    if: ${{ ", "  review:\n    if: ${{ github.event.repository.name != 'claude-workflow' && ");
+    const reviewless = TICKETS.replace(/^ {2}review:\n/m, "  judged:\n");
+    for (const tickets of [reworded, reviewless]) {
+      const { run, held } = enrolling(home(tickets), {});
+
+      expect(run(HOME, "--caller").stdout).toContain("waits on tickets.yml running its review here");
+      expect(held().writes).toEqual([]);
+    }
+  });
+
+  it("says nothing of the swap where no ruleset requires plain review", () => {
+    const { run } = enrolling({ ...home(TICKETS), rules: [{ type: "pull_request" }] }, {});
+
+    expect(run(HOME, "--caller").stdout).toBe(`enrol: ${HOME} was already enrolled, nothing changed\n`);
   });
 
   it("requires tickets / review in review's place, keeping every other rule, once tickets.yml runs its review here", () => {
