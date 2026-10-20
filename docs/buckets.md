@@ -41,19 +41,21 @@ Building now:
 1. #1366, one shape for every repo (a fix spanning two repos).
 2. #1371, the refused push (a held state nothing wakes); #1372, the memory guard; #1373, a run
    that goes red without judging.
+3. Ruled by Collin 2026-10-20: agent-hooks#105, a test runs only when a file it read changed (one
+   tree judged more than once); #1382, one writer for this file and same-file tickets in order
+   (parallel work conflicts on one file).
 
-Once all four have merged, each in its own session:
-3. File the next Lumaria Spec: the move onto the kit, from Lumaria#1125, #1126 and #1130.
-4. At its done check, measure it as [spec-1086-2026-10.md](research/spec-1086-2026-10.md) was,
+Once all six have merged, each in its own session:
+4. File the next Lumaria Spec: the move onto the kit, from Lumaria#1125, #1126 and #1130.
+5. At its done check, measure it as [spec-1086-2026-10.md](research/spec-1086-2026-10.md) was,
    move "Last measured", and move each built-and-unmeasured row: a held sentence, the fix wave,
-   the gate that ends green, the browser driver, and items 1 and 2.
-5. #1335, the scrap-or-reshape review, read against that measurement.
+   the gate that ends green, the browser driver, and items 1 to 3.
+6. #1335, the scrap-or-reshape review, read against that measurement.
 
 Waiting on Collin's ruling: green work thrown away and no gate running the app, each needing a
 prevention; jobs on the PC sharing Docker, /tmp and processes; the Wave barrier.
 
-Open under a named prevention: one tree judged more than once (a branch update or a docs landing
-re-executes the tree); spot fixes outrun measurement (the measurement itself, and jobs that run
+Open under a named prevention: spot fixes outrun measurement (the measurement itself, and jobs that run
 one commit's workflow with another's code); the lone failures in
 [waves-12-16-2026-10.md](research/waves-12-16-2026-10.md) and
 [spec-1086-2026-10.md](research/spec-1086-2026-10.md), as one sweep.
