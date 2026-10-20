@@ -421,4 +421,18 @@ describe("bin/enrol on this repo swaps the review main requires for tickets / re
     expect(held().rules.map(({ type }) => type).sort()).toEqual(["pull_request", "required_status_checks"]);
     expect(held().prs).toEqual([]);
   });
+
+  it.each([
+    ["waits on the next bin/land here, ending green on one line, when GitHub refuses the App's token the ruleset write (#1389)", "gh: Resource not accessible by integration (HTTP 403)", 0],
+    ["still ends red on any other refusal of the ruleset write", "gh: Validation Failed (HTTP 422)", 1],
+  ])("%s", (_, refusal, status) => {
+    const { run, held } = enrolling({ ...home(TICKETS), refused: { "rulesets/3 --input": refusal } }, {});
+
+    const result = run(HOME, "--caller");
+
+    expect(result.status).toBe(status);
+    if (status === 0) expect(result).toMatchObject({ stderr: "", stdout: `enrol: ${HOME} was already enrolled, nothing changed\nenrol: ${HOME}: swapping review for ${ENROLLED_REVIEW} in main's required checks waits on the next bin/land here, which runs it on the owner's token\n` });
+    else expect(result.stderr).toContain(refusal);
+    expect(JSON.stringify(held().rules)).toContain('"context":"review"');
+  });
 });

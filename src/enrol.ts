@@ -21,6 +21,7 @@ const KEY = "CORE_APP_PRIVATE_KEY";
 const JWT_LIFE = 540;
 const APP = MACHINE.replace(/\[bot\]$/, "");
 const NOT_FOUND = /\(HTTP 404\)/;
+const FORBIDDEN = /\(HTTP 403\)/;
 const HANDED = "ci: hand this repo's tickets to the machine";
 const CALLER_SETTING = "the caller file, check-job rule and pre-push";
 const SWAP_SETTING = `main requiring ${ENROLLED_REVIEW} in place of ${HOME_REVIEW}`;
@@ -35,6 +36,7 @@ const PC_SWITCH = /vars\.(\w+)/.exec(PC_RUNS_ON)?.[1] ?? "";
 const made = () => LABELS.filter(({ kind }) => kind !== "try");
 
 class Refused extends Error {}
+class Waits extends Error {}
 
 interface Setting {
   name: string;
@@ -398,7 +400,14 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
             name: SWAP_SETTING,
             waits: () => (requiring(HOME_REVIEW).length === 0 || reviewsHome() ? undefined : `swapping ${HOME_REVIEW} for ${ENROLLED_REVIEW} in main's required checks waits on ${basename(TICKETS)} running its review here`),
             held: () => requiring(HOME_REVIEW).length === 0,
-            set: () => void reshape(HOME_REVIEW, swapped),
+            set: () => {
+              try {
+                reshape(HOME_REVIEW, swapped);
+              } catch (error) {
+                if (!(error instanceof Refused && FORBIDDEN.test(error.message))) throw error;
+                throw new Waits(`swapping ${HOME_REVIEW} for ${ENROLLED_REVIEW} in main's required checks waits on the next bin/land here, which runs it on the owner's token`);
+              }
+            },
           },
         ]
       : []),
@@ -421,6 +430,10 @@ function enrol(repo: string, callerOnly: boolean): number {
       if (pending !== undefined) waiting.push(`- ${setting.name}: ${pending.waits} merges on its own once ${CHECK} passes`);
       if (pending?.opened !== false) set.push(setting.name);
     } catch (error) {
+      if (error instanceof Waits) {
+        told.push(`enrol: ${repo}: ${error.message}`);
+        continue;
+      }
       if (!(error instanceof Refused)) throw error;
       refused.push(`- ${setting.name}: ${error.message}`);
     }
