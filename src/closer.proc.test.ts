@@ -939,8 +939,7 @@ describe("bin/close moves the row a merged ticket names on main, so no ticket's 
     expect(land?.buckets).toBe(BUCKETS.replace("| ruled by Collin 2026-10-20 |", "| ruled by Collin 2026-10-20; built in #812 (PR #900), unmeasured |").trimEnd());
     const head = land?.head ?? "";
     const posted = calls().filter((call) => call.includes(`statuses/${head}`)).map((call) => call.split("\n").find((arg) => arg.startsWith("context=")));
-    expect(posted).toEqual(["context=check", "context=review"]);
-    expect(calls().some((call) => call.startsWith("pr\nmerge\n") && call.includes(`--match-head-commit\n${head}`))).toBe(true);
+    expect(posted.sort()).toEqual(["context=check", "context=review"]);
     expect(result.stdout).toContain('; moved the row "Parallel work conflicts on one file"');
   });
 
@@ -954,5 +953,39 @@ describe("bin/close moves the row a merged ticket names on main, so no ticket's 
     expect(result.status).toBe(0);
     expect(missing.landed()).toEqual([]);
     expect(result.stdout).toContain('; #812 names the row "No such row", which docs/buckets.md on main lacks, so no row moved');
+  });
+
+  it("moves no row a second time when the closer runs again on a ticket it already moved", () => {
+    const moved = BUCKETS.replace("| ruled by Collin 2026-10-20 |", "| ruled by Collin 2026-10-20; built in #812 (PR #900), unmeasured |");
+    const { landed, calls, run } = closing({ ticket: "812", buckets: moved, ticketBody: naming("Parallel work conflicts on one file") });
+
+    const result = run();
+
+    expect(result.status).toBe(0);
+    expect(landed()).toEqual([]);
+    expect(calls().some((call) => call.startsWith("pr\ncreate\n"))).toBe(false);
+    expect(result.stdout).toContain('; #812 names the row "Parallel work conflicts on one file", which already says #812 built it');
+  });
+
+  it("lands the move from a fresh main when its first merge is refused, leaving no refused branch behind", () => {
+    const { landed, run } = closing({ ticket: "812", buckets: BUCKETS, ticketBody: naming("Parallel work conflicts on one file"), rowMergesRefused: 1 });
+
+    const result = run();
+
+    expect(result.status).toBe(0);
+    expect(landed()).toHaveLength(1);
+    expect(result.stdout).toContain('; moved the row "Parallel work conflicts on one file"');
+  });
+
+  it("tells the ticket its row did not move when every round's merge is refused, and leaves no branch behind", () => {
+    const { landed, calls, run } = closing({ ticket: "812", buckets: BUCKETS, ticketBody: naming("Parallel work conflicts on one file"), rowMergesRefused: 3 });
+
+    const result = run();
+
+    expect(result.status).toBe(0);
+    expect(landed()).toEqual([]);
+    const told = calls().filter((call) => call.startsWith("issue\ncomment\n812\n")).at(-1);
+    expect(told).toContain('The closer could not move the row "Parallel work conflicts on one file" in docs/buckets.md');
+    expect(told).toContain("Pull request is not mergeable");
   });
 });

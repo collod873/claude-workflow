@@ -383,6 +383,7 @@ function rowLanded(ticket: string, pr: string, row: string): string {
   const main = gitRead(["rev-parse", "origin/main"], `main could not be read, so the row #${ticket} names is not moved`);
   const read = git(["show", `${main}:${BUCKETS}`]);
   if (read.status !== 0) return named(ticket, row, `and main has no ${BUCKETS}, so no row moved`);
+  if (read.stdout.split("\n").some((line) => line.startsWith(`| ${row} |`) && line.includes(`built in #${ticket} `))) return named(ticket, row, `which already says #${ticket} built it, so no row moved again`);
   const table = rowMoved(read.stdout, row, `built in #${ticket} (PR #${pr}), unmeasured`);
   if (table === undefined) return named(ticket, row, `which ${BUCKETS} on main lacks, so no row moved`);
   const blob = git(["hash-object", "-w", "--stdin"], table);
@@ -402,7 +403,8 @@ function rowLanded(ticket: string, pr: string, row: string): string {
   if (opened.status !== 0) return named(ticket, row, `and its move's PR could not be opened: ${firstLine(opened)}`);
   const merge = gh(["pr", "merge", branch, "--merge", "--delete-branch", "--match-head-commit", head]);
   if (merge.status === 0) return `; moved the row ${JSON.stringify(row)} on main`;
-  gh(["pr", "close", branch, "--delete-branch"]);
+  gh(["pr", "close", branch]);
+  git(["push", "--quiet", "origin", "--delete", branch]);
   return named(ticket, row, `and its move's PR ${UNMERGED}: ${firstLine(merge)}`);
 }
 
@@ -415,6 +417,7 @@ function rowMovedFor(ticket: string, pr: string, body: string): string {
     said = rowLanded(ticket, pr, row);
     if (!said.includes(UNMERGED)) return said;
   }
+  commentOnTicket(ticket, `The closer could not move the row ${JSON.stringify(row)} in ${BUCKETS} in ${ROW_ROUNDS} rounds, so it still needs \`built in #${ticket}\` in its State: ${said.slice(2)}\n\nRun: ${thisRun}`, gh);
   return said;
 }
 
