@@ -351,6 +351,7 @@ function close(): Stop | undefined {
 const BUCKETS = "docs/buckets.md";
 const ROW = /^Row: "([^"\n]+)"/m;
 const ROW_ROUNDS = 3;
+const BUILT_BY = (ticket: string) => new RegExp(`\\bbuilt \\d{4}-\\d{2}-\\d{2} \\(#${ticket}\\)`);
 
 const named = (ticket: string, row: string, why: string) => `; #${ticket} names the row ${JSON.stringify(row)}, ${why}`;
 
@@ -395,8 +396,8 @@ function rowLanded(ticket: string, pr: string, row: string): RowMove {
   const main = gitRead(["rev-parse", "origin/main"], `main could not be read, so the row #${ticket} names is not moved`);
   const read = git(["show", `${main}:${BUCKETS}`]);
   if (read.status !== 0) return { said: named(ticket, row, `and main has no ${BUCKETS}, so no row moved`) };
-  if (read.stdout.split("\n").some((line) => line.startsWith(`| ${row} |`) && line.includes(`built in #${ticket} `))) return { said: named(ticket, row, `which already says #${ticket} built it, so no row moved again`) };
-  const table = rowMoved(read.stdout, row, `built in #${ticket} (PR #${pr}), unmeasured`);
+  if (read.stdout.split("\n").some((line) => line.startsWith(`| ${row} |`) && BUILT_BY(ticket).test(line))) return { said: named(ticket, row, `which already says #${ticket} built it, so no row moved again`) };
+  const table = rowMoved(read.stdout, row, `built ${new Date().toISOString().slice(0, 10)} (#${ticket}), unmeasured`);
   if (table === undefined) return failedOnce(named(ticket, row, `which ${BUCKETS} on main lacks, so no row moved`));
   const blob = git(["hash-object", "-w", "--stdin"], table);
   const tree = blob.status === 0 ? treeWith(`${main}^{tree}`, BUCKETS.split("/"), blob.stdout.trim()) : undefined;
@@ -408,7 +409,7 @@ function rowLanded(ticket: string, pr: string, row: string): RowMove {
   if (pushed.status !== 0) return failedOnce(named(ticket, row, `and its move could not be pushed: ${firstLine(pushed)}`));
   const judged = `the closer changed ${BUCKETS} alone on main's judged tree (#1382)`;
   for (const context of REQUIRED_CHECKS) {
-    const posted = gh(["api", "-X", "POST", `repos/{owner}/{repo}/statuses/${head}`, "-f", "state=success", "-f", `context=${context}`, "-f", `description=${judged}`]);
+    const posted = context === "check" ? checkStatus(head, "success", judged) : gh(["api", "-X", "POST", `repos/{owner}/{repo}/statuses/${head}`, "-f", "state=success", "-f", `context=${context}`, "-f", `description=${judged}`]);
     if (posted.status !== 0) return unpushed(branch, named(ticket, row, `and its move's ${context} status could not be posted, so its branch was deleted: ${firstLine(posted)}`));
   }
   const opened = gh(["pr", "create", "--base", "main", "--head", branch, "--title", `Move the row "${row}" now #${ticket} has merged`, "--body", `The closer moves the row #${ticket} names, so no ticket's PR edits ${BUCKETS} (#1382).\n\nRun: ${thisRun}`]);
@@ -427,7 +428,7 @@ function rowMovedFor(ticket: string, pr: string, body: string): string {
     move = rowLanded(ticket, pr, row);
     if (move.failed !== "again") break;
   }
-  if (move.failed !== undefined) commentOnTicket(ticket, `The closer could not move the row ${JSON.stringify(row)} in ${BUCKETS}, so it still needs \`built in #${ticket}\` in its State: ${move.said.slice(2)}\n\nRun: ${thisRun}`, gh);
+  if (move.failed !== undefined) commentOnTicket(ticket, `The closer could not move the row ${JSON.stringify(row)} in ${BUCKETS}, so it still needs \`built <date> (#${ticket})\` in its State: ${move.said.slice(2)}\n\nRun: ${thisRun}`, gh);
   return move.said;
 }
 

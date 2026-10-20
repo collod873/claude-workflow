@@ -936,7 +936,7 @@ describe("bin/close moves the row a merged ticket names on main, so no ticket's 
     expect(more).toEqual([]);
     expect(land?.parents).toEqual([git(session, "rev-parse", "origin/main")]);
     expect(land?.changed).toBe("docs/buckets.md");
-    expect(land?.buckets).toBe(BUCKETS.replace("| ruled by Collin 2026-10-20 |", "| ruled by Collin 2026-10-20; built in #812 (PR #900), unmeasured |").trimEnd());
+    expect(land?.buckets).toBe(BUCKETS.replace("| ruled by Collin 2026-10-20 |", `| ruled by Collin 2026-10-20; built ${new Date().toISOString().slice(0, 10)} (#812), unmeasured |`).trimEnd());
     const head = land?.head ?? "";
     const posted = calls().filter((call) => call.includes(`statuses/${head}`)).map((call) => call.split("\n").find((arg) => arg.startsWith("context=")));
     expect(posted.sort()).toEqual(["context=check", "context=review"]);
@@ -956,7 +956,7 @@ describe("bin/close moves the row a merged ticket names on main, so no ticket's 
   });
 
   it("moves no row a second time when the closer runs again on a ticket it already moved", () => {
-    const moved = BUCKETS.replace("| ruled by Collin 2026-10-20 |", "| ruled by Collin 2026-10-20; built in #812 (PR #900), unmeasured |");
+    const moved = BUCKETS.replace("| ruled by Collin 2026-10-20 |", `| ruled by Collin 2026-10-20; built ${new Date().toISOString().slice(0, 10)} (#812), unmeasured |`);
     const { landed, calls, run } = closing({ ticket: "812", buckets: moved, ticketBody: naming("Parallel work conflicts on one file") });
 
     const result = run();
