@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { ENROLLED_REVIEW } from "./post.ts";
 import { MACHINE } from "./spelled.ts";
-import { bare, checkJobRule, ci, CI_ON_EVERY_PR, DEPLOY, ENROLLED as REPO, enrolling, key, PC_RUNS_ON, prePush } from "./scenarios.ts";
+import { bare, checkJobRule, ci, CI_ON_EVERY_PR, DEPLOY, ENROLLED as REPO, enrolling, home, HOME, HOME_TICKETS as TICKETS, key, PC_RUNS_ON, prePush } from "./scenarios.ts";
 
 const CALLER = readFileSync(join(import.meta.dirname, "..", ".github", "caller.yml"), "utf8");
 const OFFER = `enrol: \`bin/runner ${REPO} pc\` moves its jobs to this PC; run one fresh full check there and watch its peak memory before leaving it on\n`;
@@ -364,21 +364,7 @@ describe("bin/enrol brings an enrolled repo's CI check job and pre-push to this 
   });
 });
 
-const HOME = "collod873/claude-workflow";
-const TICKETS = readFileSync(join(import.meta.dirname, "..", ".github", "workflows", "tickets.yml"), "utf8");
 const GUARDED = TICKETS.replace(/^( {2}review:\n {4}if: \$\{\{ .*?) \}\}$/m, "$1 && github.repository != format('{0}/claude-workflow', github.repository_owner) }}");
-const HOME_RULES = [
-  { type: "pull_request", ruleset_id: 3 },
-  { type: "required_status_checks", ruleset_id: 3, parameters: { strict_required_status_checks_policy: true, required_status_checks: [{ context: "check" }, { context: "review" }] } },
-];
-const home = (tickets: string) =>
-  bare({
-    repo: HOME,
-    allow_auto_merge: true,
-    rules: HOME_RULES,
-    files: Object.fromEntries([".github/workflows/check.yml", ".github/workflows/machine.yml", ".husky/pre-push"].map((path) => [path, readFileSync(join(import.meta.dirname, "..", path), "utf8")]).concat([[".github/workflows/tickets.yml", tickets]])),
-  });
-
 describe("bin/enrol on this repo swaps the review main requires for tickets / review only once tickets.yml runs its review here (#1368)", () => {
   it("ends green changing nothing while tickets.yml skips the review here, saying the swap waits on it", () => {
     expect(GUARDED).not.toBe(TICKETS);
