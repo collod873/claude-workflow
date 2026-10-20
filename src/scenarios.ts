@@ -398,7 +398,8 @@ export function landSession({
   changes = {},
   home,
   defaultBranch = "main",
-}: { gh?: string; remoteRefuses?: string; messages?: string[]; merges?: Merge[]; views?: string[]; mainMovesOnRefusal?: boolean; rounds?: string; covered?: boolean; green?: boolean; changes?: Record<string, string>; home?: Held; defaultBranch?: string } = {}) {
+  openPr = false,
+}: { gh?: string; remoteRefuses?: string; messages?: string[]; merges?: Merge[]; views?: string[]; mainMovesOnRefusal?: boolean; rounds?: string; covered?: boolean; green?: boolean; changes?: Record<string, string>; home?: Held; defaultBranch?: string; openPr?: boolean } = {}) {
   const root = scratch("land-");
   const { remote, session } = clonedOn(root, defaultBranch, ["base"]);
   git(remote, "config", "user.email", "github@test");
@@ -429,7 +430,9 @@ export function landSession({
         ...(home === undefined ? [] : [`[[ " $* " == *"${home.repo}"* ]] && exec node ${JSON.stringify(join(root, "gh-home"))} "$@"`]),
         `views=(${views.join(" ")})`,
         'case "$1 $2" in',
-        `  "pr create") echo ${LANDED_PR} ;;`,
+        ...(openPr
+          ? ['  "pr list") echo ' + LANDED_PR + " ;;", `  "pr create") printf 'a pull request for branch "%s" into branch "${defaultBranch}" already exists:\\n%s\\n' "$5" ${LANDED_PR} >&2; exit 1 ;;`]
+          : [`  "pr create") echo ${LANDED_PR} ;;`]),
         '  "api -X")',
         "    sha=${4##*/}",
         '    git -C "$remote" cat-file -e "$sha^{commit}" 2>/dev/null || { printf "gh: No commit found for SHA: %s (HTTP 422)\\n" "$sha" >&2; exit 1; }',

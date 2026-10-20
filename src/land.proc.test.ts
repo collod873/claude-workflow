@@ -54,6 +54,17 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
     expect(result.stdout).toBe(`Landed ${PR}\n`);
   });
 
+  it("merges the PR an earlier land left open for the same head instead of opening another, so a refused merge is landed by running land again, the one way an agent ships", () => {
+    const { head, branch, run, calls, merged } = sessionAheadOfMain(1, { openPr: true });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(calls().filter((call) => call[0] === "pr" && call[1] === "create")).toEqual([]);
+    expect(calls().filter(merged)).toEqual([["pr", "merge", branch, "--merge", "--match-head-commit", head]]);
+    expect(result.stdout).toBe(`Landed ${PR}\n`);
+  });
+
   it("runs the full check itself when no receipt covers the pushed tree, publishing its receipts, then posts the check and merges on green, so no agent hand-runs a check before landing (#1412)", () => {
     const { run, calls, checked, head, branch, merged, posted } = sessionAheadOfMain(1, { covered: false });
 
