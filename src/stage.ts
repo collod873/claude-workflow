@@ -89,8 +89,9 @@ function registered(gated: boolean): Registration | string {
 const CRAFT_SKILLS = ["codebase-design", "diagnosing-bugs", "domain-modeling", "tdd", "testing", "writing-for-agents"];
 
 function skillsAdded(names = CRAFT_SKILLS): string[] | string {
-  const root = process.env.AGENT_SKILLS ?? join(homedir(), ".agents", "skills");
-  if (root === "") return [];
+  const repo = process.env.AGENT_SKILLS ?? join(homedir(), ".agents", "skills");
+  if (repo === "") return [];
+  const root = join(repo, "skills");
   const missing = names.filter((name) => !existsSync(join(root, name, "SKILL.md")));
   if (missing.length > 0) return `the owner's ${missing.join(", ")} skill is not in ${root}`;
   const home = mkdtempSync(join(tmpdir(), "agent-skills-"));
