@@ -679,10 +679,10 @@ export function sessionExtras({
 
 export const ENROLLED = "collod873/Next";
 export const PC_RUNS_ON = "${{ vars.CI_RUNNER || 'ubuntu-latest' }}";
-export const CHECK_JOB_RULE = (/^ {2}check:\n((?: {4}.*\n)+?) {4}runs-on:/m.exec(readFileSync(join(import.meta.dirname, "..", ".github", "workflows", "check.yml"), "utf8"))?.[1] ?? "").trimEnd().split("\n");
 export const CI_ON_EVERY_PR = ["name: Gate", "on:", "  pull_request:", "jobs:", "  check:", `    runs-on: ${PC_RUNS_ON}`, "    steps:", "      - run: check --full", ""].join("\n");
-export const CI = CI_ON_EVERY_PR.replace("  check:\n", ["  check:", ...CHECK_JOB_RULE, ""].join("\n"));
-export const PRE_PUSH = readFileSync(join(import.meta.dirname, "..", ".husky", "pre-push"), "utf8");
+export const checkJobRule = () => (/^ {2}check:\n((?: {4}.*\n)+?) {4}runs-on:/m.exec(readFileSync(join(import.meta.dirname, "..", ".github", "workflows", "check.yml"), "utf8"))?.[1] ?? "").trimEnd().split("\n");
+export const ci = () => CI_ON_EVERY_PR.replace("  check:\n", ["  check:", ...checkJobRule(), ""].join("\n"));
+export const prePush = () => readFileSync(join(import.meta.dirname, "..", ".husky", "pre-push"), "utf8");
 export const DEPLOY = ["name: Deploy", "on:", "  push:", "jobs:", "  ship:", `    runs-on: ${PC_RUNS_ON}`, "    steps:", "      - run: ./ship", ""].join("\n");
 let appKey: { publicKey: string; privateKey: string } | undefined;
 const appKeys = () => (appKey ??= generateKeyPairSync("rsa", { modulusLength: 2048, publicKeyEncoding: { type: "spki", format: "pem" }, privateKeyEncoding: { type: "pkcs8", format: "pem" } }));
@@ -819,7 +819,7 @@ export function bare(extra: Partial<Held> = {}): Held {
     repo: ENROLLED,
     id: 4242,
     allow_auto_merge: false,
-    files: { ".github/workflows/ci.yml": CI, ".github/workflows/deploy.yml": DEPLOY },
+    files: { ".github/workflows/ci.yml": ci(), ".github/workflows/deploy.yml": DEPLOY },
     branches: {},
     prs: [],
     pending: false,
