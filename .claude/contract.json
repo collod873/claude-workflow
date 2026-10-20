@@ -40,6 +40,10 @@
     "links": {
       "run": "node src/part-links.ts",
       "why": "Every part links a failure that exists on GitHub, which needs the network and gh, so it runs in the full check only."
+    },
+    "rulesets": {
+      "run": "node src/rulesets.ts",
+      "why": "main's ruleset lives on GitHub, not in this tree, so no change here turns it red or green; it reads the network through gh, which the test step's receipts cannot trace, so it runs in the full check only and a doc-only change runs no test file."
     }
   }
 }
