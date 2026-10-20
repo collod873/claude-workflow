@@ -12,8 +12,7 @@ _Avoid_: problem, antipattern
 **Bucket**:
 Failures with one cause, a row in `docs/buckets.md` with their evidence, the one change that
 prevents them, and where it stands. A change to the machine names its bucket; a failure no
-bucket holds gets one before it gets a fix. A ticket names its row; the closer lands its move
-itself, as `bin/land` lands a receipted tree.
+bucket holds gets one before it gets a fix.
 _Avoid_: theme, category, epic
 
 ### The machine
@@ -38,7 +37,7 @@ _Avoid_: shim, wrapper, vendored workflow
 **Home**:
 A stage run is home when it has no caller file, or when its caller file (named by `CALLED_FROM`)
 is in the machine's own repo; it is foreign only when the caller file is in another repo. A home run
-behaves as this repo's own stage workflows did before Gaps first: the builder lands a `machine` outcome on
+behaves exactly as this repo's own stage workflows did before Gaps first: the builder lands a `machine` outcome on
 main and fails a check on any red step, `(needs ...)` ones included; the closer requires `check`
 and `check.yml`'s `review`; the done check gets this repo's running-system line and is offered the
 size trial.
@@ -179,7 +178,7 @@ A slice of a real spec run under a trial cap below the spec cap, so the size ref
 running system without padding any spec over the real cap. It is asked for with
 `bin/slice --size-trial <spec> <trial cap>`, through a caller file (see Trial through the caller). The trial cap stands in for the spec cap in the size
 refusal, its sent-back prompt and each round's log line, but not in the room line (see Trial room
-line). The real slicer is hired and sent back each round as in a real slice, answering with
+line). The real slicer is hired and sent back each round exactly as in a real slice, answering with
 the record and the wave only.
 When the wave would file, code proves the owner's bytes stand in the body it would post and logs the
 filing line it would have written, starting `slice: trial #N`, with the owner's bytes and the seconds
@@ -280,7 +279,7 @@ _Avoid_: idea, bug, backlog item, memo
 One agent process in a pipeline run, with no memory of other stages. Not an Actions job or step: a
 stage is a context boundary and they are not. Each stage declares its part row, prompt caps and
 quiet-output scenarios in its own part file, `src/<stage>.part.ts`, and its own stops in its own
-code; every growth limit finds them by scanning, so no stages share a list.
+code; every growth limit finds them by scanning, so no two stages share a list.
 _Avoid_: phase, pass, step, job
 
 **Stage opening**:
@@ -292,7 +291,7 @@ _Avoid_: preamble, setup, bootstrap
 
 **Paused**:
 An issue the owner labelled `paused`, a `held` label the machine never adds or removes. Each stage
-reads it when it opens and stands down, so a running one finishes and none starts;
+reads it when it opens and stands down, so a run already going finishes and none starts after it;
 a pause on a spec holds the spec alone, not its wave's tickets. A paused ticket's PR does not merge:
 adding `paused` turns its auto-merge off, and a save on a held ticket leaves it off, so the closer
 neither queues nor merges it.
@@ -329,8 +328,8 @@ GitHub token; nothing runs after it.
 _Avoid_: dry run, smoke test
 
 **Blip**:
-A GitHub call that fails on a server error, a rate limit, a timeout or a not-found. Every machine call goes
-through `bin/github`, which tries a blip up to 3 times, 1s then 2s apart, and logs
+A GitHub call that fails on a server error, a rate limit, a timeout or a not-found. Every call the
+machine makes goes through `bin/github`, which tries a blip up to 3 times, 1s then 2s apart, and logs
 each try again, before the call fails; a call for which a not-found is the answer, like a ticket's
 missing parent, says `--missing-answers`. A blip is absorbed at its call, a rerun at its run.
 _Avoid_: flake, glitch

@@ -927,7 +927,7 @@ describe("bin/close moves the row a merged ticket names on main, so no ticket's 
   const BUCKETS = ["# Buckets", "", "| Bucket | Evidence | Prevention | State |", "|---|---|---|---|", "| Parallel work conflicts on one file | three PRs went `DIRTY` | one writer | ruled by Collin 2026-10-20 |", "| Another row | its evidence | its prevention | unruled |", ""].join("\n");
   const naming = (row: string) => ["## Why", "", `Row: "${row}" (ruled by Collin 2026-10-20).`, "", '> "one writer for docs/buckets.md"', "", "## Done when", "", "- It lands.", ""].join("\n");
 
-  it("lands main plus that row's state moved, docs/buckets.md alone, judged and merged at once like a session landing", () => {
+  it("lands main plus that row's state moved, docs/buckets.md alone, through bin/land", () => {
     const { calls, landed, session, run } = closing({ ticket: "812", buckets: BUCKETS, ticketBody: naming("Parallel work conflicts on one file") });
 
     const result = run();
@@ -940,7 +940,7 @@ describe("bin/close moves the row a merged ticket names on main, so no ticket's 
     expect(land?.buckets).toBe(BUCKETS.replace("| ruled by Collin 2026-10-20 |", `| ruled by Collin 2026-10-20; built ${new Date().toISOString().slice(0, 10)} (#812), unmeasured |`).trimEnd());
     const head = land?.head ?? "";
     const posted = calls().filter((call) => call.includes(`statuses/${head}`)).map((call) => call.split("\n").find((arg) => arg.startsWith("context=")));
-    expect(posted.sort()).toEqual(["context=check", "context=review"]);
+    expect(posted.sort()).toEqual(["context=check", "context=tickets / review"]);
     expect(result.stdout).toContain('; moved the row "Parallel work conflicts on one file"');
   });
 
@@ -968,37 +968,14 @@ describe("bin/close moves the row a merged ticket names on main, so no ticket's 
     expect(result.stdout).toContain('; #812 names the row "Parallel work conflicts on one file", which already says #812 built it');
   });
 
-  it("lands the move from a fresh main when its first merge is refused, leaving no refused branch behind", () => {
-    const { landed, run } = closing({ ticket: "812", buckets: BUCKETS, ticketBody: naming("Parallel work conflicts on one file"), rowMergesRefused: 1 });
-
-    const result = run();
-
-    expect(result.status).toBe(0);
-    expect(landed()).toHaveLength(1);
-    expect(result.stdout).toContain('; moved the row "Parallel work conflicts on one file"');
-  });
-
-  it("tells the ticket its row did not move when every round's merge is refused, and leaves no branch behind", () => {
-    const { landed, calls, run } = closing({ ticket: "812", buckets: BUCKETS, ticketBody: naming("Parallel work conflicts on one file"), rowMergesRefused: 3 });
-
-    const result = run();
-
-    expect(result.status).toBe(0);
-    expect(landed()).toEqual([]);
-    const told = calls().filter((call) => call.startsWith("issue\ncomment\n812\n")).at(-1);
-    expect(told).toContain('The closer could not move the row "Parallel work conflicts on one file" in docs/buckets.md');
-    expect(told).toContain("Pull request is not mergeable");
-  });
-
-  it("tells the ticket its row did not move when the move's status is refused, and leaves no branch behind", () => {
+  it("tells the ticket its row did not move when bin/land refuses the move, here at its status post", () => {
     const { landed, calls, run } = closing({ ticket: "812", buckets: BUCKETS, ticketBody: naming("Parallel work conflicts on one file"), statusRefused: true });
 
     const result = run();
 
     expect(result.status).toBe(0);
-    expect(landed()).toEqual([]);
     const told = calls().filter((call) => call.startsWith("issue\ncomment\n812\n")).at(-1);
     expect(told).toContain('The closer could not move the row "Parallel work conflicts on one file" in docs/buckets.md');
-    expect(told).toContain("HTTP 502");
+    expect(told).toContain("land: gh api statuses failed");
   });
 });

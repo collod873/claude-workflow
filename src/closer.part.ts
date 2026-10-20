@@ -127,7 +127,6 @@ export function closing({
   check = "green" as "green" | "red",
   statusRefused = false,
   buckets,
-  rowMergesRefused,
 }: {
   ticket?: string;
   ticketBody?: string;
@@ -148,7 +147,6 @@ export function closing({
   check?: "green" | "red";
   statusRefused?: boolean;
   buckets?: string;
-  rowMergesRefused?: number;
 } = {}) {
   const root = scratch("closer-");
   const session = join(root, "session");
@@ -244,7 +242,6 @@ export function closing({
       ...openPrs.filter((pr) => pr.mergeRefused !== undefined).map((pr) => `  *"pr merge ${pr.number} "*) printf '%s\\n' '${pr.mergeRefused ?? ""}' >&2; exit 1 ;;`),
       ...(prUnreadable ? ["  *\"pr view 900 \"*) printf 'gh: Bad credentials (HTTP 401)\\n' >&2; exit 1 ;;"] : []),
       `  *"pr view"*) printf '%s\\n' '${FAST_TIMING.prOpened}' ;;`,
-      ...(rowMergesRefused === undefined ? [] : [`  *"pr merge land/"*) c=$(cat "${join(root, "row-merges")}" 2>/dev/null || echo 0); echo $((c + 1)) >"${join(root, "row-merges")}"; [ "$c" -ge ${rowMergesRefused} ] || { printf 'Pull request is not mergeable: the base branch was modified\\n' >&2; exit 1; } ;;`]),
       "  *) exit 0 ;;",
       "esac",
       "",
