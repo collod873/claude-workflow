@@ -382,7 +382,7 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
           target: "branch",
           enforcement: "active",
           conditions: ON_MAIN,
-          rules: [...THROUGH_PR, { type: "required_status_checks", parameters: { strict_required_status_checks_policy: true, required_status_checks: [{ context: CHECK }] } }],
+          rules: [...THROUGH_PR, { type: "required_status_checks", parameters: { strict_required_status_checks_policy: false, required_status_checks: [{ context: CHECK }] } }],
         };
         gh(["api", "-X", "POST", `repos/${repo}/rulesets`, "--input", "-"], JSON.stringify(ruleset));
       },
@@ -412,7 +412,7 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
           target: "branch",
           enforcement: "active",
           conditions: ON_MAIN,
-          rules: [{ type: "required_status_checks", parameters: { strict_required_status_checks_policy: true, required_status_checks: [{ context: ENROLLED_REVIEW }] } }],
+          rules: [{ type: "required_status_checks", parameters: { strict_required_status_checks_policy: false, required_status_checks: [{ context: ENROLLED_REVIEW }] } }],
         };
         return void gh(["api", "-X", "POST", `repos/${repo}/rulesets`, "--input", "-"], JSON.stringify(ruleset));
       },

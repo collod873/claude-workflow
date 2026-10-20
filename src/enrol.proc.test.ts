@@ -257,6 +257,14 @@ describe("bin/enrol keeps an enrolled repo current with the owner's own login (#
     expect(held().branches).toEqual({});
   });
 
+  it("holds main with rulesets that take a branch behind main, since land rebases before it checks and a strict rule reruns the full check each time main moves (agent-hooks#176)", () => {
+    const { run, held } = enrolling(bare());
+
+    expect(run().status).toBe(0);
+    const required = held().rules.filter(({ type }) => type === "required_status_checks");
+    expect(required.map(({ parameters }) => (parameters as { strict_required_status_checks_policy?: boolean }).strict_required_status_checks_policy)).toEqual([false, false]);
+  });
+
   it("holds main for the caller's review in a repo enrolled before it, once its caller file is current (#1285)", () => {
     const { run, held } = enrolling(bare({ rules: HELD_FOR_CHECK, allow_auto_merge: true, files: { ".github/workflows/ci.yml": ci(), ".github/workflows/machine.yml": STALE } }));
 
