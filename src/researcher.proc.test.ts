@@ -117,6 +117,44 @@ describe("bin/research answers a research note on the note and closes it, with n
   });
 });
 
+describe("bin/research files what its findings call for, so a closed note leaves no work unseen (#1353)", () => {
+  const fix = { fault: "bin/land posts its skipped review as review only, and Lumaria requires tickets / review.", title: "bin/land posts tickets / review where the ruleset requires it", done: ["A landing in Lumaria merges at once."] };
+  const ask = "Whether every repo's check, review and pre-push match one shape; my pick is yes, in two steps.";
+
+  it("files each fix as a ticket that builds at once and names the note, and the owner's choices as one note naming him, then closes", () => {
+    const answered = researching({ fixes: [fix], asks: [ask] });
+
+    expect(answered.run().status).toBe(0);
+    expect(answered.calls()).toEqual(["issue view 902", "issue comment 902", "issue create --title", "issue create --title", "issue close 902"]);
+    const [ticket, note] = answered.filed();
+    expect(ticket?.title).toBe(fix.title);
+    expect(ticket?.labels).toEqual(["ticket"]);
+    expect(ticket?.body).toContain("Follow-up of #902: its research found this.");
+    expect(ticket?.body).toContain(`> ${fix.fault}`);
+    expect(ticket?.body).toContain("## Done when\n\n- A landing in Lumaria merges at once.");
+    expect(note?.title).toBe("Your call after #902: What does the closer judge");
+    expect(note?.labels).toEqual(["note"]);
+    expect(note?.body).toContain(`@collod873 #902's research leaves these to you:\n\n- ${ask}`);
+  });
+
+  it("files no more than three fixes, however many the researcher gives", () => {
+    const answered = researching({ fixes: [fix, fix, fix, fix] });
+
+    expect(answered.run().status).toBe(0);
+    expect(answered.filed()).toHaveLength(3);
+  });
+
+  it("leaves the note open and ends red when a follow-up is refused, so the finding is not closed away", () => {
+    const answered = researching({ fixes: [fix], gh: "[[ $2 == create ]] && { printf 'HTTP 403: Resource not accessible\\n' >&2; exit 1; }" });
+
+    const { status, stderr } = answered.run();
+
+    expect(status).toBe(1);
+    expect(stderr).toContain("research: #902 is answered but its follow-ups were refused, so it stays open: ");
+    expect(answered.calls()).not.toContain("issue close 902");
+  });
+});
+
 describe("bin/research stops at a mark GitHub refused, so it hires no model on a note whose labels lag (#1107)", () => {
   it("ends red at the researching mark, naming the stage, the label and the note, and hires, posts and closes nothing after it", () => {
     const answered = researching({ markRefusal: "mark: #902 not labelled researching: HTTP 403: Resource not accessible by integration" });
