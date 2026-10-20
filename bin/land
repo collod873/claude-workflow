@@ -95,15 +95,21 @@ fi
 
 branch="land/${head:0:12}"
 url=
+judged="judged on the owner's PC by its pre-push, before the push (ADR-0008)"
+skipped="skipped: a session landing is judged by its pre-push, not reviewed (ADR-0008)"
 for (( round = 1; ; round++ )); do
   call "git push" git push --quiet --force origin "HEAD:refs/heads/$branch"
-  if ! check --full --covered >/dev/null 2>"$err"; then
+  changed=$(git diff --name-only origin/main HEAD)
+  if [[ $changed == docs/buckets.md ]]; then
+    judged="docs/buckets.md alone changed from main, and no check step reads it (#1382)"
+    skipped=$judged
+  elif ! check --full --covered >/dev/null 2>"$err"; then
     { printf -- '--- check --full --covered ---\n'; cat "$err"; } >>"$log"
     printf 'land: no receipt covers the pushed tree, so no check status is posted and nothing merges; run check --full and land again\n' >&2
     exit 1
   fi
-  posted check "judged on the owner's PC by its pre-push, before the push (ADR-0008)"
-  posted "tickets / review" "skipped: a session landing is judged by its pre-push, not reviewed (ADR-0008)"
+  posted check "$judged"
+  posted "tickets / review" "$skipped"
   if [[ -z $url ]]; then
     call "gh pr create" gh pr create --base main --head "$branch" \
       --title "$(git log -1 --format=%s HEAD)" \

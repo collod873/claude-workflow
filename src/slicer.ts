@@ -35,8 +35,9 @@ const PIECE = {
     why: { type: "string", pattern: NO_EM_DASH },
     done: { type: "array", items: { type: "string", pattern: NO_EM_DASH } },
     cites: { type: "array", items: { type: "string" } },
+    files: { type: "array", items: { type: "string" } },
   },
-  required: ["title", "passages", "why", "done", "cites"],
+  required: ["title", "passages", "why", "done", "cites", "files"],
   additionalProperties: false,
 };
 
@@ -59,6 +60,7 @@ interface Piece {
   why: string;
   done: string[];
   cites: string[];
+  files: string[];
 }
 
 interface Wave {
@@ -104,6 +106,8 @@ const CITED = `Builders never read the spec, so a ticket carries every pick and 
 
 const SLOT_FIRST = "Where pieces plug into one shared surface, slice the surface's slot a wave ahead of them, so no two tickets of a wave edit one file.";
 
+const FILES = "`files`, the repo path of every file its change will edit, docs and tests included: two tickets of a wave naming one file come back to you, since each merge would move that file under the other's branch.";
+
 function room(recorded: Recorded): string {
   const left = SPEC_CAP - Buffer.byteLength(spliced(recorded));
   const standing = left >= 0 ? `${left} under` : `${-left} over`;
@@ -137,7 +141,7 @@ export function handedOn(title: string, body: string, found?: Found): string {
     ...read,
     "## Your answer",
     `\`record\`: the spec's decisions record in full, which code splices in as \`## Decisions record\` just before the sentences; every other byte of the spec stays as filed. ${room(recorded)} ${SETTLED}`,
-    `\`tickets\`: the ${found === undefined ? "first" : found.fix ? "fix" : "next"} wave, the fewest tickets that each fit the builder's brief cap of ${TICKET_CAP} bytes, all building at once beside each other. First find which parts each piece touches before you group them: one ticket unless two pieces touch different parts and neither needs the other's code. ${SLOT_FIRST} \`title\`; \`passages\`, the numbers of the Problem Statement passages its \`## Why\` quotes, which code copies in; \`why\`, what this ticket is for in the spec, which follows the quote; \`done\`, ${DONE_SENTENCES}. ${CITED} Code adds the spec's Out of Scope to each. A ticket over the cap comes back to you to split.${last}`,
+    `\`tickets\`: the ${found === undefined ? "first" : found.fix ? "fix" : "next"} wave, the fewest tickets that each fit the builder's brief cap of ${TICKET_CAP} bytes, all building at once beside each other. First find which parts each piece touches before you group them: one ticket unless two pieces touch different parts and neither needs the other's code. ${SLOT_FIRST} \`title\`; \`passages\`, the numbers of the Problem Statement passages its \`## Why\` quotes, which code copies in; \`why\`, what this ticket is for in the spec, which follows the quote; \`done\`, ${DONE_SENTENCES}. ${CITED} ${FILES} Code adds the spec's Out of Scope to each. A ticket over the cap comes back to you to split.${last}`,
     NOTED,
     "",
   ].join("\n\n");
@@ -201,7 +205,17 @@ function waveRefusals(read: string, wave: Wave, found: Found | undefined, cap: C
   });
   const tried = sentences(read).length;
   const moves = wave.moves.filter((sentence) => !(Number.isInteger(sentence) && sentence >= 1 && sentence <= tried)).map((sentence) => `the note moves sentence ${sentence}, and the spec lists ${tried}`);
-  return [...record, ...empty, ...tickets, ...moves, ...owedMoves(wave.moves, found)];
+  return [...record, ...empty, ...tickets, ...sharedFiles(wave.tickets), ...moves, ...owedMoves(wave.moves, found)];
+}
+
+function sharedFiles(tickets: Piece[]): string[] {
+  return tickets.flatMap((piece, at) =>
+    tickets.slice(at + 1).flatMap((other, after) =>
+      [...new Set(piece.files)]
+        .filter((file) => other.files.includes(file))
+        .map((file) => `tickets ${at + 1} and ${at + after + 2}, ${JSON.stringify(piece.title)} and ${JSON.stringify(other.title)}, both edit \`${file}\`: build one of them in a later wave`),
+    ),
+  );
 }
 
 function citeRefusals(entries: Entry[], piece: Piece): string[] {
