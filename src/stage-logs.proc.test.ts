@@ -117,7 +117,7 @@ describe("a stage job's uploaded machine logs carry its check logs and the owner
 describe("a stage job on a runner shared with other jobs waits only for its own log captures (#1282)", () => {
   const capturing = (hooks: string, seconds: number) => {
     script(join(hooks, "capture.py"), `sleep ${seconds}`);
-    return spawn("bash", [join(hooks, "capture.py")], { stdio: "ignore" });
+    return spawn("bash", [join(hooks, "capture.py")], { stdio: "ignore", detached: true });
   };
 
   it("files as soon as its own capture ends, while another job's capture on the same machine still runs", () => {
@@ -139,8 +139,13 @@ describe("a stage job on a runner shared with other jobs waits only for its own 
       expect(waited).toBeGreaterThanOrEqual(1_500);
       expect(waited).toBeLessThan(15_000);
     } finally {
-      theirs.kill();
-      ours.kill();
+      for (const capture of [theirs, ours]) {
+        try {
+          process.kill(-(capture.pid ?? 0));
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+        }
+      }
     }
   });
 });
