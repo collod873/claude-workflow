@@ -69,13 +69,13 @@ function hooksIn(read: () => string, refusal: string, gated: boolean): Registrat
 }
 
 function liveHooks(gated: boolean): Registration | string {
-  const link = join(homedir(), ".agents", "hooks-live");
-  if (!existsSync(link)) return `no owner hooks for this stage: AGENT_HOOKS_SETTINGS is unset and ${link} is missing`;
-  const root = realpathSync(link);
+  const checkout = join(homedir(), ".agents", "hooks");
+  if (!existsSync(checkout)) return `no owner hooks for this stage: AGENT_HOOKS_SETTINGS is unset and ${checkout} is missing`;
+  const root = realpathSync(checkout);
   const unregistered = mkdtempSync(join(tmpdir(), "agent-hooks-"));
   const emitted = spawnSync("python3", [join(root, "hookcheck.py"), "--root", root, "--settings", join(unregistered, "unregistered.json"), "--emit-stages"], { encoding: "utf8" });
   rmSync(unregistered, { recursive: true, force: true });
-  const refusal = `the live release at ${root} emitted no hooks: ${quoted(String(emitted.stderr ?? "").trim().split("\n")[0] ?? "")}`;
+  const refusal = `the main checkout at ${root} emitted no hooks: ${quoted(String(emitted.stderr ?? "").trim().split("\n")[0] ?? "")}`;
   return emitted.status === 0 ? hooksIn(() => emitted.stdout, refusal, gated) : refusal;
 }
 
