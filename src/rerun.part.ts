@@ -46,7 +46,7 @@ export function rerunning({ attempt = "1", jobs = [red()], labels = ["spec"], re
     ].join("\n"),
   );
   const env = { PATH: `${join(root, "bin")}:${process.env.PATH}`, GH_REPO: "collod873/claude-workflow", RERUN_WAIT_SECONDS: "0", CALLED_FROM: calledFrom, TICKET: "902" };
-  return { calls, marks, run: () => execute(join(BIN, "rerun"), root, env, ["4417", attempt]), dispatch: () => execute(join(BIN, "rerun"), root, env, ["--dispatch", "4417", attempt]) };
+  return { calls, marks, run: () => execute(join(BIN, "rerun"), root, env, ["4417", attempt]), dispatch: () => execute(join(BIN, "rerun"), root, env, ["--dispatch", "4417", attempt]), failed: () => execute(join(BIN, "rerun"), root, env, ["--failed", "4417", attempt]) };
 }
 
 declareStage({
@@ -56,5 +56,6 @@ declareStage({
     { label: "calling the owner on a second red attempt", run: () => rerunning({ attempt: "2" }).run() },
     { label: "with the re-run refused", run: () => rerunning({ refused: "HTTP 403: Resource not accessible by integration" }).run() },
     { label: "handing a red run to the caller file", run: () => rerunning().dispatch() },
+    { label: "re-running a run's failed jobs once it ends", run: () => rerunning({ jobs: [{ conclusion: "failure", annotations: [] }] }).failed() },
   ],
 });

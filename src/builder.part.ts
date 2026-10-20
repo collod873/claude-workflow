@@ -56,10 +56,9 @@ export function fixing({
   onMain = {} as Record<string, string>,
   save = "exit 0\n",
   failedRun = "",
-  ranAs = "Build",
-  ranOn = "issues",
+  red = [] as string[],
   attempt = 1,
-  rerun = "exit 0",
+  dispatch = "exit 0",
   savedSession = undefined as string | undefined,
   reason = undefined as string | undefined,
   captures = {} as Record<string, string>,
@@ -96,7 +95,6 @@ export function fixing({
   script(join(machine, "save"), `printf '%s\\n' "$*" >>"${saves}"\n${realSave ? `exec "${join(BIN, "save")}" "$@"\n` : save}`);
   branchedSession(session, "builder", { "src/ticket-shape.ts": "export const shaped = 1;\n", ...onMain, ...(contract === undefined ? {} : { ".claude/contract.json": contract }) }, { "src/ticket-shape.test.ts": AUTHORED_TEST }, `ticket/${ticket}`);
   git(session, "commit", "--quiet", "--allow-empty", "-m", `Build #${ticket} against its failing tests`);
-  const redAt = git(session, "rev-parse", "HEAD");
   for (const [name, text] of Object.entries(logged)) plant(session, `.git/machine-logs/${name}`, text);
   for (const [path, text] of Object.entries(leftover)) plant(session, path, text);
   if (savedSession !== undefined) plant(home, `.claude/builder/${ticket}`, `${savedSession}\n`);
@@ -124,9 +122,10 @@ export function fixing({
       `  *"issue view"*"body,title"*) printf 'Build what the ticket asks\\001%s' "$(cat "${join(root, "ticket-body")}")" ;;`,
       `  *"pr create"*) printf '%s https://github.com/%s/pull/9${ticket}\\n' "$GH_REPO" "$GH_REPO" >>"${opens}"; printf 'https://github.com/%s/pull/9${ticket}\\n' "$GH_REPO" ;;`,
       `  *"pr view"*"number"*) ${onPr === undefined ? `printf 'no pull requests found for branch "ticket/${ticket}"\\n' >&2; exit 1` : `printf '{"number":9${ticket}}\\n'`} ;;`,
-      `  *"run view"*"--json"*) printf '%s %s %s %s\\n' '${ranOn}' '${redAt}' '${attempt}' '${ranAs}' ;;`,
+      `  *"pr view"*"statusCheckRollup"*) ${red.map((run) => `printf 'https://github.com/%s/actions/runs/${run}/job/7${run}\\n' "$GH_REPO"; `).join("")}: ;;`,
+      `  *"run view"*"attempt"*) printf '%s\\n' '${attempt}' ;;`,
       `  *"run view"*) cat "${join(root, "failed-run.log")}" ;;`,
-      `  *"run rerun"*) ${rerun} ;;`,
+      `  *"workflow run"*) ${dispatch} ;;`,
       "  *\"pr view\"*) exit 22 ;;",
       `  *) printf 'https://github.com/collod873/claude-workflow/issues/${ticket}#issuecomment-1\\n' ;;`,
       "esac",
@@ -161,7 +160,7 @@ export function fixing({
     labelled: () => calls().filter((args) => args[0] === "issue" && args[1] === "edit" && !args.includes("--body")).map((args) => args.slice(2).join(" ")),
     filed: () => calls().filter((args) => args[0] === "issue" && args[1] === "create").map(bodyOf),
     closes: () => calls().filter((args) => (args[0] === "issue" || args[0] === "pr") && args[1] === "close"),
-    reruns: () => calls().filter((args) => args[0] === "run" && args[1] === "rerun"),
+    reruns: () => calls().filter((args) => args[0] === "workflow" && args[1] === "run").map((args) => args.filter((arg) => arg.startsWith("rerun="))),
     keptSession: (under = "builder") => {
       const file = join(home, ".claude", under, ticket);
       return existsSync(file) ? readFileSync(file, "utf8").trim() : undefined;
