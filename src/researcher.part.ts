@@ -11,17 +11,20 @@ export const FINDINGS_POSTED ="https://github.com/collod873/claude-workflow/issu
 export function researching({
   labels = ["note", "research"],
   findings = "The closer judges only an issue with checks, so a note waits on a session.",
+  fixes = [],
+  asks = [],
   gh = "",
   sources = "",
   readsPastCap = false,
   markRefusal,
-}: { labels?: string[]; findings?: string; gh?: string; sources?: string; readsPastCap?: boolean; markRefusal?: string } = {}) {
+}: { labels?: string[]; findings?: string; fixes?: { fault: string; title: string; done: string[] }[]; asks?: string[]; gh?: string; sources?: string; readsPastCap?: boolean; markRefusal?: string } = {}) {
   const cutOff = readsPastCap ? `case "$*" in *--resume*) ;; *) printf '%s\\n' '${JSON.stringify({ type: "system", session_id: READING_SESSION })}'; exit 124 ;; esac\n` : "";
-  const { root, ...stage } = issueStage("research-", { title: "What does the closer judge", body: wellFormedNote, labels: labels.map((name) => ({ name })) }, { findings }, FINDINGS_POSTED, gh, cutOff);
+  const { root, ...stage } = issueStage("research-", { title: "What does the closer judge", body: wellFormedNote, labels: labels.map((name) => ({ name })) }, { findings, fixes, asks }, FINDINGS_POSTED, gh, cutOff);
   const marked = stubbedMark(root, join(root, "claude-argv"), markRefusal);
   return {
     ...stage,
     marked,
+    filed: () => stage.argv().filter((args) => args[0] === "issue" && args[1] === "create").map((args) => ({ title: args[args.indexOf("--title") + 1], body: args[args.indexOf("--body") + 1], labels: args.flatMap((arg, at) => (args[at - 1] === "--label" ? [arg] : [])) })),
     run: (...args: string[]) => execute(join(BIN, "research"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}`, RESEARCH_SOURCES: sources, STAGE_MINUTES: readsPastCap ? "40" : "" }, args.length > 0 ? args : ["902"]),
   };
 }
@@ -40,6 +43,7 @@ declareStage({
   ],
   scenarios: [
     { label: "answering a research note", run: () => researching().run() },
+    { label: "filing its follow-ups", run: () => researching({ fixes: [{ fault: "bin/land posts review only.", title: "bin/land posts tickets / review", done: ["A landing in Lumaria merges at once."] }], asks: ["Whether every repo matches one shape; my pick is yes."] }).run() },
     { label: "refusing a ticket", run: () => researching({ labels: ["building"] }).run() },
     { label: "stopping at an issue it cannot read", run: () => researching({ gh: "[[ $1 == issue && $2 == view ]] && exit 1" }).run() },
     { label: "standing down on stuck", run: () => researching({ labels: ["note", "research", STUCK] }).run() },
