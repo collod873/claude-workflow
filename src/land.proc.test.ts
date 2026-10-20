@@ -1,6 +1,7 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { ENROLLED_REVIEW } from "./post.ts";
 import { agedLogs, git, landSession, LANDED_PR as PR, MERGE_REFUSAL as REFUSAL, type Merge } from "./scenarios.ts";
 
 const JUDGED_CHECK = "description=judged on the owner's PC by its pre-push, before the push (ADR-0008)";
@@ -22,7 +23,7 @@ function landedElsewhere(root: string, remote: string, file: string, content: st
 }
 
 describe("bin/land turns a session's commits into a PR it merges at once, posting the check its pre-push passed as the head's status once the push has put the head on GitHub, which takes no status for a commit it lacks (#1344, #1345)", () => {
-  it("opens a merge-commit PR from a land branch, posts check as judged and review as skipped for the head after the push, merges matching that head, and brings local main up to the merged main", () => {
+  it("opens a merge-commit PR from a land branch, posts check as judged and tickets / review as skipped for the head after the push, merges matching that head, and brings local main up to the merged main (#1386)", () => {
     const { remote, session, head, branch, run, calls, merged, posted } = sessionAheadOfMain(2);
 
     const result = run();
@@ -31,22 +32,13 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
     expect(calls()).toContainEqual(["pr", "create", "--base", "main", "--head", branch, "--title", "change 2", "--body", "- change 1\n- change 2"]);
     expect(calls().filter(posted)).toEqual([
       ["api", "-X", "POST", `repos/{owner}/{repo}/statuses/${head}`, "-f", "state=success", "-f", "context=check", "-f", JUDGED_CHECK],
-      ["api", "-X", "POST", `repos/{owner}/{repo}/statuses/${head}`, "-f", "state=success", "-f", "context=review", "-f", SKIPPED_REVIEW],
+      ["api", "-X", "POST", `repos/{owner}/{repo}/statuses/${head}`, "-f", "state=success", "-f", `context=${ENROLLED_REVIEW}`, "-f", SKIPPED_REVIEW],
     ]);
+    expect(calls().filter((call) => call.join(" ").includes("/rules/")), "every repo requires one review name, so land asks no ruleset for it").toEqual([]);
     expect(calls().filter(merged)).toEqual([["pr", "merge", branch, "--merge", "--match-head-commit", head]]);
     expect(git(session, "rev-parse", "HEAD")).toBe(git(remote, "rev-parse", "main"));
     expect(git(session, "rev-parse", "HEAD^2")).toBe(head);
     expect(result.stdout).toBe(`Landed ${PR}\n`);
-  });
-
-  it("posts the skipped review under the name main's ruleset requires, so a repo enrolled in the machine, which requires tickets / review, merges its landing at once (#1361)", () => {
-    const { head, run, calls, merged, posted } = sessionAheadOfMain(1, { required: ["tickets / review", "check"] });
-
-    const result = run();
-
-    expect(result.status, result.stderr).toBe(0);
-    expect(calls().filter(posted)).toContainEqual(["api", "-X", "POST", `repos/{owner}/{repo}/statuses/${head}`, "-f", "state=success", "-f", "context=tickets / review", "-f", SKIPPED_REVIEW]);
-    expect(calls().filter(merged)).toHaveLength(1);
   });
 
   it("posts the check only once receipts cover the pushed tree, so a push that skipped the pre-push lands nothing and says so", () => {
@@ -104,7 +96,7 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
       ["pr", "merge", branch, "--merge", "--match-head-commit", head],
       ["pr", "merge", branch, "--merge", "--match-head-commit", rebased],
     ]);
-    expect(calls().filter(posted).map((call) => `${call[3]} ${call[7]}`)).toEqual([`repos/{owner}/{repo}/statuses/${head} context=check`, `repos/{owner}/{repo}/statuses/${head} context=review`, `repos/{owner}/{repo}/statuses/${rebased} context=check`, `repos/{owner}/{repo}/statuses/${rebased} context=review`]);
+    expect(calls().filter(posted).map((call) => `${call[3]} ${call[7]}`)).toEqual([`repos/{owner}/{repo}/statuses/${head} context=check`, `repos/{owner}/{repo}/statuses/${head} context=${ENROLLED_REVIEW}`, `repos/{owner}/{repo}/statuses/${rebased} context=check`, `repos/{owner}/{repo}/statuses/${rebased} context=${ENROLLED_REVIEW}`]);
     expect(calls().filter((call) => call[1] === "create")).toHaveLength(1);
     expect(git(session, "rev-parse", "HEAD")).toBe(git(remote, "rev-parse", "main"));
     expect(result.stdout).toBe(`Landed ${PR}\n`);

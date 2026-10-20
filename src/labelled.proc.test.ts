@@ -97,20 +97,20 @@ describe("tickets.yml builds only an issue labelled ticket, so one opened by han
   });
 });
 
-describe("check.yml asks spelled which branches it reviews and meters, so a renamed prefix cannot pass unseen (#1121)", () => {
+describe("tickets.yml asks spelled which branches it reviews and meters, so a renamed prefix cannot pass unseen (#1121)", () => {
   const BEFORE_CHECK = "${{ startsWith(github.head_ref, 'ticket/') && github.event.pull_request.head.repo.full_name == github.repository }}";
   const heads = ["ticket/811", "ticket/", "land/4b58f3372b91", "main", "tickets/811", "fix/ticket/811"];
 
   for (const job of ["review", "meters"]) {
     it(`starts or skips ${job} on the same branches and forks as before`, async () => {
-      const events = heads.flatMap((head) => [false, true].map((fork) => ({ head, fork })));
-      const now = await Promise.all(events.map(async (event) => `${event.head} ${String(event.fork)} ${String(await starts("check.yml", job, event))}`));
+      const events = heads.flatMap((head) => [false, true].map((fork) => ({ event: "pull_request_target", action: "synchronize", head, fork })));
+      const now = await Promise.all(events.map(async (event) => `${event.head} ${String(event.fork)} ${String(await starts("tickets.yml", job, event))}`));
 
       expect(now).toEqual(events.map((event) => `${event.head} ${String(event.fork)} ${String(holds(BEFORE_CHECK, event))}`));
     });
 
     it(`never spells the ticket prefix in the ${job} job's if, and runs nothing past its labelled step on a branch it does not review, green or red`, () => {
-      const { if: gated = "", steps } = workflowJobs("check.yml")[job] ?? { steps: [] };
+      const { if: gated = "", steps } = workflowJobs("tickets.yml")[job] ?? { steps: [] };
 
       expect(gated).not.toMatch(/ticket/);
       expect(afterLabelled(steps).length).toBeGreaterThan(0);
@@ -123,7 +123,7 @@ describe("check.yml asks spelled which branches it reviews and meters, so a rena
       const root = scratch("unspelled-");
       script(join(root, "bin", "spelled"), "printf 'node: not found\\n' >&2\nexit 127\n");
 
-      expect(await heldBy(labelledStep("check.yml", job), root, { head: "ticket/811" })).toEqual({ failed: true, held: undefined });
+      expect(await heldBy(labelledStep("tickets.yml", job), root, { head: "ticket/811" })).toEqual({ failed: true, held: undefined });
     });
   }
 });

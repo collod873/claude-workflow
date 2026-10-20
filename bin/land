@@ -86,7 +86,6 @@ done
 
 branch="land/${head:0:12}"
 url=
-review=
 for (( round = 1; ; round++ )); do
   call "git push" git push --quiet --force origin "HEAD:refs/heads/$branch"
   if ! check --full --covered >/dev/null 2>"$err"; then
@@ -94,12 +93,8 @@ for (( round = 1; ; round++ )); do
     printf 'land: no receipt covers the pushed tree, so no check status is posted and nothing merges; run check --full and land again\n' >&2
     exit 1
   fi
-  if [[ -z $review ]]; then
-    call "gh api rules" gh api "repos/{owner}/{repo}/rules/branches/main" --jq '.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context'
-    review=$(grep -m 1 'review$' <<<"$said") || review=review
-  fi
   posted check "judged on the owner's PC by its pre-push, before the push (ADR-0008)"
-  posted "$review" "skipped: a session landing is judged by its pre-push, not reviewed (ADR-0008)"
+  posted "tickets / review" "skipped: a session landing is judged by its pre-push, not reviewed (ADR-0008)"
   if [[ -z $url ]]; then
     call "gh pr create" gh pr create --base main --head "$branch" \
       --title "$(git log -1 --format=%s HEAD)" \

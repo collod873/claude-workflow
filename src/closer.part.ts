@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, symlinkSync } from "n
 import { join } from "node:path";
 import { authored, BIN, commitAt, execute, git, plant, refusedMark, scratch, script } from "./scenarios.ts";
 import { MACHINE } from "./spelled.ts";
-import { ENROLLED_REVIEW, MACHINE_REPO, WAITING } from "./post.ts";
+import { ENROLLED_REVIEW, WAITING } from "./post.ts";
 import { declareStage } from "./stages.ts";
 
 const CLOSER_TICKET = [
@@ -87,7 +87,7 @@ export interface QueuedPr {
 
 const RUNS = { green: ["COMPLETED", "SUCCESS"], pending: ["IN_PROGRESS", ""], red: ["COMPLETED", "FAILURE"] } as const;
 
-function listed(pr: QueuedPr, head: string, reviewedAs: string) {
+function listed(pr: QueuedPr, head: string) {
   const [status, conclusion] = RUNS[pr.checks ?? "green"];
   return {
     number: Number(pr.number),
@@ -98,7 +98,7 @@ function listed(pr: QueuedPr, head: string, reviewedAs: string) {
       { __typename: "StatusContext", context: "check", state: pr.checkStatus ?? "SUCCESS" },
       ...(pr.checkRun === undefined ? [] : [{ __typename: "CheckRun", name: "check", status: pr.checkRun, conclusion: pr.checkRun === "COMPLETED" ? "SUCCESS" : "" }]),
       { __typename: "CheckRun", name: "meters", status: "COMPLETED", conclusion: "FAILURE" },
-      ...(pr.unreviewed === true ? [] : [{ __typename: "CheckRun", name: reviewedAs, status, conclusion }]),
+      ...(pr.unreviewed === true ? [] : [{ __typename: "CheckRun", name: ENROLLED_REVIEW, status, conclusion }]),
     ],
   };
 }
@@ -233,7 +233,7 @@ export function closing({
       ticketBody,
       "BODY",
       "    ;;",
-      `  *"pr list"*) printf '%s\\n' '${JSON.stringify(openPrs.map((pr, at) => listed(pr, heads[at] ?? "", calledFrom === undefined || calledFrom.startsWith(`${MACHINE_REPO}/`) ? "review" : ENROLLED_REVIEW)))}' ;;`,
+      `  *"pr list"*) printf '%s\\n' '${JSON.stringify(openPrs.map((pr, at) => listed(pr, heads[at] ?? "")))}' ;;`,
       ...openPrs.filter((pr) => pr.refusedBefore === true).map((pr) => `  *"issues/${pr.number}/comments"*) cat "${join(root, `pr-${pr.number}-comments.json`)}" ;;`),
       ...(statusRefused ? ["  *\"api -X POST repos/{owner}/{repo}/statuses/\"*) printf 'gh: Server Error (HTTP 502)\\n' >&2; exit 1 ;;"] : []),
       ...openPrs.filter((pr) => pr.mergeRefused !== undefined).map((pr) => `  *"pr merge ${pr.number} "*) printf '%s\\n' '${pr.mergeRefused ?? ""}' >&2; exit 1 ;;`),

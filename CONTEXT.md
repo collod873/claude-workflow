@@ -61,11 +61,12 @@ _Avoid_: self-checkout, same tree
 
 **Enrol**:
 Give a repo everything its tickets need to build: in one PR, the caller file naming its own CI,
-the **check-job rule** (`check.yml`'s `check` job `if` and `name`) on that CI's, and the **one
+the **check-job rule** (`check.yml`'s `check` job `if` and `name`; enrol's own PR still runs it) on
+that CI's, and the **one
 pre-push** (this repo's `.husky/pre-push`); the App's reach, client id and keys, every label the
 machine spells, auto-merge, and main taking changes only through a PR passing `check` and, once
-its caller file runs it, `tickets / review`. The **home swap** trades `review` for that here once
-`tickets.yml` runs its review at home.
+its caller file runs it, `tickets / review`, here too. The **home swap** trades `review` for that
+here once `tickets.yml` runs its review at home.
 `bin/enrol <repo>` sets what is missing and names what it could not set; a missing auto-merge
 Save meets later is the repo's fault, never the ticket's.
 _Avoid_: onboard, install, register

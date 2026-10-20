@@ -390,8 +390,7 @@ export function landSession({
   mainMovesOnRefusal = false,
   rounds = "3",
   covered = true,
-  required = ["check", "review"],
-}: { gh?: string; remoteRefuses?: string; messages?: string[]; merges?: Merge[]; views?: string[]; mainMovesOnRefusal?: boolean; rounds?: string; covered?: boolean; required?: string[] } = {}) {
+}: { gh?: string; remoteRefuses?: string; messages?: string[]; merges?: Merge[]; views?: string[]; mainMovesOnRefusal?: boolean; rounds?: string; covered?: boolean } = {}) {
   const root = scratch("land-");
   const { remote, session } = cloned(root, "base");
   git(remote, "config", "user.email", "github@test");
@@ -412,7 +411,6 @@ export function landSession({
         `views=(${views.join(" ")})`,
         'case "$1 $2" in',
         `  "pr create") echo ${LANDED_PR} ;;`,
-        `  "api repos/{owner}/{repo}/rules/branches/main") printf '%s\\n' ${required.map((context) => JSON.stringify(context)).join(" ")} ;;`,
         '  "api -X")',
         "    sha=${4##*/}",
         '    git -C "$remote" cat-file -e "$sha^{commit}" 2>/dev/null || { printf "gh: No commit found for SHA: %s (HTTP 422)\\n" "$sha" >&2; exit 1; }',
