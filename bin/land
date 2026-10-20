@@ -84,6 +84,15 @@ for commit in $(git rev-list origin/main..HEAD); do
   fi
 done
 
+own=$(git -C "$src" config --get remote.origin.url)
+if [[ -n $own && $(git config --get remote.origin.url) == "$own" ]]; then
+  slug=$(sed -E 's#^(https://github\.com/|git@github\.com:)##; s#\.git$##' <<<"$own")
+  call "gh api rules" gh api "repos/$slug/rules/branches/main"
+  if grep -qE '"context": *"review"' <<<"$said"; then
+    call "bin/enrol" "$src/../bin/enrol" "$slug" --caller
+  fi
+fi
+
 branch="land/${head:0:12}"
 url=
 judged="judged on the owner's PC by its pre-push, before the push (ADR-0008)"

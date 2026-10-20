@@ -2,7 +2,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "n
 import { isAbsolute, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ENROLLED_REVIEW } from "./post.ts";
-import { agedLogs, git, landSession, LANDED_PR as PR, MERGE_REFUSAL as REFUSAL, type Merge } from "./scenarios.ts";
+import { agedLogs, git, home, landSession, LANDED_PR as PR, MERGE_REFUSAL as REFUSAL, type Merge } from "./scenarios.ts";
 
 const JUDGED_CHECK = "description=judged on the owner's PC by its pre-push, before the push (ADR-0008)";
 const SKIPPED_REVIEW = "description=skipped: a session landing is judged by its pre-push, not reviewed (ADR-0008)";
@@ -215,6 +215,31 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
     expect(result).toMatchObject({ status: 0, stdout: "Nothing to land: HEAD is already on origin/main.\n", stderr: "" });
     expect(existsSync(stale)).toBe(false);
     expect(existsSync(fresh)).toBe(true);
+  });
+
+  it("swaps plain review for tickets / review in this repo's main ruleset with bin/enrol on the owner's token before it posts, then merges, since the App's token is refused that write (#1389)", () => {
+    const { run, calls, held, merged, posted } = sessionAheadOfMain(1, { home: home() });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    const required = held().rules.flatMap(({ parameters }) => (parameters as { required_status_checks?: { context: string }[] } | undefined)?.required_status_checks ?? []).map(({ context }) => context);
+    expect(required).toEqual(["check", ENROLLED_REVIEW]);
+    const swappedAt = calls().findIndex((call) => call.includes("PUT") && call.some((arg) => arg.includes("/rulesets/")));
+    expect(swappedAt).toBeGreaterThan(-1);
+    expect(swappedAt).toBeLessThan(calls().findIndex(posted));
+    expect(calls().filter(merged)).toHaveLength(1);
+  });
+
+  it("runs no bin/enrol and makes no ruleset write in this repo where no rule names plain review (#1389)", () => {
+    const { run, calls, held, merged } = sessionAheadOfMain(1, { home: home(undefined, [{ type: "required_status_checks", ruleset_id: 3, parameters: { required_status_checks: [{ context: "check" }, { context: ENROLLED_REVIEW }] } }]) });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(held().writes).toEqual([]);
+    expect(calls().filter((call) => call.some((arg) => arg.includes("/contents/") || arg.includes("/rulesets/"))), "bin/enrol never runs").toEqual([]);
+    expect(calls().filter(merged)).toHaveLength(1);
   });
 
   it("opens nothing when there is nothing past origin/main", () => {
