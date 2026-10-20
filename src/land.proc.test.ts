@@ -39,6 +39,16 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
     expect(result.stdout).toBe(`Landed ${PR}\n`);
   });
 
+  it("posts the skipped review under the name main's ruleset requires, so a repo enrolled in the machine, which requires tickets / review, merges its landing at once (#1361)", () => {
+    const { head, run, calls, merged, posted } = sessionAheadOfMain(1, { required: ["tickets / review", "check"] });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(calls().filter(posted)).toContainEqual(["api", "-X", "POST", `repos/{owner}/{repo}/statuses/${head}`, "-f", "state=success", "-f", "context=tickets / review", "-f", SKIPPED_REVIEW]);
+    expect(calls().filter(merged)).toHaveLength(1);
+  });
+
   it("posts the check only once receipts cover the pushed tree, so a push that skipped the pre-push lands nothing and says so", () => {
     const { run, calls, checked, remote, branch } = sessionAheadOfMain(1, { covered: false });
 
