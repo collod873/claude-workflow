@@ -47,8 +47,8 @@ const CRAFT = ["codebase-design", "diagnosing-bugs", "domain-modeling", "tdd", "
 function onThisPc(skills = [...CRAFT, "load-calc"]): string {
   const root = scratch("stage-live-");
   for (const name of skills) {
-    mkdirSync(join(root, "home", ".agents", "skills", name), { recursive: true });
-    writeFileSync(join(root, "home", ".agents", "skills", name, "SKILL.md"), `# ${name}`);
+    mkdirSync(join(root, "home", ".agents", "skills", "skills", name), { recursive: true });
+    writeFileSync(join(root, "home", ".agents", "skills", "skills", name, "SKILL.md"), `# ${name}`);
   }
   const release = join(root, "releases", "a9884a2");
   mkdirSync(join(release, "hooks"), { recursive: true });
