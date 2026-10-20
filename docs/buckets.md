@@ -30,6 +30,7 @@ stalled, 998 on one ticket. Before it: Lumaria#902 Waves 12 to 16
 | The memory guard kills runner jobs first | earlyoom killed builders #1082 and #1083 (86 MiB) and their repairs' checks, then the owner's 3.4 GB vitest that filled memory; the machine writes that order (`src/runner.ts:33`) and GitHub's runner sets `oom_score_adj 500` on every job | earlyoom ranks by memory alone, with no `--prefer` or `--avoid`, and each PC runner's `.env` sets `PIPELINE_JOB_OOMSCOREADJ=0` so its jobs keep the score their memory earns | ruled by Collin 2026-10-19: kill the biggest process; built 2026-10-20 (#1372), unmeasured |
 | Parallel work conflicts on one file | on 2026-10-20 all three open ticket PRs of one evening went `DIRTY` green: #1376 and #1379 on `docs/buckets.md`, which every machine change edits (`CLAUDE.md`, Fixing the machine, step 4) and which a session landing rewrote six minutes after they branched, and #1378 on `.husky/pre-push`, which sibling ticket #1369 of the same Spec changed and merged first; #1378's reviewer also failed it for not editing `docs/buckets.md`; each conflict cost a fix run, and each merge moved `docs/buckets.md` for the next | one writer for `docs/buckets.md`: a ticket names its row and the closer moves that row after the merge; tickets of one Spec that edit the same file build one after the other | ruled by Collin 2026-10-20 |
 | No gate runs the app | #1104 sent a $0 callback to Collect; the reviewer and meters read code only (`src/reviewer.ts:13`), so Wave 4's check caught it and it became #1086's Wave 5; the Slicer's #1108 Decision claimed Collect took what issued invoices owe, and nothing checked it against main (#1110) | none yet: brought to Collin 2026-10-14 | unruled |
+| A review loop with no end: the same gap comes back each try and nothing stops it | #1382 went from try-2 at 01:39 to try-7 at 02:29 on 2026-10-20; the reviewer named the closer's own copy of `bin/land`'s landing steps at 02:02, 02:11, 02:21 and 02:27, each repair answered something else, and the 02:27 round also failed it for rewording four unrelated CONTEXT.md definitions; the `try-` label has no cap (`src/spelled.ts:30`), and #1385 waits behind it | proposed: a gap the reviewer names on two tries in a row stops the ticket and brings it to Collin in the reviewer's words, instead of another builder run | brought to Collin 2026-10-20 |
 
 ## Next
 
@@ -53,7 +54,8 @@ Once all six have merged, each in its own session:
 6. #1335, the scrap-or-reshape review, read against that measurement.
 
 Waiting on Collin's ruling: green work thrown away and no gate running the app, each needing a
-prevention; jobs on the PC sharing Docker, /tmp and processes; the Wave barrier.
+prevention; jobs on the PC sharing Docker, /tmp and processes; the Wave barrier; a review loop
+with no end.
 
 Open under a named prevention: spot fixes outrun measurement (the measurement itself, and jobs that run
 one commit's workflow with another's code); the lone failures in
