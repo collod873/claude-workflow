@@ -396,10 +396,9 @@ export function landSession({
   covered = true,
   green = true,
   changes = {},
-  home,
   defaultBranch = "main",
   openPr = false,
-}: { gh?: string; remoteRefuses?: string; messages?: string[]; merges?: Merge[]; views?: string[]; mainMovesOnRefusal?: boolean; rounds?: string; covered?: boolean; green?: boolean; changes?: Record<string, string>; home?: Held; defaultBranch?: string; openPr?: boolean } = {}) {
+}: { gh?: string; remoteRefuses?: string; messages?: string[]; merges?: Merge[]; views?: string[]; mainMovesOnRefusal?: boolean; rounds?: string; covered?: boolean; green?: boolean; changes?: Record<string, string>; defaultBranch?: string; openPr?: boolean } = {}) {
   const root = scratch("land-");
   const { remote, session } = clonedOn(root, defaultBranch, ["base"]);
   git(remote, "config", "user.email", "github@test");
@@ -412,14 +411,6 @@ export function landSession({
   mkdirSync(state);
   const log = join(state, "argv.jsonl");
   const counted = (name: string) => `$(( $(ls ${JSON.stringify(state)} | grep -c ${name}-) + 1 ))`;
-  const held = join(state, "held.json");
-  if (home !== undefined) {
-    writeFileSync(held, JSON.stringify(home));
-    writeFileSync(join(root, "gh-home"), FAKE_GH);
-    const own = git(SRC, "config", "--get", "remote.origin.url");
-    git(session, "config", "remote.origin.url", own);
-    git(session, "config", `url.${remote}.insteadOf`, own);
-  }
   script(
     join(root, "bin", "gh"),
     gh ??
@@ -427,7 +418,6 @@ export function landSession({
         `python3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "$@" >> ${JSON.stringify(log)}`,
         `remote=${JSON.stringify(remote)}`,
         `merges=(${merges.join(" ")})`,
-        ...(home === undefined ? [] : [`[[ " $* " == *"${home.repo}"* ]] && exec node ${JSON.stringify(join(root, "gh-home"))} "$@"`]),
         `views=(${views.join(" ")})`,
         'case "$1 $2" in',
         ...(openPr
@@ -470,8 +460,7 @@ export function landSession({
     session,
     head,
     branch: `land/${head.slice(0, 12)}`,
-    run: (args: string[] = [], from = session) => execute(join(BIN, "land"), from, { PATH: `${join(root, "bin")}:${process.env.PATH}`, LAND_ROUNDS: rounds, LAND_PAUSE_SECONDS: "0", HELD: held }, args),
-    held: () => JSON.parse(readFileSync(held, "utf8")) as Held,
+    run: (args: string[] = [], from = session) => execute(join(BIN, "land"), from, { PATH: `${join(root, "bin")}:${process.env.PATH}`, LAND_ROUNDS: rounds, LAND_PAUSE_SECONDS: "0" }, args),
     calls: (): string[][] => (existsSync(log) ? readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as string[]) : []),
     merged: (call: string[]) => call[0] === "pr" && call[1] === "merge",
     posted: (call: string[]) => call[0] === "api" && call[3]?.startsWith("repos/{owner}/{repo}/statuses/") === true,

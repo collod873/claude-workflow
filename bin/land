@@ -48,9 +48,15 @@ if [[ -d $(git rev-parse --git-path rebase-merge) || -d $(git rev-parse --git-pa
   exit 1
 fi
 
+dirty=$(git status --porcelain --untracked-files=all | cut -c4- | paste -sd, - | sed 's/,/, /g')
+if [[ -n $dirty ]]; then
+  printf 'land: the tree differs from the commit, so nothing landed; commit or remove %s and land again\n' "$dirty" >&2
+  exit 1
+fi
+
 onto_default_branch() {
   if [[ -n $(git rev-list "origin/$default_branch..HEAD") ]] && ! git merge-base --is-ancestor "origin/$default_branch" HEAD; then
-    if ! git rebase --quiet --autostash "origin/$default_branch" >/dev/null 2>"$err"; then
+    if ! git rebase --quiet "origin/$default_branch" >/dev/null 2>"$err"; then
       { printf -- '--- git rebase origin/%s ---\n' "$default_branch"; cat "$err"; } >>"$log"
       git rebase --abort >/dev/null 2>&1 # quiet: the rebase's own error is already in the log
       printf 'land: HEAD does not rebase cleanly onto origin/%s, so nothing landed; run git rebase origin/%s, resolve it, and land again\n' "$default_branch" "$default_branch" >&2
@@ -95,29 +101,23 @@ for commit in $(git rev-list "origin/$default_branch..HEAD"); do
   fi
 done
 
-own=$(git -C "$src" config --get remote.origin.url)
-if [[ -n $own && $(git config --get remote.origin.url) == "$own" ]]; then
-  slug=$(sed -E 's#^(https://github\.com/|git@github\.com:)##; s#\.git$##' <<<"$own")
-  call "gh api rules" gh api "repos/$slug/rules/branches/$default_branch"
-  if grep -qE '"context": *"review"' <<<"$said"; then
-    call "bin/enrol" "$src/../bin/enrol" "$slug" --caller
-  fi
-fi
-
 branch="land/${head:0:12}"
 url=
-judged="judged on the owner's PC by its pre-push, before the push (ADR-0008)"
-skipped="skipped: a session landing is judged by its pre-push, not reviewed (ADR-0008)"
+judged="judged by land on the owner's PC, on the commit before the push (ADR-0008)"
+skipped="skipped: a session landing is judged by land, not reviewed (ADR-0008)"
 for (( round = 1; ; round++ )); do
-  call "git push" git push --quiet --force origin "HEAD:refs/heads/$branch"
   changed=$(git diff --name-only "origin/$default_branch" HEAD)
   if [[ $changed == docs/buckets.md ]]; then
     judged="docs/buckets.md alone changed from $default_branch, and no check step reads it (#1382)"
     skipped=$judged
-  elif ! check --full --covered >/dev/null 2>"$err" && ! check --full --publish >&2; then
-    printf 'land: the full check went red on the pushed tree, so no check status is posted and nothing merges; fix what it names and land again\n' >&2
-    exit 1
+  elif ! check --full --covered >"$err" 2>&1; then
+    { printf -- '--- check --full --covered ---\n'; cat "$err"; } >>"$log"
+    if ! check --full --publish >&2; then
+      printf 'land: the full check went red on the commit, so nothing was pushed; fix what it names and land again\n' >&2
+      exit 1
+    fi
   fi
+  call "git push" git push --quiet --force origin "HEAD:refs/heads/$branch"
   posted check "$judged"
   posted "tickets / review" "$skipped"
   if [[ -z $url ]]; then

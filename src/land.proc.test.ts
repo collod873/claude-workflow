@@ -2,10 +2,10 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "n
 import { isAbsolute, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ENROLLED_REVIEW } from "./post.ts";
-import { agedLogs, git, home, landSession, LANDED_PR as PR, MERGE_REFUSAL as REFUSAL, type Merge } from "./scenarios.ts";
+import { agedLogs, git, landSession, LANDED_PR as PR, MERGE_REFUSAL as REFUSAL, plant, type Merge } from "./scenarios.ts";
 
-const JUDGED_CHECK = "description=judged on the owner's PC by its pre-push, before the push (ADR-0008)";
-const SKIPPED_REVIEW = "description=skipped: a session landing is judged by its pre-push, not reviewed (ADR-0008)";
+const JUDGED_CHECK = "description=judged by land on the owner's PC, on the commit before the push (ADR-0008)";
+const SKIPPED_REVIEW = "description=skipped: a session landing is judged by land, not reviewed (ADR-0008)";
 const DASH = "\u2014";
 
 const sessionAheadOfMain = (commits: number, options: Omit<Parameters<typeof landSession>[0], "messages"> = {}) => landSession({ messages: Array.from({ length: commits }, (_, n) => `change ${n + 1}`), ...options });
@@ -22,7 +22,7 @@ function landedElsewhere(root: string, remote: string, file: string, content: st
   return git(other, "rev-parse", "HEAD");
 }
 
-describe("bin/land turns a session's commits into a PR it merges at once, posting the check its pre-push passed as the head's status once the push has put the head on GitHub, which takes no status for a commit it lacks (#1344, #1345)", () => {
+describe("bin/land turns a session's commits into a PR it merges at once, posting the check it passed before the push as the head's status once the push has put the head on GitHub, which takes no status for a commit it lacks (#1344, #1345)", () => {
   it("opens a merge-commit PR from a land branch, posts check as judged and tickets / review as skipped for the head after the push, merges matching that head, and brings local main up to the merged main (#1386)", () => {
     const { remote, session, head, branch, run, calls, merged, posted } = sessionAheadOfMain(2);
 
@@ -65,7 +65,7 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
     expect(result.stdout).toBe(`Landed ${PR}\n`);
   });
 
-  it("runs the full check itself when no receipt covers the pushed tree, publishing its receipts, then posts the check and merges on green, so no agent hand-runs a check before landing (#1412)", () => {
+  it("runs the full check itself when no receipt covers the commit, publishing its receipts, then posts the check and merges on green, so no agent hand-runs a check before landing (#1412)", () => {
     const { run, calls, checked, head, branch, merged, posted } = sessionAheadOfMain(1, { covered: false });
 
     const result = run();
@@ -76,16 +76,23 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
     expect(calls().filter(merged)).toEqual([["pr", "merge", branch, "--merge", "--match-head-commit", head]]);
   });
 
-  it("posts no check and merges nothing when the full check it ran goes red, and passes on the check's own line naming the red step", () => {
-    const { run, calls, checked, remote, branch } = sessionAheadOfMain(1, { covered: false, green: false });
+  it("keeps the coverage probe's reason in the land log when no receipt covers the commit, so a full check that ran can be traced to what was due", () => {
+    const { session, head, run } = sessionAheadOfMain(1, { covered: false });
+
+    expect(run().status).toBe(0);
+    expect(readFileSync(join(session, ".git", "machine-logs", `land-${head.slice(0, 7)}-session.log`), "utf8")).toContain("check: due test");
+  });
+
+  it("pushes nothing, posts nothing and merges nothing when the full check goes red on the commit, and passes on the check's own line naming the red step, so a red landing leaves no branch on GitHub (agent-hooks#176)", () => {
+    const { run, calls, checked, remote } = sessionAheadOfMain(1, { covered: false, green: false });
 
     const result = run();
 
     expect(result.status).toBe(1);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toBe("check: red test; log .git/check-logs/test.log\nland: the full check went red on the pushed tree, so no check status is posted and nothing merges; fix what it names and land again\n");
+    expect(result.stderr).toBe("check: red test; log .git/check-logs/test.log\nland: the full check went red on the commit, so nothing was pushed; fix what it names and land again\n");
     expect(checked()).toEqual(["--full --covered", "--full --publish"]);
-    expect(git(remote, "rev-parse", branch)).toMatch(/^[0-9a-f]{40}$/);
+    expect(git(remote, "for-each-ref", "--format=%(refname)")).toBe("refs/heads/main");
     expect(calls()).toEqual([]);
   });
 
@@ -169,7 +176,7 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
 
   it.each<[string, { merges: Merge[]; views: string[]; rounds?: string }, string, number]>([
     ["once its rounds of rebase and push are spent", { merges: ["refused"], views: ["BEHIND"], rounds: "2" }, `land: ${PR} did not merge in 2 rounds of rebase and push: ${REFUSAL}; it is left open\n`, 2],
-    ["at once on a refusal that is neither behind nor a conflict, such as a push that skipped the pre-push and so carries no check status", { merges: ["refused"], views: ["BLOCKED"] }, `land: GitHub refused to merge ${PR}: ${REFUSAL}; it is left open\n`, 1],
+    ["at once on a refusal that is neither behind nor a conflict, such as a push that skipped land and so carries no check status", { merges: ["refused"], views: ["BLOCKED"] }, `land: GitHub refused to merge ${PR}: ${REFUSAL}; it is left open\n`, 1],
   ])("ends red naming GitHub's refusal and leaves the PR open %s", (_, options, said, tried) => {
     const { session, head, run, calls, merged } = sessionAheadOfMain(1, options);
 
@@ -252,31 +259,6 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
     expect(existsSync(fresh)).toBe(true);
   });
 
-  it("swaps plain review for tickets / review in this repo's main ruleset with bin/enrol on the owner's token before it posts, then merges, since the App's token is refused that write (#1389)", () => {
-    const { run, calls, held, merged, posted } = sessionAheadOfMain(1, { home: home() });
-
-    const result = run();
-
-    expect(result.status, result.stderr).toBe(0);
-    const required = held().rules.flatMap(({ parameters }) => (parameters as { required_status_checks?: { context: string }[] } | undefined)?.required_status_checks ?? []).map(({ context }) => context);
-    expect(required).toEqual(["check", ENROLLED_REVIEW]);
-    const swappedAt = calls().findIndex((call) => call.includes("PUT") && call.some((arg) => arg.includes("/rulesets/")));
-    expect(swappedAt).toBeGreaterThan(-1);
-    expect(swappedAt).toBeLessThan(calls().findIndex(posted));
-    expect(calls().filter(merged)).toHaveLength(1);
-  });
-
-  it("runs no bin/enrol and makes no ruleset write in this repo where no rule names plain review (#1389)", () => {
-    const { run, calls, held, merged } = sessionAheadOfMain(1, { home: home(undefined, [{ type: "required_status_checks", ruleset_id: 3, parameters: { required_status_checks: [{ context: "check" }, { context: ENROLLED_REVIEW }] } }]) });
-
-    const result = run();
-
-    expect(result.status, result.stderr).toBe(0);
-    expect(held().writes).toEqual([]);
-    expect(calls().filter((call) => call.some((arg) => arg.includes("/contents/") || arg.includes("/rulesets/"))), "bin/enrol never runs").toEqual([]);
-    expect(calls().filter(merged)).toHaveLength(1);
-  });
-
   it("opens nothing when there is nothing past origin/main", () => {
     const { run, calls } = sessionAheadOfMain(0);
 
@@ -301,6 +283,23 @@ describe("bin/land refuses what must not reach main (#681)", () => {
     expect(result.status).toBe(1);
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe(said(refused));
+    expect(git(remote, "for-each-ref", "--format=%(refname)")).toBe("refs/heads/main");
+    expect(calls()).toEqual([]);
+  });
+
+  it.each([
+    ["a tracked edit", "tool", "edited\n", "tool"],
+    ["an untracked file", "notes/draft.txt", "draft\n", "notes/draft.txt"],
+  ])("lands nothing, runs no check and names the file when the tree holds %s, so the check grades exactly the commit it ships (agent-hooks#176)", (_, path, content, named) => {
+    const { remote, session, run, calls, checked } = landSession({ changes: { tool: "committed\n" } });
+    plant(session, path, content);
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe(`land: the tree differs from the commit, so nothing landed; commit or remove ${named} and land again\n`);
+    expect(checked()).toEqual([]);
     expect(git(remote, "for-each-ref", "--format=%(refname)")).toBe("refs/heads/main");
     expect(calls()).toEqual([]);
   });

@@ -96,7 +96,7 @@ _Avoid_: validator, guardrail, lint
 agent-hooks' words. A check is one run of `check`; a step is one named entry in
 `.claude/contract.json`, all the machine knows of a repo it builds; a receipt records a step's pass
 for exactly its inputs, so no step runs twice on one tree. The fast check runs mid-session; the
-full check (`--full`) at push, in the builder and in the closer's branch update. Its pass, posted
+full check (`--full`) in `bin/land`, the builder and the closer's branch update. Its pass, posted
 after the push as the head's `check` status by whoever pushed, is the whole check a PR merges on;
 `Check` runs no `check` job on a landing's or a ticket's PR, since a pending run of that name
 holds it (ADR-0008).

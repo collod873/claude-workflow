@@ -28,10 +28,11 @@ it, and needs no row.
   `bin/`. knip runs with no baseline and counts no test as a caller: wire it to one or delete it.
 - The why goes in the commit message, or in `CONTEXT.md` when it is vocabulary. Commit messages
   carry no em dash.
-- The steps live in `.claude/contract.json`: turn end and commit run the fast check, and the
-  pre-push, the builder and the closer the full one.
-- Land a commit with `bin/land`: it rebases, pushes through the pre-push, posts that pass as the
-  commit's `check` status, the whole gate, and merges its PR at once. `main` takes no direct push.
+- The steps live in `.claude/contract.json`: turn end and commit run the fast check, and
+  `bin/land`, the builder and the closer the full one.
+- Land a commit with `bin/land`: it refuses a tree that differs from the commit, rebases, runs the
+  full check on the commit before the push, posts that pass as the commit's `check` status, the
+  whole gate, and merges its PR at once. `main` takes no direct push.
 - A helper agent commits on its own branch and hands back; the session that started it merges those
   branches and runs `bin/land` once.
 - A worktree's `node_modules` links to the main checkout's: `rm node_modules && npm ci` before
