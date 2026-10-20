@@ -1,22 +1,17 @@
 ---
 status: constraint
-date: 2026-10-19
-reversal: Every session landing would wait on a runner, a webhook and auto-merge again, and land would go back to being changed to wait better.
+date: 2026-10-20
+reversal: Every session landing would wait on Actions again, or on a pre-push that grades a tree other than the commit it ships.
 ---
 
 # A session landing is judged on the owner's PC before the push, and GitHub runs nothing for it
 
-The full check runs in pre-push, blocking and red in the terminal, on the exact commit, with every
-rule the PR check ever ran since 2026-10-08. The pre-push posts that result as the commit's `check`
-status, and main's ruleset accepts it from any source. A push that skipped the hook carries no
-status and cannot merge. `bin/land` merges at once; nothing waits on GitHub to start. The machine's
-own stages, slicer through closer, keep running in Actions (ADR-0007); this binds the session path
-only, and ticket PRs until their own ruling.
+`bin/land` refuses uncommitted or untracked files, then runs the full check on the exact commit before anything is pushed: what it grades is what it ships, and red leaves nothing on GitHub. Green is posted as the commit's `check` and `tickets / review` statuses, naming `land`, which main's ruleset accepts from any source, so a push that skipped `land` cannot merge. `land` merges at once. The machine's stages keep running in Actions (ADR-0007); this binds session landings, and ticket PRs until their own ruling.
 
-**Rejected: an Actions `check` as a second opinion.** It re-read the PC's receipt in seconds,
-caught nothing after 2026-10-08, and cost a median minute, up to 13, and 30 or more when Actions was
-degraded.
+**Rejected: a pre-push as the gate.** It graded the working tree, ran in five of eleven repos, and guarded nothing once agents could not push.
 
-**Rejected: merging past the gate with admin.** A push that skipped the hook would merge.
+**Rejected: requiring an up-to-date branch.** Each moved main reran the full check, for a race the next `land` catches.
 
-Evidence: #1344; the owner, 2026-10-19.
+**Rejected: an Actions `check`, or an admin merge.** The first caught nothing in 225 landings; the second merges what skipped `land`.
+
+Evidence: #1344; agent-hooks#176; the owner, 2026-10-19 and 20.
