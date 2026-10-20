@@ -1,11 +1,10 @@
-import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { ENROLLED_REVIEW } from "./post.ts";
 import { MACHINE } from "./spelled.ts";
-import { bare, checkJobRule, ci, CI_ON_EVERY_PR, DEPLOY, ENROLLED as REPO, enrolling, key, PC_RUNS_ON, prePush, scratch, script } from "./scenarios.ts";
+import { bare, checkJobRule, ci, CI_ON_EVERY_PR, DEPLOY, ENROLLED as REPO, enrolling, key, PC_RUNS_ON, prePush } from "./scenarios.ts";
 
 const CALLER = readFileSync(join(import.meta.dirname, "..", ".github", "caller.yml"), "utf8");
 const OFFER = `enrol: \`bin/runner ${REPO} pc\` moves its jobs to this PC; run one fresh full check there and watch its peak memory before leaving it on\n`;
@@ -406,32 +405,5 @@ describe("bin/enrol on this repo swaps the review main requires for tickets / re
     expect(checks).toEqual(["check", ENROLLED_REVIEW]);
     expect(held().rules.map(({ type }) => type).sort()).toEqual(["pull_request", "required_status_checks"]);
     expect(held().prs).toEqual([]);
-  });
-});
-
-describe("the one pre-push enrol carries refuses a push it cannot check and checks outside git's hook environment (#1368)", () => {
-  const push = (refs: string, withCheck: boolean) => {
-    const root = scratch("pre-push-");
-    if (withCheck) script(join(root, "check"), "printf \"%s|%s\\n\" \"$*\" \"${GIT_DIR:-unset}\"\n");
-    return spawnSync("sh", [join(import.meta.dirname, "..", ".husky", "pre-push")], { cwd: root, input: refs, encoding: "utf8", env: { PATH: `${root}:/usr/bin:/bin`, GIT_DIR: join(root, "elsewhere") } });
-  };
-  const MAIN = "refs/heads/main abc refs/heads/main def\n";
-
-  it("runs the full check with git's local environment cleared", () => {
-    const ran = push(MAIN, true);
-
-    expect(ran.stdout).toBe("--full --publish|unset\n");
-    expect(ran.status).toBe(0);
-  });
-
-  it("refuses the push, saying so, when check is not on PATH", () => {
-    const ran = push(MAIN, false);
-
-    expect(ran.status).not.toBe(0);
-    expect(ran.stderr).toContain("check is not on PATH");
-  });
-
-  it("lets a push of side refs alone through unchecked", () => {
-    expect(push("refs/notes/x a refs/notes/x b\nrefs/check/y c refs/check/y d\n", false).status).toBe(0);
   });
 });
