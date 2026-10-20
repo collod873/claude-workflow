@@ -475,9 +475,10 @@ describe("a repo's specs and research notes run through the same caller file, on
     expect(specs({ event: "issues", action: "closed", sender: MACHINE, outputs: { ended: { spec: "1151" } } })).toEqual(["ended", "reslice"]);
   });
 
-  it("resumes a spec the owner takes a label off, once it names one (#1175)", () => {
-    expect(specs({ event: "issues", action: "unlabeled", outputs: { resumed: { spec: "" } } })).toEqual(["resumed"]);
-    expect(specs({ event: "issues", action: "unlabeled", outputs: { resumed: { spec: "902" } } })).toEqual(["resumed", "resume"]);
+  it("resumes a spec or a research note the owner takes a label off, the spec once it names one (#1175, #1353)", () => {
+    expect(specs({ event: "issues", action: "unlabeled", outputs: { resumed: { spec: "" } } })).toEqual(["resumed", "research"]);
+    expect(specs({ event: "issues", action: "unlabeled", outputs: { resumed: { spec: "902" } } })).toEqual(["resumed", "resume", "research"]);
+    expect(specs({ event: "issues", action: "unlabeled", sender: MACHINE })).toEqual([]);
   });
 
   it("runs the done check again on the owner's comment, once the last done check put a sentence to him", () => {
