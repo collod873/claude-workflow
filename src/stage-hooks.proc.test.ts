@@ -10,6 +10,7 @@ const ACTION = join(REPO, ".github", "actions", "hooks", "action.yml");
 const ROW = "A job cannot fetch the owner's hooks after 3 tries";
 
 interface Step {
+  id?: string;
   shell?: string;
   run?: string;
 }
@@ -20,7 +21,7 @@ interface Action {
 
 function hooksFetchScript(): string {
   const { runs } = parse(readFileSync(ACTION, "utf8")) as Action;
-  const step = runs.steps.find((candidate) => (candidate.run ?? "").includes("git clone"));
+  const step = runs.steps.find((candidate) => candidate.id === "hooks-fetch");
   expect(step, "a step that clones the owner's hooks").toBeDefined();
   return (step as Step).run ?? "";
 }

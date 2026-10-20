@@ -18,7 +18,8 @@ runs:
         client-id: ${{ inputs.client-id }}
         private-key: ${{ inputs.private-key }}
 
-    - shell: bash
+    - id: stage-env
+      shell: bash
       run: |
         printf 'FEED=%s\n' "$GITHUB_ACTION_PATH/feed.jq" >>"$GITHUB_ENV"
         printf 'HOOK_LOG_DIR=%s\n' "$RUNNER_TEMP/hook-logs" >>"$GITHUB_ENV"
@@ -57,7 +58,8 @@ runs:
         repositories: transcripts
         permission-contents: read
 
-    - shell: bash
+    - id: captures-fetch
+      shell: bash
       continue-on-error: true
       env:
         CAPTURES_TOKEN: ${{ steps.captures-app.outputs.token }}
