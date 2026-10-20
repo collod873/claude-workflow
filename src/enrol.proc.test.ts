@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { ENROLLED_REVIEW } from "./post.ts";
 import { MACHINE } from "./spelled.ts";
-import { bare, CI, CI_ON_EVERY_PR, DEPLOY, ENROLLED as REPO, enrolling, key, PC_RUNS_ON } from "./scenarios.ts";
+import { bare, checkJobRule, ci, CI_ON_EVERY_PR, DEPLOY, ENROLLED as REPO, enrolling, key, PC_RUNS_ON, prePush } from "./scenarios.ts";
 
 const CALLER = readFileSync(join(import.meta.dirname, "..", ".github", "caller.yml"), "utf8");
 const OFFER = `enrol: \`bin/runner ${REPO} pc\` moves its jobs to this PC; run one fresh full check there and watch its peak memory before leaving it on\n`;
@@ -87,7 +87,7 @@ describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#11
       `enrol: ${REPO} is not enrolled, 4 could not be set and 6 were:`,
       "- CLAUDE_CODE_OAUTH_TOKEN: no CLAUDE_CODE_OAUTH_TOKEN in the environment to set it from",
       "- auto-merge: gh: Must have admin rights to Repository. (HTTP 403)",
-      "- the caller file: auto-merge is off, so a PR for it would never merge on its own",
+      "- the caller file, check-job rule and pre-push: auto-merge is off, so a PR for it would never merge on its own",
       `- main taking only a PR its review passed: the caller file on main runs no ${ENROLLED_REVIEW}, so main would wait on a review that never runs`,
     ]);
     expect(held().labels).toContain("ticket");
@@ -113,7 +113,7 @@ describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#11
     const result = run();
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("- the caller file: no workflow in .github/workflows runs a `check` job on pull requests, so there is no CI to name");
+    expect(result.stderr).toContain("- the caller file, check-job rule and pre-push: no workflow in .github/workflows runs a `check` job on pull requests, so there is no CI to name");
     expect(held().files[".github/workflows/machine.yml"]).toBeUndefined();
     expect(held().rules).toEqual([]);
   });
@@ -143,7 +143,7 @@ describe("bin/enrol keeps an enrolled repo current with the owner's own login (#
       { type: "pull_request", ruleset_id: 7 },
       { type: "required_status_checks", ruleset_id: 7, parameters: { strict_required_status_checks_policy: true, required_status_checks: [{ context: "check", integration_id: 15368 }, { context: ENROLLED_REVIEW, integration_id: 15368 }] } },
     ];
-    const { run, held } = enrolling(bare({ rules: pinned, allow_auto_merge: true, files: { ".github/workflows/ci.yml": CI.replace("name: Gate", "name: CI"), ".github/workflows/machine.yml": CALLER } }));
+    const { run, held } = enrolling(bare({ rules: pinned, allow_auto_merge: true, files: { ".github/workflows/ci.yml": ci().replace("name: Gate", "name: CI"), ".github/workflows/machine.yml": CALLER } }));
 
     const result = run();
 
@@ -156,7 +156,7 @@ describe("bin/enrol keeps an enrolled repo current with the owner's own login (#
   });
 
   it("brings a stale caller file up to date through a PR that merges on its own once check passes, where main takes changes only through a PR", () => {
-    const { run, held } = enrolling(bare({ rules: HELD_FOR_CHECK, allow_auto_merge: true, files: { ".github/workflows/ci.yml": CI.replace("name: Gate", "name: CI"), ".github/workflows/machine.yml": STALE } }));
+    const { run, held } = enrolling(bare({ rules: HELD_FOR_CHECK, allow_auto_merge: true, files: { ".github/workflows/ci.yml": ci().replace("name: Gate", "name: CI"), ".github/workflows/machine.yml": STALE } }));
 
     const result = run();
 
@@ -168,7 +168,7 @@ describe("bin/enrol keeps an enrolled repo current with the owner's own login (#
   });
 
   it("brings only the caller file current under --caller, as the machine's own token can from a push to its main, leaving the owner's secrets, labels and rules alone (#1297)", () => {
-    const { run, held } = enrolling(bare({ rules: HELD_FOR_CHECK, allow_auto_merge: true, files: { ".github/workflows/ci.yml": CI.replace("name: Gate", "name: CI"), ".github/workflows/machine.yml": STALE } }), {});
+    const { run, held } = enrolling(bare({ rules: HELD_FOR_CHECK, allow_auto_merge: true, files: { ".github/workflows/ci.yml": ci().replace("name: Gate", "name: CI"), ".github/workflows/machine.yml": STALE } }), {});
 
     const result = run(REPO, "--caller");
 
@@ -197,7 +197,7 @@ describe("bin/enrol keeps an enrolled repo current with the owner's own login (#
   });
 
   it("writes the caller file straight to main where main still takes direct pushes, opening no PR", () => {
-    const { run, held } = enrolling(bare({ files: { ".github/workflows/ci.yml": CI.replace("name: Gate", "name: CI") }, refused: { "/rulesets": "gh: Upgrade to GitHub Pro to enable this feature (HTTP 403)" } }));
+    const { run, held } = enrolling(bare({ files: { ".github/workflows/ci.yml": ci().replace("name: Gate", "name: CI") }, refused: { "/rulesets": "gh: Upgrade to GitHub Pro to enable this feature (HTTP 403)" } }));
 
     run();
 
@@ -208,7 +208,7 @@ describe("bin/enrol keeps an enrolled repo current with the owner's own login (#
   it("refuses the caller file before opening anything when auto-merge is off, since its PR would never merge on its own", () => {
     const { run, held } = enrolling(bare({ rules: HELD_FOR_CHECK, refused: { "allow_auto_merge=true": "gh: Must have admin rights to Repository. (HTTP 403)" } }));
 
-    expect(run().stderr).toContain("- the caller file: auto-merge is off, so a PR for it would never merge on its own");
+    expect(run().stderr).toContain("- the caller file, check-job rule and pre-push: auto-merge is off, so a PR for it would never merge on its own");
     expect(held().prs).toEqual([]);
     expect(held().branches).toEqual({});
   });
@@ -216,7 +216,7 @@ describe("bin/enrol keeps an enrolled repo current with the owner's own login (#
   it("closes its PR and deletes its branch when GitHub refuses to merge the PR on its own", () => {
     const { run, held } = enrolling(bare({ rules: HELD_FOR_CHECK, allow_auto_merge: true, refused: { "pr merge": "GraphQL: Pull request Protected branch rules not configured for this branch (enablePullRequestAutoMerge)" } }));
 
-    expect(run().stderr).toContain("- the caller file: GraphQL: Pull request Protected branch rules not configured");
+    expect(run().stderr).toContain("- the caller file, check-job rule and pre-push: GraphQL: Pull request Protected branch rules not configured");
     expect(held().prs).toEqual([]);
     expect(held().branches).toEqual({});
   });
@@ -224,14 +224,14 @@ describe("bin/enrol keeps an enrolled repo current with the owner's own login (#
   it("names the merge refusal and the failed cleanup when cleaning up its PR fails too", () => {
     const { run, held } = enrolling(bare({ rules: HELD_FOR_CHECK, allow_auto_merge: true, refused: { "pr merge": "GraphQL: Protected branch rules not configured", "pr close": "gh: Resource not accessible (HTTP 403)" } }));
 
-    expect(run().stderr).toContain("- the caller file: GraphQL: Protected branch rules not configured, and cleaning up its PR and branch failed too: gh: Resource not accessible (HTTP 403)");
+    expect(run().stderr).toContain("- the caller file, check-job rule and pre-push: GraphQL: Protected branch rules not configured, and cleaning up its PR and branch failed too: gh: Resource not accessible (HTTP 403)");
     expect(held().prs).toHaveLength(1);
   });
 
   it("deletes its branch, leaving no PR, when GitHub refuses to open the PR (#1157)", () => {
     const { run, held } = enrolling(bare({ rules: HELD_FOR_CHECK, allow_auto_merge: true, refused: { "pr create": "pull request create failed: GraphQL: Resource not accessible by integration (createPullRequest)" } }));
 
-    expect(run().stderr).toContain("- the caller file: pull request create failed: GraphQL: Resource not accessible by integration");
+    expect(run().stderr).toContain("- the caller file, check-job rule and pre-push: pull request create failed: GraphQL: Resource not accessible by integration");
     expect(held().prs).toEqual([]);
     expect(held().branches).toEqual({});
   });
@@ -239,22 +239,22 @@ describe("bin/enrol keeps an enrolled repo current with the owner's own login (#
   it("deletes its branch when GitHub refuses the caller file written to it (#1157)", () => {
     const { run, held } = enrolling(bare({ rules: HELD_FOR_CHECK, allow_auto_merge: true, refused: { "branch=enrol/caller": "gh: Resource not accessible by integration (HTTP 403)" } }));
 
-    expect(run().stderr).toContain("- the caller file: gh: Resource not accessible by integration (HTTP 403)");
+    expect(run().stderr).toContain("- the caller file, check-job rule and pre-push: gh: Resource not accessible by integration (HTTP 403)");
     expect(held().prs).toEqual([]);
     expect(held().branches).toEqual({});
   });
 
   it("holds main for the caller's review in a repo enrolled before it, once its caller file is current (#1285)", () => {
-    const { run, held } = enrolling(bare({ rules: HELD_FOR_CHECK, allow_auto_merge: true, files: { ".github/workflows/ci.yml": CI, ".github/workflows/machine.yml": STALE } }));
+    const { run, held } = enrolling(bare({ rules: HELD_FOR_CHECK, allow_auto_merge: true, files: { ".github/workflows/ci.yml": ci(), ".github/workflows/machine.yml": STALE } }));
 
     expect(run().status).toBe(0);
     expect(JSON.stringify(held().rules)).toContain(`"context":"${ENROLLED_REVIEW}"`);
   });
 
   it("names the caller PR still waiting on check, holding main for the caller's review only once that PR merges, and leaves it alone on a re-run (#1285)", () => {
-    const { run, held } = enrolling(bare({ rules: HELD_FOR_CHECK, allow_auto_merge: true, pending: true, files: { ".github/workflows/ci.yml": CI, ".github/workflows/machine.yml": STALE } }));
+    const { run, held } = enrolling(bare({ rules: HELD_FOR_CHECK, allow_auto_merge: true, pending: true, files: { ".github/workflows/ci.yml": ci(), ".github/workflows/machine.yml": STALE } }));
     const pr = `https://github.com/${REPO}/pull/900 merges on its own once check passes`;
-    const waiting = `- the caller file: ${pr}\n- main taking only a PR its review passed: ${pr}`;
+    const waiting = `- the caller file, check-job rule and pre-push: ${pr}\n- main taking only a PR its review passed: ${pr}`;
 
     expect(run().stdout).toBe(`enrol: ${REPO} is enrolled once its PR merges, 7 settings set:\n${waiting}\n${OFFER}`);
     const before = held().writes.length;
@@ -306,14 +306,104 @@ describe("bin/enrol says what a repo needs before its jobs suit this PC's runner
 
 });
 
-describe("bin/enrol names a CI check job that still runs on every PR, since GitHub holds a ticket PR behind a queued check run of the name the builder's status carries (#1345)", () => {
-  it("says to skip and rename the job on ticket and land branches, as check.yml does, before the PC lines", () => {
-    const { run } = enrolling(bare({ variables: ["CI_RUNNER"], files: { ".github/workflows/ci.yml": CI_ON_EVERY_PR } }));
+const LANDED = { rules: HELD_FOR_CHECK, allow_auto_merge: true };
+const TWO_JOBS = CI_ON_EVERY_PR.replace("jobs:\n", "jobs:\n  lint: # kept as written\n    runs-on: 'ubuntu-latest'\n    steps:\n      - run: npm run lint\n");
+const RULED_TWO_JOBS = TWO_JOBS.replace("  check:\n", ["  check:", ...checkJobRule(), ""].join("\n"));
 
-    expect(run().stdout.split("\n").slice(1)).toEqual([
-      `enrol: ${REPO} needs 1 change before its ticket PRs merge on the builder's check alone:`,
-      "- ci.yml's check job runs on the machine's pushes too, which GitHub then holds until it ends though the machine posted the check: skip and rename it there as check.yml here does (#1345)",
-      "",
-    ]);
+describe("bin/enrol brings an enrolled repo's CI check job and pre-push to this repo's, in the one PR its caller file goes through, so a change to either lands once here (#1368)", () => {
+  const STALE_MAIN = { ".github/workflows/ci.yml": TWO_JOBS, ".github/workflows/machine.yml": STALE, ".husky/pre-push": "pnpm check\n" };
+  const CALLER_ONLY_BRANCH = { ...STALE_MAIN, ".github/workflows/machine.yml": CALLER.replace("[CI]", "[Gate]") };
+
+  it.each([
+    ["opens one PR", {}],
+    ["updates the open PR that carries only the caller file", { branches: { "enrol/caller": CALLER_ONLY_BRANCH }, prs: [{ number: 900, head: "enrol/caller", auto: true }] }],
+  ])("%s adding the check-job rule to the check job alone, keeping every other byte, and this repo's pre-push over a differing one", (_, open) => {
+    const { run, held } = enrolling(bare({ ...LANDED, pending: true, files: STALE_MAIN, ...open }), {});
+
+    const result = run(REPO, "--caller");
+
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+    const after = held();
+    expect(after.prs).toHaveLength(1);
+    expect(after.branches["enrol/caller"]?.[".github/workflows/ci.yml"]).toBe(RULED_TWO_JOBS);
+    expect(after.branches["enrol/caller"]?.[".husky/pre-push"]).toBe(prePush());
+    expect(after.files[".husky/pre-push"]).toBe("pnpm check\n");
+  });
+
+  it("leaves a repo alone whose main already carries the caller file, the rule and the pre-push", () => {
+    const { run, held } = enrolling(bare({ ...LANDED, files: { ".github/workflows/ci.yml": RULED_TWO_JOBS, ".github/workflows/machine.yml": CALLER.replace("[CI]", "[Gate]"), ".husky/pre-push": prePush() } }), {});
+
+    expect(run(REPO, "--caller")).toEqual({ status: 0, stdout: `enrol: ${REPO} was already enrolled, nothing changed\n`, stderr: "" });
+    expect(held().writes).toEqual([]);
+  });
+
+  it("refuses by name a CI with two check jobs on pull requests, writing nothing", () => {
+    const twice = CI_ON_EVERY_PR + "  other:\n    name: check\n    runs-on: ubuntu-latest\n    steps:\n      - run: check\n";
+    const { run, held } = enrolling(bare({ ...LANDED, files: { ".github/workflows/ci.yml": twice } }), {});
+
+    const result = run(REPO, "--caller");
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("ci.yml runs more than one `check` job on pull requests: check, other");
+    expect(held().branches).toEqual({});
+  });
+});
+
+const HOME = "collod873/claude-workflow";
+const TICKETS = readFileSync(join(import.meta.dirname, "..", ".github", "workflows", "tickets.yml"), "utf8");
+const AT_HOME = TICKETS.replaceAll(" && github.repository != format('{0}/claude-workflow', github.repository_owner)", "");
+const HOME_RULES = [
+  { type: "pull_request", ruleset_id: 3 },
+  { type: "required_status_checks", ruleset_id: 3, parameters: { strict_required_status_checks_policy: true, required_status_checks: [{ context: "check" }, { context: "review" }] } },
+];
+const home = (tickets: string) =>
+  bare({
+    repo: HOME,
+    allow_auto_merge: true,
+    rules: HOME_RULES,
+    files: Object.fromEntries([".github/workflows/check.yml", ".github/workflows/machine.yml", ".husky/pre-push"].map((path) => [path, readFileSync(join(import.meta.dirname, "..", path), "utf8")]).concat([[".github/workflows/tickets.yml", tickets]])),
+  });
+
+describe("bin/enrol on this repo swaps the review main requires for tickets / review only once tickets.yml runs its review here (#1368)", () => {
+  it("ends green changing nothing while tickets.yml skips the review here, saying the swap waits on it", () => {
+    const { run, held } = enrolling(home(TICKETS), {});
+
+    const result = run(HOME, "--caller");
+
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe(`enrol: ${HOME} was already enrolled, nothing changed\nenrol: ${HOME}: swapping review for ${ENROLLED_REVIEW} in main's required checks waits on tickets.yml running its review here\n`);
+    expect(held().writes).toEqual([]);
+  });
+
+  it("still waits where tickets.yml words its skip of this repo another way, or has no review job", () => {
+    const reworded = AT_HOME.replace("  review:\n    if: ${{ ", "  review:\n    if: ${{ github.event.repository.name != 'claude-workflow' && ");
+    const reviewless = TICKETS.replace(/^ {2}review:\n/m, "  judged:\n");
+    for (const tickets of [reworded, reviewless]) {
+      const { run, held } = enrolling(home(tickets), {});
+
+      expect(run(HOME, "--caller").stdout).toContain("waits on tickets.yml running its review here");
+      expect(held().writes).toEqual([]);
+    }
+  });
+
+  it("says nothing of the swap where no ruleset requires plain review", () => {
+    const { run } = enrolling({ ...home(TICKETS), rules: [{ type: "pull_request" }] }, {});
+
+    expect(run(HOME, "--caller").stdout).toBe(`enrol: ${HOME} was already enrolled, nothing changed\n`);
+  });
+
+  it("requires tickets / review in review's place, keeping every other rule, once tickets.yml runs its review here", () => {
+    const { run, held } = enrolling(home(AT_HOME), {});
+
+    const result = run(HOME, "--caller");
+
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+    const checks = held().rules.flatMap(({ parameters }) => (parameters as { required_status_checks?: { context: string }[] } | undefined)?.required_status_checks ?? []).map(({ context }) => context);
+    expect(checks).toEqual(["check", ENROLLED_REVIEW]);
+    expect(held().rules.map(({ type }) => type).sort()).toEqual(["pull_request", "required_status_checks"]);
+    expect(held().prs).toEqual([]);
   });
 });

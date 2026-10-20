@@ -396,64 +396,41 @@ function runOf(step: Step, ticket: string, action: string): string {
   return (step.run ?? "").replaceAll(/\$\{\{ github\.event\.issue\.number \}\}/g, ticket).replaceAll(/\$\{\{ github\.event\.action \}\}/g, action);
 }
 
-describe("tickets.yml re-runs an open PR's failed checks instead of building, when the owner reopens or the closer wakes a ticket whose PR is open (#851, #1108)", () => {
-  it("builds nothing and re-runs the failed checks when a reopened or woken ticket has an open PR, but still builds when it has none", () => {
+describe("tickets.yml builds a woken or reopened ticket whose PR is open from that PR's branch, so its push is not refused as a duplicate of main (#1108, #1371)", () => {
+  it("checks out the open PR's branch to build on, and a fresh branch off main when the ticket has no open PR", () => {
     const { job } = workflow();
     const start = stageStep(job, "start");
-    const started = (cwd: string, output: string, action: string) =>
-      spawnSync("bash", ["-e", "-c", runOf(start, "9", action)], { cwd, env: { ...process.env, PATH: `${join(cwd, "bin")}:${process.env.PATH}`, GITHUB_OUTPUT: output, GITHUB_WORKSPACE: cwd }, encoding: "utf8" });
+    const startedOn = (pr: "OPEN" | "none", action: string) => {
+      const root = scratch("start-");
+      const calls = join(root, "calls");
+      copyMark(root);
+      script(join(root, "bin", "mark"), `printf 'mark %s\\n' "$*" >>"${calls}"\n`);
+      script(join(root, "bin", "gh"), ['case "$*" in', `  *"pr view ticket/9"*) ${pr === "OPEN" ? "printf 'OPEN\\n'" : "exit 1"} ;;`, "  *) exit 0 ;;", "esac", ""].join("\n"));
+      const { session } = cloned(root, "main as it was");
+      git(session, "checkout", "--quiet", "-b", "ticket/9");
+      git(session, "commit", "--quiet", "--allow-empty", "-m", "Build #9 against its failing tests");
+      const built = git(session, "rev-parse", "HEAD");
+      git(session, "push", "--quiet", "origin", "ticket/9");
+      git(session, "checkout", "--quiet", "main");
+      git(session, "branch", "--quiet", "-D", "ticket/9");
+      const main = git(session, "rev-parse", "HEAD");
+      const ran = spawnSync("bash", ["-e", "-c", runOf(start, "9", action)], { cwd: session, env: { ...process.env, PATH: `${join(root, "bin")}:${process.env.PATH}`, GITHUB_OUTPUT: join(root, "output"), GITHUB_WORKSPACE: root }, encoding: "utf8" });
+      expect(ran.status, ran.stderr).toBe(0);
+      return { built, main, head: git(session, "rev-parse", "HEAD"), on: git(session, "branch", "--show-current"), marks: readFileSync(calls, "utf8"), output: parseOutput(join(root, "output")) };
+    };
 
-    const withOpenPr = scratch("reopen-open-");
-    const openCalls = join(withOpenPr, "calls");
-    const openOutput = join(withOpenPr, "output");
-    copyMark(withOpenPr);
-    script(join(withOpenPr, "bin", "mark"), `printf 'mark %s\\n' "$*" >>"${openCalls}"\n`);
-    script(
-      join(withOpenPr, "bin", "gh"),
-      [
-        `printf '%s\\n' "$*" >>"${openCalls}"`,
-        'case "$*" in',
-        '  *"pr view ticket/9"*) printf \'OPEN\\n\' ;;',
-        `  *"pr checks ticket/9"*) printf '%s\\n' '${JSON.stringify([{ name: "check", bucket: "fail", link: "https://github.com/collod873/claude-workflow/actions/runs/555/job/777" }])}' ;;`,
-        "  *) exit 0 ;;",
-        "esac",
-        "",
-      ].join("\n"),
-    );
     for (const action of ["reopened", "unlabeled"]) {
-      rmSync(openCalls, { force: true });
-      const opened = started(withOpenPr, openOutput, action);
-
-      expect(opened.status, opened.stderr).toBe(0);
-      const openLog = readFileSync(openCalls, "utf8");
-      expect(openLog, action).toContain("mark 9 checking\n");
-      expect(openLog, action).not.toContain("mark 9 building");
-      expect(openLog, action).toMatch(/rerun/i);
-      expect(stagesRun(job, undefined, { start: parseOutput(openOutput) })).toEqual(["start"]);
-      expect(parseOutput(openOutput).branch).toBe("ticket/9");
+      const woken = startedOn("OPEN", action);
+      expect(woken.head, action).toBe(woken.built);
+      expect(woken.on, action).toBe("ticket/9");
+      expect(woken.marks, action).not.toContain("checking");
+      expect(stagesRun(job, undefined, { start: woken.output }), action).toEqual(["start", "fix"]);
     }
-
-    const withNoPr = scratch("reopen-none-");
-    const noCalls = join(withNoPr, "calls");
-    const noOutput = join(withNoPr, "output");
-    copyMark(withNoPr);
-    script(join(withNoPr, "bin", "mark"), `printf 'mark %s\\n' "$*" >>"${noCalls}"\n`);
-    script(
-      join(withNoPr, "bin", "gh"),
-      [`printf '%s\\n' "$*" >>"${noCalls}"`, 'case "$*" in', '  *"pr view ticket/9"*) exit 1 ;;', '  *"pr checks ticket/9"*) exit 1 ;;', "  *) exit 0 ;;", "esac", ""].join(
-        "\n",
-      ),
-    );
-    const none = started(withNoPr, noOutput, "reopened");
-
-    expect(none.status, none.stderr).toBe(0);
-    expect(readFileSync(noCalls, "utf8"), "a reopen with no open PR is a try").toContain("mark 9 building --try\n");
-    const filed = started(withNoPr, noOutput, "opened");
-    expect(filed.status, filed.stderr).toBe(0);
-    expect(readFileSync(noCalls, "utf8"), "a first build is no try").toMatch(/^mark 9 building$/m);
-    expect(stagesRun(job, undefined, { start: parseOutput(noOutput) })).toEqual(["start", "fix"]);
-    expect(parseOutput(noOutput).branch).toBe("ticket/9");
-    expect(stageStep(job, "fix").env?.BRANCH).toBe("${{ steps.start.outputs.branch }}");
+    const filed = startedOn("none", "opened");
+    expect(filed.head).toBe(filed.main);
+    expect(filed.on).toBe("ticket/9");
+    expect(filed.marks, "a first build is no try").toMatch(/^mark 9 building$/m);
+    expect(startedOn("none", "reopened").marks, "a reopen is a try").toContain("mark 9 building --try\n");
   });
 });
 
@@ -570,15 +547,15 @@ describe("tickets.yml says in its logs when a mark fails, so a ticket whose labe
     return root;
   };
 
-  it("ends the start step red on bin/mark's refusal, whether it reruns checks, counts a try or builds, so a refused mark never passes unseen (#1108)", () => {
+  it("ends the start step red on bin/mark's refusal, whether it counts a try or builds, so a refused mark never passes unseen (#1108)", () => {
     const start = stageStep(workflow().job, "start");
     const started = (gh: string, action: string) => {
       const cwd = refusing("start-refused-", gh);
+      git(cwd, "init", "--quiet", "--initial-branch=main");
       return spawnSync("bash", ["-e", "-c", runOf(start, "9", action)], { cwd, env: { ...process.env, PATH: `${join(cwd, "bin")}:${process.env.PATH}`, GITHUB_OUTPUT: join(cwd, "output"), GITHUB_WORKSPACE: cwd }, encoding: "utf8" });
     };
 
     for (const [gh, action, label] of [
-      ['case "$*" in *"pr view"*) printf \'OPEN\\n\' ;; *) exit 0 ;; esac\n', "reopened", "checking"],
       ["exit 1\n", "reopened", "building"],
       ["exit 1\n", "opened", "building"],
     ] as const) {

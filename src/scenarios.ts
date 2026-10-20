@@ -679,14 +679,17 @@ export function sessionExtras({
 
 export const ENROLLED = "collod873/Next";
 export const PC_RUNS_ON = "${{ vars.CI_RUNNER || 'ubuntu-latest' }}";
-export const CI = ["name: Gate", "on:", "  pull_request:", "jobs:", "  check:", `    if: \${{ !startsWith(github.head_ref, 'land/') && !(github.event.sender.login == '${MACHINE}') }}`, `    runs-on: ${PC_RUNS_ON}`, "    steps:", "      - run: check --full", ""].join("\n");
-export const CI_ON_EVERY_PR = CI.split("\n").filter((line) => !line.startsWith("    if:")).join("\n");
+export const CI_ON_EVERY_PR = ["name: Gate", "on:", "  pull_request:", "jobs:", "  check:", `    runs-on: ${PC_RUNS_ON}`, "    steps:", "      - run: check --full", ""].join("\n");
+export const checkJobRule = () => (/^ {2}check:\n((?: {4}.*\n)+?) {4}runs-on:/m.exec(readFileSync(join(import.meta.dirname, "..", ".github", "workflows", "check.yml"), "utf8"))?.[1] ?? "").trimEnd().split("\n");
+export const ci = () => CI_ON_EVERY_PR.replace("  check:\n", ["  check:", ...checkJobRule(), ""].join("\n"));
+export const prePush = () => readFileSync(join(import.meta.dirname, "..", ".husky", "pre-push"), "utf8");
 export const DEPLOY = ["name: Deploy", "on:", "  push:", "jobs:", "  ship:", `    runs-on: ${PC_RUNS_ON}`, "    steps:", "      - run: ./ship", ""].join("\n");
 let appKey: { publicKey: string; privateKey: string } | undefined;
 const appKeys = () => (appKey ??= generateKeyPairSync("rsa", { modulusLength: 2048, publicKeyEncoding: { type: "spki", format: "pem" }, privateKeyEncoding: { type: "pkcs8", format: "pem" } }));
 export const key = () => appKeys().privateKey;
 
 interface Held {
+  repo: string;
   id: number;
   allow_auto_merge: boolean;
   files: Record<string, string>;
@@ -721,7 +724,7 @@ const method = args.includes("-X") ? flag("-X") : "GET";
 const route = args.find((arg, at) => at > 0 && !arg.startsWith("-") && !["-X", "-H", "-f", "-F", "--input"].includes(args[at - 1]));
 const fields = Object.fromEntries(args.flatMap((arg, at) => (["-f", "-F"].includes(args[at - 1]) ? [arg.split(/=(.*)/s).slice(0, 2)] : [])));
 const stdin = () => fs.readFileSync(0, "utf8");
-const repo = "${ENROLLED}";
+const repo = held.repo;
 const contents = "repos/" + repo + "/contents/";
 if (args[0] === "api" && method === "GET" && route === "repos/" + repo) out({ id: held.id, allow_auto_merge: held.allow_auto_merge, default_branch: "main" });
 else if (args[0] === "api" && method === "PATCH" && route === "repos/" + repo) { wrote(); held.allow_auto_merge = fields.allow_auto_merge === "true"; save(); out({}); }
@@ -813,9 +816,10 @@ else { process.stderr.write("fake gh: unknown call " + said + "\n"); process.exi
 
 export function bare(extra: Partial<Held> = {}): Held {
   return {
+    repo: ENROLLED,
     id: 4242,
     allow_auto_merge: false,
-    files: { ".github/workflows/ci.yml": CI, ".github/workflows/deploy.yml": DEPLOY },
+    files: { ".github/workflows/ci.yml": ci(), ".github/workflows/deploy.yml": DEPLOY },
     branches: {},
     prs: [],
     pending: false,
@@ -841,7 +845,7 @@ export function enrolling(held: Held, env: Record<string, string> = { CORE_APP_P
   chmodSync(join(root, "gh"), 0o755);
   const now = () => JSON.parse(readFileSync(state, "utf8")) as Held;
   return {
-    run: (...args: string[]) => execute(join(BIN, "enrol"), root, { PATH: `${root}:${process.env.PATH}`, HELD: state, CORE_APP_PRIVATE_KEY: "", CLAUDE_CODE_OAUTH_TOKEN: "", ...env }, args.length === 0 ? [ENROLLED] : args),
+    run: (...args: string[]) => execute(join(BIN, "enrol"), root, { PATH: `${root}:${process.env.PATH}`, HELD: state, CORE_APP_PRIVATE_KEY: "", CLAUDE_CODE_OAUTH_TOKEN: "", ...env }, args.length === 0 ? [held.repo] : args),
     held: now,
     writes: () => now().writes.map((args) => args.slice(0, 3).join(" ")),
   };

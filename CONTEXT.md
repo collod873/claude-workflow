@@ -60,9 +60,12 @@ any enrolled repo.
 _Avoid_: self-checkout, same tree
 
 **Enrol**:
-Give a repo everything its tickets need to build: the caller file naming its own CI, the App's
-reach, the App's client id and keys, every label the machine spells, auto-merge, and main taking
-changes only through a PR passing `check` and, once its caller file runs it, `tickets / review`.
+Give a repo everything its tickets need to build: in one PR, the caller file naming its own CI,
+the **check-job rule** (`check.yml`'s `check` job `if` and `name`) on that CI's, and the **one
+pre-push** (this repo's `.husky/pre-push`); the App's reach, client id and keys, every label the
+machine spells, auto-merge, and main taking changes only through a PR passing `check` and, once
+its caller file runs it, `tickets / review`. The **home swap** trades `review` for that here once
+`tickets.yml` runs its review at home.
 `bin/enrol <repo>` sets what is missing and names what it could not set; a missing auto-merge
 Save meets later is the repo's fault, never the ticket's.
 _Avoid_: onboard, install, register
@@ -237,12 +240,9 @@ trial_cap=<cap>` and to find its run under that file. A dispatch with no trial c
 _Avoid_: caller trial, foreign trial
 
 **Run names**:
-The `run-name` the caller file carries, so every run under it names what it heard: an issue or
-comment event shows `<action> #<number>: <title>`, a PR event `<action> PR #<number>: <title>`, a
-dispatch `Probe (<how>): <probe>` for a probe, `Rerun of run <run id>/<attempt>` when it carries `rerun`, `Size trial of #<ticket> under
-<trial_cap>` when it carries a trial cap and `Fix #<ticket>` otherwise, a heard run `After <workflow>
-on <head branch>`, and a push `Push to main`. Enrol writes the file with no line folded, so the run
-name stays one line.
+The `run-name` the caller file carries, so every run under it names what it heard: the event, its
+issue or PR, a dispatch's ticket, rerun, trial cap or probe, as `.github/caller.yml` spells each.
+Enrol writes the file with no line folded, so the run name stays one line.
 _Avoid_: run title, display name
 
 **Done check**:
