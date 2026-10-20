@@ -62,8 +62,7 @@ _Avoid_: self-checkout, same tree
 **Enrol**:
 Give a repo everything its tickets need to build: in one PR, the caller file naming its own CI,
 the **check-job rule** (`check.yml`'s `check` job `if` and `name`; enrol's own PR still runs it) on
-that CI's, and the **one
-pre-push** (`.husky/pre-push`, if husky); the App's reach, client id and keys, every label the
+that CI's, and no pre-push, since `bin/land` is the gate; the App's reach, client id and keys, every label the
 machine spells, auto-merge, and main taking changes only by a PR passing `check` and, once
 its caller file runs it if enabled, `tickets / review`, here too. The **home swap** trades `review` for that
 here once `tickets.yml` runs its review at home.
@@ -96,7 +95,7 @@ _Avoid_: validator, guardrail, lint
 agent-hooks' words. A check is one run of `check`; a step is one named entry in
 `.claude/contract.json`, all the machine knows of a repo it builds; a receipt records a step's pass
 for exactly its inputs, so no step runs twice on one tree. The fast check runs mid-session; the
-full check (`--full`) at push, in the builder and in the closer's branch update. Its pass, posted
+full check (`--full`) in `bin/land`, the builder and the closer's branch update. Its pass, posted
 after the push as the head's `check` status by whoever pushed, is the whole check a PR merges on;
 `Check` runs no `check` job on a landing's or a ticket's PR, since a pending run of that name
 holds it (ADR-0008).

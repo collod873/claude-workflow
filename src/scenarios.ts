@@ -396,10 +396,9 @@ export function landSession({
   covered = true,
   green = true,
   changes = {},
-  home,
   defaultBranch = "main",
   openPr = false,
-}: { gh?: string; remoteRefuses?: string; messages?: string[]; merges?: Merge[]; views?: string[]; mainMovesOnRefusal?: boolean; rounds?: string; covered?: boolean; green?: boolean; changes?: Record<string, string>; home?: Held; defaultBranch?: string; openPr?: boolean } = {}) {
+}: { gh?: string; remoteRefuses?: string; messages?: string[]; merges?: Merge[]; views?: string[]; mainMovesOnRefusal?: boolean; rounds?: string; covered?: boolean; green?: boolean; changes?: Record<string, string>; defaultBranch?: string; openPr?: boolean } = {}) {
   const root = scratch("land-");
   const { remote, session } = clonedOn(root, defaultBranch, ["base"]);
   git(remote, "config", "user.email", "github@test");
@@ -412,14 +411,6 @@ export function landSession({
   mkdirSync(state);
   const log = join(state, "argv.jsonl");
   const counted = (name: string) => `$(( $(ls ${JSON.stringify(state)} | grep -c ${name}-) + 1 ))`;
-  const held = join(state, "held.json");
-  if (home !== undefined) {
-    writeFileSync(held, JSON.stringify(home));
-    writeFileSync(join(root, "gh-home"), FAKE_GH);
-    const own = git(SRC, "config", "--get", "remote.origin.url");
-    git(session, "config", "remote.origin.url", own);
-    git(session, "config", `url.${remote}.insteadOf`, own);
-  }
   script(
     join(root, "bin", "gh"),
     gh ??
@@ -427,7 +418,6 @@ export function landSession({
         `python3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "$@" >> ${JSON.stringify(log)}`,
         `remote=${JSON.stringify(remote)}`,
         `merges=(${merges.join(" ")})`,
-        ...(home === undefined ? [] : [`[[ " $* " == *"${home.repo}"* ]] && exec node ${JSON.stringify(join(root, "gh-home"))} "$@"`]),
         `views=(${views.join(" ")})`,
         'case "$1 $2" in',
         ...(openPr
@@ -470,8 +460,7 @@ export function landSession({
     session,
     head,
     branch: `land/${head.slice(0, 12)}`,
-    run: (args: string[] = [], from = session) => execute(join(BIN, "land"), from, { PATH: `${join(root, "bin")}:${process.env.PATH}`, LAND_ROUNDS: rounds, LAND_PAUSE_SECONDS: "0", HELD: held }, args),
-    held: () => JSON.parse(readFileSync(held, "utf8")) as Held,
+    run: (args: string[] = [], from = session) => execute(join(BIN, "land"), from, { PATH: `${join(root, "bin")}:${process.env.PATH}`, LAND_ROUNDS: rounds, LAND_PAUSE_SECONDS: "0" }, args),
     calls: (): string[][] => (existsSync(log) ? readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as string[]) : []),
     merged: (call: string[]) => call[0] === "pr" && call[1] === "merge",
     posted: (call: string[]) => call[0] === "api" && call[3]?.startsWith("repos/{owner}/{repo}/statuses/") === true,
@@ -705,7 +694,6 @@ export const PC_RUNS_ON = "${{ vars.CI_RUNNER || 'ubuntu-latest' }}";
 export const CI_ON_EVERY_PR = ["name: Gate", "on:", "  pull_request:", "jobs:", "  check:", `    runs-on: ${PC_RUNS_ON}`, "    steps:", "      - run: check --full", ""].join("\n");
 export const checkJobRule = () => (/^ {2}check:\n((?: {4}.*\n)+?) {4}runs-on:/m.exec(readFileSync(join(import.meta.dirname, "..", ".github", "workflows", "check.yml"), "utf8"))?.[1] ?? "").trimEnd().split("\n");
 export const ci = () => CI_ON_EVERY_PR.replace("  check:\n", ["  check:", ...checkJobRule(), ""].join("\n"));
-export const prePush = () => readFileSync(join(import.meta.dirname, "..", ".husky", "pre-push"), "utf8");
 export const DEPLOY = ["name: Deploy", "on:", "  push:", "jobs:", "  ship:", `    runs-on: ${PC_RUNS_ON}`, "    steps:", "      - run: ./ship", ""].join("\n");
 let appKey: { publicKey: string; privateKey: string } | undefined;
 const appKeys = () => (appKey ??= generateKeyPairSync("rsa", { modulusLength: 2048, publicKeyEncoding: { type: "spki", format: "pem" }, privateKeyEncoding: { type: "pkcs8", format: "pem" } }));
@@ -765,6 +753,14 @@ else if (args[0] === "api" && method === "PUT" && route.startsWith(contents)) {
   const branch = fields.branch;
   if (branch === undefined && held.rules.some(({ type }) => type === "pull_request")) { process.stderr.write("gh: Repository rule violations found\n"); process.exit(1); }
   (branch === undefined ? held.files : held.branches[branch])[route.slice(contents.length)] = Buffer.from(fields.content, "base64").toString("utf8");
+  save();
+  out({});
+}
+else if (args[0] === "api" && method === "DELETE" && route.startsWith(contents)) {
+  wrote();
+  const branch = fields.branch;
+  if (branch === undefined && held.rules.some(({ type }) => type === "pull_request")) { process.stderr.write("gh: Repository rule violations found\n"); process.exit(1); }
+  delete (branch === undefined ? held.files : held.branches[branch])[route.slice(contents.length)];
   save();
   out({});
 }
@@ -881,7 +877,7 @@ export const home = (tickets = homeTickets(), rules = HOME_RULES) =>
     repo: HOME,
     allow_auto_merge: true,
     rules,
-    files: Object.fromEntries([".github/workflows/check.yml", ".github/workflows/machine.yml", ".husky/pre-push"].map((path) => [path, readFileSync(join(SRC, "..", path), "utf8")]).concat([[".github/workflows/tickets.yml", tickets]])),
+    files: Object.fromEntries([".github/workflows/check.yml", ".github/workflows/machine.yml"].map((path) => [path, readFileSync(join(SRC, "..", path), "utf8")]).concat([[".github/workflows/tickets.yml", tickets]])),
   });
 
 export function enrolling(held: Held, env: Record<string, string> = { CORE_APP_PRIVATE_KEY: key(), CLAUDE_CODE_OAUTH_TOKEN: "sk-token" }) {

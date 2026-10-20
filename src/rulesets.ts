@@ -44,7 +44,7 @@ export function refusals(live: Live[], appliesToMe: string[]): string[] {
       ...(ruleset.conditions?.ref_name?.include?.includes(ruled.ref) === true ? [] : [`${name} does not cover ${ruled.ref}`]),
       ...ruled.rules.filter((rule) => !held.has(rule)).map((rule) => `${name} holds no ${rule} rule`),
       ...(contexts.join() === ruled.checks.join() ? [] : [`${name} requires ${contexts.join() || "no check"}, not ${ruled.checks.join() || "no check"}`]),
-      ...(ruled.checks.length > 0 && !strict ? [`${name} takes a branch behind main`] : []),
+      ...(strict ? [`${name} requires an up-to-date branch, which reruns the full check each time main moves (agent-hooks#176)`] : []),
     ];
   });
   const bypassed = ON_MAIN.filter((rule) => !appliesToMe.includes(rule)).map((rule) => `main's ${rule} rule does not apply to whoever is asking`);
@@ -68,7 +68,7 @@ export const asRuled = (name: string, ruled: Ruled): Live => ({
   conditions: { ref_name: { include: [ruled.ref] } },
   rules: ruled.rules.map((type) =>
     type === "required_status_checks"
-      ? { type, parameters: { strict_required_status_checks_policy: true, required_status_checks: ruled.checks.map((context) => ({ context })) } }
+      ? { type, parameters: { strict_required_status_checks_policy: false, required_status_checks: ruled.checks.map((context) => ({ context })) } }
       : { type },
   ),
 });

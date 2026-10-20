@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { createSign } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { basename, join } from "node:path";
 import { isMap, isScalar, type Node, parse, parseDocument } from "yaml";
 import { FAST_CHECK, FULL_CHECK } from "./fence.ts";
 import { ENROLLED_CALLER, ENROLLED_REVIEW, MACHINE_REPO } from "./post.ts";
@@ -10,8 +10,6 @@ import { LABELS, MACHINE } from "./spelled.ts";
 const ROOT = join(import.meta.dirname, "..");
 const CALLER_TEXT = readFileSync(join(ROOT, ".github", "caller.yml"), "utf8");
 const PRE_PUSH = ".husky/pre-push";
-const PACKAGE = "package.json";
-const PRE_PUSH_TEXT = readFileSync(join(ROOT, PRE_PUSH), "utf8");
 const WORKFLOWS = ".github/workflows";
 const TICKETS = `${WORKFLOWS}/tickets.yml`;
 export const HOME_REVIEW = "review";
@@ -246,11 +244,10 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
   });
 
   const caller = once(() => callerFor(ci().name));
-  const husky = once(() => [PACKAGE, dirname(PRE_PUSH)].some((path) => found(["api", `repos/${repo}/contents/${path}`]) !== undefined));
-  const pieces = once(() => [
+  const pieces = once((): { path: string; text: string | undefined }[] => [
     { path: CALLER, text: caller() },
     { path: ci().path, text: ruled(ci().path, ci().text) },
-    ...(husky() ? [{ path: PRE_PUSH, text: PRE_PUSH_TEXT }] : []),
+    { path: PRE_PUSH, text: undefined },
   ]);
   const carries = (ref?: string) => pieces().every(({ path, text }) => textOf(path, ref)?.text === text);
   const rules = () => read<Rule[]>(["api", `repos/${repo}/rules/branches/${held().default_branch}`]);
@@ -292,7 +289,9 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
   const write = (branch?: string) => {
     for (const { path, text } of pieces().filter((piece) => textOf(piece.path, branch)?.text !== piece.text)) {
       const sha = contents(path, branch)?.sha;
-      gh(["api", "-X", "PUT", `repos/${repo}/contents/${path}`, "-f", `message=${HANDED}`, ...(branch === undefined ? [] : ["-f", `branch=${branch}`]), "-f", `content=${Buffer.from(text).toString("base64")}`, ...(sha === undefined ? [] : ["-f", `sha=${sha}`])]);
+      const onBranch = branch === undefined ? [] : ["-f", `branch=${branch}`];
+      if (text === undefined) gh(["api", "-X", "DELETE", `repos/${repo}/contents/${path}`, "-f", `message=${HANDED}`, ...onBranch, "-f", `sha=${sha}`]);
+      else gh(["api", "-X", "PUT", `repos/${repo}/contents/${path}`, "-f", `message=${HANDED}`, ...onBranch, "-f", `content=${Buffer.from(text).toString("base64")}`, ...(sha === undefined ? [] : ["-f", `sha=${sha}`])]);
     }
   };
   const branchFromMain = () => {
@@ -313,7 +312,7 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
     let url: string;
     try {
       write(BRANCH);
-      url = open?.url ?? gh(["pr", "create", "-R", repo, "--head", BRANCH, "--base", held().default_branch, "--title", HANDED, "--body", `Brings \`${CALLER}\` to the caller text bin/enrol writes, naming this repo's CI, the \`${CHECK}\` job to the rule the machine's Check gives it, and \`${PRE_PUSH}\` to the machine's own. It merges on its own once \`${CHECK}\` passes.`]).trim();
+      url = open?.url ?? gh(["pr", "create", "-R", repo, "--head", BRANCH, "--base", held().default_branch, "--title", HANDED, "--body", `Brings \`${CALLER}\` to the caller text bin/enrol writes, naming this repo's CI, the \`${CHECK}\` job to the rule the machine's Check gives it, and takes out any \`${PRE_PUSH}\`, since land judges every landing. It merges on its own once \`${CHECK}\` passes.`]).trim();
       gh(["pr", "merge", BRANCH, "-R", repo, "--auto", "--squash", "--delete-branch"]);
     } catch (error) {
       try {
@@ -383,7 +382,7 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
           target: "branch",
           enforcement: "active",
           conditions: ON_MAIN,
-          rules: [...THROUGH_PR, { type: "required_status_checks", parameters: { strict_required_status_checks_policy: true, required_status_checks: [{ context: CHECK }] } }],
+          rules: [...THROUGH_PR, { type: "required_status_checks", parameters: { strict_required_status_checks_policy: false, required_status_checks: [{ context: CHECK }] } }],
         };
         gh(["api", "-X", "POST", `repos/${repo}/rulesets`, "--input", "-"], JSON.stringify(ruleset));
       },
@@ -413,7 +412,7 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
           target: "branch",
           enforcement: "active",
           conditions: ON_MAIN,
-          rules: [{ type: "required_status_checks", parameters: { strict_required_status_checks_policy: true, required_status_checks: [{ context: ENROLLED_REVIEW }] } }],
+          rules: [{ type: "required_status_checks", parameters: { strict_required_status_checks_policy: false, required_status_checks: [{ context: ENROLLED_REVIEW }] } }],
         };
         return void gh(["api", "-X", "POST", `repos/${repo}/rulesets`, "--input", "-"], JSON.stringify(ruleset));
       },

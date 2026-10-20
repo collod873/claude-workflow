@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { ENROLLED_REVIEW } from "./post.ts";
 import { MACHINE } from "./spelled.ts";
-import { bare, checkJobRule, ci, CI_ON_EVERY_PR, DEPLOY, ENROLLED as REPO, enrolling, home, HOME, homeTickets, key, PC_RUNS_ON, prePush } from "./scenarios.ts";
+import { bare, checkJobRule, ci, CI_ON_EVERY_PR, DEPLOY, ENROLLED as REPO, enrolling, home, HOME, homeTickets, key, PC_RUNS_ON } from "./scenarios.ts";
 
 const CALLER = readFileSync(join(import.meta.dirname, "..", ".github", "caller.yml"), "utf8");
 const OFFER = `enrol: \`bin/runner ${REPO} pc\` moves its jobs to this PC; run one fresh full check there and watch its peak memory before leaving it on\n`;
@@ -257,6 +257,14 @@ describe("bin/enrol keeps an enrolled repo current with the owner's own login (#
     expect(held().branches).toEqual({});
   });
 
+  it("holds main with rulesets that take a branch behind main, since land rebases before it checks and a strict rule reruns the full check each time main moves (agent-hooks#176)", () => {
+    const { run, held } = enrolling(bare());
+
+    expect(run().status).toBe(0);
+    const required = held().rules.filter(({ type }) => type === "required_status_checks");
+    expect(required.map(({ parameters }) => (parameters as { strict_required_status_checks_policy?: boolean }).strict_required_status_checks_policy)).toEqual([false, false]);
+  });
+
   it("holds main for the caller's review in a repo enrolled before it, once its caller file is current (#1285)", () => {
     const { run, held } = enrolling(bare({ rules: HELD_FOR_CHECK, allow_auto_merge: true, files: { ".github/workflows/ci.yml": ci(), ".github/workflows/machine.yml": STALE } }));
 
@@ -360,15 +368,15 @@ const RULED_TWO_JOBS = TWO_JOBS.replace("  check:\n", ["  check:", ...checkJobRu
 const EARLIER_RULE = checkJobRule().map((line) => line.replaceAll(" && !startsWith(github.head_ref, 'enrol/')", ""));
 const EARLIER_TWO_JOBS = TWO_JOBS.replace("  check:\n", ["  check:", ...EARLIER_RULE, ""].join("\n"));
 
-describe("bin/enrol brings an enrolled repo's CI check job and pre-push to this repo's, in the one PR its caller file goes through, so a change to either lands once here (#1368)", () => {
+describe("bin/enrol brings an enrolled repo's CI check job to this repo's and takes out its pre-push, in the one PR its caller file goes through, so a change lands once here and land is the one gate (#1368, agent-hooks#176)", () => {
   const STALE_MAIN = { ".github/workflows/ci.yml": TWO_JOBS, ".github/workflows/machine.yml": STALE, ".husky/pre-push": "pnpm check\n" };
   const CALLER_ONLY_BRANCH = { ...STALE_MAIN, ".github/workflows/machine.yml": CALLER.replace("[CI]", "[Gate]") };
 
   it.each([
     ["opens one PR", {}],
     ["updates the open PR that carries only the caller file", { branches: { "enrol/caller": CALLER_ONLY_BRANCH }, prs: [{ number: 900, head: "enrol/caller", auto: true }] }],
-    ["rewrites the open PR whose rule is an earlier one, so a change to the rule reaches it (#1386)", { branches: { "enrol/caller": { ...CALLER_ONLY_BRANCH, ".github/workflows/ci.yml": EARLIER_TWO_JOBS, ".husky/pre-push": prePush() } }, prs: [{ number: 900, head: "enrol/caller", auto: true }] }],
-  ])("%s adding the check-job rule to the check job alone, keeping every other byte, and this repo's pre-push over a differing one", (_, open) => {
+    ["rewrites the open PR whose rule is an earlier one, so a change to the rule reaches it (#1386)", { branches: { "enrol/caller": { ...CALLER_ONLY_BRANCH, ".github/workflows/ci.yml": EARLIER_TWO_JOBS } }, prs: [{ number: 900, head: "enrol/caller", auto: true }] }],
+  ])("%s adding the check-job rule to the check job alone, keeping every other byte, and deleting the pre-push", (_, open) => {
     const { run, held } = enrolling(bare({ ...LANDED, pending: true, files: STALE_MAIN, ...open }), {});
 
     const result = run(REPO, "--caller");
@@ -378,29 +386,26 @@ describe("bin/enrol brings an enrolled repo's CI check job and pre-push to this 
     const after = held();
     expect(after.prs).toHaveLength(1);
     expect(after.branches["enrol/caller"]?.[".github/workflows/ci.yml"]).toBe(RULED_TWO_JOBS);
-    expect(after.branches["enrol/caller"]?.[".husky/pre-push"]).toBe(prePush());
+    expect(after.branches["enrol/caller"]?.[".husky/pre-push"]).toBeUndefined();
     expect(after.files[".husky/pre-push"]).toBe("pnpm check\n");
   });
 
-  it("leaves a repo alone whose main already carries the caller file, the rule and the pre-push", () => {
-    const { run, held } = enrolling(bare({ ...LANDED, files: { ".github/workflows/ci.yml": RULED_TWO_JOBS, ".github/workflows/machine.yml": CALLER.replace("[CI]", "[Gate]"), ".husky/pre-push": prePush() } }), {});
+  it("leaves a repo alone whose main already carries the caller file and the rule, and no pre-push", () => {
+    const { run, held } = enrolling(bare({ ...LANDED, files: { ".github/workflows/ci.yml": RULED_TWO_JOBS, ".github/workflows/machine.yml": CALLER.replace("[CI]", "[Gate]") } }), {});
 
     expect(run(REPO, "--caller")).toEqual({ status: 0, stdout: `enrol: ${REPO} was already enrolled, nothing changed\n`, stderr: "" });
     expect(held().writes).toEqual([]);
   });
 
-  it.each([
-    ["writes no pre-push, still enrolling it, in a repo with no package.json and no .husky/, where nothing would run it (#1405)", {}, undefined],
-    ["writes the pre-push in a repo with a package.json and no .husky/ yet", { "package.json": "{}\n" }, prePush()],
-  ])("%s", (_, more, pushed) => {
-    const { run, held } = enrolling(bare({ files: { ...bare().files, ...more } }));
+  it("writes no pre-push in a repo with a package.json, since land judges every landing (agent-hooks#176)", () => {
+    const { run, held } = enrolling(bare({ files: { ...bare().files, "package.json": "{}\n" } }));
 
     const result = run();
 
     expect(result.stderr).toBe("");
     expect(result.status).toBe(0);
     expect(held().files[".github/workflows/machine.yml"]).toBeDefined();
-    expect(held().files[".husky/pre-push"]).toBe(pushed);
+    expect(held().files[".husky/pre-push"]).toBeUndefined();
   });
 
   it("finds a check job by its id when its name is an earlier rule's text, and brings it to the rule (#1386)", () => {

@@ -2,14 +2,10 @@
   "name": "claude-workflow",
   "private": true,
   "type": "module",
-  "scripts": {
-    "prepare": "husky && if [ -d .husky/_ ]; then git config core.hooksPath \"$(git rev-parse --path-format=absolute --git-common-dir)/../.husky/_\"; fi"
-  },
   "devDependencies": {
     "@types/node": "^26.2.0",
     "eslint": "^10.9.0",
     "eslint-plugin-sonarjs": "^4.2.0",
-    "husky": "^9.1.7",
     "jscpd": "^4.3.0",
     "knip": "^6.33.0",
     "typescript": "^5.5.4",
