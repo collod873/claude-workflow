@@ -390,9 +390,10 @@ export function landSession({
   mainMovesOnRefusal = false,
   rounds = "3",
   covered = true,
+  green = true,
   changes = {},
   home,
-}: { gh?: string; remoteRefuses?: string; messages?: string[]; merges?: Merge[]; views?: string[]; mainMovesOnRefusal?: boolean; rounds?: string; covered?: boolean; changes?: Record<string, string>; home?: Held } = {}) {
+}: { gh?: string; remoteRefuses?: string; messages?: string[]; merges?: Merge[]; views?: string[]; mainMovesOnRefusal?: boolean; rounds?: string; covered?: boolean; green?: boolean; changes?: Record<string, string>; home?: Held } = {}) {
   const root = scratch("land-");
   const { remote, session } = cloned(root, "base");
   git(remote, "config", "user.email", "github@test");
@@ -451,7 +452,9 @@ export function landSession({
       ].join("\n"),
   );
   const checks = join(state, "check-calls");
-  script(join(root, "bin", "check"), `printf '%s\\n' "$*" >>${JSON.stringify(checks)}\n${covered ? "printf 'check: covered, all 9 steps\\n'" : "printf 'check: due test\\n'\nexit 3"}\n`);
+  const covering = covered ? "printf 'check: covered, all 9 steps\\n'" : "printf 'check: due test\\n'\nexit 3";
+  const publishing = green ? "printf 'check: green, all 9 steps\\n'" : "printf 'check: red test; log .git/check-logs/test.log\\n'\nexit 1";
+  script(join(root, "bin", "check"), `printf '%s\\n' "$*" >>${JSON.stringify(checks)}\nif [[ $* == *--publish* ]]; then\n${publishing}\nelse\n${covering}\nfi\n`);
   const head = git(session, "rev-parse", "HEAD");
   return {
     root,

@@ -103,9 +103,8 @@ for (( round = 1; ; round++ )); do
   if [[ $changed == docs/buckets.md ]]; then
     judged="docs/buckets.md alone changed from main, and no check step reads it (#1382)"
     skipped=$judged
-  elif ! check --full --covered >/dev/null 2>"$err"; then
-    { printf -- '--- check --full --covered ---\n'; cat "$err"; } >>"$log"
-    printf 'land: no receipt covers the pushed tree, so no check status is posted and nothing merges; run check --full and land again\n' >&2
+  elif ! check --full --covered >/dev/null 2>"$err" && ! check --full --publish >&2; then
+    printf 'land: the full check went red on the pushed tree, so no check status is posted and nothing merges; fix what it names and land again\n' >&2
     exit 1
   fi
   posted check "$judged"

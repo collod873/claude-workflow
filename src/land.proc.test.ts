@@ -41,15 +41,26 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
     expect(result.stdout).toBe(`Landed ${PR}\n`);
   });
 
-  it("posts the check only once receipts cover the pushed tree, so a push that skipped the pre-push lands nothing and says so", () => {
-    const { run, calls, checked, remote, branch } = sessionAheadOfMain(1, { covered: false });
+  it("runs the full check itself when no receipt covers the pushed tree, publishing its receipts, then posts the check and merges on green, so no agent hand-runs a check before landing (#1412)", () => {
+    const { run, calls, checked, head, branch, merged, posted } = sessionAheadOfMain(1, { covered: false });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(checked()).toEqual(["--full --covered", "--full --publish"]);
+    expect(calls().filter(posted).map((call) => call.at(-1))).toEqual([JUDGED_CHECK, SKIPPED_REVIEW]);
+    expect(calls().filter(merged)).toEqual([["pr", "merge", branch, "--merge", "--match-head-commit", head]]);
+  });
+
+  it("posts no check and merges nothing when the full check it ran goes red, and passes on the check's own line naming the red step", () => {
+    const { run, calls, checked, remote, branch } = sessionAheadOfMain(1, { covered: false, green: false });
 
     const result = run();
 
     expect(result.status).toBe(1);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toBe("land: no receipt covers the pushed tree, so no check status is posted and nothing merges; run check --full and land again\n");
-    expect(checked()).toEqual(["--full --covered"]);
+    expect(result.stderr).toBe("check: red test; log .git/check-logs/test.log\nland: the full check went red on the pushed tree, so no check status is posted and nothing merges; fix what it names and land again\n");
+    expect(checked()).toEqual(["--full --covered", "--full --publish"]);
     expect(git(remote, "rev-parse", branch)).toMatch(/^[0-9a-f]{40}$/);
     expect(calls()).toEqual([]);
   });
@@ -65,11 +76,11 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
     expect(calls().filter(merged)).toEqual([["pr", "merge", `land/${head.slice(0, 12)}`, "--merge", "--match-head-commit", head]]);
   });
 
-  it("still asks for a receipt when docs/buckets.md changes beside another file", () => {
+  it("still runs the full check when docs/buckets.md changes beside another file", () => {
     const { run, checked } = sessionAheadOfMain(1, { covered: false, changes: { "docs/buckets.md": "| a row | moved |\n", "tool": "changed\n" } });
 
-    expect(run().status).toBe(1);
-    expect(checked()).toEqual(["--full --covered"]);
+    expect(run().status).toBe(0);
+    expect(checked()).toEqual(["--full --covered", "--full --publish"]);
   });
 
   it("brings the main checkout, detached as the session launcher leaves it, up to the merged main when landing from a session worktree (#1309)", () => {
