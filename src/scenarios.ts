@@ -847,12 +847,12 @@ export function bare(extra: Partial<Held> = {}): Held {
 }
 
 export const HOME = `${OWNER}/claude-workflow`;
-export const HOME_TICKETS = readFileSync(join(SRC, "..", ".github", "workflows", "tickets.yml"), "utf8");
+export const homeTickets = () => readFileSync(join(SRC, "..", ".github", "workflows", "tickets.yml"), "utf8");
 const HOME_RULES: Held["rules"] = [
   { type: "pull_request", ruleset_id: 3 },
   { type: "required_status_checks", ruleset_id: 3, parameters: { strict_required_status_checks_policy: true, required_status_checks: [{ context: "check" }, { context: "review" }] } },
 ];
-export const home = (tickets = HOME_TICKETS, rules = HOME_RULES) =>
+export const home = (tickets = homeTickets(), rules = HOME_RULES) =>
   bare({
     repo: HOME,
     allow_auto_merge: true,

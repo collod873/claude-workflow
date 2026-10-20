@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { ENROLLED_REVIEW } from "./post.ts";
 import { MACHINE } from "./spelled.ts";
-import { bare, checkJobRule, ci, CI_ON_EVERY_PR, DEPLOY, ENROLLED as REPO, enrolling, home, HOME, HOME_TICKETS as TICKETS, key, PC_RUNS_ON, prePush } from "./scenarios.ts";
+import { bare, checkJobRule, ci, CI_ON_EVERY_PR, DEPLOY, ENROLLED as REPO, enrolling, home, HOME, homeTickets, key, PC_RUNS_ON, prePush } from "./scenarios.ts";
 
 const CALLER = readFileSync(join(import.meta.dirname, "..", ".github", "caller.yml"), "utf8");
 const OFFER = `enrol: \`bin/runner ${REPO} pc\` moves its jobs to this PC; run one fresh full check there and watch its peak memory before leaving it on\n`;
@@ -364,6 +364,7 @@ describe("bin/enrol brings an enrolled repo's CI check job and pre-push to this 
   });
 });
 
+const TICKETS = homeTickets();
 const GUARDED = TICKETS.replace(/^( {2}review:\n {4}if: \$\{\{ .*?) \}\}$/m, "$1 && github.repository != format('{0}/claude-workflow', github.repository_owner) }}");
 describe("bin/enrol on this repo swaps the review main requires for tickets / review only once tickets.yml runs its review here (#1368)", () => {
   it("ends green changing nothing while tickets.yml skips the review here, saying the swap waits on it", () => {
