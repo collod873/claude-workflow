@@ -1,5 +1,5 @@
 name: Hooks
-description: Fetches the owner's live hooks release into $RUNNER_TEMP/agent-hooks, with the Python they run on, and hands its check and settings to every later step
+description: Fetches the owner's hooks from agent-hooks' main into $RUNNER_TEMP/agent-hooks, with the Python they run on, and hands its check and settings to every later step
 
 inputs:
   client-id:
@@ -33,7 +33,7 @@ runs:
       run: |
         hooks="$RUNNER_TEMP/agent-hooks"
         attempt=1
-        until git clone --quiet --depth 1 --branch live "https://x-access-token:$HOOKS_TOKEN@github.com/$GITHUB_REPOSITORY_OWNER/agent-hooks" "$hooks" 2>"$RUNNER_TEMP/agent-hooks-clone.log"; do
+        until git clone --quiet --depth 1 --branch main "https://x-access-token:$HOOKS_TOKEN@github.com/$GITHUB_REPOSITORY_OWNER/agent-hooks" "$hooks" 2>"$RUNNER_TEMP/agent-hooks-clone.log"; do
           rm -rf "$hooks"
           if [ "$attempt" -ge 3 ]; then
             { printf '%s\n' "A job cannot fetch the owner's hooks after 3 tries"; cat "$RUNNER_TEMP/agent-hooks-clone.log"; } | tee "$RUNNER_TEMP/agent-hooks-unreachable.log" >&2

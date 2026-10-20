@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { scratch } from "./scenarios.ts";
@@ -50,12 +50,10 @@ function onThisPc(skills = [...CRAFT, "load-calc"]): string {
     mkdirSync(join(root, "home", ".agents", "skills", "skills", name), { recursive: true });
     writeFileSync(join(root, "home", ".agents", "skills", "skills", name, "SKILL.md"), `# ${name}`);
   }
-  const release = join(root, "releases", "a9884a2");
-  mkdirSync(join(release, "hooks"), { recursive: true });
-  writeFileSync(join(release, "hookcheck.py"), HOOKCHECK);
-  writeFileSync(join(release, "hooks", "no-prose.py"), NO_PROSE);
-  mkdirSync(join(root, "home", ".agents"), { recursive: true });
-  symlinkSync(release, join(root, "home", ".agents", "hooks-live"));
+  const hooks = join(root, "home", ".agents", "hooks");
+  mkdirSync(join(hooks, "hooks"), { recursive: true });
+  writeFileSync(join(hooks, "hookcheck.py"), HOOKCHECK);
+  writeFileSync(join(hooks, "hooks", "no-prose.py"), NO_PROSE);
   mkdirSync(join(root, "bin"));
   writeFileSync(join(root, "bin", "claude"), CLAUDE);
   chmodSync(join(root, "bin", "claude"), 0o755);
@@ -71,7 +69,7 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-describe("a stage started on this PC runs under the owner's hooks from the live release (#1096)", () => {
+describe("a stage started on this PC runs under the owner's hooks from the agent-hooks main checkout (#1096)", () => {
   it("is refused by no-prose when it writes prose, though nothing set AGENT_HOOKS_SETTINGS", () => {
     const root = onThisPc();
     const cwd = process.cwd();
@@ -89,7 +87,7 @@ describe("a stage started on this PC runs under the owner's hooks from the live 
     }
   });
 
-  it("gives the gate hooks the release declares gated to a gated stage alone", () => {
+  it("gives the gate hooks the checkout declares gated to a gated stage alone", () => {
     const root = onThisPc();
     const cwd = process.cwd();
     process.chdir(root);
@@ -126,11 +124,11 @@ describe("a stage started on this PC runs under the owner's hooks from the live 
     }
   });
 
-  it("refuses to start when nothing set AGENT_HOOKS_SETTINGS and this PC has no live release, rather than run with no owner hooks", () => {
+  it("refuses to start when nothing set AGENT_HOOKS_SETTINGS and this PC has no agent-hooks main checkout, rather than run with no owner hooks", () => {
     const root = onThisPc();
     vi.stubEnv("HOME", join(root, "elsewhere"));
 
-    expect(hired({ name: "reviewer", transcript: join(root, "transcript.jsonl") })).toMatch(/hooks-live/);
+    expect(hired({ name: "reviewer", transcript: join(root, "transcript.jsonl") })).toMatch(/\.agents\/hooks is missing/);
   });
 
   it("hands every stage the owner's craft skills, and none of his personal ones", () => {

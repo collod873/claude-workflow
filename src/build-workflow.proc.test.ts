@@ -236,10 +236,10 @@ describe("every job that spends a model is watched as it goes, read after it end
     }
   });
 
-  it("every job hands its stages the owner's hooks from the live release, read with a token that can only read agent-hooks", () => {
+  it("every job hands its stages the owner's hooks from agent-hooks' main, read with a token that can only read agent-hooks", () => {
     for (const { steps } of modelJobs()) {
       const minted = steps.findIndex((step) => step.with?.repositories === "agent-hooks");
-      const cloned = steps.findIndex((step) => /git clone [^\n]*--branch live /.test(step.run ?? ""));
+      const cloned = steps.findIndex((step) => /git clone [^\n]*--branch main /.test(step.run ?? ""));
       const handed = steps.findIndex((step) => /AGENT_HOOKS_SETTINGS=.*GITHUB_ENV/.test(step.run ?? ""));
       expect(steps[minted]?.with).toMatchObject({ owner: "${{ github.repository_owner }}", "permission-contents": "read" });
       expect(minted).toBeGreaterThanOrEqual(0);
@@ -575,11 +575,11 @@ describe("tickets.yml says in its logs when a mark fails, so a ticket whose labe
   });
 });
 
-describe("the PR check judges only through the live release's check, which runs the owner's tree-wide rules itself (collod873/agent-hooks#24)", () => {
-  it("fetches the live hooks before the full check, and runs no rule of its own beside it", () => {
+describe("the PR check judges only through agent-hooks' main check, which runs the owner's tree-wide rules itself (collod873/agent-hooks#24)", () => {
+  it("fetches the owner's hooks before the full check, and runs no rule of its own beside it", () => {
     const { check } = (parse(readFileSync(join(WORKFLOWS, "check.yml"), "utf8")) as Workflow).jobs;
     const steps = expanded(check?.steps ?? []);
-    const fetched = steps.findIndex((step) => /git clone [^\n]*--branch live /.test(step.run ?? ""));
+    const fetched = steps.findIndex((step) => /git clone [^\n]*--branch main /.test(step.run ?? ""));
     const checked = steps.findIndex((step) => /\bcheck --full\b/.test(step.run ?? ""));
 
     expect(fetched).toBeGreaterThanOrEqual(0);
