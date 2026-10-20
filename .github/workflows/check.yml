@@ -62,8 +62,7 @@ jobs:
           include-hidden-files: true
 
   review:
-    name: "${{ startsWith(github.head_ref, 'land/') && 'not reviewed, a session landing (ADR-0008)' || 'review' }}"
-    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.head_ref, 'land/') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     concurrency:
@@ -139,7 +138,7 @@ jobs:
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
 
   meters:
-    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.head_ref, 'land/') }}
     continue-on-error: true
     runs-on: ubuntu-latest
     timeout-minutes: 30
