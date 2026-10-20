@@ -21,7 +21,8 @@ runs:
         repositories: transcripts
         permission-contents: write
 
-    - if: always()
+    - id: transcripts-flush
+      if: always()
       continue-on-error: true
       shell: bash
       env:
@@ -43,7 +44,8 @@ runs:
         done
         exit 1
 
-    - if: always()
+    - id: hook-logs
+      if: always()
       continue-on-error: true
       shell: bash
       run: |

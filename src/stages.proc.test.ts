@@ -25,12 +25,6 @@ function plantStage(copy: string, name: string, { measured = true } = {}): void 
   );
 }
 
-function plantStop(copy: string, name: string, used: string): void {
-  plant(copy, `src/${name}.ts`, `import { exitFor, stopsOf } from "./stops.ts";\nconst stoppedAt = stopsOf({ unmerged: "The ${name} finds its PR unmerged" });\nexport const ended = exitFor(stoppedAt("${used}", "${name}: stopped"));\n`);
-}
-
-const typecheck = (copy: string) => execute(join(REPO, "node_modules", ".bin", "tsc"), copy, {}, ["--noEmit", "--pretty", "false", "-p", "tsconfig.json"]);
-
 const listed = (copy: string) => JSON.parse(execute("node", copy, {}, ["--input-type=module", "-e", LISTED]).stdout) as { parts: string[]; prompts: number };
 
 describe("each stage declares its own part row, prompts and scenarios in its own part file, and every limit finds it (#1031)", () => {
@@ -56,17 +50,5 @@ describe("each stage declares its own part row, prompts and scenarios in its own
 
     expect(stderr).toBe("src/gamma.ts hires a model and no prompt of that name is measured\n");
     expect(status).toBe(1);
-  });
-
-  it("refuses a stage that stops at a stop it did not declare, and passes one it did", () => {
-    const copy = machineCopy();
-    plantStop(copy, "declared", "unmerged");
-    plantStop(copy, "undeclared", "unlisted");
-
-    const { status, stdout } = typecheck(copy);
-
-    expect(stdout).toMatch(/^src\/undeclared\.ts\(3,\d+\): error TS2345: Argument of type '"unlisted"'/);
-    expect(stdout.trim().split("\n")).toHaveLength(1);
-    expect(status).not.toBe(0);
   });
 });

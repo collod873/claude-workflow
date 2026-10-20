@@ -8,6 +8,7 @@ import { script, scratch } from "./scenarios.ts";
 const ACTIONS = join(import.meta.dirname, "..", ".github", "actions");
 
 interface Step {
+  id?: string;
   run?: string;
   if?: string;
   "continue-on-error"?: boolean;
@@ -15,14 +16,14 @@ interface Step {
 
 const stepsOf = (action: string): Step[] => (parse(readFileSync(join(ACTIONS, action, "action.yml"), "utf8")) as { runs: { steps: Step[] } }).runs.steps;
 
-const stepRunning = (action: string, text: string): Step => {
-  const step = stepsOf(action).find((candidate) => (candidate.run ?? "").includes(text));
-  expect(step, `a ${action} step running ${text}`).toBeDefined();
+const stepWithId = (action: string, id: string): Step => {
+  const step = stepsOf(action).find((candidate) => candidate.id === id);
+  expect(step, `a ${action} step with id ${id}`).toBeDefined();
   return step as Step;
 };
 
 function keeping(root: string, hookLogs: string) {
-  return spawnSync("bash", ["-e", "-c", stepRunning("stage-logs", "HOOK_LOG_DIR").run ?? ""], {
+  return spawnSync("bash", ["-e", "-c", stepWithId("stage-logs", "hook-logs").run ?? ""], {
     cwd: root,
     env: { ...process.env, HOOK_LOG_DIR: hookLogs },
     encoding: "utf8",
@@ -65,7 +66,7 @@ describe("a stage job's uploaded machine logs carry its check logs and the owner
     const bare = scratch("stage-logs-");
     mkdirSync(join(bare, ".git", "machine-logs"), { recursive: true });
     expect(keeping(bare, join(bare, "absent")).status).toBe(0);
-    expect(stepRunning("stage-logs", "HOOK_LOG_DIR").if).toBe("always()");
+    expect(stepWithId("stage-logs", "hook-logs").if).toBe("always()");
   });
 
   it("carries the Claude Code session logs this job wrote, and none a cache restored from an earlier run", () => {
@@ -82,7 +83,7 @@ describe("a stage job's uploaded machine logs carry its check logs and the owner
     writeFileSync(join(project, "a1b2c3d4.jsonl"), '{"type":"user"}\n');
     writeFileSync(join(project, "a1b2c3d4", "subagents", "agent-9f.jsonl"), '{"type":"assistant"}\n');
 
-    const kept = spawnSync("bash", ["-e", "-c", stepRunning("stage-logs", "HOOK_LOG_DIR").run ?? ""], {
+    const kept = spawnSync("bash", ["-e", "-c", stepWithId("stage-logs", "hook-logs").run ?? ""], {
       cwd: root,
       env: { ...process.env, HOME: home, GITHUB_EVENT_PATH: event, HOOK_LOG_DIR: join(root, "absent") },
       encoding: "utf8",
@@ -102,7 +103,7 @@ describe("a stage job's uploaded machine logs carry its check logs and the owner
     mkdirSync(runnerTemp, { recursive: true });
     writeFileSync(githubEnv, "");
 
-    const readied = spawnSync("bash", ["-e", "-c", stepRunning("stage", "HOOK_LOG_DIR=").run ?? ""], {
+    const readied = spawnSync("bash", ["-e", "-c", stepWithId("stage", "stage-env").run ?? ""], {
       cwd: root,
       env: { ...process.env, HOME: join(root, "home"), RUNNER_TEMP: runnerTemp, GITHUB_ENV: githubEnv, GITHUB_ACTION_PATH: root },
       encoding: "utf8",
@@ -126,7 +127,7 @@ describe("a stage job on a runner shared with other jobs waits only for its own 
     const ours = capturing(join(runnerTemp, "agent-hooks"), 2);
     try {
       const began = Date.now();
-      const flushed = spawnSync("bash", ["-e", "-c", stepRunning("stage-logs", "TRANSCRIPTS_TOKEN").run ?? ""], {
+      const flushed = spawnSync("bash", ["-e", "-c", stepWithId("stage-logs", "transcripts-flush").run ?? ""], {
         cwd: root,
         env: { ...process.env, HOME: join(root, "home"), RUNNER_TEMP: runnerTemp },
         encoding: "utf8",

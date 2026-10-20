@@ -26,7 +26,8 @@ runs:
         repositories: agent-hooks
         permission-contents: read
 
-    - shell: bash
+    - id: hooks-fetch
+      shell: bash
       env:
         HOOKS_TOKEN: ${{ steps.hooks-app.outputs.token }}
       run: |

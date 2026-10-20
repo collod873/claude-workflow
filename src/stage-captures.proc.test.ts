@@ -8,6 +8,7 @@ import { script, scratch } from "./scenarios.ts";
 const ACTION = join(import.meta.dirname, "..", ".github", "actions", "stage", "action.yml");
 
 interface Step {
+  id?: string;
   run?: string;
   with?: Record<string, unknown>;
   "continue-on-error"?: boolean;
@@ -16,7 +17,7 @@ interface Step {
 const stageSteps = (): Step[] => (parse(readFileSync(ACTION, "utf8")) as { runs: { steps: Step[] } }).runs.steps;
 
 const capturesFetch = (): Step => {
-  const step = stageSteps().find((candidate) => (candidate.run ?? "").includes("SESSION_CAPTURES="));
+  const step = stageSteps().find((candidate) => candidate.id === "captures-fetch");
   expect(step, "a step that fetches the session captures").toBeDefined();
   return step as Step;
 };
