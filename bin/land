@@ -121,6 +121,10 @@ for (( round = 1; ; round++ )); do
   posted check "$judged"
   posted "tickets / review" "$skipped"
   if [[ -z $url ]]; then
+    call "gh pr list" gh pr list --head "$branch" --base "$default_branch" --state open --json url --jq '.[0].url // empty'
+    url=$said
+  fi
+  if [[ -z $url ]]; then
     call "gh pr create" gh pr create --base "$default_branch" --head "$branch" \
       --title "$(git log -1 --format=%s HEAD)" \
       --body "$(git log --reverse --format='- %s' "origin/$default_branch..HEAD")"
