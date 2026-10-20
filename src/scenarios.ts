@@ -716,6 +716,7 @@ interface Held {
   labels: string[];
   appKey: string;
   rules: { type: string; ruleset_id?: number; parameters?: unknown }[];
+  paused: boolean;
   refused: Record<string, string>;
   writes: string[][];
 }
@@ -814,6 +815,17 @@ else if (args[0] === "api" && method === "PUT" && route.startsWith("repos/" + re
   save();
   out({});
 }
+else if (args[0] === "api" && method === "DELETE" && route.startsWith("repos/" + repo + "/rulesets/")) {
+  wrote();
+  const id = Number(route.split("/").at(-1));
+  held.rules = held.rules.filter((rule) => rule.ruleset_id !== id);
+  held.writes.at(-1).push("ruleset");
+  save();
+}
+else if (args[0] === "api" && route === "repos/" + repo + "/actions/workflows/machine.yml") {
+  if (held.files[".github/workflows/machine.yml"] === undefined) { process.stderr.write("gh: Not Found (HTTP 404)\n"); process.exit(1); }
+  out({ path: ".github/workflows/machine.yml", state: held.paused ? "disabled_manually" : "active" });
+}
 else if (args[0] === "variable" && args[1] === "list") out(held.variables.map((name) => ({ name })));
 else if (args[0] === "variable" && args[1] === "set") { wrote(); held.variables.push(args[2]); save(); }
 else if (args[0] === "secret" && args[1] === "list") out((args.includes("dependabot") ? held.dependabot : held.secrets).map((name) => ({ name })));
@@ -840,6 +852,7 @@ export function bare(extra: Partial<Held> = {}): Held {
     labels: ["bug"],
     appKey: appKeys().publicKey,
     rules: [],
+    paused: false,
     refused: {},
     writes: [],
     ...extra,

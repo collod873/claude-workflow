@@ -64,8 +64,8 @@ Give a repo everything its tickets need to build: in one PR, the caller file nam
 the **check-job rule** (`check.yml`'s `check` job `if` and `name`; enrol's own PR still runs it) on
 that CI's, and the **one
 pre-push** (`.husky/pre-push`, if husky); the App's reach, client id and keys, every label the
-machine spells, auto-merge, and main taking changes only through a PR passing `check` and, once
-its caller file runs it, `tickets / review`, here too. The **home swap** trades `review` for that
+machine spells, auto-merge, and main taking changes only by a PR passing `check` and, once
+its caller file runs it if enabled, `tickets / review`, here too. The **home swap** trades `review` for that
 here once `tickets.yml` runs its review at home.
 `bin/enrol <repo>` sets what is missing and names what it could not set; a missing auto-merge
 Save meets later is the repo's fault, never the ticket's.

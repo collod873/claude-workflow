@@ -279,6 +279,41 @@ describe("bin/enrol keeps an enrolled repo current with the owner's own login (#
   });
 });
 
+describe("bin/enrol requires no review where the owner disabled the repo's Machine workflow, since nothing there posts it (workout-tracker#166, 2026-10-20)", () => {
+  const PAUSED_LINE = `enrol: ${REPO}: its machine.yml workflow is disabled, so main requires no ${ENROLLED_REVIEW} until it is enabled and bin/enrol runs again`;
+  const CHECK_RULES = [
+    { type: "pull_request", ruleset_id: 7 },
+    { type: "required_status_checks", ruleset_id: 7, parameters: { strict_required_status_checks_policy: true, required_status_checks: [{ context: "check" }] } },
+  ];
+  const REVIEW_RULESET = { type: "required_status_checks", ruleset_id: 8, parameters: { strict_required_status_checks_policy: true, required_status_checks: [{ context: ENROLLED_REVIEW }] } };
+  const SHARED = [{ type: "pull_request", ruleset_id: 7 }, { type: "required_status_checks", ruleset_id: 7, parameters: { strict_required_status_checks_policy: true, required_status_checks: [{ context: "check" }, { context: ENROLLED_REVIEW }] } }];
+  const pausedRepo = (rules: ReturnType<typeof bare>["rules"]) => bare({ rules, paused: true, allow_auto_merge: true, files: { ".github/workflows/ci.yml": ci(), ".github/workflows/machine.yml": STALE } });
+
+  it("adds no review rule to a paused repo's main, saying why", () => {
+    const { run, held } = enrolling(pausedRepo(CHECK_RULES));
+
+    const result = run();
+
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+    expect(JSON.stringify(held().rules)).not.toContain(ENROLLED_REVIEW);
+    expect(result.stdout).toContain(`${PAUSED_LINE}\n`);
+  });
+
+  it.each([
+    ["deletes the review's own ruleset", [...CHECK_RULES, REVIEW_RULESET]],
+    ["drops the review from the ruleset it shares with check", SHARED],
+  ])("%s on a paused repo, keeping main held for check through a PR", (_, rules) => {
+    const { run, held } = enrolling(pausedRepo(rules));
+
+    expect(run().status).toBe(0);
+    const after = held();
+    expect(JSON.stringify(after.rules)).not.toContain(ENROLLED_REVIEW);
+    expect(after.rules.filter(({ ruleset_id }) => ruleset_id === 7).map(({ type }) => type).sort()).toEqual(["pull_request", "required_status_checks"]);
+    expect(JSON.stringify(after.rules)).toContain('"context":"check"');
+  });
+});
+
 const HELD_OFF_THE_PC = [
   "name: Gate",
   "on:",
