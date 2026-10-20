@@ -32,6 +32,8 @@ it, and needs no row.
   pre-push, the builder and the closer run. Both read their steps from `.claude/contract.json`.
 - Land a commit with `bin/land`: it rebases, pushes through the pre-push, posts that pass as the
   commit's `check` status, the whole gate, and merges its PR at once. `main` takes no direct push.
+- A helper agent commits on its own branch and hands back; the session that started it merges those
+  branches and runs `bin/land` once.
 - A worktree's `node_modules` links to the main checkout's: `rm node_modules && npm ci` before
   editing packages.
 

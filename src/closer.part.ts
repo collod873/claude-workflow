@@ -172,7 +172,7 @@ export function closing({
   git(session, "checkout", "--quiet", "main");
   commitAt(session, FAST_TIMING.merged, ["merge", "--quiet", "--no-ff", "-m", `Merge pull request #900 from ${mergedFrom}`, `ticket/${ticket}`]);
   const origin = join(root, "origin.git");
-  git(root, "init", "--quiet", "--bare", origin);
+  git(root, "init", "--quiet", "--bare", "--initial-branch=main", origin);
   git(session, "remote", "add", "origin", origin);
   git(session, "push", "--quiet", "origin", "main");
   const heads = openPrs.map((pr) => {
