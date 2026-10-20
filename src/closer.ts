@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import { checked, faultsClosed, readiedTree, LABELLED_WAITING, splitClosed, splitInto } from "./builder.ts";
 import { answered, CALLER_FILE as caller, commentOnPr, commentOnTicket, commentsRead, ENROLLED_REVIEW, FAULT_FROM, FOREIGN, gh, ghAs, ghRead, git, gitRead, type Held, heldOn, labelsHeld, MACHINE_REPO, markWith, NOTHING_MARKED, opened, prOfTicket, readOrStop, RESOLVING, REVIEWED_FROM, TICKET_BRANCH, ticketBranch, unread, WAITING, type MarkedLabel } from "./post.ts";
@@ -347,6 +348,76 @@ function close(): Stop | undefined {
   return closeMerged(merge) ?? unmoved(queued);
 }
 
+const BUCKETS = "docs/buckets.md";
+const ROW = /^Row: "([^"\n]+)"/m;
+const ROW_ROUNDS = 3;
+const UNMERGED = "did not merge, so it was closed";
+
+const named = (ticket: string, row: string, why: string) => `; #${ticket} names the row ${JSON.stringify(row)}, ${why}`;
+
+function rowMoved(table: string, row: string, state: string): string | undefined {
+  const lines = table.split("\n");
+  const at = lines.findIndex((line) => line.startsWith(`| ${row} |`));
+  const line = lines[at];
+  if (line === undefined || !/ \|$/.test(line)) return undefined;
+  lines[at] = `${line.slice(0, -2)}; ${state} |`;
+  return lines.join("\n");
+}
+
+function treeWith(base: string, path: string[], blob: string): string | undefined {
+  const [name, ...rest] = path;
+  if (name === undefined) return undefined;
+  const listed = git(["ls-tree", base]);
+  if (listed.status !== 0) return undefined;
+  const entries = listed.stdout.split("\n").filter((entry) => entry !== "");
+  const kept = entries.find((entry) => entry.endsWith(`\t${name}`));
+  const sha = rest.length === 0 ? blob : kept === undefined ? undefined : treeWith(kept.split(/\s/)[2] ?? "", rest, blob);
+  if (sha === undefined || kept === undefined) return undefined;
+  const made = git(["mktree"], entries.map((entry) => (entry === kept ? `${kept.split(/\s/).slice(0, 2).join(" ")} ${sha}\t${name}` : entry)).join("\n") + "\n");
+  return made.status === 0 ? made.stdout.trim() : undefined;
+}
+
+function rowLanded(ticket: string, pr: string, row: string): string {
+  const fetched = git(["fetch", "--quiet", "origin", "main"]);
+  if (fetched.status !== 0) return named(ticket, row, `and main could not be fetched, so no row moved: ${firstLine(fetched)}`);
+  const main = gitRead(["rev-parse", "origin/main"], `main could not be read, so the row #${ticket} names is not moved`);
+  const read = git(["show", `${main}:${BUCKETS}`]);
+  if (read.status !== 0) return named(ticket, row, `and main has no ${BUCKETS}, so no row moved`);
+  const table = rowMoved(read.stdout, row, `built in #${ticket} (PR #${pr}), unmeasured`);
+  if (table === undefined) return named(ticket, row, `which ${BUCKETS} on main lacks, so no row moved`);
+  const blob = git(["hash-object", "-w", "--stdin"], table);
+  const tree = blob.status === 0 ? treeWith(`${main}^{tree}`, BUCKETS.split("/"), blob.stdout.trim()) : undefined;
+  const commit = tree === undefined ? undefined : git(["commit-tree", tree, "-p", main, "-m", `Move the row "${row}" now #${ticket} has merged`]);
+  if (commit === undefined || commit.status !== 0) return named(ticket, row, "and its move could not be written, so no row moved");
+  const head = commit.stdout.trim();
+  const branch = `land/${head.slice(0, 12)}`;
+  const pushed = git(["push", "--quiet", "origin", `${head}:refs/heads/${branch}`]);
+  if (pushed.status !== 0) return named(ticket, row, `and its move could not be pushed: ${firstLine(pushed)}`);
+  const judged = `the closer changed ${BUCKETS} alone on main's judged tree (#1382)`;
+  for (const context of REQUIRED_CHECKS) {
+    const posted = gh(["api", "-X", "POST", `repos/{owner}/{repo}/statuses/${head}`, "-f", "state=success", "-f", `context=${context}`, "-f", `description=${judged}`]);
+    if (posted.status !== 0) return named(ticket, row, `and its move's ${context} status could not be posted: ${firstLine(posted)}`);
+  }
+  const opened = gh(["pr", "create", "--base", "main", "--head", branch, "--title", `Move the row "${row}" now #${ticket} has merged`, "--body", `The closer moves the row #${ticket} names, so no ticket's PR edits ${BUCKETS} (#1382).\n\nRun: ${thisRun}`]);
+  if (opened.status !== 0) return named(ticket, row, `and its move's PR could not be opened: ${firstLine(opened)}`);
+  const merge = gh(["pr", "merge", branch, "--merge", "--delete-branch", "--match-head-commit", head]);
+  if (merge.status === 0) return `; moved the row ${JSON.stringify(row)} on main`;
+  gh(["pr", "close", branch, "--delete-branch"]);
+  return named(ticket, row, `and its move's PR ${UNMERGED}: ${firstLine(merge)}`);
+}
+
+function rowMovedFor(ticket: string, pr: string, body: string): string {
+  const row = ROW.exec(why(body))?.[1];
+  if (row === undefined) return "";
+  let said = "";
+  for (let round = 1; round <= ROW_ROUNDS; round++) {
+    if (round > 1) spawnSync("sleep", ["2"]);
+    said = rowLanded(ticket, pr, row);
+    if (!said.includes(UNMERGED)) return said;
+  }
+  return said;
+}
+
 export function closeMerged(merge: Built, say = console.log): Stop | undefined {
   const { ticket, pr } = merge;
   const asked = gh(["issue", "view", ticket, "--json", "body", "--jq", ".body"]);
@@ -360,7 +431,7 @@ export function closeMerged(merge: Built, say = console.log): Stop | undefined {
     if (state.startsWith("CLOSED")) quietGh(["issue", "reopen", ticket]);
     if (quietGh(["issue", "close", ticket, "--reason", "completed"]).status !== 0) return stoppedAt("unrecorded", `close: #${ticket} is done but could not be closed${recorded(posted.said)}`);
   }
-  say(`close: #${ticket} closed as completed, its PR merged${recorded(posted.said)}${wokenAfterParents(ticket)}${wokenAtFaultOrigin(ticket, asked.stdout, ticket)}`);
+  say(`close: #${ticket} closed as completed, its PR merged${recorded(posted.said)}${wokenAfterParents(ticket)}${wokenAtFaultOrigin(ticket, asked.stdout, ticket)}${rowMovedFor(ticket, pr, asked.stdout)}`);
   return undefined;
 }
 

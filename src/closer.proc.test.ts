@@ -921,3 +921,38 @@ describe("bin/close wakes a foreign ticket waiting on a machine fault its builde
     expect(calls()[told(calls())]).toContain("#812 merged, #813 closed unbuilt");
   });
 });
+
+describe("bin/close moves the row a merged ticket names on main, so no ticket's PR edits docs/buckets.md (#1382)", () => {
+  const BUCKETS = ["# Buckets", "", "| Bucket | Evidence | Prevention | State |", "|---|---|---|---|", "| Parallel work conflicts on one file | three PRs went `DIRTY` | one writer | ruled by Collin 2026-10-20 |", "| Another row | its evidence | its prevention | unruled |", ""].join("\n");
+  const naming = (row: string) => ["## Why", "", `Row: "${row}" (ruled by Collin 2026-10-20).`, "", '> "one writer for docs/buckets.md"', "", "## Done when", "", "- It lands.", ""].join("\n");
+
+  it("lands main plus that row's state moved, docs/buckets.md alone, judged and merged at once like a session landing", () => {
+    const { calls, landed, session, run } = closing({ ticket: "812", buckets: BUCKETS, ticketBody: naming("Parallel work conflicts on one file") });
+
+    const result = run();
+
+    expect(result.status).toBe(0);
+    const [land, ...more] = landed();
+    expect(more).toEqual([]);
+    expect(land?.parents).toEqual([git(session, "rev-parse", "origin/main")]);
+    expect(land?.changed).toBe("docs/buckets.md");
+    expect(land?.buckets).toBe(BUCKETS.replace("| ruled by Collin 2026-10-20 |", "| ruled by Collin 2026-10-20; built in #812 (PR #900), unmeasured |").trimEnd());
+    const head = land?.head ?? "";
+    const posted = calls().filter((call) => call.includes(`statuses/${head}`)).map((call) => call.split("\n").find((arg) => arg.startsWith("context=")));
+    expect(posted).toEqual(["context=check", "context=review"]);
+    expect(calls().some((call) => call.startsWith("pr\nmerge\n") && call.includes(`--match-head-commit\n${head}`))).toBe(true);
+    expect(result.stdout).toContain('; moved the row "Parallel work conflicts on one file"');
+  });
+
+  it("moves no row for a ticket that names none, or one the table lacks, and says which", () => {
+    const unnamed = closing({ ticket: "812", buckets: BUCKETS });
+    expect(unnamed.run().status).toBe(0);
+    expect(unnamed.landed()).toEqual([]);
+
+    const missing = closing({ ticket: "812", buckets: BUCKETS, ticketBody: naming("No such row") });
+    const result = missing.run();
+    expect(result.status).toBe(0);
+    expect(missing.landed()).toEqual([]);
+    expect(result.stdout).toContain('; #812 names the row "No such row", which docs/buckets.md on main lacks, so no row moved');
+  });
+});

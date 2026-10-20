@@ -126,6 +126,7 @@ export function closing({
   closedIssue,
   check = "green" as "green" | "red",
   statusRefused = false,
+  buckets,
 }: {
   ticket?: string;
   ticketBody?: string;
@@ -145,6 +146,7 @@ export function closing({
   closedIssue?: string;
   check?: "green" | "red";
   statusRefused?: boolean;
+  buckets?: string;
 } = {}) {
   const root = scratch("closer-");
   const session = join(root, "session");
@@ -160,6 +162,7 @@ export function closing({
   git(session, "config", "user.email", "closer@test");
   git(session, "config", "user.name", "closer");
   plant(session, "src/built.ts", "export const built = 1;\n");
+  if (buckets !== undefined) plant(session, "docs/buckets.md", buckets);
   git(session, "add", ".");
   git(session, "commit", "--quiet", "-m", "base");
   git(session, "checkout", "--quiet", "-b", `ticket/${ticket}`);
@@ -254,6 +257,11 @@ export function closing({
     session,
     heads,
     branchHead: (branch: string) => git(session, "--git-dir", origin, "rev-parse", `refs/heads/${branch}`),
+    landed: () =>
+      git(session, "--git-dir", origin, "for-each-ref", "--format=%(refname)", "refs/heads/land/")
+        .split("\n")
+        .filter((ref) => ref !== "")
+        .map((ref) => ({ head: git(session, "--git-dir", origin, "rev-parse", ref), parents: git(session, "--git-dir", origin, "rev-list", "--parents", "-n", "1", ref).split(" ").slice(1), buckets: git(session, "--git-dir", origin, "show", `${ref}:docs/buckets.md`), changed: git(session, "--git-dir", origin, "diff", "--name-only", `${ref}^`, ref) })),
     parentsOf: (sha: string) => git(session, "--git-dir", origin, "rev-list", "--parents", "-n", "1", sha).split(" ").slice(1),
     checked: () => lines(checks),
     pushes: () => lines(pushes),
