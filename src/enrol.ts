@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { isMap, isScalar, type Node, parse, parseDocument } from "yaml";
 import { FAST_CHECK, FULL_CHECK } from "./fence.ts";
-import { ENROLLED_CALLER, ENROLLED_REVIEW } from "./post.ts";
+import { ENROLLED_CALLER, ENROLLED_REVIEW, MACHINE_REPO } from "./post.ts";
 import { LABELS, MACHINE } from "./spelled.ts";
 
 const ROOT = join(import.meta.dirname, "..");
@@ -13,7 +13,6 @@ const PRE_PUSH = ".husky/pre-push";
 const PRE_PUSH_TEXT = readFileSync(join(ROOT, PRE_PUSH), "utf8");
 const WORKFLOWS = ".github/workflows";
 const TICKETS = `${WORKFLOWS}/tickets.yml`;
-const HOME = "claude-workflow";
 const HOME_REVIEW = "review";
 const CALLER = `${WORKFLOWS}/${ENROLLED_CALLER}`;
 const CHECK = FAST_CHECK;
@@ -110,7 +109,7 @@ const sourceOf = (text: string, path: string[]) => {
 const CHECK_TEXT = readFileSync(join(ROOT, WORKFLOWS, "check.yml"), "utf8");
 const RULE = { name: sourceOf(CHECK_TEXT, ["jobs", CHECK, "name"]), if: sourceOf(CHECK_TEXT, ["jobs", CHECK, "if"]) };
 
-const isCheck = (id: string, job: Job | null) => (job?.name === undefined ? id === CHECK : job.name === CHECK || job.name === RULE.name.value);
+const isCheck = (id: string, job: Job | null) => id === CHECK || job?.name === CHECK || job?.name === RULE.name.value;
 
 function flowOf(text: string): Flow | undefined {
   try {
@@ -263,7 +262,7 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
       : { ...rule, parameters: { ...rule.parameters, required_status_checks: rule.parameters.required_status_checks.map((required) => (required.context === HOME_REVIEW ? { context: ENROLLED_REVIEW } : required)) } };
   const reviewsHome = () => {
     const review = flowOf(textOf(TICKETS)?.text ?? "")?.jobs?.review;
-    return review != null && !String(review.if ?? "").includes(HOME);
+    return review != null && !String(review.if ?? "").includes(basename(MACHINE_REPO));
   };
   const write = (branch?: string) => {
     for (const { path, text } of pieces().filter((piece) => textOf(piece.path, branch)?.text !== piece.text)) {
@@ -393,7 +392,7 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
         return void gh(["api", "-X", "POST", `repos/${repo}/rulesets`, "--input", "-"], JSON.stringify(ruleset));
       },
     },
-    ...(repo.split("/")[1] === HOME
+    ...(repo === MACHINE_REPO
       ? [
           {
             name: SWAP_SETTING,

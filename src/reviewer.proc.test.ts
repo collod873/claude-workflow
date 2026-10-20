@@ -12,7 +12,9 @@ import { earlierDrift } from "./post.ts";
 import { PLAIN_WORDS } from "./reviewer.ts";
 import { doneWhen, ticketRefusals } from "./ticket-shape.ts";
 
-const WORKFLOW = join(import.meta.dirname, "..", ".github", "workflows", "check.yml");
+const WORKFLOWS = join(import.meta.dirname, "..", ".github", "workflows");
+const WORKFLOW = join(WORKFLOWS, "tickets.yml");
+const ON_A_PUSH = { event: "pull_request_target", action: "synchronize" };
 
 describe("bin/review reads a green ticket PR against its Why before it merges (#810)", () => {
   it("posts every gap the model named on the PR, unfiltered, and ends red on drift", () => {
@@ -99,9 +101,9 @@ describe("bin/review reads a green ticket PR against its Why before it merges (#
   it("runs on a ticket branch only", async () => {
     const review = jobNamed((parse(readFileSync(WORKFLOW, "utf8")) as { jobs: Record<string, { needs?: string; if?: string; steps?: { run?: string }[] }> }).jobs, "review");
 
-    expect(await starts("check.yml", "review", { head: "ticket/810" })).toBe(true);
-    expect(holds(review.if ?? "true", { head: "land/4c259879cc1b" }), "bin/land deletes a landing's branch before the job could check it out (#1373)").toBe(false);
-    expect(review.steps?.some((step) => /(^|\/)bin\/review /m.test(step.run ?? ""))).toBe(true);
+    expect(await starts("tickets.yml", "review", { ...ON_A_PUSH, head: "ticket/810" })).toBe(true);
+    expect(await starts("tickets.yml", "review", { ...ON_A_PUSH, head: "land/4c259879cc1b" }), "bin/land deletes a landing's branch before the job could check it out (#1373)").toBe(false);
+    expect(review.steps?.some((step) => /(^|\/)bin\/review\b/m.test(step.run ?? ""))).toBe(true);
 
     const { run, spent, comments } = reviewing({ branch: "land/session" });
     expect(run().status).toBe(0);
@@ -400,7 +402,7 @@ describe("a later find becomes a follow-up ticket that builds itself, one genera
     const { jobs } = parse(readFileSync(WORKFLOW, "utf8")) as { jobs: Record<string, { steps: { id?: string; uses?: string; run?: string; env?: Record<string, string> }[] }> };
     const steps = jobNamed(jobs, "review").steps;
     const minted = steps.find((step) => step.uses?.startsWith("actions/create-github-app-token@") === true);
-    const reviewer = steps.find((step) => /bin\/review /.test(step.run ?? ""));
+    const reviewer = steps.find((step) => /bin\/review\b/.test(step.run ?? ""));
 
     expect(reviewer?.env?.GH_TOKEN).toContain(`steps.${minted?.id}.outputs.token`);
   });
@@ -572,11 +574,10 @@ describe("bin/review judges a PR brought up to date against what merged to main 
 
 describe("bin/review runs one review at a time per PR, queued not cancelled (#973)", () => {
   it("runs one review at a time per PR, in a concurrency group keyed on the PR's number that queues rather than cancels, while check and meters stay outside that group", () => {
-    const { jobs } = parse(readFileSync(WORKFLOW, "utf8")) as {
-      jobs: Record<string, { concurrency?: { group?: string; "cancel-in-progress"?: boolean } }>;
-    };
+    type Grouped = Record<string, { concurrency?: { group?: string; "cancel-in-progress"?: boolean } }>;
+    const { jobs } = parse(readFileSync(WORKFLOW, "utf8")) as { jobs: Grouped };
     const review = jobNamed(jobs, "review");
-    const check = jobNamed(jobs, "check");
+    const check = jobNamed((parse(readFileSync(join(WORKFLOWS, "check.yml"), "utf8")) as { jobs: Grouped }).jobs, "check");
     const meters = jobNamed(jobs, "meters");
 
     expect(review.concurrency?.group ?? "").toContain("github.event.pull_request.number");
@@ -686,9 +687,9 @@ function jobNamed<T>(jobs: Record<string, T>, name: string): T {
   return job;
 }
 
-const checkWorkflow = () => parse(readFileSync(WORKFLOW, "utf8")) as CheckWorkflow;
+const checkWorkflow = () => parse(readFileSync(join(WORKFLOWS, "check.yml"), "utf8")) as CheckWorkflow;
 const stepRunning = (steps: CheckStep[], command: string) => steps.find((step) => (step.run ?? "").includes(command)) as CheckStep;
-const JUDGED = ["vitest.config.ts", "src/growth-limits.proc.test.ts", "bin/review"];
+const JUDGED = ["vitest.config.ts", "src/growth-limits.proc.test.ts"];
 const outsideAnyRepo = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_")));
 
 describe("check.yml judges a PR with main's reviewer and main's test count, whatever the PR changed (#652)", () => {
@@ -703,11 +704,11 @@ describe("check.yml judges a PR with main's reviewer and main's test count, what
     expect(judged("collod873/claude-workflow")).toBe(0);
     expect(judged("stranger/claude-workflow")).toBe(1);
     expect(judged("")).toBe(1);
-    expect(await starts("check.yml", "review", { head: "ticket/9" })).toBe(true);
-    expect(await starts("check.yml", "review", { head: "ticket/9", fork: true })).toBe(false);
+    expect(await starts("tickets.yml", "review", { ...ON_A_PUSH, head: "ticket/9" })).toBe(true);
+    expect(await starts("tickets.yml", "review", { ...ON_A_PUSH, head: "ticket/9", fork: true })).toBe(false);
   });
 
-  it("puts main's test runner and test count back, and reviews with main's reviewer, when the PR changed all three", () => {
+  it("puts main's test runner and test count back when the PR changed both", () => {
     const { jobs } = checkWorkflow();
     const root = scratch("judged-");
     const { session } = cloned(root, "start");
@@ -722,13 +723,23 @@ describe("check.yml judges a PR with main's reviewer and main's test count, what
     const run = (step: CheckStep) => spawnSync("bash", ["-e", "-c", step.run ?? ""], { cwd: session, env: { ...outsideAnyRepo, RUNNER_TEMP: runnerTemp }, encoding: "utf8" });
 
     expect(run(stepRunning(jobNamed(jobs, "check").steps, "git checkout origin/main --")).status).toBe(0);
-    expect(run(stepRunning(jobNamed(jobs, "review").steps, "git worktree add")).status).toBe(0);
 
     expect(readFileSync(join(session, "vitest.config.ts"), "utf8")).toBe("main's copy\n");
     expect(readFileSync(join(session, "src/growth-limits.proc.test.ts"), "utf8")).toBe("main's copy\n");
-    expect(readFileSync(join(session, "bin/review"), "utf8")).toBe("the PR's copy\n");
-    expect(readFileSync(join(runnerTemp, "main", "bin/review"), "utf8")).toBe("main's copy\n");
-    expect(stepRunning(jobNamed(jobs, "review").steps, "bin/review ").run).toContain("$RUNNER_TEMP/main/bin/review ");
+  });
+
+  it("reviews with main's reviewer, checked out apart from the PR's tree, whatever the PR changed", () => {
+    type Step = CheckStep & { id?: string; "working-directory"?: string; with?: Record<string, string> };
+    const { jobs } = parse(readFileSync(WORKFLOW, "utf8")) as { jobs: Record<string, { steps: Step[] }> };
+    const steps = jobNamed(jobs, "review").steps;
+    const machine = steps.find(({ id }) => id === "machine");
+    const tree = steps.find(({ id }) => id === "checkout");
+    const reviewer = steps.find(({ run }) => (run ?? "").includes("bin/review"));
+
+    expect(machine?.with?.ref).toBe("main");
+    expect(machine?.with?.path).toBeUndefined();
+    expect(tree?.with?.path).toBe(reviewer?.["working-directory"]);
+    expect(reviewer?.run).toContain('"$GITHUB_WORKSPACE/bin/review" ');
   });
 });
 

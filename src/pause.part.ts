@@ -1,12 +1,13 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { BIN, cloned, execute, ghArgv, git, plant, scratch, script } from "./scenarios.ts";
+import { ENROLLED_REVIEW } from "./post.ts";
 import { declareStage } from "./stages.ts";
 
 const ROLLUPS = {
-  green: [{ context: "check", state: "SUCCESS" }, { name: "review", status: "COMPLETED", conclusion: "SUCCESS" }],
+  green: [{ context: "check", state: "SUCCESS" }, { name: ENROLLED_REVIEW, status: "COMPLETED", conclusion: "SUCCESS" }],
   pending: [{ context: "check", state: "PENDING" }],
-  red: [{ context: "check", state: "FAILURE" }, { name: "review", status: "COMPLETED", conclusion: "SUCCESS" }],
+  red: [{ context: "check", state: "FAILURE" }, { name: ENROLLED_REVIEW, status: "COMPLETED", conclusion: "SUCCESS" }],
 } as const;
 
 export function pausing({ pr = "green" as keyof typeof ROLLUPS | "none" | "unreadable", state = "OPEN", autoMerge = true, refused = "", calledFrom = "", behind = false, pushRefused = "", held = "", conflicted = false } = {}) {

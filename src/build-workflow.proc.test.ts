@@ -229,7 +229,7 @@ describe("every job that spends a model is watched as it goes, read after it end
   it("every step that spends a model stops it before the step's own cap, which kills only the step's shell", () => {
     const steps = modelJobs().flatMap(({ steps }) => steps.filter(spendsModel));
 
-    expect(steps.some((step) => /bin\/review /.test(step.run ?? ""))).toBe(true);
+    expect(steps.some((step) => /bin\/review\b/.test(step.run ?? ""))).toBe(true);
     for (const step of steps) {
       expect(Number(step.env?.STAGE_MINUTES)).toBeGreaterThan(0);
       expect(Number(step.env?.STAGE_MINUTES)).toBeLessThan(step["timeout-minutes"] ?? 0);
@@ -608,15 +608,16 @@ describe("the PR check runs no check job on a landing's PR or on one the machine
   it("skips a land/ head and a push by the machine, and runs on any other", () => {
     expect(runs("land/0123456789ab", OWNER)).toBe(false);
     expect(runs("ticket/811", MACHINE)).toBe(false);
+    expect(runs("enrol/caller", MACHINE), "nothing posts a check status on enrol's own PR, so Lumaria#1149 sat blocked (#1386)").toBe(true);
     expect(runs("ticket/811", OWNER), "a hand push to a ticket branch was judged by no one").toBe(true);
     expect(runs("probe/1345", OWNER)).toBe(true);
     expect(runs("dependabot/npm_and_yarn/vitest-5.0.0", "dependabot[bot]")).toBe(true);
   });
 
   it("names the skipped job after who judged the head, and keeps the name check for the heads it runs on", () => {
-    const named = [...String(check?.name ?? "").matchAll(/(startsWith\(github\.head_ref, 'land\/'\)|github\.event\.sender\.login == '[^']+') && '([^']+)'/g)].map(([, by, name]): [string, string] => [by ?? "", name ?? ""]);
+    const named = [...String(check?.name ?? "").matchAll(/(startsWith\(github\.head_ref, 'land\/'\)|github\.event\.sender\.login == '[^']+'(?: && !startsWith\(github\.head_ref, 'enrol\/'\))?) && '([^']+)'/g)].map(([, by, name]): [string, string] => [by ?? "", name ?? ""]);
 
-    expect(named.map(([by]) => by).sort()).toEqual(["startsWith(github.head_ref, 'land/')", `github.event.sender.login == '${MACHINE}'`].sort());
+    expect(named.map(([by]) => by).sort()).toEqual(["startsWith(github.head_ref, 'land/')", `github.event.sender.login == '${MACHINE}' && !startsWith(github.head_ref, 'enrol/')`].sort());
     expect(named.every(([, name]) => name !== "check" && name.length > 0)).toBe(true);
     expect(check?.name).toMatch(/\|\| 'check' \}\}"?$/);
   });

@@ -1,9 +1,11 @@
 import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
+import { ENROLLED_REVIEW } from "./post.ts";
 
 const HOME = "collod873/claude-workflow";
 const CHECK = "check";
-const REVIEW = "review";
+const REVIEW = ENROLLED_REVIEW;
+const HOME_REVIEW = "review";
 const ON_MAIN = ["pull_request", "non_fast_forward", "deletion", "required_status_checks"];
 
 interface Live {
@@ -53,7 +55,11 @@ function gh(path: string): unknown {
   return JSON.parse(execFileSync("gh", ["api", path], { encoding: "utf8" }));
 }
 
-const live = () => (gh(`repos/${HOME}/rulesets`) as { id: number }[]).map(({ id }) => gh(`repos/${HOME}/rulesets/${id}`) as Live);
+const swapped = (ruleset: Live): Live => ({
+  ...ruleset,
+  rules: ruleset.rules.map((rule) => (rule.parameters?.required_status_checks === undefined ? rule : { ...rule, parameters: { ...rule.parameters, required_status_checks: rule.parameters.required_status_checks.map(({ context }) => ({ context: context === HOME_REVIEW ? REVIEW : context })) } })),
+});
+const live = () => (gh(`repos/${HOME}/rulesets`) as { id: number }[]).map(({ id }) => swapped(gh(`repos/${HOME}/rulesets/${id}`) as Live));
 const appliesToMe = () => (gh(`repos/${HOME}/rules/branches/main`) as { type: string }[]).map(({ type }) => type);
 
 const asRuled = (name: string, ruled: Ruled): Live => ({

@@ -5,7 +5,7 @@ import { parse } from "yaml";
 import { waitsOnFault } from "./builder.ts";
 import { CLOSE_RUN, closing, type FaultOrigin } from "./closer.part.ts";
 import { type CheckRun, checksOf } from "./closer.ts";
-import { faultOf } from "./post.ts";
+import { ENROLLED_REVIEW, faultOf } from "./post.ts";
 import { git, holds, workflowJobs } from "./scenarios.ts";
 import { HELD, PAUSED, STUCK } from "./spelled.ts";
 
@@ -502,7 +502,7 @@ describe("bin/close neither queues nor merges a held ticket's PR, whose auto-mer
 describe("bin/close reads a required check as GitHub rules on it: a commit status counts, a check run of the same name still pending holds the PR, and either red is red (#1345)", () => {
   const status = (state: string): CheckRun => ({ context: "check", state });
   const run = (name: string, status: string, conclusion = ""): CheckRun => ({ name, status, conclusion });
-  const reviewed = run("review", "COMPLETED", "SUCCESS");
+  const reviewed = run(ENROLLED_REVIEW, "COMPLETED", "SUCCESS");
 
   it("takes a green status as the check, holds while a same-named check run is still in progress, and reads a red status or run as red", () => {
     expect(checksOf([status("SUCCESS"), reviewed])).toBe("green");
@@ -512,6 +512,7 @@ describe("bin/close reads a required check as GitHub rules on it: a commit statu
     expect(checksOf([status("SUCCESS"), run("check", "COMPLETED", "FAILURE"), reviewed])).toBe("red");
     expect(checksOf([reviewed])).toBe("pending");
     expect(checksOf([status("SUCCESS")])).toBe("pending");
+    expect(checksOf([status("SUCCESS"), run("review", "COMPLETED", "SUCCESS")]), `the review is ${ENROLLED_REVIEW} here too, as in every enrolled repo (#1386)`).toBe("pending");
   });
 
   it("merges a PR up to date with main on its builder's check status and a green review, and waits while an Actions check run of the same name has not ended", () => {
