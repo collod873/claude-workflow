@@ -1,9 +1,10 @@
+import { spawnSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { CANCELLED_BY_OWNER, OUT_OF_TIME, ownerCall, red, rerunning, RUN_URL } from "./rerun.part.ts";
-import { holds, type WorkflowStep } from "./scenarios.ts";
+import { holds, scratch, script, type WorkflowStep } from "./scenarios.ts";
 import { HELD, OWNER } from "./spelled.ts";
 
 const reruns = (calls: string[][]) => calls.filter((args) => args.some((arg) => arg.endsWith("/rerun-failed-jobs")));
@@ -163,6 +164,35 @@ describe("bin/rerun waits for the run it names, and a red run hands itself to it
   });
 });
 
+describe("bin/rerun --failed re-runs the failed jobs of a run once it ends, for a builder whose green save left a run red that it cannot re-run from inside (#1371)", () => {
+  it("waits for the run to end, then re-runs its failed jobs though none called the owner", () => {
+    const { calls, marks, failed } = rerunning({ jobs: [{ conclusion: "failure", annotations: [] }], pending: 2 });
+
+    const result = failed();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(polls(calls())).toHaveLength(3);
+    expect(reruns(calls())).toEqual([["api", "-X", "POST", "repos/{owner}/{repo}/actions/runs/4417/rerun-failed-jobs"]]);
+    expect(marks()).toEqual([]);
+  });
+
+  it("re-runs nothing when the run already went on to a newer attempt", () => {
+    const { calls, failed } = rerunning({ jobs: [{ conclusion: "failure", annotations: [] }], latest: "2" });
+
+    expect(failed().status).toBe(0);
+    expect(reruns(calls())).toEqual([]);
+  });
+
+  it("ends red at unrerun when GitHub refuses the re-run", () => {
+    const { failed } = rerunning({ jobs: [{ conclusion: "failure", annotations: [] }], refused: "HTTP 403: Resource not accessible by integration" });
+
+    const result = failed();
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("HTTP 403");
+  });
+});
+
 describe("the rerun job hands a dispatched red run to bin/rerun, no other workflow here calling the owner, and the caller file never hears itself, which GitHub refuses (#1178, #1220, #1225)", () => {
   const workflows = join(import.meta.dirname, "..", ".github", "workflows");
   const read = (file: string) => parse(readFileSync(join(workflows, file), "utf8")) as { name: string; on: Record<string, { workflows?: string[]; types?: string[] } | null>; jobs: Record<string, { if?: string; needs?: string[]; steps?: WorkflowStep[] }> };
@@ -188,6 +218,15 @@ describe("the rerun job hands a dispatched red run to bin/rerun, no other workfl
     for (const conclusion of ["failure", "cancelled", "timed_out"]) expect(holds(job?.if ?? "", { event: "workflow_run", conclusion, own: true }), conclusion).toBe(false);
     expect(step?.run).toMatch(/\bbin\/rerun\b/);
     expect(step?.env).toMatchObject({ RERUN: "${{ github.event.inputs.rerun }}" });
+  });
+
+  it("hands bin/rerun --failed a dispatch whose rerun ends in /failed, and the bare run and attempt otherwise (#1371)", () => {
+    const root = scratch("rerun-step-");
+    script(join(root, "bin", "rerun"), 'printf \'%s\\n\' "$*"\n');
+    const handed = (rerun: string) => spawnSync("bash", ["-e", "-c", step?.run ?? ""], { cwd: root, env: { ...process.env, RERUN: rerun }, encoding: "utf8" }).stdout.trim();
+
+    expect(handed("4417/1/failed")).toBe("--failed 4417 1");
+    expect(handed("4417/2")).toBe("4417 2");
   });
 
   it.each(["tickets.yml", "specs.yml"])("ends %s with a job that needs every stage job but the probe and the meter reviewer, the review re-run only on its machine fault (#1251, #1285, #1317), and hands its own run and attempt to bin/rerun --dispatch under the caller file", (file) => {

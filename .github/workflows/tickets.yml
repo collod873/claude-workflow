@@ -119,24 +119,21 @@ jobs:
           machine="$GITHUB_WORKSPACE/bin"
           branch="$("$machine/spelled" TICKET_PREFIX)${{ github.event.issue.number }}"
           printf 'branch=%s\n' "$branch" >>"$GITHUB_OUTPUT"
-          checking=$("$machine/spelled" CHECKING)
           building=$("$machine/spelled" BUILDING)
-          if [[ '${{ github.event.action }}' =~ ^(reopened|unlabeled)$ ]] && state=$(gh pr view "$branch" --json state --jq .state 2>/dev/null) && [[ $state == OPEN ]]; then # quiet: a ticket with no PR yet builds
-            "$machine/github" pr checks "$branch" --json name,bucket,link \
-              | jq -r '.[] | select(.bucket == "fail") | .link' \
-              | sed -E 's#.*/runs/([0-9]+)/.*#\1#' \
-              | sort -u \
-              | while read -r run; do "$machine/github" run rerun "$run" --failed; done
-            "$machine/mark" ${{ github.event.issue.number }} "$checking"
-            echo rerun=true >>"$GITHUB_OUTPUT"
-          elif [[ '${{ github.event.action }}' == reopened ]]; then
+          if state=$(gh pr view "$branch" --json state --jq .state 2>/dev/null) && [[ $state == OPEN ]]; then # quiet: a ticket with no PR yet builds from main
+            git fetch --quiet origin "$branch"
+            git checkout --quiet -b "$branch" FETCH_HEAD
+          else
+            git checkout --quiet -b "$branch"
+          fi
+          if [[ '${{ github.event.action }}' == reopened ]]; then
             "$machine/mark" ${{ github.event.issue.number }} "$building" --try
           else
             "$machine/mark" ${{ github.event.issue.number }} "$building"
           fi
 
       - id: fix
-        if: steps.labelled.outputs.held == 'true' && (steps.admit.outputs.admitted == 'true' && steps.resume.outputs.builds != 'false' && steps.start.outputs.rerun != 'true')
+        if: steps.labelled.outputs.held == 'true' && (steps.admit.outputs.admitted == 'true' && steps.resume.outputs.builds != 'false')
         timeout-minutes: 50
         working-directory: tree
         env:
@@ -144,10 +141,8 @@ jobs:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           STAGE_MINUTES: 45
           CALLED_FROM: ${{ github.workflow_ref }}
-          BRANCH: ${{ steps.start.outputs.branch }}
         run: |
           tail --pid=$$ -n +1 -F .git/machine-logs/fix-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
-          git checkout --quiet -b "$BRANCH"
           "$GITHUB_WORKSPACE/bin/fix" ${{ github.event.issue.number }}
 
       - id: pause
@@ -564,7 +559,9 @@ jobs:
       - env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           RERUN: ${{ github.event.inputs.rerun }}
-        run: bin/rerun "${RERUN%/*}" "${RERUN#*/}"
+        run: |
+          IFS=/ read -r run attempt failed <<<"$RERUN"
+          bin/rerun ${failed:+--failed} "$run" "$attempt"
 
   probe:
     if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.probe }}
