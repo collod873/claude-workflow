@@ -6,7 +6,7 @@ import { METERS } from "./meter-reviewer.ts";
 import { NO_EM_DASH } from "./brief.ts";
 import { metering } from "./meter-reviewer.part.ts";
 import { fileDiff } from "./reviewer.part.ts";
-import { starts } from "./scenarios.ts";
+import { holds, starts } from "./scenarios.ts";
 
 const WORKFLOW = join(import.meta.dirname, "..", ".github", "workflows", "check.yml");
 const TANGLE = "src/tangle.ts joins billing and shipping, which change for different reasons";
@@ -201,7 +201,7 @@ describe("check.yml runs the meters beside the review, and a red meter run never
     if (meters === undefined) throw new Error(`no meters job in ${WORKFLOW}`);
 
     expect(await starts("check.yml", "meters", { head: "ticket/9810" })).toBe(true);
-    expect(await starts("check.yml", "meters", { head: "land/session" })).toBe(false);
+    expect(holds(meters.if ?? "true", { head: "land/4c259879cc1b" }), "bin/land deletes a landing's branch before the job could check it out (#1373)").toBe(false);
     expect(await starts("check.yml", "meters", { head: "ticket/9810", fork: true })).toBe(false);
     expect(meters["continue-on-error"]).toBe(true);
     expect(meters.steps.some((step) => (step.run ?? "").includes("$RUNNER_TEMP/main/bin/meters "))).toBe(true);

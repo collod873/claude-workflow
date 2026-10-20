@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { askingBash, cloned, fenceSays, flagValue, git, holds, plant, scratch, starts, workflowJobs } from "./scenarios.ts";
+import { askingBash, cloned, fenceSays, flagValue, git, holds, plant, scratch, starts } from "./scenarios.ts";
 import { EARLY_REPAIR, fileDiff, BUILDER_LINE, FROM_MAIN, JUDGED_GAP, JUDGEMENT, RESOLVED, REVIEWED_TICKET, reviewing } from "./reviewer.part.ts";
 import { capped, LIST_CAP, NO_EM_DASH, TICKET_CAP } from "./brief.ts";
 import { METERS } from "./meter-reviewer.ts";
@@ -100,20 +100,13 @@ describe("bin/review reads a green ticket PR against its Why before it merges (#
     const review = jobNamed((parse(readFileSync(WORKFLOW, "utf8")) as { jobs: Record<string, { needs?: string; if?: string; steps?: { run?: string }[] }> }).jobs, "review");
 
     expect(await starts("check.yml", "review", { head: "ticket/810" })).toBe(true);
-    expect(await starts("check.yml", "review", { head: "land/session" })).toBe(false);
+    expect(holds(review.if ?? "true", { head: "land/4c259879cc1b" }), "bin/land deletes a landing's branch before the job could check it out (#1373)").toBe(false);
     expect(review.steps?.some((step) => /(^|\/)bin\/review /m.test(step.run ?? ""))).toBe(true);
 
     const { run, spent, comments } = reviewing({ branch: "land/session" });
     expect(run().status).toBe(0);
     expect(spent()).toBe(false);
     expect(comments()).toEqual([]);
-  });
-
-  it("runs no review or meters job on a landing, whose branch bin/land deleted before either could check it out (#1373)", () => {
-    const { review, meters } = workflowJobs("check.yml");
-
-    expect(holds(review?.if ?? "true", { head: "land/4c259879cc1b" })).toBe(false);
-    expect(holds(meters?.if ?? "true", { head: "land/4c259879cc1b" })).toBe(false);
   });
 });
 
