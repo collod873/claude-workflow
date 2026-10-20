@@ -83,31 +83,45 @@ function handOn(run: string, attempt: string): undefined {
   return undefined;
 }
 
-function rerun(run: string, attempt: string): Stop | undefined {
+function ended(run: string, attempt: string): string | undefined {
   waitFor(run, attempt);
   const [latest = "", url = ""] = ghRead(["api", `repos/{owner}/{repo}/actions/runs/${run}`, "--jq", '"\\(.run_attempt) \\(.html_url)"'], `run ${run} could not be read, so nothing is re-run or marked`).trim().split(" ");
-  if (Number(latest) > Number(attempt)) {
-    console.log(`rerun: run ${run} is already on attempt ${latest}, so attempt ${attempt} is neither re-run nor marked`);
-    return undefined;
-  }
+  if (Number(latest) <= Number(attempt)) return url;
+  console.log(`rerun: run ${run} is already on attempt ${latest}, so attempt ${attempt} is neither re-run nor marked`);
+  return undefined;
+}
+
+const rerunFailed = (run: string) => gh(["api", "-X", "POST", `repos/{owner}/{repo}/actions/runs/${run}/rerun-failed-jobs`]);
+
+function rerun(run: string, attempt: string): Stop | undefined {
+  const url = ended(run, attempt);
+  if (url === undefined) return undefined;
   const calls = callsOf(run, attempt);
   if (calls.length === 0) {
     console.log(`rerun: no job of run ${run} that ended red or ran out of time called the owner, so nothing is re-run or marked`);
     return undefined;
   }
   if (attempt === "1") {
-    const again = gh(["api", "-X", "POST", `repos/{owner}/{repo}/actions/runs/${run}/rerun-failed-jobs`]);
+    const again = rerunFailed(run);
     if (again.status !== 0) return stoppedAt("unrerun", `rerun: run ${run} could not be re-run, so ${calls.map(({ run: named }) => named).join(" and ")} stays stopped: ${firstLine(again)}`);
-    console.log(`rerun: ${calls.map(({ run: named, ended }) => `${named} ${ended}`).join(" and ")} on its first attempt, so run ${run} re-runs its failed jobs once`);
+    console.log(`rerun: ${calls.map(({ run: named, ended: how }) => `${named} ${how}`).join(" and ")} on its first attempt, so run ${run} re-runs its failed jobs once`);
     return undefined;
   }
   for (const call of calls) callOwner(call, url, attempt);
   return undefined;
 }
 
+function failedAgain(run: string, attempt: string): Stop | undefined {
+  if (ended(run, attempt) === undefined) return undefined;
+  const again = rerunFailed(run);
+  if (again.status !== 0) return stoppedAt("unrerun", `rerun: run ${run} could not be re-run once it ended, so it stays red: ${firstLine(again)}`);
+  console.log(`rerun: run ${run} ended, so its failed jobs re-run on the head its builder saved green`);
+  return undefined;
+}
+
 if (import.meta.main) {
-  const dispatching = process.argv[2] === "--dispatch";
-  const [run, attempt] = process.argv.slice(dispatching ? 3 : 2);
+  const mode = { "--dispatch": handOn, "--failed": failedAgain }[process.argv[2] ?? ""];
+  const [run, attempt] = process.argv.slice(mode === undefined ? 2 : 3);
   if (run === undefined || attempt === undefined) throw new Error("no run id and attempt in the arguments");
-  process.exit(exitFor(readOrStop("rerun", () => (dispatching ? handOn : rerun)(run, attempt))));
+  process.exit(exitFor(readOrStop("rerun", () => (mode ?? rerun)(run, attempt))));
 }
