@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import { checked, faultsClosed, readiedTree, LABELLED_WAITING, splitClosed, splitInto } from "./builder.ts";
-import { answered, CALLER_FILE as caller, commentOnPr, commentOnTicket, commentsRead, ENROLLED_REVIEW, FAULT_FROM, FOREIGN, gh, ghAs, ghRead, git, gitRead, type Held, heldOn, labelsHeld, MACHINE_REPO, markWith, NOTHING_MARKED, opened, prOfTicket, readOrStop, RESOLVING, REVIEWED_FROM, TICKET_BRANCH, ticketBranch, unread, WAITING, type MarkedLabel } from "./post.ts";
+import { answered, CALLER_FILE as caller, commentOnPr, commentOnTicket, commentsRead, ENROLLED_REVIEW, FAULT_FROM, gh, ghAs, ghRead, git, gitRead, type Held, heldOn, labelsHeld, MACHINE_REPO, markWith, NOTHING_MARKED, opened, prOfTicket, readOrStop, RESOLVING, REVIEWED_FROM, TICKET_BRANCH, ticketBranch, unread, WAITING, type MarkedLabel } from "./post.ts";
 import { CHECKING, LANDING, QUEUED } from "./spelled.ts";
 import { exitFor, type Stop, stoppedAt } from "./stops.ts";
 import { quoted, waitsOn, why } from "./ticket-shape.ts";
@@ -9,7 +9,7 @@ import { quoted, waitsOn, why } from "./ticket-shape.ts";
 const MERGED = new RegExp(`^Merge pull request #(\\d+) from \\S+?(?:/${ticketBranch("(\\d+)")})?$`);
 const NAMED = /^(?:[ ,]*#\d+)+/;
 const BUILDS = /^Builds #(\d+)[ \t]*$/m;
-const REQUIRED_CHECKS = ["check", FOREIGN ? ENROLLED_REVIEW : "review"];
+const REQUIRED_CHECKS = ["check", ENROLLED_REVIEW];
 const PASSED = new Set(["SUCCESS", "SKIPPED", "NEUTRAL"]);
 const ENDED_STATES = new Set(["SUCCESS", "FAILURE", "ERROR"]);
 

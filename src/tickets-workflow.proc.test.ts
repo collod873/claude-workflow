@@ -91,9 +91,36 @@ describe("a repo's tickets build through one caller file that holds only trigger
     expect(jobsRun({ event: "workflow_run", action: "completed", conclusion: "success" })).toEqual(["close"]);
   });
 
-  it("judges a PR opened, reopened or pushed in an enrolled repo with the reviewer and the meter reviewer, then lands the queue once its review is green (#1285)", () => {
-    for (const action of ["opened", "synchronize", "reopened"]) expect(jobsRun({ event: "pull_request_target", action }), action).toEqual(["review", "meters", "close"]);
-    expect(jobsRun({ event: "pull_request_target", action: "opened", fork: true })).toEqual([]);
+  it("judges a PR opened, reopened or pushed in every repo, this one included, with the reviewer and the meter reviewer, then lands the queue once its review is green (#1285, #1386)", () => {
+    for (const home of [false, true]) {
+      for (const action of ["opened", "synchronize", "reopened"]) expect(jobsRun({ event: "pull_request_target", action, home }), `${action} home ${String(home)}`).toEqual(["review", "meters", "close"]);
+      expect(jobsRun({ event: "pull_request_target", action: "opened", fork: true, home })).toEqual([]);
+    }
+  });
+
+  it("wakes the closer once for a head the machine pushed, on its review going green, and not again when the CI that skipped its check job completes (#1386)", () => {
+    for (const home of [false, true]) {
+      const events = [
+        { event: "pull_request_target", action: "synchronize", sender: MACHINE, home },
+        { event: "workflow_run", action: "completed", conclusion: "success", sender: MACHINE, home },
+      ];
+
+      expect(events.flatMap((fired) => jobsRun(fired)).filter((job) => job === "close"), `home ${String(home)}`).toEqual(["close"]);
+    }
+    expect(jobsRun({ event: "workflow_run", action: "completed", conclusion: "success", sender: OWNER }), "a head the owner pushed is green only once its check job ends").toEqual(["close"]);
+  });
+
+  it("enrols this repo too on a push to its main, beside every repo the App reaches that holds the caller file, so the home swap follows the move within a minute (#1386)", () => {
+    const step = workflowJobs("tickets.yml").enrol?.steps.find(({ run }) => /bin\/enrol\b/.test(run ?? ""));
+    const root = scratch("enrol-step-");
+    const calls = join(root, "calls");
+    script(join(root, "path", "gh"), ['case "$*" in', "  \"api installation/repositories\"*) printf '%s\\n' collod873/claude-workflow collod873/Lumaria collod873/PW-Onboarding ;;", "  *PW-Onboarding/contents*) exit 1 ;;", "esac", ""].join("\n"));
+    script(join(root, "bin", "enrol"), `printf '%s\\n' "$*" >>"${calls}"\n`);
+
+    const ran = execute("bash", root, { PATH: `${join(root, "path")}:${process.env.PATH}`, GITHUB_REPOSITORY: "collod873/claude-workflow" }, ["-e", "-c", step?.run ?? ""]);
+
+    expect(ran.status).toBe(0);
+    expect(readFileSync(calls, "utf8").trim().split("\n")).toEqual(["collod873/claude-workflow --caller", "collod873/Lumaria --caller"]);
   });
 
   it("hands a ticket PR back to its builder when its review in an enrolled repo ends red, landing nothing (#1285)", () => {
@@ -540,9 +567,17 @@ describe("this repo reaches the machine through the caller file bin/enrol writes
     expect((parse(readFileSync(join(WORKFLOWS, "check.yml"), "utf8")) as { name: string }).name).toBe("Check");
   });
 
-  it("leaves no other workflow here handling an issue, PR or check event a job of tickets.yml or specs.yml handles", () => {
+  it("runs the reviewer and the meter reviewer only through tickets.yml, as every enrolled repo does, so GitHub names the review tickets / review here too (#1386)", () => {
+    const running = (stage: string) => readdirSync(WORKFLOWS).flatMap((file) => Object.entries(workflowJobs(file)).flatMap(([job, { steps = [] }]) => (steps.some(({ run }) => new RegExp(`bin/${stage}\\b`).test(run ?? "")) ? [`${file} ${job}`] : [])));
+
+    expect(running("review")).toEqual(["tickets.yml review"]);
+    expect(running("meters")).toEqual(["tickets.yml meters"]);
+  });
+
+  it("leaves no workflow here but the CI the caller hears handling an issue, PR or check event a job of tickets.yml or specs.yml handles", () => {
     const caller = triggersOf(ENROLLED_CALLER);
-    const others = readdirSync(WORKFLOWS).filter((file) => file !== ENROLLED_CALLER && !Object.hasOwn(triggersOf(file), "workflow_call"));
+    const heard = caller.workflow_run?.workflows ?? [];
+    const others = readdirSync(WORKFLOWS).filter((file) => file !== ENROLLED_CALLER && !Object.hasOwn(triggersOf(file), "workflow_call") && !heard.includes((parse(readFileSync(join(WORKFLOWS, file), "utf8")) as { name?: string }).name ?? file));
     const twice = others.flatMap((file) => {
       const triggers = triggersOf(file);
       return HEARD.filter((event) => Object.hasOwn(triggers, event) && Object.hasOwn(caller, event) && overlaps(typesOf(triggers, event), typesOf(caller, event))).flatMap((event) => {

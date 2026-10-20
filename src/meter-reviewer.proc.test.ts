@@ -6,9 +6,10 @@ import { METERS } from "./meter-reviewer.ts";
 import { NO_EM_DASH } from "./brief.ts";
 import { metering } from "./meter-reviewer.part.ts";
 import { fileDiff } from "./reviewer.part.ts";
-import { holds, starts } from "./scenarios.ts";
+import { starts } from "./scenarios.ts";
 
-const WORKFLOW = join(import.meta.dirname, "..", ".github", "workflows", "check.yml");
+const WORKFLOW = join(import.meta.dirname, "..", ".github", "workflows", "tickets.yml");
+const ON_A_PUSH = { event: "pull_request_target", action: "synchronize" };
 const TANGLE = "src/tangle.ts joins billing and shipping, which change for different reasons";
 const keyOf = (name: string) => name.replaceAll(" ", "_");
 const answer = (found: Record<string, string[]> = {}) => Object.fromEntries(METERS.map(({ name }) => [keyOf(name), found[name] ?? []]));
@@ -194,32 +195,20 @@ interface Job {
   steps: { run?: string; uses?: string; with?: Record<string, string> }[];
 }
 
-describe("check.yml runs the meters beside the review, and a red meter run never fails the Check run, so no builder starts on it", () => {
-  it("runs main's bin/meters after the check, on a ticket branch only, as a job whose failure the run carries on past and whose logs never take the review's artifact name", async () => {
+describe("tickets.yml runs the meters beside the review, and a red meter run never fails the run, so no builder starts on it", () => {
+  it("runs main's bin/meters on a ticket branch only, as a job whose failure the run carries on past and whose logs never take the review's artifact name", async () => {
     const { jobs } = parse(readFileSync(WORKFLOW, "utf8")) as { jobs: Record<string, Job> };
     const meters = jobs.meters;
     if (meters === undefined) throw new Error(`no meters job in ${WORKFLOW}`);
 
-    expect(await starts("check.yml", "meters", { head: "ticket/9810" })).toBe(true);
-    expect(holds(meters.if ?? "true", { head: "land/4c259879cc1b" }), "bin/land deletes a landing's branch before the job could check it out (#1373)").toBe(false);
-    expect(await starts("check.yml", "meters", { head: "ticket/9810", fork: true })).toBe(false);
+    expect(await starts("tickets.yml", "meters", { ...ON_A_PUSH, head: "ticket/9810" })).toBe(true);
+    expect(await starts("tickets.yml", "meters", { ...ON_A_PUSH, head: "land/4c259879cc1b" }), "bin/land deletes a landing's branch before the job could check it out (#1373)").toBe(false);
+    expect(await starts("tickets.yml", "meters", { ...ON_A_PUSH, head: "ticket/9810", fork: true })).toBe(false);
     expect(meters["continue-on-error"]).toBe(true);
-    expect(meters.steps.some((step) => (step.run ?? "").includes("$RUNNER_TEMP/main/bin/meters "))).toBe(true);
+    expect(meters.steps.some((step) => (step.run ?? "").includes('"$GITHUB_WORKSPACE/bin/meters" '))).toBe(true);
     const logs = meters.steps.find((step) => (step.uses ?? "").includes("stage-logs"));
     expect(logs?.with?.artifact).toBeDefined();
     expect(logs?.with?.artifact).not.toBe("machine-logs");
-  });
-});
-
-describe("check.yml starts the review and the meters beside the check, not after it (#970)", () => {
-  it("starts the review and the meters beside the check", () => {
-    const { jobs } = parse(readFileSync(WORKFLOW, "utf8")) as { jobs: Record<string, Job> };
-    const review = jobs.review;
-    const meters = jobs.meters;
-    if (review === undefined || meters === undefined) throw new Error(`no review or meters job in ${WORKFLOW}`);
-
-    expect([review.needs ?? []].flat()).not.toContain("check");
-    expect([meters.needs ?? []].flat()).not.toContain("check");
   });
 });
 
