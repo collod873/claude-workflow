@@ -63,7 +63,7 @@ _Avoid_: self-checkout, same tree
 Give a repo everything its tickets need to build: in one PR, the caller file naming its own CI,
 the **check-job rule** (`check.yml`'s `check` job `if` and `name`; enrol's own PR still runs it) on
 that CI's, and the **one
-pre-push** (this repo's `.husky/pre-push`); the App's reach, client id and keys, every label the
+pre-push** (`.husky/pre-push`, if husky); the App's reach, client id and keys, every label the
 machine spells, auto-merge, and main taking changes only through a PR passing `check` and, once
 its caller file runs it, `tickets / review`, here too. The **home swap** trades `review` for that
 here once `tickets.yml` runs its review at home.
