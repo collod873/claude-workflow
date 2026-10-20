@@ -165,14 +165,14 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
     expect(path.indexOf("/home/ghrunner/gh/bin")).toBeLessThan(path.indexOf("/usr/bin"));
   });
 
-  it("sets earlyoom to kill a runner's job before a session when memory runs out, so a rebuilt PC gets the same order", () => {
+  it("sets earlyoom and each runner's jobs so the process using the most memory is killed when memory runs out, whether or not it is a runner's job, so a rebuilt PC gets the same order", () => {
     const { run, sudo, placed } = switching();
 
     run("pc");
 
     const args = placed("/etc/default/earlyoom");
-    expect(args).toMatch(/--prefer \S*Runner\.Worker/);
-    expect(args).toMatch(/--avoid \S*claude/);
+    expect(args).not.toMatch(/--prefer|--avoid/);
+    expect(placed(`/home/ghrunner/runners/collod873-Lumaria/${HOST}-1/.env`).split("\n")).toContain("PIPELINE_JOB_OOMSCOREADJ=0");
     expect(sudo().some((call) => call.includes("apt-get install") && call.includes("earlyoom"))).toBe(true);
     expect(sudo().some((call) => call.includes("restart earlyoom"))).toBe(true);
     const before = sudo().length;
