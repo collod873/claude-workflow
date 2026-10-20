@@ -156,7 +156,7 @@ function mergedWithMain(headRefName: string): { head: string } | Retried {
   return { head: gitRead(["rev-parse", "HEAD"], `the head of ${headRefName} merged with main could not be read, ${NOTHING_MARKED}`) };
 }
 
-const checkStatus = (head: string, state: "success" | "failure", description: string) => gh(["api", "-X", "POST", `repos/{owner}/{repo}/statuses/${head}`, "-f", `state=${state}`, "-f", "context=check", "-f", `description=${description}`]);
+const statusPosted = (head: string, state: "success" | "failure", description: string, context = "check") => gh(["api", "-X", "POST", `repos/{owner}/{repo}/statuses/${head}`, "-f", `state=${state}`, "-f", `context=${context}`, "-f", `description=${description}`]);
 
 function wokenOnConflict(pr: BehindPr, ticket: string | undefined, reason: string, say: (line: string) => void): void {
   const { number, headRefOid } = pr;
@@ -195,14 +195,14 @@ export function updateBranch(pr: BehindPr, say = console.log): Moved {
   const pushed = git(["push", "--quiet", "origin", `HEAD:refs/heads/${headRefName}`]);
   if (pushed.status !== 0) return { retried: firstLine(pushed) };
   if ("red" in judged) {
-    const posted = checkStatus(merged.head, "failure", `red on the closer's full check after its update with main: ${quoted(judged.verdict)}`);
+    const posted = statusPosted(merged.head, "failure", `red on the closer's full check after its update with main: ${quoted(judged.verdict)}`);
     if (posted.status !== 0) return { retried: firstLine(posted) };
     commentOnPr(number, `${branchUpdate(number)} ${thisRun}, and the full check of the result ended red: ${quoted(judged.verdict)}`, gh);
     wokenOnRed(pr, ticket, judged.verdict, say);
     return "red";
   }
   if (!judged.unjudged) {
-    const posted = checkStatus(merged.head, "success", "judged by the closer's full check after its update with main (#1345)");
+    const posted = statusPosted(merged.head, "success", "judged by the closer's full check after its update with main (#1345)");
     if (posted.status !== 0) return { retried: firstLine(posted) };
   }
   commentOnPr(number, `${branchUpdate(number)} ${thisRun}`, gh);
@@ -409,7 +409,7 @@ function rowLanded(ticket: string, pr: string, row: string): RowMove {
   if (pushed.status !== 0) return failedOnce(named(ticket, row, `and its move could not be pushed: ${firstLine(pushed)}`));
   const judged = `the closer changed ${BUCKETS} alone on main's judged tree (#1382)`;
   for (const context of REQUIRED_CHECKS) {
-    const posted = context === "check" ? checkStatus(head, "success", judged) : gh(["api", "-X", "POST", `repos/{owner}/{repo}/statuses/${head}`, "-f", "state=success", "-f", `context=${context}`, "-f", `description=${judged}`]);
+    const posted = statusPosted(head, "success", judged, context);
     if (posted.status !== 0) return unpushed(branch, named(ticket, row, `and its move's ${context} status could not be posted, so its branch was deleted: ${firstLine(posted)}`));
   }
   const opened = gh(["pr", "create", "--base", "main", "--head", branch, "--title", `Move the row "${row}" now #${ticket} has merged`, "--body", `The closer moves the row #${ticket} names, so no ticket's PR edits ${BUCKETS} (#1382).\n\nRun: ${thisRun}`]);
