@@ -351,7 +351,6 @@ function close(): Stop | undefined {
 const BUCKETS = "docs/buckets.md";
 const ROW = /^Row: "([^"\n]+)"/m;
 const ROW_ROUNDS = 3;
-const UNMERGED = "did not merge, so it was closed";
 
 const named = (ticket: string, row: string, why: string) => `; #${ticket} names the row ${JSON.stringify(row)}, ${why}`;
 
@@ -377,48 +376,59 @@ function treeWith(base: string, path: string[], blob: string): string | undefine
   return made.status === 0 ? made.stdout.trim() : undefined;
 }
 
-function rowLanded(ticket: string, pr: string, row: string): string {
+const failedOnce = (said: string): RowMove => ({ said, failed: "once" });
+
+interface RowMove {
+  said: string;
+  failed?: "once" | "again";
+}
+
+function unpushed(branch: string, said: string): RowMove {
+  gh(["pr", "close", branch]);
+  git(["push", "--quiet", "origin", "--delete", branch]);
+  return { said, failed: "again" };
+}
+
+function rowLanded(ticket: string, pr: string, row: string): RowMove {
   const fetched = git(["fetch", "--quiet", "origin", "main"]);
-  if (fetched.status !== 0) return named(ticket, row, `and main could not be fetched, so no row moved: ${firstLine(fetched)}`);
+  if (fetched.status !== 0) return failedOnce(named(ticket, row, `and main could not be fetched, so no row moved: ${firstLine(fetched)}`));
   const main = gitRead(["rev-parse", "origin/main"], `main could not be read, so the row #${ticket} names is not moved`);
   const read = git(["show", `${main}:${BUCKETS}`]);
-  if (read.status !== 0) return named(ticket, row, `and main has no ${BUCKETS}, so no row moved`);
-  if (read.stdout.split("\n").some((line) => line.startsWith(`| ${row} |`) && line.includes(`built in #${ticket} `))) return named(ticket, row, `which already says #${ticket} built it, so no row moved again`);
+  if (read.status !== 0) return { said: named(ticket, row, `and main has no ${BUCKETS}, so no row moved`) };
+  if (read.stdout.split("\n").some((line) => line.startsWith(`| ${row} |`) && line.includes(`built in #${ticket} `))) return { said: named(ticket, row, `which already says #${ticket} built it, so no row moved again`) };
   const table = rowMoved(read.stdout, row, `built in #${ticket} (PR #${pr}), unmeasured`);
-  if (table === undefined) return named(ticket, row, `which ${BUCKETS} on main lacks, so no row moved`);
+  if (table === undefined) return failedOnce(named(ticket, row, `which ${BUCKETS} on main lacks, so no row moved`));
   const blob = git(["hash-object", "-w", "--stdin"], table);
   const tree = blob.status === 0 ? treeWith(`${main}^{tree}`, BUCKETS.split("/"), blob.stdout.trim()) : undefined;
   const commit = tree === undefined ? undefined : git(["commit-tree", tree, "-p", main, "-m", `Move the row "${row}" now #${ticket} has merged`]);
-  if (commit === undefined || commit.status !== 0) return named(ticket, row, "and its move could not be written, so no row moved");
+  if (commit === undefined || commit.status !== 0) return failedOnce(named(ticket, row, "and its move could not be written, so no row moved"));
   const head = commit.stdout.trim();
   const branch = `land/${head.slice(0, 12)}`;
   const pushed = git(["push", "--quiet", "origin", `${head}:refs/heads/${branch}`]);
-  if (pushed.status !== 0) return named(ticket, row, `and its move could not be pushed: ${firstLine(pushed)}`);
+  if (pushed.status !== 0) return failedOnce(named(ticket, row, `and its move could not be pushed: ${firstLine(pushed)}`));
   const judged = `the closer changed ${BUCKETS} alone on main's judged tree (#1382)`;
   for (const context of REQUIRED_CHECKS) {
     const posted = gh(["api", "-X", "POST", `repos/{owner}/{repo}/statuses/${head}`, "-f", "state=success", "-f", `context=${context}`, "-f", `description=${judged}`]);
-    if (posted.status !== 0) return named(ticket, row, `and its move's ${context} status could not be posted: ${firstLine(posted)}`);
+    if (posted.status !== 0) return unpushed(branch, named(ticket, row, `and its move's ${context} status could not be posted, so its branch was deleted: ${firstLine(posted)}`));
   }
   const opened = gh(["pr", "create", "--base", "main", "--head", branch, "--title", `Move the row "${row}" now #${ticket} has merged`, "--body", `The closer moves the row #${ticket} names, so no ticket's PR edits ${BUCKETS} (#1382).\n\nRun: ${thisRun}`]);
-  if (opened.status !== 0) return named(ticket, row, `and its move's PR could not be opened: ${firstLine(opened)}`);
+  if (opened.status !== 0) return unpushed(branch, named(ticket, row, `and its move's PR could not be opened, so its branch was deleted: ${firstLine(opened)}`));
   const merge = gh(["pr", "merge", branch, "--merge", "--delete-branch", "--match-head-commit", head]);
-  if (merge.status === 0) return `; moved the row ${JSON.stringify(row)} on main`;
-  gh(["pr", "close", branch]);
-  git(["push", "--quiet", "origin", "--delete", branch]);
-  return named(ticket, row, `and its move's PR ${UNMERGED}: ${firstLine(merge)}`);
+  if (merge.status === 0) return { said: `; moved the row ${JSON.stringify(row)} on main` };
+  return unpushed(branch, named(ticket, row, `and its move's PR did not merge, so it was closed: ${firstLine(merge)}`));
 }
 
 function rowMovedFor(ticket: string, pr: string, body: string): string {
   const row = ROW.exec(why(body))?.[1];
   if (row === undefined) return "";
-  let said = "";
+  let move: RowMove = { said: "" };
   for (let round = 1; round <= ROW_ROUNDS; round++) {
     if (round > 1) spawnSync("sleep", ["2"]);
-    said = rowLanded(ticket, pr, row);
-    if (!said.includes(UNMERGED)) return said;
+    move = rowLanded(ticket, pr, row);
+    if (move.failed !== "again") break;
   }
-  commentOnTicket(ticket, `The closer could not move the row ${JSON.stringify(row)} in ${BUCKETS} in ${ROW_ROUNDS} rounds, so it still needs \`built in #${ticket}\` in its State: ${said.slice(2)}\n\nRun: ${thisRun}`, gh);
-  return said;
+  if (move.failed !== undefined) commentOnTicket(ticket, `The closer could not move the row ${JSON.stringify(row)} in ${BUCKETS}, so it still needs \`built in #${ticket}\` in its State: ${move.said.slice(2)}\n\nRun: ${thisRun}`, gh);
+  return move.said;
 }
 
 export function closeMerged(merge: Built, say = console.log): Stop | undefined {

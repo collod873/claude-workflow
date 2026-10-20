@@ -988,4 +988,16 @@ describe("bin/close moves the row a merged ticket names on main, so no ticket's 
     expect(told).toContain('The closer could not move the row "Parallel work conflicts on one file" in docs/buckets.md');
     expect(told).toContain("Pull request is not mergeable");
   });
+
+  it("tells the ticket its row did not move when the move's status is refused, and leaves no branch behind", () => {
+    const { landed, calls, run } = closing({ ticket: "812", buckets: BUCKETS, ticketBody: naming("Parallel work conflicts on one file"), statusRefused: true });
+
+    const result = run();
+
+    expect(result.status).toBe(0);
+    expect(landed()).toEqual([]);
+    const told = calls().filter((call) => call.startsWith("issue\ncomment\n812\n")).at(-1);
+    expect(told).toContain('The closer could not move the row "Parallel work conflicts on one file" in docs/buckets.md');
+    expect(told).toContain("HTTP 502");
+  });
 });
