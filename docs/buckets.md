@@ -26,7 +26,7 @@ stalled, 998 on one ticket. Before it: Lumaria#902 Waves 12 to 16
 | A fix spanning two repos carried by the owner | 8 of 14 by hand in a week (#1233); #1081, a Spec the agent-hooks reader filed as a ticket because its copied kinds list had no `spec`, cost 84 min and $4.65 before #1086 existed (fixed in `c33be58f`, `b6e0f039`); agent-hooks `1a65d9df` deleted `~/bin` on 2026-10-19 (agent-skills#220) while this repo's pre-push, PR check, reviewer fence and 30 other sites still called `~/bin/check`, so every push from the PC failed at the hook and Lumaria's pre-push, which exits 0 when the file is missing, pushed unchecked, until a session renamed them by hand; the same agent-skills#220 moved every skill under `skills/`, while `src/stage.ts` still read each craft skill at the repo's top, so every stage refused to start from 18:09 UTC that day: #1345's build and fix, and #1353's research twice, until a session pointed the stage at `skills/`; workout-tracker's pre-push, still guarded on `~/bin/check`, exited green on every push from then until workout-tracker#161 that evening, and this repo's check-job skip on landings and machine pushes (#1344, #1345) reached neither enrolled repo's CI | one owning repo per kind of fix; agent-hooks reachable from a machine session; every repo judges a PR under one shape, its review name, check-job rule and pre-push written by `bin/enrol` | the one-shape part ruled by Collin 2026-10-19, specced as #1366; the rest unruled (#1237) |
 | Spot fixes outrun measurement | 97 machine PRs in a week, no Spec measured on one version (#1226); eight machine merges during Waves 12-16 and one 55 min before them, which shipped the review hold without Lumaria's caller; nine jobs ran one commit's workflow with another's code; eight machine merges and five agent-hooks releases during #1086, `e225700c` built and merged by the machine from a fault with no row, and the owner's rerun replayed `b1243401`'s workflow with `575bb9ae`'s code | the machine measures each Spec at its done check | measured by hand at #1086's done check (2026-10-14); measurement unbuilt; holding the machine still while a Spec runs is ruled out (ADR-0010), since a broken Spec needs its fixes landed to finish |
 | Green work thrown away | in #1086, a `machine` answer ended #1090's job before commit and push (`src/builder.ts:287`), and its wake rebuilt the Day clock from main; a split closed PR #1109 and deleted its branch (`src/builder.ts:266`), so #1108's fix was written a third time; #1082 and #1083 built in full for a Spec filed as a ticket; $8.6 of $33.88 builder spend | none yet: brought to Collin 2026-10-14 | unruled |
-| The memory guard kills runner jobs first | earlyoom killed builders #1082 and #1083 (86 MiB) and their repairs' checks, then the owner's 3.4 GB vitest that filled memory; the machine writes that order (`src/runner.ts:33`) and GitHub's runner sets `oom_score_adj 500` on every job | none yet: brought to Collin 2026-10-14 | unruled |
+| The memory guard kills runner jobs first | earlyoom killed builders #1082 and #1083 (86 MiB) and their repairs' checks, then the owner's 3.4 GB vitest that filled memory; the machine writes that order (`src/runner.ts:33`) and GitHub's runner sets `oom_score_adj 500` on every job | earlyoom ranks by memory alone, with no `--prefer` or `--avoid`, and each PC runner's `.env` sets `PIPELINE_JOB_OOMSCOREADJ=0` so its jobs keep the score their memory earns | ruled by Collin 2026-10-19: kill the biggest process; built 2026-10-20 (#1372), unmeasured |
 | No gate runs the app | #1104 sent a $0 callback to Collect; the reviewer and meters read code only (`src/reviewer.ts:13`), so Wave 4's check caught it and it became #1086's Wave 5; the Slicer's #1108 Decision claimed Collect took what issued invoices owe, and nothing checked it against main (#1110) | none yet: brought to Collin 2026-10-14 | unruled |
 
 ## Next
@@ -40,8 +40,7 @@ Waiting on Collin's ruling:
    PR's branch; after a green save the job re-runs what is red on the commit it pushed; the
    moved-commit test, `ranAs` and #1321's re-run block go. The bigger idea, one builder holding its
    ticket to merge, is #1331.
-2. Green work thrown away, the memory guard killing runner jobs first, and no gate running the
-   app: each needs a prevention.
+2. Green work thrown away and no gate running the app: each needs a prevention.
 3. Jobs on the PC share Docker, /tmp and processes; the Wave barrier; a fix spanning two repos.
 
 Open under a named prevention:
@@ -53,4 +52,4 @@ Open under a named prevention:
    [spec-1086-2026-10.md](research/spec-1086-2026-10.md), as one sweep.
 
 Built and unmeasured until the next Lumaria Spec's done check: a held sentence, the fix wave, the
-gate that ends green, the browser driver.
+gate that ends green, the browser driver, the memory guard.

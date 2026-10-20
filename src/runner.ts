@@ -31,7 +31,7 @@ const cpusOf = (at: number) => {
 };
 const confinement = (at: number) => ["[Service]", `Slice=${SLICE}`, `MemoryMax=${RUNNER_MEMORY_GB}G`, "MemorySwapMax=0", `AllowedCPUs=${cpusOf(at)}`, "OOMPolicy=continue", "KillMode=mixed", ""].join("\n");
 const EARLYOOM = "/etc/default/earlyoom";
-const earlyoom = 'EARLYOOM_ARGS="-r 3600 -m 10,5 -s 10,5 --prefer ^(MainThread|Runner.Worker|node|python3)$ --avoid ^(claude|systemd|init|dockerd|containerd|sshd|login|zsh|bash)$"\n';
+const earlyoom = 'EARLYOOM_ARGS="-r 3600 -m 10,5 -s 10,5"\n';
 const NOT_FOUND = /\(HTTP 404\)|not found/i;
 
 class Refused extends Error {}
@@ -157,7 +157,7 @@ function settle(repo: string, name: string, at: number, busy: boolean): "started
   asRunnerUser(`mkdir -p ${dir}/home ${temp} ${dir}/toolcache ${CHECK_SLOTS_DIR}`);
   asRoot(`mkdir -p ${dropIns}`);
   const clear = `${dir}/clear.sh`;
-  const env = [`HOME=${dir}/home`, `TMPDIR=${temp}`, `RUNNER_TOOL_CACHE=${dir}/toolcache`, `AGENT_TOOLSDIRECTORY=${dir}/toolcache`, `ACTIONS_RUNNER_HOOK_JOB_STARTED=${clear}`, `ACTIONS_RUNNER_HOOK_JOB_COMPLETED=${clear}`, `CHECK_SLOTS=${CHECK_SLOTS}`, `CHECK_SLOTS_DIR=${CHECK_SLOTS_DIR}`, "LANG=C.UTF-8", ""].join("\n");
+  const env = [`HOME=${dir}/home`, `TMPDIR=${temp}`, `RUNNER_TOOL_CACHE=${dir}/toolcache`, `AGENT_TOOLSDIRECTORY=${dir}/toolcache`, `ACTIONS_RUNNER_HOOK_JOB_STARTED=${clear}`, `ACTIONS_RUNNER_HOOK_JOB_COMPLETED=${clear}`, `CHECK_SLOTS=${CHECK_SLOTS}`, `CHECK_SLOTS_DIR=${CHECK_SLOTS_DIR}`, "PIPELINE_JOB_OOMSCOREADJ=0", "LANG=C.UTF-8", ""].join("\n");
   const files = [
     staged({ as: asRunnerUser, path: clear, text: clearing(repo, name, unitOf(repo, name)), mode: "755" }),
     staged({ as: asRunnerUser, path: `${dir}/.env`, text: env, mode: "644" }),
