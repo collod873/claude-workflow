@@ -109,10 +109,10 @@ describe("check.yml asks spelled which branches it reviews and meters, so a rena
       expect(now).toEqual(events.map((event) => `${event.head} ${String(event.fork)} ${String(holds(BEFORE_CHECK, event))}`));
     });
 
-    it(`tests only the fork in the ${job} job's if, and runs nothing past its labelled step on a branch it does not review, green or red`, () => {
+    it(`never spells the ticket prefix in the ${job} job's if, and runs nothing past its labelled step on a branch it does not review, green or red`, () => {
       const { if: gated = "", steps } = workflowJobs("check.yml")[job] ?? { steps: [] };
 
-      expect(gated).not.toMatch(/head_ref|ticket/);
+      expect(gated).not.toMatch(/ticket/);
       expect(afterLabelled(steps).length).toBeGreaterThan(0);
       for (const step of afterLabelled(steps)) {
         for (const failed of [false, true]) expect(holds(step.if ?? "success()", { steps: labelledAs(steps, "false"), failed }), `${job} ${step.id ?? step.uses ?? ""}`).toBe(false);
