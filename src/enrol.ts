@@ -31,6 +31,11 @@ const MOST_SHOWN = 5;
 const PC_RUNS_ON = /^ {4}runs-on: (.*)$/m.exec(readFileSync(join(ROOT, TICKETS), "utf8"))?.[1] ?? "";
 const ON_MAIN = { ref_name: { include: ["~DEFAULT_BRANCH"], exclude: [] } };
 const PC_SWITCH = /vars\.(\w+)/.exec(PC_RUNS_ON)?.[1] ?? "";
+const THROUGH_PR: Rule[] = [
+  { type: "pull_request", parameters: { required_approving_review_count: 0, dismiss_stale_reviews_on_push: false, require_code_owner_review: false, require_last_push_approval: false, required_review_thread_resolution: false } },
+  { type: "non_fast_forward" },
+  { type: "deletion" },
+];
 
 const made = () => LABELS.filter(({ kind }) => kind !== "try");
 
@@ -66,7 +71,7 @@ interface RequiredCheck {
 interface Rule {
   type: string;
   ruleset_id?: number;
-  parameters?: { required_status_checks?: RequiredCheck[] };
+  parameters?: { required_status_checks?: RequiredCheck[]; [setting: string]: unknown };
 }
 
 interface Ruleset {
@@ -248,14 +253,14 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
   const requires = (context: string) => requiring(context).some(({ parameters }) => (parameters?.required_status_checks ?? []).some((required) => required.context === context && required.integration_id === undefined));
   const fromAnySource = ({ integration_id: _pinned, ...required }: RequiredCheck): RequiredCheck => required;
   const unpinned = (rule: Rule): Rule => (rule.parameters?.required_status_checks === undefined ? rule : { ...rule, parameters: { ...rule.parameters, required_status_checks: rule.parameters.required_status_checks.map(fromAnySource) } });
-  const reshape = (context: string, rule: (held: Rule) => Rule): boolean => {
+  const reshape = (context: string, reshaped: (held: Rule[]) => Rule[]): boolean => {
     const pinned = requiring(context)[0]?.ruleset_id;
     if (pinned === undefined) return false;
     const { name, target, enforcement, conditions, rules: held } = read<Ruleset>(["api", `repos/${repo}/rulesets/${pinned}`]);
-    gh(["api", "-X", "PUT", `repos/${repo}/rulesets/${pinned}`, "--input", "-"], JSON.stringify({ name, target, enforcement, conditions, rules: held.map(rule) }));
+    gh(["api", "-X", "PUT", `repos/${repo}/rulesets/${pinned}`, "--input", "-"], JSON.stringify({ name, target, enforcement, conditions, rules: reshaped(held) }));
     return true;
   };
-  const unpin = (context: string) => reshape(context, unpinned);
+  const unpin = (context: string) => reshape(context, (held) => held.map(unpinned));
   const swapped = (rule: Rule): Rule =>
     rule.parameters?.required_status_checks === undefined
       ? rule
@@ -350,19 +355,15 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
         return ours.some(({ type }) => type === "pull_request") && requires(CHECK);
       },
       set: () => {
-        if (unpin(CHECK)) return;
+        const missing = rules().some(({ type }) => type === "pull_request") ? [] : THROUGH_PR;
+        if (reshape(CHECK, (held) => [...held.map(unpinned), ...missing])) return;
         ci();
         const ruleset = {
           name: "main lands only through a PR",
           target: "branch",
           enforcement: "active",
           conditions: ON_MAIN,
-          rules: [
-            { type: "pull_request", parameters: { required_approving_review_count: 0, dismiss_stale_reviews_on_push: false, require_code_owner_review: false, require_last_push_approval: false, required_review_thread_resolution: false } },
-            { type: "non_fast_forward" },
-            { type: "deletion" },
-            { type: "required_status_checks", parameters: { strict_required_status_checks_policy: true, required_status_checks: [{ context: CHECK }] } },
-          ],
+          rules: [...THROUGH_PR, { type: "required_status_checks", parameters: { strict_required_status_checks_policy: true, required_status_checks: [{ context: CHECK }] } }],
         };
         gh(["api", "-X", "POST", `repos/${repo}/rulesets`, "--input", "-"], JSON.stringify(ruleset));
       },
@@ -398,7 +399,7 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
             name: SWAP_SETTING,
             waits: () => (requiring(HOME_REVIEW).length === 0 || reviewsHome() ? undefined : `swapping ${HOME_REVIEW} for ${ENROLLED_REVIEW} in main's required checks waits on ${basename(TICKETS)} running its review here`),
             held: () => requiring(HOME_REVIEW).length === 0,
-            set: () => void reshape(HOME_REVIEW, swapped),
+            set: () => void reshape(HOME_REVIEW, (held) => held.map(swapped)),
           },
         ]
       : []),

@@ -155,6 +155,19 @@ describe("bin/enrol keeps an enrolled repo current with the owner's own login (#
     expect(after.writes.filter((args) => args.includes("ruleset")).map((args) => args.slice(0, 4).join(" "))).toEqual([`api -X PUT repos/${REPO}/rulesets/7`]);
   });
 
+  it("adds the PR-only rules to the ruleset main already holds for check, so the caller file then goes through a PR and not a refused write to main (workout-tracker, 2026-10-20)", () => {
+    const checkOnly = [{ type: "required_status_checks", ruleset_id: 7, parameters: { strict_required_status_checks_policy: true, required_status_checks: [{ context: "check", integration_id: 15368 }] } }];
+    const { run, held } = enrolling(bare({ rules: checkOnly, allow_auto_merge: true, files: { ".github/workflows/ci.yml": ci().replace("name: Gate", "name: CI"), ".github/workflows/machine.yml": STALE } }));
+
+    run();
+
+    const after = held();
+    expect(after.rules.filter(({ ruleset_id }) => ruleset_id === 7).map(({ type }) => type).sort()).toEqual(["deletion", "non_fast_forward", "pull_request", "required_status_checks"]);
+    expect(JSON.stringify(after.rules)).not.toContain("integration_id");
+    expect(after.files[".github/workflows/machine.yml"]).toBe(CALLER);
+    expect(after.writes.find((args) => args[0] === "pr" && args[1] === "merge")).toEqual(expect.arrayContaining(["--auto"]));
+  });
+
   it("brings a stale caller file up to date through a PR that merges on its own once check passes, where main takes changes only through a PR", () => {
     const { run, held } = enrolling(bare({ rules: HELD_FOR_CHECK, allow_auto_merge: true, files: { ".github/workflows/ci.yml": ci().replace("name: Gate", "name: CI"), ".github/workflows/machine.yml": STALE } }));
 
