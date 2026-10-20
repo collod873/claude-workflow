@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DIFF_CAP, LIST_CAP, TICKET_CAP } from "./brief.ts";
 import { handedOn, handedSince } from "./reviewer.ts";
-import { authored, BIN, execute, ghArgv, git, gitRefusing, type Parent, parentSays, plant, type Said, scratch, script } from "./scenarios.ts";
+import { authored, BIN, execute, ghArgv, git, gitRefusing, type Parent, parentSays, plant, type Said, scratch, script, stubbedMark } from "./scenarios.ts";
 import { declareStage, HANDED_ON } from "./stages.ts";
 
 export const REVIEWED_TICKET = [
@@ -190,10 +190,12 @@ export function reviewing({
     ].join("\n"),
   );
   if (gitUnreadable !== undefined) gitRefusing(root, gitUnreadable);
+  const marked = stubbedMark(root);
   script(join(root, "bin", "claude"), `touch "${judgedOnce}"\nprintf '%s\\0' "$@" >"${hired}"\ncat >"${handed}"\ncat "${join(root, "answer.json")}"\n`);
   const bodyOf = (args: string[]) => args[args.indexOf("--body") + 1];
   return {
     root,
+    marked,
     hired: () => (existsSync(hired) ? readFileSync(hired, "utf8").split("\0") : []),
     spent: () => existsSync(handed),
     handed: () => (existsSync(handed) ? readFileSync(handed, "utf8") : ""),
