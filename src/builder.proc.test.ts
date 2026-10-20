@@ -83,7 +83,7 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(readFileSync(join(session, "..", "check-out"), "utf8")).toMatch(/^check: red integration \(needs DATABASE_URL\)/m);
     expect(saved()).toEqual(["811 --unjudged"]);
     expect(opened()).toEqual(["collod873/Lumaria https://github.com/collod873/Lumaria/pull/9811"]);
-    expect(calls().filter((args) => args[0] === "pr").map((args) => args.slice(0, 3).join(" "))).toEqual(["pr view ticket/811", "pr create --base", "pr merge ticket/811"]);
+    expect(calls().filter((args) => args[0] === "pr").map((args) => args.slice(0, 3).join(" "))).toEqual(["pr view ticket/811", "pr create --base", "pr merge ticket/811", "pr view ticket/811"]);
     expect(calls().some((args) => args[0] === "api" && args.includes("context=check")), "a check left to the repo's CI posts no status").toBe(false);
   });
 
@@ -494,39 +494,19 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(handed()[1]).toContain("files the machine's fault as one ticket or more in `tickets`");
   });
 
-  it("reruns only the red jobs of a review it left unchanged and green, and never restarts a Build, whose unchanged green head merges on the check save posts anew (#1345)", () => {
-    const flake = fixing({ ranAs: "Check", ranOn: "pull_request_target" });
-    const fixed = fixing({ ranAs: "Check", ranOn: "pull_request_target", claude: FIXES });
-    const built = fixing({ ranAs: "Build" });
+  it("re-runs, once each has ended, every run red on the head it saved green, so a review it left unchanged judges again and the ticket never sits checking with nothing to wake it (#1108, #1371)", () => {
+    const left = fixing({ red: ["555", "556"] });
 
-    expect(flake.run("811", "555").status).toBe(0);
-    expect(flake.reruns()).toEqual([["run", "rerun", "555", "--failed"]]);
-    expect(flake.marked(), "takes back the try a flake was counted").toEqual(["811 building --try", "811 checking --untry"]);
-    expect(fixed.run("811", "555").status).toBe(0);
-    expect(fixed.marked()).toEqual(["811 building --try", "811 checking"]);
-    expect(fixed.reruns()).toEqual([]);
-    const result = built.run("811", "555");
+    const result = left.run("811", "555");
+
     expect(result.status, result.stderr).toBe(0);
-    expect(built.reruns()).toEqual([]);
-    expect(built.saved()).toEqual(["811"]);
-    expect(built.marked()).toEqual(["811 building --try", "811 checking"]);
-    expect(built.ticketComments()).toEqual([]);
-    expect(result.stdout).toContain("green unchanged with its check posted anew");
+    expect(left.saved()).toEqual(["811"]);
+    expect(left.reruns()).toEqual([["rerun=555/1/failed"], ["rerun=556/1/failed"]]);
+    expect(left.marked(), "takes back the try a flake was counted").toEqual(["811 building --try", "811 checking --untry"]);
+    expect(left.ticketComments()).toEqual([]);
   });
 
-  it("reruns the red check of an enrolled repo whose check workflow is named CI, not Check, still only once (#1208)", () => {
-    const flake = fixing({ calledFrom: CALLER, ranAs: "CI", ranOn: "pull_request" });
-    const again = fixing({ calledFrom: CALLER, ranAs: "CI", ranOn: "pull_request", attempt: 2 });
-
-    expect(flake.run("811", "555").status).toBe(0);
-    expect(flake.reruns()).toEqual([["run", "rerun", "555", "--failed"]]);
-    expect(flake.marked()).toEqual(["811 building --try", "811 checking --untry"]);
-    expect(again.run("811", "555").status).toBe(1);
-    expect(again.reruns()).toEqual([]);
-    expect(again.ticketComments().at(-1)).toContain("its red CI already reran once");
-  });
-
-  it("marks checking and calls no one when it pushes nothing new and has no red run to rerun, since save posted its check for the unchanged head and the PR merges on it (#1208, #1345)", () => {
+  it("re-runs nothing and marks checking when nothing is red on the head it saved green, since save posted its check and the PR merges on it (#1345)", () => {
     const { run, marked, reruns, ticketComments, saved } = fixing({ reason: "the owner asked for another look" });
 
     const result = run("811");
@@ -534,21 +514,21 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(result.status, result.stderr).toBe(0);
     expect(reruns()).toEqual([]);
     expect(saved()).toEqual(["811"]);
-    expect(marked()).toContain("811 checking");
+    expect(marked()).toEqual(["811 building --try", "811 checking"]);
     expect(ticketComments()).toEqual([]);
   });
 
-  it("reruns a red Check only once, then calls the owner, so an unchanged branch cannot loop through Check", () => {
-    const { run, reruns, marked, ticketComments } = fixing({ ranAs: "Check", ranOn: "pull_request_target", attempt: 2 });
+  it("calls the owner instead of re-running a run red on its saved head that already re-ran, so an unchanged branch cannot loop", () => {
+    const { run, reruns, marked, ticketComments } = fixing({ red: ["555"], attempt: 2 });
 
     expect(run("811", "555").status).toBe(1);
     expect(reruns()).toEqual([]);
     expect(marked()).toContain("811 stuck");
-    expect(ticketComments().at(-1)).toContain("already reran once");
+    expect(ticketComments().at(-1)).toContain("run 555 is red on the head it saved green and already re-ran");
   });
 
-  it("calls the owner when the rerun of its unchanged green Check is refused", () => {
-    const { run, marked, ticketComments } = fixing({ ranAs: "Check", ranOn: "pull_request_target", rerun: "printf 'HTTP 403: Resource not accessible by integration\\n' >&2\nexit 1" });
+  it("calls the owner when the re-run of a run red on its saved head is refused", () => {
+    const { run, marked, ticketComments } = fixing({ red: ["555"], dispatch: "printf 'HTTP 403: Resource not accessible by integration\\n' >&2\nexit 1" });
 
     expect(run("811", "555").status).toBe(1);
     expect(marked()).toContain("811 stuck");
@@ -694,10 +674,10 @@ describe("bin/fix reads its ticket, its labels, its PR and their comments before
     untouched(unread);
   });
 
-  it("ends red at unread naming the run it was woken by when that run cannot be read once green, marking it checking for nothing and rerunning nothing", () => {
-    const { run, marked, reruns } = fixing({ claude: FIXES, unreadable: '*"run view"*"--json"*' });
+  it("ends red at unread when the checks on its saved head cannot be read, marking it checking for nothing and re-running nothing", () => {
+    const { run, marked, reruns } = fixing({ claude: FIXES, unreadable: '*"pr view"*"statusCheckRollup"*' });
 
-    expect(run()).toMatchObject({ status: 1, stderr: expect.stringMatching(/\nfix: the workflow, head and attempt of run 555 could not be read, so it is not marked checking\n$/) });
+    expect(run()).toMatchObject({ status: 1, stderr: expect.stringMatching(/\nfix: the checks on the PR of #811 could not be read, so nothing red on it is re-run\n$/) });
     expect(marked()).toEqual(["811 building --try"]);
     expect(reruns()).toEqual([]);
   });
