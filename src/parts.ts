@@ -117,8 +117,8 @@ const FIXED: Part[] = [
     stops: "https://github.com/collod873/claude-workflow/issues/680",
   },
   {
-    name: "src/rulesets.proc.test.ts",
-    file: "src/rulesets.proc.test.ts",
+    name: "rulesets step",
+    file: "src/rulesets.ts",
     stops: "https://github.com/collod873/claude-workflow/issues/652",
   },
 ];

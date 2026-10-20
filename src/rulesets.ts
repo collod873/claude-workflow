@@ -1,27 +1,27 @@
 import { execFileSync } from "node:child_process";
-import { describe, expect, it } from "vitest";
-import { ENROLLED_REVIEW } from "./post.ts";
+import { HOME_REVIEW } from "./enrol.ts";
+import { FAST_CHECK } from "./fence.ts";
+import { ENROLLED_REVIEW, MACHINE_REPO } from "./post.ts";
 
-const HOME = "collod873/claude-workflow";
-const CHECK = "check";
-const REVIEW = ENROLLED_REVIEW;
-const HOME_REVIEW = "review";
-const ON_MAIN = ["pull_request", "non_fast_forward", "deletion", "required_status_checks"];
+const HOME = MACHINE_REPO;
+export const CHECK = FAST_CHECK;
+export const REVIEW = ENROLLED_REVIEW;
+export const ON_MAIN = ["pull_request", "non_fast_forward", "deletion", "required_status_checks"];
 
-interface Live {
+export interface Live {
   name: string;
   enforcement: string;
   conditions?: { ref_name?: { include?: string[] } };
   rules: { type: string; parameters?: { strict_required_status_checks_policy?: boolean; required_status_checks?: { context: string }[] } }[];
 }
 
-interface Ruled {
+export interface Ruled {
   ref: string;
   rules: string[];
   checks: string[];
 }
 
-const RULED: Record<string, Ruled> = {
+export const RULED: Record<string, Ruled> = {
   "main lands only through a PR": { ref: "~DEFAULT_BRANCH", rules: ON_MAIN, checks: [CHECK, REVIEW] },
 };
 
@@ -33,7 +33,7 @@ function requiredIn(ruleset: Live): { contexts: string[]; strict: boolean } {
   };
 }
 
-function refusals(live: Live[], appliesToMe: string[]): string[] {
+export function refusals(live: Live[], appliesToMe: string[]): string[] {
   const configured = Object.entries(RULED).flatMap(([name, ruled]) => {
     const ruleset = live.find((one) => one.name === name);
     if (ruleset === undefined) return [`no ruleset named ${name}`];
@@ -62,7 +62,7 @@ const swapped = (ruleset: Live): Live => ({
 const live = () => (gh(`repos/${HOME}/rulesets`) as { id: number }[]).map(({ id }) => swapped(gh(`repos/${HOME}/rulesets/${id}`) as Live));
 const appliesToMe = () => (gh(`repos/${HOME}/rules/branches/main`) as { type: string }[]).map(({ type }) => type);
 
-const asRuled = (name: string, ruled: Ruled): Live => ({
+export const asRuled = (name: string, ruled: Ruled): Live => ({
   name,
   enforcement: "active",
   conditions: { ref_name: { include: [ruled.ref] } },
@@ -73,28 +73,8 @@ const asRuled = (name: string, ruled: Ruled): Live => ({
   ),
 });
 
-describe("GitHub holds main, and this reads the ruleset it holds it with (#652)", () => {
-  it("finds every rule main needs, and none of them bypassed for whoever runs this", () => {
-    expect(refusals(live(), appliesToMe())).toEqual([]);
-  });
-
-  it("names a ruleset that is missing, switched off, weakened, or bypassed", () => {
-    const [main] = Object.entries(RULED).map(([name, ruled]) => asRuled(name, ruled));
-    if (main === undefined) throw new Error("no ruleset in RULED");
-
-    expect(refusals([main], ON_MAIN)).toEqual([]);
-    expect(refusals([], ON_MAIN)).toEqual(["no ruleset named main lands only through a PR"]);
-    expect(refusals([{ ...main, enforcement: "evaluate" }], ON_MAIN)).toEqual(["main lands only through a PR is evaluate, not active"]);
-    expect(refusals([{ ...main, rules: main.rules.filter((rule) => rule.type !== "non_fast_forward") }], ON_MAIN)).toEqual([
-      "main lands only through a PR holds no non_fast_forward rule",
-    ]);
-    expect(refusals([{ ...main, rules: main.rules.map((rule) => (rule.type === "required_status_checks" ? { ...rule, parameters: {} } : rule)) }], ON_MAIN)).toEqual([
-      `main lands only through a PR requires no check, not ${CHECK},${REVIEW}`,
-      "main lands only through a PR takes a branch behind main",
-    ]);
-    expect(refusals([main], ["pull_request", "deletion"])).toEqual([
-      "main's non_fast_forward rule does not apply to whoever is asking",
-      "main's required_status_checks rule does not apply to whoever is asking",
-    ]);
-  });
-});
+if (import.meta.main) {
+  const refused = refusals(live(), appliesToMe());
+  for (const refusal of refused) console.log(refusal);
+  process.exit(refused.length > 0 ? 1 : 0);
+}
