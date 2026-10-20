@@ -3,12 +3,12 @@ import { createHash } from "node:crypto";
 import { appendFileSync } from "node:fs";
 import { FULL_CHECK } from "./fence.ts";
 import { capped, DIFF_CAP, handedDiff, LIST_CAP, NO_EM_DASH, TICKET_CAP } from "./brief.ts";
-import { answered as readAnswered, commentOnPr, commentOnTicket, commentsRead, drifted, earlierDrift, FOLLOW_UP_OF, followUpBody, foundDrift, foundOverlap, gh, ghRead, git, gitRead, post, readOrStop, REVIEW_FOUND, REVIEWED_FROM, TICKET_BRANCH, underOwnerSpec, unread, WAITING } from "./post.ts";
+import { answered as readAnswered, commentOnPr, commentOnTicket, commentsRead, drifted, earlierDrift, FOLLOW_UP_OF, followUpBody, foundDrift, foundOverlap, gh, ghRead, git, gitRead, mark, OWNER, post, readOrStop, REVIEW_FOUND, REVIEWED_FROM, STUCK, TICKET_BRANCH, underOwnerSpec, unread, WAITING } from "./post.ts";
 import { hire } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { DONE_SENTENCES, quoted, why } from "./ticket-shape.ts";
 
-const stoppedAt = stopsOf({ drift: "The reviewer finds drift from `## Why`" });
+const stoppedAt = stopsOf({ drift: "The reviewer finds drift from `## Why`", calledOwner: "Review: a gap named again on the next try, so the ticket is marked `stuck`" });
 export type Stop = ReturnType<typeof stoppedAt>;
 
 const TOOLS = ["Read", "Grep", "Glob", "Skill"];
@@ -91,6 +91,7 @@ const VERDICT = {
   properties: {
     verdict: { enum: ["match", "drift"] },
     gaps: { type: "array", items: { type: "string", pattern: NO_EM_DASH } },
+    again: { type: "array", items: { type: "string", pattern: NO_EM_DASH } },
     readback: { type: "string", pattern: PLAIN_WORDS },
     later: {
       type: "array",
@@ -143,6 +144,7 @@ interface Later {
 interface Verdict {
   verdict: "match" | "drift";
   gaps: string[];
+  again?: string[];
   later?: Later[];
   readback: string;
 }
@@ -154,6 +156,7 @@ interface AfterTurn {
 
 const laterFinds = (ticket: string) => `The reviewer found these on #${ticket} after its builder's repair, outside the earlier gaps and the fix's own lines, so they do not block its merge:`;
 const reviewerOn = (ticket: string) => `The reviewer, on #${ticket}:`;
+const namedAgain = (ticket: string, pr: string) => `@${OWNER} the reviewer of #${pr} named these gaps on #${ticket} again after its builder's repair, so #${ticket} is marked \`${STUCK}\` and no builder runs on it until you take that off:`;
 
 const firstLine = (text: string) => quoted(text.trim().split("\n")[0] ?? "");
 
@@ -167,6 +170,7 @@ export function handedOn(body: string, diff: string, { prBody = "", after }: { p
       ? []
       : [
           "`gaps` holds only an earlier gap still open or a gap in the fix's own lines; these block, and the verdict is `drift` while any remain. Put every other gap in `later`: it never blocks.",
+          "`again`: each gap in `gaps` the last of the earlier judgements named too, as you wrote it in `gaps`. A gap named on two tries in a row stops the builder and goes to the owner, so leave out one that is new.",
           `Each \`later\` item becomes its own ticket: the \`gap\` in one sentence, a \`title\`, and \`done\` as ${DONE_SENTENCES}.`,
         ];
   return [
@@ -359,8 +363,14 @@ function review(pr: string): Stop | undefined {
   }
   const posted = commentOnPr(pr, judgement(foundDrift(ticket), blocking, stamped(fingerprint, main, head)), gh);
   const [refusal] = posted.refusals;
-  if (refusal !== undefined) return stoppedAt("drift", `${said} drifts from the Why of #${ticket}, and its judgement was refused: ${quoted(refusal)}${recorded}`);
-  return stoppedAt("drift", `${said} drifts from the Why of #${ticket}, ${blocking.length} gaps posted: ${posted.said}${recorded}`);
+  const told = refusal === undefined ? `${blocking.length} gaps posted: ${posted.said}` : `and its judgement was refused: ${quoted(refusal)}`;
+  const again = after === undefined ? [] : (verdict.again ?? []);
+  if (again.length === 0) return stoppedAt("drift", `${said} drifts from the Why of #${ticket}, ${told}${recorded}`);
+  mark(ticket, STUCK);
+  const called = commentOnTicket(ticket, [namedAgain(ticket, pr), "", reviewerOn(ticket), "", ...again.map((gap) => `> ${gap}`), ""].join("\n"), gh);
+  const [unheard] = called.refusals;
+  const calling = unheard === undefined ? called.said : `its call was refused: ${quoted(unheard)}`;
+  return stoppedAt("calledOwner", `${said} marked ${STUCK}, ${again.length} gaps named again on #${ticket} after its builder's repair, ${told}, ${calling}${recorded}`);
 }
 
 if (import.meta.main) {

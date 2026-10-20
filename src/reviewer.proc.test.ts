@@ -238,7 +238,7 @@ const LATER = {
   done: ["Every step that runs gh names its repo."],
 };
 const REPAIRED = "export const repaired = 1;\n";
-const afterRepair = (verdict: { verdict: string; gaps: string[]; later?: unknown[] }, extra: { turns?: string[]; body?: string } = {}) =>
+const afterRepair = (verdict: { verdict: string; gaps: string[]; later?: unknown[]; again?: string[] }, extra: { turns?: string[]; body?: string } = {}) =>
   reviewing({ turns: extra.turns ?? [], onPr: [EARLIER], repair: REPAIRED, verdict, body: extra.body });
 
 describe("bin/review names every gap in one pass, and after its builder's repair only the earlier gaps or the fix's own lines block (#865, #898)", () => {
@@ -313,6 +313,24 @@ describe("bin/review names every gap in one pass, and after its builder's repair
     expect(blocked.run().status).toBe(1);
     expect(blocked.comments()).toEqual([expect.stringContaining(STILL_OPEN)]);
     expect(blocked.comments()[0]).not.toContain(LATE);
+  });
+
+  it("marks the ticket stuck and posts the gap to the owner in the reviewer's words when the last judgement named it too, so no builder runs again (#1402)", () => {
+    const repeated = afterRepair({ verdict: "drift", gaps: [STILL_OPEN], again: [STILL_OPEN] });
+
+    const result = repeated.run();
+    expect(result.status).toBe(1);
+    expect(repeated.marked()).toEqual(["810 stuck"]);
+    expect(repeated.ticketComments()).toEqual([expect.stringContaining("@collod873")]);
+    expect(repeated.ticketComments()[0]).toContain(`> ${STILL_OPEN}`);
+    expect(repeated.comments()).toEqual([expect.stringContaining(STILL_OPEN)]);
+    expect(result.stderr).toContain("marked stuck");
+    expect(repeated.handed()).toContain("`again`");
+
+    const fresh = afterRepair({ verdict: "drift", gaps: [STILL_OPEN], again: [] });
+    expect(fresh.run().status).toBe(1);
+    expect(fresh.marked()).toEqual([]);
+    expect(fresh.ticketComments()).toEqual([]);
   });
 
   it("blocks on every gap it names before any drift judgement, later ones included", () => {
