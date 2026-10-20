@@ -151,9 +151,9 @@ the code now says the rest.
 _Avoid_: done pick, built name
 
 **Wave**:
-The tickets under one spec that are open at once and build side by side. The tickets in one wave
-touch different parts, so none edits a file another edits. Only the current wave is tickets; the
-rest is still the spec.
+The tickets under one spec open at once, building side by side on different parts. Code refuses
+two naming one file in `files`, blind to undeclared files and later waves. Only the current wave
+is tickets; the rest is the spec.
 _Avoid_: batch, phase, sprint, round
 
 **Wave note**:
