@@ -26,6 +26,7 @@ const FORBIDDEN = /\(HTTP 403\)/;
 const HANDED = "ci: hand this repo's tickets to the machine";
 const CALLER_SETTING = "the caller file, check-job rule and pre-push";
 const SWAP_SETTING = `main requiring ${ENROLLED_REVIEW} in place of ${HOME_REVIEW}`;
+const PAUSED_REVIEW = `its ${ENROLLED_CALLER} workflow is disabled, so main requires no ${ENROLLED_REVIEW} until it is enabled and bin/enrol runs again`;
 const CALLER_ONLY = "--caller";
 const LINE_LIMIT = 200;
 const SHOWN = 4;
@@ -265,6 +266,21 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
     return true;
   };
   const unpin = (context: string) => reshape(context, (held) => held.map(unpinned));
+  const paused = once(() => (found<{ state: string }>(["api", `repos/${repo}/actions/workflows/${ENROLLED_CALLER}`])?.state ?? "active") !== "active");
+  const without = (context: string) => (rule: Rule): Rule[] => {
+    const kept = rule.parameters?.required_status_checks?.filter((required) => required.context !== context);
+    if (kept === undefined) return [rule];
+    return kept.length === 0 ? [] : [{ ...rule, parameters: { ...rule.parameters, required_status_checks: kept } }];
+  };
+  const unrequire = (context: string) => {
+    for (const id of new Set(requiring(context).map(({ ruleset_id }) => ruleset_id))) {
+      if (id === undefined) continue;
+      const { name, target, enforcement, conditions, rules: held } = read<Ruleset>(["api", `repos/${repo}/rulesets/${id}`]);
+      const kept = held.flatMap(without(context));
+      if (kept.length === 0) gh(["api", "-X", "DELETE", `repos/${repo}/rulesets/${id}`]);
+      else gh(["api", "-X", "PUT", `repos/${repo}/rulesets/${id}`, "--input", "-"], JSON.stringify({ name, target, enforcement, conditions, rules: kept }));
+    }
+  };
   const swapped = (rule: Rule): Rule =>
     rule.parameters?.required_status_checks === undefined
       ? rule
@@ -379,8 +395,13 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
     },
     {
       name: "main taking only a PR its review passed",
-      held: () => requires(ENROLLED_REVIEW),
+      waits: () => (paused() && requiring(ENROLLED_REVIEW).length === 0 ? PAUSED_REVIEW : undefined),
+      held: () => !paused() && requires(ENROLLED_REVIEW),
       set: () => {
+        if (paused()) {
+          unrequire(ENROLLED_REVIEW);
+          throw new Waits(PAUSED_REVIEW);
+        }
         if (unpin(ENROLLED_REVIEW)) return;
         if (textOf(CALLER)?.text !== caller()) {
           const open = openPr();
