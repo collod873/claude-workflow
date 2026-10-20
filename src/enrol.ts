@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { createSign } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { isMap, isScalar, type Node, parse, parseDocument } from "yaml";
 import { FAST_CHECK, FULL_CHECK } from "./fence.ts";
 import { ENROLLED_CALLER, ENROLLED_REVIEW, MACHINE_REPO } from "./post.ts";
@@ -10,6 +10,7 @@ import { LABELS, MACHINE } from "./spelled.ts";
 const ROOT = join(import.meta.dirname, "..");
 const CALLER_TEXT = readFileSync(join(ROOT, ".github", "caller.yml"), "utf8");
 const PRE_PUSH = ".husky/pre-push";
+const PACKAGE = "package.json";
 const PRE_PUSH_TEXT = readFileSync(join(ROOT, PRE_PUSH), "utf8");
 const WORKFLOWS = ".github/workflows";
 const TICKETS = `${WORKFLOWS}/tickets.yml`;
@@ -244,10 +245,11 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
   });
 
   const caller = once(() => callerFor(ci().name));
+  const husky = once(() => [PACKAGE, dirname(PRE_PUSH)].some((path) => found(["api", `repos/${repo}/contents/${path}`]) !== undefined));
   const pieces = once(() => [
     { path: CALLER, text: caller() },
     { path: ci().path, text: ruled(ci().path, ci().text) },
-    { path: PRE_PUSH, text: PRE_PUSH_TEXT },
+    ...(husky() ? [{ path: PRE_PUSH, text: PRE_PUSH_TEXT }] : []),
   ]);
   const carries = (ref?: string) => pieces().every(({ path, text }) => textOf(path, ref)?.text === text);
   const rules = () => read<Rule[]>(["api", `repos/${repo}/rules/branches/${held().default_branch}`]);

@@ -740,16 +740,13 @@ const repo = held.repo;
 const contents = "repos/" + repo + "/contents/";
 if (args[0] === "api" && method === "GET" && route === "repos/" + repo) out({ id: held.id, allow_auto_merge: held.allow_auto_merge, default_branch: "main" });
 else if (args[0] === "api" && method === "PATCH" && route === "repos/" + repo) { wrote(); held.allow_auto_merge = fields.allow_auto_merge === "true"; save(); out({}); }
-else if (args[0] === "api" && method === "GET" && route === contents + ".github/workflows") {
-  const listed = Object.keys(held.files).filter((file) => file.startsWith(".github/workflows/"));
-  if (listed.length === 0) { process.stderr.write("gh: Not Found (HTTP 404)\n"); process.exit(1); }
-  out(listed.map((file) => ({ path: file, type: "file" })));
-}
 else if (args[0] === "api" && method === "GET" && route.startsWith(contents)) {
   const [file, ref] = route.slice(contents.length).split("?ref=");
   const files = ref === undefined ? held.files : held.branches[ref] ?? {};
-  if (files[file] === undefined) { process.stderr.write("gh: Not Found (HTTP 404)\n"); process.exit(1); }
-  out({ path: file, sha: "sha-" + file.length, content: Buffer.from(files[file]).toString("base64") });
+  const listed = Object.keys(files).filter((held) => held.startsWith(file + "/"));
+  if (files[file] === undefined && listed.length > 0) out(listed.map((held) => ({ path: held, type: "file" })));
+  else if (files[file] === undefined) { process.stderr.write("gh: Not Found (HTTP 404)\n"); process.exit(1); }
+  else out({ path: file, sha: "sha-" + file.length, content: Buffer.from(files[file]).toString("base64") });
 }
 else if (args[0] === "api" && method === "PUT" && route.startsWith(contents)) {
   wrote();

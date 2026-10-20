@@ -354,6 +354,20 @@ describe("bin/enrol brings an enrolled repo's CI check job and pre-push to this 
     expect(held().writes).toEqual([]);
   });
 
+  it.each([
+    ["writes no pre-push, still enrolling it, in a repo with no package.json and no .husky/, where nothing would run it (#1405)", {}, undefined],
+    ["writes the pre-push in a repo with a package.json and no .husky/ yet", { "package.json": "{}\n" }, prePush()],
+  ])("%s", (_, more, pushed) => {
+    const { run, held } = enrolling(bare({ files: { ...bare().files, ...more } }));
+
+    const result = run();
+
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+    expect(held().files[".github/workflows/machine.yml"]).toBeDefined();
+    expect(held().files[".husky/pre-push"]).toBe(pushed);
+  });
+
   it("finds a check job by its id when its name is an earlier rule's text, and brings it to the rule (#1386)", () => {
     expect(EARLIER_RULE).not.toEqual(checkJobRule());
     const { run, held } = enrolling(bare({ ...LANDED, pending: true, files: { ...STALE_MAIN, ".github/workflows/ci.yml": EARLIER_TWO_JOBS } }), {});
