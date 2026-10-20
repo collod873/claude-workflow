@@ -22,7 +22,7 @@ const OLDER = SPEC.replace("Reuse the ticket machinery where it already fits.", 
 const DID = "The slicer settled the label both tickets read.";
 const NEXT = "Wave 1 files the spec kind and reads it back.";
 
-const piece = (title: string, passages: number[], done = ["It holds."], cites: string[] = []) => ({ title, passages, why: `Wave 1 of the spec: ${title.toLowerCase()}.`, done, cites });
+const piece = (title: string, passages: number[], done = ["It holds."], cites: string[] = [], files = [`src/${title.toLowerCase().replaceAll(" ", "-")}.ts`]) => ({ title, passages, why: `Wave 1 of the spec: ${title.toLowerCase()}.`, done, cites, files });
 const wave = (tickets = [piece("File the spec kind", [1, 2]), piece("Read the spec kind", [3])], record = RECORD, moves = [1]) => ({ record, tickets, did: DID, next: NEXT, moves });
 
 describe("bin/slice turns a filed spec into its first wave of tickets under it, with no session open (#1021)", () => {
@@ -213,6 +213,17 @@ describe("bin/slice turns a filed spec into its first wave of tickets under it, 
     expect(sliced.rewrites()).toEqual([]);
     expect(sliced.filed()).toEqual([]);
     expect(sliced.linked()).toEqual([]);
+  });
+
+  it("sends back a wave whose two tickets will edit one file, so the second builds a wave later from a main that has the first (#1382)", () => {
+    const tickets = [piece("File the spec kind", [1, 2], undefined, undefined, ["src/filed.ts", ".husky/pre-push"]), piece("Read the spec kind", [3], undefined, undefined, [".husky/pre-push"])];
+    const sliced = slicing({ body: SPEC, answers: [wave(tickets), wave()] });
+
+    expect(sliced.run().status).toBe(0);
+    const [handed = "", sentBack = ""] = sliced.handed();
+    expect(handed).toContain("`files`");
+    expect(sentBack).toContain('tickets 1 and 2, "File the spec kind" and "Read the spec kind", both edit `.husky/pre-push`: build one of them in a later wave');
+    expect(sliced.filed().map(({ title }) => title)).toEqual(["File the spec kind", "Read the spec kind"]);
   });
 
   it("sends back a ticket naming a passage the Problem Statement does not have", () => {

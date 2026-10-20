@@ -54,6 +54,24 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
     expect(calls()).toEqual([]);
   });
 
+  it("lands a change to docs/buckets.md alone with no receipt, since no check step reads it, so the closer's row move lands through it (#1382)", () => {
+    const { run, calls, checked, head, merged, posted } = sessionAheadOfMain(1, { covered: false, changes: { "docs/buckets.md": "| a row | moved |\n" } });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(checked()).toEqual([]);
+    expect(calls().filter(posted).map((call) => call.at(-1))).toEqual(["description=docs/buckets.md alone changed from main, and no check step reads it (#1382)", "description=docs/buckets.md alone changed from main, and no check step reads it (#1382)"]);
+    expect(calls().filter(merged)).toEqual([["pr", "merge", `land/${head.slice(0, 12)}`, "--merge", "--match-head-commit", head]]);
+  });
+
+  it("still asks for a receipt when docs/buckets.md changes beside another file", () => {
+    const { run, checked } = sessionAheadOfMain(1, { covered: false, changes: { "docs/buckets.md": "| a row | moved |\n", "tool": "changed\n" } });
+
+    expect(run().status).toBe(1);
+    expect(checked()).toEqual(["--full --covered"]);
+  });
+
   it("brings the main checkout, detached as the session launcher leaves it, up to the merged main when landing from a session worktree (#1309)", () => {
     const { root, remote, session: main, run } = sessionAheadOfMain(0);
     git(main, "checkout", "--quiet", "--detach");

@@ -131,7 +131,7 @@ describe("bin/slice --resumed tells the resume where a spec the owner took pause
 });
 
 const OWNER_SAID = { author: OWNER, type: "User", body: "Keep the done check out of the slicer." };
-const piece = { title: "Read the spec kind", passages: [1], why: "Wave 2 of the spec: read it.", done: ["It reads."], cites: [] };
+const piece = { title: "Read the spec kind", passages: [1], why: "Wave 2 of the spec: read it.", done: ["It reads."], cites: [], files: ["src/read.ts"] };
 const next = (tickets = [piece], moves = [1]) => ({ record: "### Picks\n\n- **Read back**: read it back.", tickets, did: "Wave 1 filed the spec kind.", next: "Wave 2 reads it back.", moves });
 
 function reslicing({

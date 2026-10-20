@@ -390,11 +390,14 @@ export function landSession({
   mainMovesOnRefusal = false,
   rounds = "3",
   covered = true,
-}: { gh?: string; remoteRefuses?: string; messages?: string[]; merges?: Merge[]; views?: string[]; mainMovesOnRefusal?: boolean; rounds?: string; covered?: boolean } = {}) {
+  changes = {},
+}: { gh?: string; remoteRefuses?: string; messages?: string[]; merges?: Merge[]; views?: string[]; mainMovesOnRefusal?: boolean; rounds?: string; covered?: boolean; changes?: Record<string, string> } = {}) {
   const root = scratch("land-");
   const { remote, session } = cloned(root, "base");
   git(remote, "config", "user.email", "github@test");
   git(remote, "config", "user.name", "github");
+  for (const [path, content] of Object.entries(changes)) plant(session, path, content);
+  if (Object.keys(changes).length > 0) git(session, "add", "-A");
   for (const message of messages) git(session, "commit", "--quiet", "--allow-empty", "-m", message);
   if (remoteRefuses !== undefined) script(join(remote, "hooks", "pre-receive"), `cat >/dev/null\ncat >&2 <<'REFUSAL'\n${remoteRefuses}\nREFUSAL\nexit 1\n`);
   const state = join(root, "gh-state");
