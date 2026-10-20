@@ -2,11 +2,11 @@
 set -uo pipefail
 
 if [[ ${1:-} == -h || ${1:-} == --help ]]; then
-  printf 'land: usage: land, with no arguments; it lands HEAD on main through a PR\n'
+  printf 'land: usage: land, with no arguments; it lands HEAD on the default branch through a PR\n'
   exit 0
 fi
 if [[ $# -ne 0 ]]; then
-  printf 'land: usage: land, with no arguments; it lands HEAD on main through a PR\n' >&2
+  printf 'land: usage: land, with no arguments; it lands HEAD on the default branch through a PR\n' >&2
   exit 2
 fi
 
@@ -30,40 +30,51 @@ call() {
   fi
 }
 
-call "git fetch" git fetch --quiet origin main
+default_branch=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD)
+default_branch=${default_branch#origin/}
+if [[ -z $default_branch ]]; then
+  call "git ls-remote" git ls-remote --symref origin HEAD
+  default_branch=$(awk '$1 == "ref:" && $3 == "HEAD" { sub("^refs/heads/", "", $2); print $2 }' <<<"$said")
+  if [[ -z $default_branch ]]; then
+    printf 'land: origin names no default branch, so nothing landed\n' >&2
+    exit 1
+  fi
+fi
+
+call "git fetch" git fetch --quiet origin "$default_branch"
 
 if [[ -d $(git rev-parse --git-path rebase-merge) || -d $(git rev-parse --git-path rebase-apply) ]]; then
   printf 'land: a rebase is already in progress here, so nothing landed; finish it or abort it first\n' >&2
   exit 1
 fi
 
-onto_main() {
-  if [[ -n $(git rev-list origin/main..HEAD) ]] && ! git merge-base --is-ancestor origin/main HEAD; then
-    if ! git rebase --quiet --autostash origin/main >/dev/null 2>"$err"; then
-      { printf -- '--- git rebase origin/main ---\n'; cat "$err"; } >>"$log"
+onto_default_branch() {
+  if [[ -n $(git rev-list "origin/$default_branch..HEAD") ]] && ! git merge-base --is-ancestor "origin/$default_branch" HEAD; then
+    if ! git rebase --quiet --autostash "origin/$default_branch" >/dev/null 2>"$err"; then
+      { printf -- '--- git rebase origin/%s ---\n' "$default_branch"; cat "$err"; } >>"$log"
       git rebase --abort >/dev/null 2>&1 # quiet: the rebase's own error is already in the log
-      printf 'land: HEAD does not rebase cleanly onto origin/main, so nothing landed; run git rebase origin/main, resolve it, and land again\n' >&2
+      printf 'land: HEAD does not rebase cleanly onto origin/%s, so nothing landed; run git rebase origin/%s, resolve it, and land again\n' "$default_branch" "$default_branch" >&2
       exit 1
     fi
     head=$(git rev-parse HEAD)
   fi
 }
 
-onto_main
+onto_default_branch
 
 posted() {
   call "gh api statuses" gh api -X POST "repos/{owner}/{repo}/statuses/$head" -f state=success -f "context=$1" -f "description=$2"
 }
 
-if [[ -z $(git rev-list origin/main..HEAD) ]]; then
-  printf 'Nothing to land: HEAD is already on origin/main.\n'
+if [[ -z $(git rev-list "origin/$default_branch..HEAD") ]]; then
+  printf 'Nothing to land: HEAD is already on origin/%s.\n' "$default_branch"
   exit 0
 fi
 
 closing_keyword='\b(close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)\b:?[ \t]+#[0-9]+'
 
 src="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../src" && pwd)"
-for commit in $(git rev-list origin/main..HEAD); do
+for commit in $(git rev-list "origin/$default_branch..HEAD"); do
   git log -1 --format=%B "$commit" | node "$src/em-dash.ts"
   case $? in
     0) ;;
@@ -87,7 +98,7 @@ done
 own=$(git -C "$src" config --get remote.origin.url)
 if [[ -n $own && $(git config --get remote.origin.url) == "$own" ]]; then
   slug=$(sed -E 's#^(https://github\.com/|git@github\.com:)##; s#\.git$##' <<<"$own")
-  call "gh api rules" gh api "repos/$slug/rules/branches/main"
+  call "gh api rules" gh api "repos/$slug/rules/branches/$default_branch"
   if grep -qE '"context": *"review"' <<<"$said"; then
     call "bin/enrol" "$src/../bin/enrol" "$slug" --caller
   fi
@@ -99,9 +110,9 @@ judged="judged on the owner's PC by its pre-push, before the push (ADR-0008)"
 skipped="skipped: a session landing is judged by its pre-push, not reviewed (ADR-0008)"
 for (( round = 1; ; round++ )); do
   call "git push" git push --quiet --force origin "HEAD:refs/heads/$branch"
-  changed=$(git diff --name-only origin/main HEAD)
+  changed=$(git diff --name-only "origin/$default_branch" HEAD)
   if [[ $changed == docs/buckets.md ]]; then
-    judged="docs/buckets.md alone changed from main, and no check step reads it (#1382)"
+    judged="docs/buckets.md alone changed from $default_branch, and no check step reads it (#1382)"
     skipped=$judged
   elif ! check --full --covered >/dev/null 2>"$err" && ! check --full --publish >&2; then
     printf 'land: the full check went red on the pushed tree, so no check status is posted and nothing merges; fix what it names and land again\n' >&2
@@ -110,9 +121,9 @@ for (( round = 1; ; round++ )); do
   posted check "$judged"
   posted "tickets / review" "$skipped"
   if [[ -z $url ]]; then
-    call "gh pr create" gh pr create --base main --head "$branch" \
+    call "gh pr create" gh pr create --base "$default_branch" --head "$branch" \
       --title "$(git log -1 --format=%s HEAD)" \
-      --body "$(git log --reverse --format='- %s' origin/main..HEAD)"
+      --body "$(git log --reverse --format='- %s' "origin/$default_branch..HEAD")"
     url=$said
   fi
   if gh pr merge "$branch" --merge --match-head-commit "$head" >/dev/null 2>"$err"; then
@@ -128,12 +139,12 @@ for (( round = 1; ; round++ )); do
         exit 1
       fi
       [[ $state == UNKNOWN ]] && sleep "${LAND_PAUSE_SECONDS:-2}"
-      call "git fetch" git fetch --quiet origin main
-      onto_main
+      call "git fetch" git fetch --quiet origin "$default_branch"
+      onto_default_branch
       ;;
     DIRTY)
       gh pr close "$branch" --delete-branch >/dev/null
-      printf 'land: %s conflicts with main; closed it, so land again to rebase\n' "$url" >&2
+      printf 'land: %s conflicts with %s; closed it, so land again to rebase\n' "$url" "$default_branch" >&2
       exit 1
       ;;
     *)
@@ -143,14 +154,14 @@ for (( round = 1; ; round++ )); do
   esac
 done
 
-call "git fetch" git fetch --quiet origin main
-if [[ $(git rev-parse HEAD) == "$head" ]] && git merge --quiet --ff-only origin/main >/dev/null 2>&1; then # quiet: the else branch says the checkout could not fast-forward
+call "git fetch" git fetch --quiet origin "$default_branch"
+if [[ $(git rev-parse HEAD) == "$head" ]] && git merge --quiet --ff-only "origin/$default_branch" >/dev/null 2>&1; then # quiet: the else branch says the checkout could not fast-forward
   printf 'Landed %s\n' "$url"
 else
   printf 'Landed %s, but this checkout could not fast-forward; run git pull.\n' "$url"
 fi
 
 main_checkout=$(git worktree list --porcelain | sed -n '1s/^worktree //p')
-if [[ $main_checkout != "$top" ]] && ! git -C "$main_checkout" merge --quiet --ff-only origin/main >/dev/null 2>&1; then # quiet: the line below names the checkout left behind
+if [[ $main_checkout != "$top" ]] && ! git -C "$main_checkout" merge --quiet --ff-only "origin/$default_branch" >/dev/null 2>&1; then # quiet: the line below names the checkout left behind
   printf 'land: the main checkout %s could not fast-forward, so the tools launched from it are not the merged ones\n' "$main_checkout" >&2
 fi

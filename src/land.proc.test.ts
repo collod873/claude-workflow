@@ -41,6 +41,19 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
     expect(result.stdout).toBe(`Landed ${PR}\n`);
   });
 
+  it("lands on the repo's default branch when it is master, not main, since land is how every repo ships and Lodato-Life deploys on a push to master", () => {
+    const { remote, session, head, branch, run, calls, merged } = sessionAheadOfMain(1, { defaultBranch: "master" });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(calls()).toContainEqual(["pr", "create", "--base", "master", "--head", branch, "--title", "change 1", "--body", "- change 1"]);
+    expect(calls().filter(merged)).toEqual([["pr", "merge", branch, "--merge", "--match-head-commit", head]]);
+    expect(git(remote, "rev-parse", "master^2")).toBe(head);
+    expect(git(session, "rev-parse", "master")).toBe(git(remote, "rev-parse", "master"));
+    expect(result.stdout).toBe(`Landed ${PR}\n`);
+  });
+
   it("runs the full check itself when no receipt covers the pushed tree, publishing its receipts, then posts the check and merges on green, so no agent hand-runs a check before landing (#1412)", () => {
     const { run, calls, checked, head, branch, merged, posted } = sessionAheadOfMain(1, { covered: false });
 

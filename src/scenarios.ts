@@ -350,14 +350,18 @@ export function filing({
 }
 
 export function cloned(root: string, ...commits: string[]) {
+  return clonedOn(root, "main", commits);
+}
+
+function clonedOn(root: string, defaultBranch: string, commits: string[]) {
   const remote = join(root, "remote.git");
   const session = join(root, "session");
-  git(root, "init", "--quiet", "--bare", "--initial-branch=main", remote);
+  git(root, "init", "--quiet", "--bare", `--initial-branch=${defaultBranch}`, remote);
   git(root, "clone", "--quiet", remote, session);
   git(session, "config", "user.email", "session@test");
   git(session, "config", "user.name", "session");
   for (const message of commits) git(session, "commit", "--quiet", "--allow-empty", "-m", message);
-  git(session, "push", "--quiet", "origin", "main");
+  git(session, "push", "--quiet", "origin", defaultBranch);
   return { remote, session };
 }
 
@@ -393,9 +397,10 @@ export function landSession({
   green = true,
   changes = {},
   home,
-}: { gh?: string; remoteRefuses?: string; messages?: string[]; merges?: Merge[]; views?: string[]; mainMovesOnRefusal?: boolean; rounds?: string; covered?: boolean; green?: boolean; changes?: Record<string, string>; home?: Held } = {}) {
+  defaultBranch = "main",
+}: { gh?: string; remoteRefuses?: string; messages?: string[]; merges?: Merge[]; views?: string[]; mainMovesOnRefusal?: boolean; rounds?: string; covered?: boolean; green?: boolean; changes?: Record<string, string>; home?: Held; defaultBranch?: string } = {}) {
   const root = scratch("land-");
-  const { remote, session } = cloned(root, "base");
+  const { remote, session } = clonedOn(root, defaultBranch, ["base"]);
   git(remote, "config", "user.email", "github@test");
   git(remote, "config", "user.name", "github");
   for (const [path, content] of Object.entries(changes)) plant(session, path, content);
@@ -439,10 +444,10 @@ export function landSession({
         "    (( n > ${#merges[@]} )) && n=${#merges[@]}",
         "    if [[ ${merges[n - 1]} == merged ]]; then",
         "      for (( at = 1; at <= $#; at++ )); do [[ ${!at} == --match-head-commit ]] && { next=$(( at + 1 )); sha=${!next}; }; done",
-        '      git -C "$remote" update-ref refs/heads/main "$(git -C "$remote" commit-tree "$sha^{tree}" -p main -p "$sha" -m merged)"',
+        `      git -C "$remote" update-ref refs/heads/${defaultBranch} "$(git -C "$remote" commit-tree "$sha^{tree}" -p ${defaultBranch} -p "$sha" -m merged)"`,
         "    else",
         `      printf '%s\\n' ${JSON.stringify(MERGE_REFUSAL)} >&2`,
-        ...(mainMovesOnRefusal ? ['      git -C "$remote" update-ref refs/heads/main "$(git -C "$remote" commit-tree "main^{tree}" -p main -m "another session landed")"'] : []),
+        ...(mainMovesOnRefusal ? [`      git -C "$remote" update-ref refs/heads/${defaultBranch} "$(git -C "$remote" commit-tree "${defaultBranch}^{tree}" -p ${defaultBranch} -m "another session landed")"`] : []),
         "      exit 1",
         "    fi",
         "    ;;",
