@@ -900,7 +900,7 @@ export function githubCall(refusals: string[], args = ["issue", "edit", "1202", 
 export const PC_REPO = "collod873/Lumaria";
 export const PC_HOST = hostname().toLowerCase();
 export const PC_RUNNER_COUNT = 2;
-export const QUICK_RUNNER_COUNT = 4;
+export const QUICK_RUNNER_COUNT = 8;
 
 const runnerId = (name: string) => [...name].reduce((sum, char) => sum + char.charCodeAt(0), 0);
 export const pcRunner = (name: string, status = "online", busy = false, labels = ["pc", "pc-quick"]) => ({ id: runnerId(name), name, status, busy, labels: ["self-hosted", ...labels].map((label) => ({ name: label })) });
