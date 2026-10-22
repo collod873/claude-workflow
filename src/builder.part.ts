@@ -198,9 +198,9 @@ declareStage({
     {
       name: "reviewer",
       file: "src/reviewer.ts",
-      cap: TICKET_CAP + 2 * LIST_CAP + DIFF_CAP + HANDED_ON,
-      slots: ["body", "commits", "diff"],
-      build: (filled) => reviewing("", filled.body ?? "", filled.commits ?? "", filled.diff ?? "", true),
+      cap: TICKET_CAP + 4 * LIST_CAP + DIFF_CAP + HANDED_ON,
+      slots: ["body", "commits", "diff", "stat", "alongside"],
+      build: (filled) => reviewing({ ticket: "", body: filled.body ?? "", commits: filled.commits ?? "", diff: filled.diff ?? "", stat: filled.stat ?? "", alongside: filled.alongside ?? "", commitlint: true }),
     },
   ],
   scenarios: [

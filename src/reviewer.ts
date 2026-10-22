@@ -1,6 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { capped, handedDiff, LIST_CAP, NO_EM_DASH, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
-import { FULL_CHECK } from "./checks.ts";
+import { capped, handedDiff, LIST_CAP, NO_EM_DASH, sameFiles, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
 import { commentOnTicket, gh, gitRead, heldOn, labelsHeld, machineBin, mark, post } from "./post.ts";
 import { CHECKING } from "./spelled.ts";
 import { calledOwner, committed, commitlinted, head, hire, linted, type OwnerStep, OWNER_STEPS } from "./stage.ts";
@@ -25,7 +24,17 @@ interface Answer {
 
 const LANDED = /^Landed \S+\/pull\/(\d+)/m;
 
-export function handedOn(ticket: string, body: string, commits: string, diff: string, commitlint: boolean): string {
+interface Handed {
+  ticket: string;
+  body: string;
+  commits: string;
+  diff: string;
+  stat: string;
+  alongside: string;
+  commitlint: boolean;
+}
+
+export function handedOn({ ticket, body, commits, diff, stat, alongside, commitlint }: Handed): string {
   return [
     `# Review #${ticket} before it lands`,
     "A builder built the ticket below on this branch, and its full check is green. You did not build it: read the ticket, its commit messages and the diff as its reviewer.",
@@ -33,15 +42,16 @@ export function handedOn(ticket: string, body: string, commits: string, diff: st
     "## Commits",
     capped(commits, LIST_CAP),
     "## Diff from main",
-    handedDiff(diff),
+    handedDiff(diff, stat),
+    ...sameFiles(alongside),
     ...linted(commitlint),
     "## Fix it or approve it",
-    "Where the diff misses the Why or its `## Done when`, or breaks what it touches, fix it here yourself: nothing goes back to the builder. A new or changed test that would stay green on the bug it guards, or go red on a refactor that keeps the behavior, is yours to fix; call the Skill tool with `testing` for the standard.",
-    `Commit what you change, each message saying why, with no em dash and no closing keyword such as \`Fixes #12\`. Run \`${FULL_CHECK}\` last if you changed anything. Answer one outcome:`,
+    "Where the diff misses the Why or its `## Done when`, or breaks what it touches, fix it here yourself: nothing goes back to the builder. A new or changed test that would stay green on the bug it guards, or go red on a refactor that keeps the behavior, is yours to fix. Before judging it, call the Skill tool with `coding-standards` for the code standard and `testing` for the test standard.",
+    "Commit what you change, each message saying why, with no em dash and no closing keyword such as `Fixes #12`. Answer one outcome:",
     "- `approve`: it builds the Why, with whatever you fixed; `bin/land` then runs the full check and merges it, and anything it refuses comes back to you.",
     "- `stuck`: the work has a gap you cannot fix, one only the owner can close; `reason` says why, and the ticket is marked `stuck`.",
     "`steps`: each step only the owner can take before this work runs, such as a dashboard setting or a key, read from the finished work; name every one in each answer, since those of the answer that lands are each filed as an `owner-step` note, and the ticket still closes.",
-    "`reason`: one paragraph for the owner. Two rounds in a row that change nothing call them. An `approve`'s `reason` is commented on the ticket's PR before it merges: name in it every cost or risk you saw and let through, or say you saw none.",
+    "`reason`: one paragraph for the owner. An `approve`'s `reason` is commented on the ticket's PR before it merges: name in it every cost or risk you saw and let through, or say you saw none.",
     "",
   ].join("\n\n");
 }
@@ -71,12 +81,13 @@ function triedAgainLater(ticket: string, refusal: string): number {
   return 1;
 }
 
-export function reviewedAndLanded(ticket: string, body: string): number {
+export function reviewedAndLanded(ticket: string, body: string, alongside: string): number {
   mark(ticket, CHECKING);
   const commits = gitRead(["log", "--reverse", "--format=- %s%n%n%b", "origin/main..HEAD"], "the commits past main could not be read, so nothing is reviewed");
   const diff = gitRead(["diff", "origin/main...HEAD"], "the diff from main could not be read, so nothing is reviewed");
+  const stat = gitRead(["diff", "--stat", "origin/main...HEAD"], "the diff from main could not be read, so nothing is reviewed");
   const spend = hire("review", ticket, { name: "reviewer", model: "opus", answers: ANSWER });
-  let input = handedOn(ticket, body, commits, diff, commitlinted());
+  let input = handedOn({ ticket, body, commits, diff, stat, alongside, commitlint: commitlinted() });
   let session: string | undefined;
   let idle = false;
   for (;;) {

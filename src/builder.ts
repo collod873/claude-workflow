@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { admission, doesNotBuild } from "./admit.ts";
-import { capped, LIST_CAP, NO_EM_DASH, onDisk, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
+import { capped, LIST_CAP, NO_EM_DASH, onDisk, sameFiles, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
 import { FULL_CHECK } from "./checks.ts";
 import { BUILDER_SPLIT, commentOnTicket, commentsRead, faultOf, FOLLOW_UP_OF, FOREIGN, followUpBody, gh, ghRead, git, gitRead, MACHINE_REPO, mark, NOTHING_MARKED, OWNER, post, postRefusals, readOrStop, rewriteTicket, FILED_IN, STUCK, ticketBranch, WAITING } from "./post.ts";
 import { reviewedAndLanded } from "./reviewer.ts";
@@ -122,9 +122,6 @@ function onTheSameFiles(ticket: string, body: string): string {
     .map((other) => `- #${other.number} ${other.title}`)
     .join("\n");
 }
-
-const sameFiles = (alongside: string | undefined) =>
-  alongside === undefined || alongside === "" ? [] : ["## Open tickets on the same files", "Each names a file this ticket names, and may already ask for part of its fix:", capped(alongside, LIST_CAP)];
 
 const machineAtFault = (foreign: boolean | undefined) =>
   foreign === true
@@ -328,7 +325,7 @@ function ownTicket(ticket: string): number {
     body = round.body ?? body;
     committed(builtBy(ticket), "feat");
     const { red } = round.red === undefined ? judged() : round;
-    if (red === undefined) return reviewedAndLanded(ticket, body);
+    if (red === undefined) return reviewedAndLanded(ticket, body, owning.carried.alongside);
     input = red;
   }
 }
