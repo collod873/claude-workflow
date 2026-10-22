@@ -486,6 +486,43 @@ describe("a fresh reviewer reads each green build, fixes or approves it, and bin
     expect(argv).not.toContain("--resume");
   });
 
+  it("tells the reviewer to load coding-standards beside testing and leaves the full check to bin/land, where 0 of 15 reviewers loaded it and 5 ran a check bin/land repeated (#1484)", () => {
+    const { run, handed } = fixing({ claude: FIXES });
+
+    expect(run().status).toBe(0);
+    const review = handed()[1] ?? "";
+    expect(review).toContain("call the Skill tool with `coding-standards` for the code standard and `testing` for the test standard");
+    expect(review).toContain("`bin/land` then runs the full check and merges it, and anything it refuses comes back to you");
+    expect(review).not.toContain("check --full");
+    expect(review).not.toContain("Two rounds in a row");
+  });
+
+  it("names to the reviewer the open tickets on the same files the builder was handed, where #1464's reviewer let through a cost #1462 owned (#1484)", () => {
+    const body = FIXED_TICKET_NAMING("`src/reviewer.ts`");
+    const openTickets = [
+      { number: 1462, title: "Slice and research wait for one quick gate", body: "The cost sits in `src/reviewer.ts`." },
+      { number: 1455, title: "Something apart", body: "Only `src/closer.ts`." },
+    ];
+    const { run, handed } = fixing({ claude: FIXES, body, openTickets });
+
+    expect(run().status).toBe(0);
+    const review = handed()[1] ?? "";
+    expect(review).toContain("## Open tickets on the same files");
+    expect(review).toContain("- #1462 Slice and research wait for one quick gate");
+    expect(review).not.toContain("#1455");
+  });
+
+  it("hands a diff over DIFF_CAP as its stat and every changed file, with no part of the diff, where 6 of 7 cut diffs were read again (#1484)", () => {
+    const { run, handed } = fixing({ claude: `${FIXES}seq 1 9000 | sed 's/^/oversized /' >src/oversized.ts\n` });
+
+    expect(run().status).toBe(0);
+    const review = handed()[1] ?? "";
+    expect(review).toMatch(/src\/oversized\.ts +\| 9000 \+{3,}/);
+    expect(review).toContain("Every file changed:\n\n- src/oversized.ts\n- src/ticket-shape.test.ts\n- src/ticket-shape.ts\n");
+    expect(review).not.toContain("+oversized 1\n");
+    expect(review).not.toContain("+export const shaped = 2;");
+  });
+
   it("commits what the reviewer fixes as a review, and lands that head", () => {
     const { run, log, landed, closed } = fixing({ claude: FIXES, reviewer: REVIEWER_FIXES });
 

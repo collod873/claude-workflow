@@ -33,13 +33,16 @@ const FILE_START = /^(?=diff --git )/m;
 const CHANGED_PATH = /^diff --git a\/.+? b\/(.+)$/m;
 const changedPaths = (diff: string): string[] => diff.split(FILE_START).flatMap((text) => CHANGED_PATH.exec(text)?.slice(1) ?? []);
 
-export function handedDiff(diff: string): string {
+export function handedDiff(diff: string, stat: string): string {
   const bytes = Buffer.byteLength(diff);
   if (bytes <= DIFF_CAP) return diff;
   return [
-    `The diff is ${bytes} bytes, over ${DIFF_CAP}, so it is cut here; read any changed file in the repo.`,
-    capped(diff, DIFF_CAP),
+    `The diff is ${bytes} bytes, over ${DIFF_CAP}, so only its \`git diff --stat\` and its files are handed; read in the repo what you need of it.`,
+    capped(stat, LIST_CAP),
     "Every file changed:",
     capped(changedPaths(diff).map((path) => `- ${path}`).join("\n"), LIST_CAP),
   ].join("\n\n");
 }
+
+export const sameFiles = (alongside: string | undefined) =>
+  alongside === undefined || alongside === "" ? [] : ["## Open tickets on the same files", "Each names a file this ticket names, and may already ask for part of its fix:", capped(alongside, LIST_CAP)];
