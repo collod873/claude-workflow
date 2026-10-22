@@ -1,5 +1,5 @@
 import { capped } from "./brief.ts";
-import { commentsRead, gh, ghRead, ghWhole, heldOf, opened, type Opened, prOfTicket, readOrStop, REVIEWED_FROM, SPLIT_FROM, ticketBranch, unread } from "./post.ts";
+import { commentsRead, gh, ghRead, ghWhole, heldOf, opened, type Opened, prOfTicket, readOrStop, SPLIT_FROM, ticketBranch, unread } from "./post.ts";
 import { heldBefore, WAVE_CHECK_HEADING } from "./done-checker.ts";
 import { HELD, NOTE, SPEC, type LabelName } from "./spelled.ts";
 import { exitFor, stoppedAt, type Stop } from "./stops.ts";
@@ -36,7 +36,7 @@ interface Found {
 
 const followed = (body: string): string | undefined => {
   const said = why(body);
-  return (REVIEWED_FROM.exec(said) ?? SPLIT_FROM.exec(said))?.[1];
+  return SPLIT_FROM.exec(said)?.[1];
 };
 
 function specOf(issue: string, chain: string[] = []): Found {

@@ -106,9 +106,7 @@ export const MISSING = /HTTP 404/;
 export const ticketBranch = (ticket: string) => `${TICKET_PREFIX}${ticket}`;
 
 export const FOLLOW_UP_OF = "Follow-up of #";
-const REVIEW_FOUND = ": its review found";
 export const BUILDER_SPLIT = ": its builder split it";
-export const REVIEWED_FROM = new RegExp(`^${FOLLOW_UP_OF}(\\d+)${REVIEW_FOUND}`, "m");
 export const SPLIT_FROM = new RegExp(`^${FOLLOW_UP_OF}(\\d+)${BUILDER_SPLIT}`, "m");
 const FAULT_OF = "Filed by the builder of ";
 const FAULT_WAITS = ", which waits on it, as the machine's fault";
