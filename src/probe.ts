@@ -85,7 +85,7 @@ function foundRun(repo: string, named: string, since: number): Listed | undefine
 
 function probedIn(repo: string, by: Probe, text: string): number {
   const since = Date.now() - CLOCK_SKEW_MS;
-  ghRead(["workflow", "run", ENROLLED_CALLER, "--repo", repo, "-f", "ticket=0", "-f", "reason=probe", "-f", `probe=${text}`, "-f", `probe_with=${by}`], `${repo} refused the dispatch of ${ENROLLED_CALLER}, so nothing was probed`);
+  ghRead(["workflow", "run", ENROLLED_CALLER, "--repo", repo, "-f", "ticket=0", "-f", `probe=${text}`, "-f", `probe_with=${by}`], `${repo} refused the dispatch of ${ENROLLED_CALLER}, so nothing was probed`);
   const run = foundRun(repo, probeRunName(by, text), since);
   if (run === undefined) {
     console.error(`probe: no run of ${ENROLLED_CALLER} in ${repo} named the probe after ${FOUND_TRIES} looks`);

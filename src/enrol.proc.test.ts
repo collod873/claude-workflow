@@ -10,7 +10,7 @@ const CALLER = readFileSync(join(import.meta.dirname, "..", ".github", "caller.y
 const OFFER = `enrol: \`bin/runner ${REPO} pc\` moves its jobs to this PC; run one fresh full check there and watch its peak memory before leaving it on\n`;
 
 describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#1152)", () => {
-  it("writes the caller file naming only the repo's own CI, since GitHub refuses a workflow that hears itself, reaches it with the App, sets every secret, label and auto-merge, and holds main for check alone, since the reviewer lands what it reviews (ADR-0012)", () => {
+  it("writes the caller file, reaches it with the App, sets every secret, label and auto-merge, and holds main for check alone, since the reviewer lands what it reviews (ADR-0012)", () => {
     const { run, held } = enrolling(bare());
 
     const result = run();
@@ -18,8 +18,6 @@ describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#11
     expect(result.stderr).toBe("");
     expect(result.status).toBe(0);
     const after = held();
-    const caller = parse(after.files[".github/workflows/machine.yml"] ?? "") as { name: string; on: { workflow_run: { workflows: string[] } } };
-    expect(caller.on.workflow_run.workflows).toEqual(["Gate"]);
     expect(after.reached).toContain(REPO);
     expect(after.variables).toEqual(["CORE_APP_CLIENT_ID"]);
     expect(after.secrets.sort()).toEqual(["CLAUDE_CODE_OAUTH_TOKEN", "CORE_APP_PRIVATE_KEY"]);
@@ -33,13 +31,12 @@ describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#11
     expect(result.stdout).toBe(`enrol: ${REPO} enrolled, 9 settings set\n${OFFER}`);
   });
 
-  it("writes .github/caller.yml as it stands, but for the name of the repo's CI", () => {
+  it("writes .github/caller.yml as it stands, since it hears no CI run (#1447)", () => {
     const { run, held } = enrolling(bare());
 
     run();
 
-    expect(CALLER).toContain("workflows: [CI]\n");
-    expect(held().files[".github/workflows/machine.yml"]).toBe(CALLER.replace("workflows: [CI]\n", "workflows: [Gate]\n"));
+    expect(held().files[".github/workflows/machine.yml"]).toBe(CALLER);
   });
 
   it("commits the caller file and titles its PR as a conventional commit, which a commitlinted repo like Lumaria checks (#1251)", () => {

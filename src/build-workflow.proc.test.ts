@@ -411,9 +411,9 @@ describe("tickets.yml builds a woken or reopened ticket on the branch its last r
   });
 });
 
-describe("tickets.yml strips the machine's labels from every issue and PR that closes, so nothing is left behind (#1055)", () => {
-  it("runs bin/mark --closed on every issue close and PR close", () => {
-    const { on } = parse(readFileSync(CALLER_FILE, "utf8")) as { on: { issues?: { types?: string[] }; pull_request_target?: { types?: string[] } } };
+describe("tickets.yml strips the machine's labels from every issue that closes, so nothing is left behind (#1055)", () => {
+  it("runs bin/mark --closed on every issue close", () => {
+    const { on } = parse(readFileSync(CALLER_FILE, "utf8")) as { on: { issues?: { types?: string[] } } };
     const strip = namedJob(ticketsJobs(), "strip", WORKFLOW).steps.find((step) => /bin\/mark .*--closed/.test(step.run ?? "")) as Step;
     const stripped = (number: Record<string, string>) => {
       const root = scratch("closed-");
@@ -424,8 +424,7 @@ describe("tickets.yml strips the machine's labels from every issue and PR that c
     };
 
     expect(on.issues?.types).toContain("closed");
-    expect(on.pull_request_target?.types).toContain("closed");
-    expect(String(strip.env?.NUMBER)).toMatch(/github\.event\.issue\.number \|\| github\.event\.pull_request\.number/);
+    expect(String(strip.env?.NUMBER)).toBe("${{ github.event.issue.number }}");
     expect(stripped({ NUMBER: "811" })).toBe("811 --closed\n");
   });
 });

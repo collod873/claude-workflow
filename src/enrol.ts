@@ -191,13 +191,6 @@ function appToken(clientId: string, key: string): string {
   }
 }
 
-function callerFor(ci: string): string {
-  const caller = parseDocument(CALLER_TEXT);
-  const named = caller.createNode([ci], { flow: true });
-  caller.setIn(["on", "workflow_run", "workflows"], named);
-  return caller.toString({ flowCollectionPadding: false, lineWidth: 0 });
-}
-
 function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] } {
   const contents = (path: string, ref?: string) => found<{ content: string; sha: string }>(["api", `repos/${repo}/contents/${path}${ref === undefined ? "" : `?ref=${ref}`}`]);
   const textOf = (path: string, ref?: string) => {
@@ -244,9 +237,8 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
     },
   });
 
-  const caller = once(() => callerFor(ci().name));
   const pieces = once((): { path: string; text: string | undefined }[] => [
-    { path: CALLER, text: caller() },
+    { path: CALLER, text: CALLER_TEXT },
     { path: ci().path, text: ruled(ci().path, ci().text) },
     { path: PRE_PUSH, text: undefined },
   ]);
@@ -303,7 +295,7 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
     let url: string;
     try {
       write(BRANCH);
-      url = open?.url ?? gh(["pr", "create", "-R", repo, "--head", BRANCH, "--base", held().default_branch, "--title", HANDED, "--body", `Brings \`${CALLER}\` to the caller text bin/enrol writes, naming this repo's CI, the \`${CHECK}\` job to the rule the machine's Check gives it, and takes out any \`${PRE_PUSH}\`, since land judges every landing. It merges on its own once \`${CHECK}\` passes.`]).trim();
+      url = open?.url ?? gh(["pr", "create", "-R", repo, "--head", BRANCH, "--base", held().default_branch, "--title", HANDED, "--body", `Brings \`${CALLER}\` to the caller text bin/enrol writes, the \`${CHECK}\` job to the rule the machine's Check gives it, and takes out any \`${PRE_PUSH}\`, since land judges every landing. It merges on its own once \`${CHECK}\` passes.`]).trim();
       gh(["pr", "merge", BRANCH, "-R", repo, "--auto", "--squash", "--delete-branch"]);
     } catch (error) {
       try {

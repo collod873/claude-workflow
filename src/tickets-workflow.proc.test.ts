@@ -32,10 +32,6 @@ interface Fired {
   event: string;
   action?: string;
   sender?: string;
-  conclusion?: string;
-  fork?: boolean;
-  own?: boolean;
-  home?: boolean;
   inputs?: Record<string, string>;
   red?: string[];
   stopped?: string[];
@@ -43,10 +39,9 @@ interface Fired {
 }
 
 function declared({ event, action = "" }: Fired): void {
-  const trigger = caller().on[event] as { types?: string[]; workflows?: string[] } | null | undefined;
+  const trigger = caller().on[event] as { types?: string[] } | null | undefined;
   expect(Object.keys(caller().on), `the caller file declares ${event}`).toContain(event);
   if (trigger?.types !== undefined) expect(trigger.types, `the caller file declares ${event} ${action}`).toContain(action);
-  if (event === "workflow_run") expect(trigger?.workflows?.length, "the caller file names the CI it hands back from").toBeGreaterThan(0);
 }
 
 function builders() {
@@ -74,31 +69,29 @@ describe("a repo's tickets build through one caller file that holds only trigger
     expect(rest).toEqual({});
     expect(typeof runName).toBe("string");
     expect(typeof name).toBe("string");
-    expect(Object.keys(on).sort()).toEqual(["issue_comment", "issues", "pull_request_target", "push", "workflow_dispatch", "workflow_run"]);
+    expect(Object.keys(on).sort()).toEqual(["issue_comment", "issues", "workflow_dispatch"]);
     expect(on.issue_comment).toEqual({ types: ["created"] });
     expect(Object.values(jobs)).toEqual(CALLED.map((file) => ({ uses: `collod873/claude-workflow/.github/workflows/${file}@main`, secrets: "inherit" })));
   });
 
-  it("answers each trigger the caller holds: a ticket opened builds, lands and closes in its own run, a closed issue is stripped and wakes what waited on it, a closed PR is stripped (ADR-0012)", () => {
+  it("answers each trigger the caller holds: a ticket opened builds, lands and closes in its own run, a closed issue is stripped and wakes what waited on it (ADR-0012)", () => {
     expect(jobsRun({ event: "issues", action: "opened" })).toEqual(["build"]);
     expect(jobsRun({ event: "issues", action: "reopened" })).toEqual(["build"]);
     expect(jobsRun({ event: "issues", action: "unlabeled", sender: MACHINE })).toEqual(["build"]);
     expect(jobsRun({ event: "issues", action: "opened", sender: "stranger" })).toEqual([]);
     expect(jobsRun({ event: "issues", action: "closed" })).toEqual(["close", "strip"]);
-    expect(jobsRun({ event: "pull_request_target", action: "closed" })).toEqual(["strip"]);
-    expect(jobsRun({ event: "push", action: "" })).toEqual([]);
-    expect(jobsRun({ event: "push", action: "", home: true })).toEqual(["enrol"]);
   });
 
-  it("starts nothing on a PR opened, pushed or reopened, or a CI run ending, since the build's own run reviews and lands its ticket (ADR-0012)", () => {
-    for (const home of [false, true]) {
-      for (const action of ["opened", "synchronize", "reopened"]) expect(jobsRun({ event: "pull_request_target", action, home }), `${action} home ${String(home)}`).toEqual([]);
-      for (const conclusion of ["success", "failure", "timed_out"]) expect(jobsRun({ event: "workflow_run", action: "completed", conclusion, home }), `${conclusion} home ${String(home)}`).toEqual([]);
-    }
+  it("names its run by no event it does not hear, so a ticket's PR or a CI run names no run that starts nothing (#1447)", () => {
+    const named = [...caller()["run-name"].matchAll(/github\.event_name == '(\w+)'/g)].map(([, event]) => event ?? "");
+
+    expect(named.length).toBeGreaterThan(0);
+    expect(named.filter((event) => !Object.hasOwn(caller().on, event))).toEqual([]);
   });
 
-  it("enrols this repo too on a push to its main, beside every repo the App reaches that holds the caller file, so its caller file follows the move within a minute (#1386)", () => {
-    const step = workflowJobs("tickets.yml").enrol?.steps.find(({ run }) => /bin\/enrol\b/.test(run ?? ""));
+  it("enrols this repo too on a push to its main, from a workflow of its own the caller file does not carry to enrolled repos, beside every repo the App reaches that holds the caller file, so its caller file follows the move within a minute (#1386, #1447)", () => {
+    expect((parse(readFileSync(join(WORKFLOWS, "enrol.yml"), "utf8")) as { on: unknown }).on).toEqual({ push: { branches: ["main"] } });
+    const step = workflowJobs("enrol.yml").enrol?.steps.find(({ run }) => /bin\/enrol\b/.test(run ?? ""));
     const root = scratch("enrol-step-");
     const calls = join(root, "calls");
     script(join(root, "path", "gh"), ['case "$*" in', "  \"api installation/repositories\"*) printf '%s\\n' collod873/claude-workflow collod873/Lumaria collod873/PW-Onboarding ;;", "  *PW-Onboarding/contents*) exit 1 ;;", "esac", ""].join("\n"));
@@ -112,9 +105,8 @@ describe("a repo's tickets build through one caller file that holds only trigger
 
   it("hands a run whose stage job ended red, was cancelled or timed out to a dispatch of the caller file, and on that dispatch only re-runs it or calls the owner, no build or size trial starting (#1225)", () => {
     const named = { which: { ticket: "828" } };
-    const handed = { event: "workflow_dispatch", action: "", inputs: { ticket: "828", reason: "red", rerun: "4417/1" }, outputs: named };
+    const handed = { event: "workflow_dispatch", action: "", inputs: { ticket: "828", rerun: "4417/1" }, outputs: named };
 
-    expect((caller().on.workflow_run as { workflows: string[] }).workflows).not.toContain(caller().name);
     expect(jobsRun({ event: "issues", action: "opened", sender: OWNER, red: ["build"], outputs: named })).toEqual(["build", "dispatch-rerun"]);
     expect(jobsRun({ event: "issues", action: "opened", sender: OWNER, stopped: ["build"], outputs: named })).toEqual(["build", "dispatch-rerun"]);
     expect(jobsRun({ event: "issues", action: "closed", stopped: ["close"] })).toEqual(["close", "strip", "dispatch-rerun"]);
@@ -124,26 +116,25 @@ describe("a repo's tickets build through one caller file that holds only trigger
     expect(jobsRun({ ...handed, inputs: { ...handed.inputs, trial_cap: "60000" } }, "specs.yml")).toEqual([]);
     expect(jobsRun(handed, "specs.yml")).toEqual([]);
     expect(jobsRun({ ...handed, red: ["rerun"] })).toEqual(["rerun"]);
-    for (const conclusion of ["failure", "cancelled", "timed_out"]) expect(jobsRun({ event: "workflow_run", action: "completed", conclusion, own: true }), conclusion).not.toContain("rerun");
   });
 
-  it("carries the optional rerun input in the caller bin/enrol writes and in this repo's caller, beside the ticket and reason every dispatch fills (#1225)", () => {
+  it("carries the optional rerun input in the caller bin/enrol writes and in this repo's caller, beside the ticket every dispatch fills (#1225)", () => {
     const inputs = (text: string) => (parse(text) as { on: { workflow_dispatch: { inputs: Record<string, unknown> } } }).on.workflow_dispatch.inputs;
 
     for (const text of [readFileSync(CALLER, "utf8"), readFileSync(join(WORKFLOWS, ENROLLED_CALLER), "utf8")]) {
-      expect(inputs(text)).toMatchObject({ rerun: { required: false }, ticket: { required: true }, reason: { required: true } });
+      expect(inputs(text)).toMatchObject({ rerun: { required: false }, ticket: { required: true } });
     }
   });
 
   it("runs the size trial a dispatch with a trial cap names on its spec, starting no builder, with the re-slice job's checkouts and caps (#1216)", () => {
-    const trial = { event: "workflow_dispatch", action: "", inputs: { ticket: "968", reason: "size-trial", trial_cap: "60000" }, outputs: { which: { ticket: "968" } } };
+    const trial = { event: "workflow_dispatch", action: "", inputs: { ticket: "968", trial_cap: "60000" }, outputs: { which: { ticket: "968" } } };
     const { "size-trial": sizeTrial, reslice } = workflowJobs("specs.yml");
     const checkouts = (job?: WorkflowJob) => job?.steps.filter(({ uses }) => uses?.startsWith("actions/checkout@") === true);
     const step = (job: WorkflowJob | undefined, id: string) => job?.steps.find((one) => one.id === id);
 
     expect(jobsRun(trial)).toEqual([]);
     expect(jobsRun(trial, "specs.yml")).toEqual(["size-trial"]);
-    expect(jobsRun({ ...trial, inputs: { ticket: "828", reason: "PR red" } }, "specs.yml")).toEqual([]);
+    expect(jobsRun({ ...trial, inputs: { ticket: "828" } }, "specs.yml")).toEqual([]);
     expect(step(sizeTrial, "size-trial")?.run).toContain('"$GITHUB_WORKSPACE/bin/slice" --size-trial "$SPEC" "$TRIAL_CAP"');
     expect(step(sizeTrial, "size-trial")?.env).toMatchObject({ SPEC: "${{ github.event.inputs.ticket }}", TRIAL_CAP: "${{ github.event.inputs.trial_cap }}" });
     expect(sizeTrial?.concurrency).toEqual({ group: "size-trial-${{ github.event.inputs.ticket }}", "cancel-in-progress": false });
@@ -154,7 +145,7 @@ describe("a repo's tickets build through one caller file that holds only trigger
   });
 
   describe("runs a probe a dispatch names in the builder's own environment, and nothing else (#1251)", () => {
-    const probed = { event: "workflow_dispatch", action: "", inputs: { ticket: "0", reason: "probe", probe: "check" }, outputs: { which: { ticket: "0" } } };
+    const probed = { event: "workflow_dispatch", action: "", inputs: { ticket: "0", probe: "check" }, outputs: { which: { ticket: "0" } } };
     const steps = () => workflowJobs("tickets.yml").probe?.steps ?? [];
     const step = (id: string) => steps().find((one) => one.id === id);
     const readying = (job: string) =>
@@ -185,7 +176,7 @@ describe("a repo's tickets build through one caller file that holds only trigger
     });
   });
 
-  it("takes from a dispatch the inputs bin/rerun sends, reading none the caller file does not declare", () => {
+  it("takes from a dispatch the inputs bin/rerun sends, reading none the caller file does not declare and declaring none no job reads (#1447)", () => {
     const { calls, dispatch } = rerunning({ calledFrom: "collod873/Lumaria/.github/workflows/machine.yml@refs/heads/main" });
     expect(dispatch().status).toBe(0);
     const wake = calls().find((args) => args[0] === "workflow" && args[1] === "run") ?? [];
@@ -195,6 +186,8 @@ describe("a repo's tickets build through one caller file that holds only trigger
 
     expect(sent.filter((input) => inputs.some(([declared, { required }]) => declared === input && required)).sort()).toEqual(inputs.filter(([, { required }]) => required).map(([input]) => input).sort());
     expect(read.filter((input) => !inputs.some(([declared]) => declared === input))).toEqual([]);
+    expect(sent.filter((input) => !inputs.some(([declared]) => declared === input))).toEqual([]);
+    expect(inputs.map(([declared]) => declared).filter((declared) => !read.includes(declared))).toEqual([]);
   });
 
   it.each(CALLED)("%s checks the machine out at the workspace and the caller's tree apart under tree/, and makes every GitHub call with the App's token", (file) => {
@@ -423,8 +416,6 @@ describe("a repo's specs and research notes run through the same caller file, on
     for (const fired of [
       { event: "issues", action: "reopened" },
       { event: "issues", action: "unlabeled", sender: MACHINE },
-      { event: "pull_request_target", action: "closed" },
-      { event: "workflow_run", action: "completed", conclusion: "failure" },
       { event: "workflow_dispatch" },
     ]) {
       expect(specs(fired), JSON.stringify(fired)).toEqual([]);
@@ -455,7 +446,7 @@ describe("a repo's specs and research notes run through the same caller file, on
 describe("this repo reaches the machine through the caller file bin/enrol writes, like every enrolled repo, so a machine fix lands once (#1220)", () => {
   const HEARD = ["issues", "issue_comment", "pull_request", "pull_request_target", "workflow_run", "check_run", "check_suite"];
   const DEFAULT_TYPES: Record<string, string[]> = { pull_request: ["opened", "synchronize", "reopened"], pull_request_target: ["opened", "synchronize", "reopened"] };
-  type Triggers = Record<string, { types?: string[]; workflows?: string[] } | null>;
+  type Triggers = Record<string, { types?: string[] } | null>;
   const triggersOf = (file: string) => {
     const { on } = parse(readFileSync(join(WORKFLOWS, file), "utf8")) as { on: Triggers | string | string[] };
     return typeof on === "string" ? { [on]: null } : Array.isArray(on) ? Object.fromEntries(on.map((event) => [event, null])) : on;
@@ -463,13 +454,8 @@ describe("this repo reaches the machine through the caller file bin/enrol writes
   const typesOf = (triggers: Triggers, event: string) => triggers[event]?.types ?? DEFAULT_TYPES[event];
   const overlaps = (ours: string[] | undefined, theirs: string[] | undefined) => ours === undefined || theirs === undefined || ours.some((type) => theirs.includes(type));
 
-  it("holds the caller file under the name bin/enrol writes, its text bin/enrol's apart from hearing Check in place of CI", () => {
-    const written = readFileSync(CALLER, "utf8");
-    const ours = written.replace("workflows: [CI]", "workflows: [Check]");
-
-    expect(ours).not.toBe(written);
-    expect(readFileSync(join(WORKFLOWS, ENROLLED_CALLER), "utf8")).toBe(ours);
-    expect((parse(readFileSync(join(WORKFLOWS, "check.yml"), "utf8")) as { name: string }).name).toBe("Check");
+  it("holds the caller file under the name bin/enrol writes, its text bin/enrol's", () => {
+    expect(readFileSync(join(WORKFLOWS, ENROLLED_CALLER), "utf8")).toBe(readFileSync(CALLER, "utf8"));
   });
 
   it("runs the builder, and the reviewer it hands to, only in tickets.yml's build job, so one run builds, reviews and lands a ticket (ADR-0012)", () => {
@@ -478,17 +464,16 @@ describe("this repo reaches the machine through the caller file bin/enrol writes
     expect(running("fix")).toEqual(["tickets.yml build"]);
   });
 
-  it("leaves no workflow here but the CI the caller hears handling an issue, PR or check event a job of tickets.yml or specs.yml handles", () => {
+  it("leaves no workflow here handling an issue, PR or check event a job of tickets.yml or specs.yml handles", () => {
     const caller = triggersOf(ENROLLED_CALLER);
-    const heard = caller.workflow_run?.workflows ?? [];
-    const others = readdirSync(WORKFLOWS).filter((file) => file !== ENROLLED_CALLER && !Object.hasOwn(triggersOf(file), "workflow_call") && !heard.includes((parse(readFileSync(join(WORKFLOWS, file), "utf8")) as { name?: string }).name ?? file));
+    const others = readdirSync(WORKFLOWS).filter((file) => file !== ENROLLED_CALLER && !Object.hasOwn(triggersOf(file), "workflow_call"));
     const twice = others.flatMap((file) => {
       const triggers = triggersOf(file);
       return HEARD.filter((event) => Object.hasOwn(triggers, event) && Object.hasOwn(caller, event) && overlaps(typesOf(triggers, event), typesOf(caller, event))).flatMap((event) => {
         const theirs = typesOf(triggers, event);
         const ours = typesOf(caller, event);
         if (theirs === undefined || ours === undefined) return [`${file} ${event}`];
-        return theirs.filter((action) => ours.includes(action) && CALLED.some((called) => jobsRun({ event, action, home: true }, called).length > 0)).map((action) => `${file} ${event} ${action}`);
+        return theirs.filter((action) => ours.includes(action) && CALLED.some((called) => jobsRun({ event, action }, called).length > 0)).map((action) => `${file} ${event} ${action}`);
       });
     });
 

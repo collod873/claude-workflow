@@ -153,11 +153,7 @@ export function holds(
     action = "opened",
     label = "",
     head = "",
-    fork = false,
     event = "issues",
-    conclusion = "",
-    own = false,
-    home = false,
     inputs = {},
   }: {
     labels?: string[];
@@ -170,29 +166,18 @@ export function holds(
     action?: string;
     label?: string;
     head?: string;
-    fork?: boolean;
     event?: string;
-    conclusion?: string;
-    own?: boolean;
-    home?: boolean;
     inputs?: Record<string, string>;
   },
 ): boolean {
   const bare = condition.replace(/^\s*\$\{\{|\}\}\s*$/g, "");
   const source = (/\b(success|failure|always|cancelled)\(\)/.test(bare) ? bare : `success() && (${bare})`)
     .replace(/github\.event_name/g, JSON.stringify(event))
-    .replace(/github\.event\.workflow_run\.conclusion/g, JSON.stringify(conclusion))
-    .replace(/github\.event\.workflow_run\.name\s*==\s*github\.workflow\b/g, JSON.stringify(own))
-    .replace(/github\.event\.workflow_run\.name\s*!=\s*github\.workflow\b/g, JSON.stringify(!own))
-    .replace(/github\.event\.workflow_run\.head_repository\.full_name\s*==\s*github\.repository\b/g, JSON.stringify(!fork))
     .replace(/github\.event\.action/g, JSON.stringify(action))
     .replace(/github\.event\.label\.name/g, JSON.stringify(label))
     .replace(/github\.event\.sender\.login/g, JSON.stringify(sender))
     .replace(/github\.head_ref/g, JSON.stringify(head))
-    .replace(/github\.event\.pull_request\.head\.repo\.full_name\s*==\s*github\.repository/g, JSON.stringify(!fork))
     .replace(/contains\(\s*github\.event\.issue\.body\s*,\s*('[^']*')\s*\)/g, `${JSON.stringify(body)}.includes($1)`)
-    .replace(/github\.repository\s*!=\s*format\('\{0\}\/claude-workflow',\s*github\.repository_owner\)/g, JSON.stringify(!home))
-    .replace(/github\.repository\s*==\s*format\('\{0\}\/claude-workflow',\s*github\.repository_owner\)/g, JSON.stringify(home))
     .replace(/github\.repository_owner/g, JSON.stringify(OWNER))
     .replace(/contains\(\s*github\.event\.issue\.labels\.\*\.name\s*,\s*('[^']*')\s*\)/g, "labels.includes($1)")
     .replace(/steps\.([\w-]+)\.(outcome|conclusion)/g, 'steps["$1"].$2')
