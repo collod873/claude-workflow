@@ -66,7 +66,7 @@ function trialCap(body: string): number {
   return Buffer.byteLength(owner) + Math.floor(Buffer.byteLength(record) / 2);
 }
 
-const trialRun = (issue: string, cap: number, caller: string) => ({ start: `gh workflow run ${caller} -f ticket=${issue} -f reason=size-trial -f trial_cap=${cap}`, file: caller });
+const trialRun = (issue: string, cap: number, caller: string) => ({ start: `gh workflow run ${caller} -f ticket=${issue} -f trial_cap=${cap}`, file: caller });
 
 const sizeTrial = (issue: string, body: string, caller: string) => {
   const { start, file } = trialRun(issue, trialCap(body), caller);

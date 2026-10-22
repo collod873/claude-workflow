@@ -141,7 +141,7 @@ jobs:
           STAGE_MINUTES: 45
           CALLED_FROM: ${{ github.workflow_ref }}
         run: |
-          tail --pid=$$ -n +1 -F .git/machine-logs/fix-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
+          tail --pid=$$ -q -n +1 -F .git/machine-logs/fix-${{ github.event.issue.number }}.jsonl .git/machine-logs/review-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
           "$GITHUB_WORKSPACE/bin/fix" ${{ github.event.issue.number }}
 
       - if: always() && steps.fix.outcome != 'skipped'
@@ -342,43 +342,6 @@ jobs:
           CALLED_FROM: ${{ github.workflow_ref }}
         run: '"$GITHUB_WORKSPACE/bin/close" "$CLOSED_ISSUE"'
 
-  enrol:
-    if: ${{ github.event_name == 'push' && github.repository == format('{0}/claude-workflow', github.repository_owner) }}
-    runs-on: ${{ vars.QUICK_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
-    timeout-minutes: 10
-    env:
-      GH_REPO: ${{ github.repository }}
-    steps:
-      - id: app
-        uses: actions/create-github-app-token@v3
-        with:
-          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
-          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-
-      - id: machine
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ github.repository_owner }}/claude-workflow
-          ref: main
-          token: ${{ steps.app.outputs.token }}
-          persist-credentials: false
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-
-      - run: npm ci
-
-      - env:
-          GH_TOKEN: ${{ steps.app.outputs.token }}
-          CORE_APP_PRIVATE_KEY: ${{ secrets.CORE_APP_PRIVATE_KEY }}
-        run: |
-          gh api installation/repositories --paginate --jq '.repositories[].full_name' | while read -r repo; do
-            gh api "repos/$repo/contents/.github/workflows/machine.yml" --silent 2>/dev/null || continue
-            printf '%s\n' "$repo"
-          done | xargs -r -I {} bin/enrol {} --caller
-
   strip:
     if: ${{ github.event.action == 'closed' }}
     runs-on: ${{ vars.QUICK_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
@@ -407,19 +370,19 @@ jobs:
 
       - env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
-          NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+          NUMBER: ${{ github.event.issue.number }}
         run: bin/mark "$NUMBER" --closed
 
       - if: ${{ failure() || cancelled() }}
         uses: ./.github/actions/call-owner
         with:
-          issue: ${{ github.event.issue.number || github.event.pull_request.number }}
+          issue: ${{ github.event.issue.number }}
           run: the strip run
           token: ${{ steps.app.outputs.token }}
 
   dispatch-rerun:
-    needs: [build, close, enrol, strip]
-    if: ${{ always() && (needs.build.result == 'failure' || needs.close.result == 'failure' || needs.enrol.result == 'failure' || needs.strip.result == 'failure' || contains(needs.*.result, 'cancelled')) }}
+    needs: [build, close, strip]
+    if: ${{ always() && (needs.build.result == 'failure' || needs.close.result == 'failure' || needs.strip.result == 'failure' || contains(needs.*.result, 'cancelled')) }}
     runs-on: ${{ vars.QUICK_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
     env:
@@ -449,5 +412,5 @@ jobs:
           RUN: ${{ github.run_id }}
           ATTEMPT: ${{ github.run_attempt }}
           CALLED_FROM: ${{ github.workflow_ref }}
-          TICKET: ${{ github.event.issue.number || github.event.pull_request.number || github.event.inputs.ticket }}
+          TICKET: ${{ github.event.issue.number || github.event.inputs.ticket }}
         run: bin/rerun --dispatch "$RUN" "$ATTEMPT"

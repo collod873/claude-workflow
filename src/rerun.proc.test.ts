@@ -149,7 +149,7 @@ describe("bin/rerun waits for the run it names, and a red run hands itself to it
     const result = dispatch();
 
     expect(result.status, result.stderr).toBe(0);
-    expect(dispatches(calls())).toEqual([["workflow", "run", file, "-f", "ticket=902", "-f", `reason=Run ${RUN_URL} ended red on attempt 1`, "-f", "rerun=4417/1"]]);
+    expect(dispatches(calls())).toEqual([["workflow", "run", file, "-f", "ticket=902", "-f", "rerun=4417/1"]]);
     expect(reruns(calls())).toEqual([]);
     expect(polls(calls())).toEqual([]);
   });
@@ -164,14 +164,13 @@ describe("bin/rerun waits for the run it names, and a red run hands itself to it
   });
 });
 
-describe("the rerun job hands a dispatched red run to bin/rerun, no other workflow here calling the owner, and the caller file never hears itself, which GitHub refuses (#1178, #1220, #1225)", () => {
+describe("the rerun job hands a dispatched red run to bin/rerun, no other workflow here calling the owner (#1178, #1220, #1225)", () => {
   const workflows = join(import.meta.dirname, "..", ".github", "workflows");
-  const read = (file: string) => parse(readFileSync(join(workflows, file), "utf8")) as { name: string; on: Record<string, { workflows?: string[]; types?: string[] } | null>; jobs: Record<string, { if?: string; needs?: string[]; steps?: WorkflowStep[] }> };
-  const caller = read("machine.yml");
+  const read = (file: string) => parse(readFileSync(join(workflows, file), "utf8")) as { name: string; on: Record<string, unknown>; jobs: Record<string, { if?: string; needs?: string[]; steps?: WorkflowStep[] }> };
   const job = read("tickets.yml").jobs.rerun;
   const step = job?.steps?.find(({ run }) => (run ?? "").includes("bin/rerun"));
 
-  it("leaves no workflow of this repo calling the owner but the reusable ones, and keeps the caller file's own name out of what it hears", () => {
+  it("leaves no workflow of this repo calling the owner but the reusable ones", () => {
     const calling = readdirSync(workflows)
       .filter((file) => readFileSync(join(workflows, file), "utf8").includes("./.github/actions/call-owner"))
       .map(read)
@@ -179,14 +178,11 @@ describe("the rerun job hands a dispatched red run to bin/rerun, no other workfl
       .map(({ name }) => name);
 
     expect(calling).toEqual([]);
-    expect(caller.on.workflow_run?.types).toEqual(["completed"]);
-    expect(caller.on.workflow_run?.workflows).not.toContain(caller.name);
   });
 
-  it("runs only on a dispatch naming a run to re-run, never on a heard run, and hands the run and attempt that dispatch names to bin/rerun", () => {
-    expect(holds(job?.if ?? "", { event: "workflow_dispatch", inputs: { ticket: "902", reason: "red", rerun: "4417/1" } })).toBe(true);
-    expect(holds(job?.if ?? "", { event: "workflow_dispatch", inputs: { ticket: "902", reason: "red" } })).toBe(false);
-    for (const conclusion of ["failure", "cancelled", "timed_out"]) expect(holds(job?.if ?? "", { event: "workflow_run", conclusion, own: true }), conclusion).toBe(false);
+  it("runs only on a dispatch naming a run to re-run, and hands the run and attempt that dispatch names to bin/rerun", () => {
+    expect(holds(job?.if ?? "", { event: "workflow_dispatch", inputs: { ticket: "902", rerun: "4417/1" } })).toBe(true);
+    expect(holds(job?.if ?? "", { event: "workflow_dispatch", inputs: { ticket: "902" } })).toBe(false);
     expect(step?.run).toMatch(/\bbin\/rerun\b/);
     expect(step?.env).toMatchObject({ RERUN: "${{ github.event.inputs.rerun }}" });
   });

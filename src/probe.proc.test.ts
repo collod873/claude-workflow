@@ -54,7 +54,7 @@ describe("a probe runs one command or prompt in a stage's real environment and e
     const ended = probe.dispatch("script", "check");
 
     expect(ended.status, ended.stderr).toBe(0);
-    expect(probe.calls()[0]).toEqual(["workflow", "run", "machine.yml", "--repo", "collod873/Lumaria", "-f", "ticket=0", "-f", "reason=probe", "-f", "probe=check", "-f", "probe_with=script"]);
+    expect(probe.calls()[0]).toEqual(["workflow", "run", "machine.yml", "--repo", "collod873/Lumaria", "-f", "ticket=0", "-f", "probe=check", "-f", "probe_with=script"]);
     expect(probe.calls().map((call) => call.slice(0, 2).join(" "))).toEqual(["workflow run", "run list", "run watch", "run view", "run download"]);
     expect(ended.stdout).toMatch(new RegExp(`^probe: https://github.com/collod873/Lumaria/actions/runs/${PROBE_RUN} ended success; its output is in /.*/${probeOutput(PROBE_RUN)}\\n$`));
   });

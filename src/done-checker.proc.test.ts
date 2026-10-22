@@ -314,7 +314,7 @@ describe("specs.yml runs the done check again on the owner's reply to a sentence
     const { on } = workflow();
     const asks = (labels: string[], sender = OWNER) => starts("specs.yml", "asked", { labels, sender, action: "created", event: "issue_comment" });
 
-    expect(on).toMatchObject({ issue_comment: { types: ["created"] }, push: { branches: ["main"] } });
+    expect(on).toMatchObject({ issue_comment: { types: ["created"] } });
     expect(await asks(["spec"])).toBe(true);
     expect(await asks(["spec"], MACHINE)).toBe(false);
     expect(await asks(["spec"], "stranger")).toBe(false);
@@ -564,7 +564,7 @@ describe("bin/done-check lets a check on this repo start a size trial to try a s
     const handed = doneChecking({ body });
     expect(handed.run().status).toBe(0);
 
-    expect(handed.handed()).toContain(`gh workflow run machine.yml -f ticket=974 -f reason=size-trial -f trial_cap=${Buffer.byteLength(wellFormedSpec) + Math.floor(Buffer.byteLength(record) / 2)}\``);
+    expect(handed.handed()).toContain(`gh workflow run machine.yml -f ticket=974 -f trial_cap=${Buffer.byteLength(wellFormedSpec) + Math.floor(Buffer.byteLength(record) / 2)}\``);
     expect(handed.handed()).toContain("the owner's bytes plus half the record's bytes");
   });
 
@@ -579,7 +579,7 @@ describe("bin/done-check lets a check on this repo start a size trial to try a s
     const checked = doneChecking({ contract: '{ "setup": "true", "steps": {} }\n', calledFrom: "collod873/claude-workflow/.github/workflows/machine.yml@refs/heads/main" });
 
     expect(checked.run().status).toBe(0);
-    expect(checked.handed()).toContain(`\`gh workflow run machine.yml -f ticket=974 -f reason=size-trial -f trial_cap=${Buffer.byteLength(wellFormedSpec)}\``);
+    expect(checked.handed()).toContain(`\`gh workflow run machine.yml -f ticket=974 -f trial_cap=${Buffer.byteLength(wellFormedSpec)}\``);
     expect(checked.handed()).toContain("`gh run list --workflow machine.yml`");
     expect(checked.handed()).not.toContain("reslice.yml");
   });

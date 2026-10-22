@@ -10,7 +10,7 @@ const CALLER = readFileSync(join(import.meta.dirname, "..", ".github", "caller.y
 const OFFER = `enrol: \`bin/runner ${REPO} pc\` moves its jobs to this PC; run one fresh full check there and watch its peak memory before leaving it on\n`;
 
 describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#1152)", () => {
-  it("writes the caller file naming only the repo's own CI, since GitHub refuses a workflow that hears itself, reaches it with the App, sets every secret, label and auto-merge, and holds main for check alone, since the reviewer lands what it reviews (ADR-0012)", () => {
+  it("writes the caller file, reaches it with the App, sets every secret, label and auto-merge, and holds main for check alone, since the reviewer lands what it reviews (ADR-0012)", () => {
     const { run, held } = enrolling(bare());
 
     const result = run();
@@ -18,8 +18,6 @@ describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#11
     expect(result.stderr).toBe("");
     expect(result.status).toBe(0);
     const after = held();
-    const caller = parse(after.files[".github/workflows/machine.yml"] ?? "") as { name: string; on: { workflow_run: { workflows: string[] } } };
-    expect(caller.on.workflow_run.workflows).toEqual(["Gate"]);
     expect(after.reached).toContain(REPO);
     expect(after.variables).toEqual(["CORE_APP_CLIENT_ID"]);
     expect(after.secrets.sort()).toEqual(["CLAUDE_CODE_OAUTH_TOKEN", "CORE_APP_PRIVATE_KEY"]);
@@ -33,13 +31,12 @@ describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#11
     expect(result.stdout).toBe(`enrol: ${REPO} enrolled, 9 settings set\n${OFFER}`);
   });
 
-  it("writes .github/caller.yml as it stands, but for the name of the repo's CI", () => {
+  it("writes .github/caller.yml as it stands, since it hears no CI run (#1447)", () => {
     const { run, held } = enrolling(bare());
 
     run();
 
-    expect(CALLER).toContain("workflows: [CI]\n");
-    expect(held().files[".github/workflows/machine.yml"]).toBe(CALLER.replace("workflows: [CI]\n", "workflows: [Gate]\n"));
+    expect(held().files[".github/workflows/machine.yml"]).toBe(CALLER);
   });
 
   it("commits the caller file and titles its PR as a conventional commit, which a commitlinted repo like Lumaria checks (#1251)", () => {
@@ -100,10 +97,10 @@ describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#11
 
     expect(result.status).toBe(1);
     const [headline, ...shown] = result.stderr.trimEnd().split("\n");
-    expect(headline).toBe(`enrol: ${REPO} is not enrolled, 10 could not be set and 0 were:`);
+    expect(headline).toBe(`enrol: ${REPO} is not enrolled, 11 could not be set and 0 were:`);
     expect(shown).toHaveLength(5);
     for (const line of shown.slice(0, 4)) expect(line).toMatch(/^- .+: gh: Bad credentials \(HTTP 401\)$/);
-    expect(shown[4]).toBe("- and 6 more");
+    expect(shown[4]).toBe("- and 7 more");
   });
 
   it("refuses the caller file when no one workflow runs a check job on pull requests, naming them", () => {
@@ -193,6 +190,17 @@ describe("bin/enrol keeps an enrolled repo current with the owner's own login (#
     expect(held().labels).not.toContain("ticket");
     expect(JSON.stringify(held().rules)).not.toContain(ENROLLED_REVIEW);
     expect(result.stdout).toBe(`enrol: ${REPO} enrolled, 1 settings set\n`);
+  });
+
+  it("takes off the queued, resolving and landing labels under --caller, since nothing marks them since one run builds, reviews and lands a ticket (ADR-0012, #1447)", () => {
+    const { run, held } = enrolling(bare({ rules: HELD_FOR_CHECK, allow_auto_merge: true, labels: ["bug", "queued", "resolving", "landing", "stuck"], files: { ".github/workflows/ci.yml": ci().replace("name: Gate", "name: CI"), ".github/workflows/machine.yml": CALLER } }), {});
+
+    const result = run(REPO, "--caller");
+
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+    expect(held().labels).toEqual(["bug", "stuck"]);
+    expect(run(REPO, "--caller").stdout).toBe(`enrol: ${REPO} was already enrolled, nothing changed\n`);
   });
 
   it("opens the PR afresh from main when a branch is left from an earlier enrolment", () => {

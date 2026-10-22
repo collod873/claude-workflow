@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { authoredOn, labelsHeld, opened, post, readOrStop, type Posting } from "./post.ts";
+import { authoredOn, commentEdited, commentOnTicket, labelsHeld, opened, post, readOrStop, type Posting } from "./post.ts";
 import { filedAs, wellFormedNote as NOTE, wellFormedSpec as SPEC } from "./scenarios.ts";
 
 const URL = "https://github.com/collod873/claude-workflow/issues/700";
@@ -131,6 +131,16 @@ describe("src/post.ts is the one way the machine writes text to GitHub (#662)", 
     expect(post(posting({ title: `A ticket ${dash} dashed`, text: TICKET.replace("takes a ticket and", `takes a ticket ${dash} and builds it ${dash} and`).replace("well-formed ticket.", `well-formed ticket, 1${dash}3 sentences.`) }), gh)).toEqual({ refusals: [], said: URL });
     expect(calls[0]?.[3]).toBe("A ticket, dashed");
     expect(calls[0]?.at(-1)).toBe(TICKET.replace("takes a ticket and", "takes a ticket, and builds it, and").replace("well-formed ticket.", "well-formed ticket, 1-3 sentences."));
+  });
+
+  it("comments on a ticket and edits a comment with each em dash taken out, as a filing is (#1447)", () => {
+    const { gh, calls } = github();
+    const dash = String.fromCodePoint(0x2014);
+
+    commentOnTicket("700", `The reviewer ${dash} reading the diff ${dash} approved it`, gh);
+    commentEdited(`${URL}#issuecomment-41`, `Held ${dash} tried 1${dash}3`, gh);
+
+    expect(calls.map((args) => args.at(-1))).toEqual(["The reviewer, reading the diff, approved it", "body=Held, tried 1-3"]);
   });
 
   it("creates the labels a repo lacks and files again, since five of eleven refused filings were a label not found", () => {

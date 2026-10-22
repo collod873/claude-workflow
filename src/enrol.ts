@@ -24,6 +24,8 @@ const HANDED = "ci: hand this repo's tickets to the machine";
 const CALLER_SETTING = "the caller file, check-job rule and pre-push";
 const RETIRED_REVIEWS = ["tickets / review", "review"];
 const UNREVIEWED_SETTING = `main requiring no ${RETIRED_REVIEWS.join(" or ")}, since the reviewer lands what it reviews`;
+const RETIRED_LABELS = ["queued", "resolving", "landing"];
+const UNLABELLED_SETTING = `no ${RETIRED_LABELS.join(", ")} label, since one run builds, reviews and lands a ticket`;
 const CALLER_ONLY = "--caller";
 const LINE_LIMIT = 200;
 const SHOWN = 4;
@@ -189,13 +191,6 @@ function appToken(clientId: string, key: string): string {
   }
 }
 
-function callerFor(ci: string): string {
-  const caller = parseDocument(CALLER_TEXT);
-  const named = caller.createNode([ci], { flow: true });
-  caller.setIn(["on", "workflow_run", "workflows"], named);
-  return caller.toString({ flowCollectionPadding: false, lineWidth: 0 });
-}
-
 function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] } {
   const contents = (path: string, ref?: string) => found<{ content: string; sha: string }>(["api", `repos/${repo}/contents/${path}${ref === undefined ? "" : `?ref=${ref}`}`]);
   const textOf = (path: string, ref?: string) => {
@@ -242,9 +237,8 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
     },
   });
 
-  const caller = once(() => callerFor(ci().name));
   const pieces = once((): { path: string; text: string | undefined }[] => [
-    { path: CALLER, text: caller() },
+    { path: CALLER, text: CALLER_TEXT },
     { path: ci().path, text: ruled(ci().path, ci().text) },
     { path: PRE_PUSH, text: undefined },
   ]);
@@ -301,7 +295,7 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
     let url: string;
     try {
       write(BRANCH);
-      url = open?.url ?? gh(["pr", "create", "-R", repo, "--head", BRANCH, "--base", held().default_branch, "--title", HANDED, "--body", `Brings \`${CALLER}\` to the caller text bin/enrol writes, naming this repo's CI, the \`${CHECK}\` job to the rule the machine's Check gives it, and takes out any \`${PRE_PUSH}\`, since land judges every landing. It merges on its own once \`${CHECK}\` passes.`]).trim();
+      url = open?.url ?? gh(["pr", "create", "-R", repo, "--head", BRANCH, "--base", held().default_branch, "--title", HANDED, "--body", `Brings \`${CALLER}\` to the caller text bin/enrol writes, the \`${CHECK}\` job to the rule the machine's Check gives it, and takes out any \`${PRE_PUSH}\`, since land judges every landing. It merges on its own once \`${CHECK}\` passes.`]).trim();
       gh(["pr", "merge", BRANCH, "-R", repo, "--auto", "--squash", "--delete-branch"]);
     } catch (error) {
       try {
@@ -349,6 +343,13 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
       held: () => made().every(({ name }) => labels().includes(name)),
       set: () => {
         for (const { name, colour, description } of made().filter((label) => !labels().includes(label.name))) gh(["label", "create", name, "-R", repo, "--color", colour, "--description", description]);
+      },
+    },
+    {
+      name: UNLABELLED_SETTING,
+      held: () => RETIRED_LABELS.every((name) => !labels().includes(name)),
+      set: () => {
+        for (const name of RETIRED_LABELS.filter((label) => labels().includes(label))) gh(["label", "delete", name, "-R", repo, "--yes"]);
       },
     },
     {
@@ -403,7 +404,7 @@ function enrol(repo: string, callerOnly: boolean): number {
   const refused: string[] = [];
   const told: string[] = [];
   const { settings, forPc } = enrolling(repo);
-  for (const setting of settings.filter(({ name }) => !callerOnly || name === CALLER_SETTING || name === UNREVIEWED_SETTING)) {
+  for (const setting of settings.filter(({ name }) => !callerOnly || name === CALLER_SETTING || name === UNREVIEWED_SETTING || name === UNLABELLED_SETTING)) {
     try {
       const waits = setting.waits?.();
       if (waits !== undefined) told.push(`enrol: ${repo}: ${waits}`);

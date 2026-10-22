@@ -59,11 +59,12 @@ any enrolled repo.
 _Avoid_: self-checkout, same tree
 
 **Enrol**:
-Give a repo everything its tickets need to build: in one PR, the caller file naming its own CI,
+Give a repo everything its tickets need to build: in one PR, the caller file,
 the **check-job rule** (`check.yml`'s `check` job `if` and `name`; enrol's own PR still runs it) on
 that CI's, and no pre-push, since `bin/land` is the gate; the App's reach, client id and keys, every label the
 machine spells, auto-merge, and main taking changes only by a PR passing `check`, here too. It drops the
-`tickets / review` and `review` checks no job posts (ADR-0012).
+`tickets / review` and `review` checks no job posts, and the `queued`, `resolving` and `landing`
+labels nothing marks (ADR-0012). This repo's `Enrol` workflow re-enrols them on each push to main.
 `bin/enrol <repo>` sets what is missing and names what it could not set.
 _Avoid_: onboard, install, register
 
@@ -242,19 +243,17 @@ _Avoid_: self-test, trial hook
 
 **Trial through the caller**:
 A size trial started through a caller file, so every repo on the caller file can run one. The
-caller file's dispatch takes an optional `trial_cap` beside `ticket` and `reason`; a dispatch
+caller file's dispatch takes an optional `trial_cap` beside `ticket`; a dispatch
 carrying it runs the `size-trial` job in `specs.yml` on the spec named in `ticket`, with the
 re-slice job's checkouts and caps and a token that can only read, and starts no builder.
 A check under a caller file reads the file's name from the run it is called from and is told to
-start the trial with `gh workflow run <caller file> -f ticket=<spec> -f reason=size-trial -f
-trial_cap=<cap>` and to find its run under that file. A dispatch with no trial cap, `rerun` or
-`probe` wakes a builder.
+start the trial with `gh workflow run <caller file> -f ticket=<spec> -f trial_cap=<cap>` and to
+find its run under that file. A dispatch with no trial cap, `rerun` or `probe` runs nothing.
 _Avoid_: caller trial, foreign trial
 
 **Run names**:
-The `run-name` the caller file carries, so every run under it names what it heard: the event, its
-issue or PR, a dispatch's ticket, rerun, trial cap or probe, as `.github/caller.yml` spells each.
-Enrol writes the file with no line folded, so the run name stays one line.
+The `run-name` the caller file carries, so every run under it names what it does: the event and
+its issue, a comment, a dispatch's rerun, trial cap or probe, as `.github/caller.yml` spells each.
 _Avoid_: run title, display name
 
 **Done check**:

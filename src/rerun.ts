@@ -76,8 +76,7 @@ function waitFor(run: string, attempt: string): void {
 }
 
 function handOn(run: string, attempt: string): undefined {
-  const url = `${process.env.GITHUB_SERVER_URL ?? "https://github.com"}/${process.env.GH_REPO ?? ""}/actions/runs/${run}`;
-  const handed = gh(["workflow", "run", CALLER_FILE, "-f", `ticket=${process.env.TICKET || "none"}`, "-f", `reason=Run ${url} ended red on attempt ${attempt}`, "-f", `rerun=${run}/${attempt}`]);
+  const handed = gh(["workflow", "run", CALLER_FILE, "-f", `ticket=${process.env.TICKET || "none"}`, "-f", `rerun=${run}/${attempt}`]);
   if (handed.status !== 0) console.error(`rerun: run ${run} could not be handed to ${CALLER_FILE}, so it is not re-run: ${firstLine(handed)}`);
   else console.log(`rerun: run ${run} ended red on attempt ${attempt}, so ${CALLER_FILE} is dispatched to re-run it`);
   return undefined;
