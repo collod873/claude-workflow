@@ -108,6 +108,8 @@ export const ticketBranch = (ticket: string) => `${TICKET_PREFIX}${ticket}`;
 export const FOLLOW_UP_OF = "Follow-up of #";
 export const BUILDER_SPLIT = ": its builder split it";
 export const SPLIT_FROM = new RegExp(`^${FOLLOW_UP_OF}(\\d+)${BUILDER_SPLIT}`, "m");
+export const RESEARCH_FOUND = ": its research found this.";
+export const RESEARCH_FROM = new RegExp(`^${FOLLOW_UP_OF}(\\d+)${RESEARCH_FOUND.replaceAll(".", "\\.")}`);
 const FAULT_OF = "Filed by the builder of ";
 const FAULT_WAITS = ", which waits on it, as the machine's fault";
 export const faultOf = (origin: string) => `${FAULT_OF}${origin}${FAULT_WAITS}.`;
