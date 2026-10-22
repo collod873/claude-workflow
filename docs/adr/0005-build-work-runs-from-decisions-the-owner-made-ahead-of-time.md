@@ -9,7 +9,8 @@ reversal: Builds would stop at the owner again, and a Spec would sit idle until 
 The owner decides up front; Specs and tickets carry on from those decisions on their own. A builder
 that finds a ticket's Done when wrong rewrites it to fit the ticket's Why, which stays in the
 owner's words, and keeps building. `stuck` is the single last resort for a stage that cannot go on,
-and unbuilt work stays open where he can find it. Planning the owner drives himself, a Wayfinder
+and unbuilt work stays open where he can find it. Work only the owner can do or decide is
+filed as a new `owner-step` note, and the ticket it came from closes as usual. Planning the owner drives himself, a Wayfinder
 map and its tickets, is where his input is asked for.
 
 **Rejected: a held label such as `needs-human`, or a builder answer that waits for the owner.**
