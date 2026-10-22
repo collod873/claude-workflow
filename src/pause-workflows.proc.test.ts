@@ -1,22 +1,20 @@
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { parse } from "yaml";
 import { holds, labelledOutputs, labelledStep, starts, workflowJobs, type IssueEvent, type StepOutcome } from "./scenarios.ts";
 import { HELD, MACHINE, PAUSED, STUCK, TICKET, WAITING } from "./spelled.ts";
 
 const REPO = join(import.meta.dirname, "..");
-const WATCHED = ["pause", "resume", "start", "fix"] as const;
+const WATCHED = ["start", "fix"] as const;
 const other = (held: string) => (held === PAUSED ? STUCK : PAUSED);
 
-async function stepsRun(file: string, event: IssueEvent, builds = ""): Promise<string[]> {
+async function stepsRun(file: string, event: IssueEvent): Promise<string[]> {
   const job = workflowJobs(file).build;
   if (job === undefined) throw new Error(`no build job in ${file}`);
   const { labels, ...rest } = event;
   if (!holds(job.if ?? "true", rest)) return [];
   const { failed, outputs } = await labelledOutputs(labelledStep(file, "build"), REPO, event);
   expect(failed, `the labelled step of ${file}`).toBe(false);
-  const given: Record<string, Record<string, string>> = { labelled: outputs, admit: { admitted: "true" }, resume: builds === "" ? {} : { builds } };
+  const given: Record<string, Record<string, string>> = { labelled: outputs, admit: { admitted: "true" } };
   const steps: Record<string, StepOutcome> = Object.fromEntries(job.steps.flatMap(({ id }) => (id === undefined ? [] : [[id, { outcome: "skipped", conclusion: "skipped", outputs: {} }]])));
   const ran: string[] = [];
   for (const step of job.steps) {
@@ -28,15 +26,11 @@ async function stepsRun(file: string, event: IssueEvent, builds = ""): Promise<s
   return WATCHED.filter((id) => ran.includes(id));
 }
 
-describe.each(["tickets.yml"])("%s pauses a ticket's PR and resumes the ticket from where it stands (#1174)", (file) => {
+describe.each(["tickets.yml"])("%s builds nothing on a pause and builds the ticket again once nothing holds it (#1174, ADR-0012)", (file) => {
   const owner = (action: string, label: string, labels: string[] = []): IssueEvent => ({ action, label, labels: [TICKET, ...labels] });
 
-  it("hears the labelled event, and adding paused turns auto-merge off and builds nothing", async () => {
-    const heard = join(REPO, ".github", "caller.yml");
-    const { on } = parse(readFileSync(heard, "utf8")) as { on: { issues?: { types?: string[] } } };
-    expect(on.issues?.types).toContain("labeled");
-
-    expect(await stepsRun(file, owner("labeled", PAUSED, [PAUSED]))).toEqual(["pause"]);
+  it("adding paused builds nothing, leaving a run already going to stand down before it lands", async () => {
+    expect(await stepsRun(file, owner("labeled", PAUSED, [PAUSED]))).toEqual([]);
     expect(await starts(file, "build", owner("labeled", PAUSED, [PAUSED]))).toBe(false);
   });
 
@@ -45,23 +39,17 @@ describe.each(["tickets.yml"])("%s pauses a ticket's PR and resumes the ticket f
     for (const kind of ["spec", "note"]) expect(await stepsRun(file, owner("labeled", PAUSED, [kind, PAUSED])), kind).toEqual([]);
   });
 
-  it.each(HELD)("taking %s off a ticket with no PR builds it, as taking waiting off does", async (held) => {
-    expect(await stepsRun(file, owner("unlabeled", held), "true")).toEqual(["resume", "start", "fix"]);
-  });
-
-  it.each(HELD)("taking %s off a ticket with a PR, red or green, leaves the resume to bin/resume and builds nothing new", async (held) => {
-    const ran = await stepsRun(file, owner("unlabeled", held), "false");
-
-    expect(ran).toEqual(["resume"]);
+  it.each(HELD)("taking %s off a ticket builds it, as taking waiting off does", async (held) => {
+    expect(await stepsRun(file, owner("unlabeled", held))).toEqual(["start", "fix"]);
   });
 
   it.each(HELD)("taking %s off a ticket that still carries the other held label does nothing", async (held) => {
-    expect(await stepsRun(file, owner("unlabeled", held, [other(held)]), "true")).toEqual([]);
+    expect(await stepsRun(file, owner("unlabeled", held, [other(held)]))).toEqual([]);
     expect(await starts(file, "build", owner("unlabeled", held, [other(held)]))).toBe(false);
   });
 
   it.each(HELD)("taking %s off a closed ticket resumes nothing", async (held) => {
-    expect(await stepsRun(file, { ...owner("unlabeled", held), state: "closed" }, "true")).toEqual([]);
+    expect(await stepsRun(file, { ...owner("unlabeled", held), state: "closed" })).toEqual([]);
   });
 
   it("taking waiting off a paused ticket builds nothing, and the App taking paused off is never heard", async () => {

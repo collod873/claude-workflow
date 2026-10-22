@@ -68,11 +68,6 @@ const FIXED: Part[] = [
     printsData: true,
   },
   {
-    name: "bin/save",
-    file: "bin/save",
-    stops: "https://github.com/collod873/claude-workflow/issues/649",
-  },
-  {
     name: "bin/enrol",
     file: "bin/enrol",
     stops: "https://github.com/collod873/claude-workflow/issues/1150",

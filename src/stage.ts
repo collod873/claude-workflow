@@ -1,7 +1,8 @@
 import { spawnSync } from "node:child_process";
-import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, rmSync, statSync } from "node:fs";
+import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { type Asked, askedIssue, ghRead, gitRead, heldOn, mark, unread, type MarkedLabel } from "./post.ts";
+import { NO_EM_DASH, onDisk } from "./brief.ts";
+import { type Asked, askedIssue, commentOnTicket, gh, ghRead, git, gitRead, heldOn, mark, OWNER, STUCK, unread, type MarkedLabel } from "./post.ts";
 import type { Stop } from "./stops.ts";
 import { quoted } from "./ticket-shape.ts";
 
@@ -166,6 +167,48 @@ export function opened<Carried, Own extends string>({ stage, issue, state, tried
   }
   const readied = ready(asked);
   if (typeof readied !== "object") return readied;
+  const spend = hire(stage, issue, hiring);
   if (readied.unmarked !== true) mark(issue, state, ...((readied.tried ?? tried) === true ? (["--try"] as const) : []));
-  return { asked, carried: readied.carrying, spend: hire(stage, issue, hiring) };
+  return { asked, carried: readied.carrying, spend };
+}
+
+export const OWNER_STEPS = {
+  type: "array",
+  items: {
+    type: "object",
+    properties: {
+      title: { type: "string", pattern: NO_EM_DASH },
+      why: { type: "string", pattern: NO_EM_DASH },
+    },
+    required: ["title", "why"],
+    additionalProperties: false,
+  },
+};
+
+export interface OwnerStep {
+  title: string;
+  why: string;
+}
+
+export const linted = (commitlint: boolean | undefined) =>
+  commitlint === true ? ["This repo runs commitlint on every commit: write each message as `type: subject`, the type `feat`, `fix` or another conventional one, the subject lower-case, as the machine's own are."] : [];
+
+const COMMITLINT = /^(\.commitlintrc(\.\w+)?|commitlint\.config\.[cm]?[jt]s)$/;
+const COMMITLINT_KEY = /"commitlint"\s*:/;
+export const commitlinted = () => readdirSync(process.cwd()).some((name) => COMMITLINT.test(name)) || COMMITLINT_KEY.test(onDisk(join(process.cwd(), "package.json")) ?? "");
+const conventional = (type: string, message: string) => `${type}: ${message.charAt(0).toLowerCase()}${message.slice(1)}`;
+
+export const head = () => gitRead(["rev-parse", "HEAD"], "the head of this branch could not be read");
+
+export function calledOwner(ticket: string, by: "builder" | "reviewer", why: string): number {
+  mark(ticket, STUCK);
+  commentOnTicket(ticket, `@${OWNER} the ${by} of #${ticket} stopped and needs you: ${why}`, gh);
+  console.error(`fix: #${ticket} needs the owner, ${why}`);
+  return 1;
+}
+
+export function committed(message: string, type: "feat" | "fix"): void {
+  if (gitRead(["status", "--porcelain"], "what was changed could not be read") === "") return;
+  git(["add", "--all"]);
+  git(["commit", "--quiet", "-m", commitlinted() ? conventional(type, message) : message]);
 }

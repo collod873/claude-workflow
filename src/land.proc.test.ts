@@ -1,11 +1,9 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { ENROLLED_REVIEW } from "./post.ts";
-import { agedLogs, git, landSession, LANDED_PR as PR, MERGE_REFUSAL as REFUSAL, plant, type Merge } from "./scenarios.ts";
+import { agedLogs, git, landSession, LANDED_PR as PR, MERGE_REFUSAL as REFUSAL, plant, TICKET_TITLE, type Merge } from "./scenarios.ts";
 
-const JUDGED_CHECK = "description=judged by land on the owner's PC, on the commit before the push (ADR-0008)";
-const SKIPPED_REVIEW = "description=skipped: a session landing is judged by land, not reviewed (ADR-0008)";
+const JUDGED_CHECK = "description=judged by land on the commit before the push (ADR-0008)";
 const DASH = "\u2014";
 
 const sessionAheadOfMain = (commits: number, options: Omit<Parameters<typeof landSession>[0], "messages"> = {}) => landSession({ messages: Array.from({ length: commits }, (_, n) => `change ${n + 1}`), ...options });
@@ -23,7 +21,7 @@ function landedElsewhere(root: string, remote: string, file: string, content: st
 }
 
 describe("bin/land turns a session's commits into a PR it merges at once, posting the check it passed before the push as the head's status once the push has put the head on GitHub, which takes no status for a commit it lacks (#1344, #1345)", () => {
-  it("opens a merge-commit PR from a land branch, posts check as judged and tickets / review as skipped for the head after the push, merges matching that head, and brings local main up to the merged main (#1386)", () => {
+  it("opens a merge-commit PR from a land branch, posts check as judged for the head after the push and nothing else, merges matching that head, and brings local main up to the merged main (#1386)", () => {
     const { remote, session, head, branch, run, calls, merged, posted } = sessionAheadOfMain(2);
 
     const result = run();
@@ -32,9 +30,8 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
     expect(calls()).toContainEqual(["pr", "create", "--base", "main", "--head", branch, "--title", "change 2", "--body", "- change 1\n- change 2"]);
     expect(calls().filter(posted)).toEqual([
       ["api", "-X", "POST", `repos/{owner}/{repo}/statuses/${head}`, "-f", "state=success", "-f", "context=check", "-f", JUDGED_CHECK],
-      ["api", "-X", "POST", `repos/{owner}/{repo}/statuses/${head}`, "-f", "state=success", "-f", `context=${ENROLLED_REVIEW}`, "-f", SKIPPED_REVIEW],
     ]);
-    expect(calls().filter((call) => call.join(" ").includes("/rules/")), "every repo requires one review name, so land asks no ruleset for it").toEqual([]);
+    expect(calls().filter((call) => call.join(" ").includes("/rules/")), "main requires check alone, so land asks no ruleset what it requires").toEqual([]);
     expect(calls().filter(merged)).toEqual([["pr", "merge", branch, "--merge", "--match-head-commit", head]]);
     expect(git(session, "rev-parse", "HEAD")).toBe(git(remote, "rev-parse", "main"));
     expect(git(session, "rev-parse", "HEAD^2")).toBe(head);
@@ -72,7 +69,7 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
 
     expect(result.status, result.stderr).toBe(0);
     expect(checked()).toEqual(["--full --covered", "--full --publish"]);
-    expect(calls().filter(posted).map((call) => call.at(-1))).toEqual([JUDGED_CHECK, SKIPPED_REVIEW]);
+    expect(calls().filter(posted).map((call) => call.at(-1))).toEqual([JUDGED_CHECK]);
     expect(calls().filter(merged)).toEqual([["pr", "merge", branch, "--merge", "--match-head-commit", head]]);
   });
 
@@ -103,7 +100,7 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
 
     expect(result.status, result.stderr).toBe(0);
     expect(checked()).toEqual([]);
-    expect(calls().filter(posted).map((call) => call.at(-1))).toEqual(["description=docs/buckets.md alone changed from main, and no check step reads it (#1382)", "description=docs/buckets.md alone changed from main, and no check step reads it (#1382)"]);
+    expect(calls().filter(posted).map((call) => call.at(-1))).toEqual(["description=docs/buckets.md alone changed from main, and no check step reads it (#1382)"]);
     expect(calls().filter(merged)).toEqual([["pr", "merge", `land/${head.slice(0, 12)}`, "--merge", "--match-head-commit", head]]);
   });
 
@@ -156,7 +153,7 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
       ["pr", "merge", branch, "--merge", "--match-head-commit", head],
       ["pr", "merge", branch, "--merge", "--match-head-commit", rebased],
     ]);
-    expect(calls().filter(posted).map((call) => `${call[3]} ${call[7]}`)).toEqual([`repos/{owner}/{repo}/statuses/${head} context=check`, `repos/{owner}/{repo}/statuses/${head} context=${ENROLLED_REVIEW}`, `repos/{owner}/{repo}/statuses/${rebased} context=check`, `repos/{owner}/{repo}/statuses/${rebased} context=${ENROLLED_REVIEW}`]);
+    expect(calls().filter(posted).map((call) => `${call[3]} ${call[7]}`)).toEqual([`repos/{owner}/{repo}/statuses/${head} context=check`, `repos/{owner}/{repo}/statuses/${rebased} context=check`]);
     expect(calls().filter((call) => call[1] === "create")).toHaveLength(1);
     expect(git(session, "rev-parse", "HEAD")).toBe(git(remote, "rev-parse", "main"));
     expect(result.stdout).toBe(`Landed ${PR}\n`);
@@ -300,6 +297,28 @@ describe("bin/land refuses what must not reach main (#681)", () => {
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe(`land: the tree differs from the commit, so nothing landed; commit or remove ${named} and land again\n`);
     expect(checked()).toEqual([]);
+    expect(git(remote, "for-each-ref", "--format=%(refname)")).toBe("refs/heads/main");
+    expect(calls()).toEqual([]);
+  });
+
+  it("lands a ticket's build from the ticket's own branch, its PR titled as the ticket and saying it builds it, when the reviewer names the ticket (ADR-0012)", () => {
+    const { head, run, calls, merged } = sessionAheadOfMain(1);
+
+    const result = run(["--ticket", "811"]);
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(calls()).toContainEqual(["pr", "create", "--base", "main", "--head", "ticket/811", "--title", TICKET_TITLE, "--body", "Builds #811\n\n- change 1"]);
+    expect(calls().filter(merged)).toEqual([["pr", "merge", "ticket/811", "--merge", "--match-head-commit", head]]);
+    expect(result.stdout).toBe(`Landed ${PR}\n`);
+  });
+
+  it.each([[["--ticket"]], [["--ticket", "eleven"]], [["811"]]])("lands nothing and says its usage given %j, since only --ticket and a number name a ticket", (args) => {
+    const { remote, run, calls } = landSession();
+
+    const result = run(args);
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toMatch(/^land: usage: land \[--ticket <number>\]/);
     expect(git(remote, "for-each-ref", "--format=%(refname)")).toBe("refs/heads/main");
     expect(calls()).toEqual([]);
   });

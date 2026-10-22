@@ -2,15 +2,15 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { ENROLLED_REVIEW } from "./post.ts";
+const ENROLLED_REVIEW = "tickets / review";
 import { MACHINE } from "./spelled.ts";
-import { bare, checkJobRule, ci, CI_ON_EVERY_PR, DEPLOY, ENROLLED as REPO, enrolling, home, HOME, homeTickets, key, PC_RUNS_ON } from "./scenarios.ts";
+import { bare, checkJobRule, ci, CI_ON_EVERY_PR, DEPLOY, ENROLLED as REPO, enrolling, home, HOME, key, PC_RUNS_ON } from "./scenarios.ts";
 
 const CALLER = readFileSync(join(import.meta.dirname, "..", ".github", "caller.yml"), "utf8");
 const OFFER = `enrol: \`bin/runner ${REPO} pc\` moves its jobs to this PC; run one fresh full check there and watch its peak memory before leaving it on\n`;
 
 describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#1152)", () => {
-  it("writes the caller file naming only the repo's own CI, since GitHub refuses a workflow that hears itself, reaches it with the App, sets every secret, label and auto-merge, and holds main for check and the caller's review", () => {
+  it("writes the caller file naming only the repo's own CI, since GitHub refuses a workflow that hears itself, reaches it with the App, sets every secret, label and auto-merge, and holds main for check alone, since the reviewer lands what it reviews (ADR-0012)", () => {
     const { run, held } = enrolling(bare());
 
     const result = run();
@@ -29,8 +29,8 @@ describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#11
     expect(after.allow_auto_merge).toBe(true);
     expect(after.rules.map(({ type }) => type)).toEqual(expect.arrayContaining(["pull_request", "required_status_checks"]));
     expect(JSON.stringify(after.rules)).toContain('"context":"check"');
-    expect(JSON.stringify(after.rules)).toContain(`"context":"${ENROLLED_REVIEW}"`);
-    expect(result.stdout).toBe(`enrol: ${REPO} enrolled, 10 settings set\n${OFFER}`);
+    expect(JSON.stringify(after.rules)).not.toContain(ENROLLED_REVIEW);
+    expect(result.stdout).toBe(`enrol: ${REPO} enrolled, 9 settings set\n${OFFER}`);
   });
 
   it("writes .github/caller.yml as it stands, but for the name of the repo's CI", () => {
@@ -84,11 +84,10 @@ describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#11
 
     expect(result.status).toBe(1);
     expect(result.stderr.trimEnd().split("\n")).toEqual([
-      `enrol: ${REPO} is not enrolled, 4 could not be set and 6 were:`,
+      `enrol: ${REPO} is not enrolled, 3 could not be set and 6 were:`,
       "- CLAUDE_CODE_OAUTH_TOKEN: no CLAUDE_CODE_OAUTH_TOKEN in the environment to set it from",
       "- auto-merge: gh: Must have admin rights to Repository. (HTTP 403)",
       "- the caller file, check-job rule and pre-push: auto-merge is off, so a PR for it would never merge on its own",
-      `- main taking only a PR its review passed: the caller file on main runs no ${ENROLLED_REVIEW}, so main would wait on a review that never runs`,
     ]);
     expect(held().labels).toContain("ticket");
     expect(held().dependabot).toEqual(["CORE_APP_PRIVATE_KEY"]);
@@ -138,7 +137,7 @@ const STALE = CALLER.replace("    types: [created]\n", "");
 const HELD_FOR_CHECK = [{ type: "pull_request" }, { type: "required_status_checks", parameters: { required_status_checks: [{ context: "check" }] } }];
 
 describe("bin/enrol keeps an enrolled repo current with the owner's own login (#1155)", () => {
-  it("unpins check and the review from GitHub Actions in the ruleset main already has, so the status a pre-push posts satisfies it, and adds no second ruleset (#1344)", () => {
+  it("unpins check from GitHub Actions in the ruleset main already has, so the status a pre-push posts satisfies it, drops the retired review from it, and adds no second ruleset (#1344, ADR-0012)", () => {
     const pinned = [
       { type: "pull_request", ruleset_id: 7 },
       { type: "required_status_checks", ruleset_id: 7, parameters: { strict_required_status_checks_policy: true, required_status_checks: [{ context: "check", integration_id: 15368 }, { context: ENROLLED_REVIEW, integration_id: 15368 }] } },
@@ -151,8 +150,9 @@ describe("bin/enrol keeps an enrolled repo current with the owner's own login (#
     expect(result.status).toBe(0);
     const after = held();
     expect(JSON.stringify(after.rules)).not.toContain("integration_id");
+    expect(JSON.stringify(after.rules)).not.toContain(ENROLLED_REVIEW);
     expect(after.rules.filter(({ type }) => type === "required_status_checks")).toHaveLength(1);
-    expect(after.writes.filter((args) => args.includes("ruleset")).map((args) => args.slice(0, 4).join(" "))).toEqual([`api -X PUT repos/${REPO}/rulesets/7`]);
+    expect(new Set(after.writes.filter((args) => args.includes("ruleset")).map((args) => args.slice(0, 4).join(" ")))).toEqual(new Set([`api -X PUT repos/${REPO}/rulesets/7`]));
   });
 
   it("adds the PR-only rules to the ruleset main already holds for check, so the caller file then goes through a PR and not a refused write to main (workout-tracker, 2026-10-20)", () => {
@@ -262,20 +262,13 @@ describe("bin/enrol keeps an enrolled repo current with the owner's own login (#
 
     expect(run().status).toBe(0);
     const required = held().rules.filter(({ type }) => type === "required_status_checks");
-    expect(required.map(({ parameters }) => (parameters as { strict_required_status_checks_policy?: boolean }).strict_required_status_checks_policy)).toEqual([false, false]);
+    expect(required.map(({ parameters }) => (parameters as { strict_required_status_checks_policy?: boolean }).strict_required_status_checks_policy)).toEqual([false]);
   });
 
-  it("holds main for the caller's review in a repo enrolled before it, once its caller file is current (#1285)", () => {
-    const { run, held } = enrolling(bare({ rules: HELD_FOR_CHECK, allow_auto_merge: true, files: { ".github/workflows/ci.yml": ci(), ".github/workflows/machine.yml": STALE } }));
-
-    expect(run().status).toBe(0);
-    expect(JSON.stringify(held().rules)).toContain(`"context":"${ENROLLED_REVIEW}"`);
-  });
-
-  it("names the caller PR still waiting on check, holding main for the caller's review only once that PR merges, and leaves it alone on a re-run (#1285)", () => {
+  it("names the caller PR still waiting on check, and leaves it alone on a re-run (#1285)", () => {
     const { run, held } = enrolling(bare({ rules: HELD_FOR_CHECK, allow_auto_merge: true, pending: true, files: { ".github/workflows/ci.yml": ci(), ".github/workflows/machine.yml": STALE } }));
     const pr = `https://github.com/${REPO}/pull/900 merges on its own once check passes`;
-    const waiting = `- the caller file, check-job rule and pre-push: ${pr}\n- main taking only a PR its review passed: ${pr}`;
+    const waiting = `- the caller file, check-job rule and pre-push: ${pr}`;
 
     expect(run().stdout).toBe(`enrol: ${REPO} is enrolled once its PR merges, 7 settings set:\n${waiting}\n${OFFER}`);
     const before = held().writes.length;
@@ -283,38 +276,25 @@ describe("bin/enrol keeps an enrolled repo current with the owner's own login (#
     expect(run()).toEqual({ status: 0, stdout: `enrol: ${REPO} is enrolled once its PR merges, 0 settings set:\n${waiting}\n${OFFER}`, stderr: "" });
     expect(held().writes).toHaveLength(before);
     expect(held().prs.map(({ auto }) => auto)).toEqual([true]);
-    expect(JSON.stringify(held().rules)).not.toContain(ENROLLED_REVIEW);
   });
 });
 
-describe("bin/enrol requires no review where the owner disabled the repo's Machine workflow, since nothing there posts it (workout-tracker#166, 2026-10-20)", () => {
-  const PAUSED_LINE = `enrol: ${REPO}: its machine.yml workflow is disabled, so main requires no ${ENROLLED_REVIEW} until it is enabled and bin/enrol runs again`;
+describe("bin/enrol drops the review main required, since the reviewer lands what it reviews in the run that built it (ADR-0012)", () => {
   const CHECK_RULES = [
     { type: "pull_request", ruleset_id: 7 },
     { type: "required_status_checks", ruleset_id: 7, parameters: { strict_required_status_checks_policy: true, required_status_checks: [{ context: "check" }] } },
   ];
   const REVIEW_RULESET = { type: "required_status_checks", ruleset_id: 8, parameters: { strict_required_status_checks_policy: true, required_status_checks: [{ context: ENROLLED_REVIEW }] } };
   const SHARED = [{ type: "pull_request", ruleset_id: 7 }, { type: "required_status_checks", ruleset_id: 7, parameters: { strict_required_status_checks_policy: true, required_status_checks: [{ context: "check" }, { context: ENROLLED_REVIEW }] } }];
-  const pausedRepo = (rules: ReturnType<typeof bare>["rules"]) => bare({ rules, paused: true, allow_auto_merge: true, files: { ".github/workflows/ci.yml": ci(), ".github/workflows/machine.yml": STALE } });
-
-  it("adds no review rule to a paused repo's main, saying why", () => {
-    const { run, held } = enrolling(pausedRepo(CHECK_RULES));
-
-    const result = run();
-
-    expect(result.stderr).toBe("");
-    expect(result.status).toBe(0);
-    expect(JSON.stringify(held().rules)).not.toContain(ENROLLED_REVIEW);
-    expect(result.stdout).toContain(`${PAUSED_LINE}\n`);
-  });
+  const enrolled = (rules: ReturnType<typeof bare>["rules"]) => bare({ rules, allow_auto_merge: true, files: { ".github/workflows/ci.yml": ci(), ".github/workflows/machine.yml": CALLER.replace("workflows: [CI]\n", "workflows: [Gate]\n") } });
 
   it.each([
     ["deletes the review's own ruleset", [...CHECK_RULES, REVIEW_RULESET]],
     ["drops the review from the ruleset it shares with check", SHARED],
-  ])("%s on a paused repo, keeping main held for check through a PR", (_, rules) => {
-    const { run, held } = enrolling(pausedRepo(rules));
+  ])("%s, keeping main held for check through a PR", (_, rules) => {
+    const { run, held } = enrolling(enrolled(rules));
 
-    expect(run().status).toBe(0);
+    expect(run()).toMatchObject({ status: 0, stderr: "" });
     const after = held();
     expect(JSON.stringify(after.rules)).not.toContain(ENROLLED_REVIEW);
     expect(after.rules.filter(({ ruleset_id }) => ruleset_id === 7).map(({ type }) => type).sort()).toEqual(["pull_request", "required_status_checks"]);
@@ -431,61 +411,30 @@ describe("bin/enrol brings an enrolled repo's CI check job to this repo's and ta
   });
 });
 
-const TICKETS = homeTickets();
-const GUARDED = TICKETS.replace(/^( {2}review:\n {4}if: \$\{\{ .*?) \}\}$/m, "$1 && github.repository != format('{0}/claude-workflow', github.repository_owner) }}");
-describe("bin/enrol on this repo swaps the review main requires for tickets / review only once tickets.yml runs its review here (#1368)", () => {
-  it("ends green changing nothing while tickets.yml skips the review here, saying the swap waits on it", () => {
-    expect(GUARDED).not.toBe(TICKETS);
-    const { run, held } = enrolling(home(GUARDED), {});
-
-    const result = run(HOME, "--caller");
-
-    expect(result.stderr).toBe("");
-    expect(result.status).toBe(0);
-    expect(result.stdout).toBe(`enrol: ${HOME} was already enrolled, nothing changed\nenrol: ${HOME}: swapping review for ${ENROLLED_REVIEW} in main's required checks waits on tickets.yml running its review here\n`);
-    expect(held().writes).toEqual([]);
-  });
-
-  it("still waits where tickets.yml words its skip of this repo another way, or has no review job", () => {
-    const reworded = TICKETS.replace("  review:\n    if: ${{ ", "  review:\n    if: ${{ github.event.repository.name != 'claude-workflow' && ");
-    const reviewless = TICKETS.replace(/^ {2}review:\n/m, "  judged:\n");
-    for (const tickets of [reworded, reviewless]) {
-      const { run, held } = enrolling(home(tickets), {});
-
-      expect(run(HOME, "--caller").stdout).toContain("waits on tickets.yml running its review here");
-      expect(held().writes).toEqual([]);
-    }
-  });
-
-  it("says nothing of the swap where no ruleset requires plain review", () => {
-    const { run } = enrolling({ ...home(GUARDED), rules: [{ type: "pull_request" }] }, {});
-
-    expect(run(HOME, "--caller").stdout).toBe(`enrol: ${HOME} was already enrolled, nothing changed\n`);
-  });
-
-  it("requires tickets / review in review's place, keeping every other rule, once tickets.yml runs its review here", () => {
-    const { run, held } = enrolling(home(TICKETS), {});
+describe("bin/enrol on this repo drops the plain review main required, under --caller as the machine's own token runs it (ADR-0012)", () => {
+  it("keeps check alone in main's required checks, keeping every other rule", () => {
+    const { run, held } = enrolling(home(), {});
 
     const result = run(HOME, "--caller");
 
     expect(result.stderr).toBe("");
     expect(result.status).toBe(0);
     const checks = held().rules.flatMap(({ parameters }) => (parameters as { required_status_checks?: { context: string }[] } | undefined)?.required_status_checks ?? []).map(({ context }) => context);
-    expect(checks).toEqual(["check", ENROLLED_REVIEW]);
+    expect(checks).toEqual(["check"]);
     expect(held().rules.map(({ type }) => type).sort()).toEqual(["pull_request", "required_status_checks"]);
     expect(held().prs).toEqual([]);
   });
 
   it.each([
-    ["waits on the next bin/land here, ending green on one line, when GitHub refuses the App's token the ruleset write (#1389)", "gh: Resource not accessible by integration (HTTP 403)", 0],
+    ["waits on bin/enrol run on the owner's token, ending green on one line, when GitHub refuses the App's token the ruleset write (#1389)", "gh: Resource not accessible by integration (HTTP 403)", 0],
     ["still ends red on any other refusal of the ruleset write", "gh: Validation Failed (HTTP 422)", 1],
   ])("%s", (_, refusal, status) => {
-    const { run, held } = enrolling({ ...home(TICKETS), refused: { "rulesets/3 --input": refusal } }, {});
+    const { run, held } = enrolling({ ...home(), refused: { "rulesets/3 --input": refusal } }, {});
 
     const result = run(HOME, "--caller");
 
     expect(result.status).toBe(status);
-    if (status === 0) expect(result).toMatchObject({ stderr: "", stdout: `enrol: ${HOME} was already enrolled, nothing changed\nenrol: ${HOME}: swapping review for ${ENROLLED_REVIEW} in main's required checks waits on the next bin/land here, which runs it on the owner's token\n` });
+    if (status === 0) expect(result).toMatchObject({ stderr: "", stdout: `enrol: ${HOME} was already enrolled, nothing changed\nenrol: ${HOME}: dropping ${ENROLLED_REVIEW} and review from main's required checks waits on bin/enrol run on the owner's token\n` });
     else expect(result.stderr).toContain(refusal);
     expect(JSON.stringify(held().rules)).toContain('"context":"review"');
   });

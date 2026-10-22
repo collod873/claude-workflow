@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { asRuled, CHECK, ON_MAIN, refusals, REVIEW, RULED } from "./rulesets.ts";
+import { asRuled, CHECK, ON_MAIN, refusals, RULED } from "./rulesets.ts";
 
 describe("GitHub holds main, and this reads the ruleset it holds it with (#652)", () => {
   it("names a ruleset that is missing, switched off, weakened, bypassed, or requiring an up-to-date branch", () => {
@@ -13,7 +13,7 @@ describe("GitHub holds main, and this reads the ruleset it holds it with (#652)"
       "main lands only through a PR holds no non_fast_forward rule",
     ]);
     expect(refusals([{ ...main, rules: main.rules.map((rule) => (rule.type === "required_status_checks" ? { ...rule, parameters: {} } : rule)) }], ON_MAIN)).toEqual([
-      `main lands only through a PR requires no check, not ${CHECK},${REVIEW}`,
+      `main lands only through a PR requires no check, not ${CHECK}`,
     ]);
     expect(refusals([{ ...main, rules: main.rules.map((rule) => (rule.type === "required_status_checks" ? { ...rule, parameters: { ...rule.parameters, strict_required_status_checks_policy: true } } : rule)) }], ON_MAIN)).toEqual([
       "main lands only through a PR requires an up-to-date branch, which reruns the full check each time main moves (agent-hooks#176)",

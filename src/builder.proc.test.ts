@@ -5,8 +5,8 @@ import { BUILDER_SESSION, CHECK_PASSES, CHECK_RED, FULL_CHECK_RED_ONCE, fixing }
 import { onPath } from "./scenarios.ts";
 import { HELD } from "./spelled.ts";
 
-const DRIFT = "The reviewer read this PR against the Why of #811 and found drift.\n\n- src/builder.ts never resumes its session\n";
 const FIXES = "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n";
+const REVIEWER_FIXES = "printf 'export const shaped = 3;\\n' >src/ticket-shape.ts\n";
 const RED_FOUR_TIMES = ["n=$(cat ../reds 2>/dev/null || echo 0)", `[ "$n" -ge 4 ] && { ${CHECK_PASSES.trim()}; exit 0; }`, "echo $((n + 1)) >../reds", CHECK_RED].join("\n");
 const BUILDS_THE_REWRITE = `[ "$CALL" = 2 ] && { ${FIXES.trim()}; sed -i 's/"outcome":"ticket"/"outcome":"code"/' ../answer.jsonl; }\n`;
 const FIXES_EACH_ROUND = "printf 'export const shaped = %s;\\n' \"$((CALL + 1))\" >src/ticket-shape.ts\n";
@@ -17,35 +17,32 @@ const untouched = ({ marked, handed, calls }: ReturnType<typeof fixing>) => {
   expect(handed()).toEqual([]);
   expect(calls().filter((args) => ["comment", "edit", "create", "close"].includes(args[1] ?? ""))).toEqual([]);
 };
-const woken = (reason: string) => {
-  const { run, handed } = fixing({ reason, claude: FIXES });
-  return { result: run("811"), prompt: handed()[0] };
-};
 
-describe("the builder owns a red ticket until it merges (#898)", () => {
+describe("the builder owns its ticket from build to land in one run (#898, ADR-0012)", () => {
   it("starts on a tree a red stage left dirty, and commits what is there with its fix, where #894 refused before any model", () => {
-    const { run, handed, saved, log } = fixing({ leftover: { "src/builder-turn.test.ts": "import { it } from \"vitest\";\n" }, claude: FIXES });
+    const { run, handed, landed, closed, log } = fixing({ leftover: { "src/builder-turn.test.ts": "import { it } from \"vitest\";\n" }, claude: FIXES });
 
     const result = run();
 
     expect(result.status, result.stderr).toBe(0);
-    expect(handed()).toHaveLength(1);
-    expect(log("-1", "--name-only", "--format=%s").split("\n").filter((line) => line !== "")).toEqual(["Repair #811 as its builder", "src/builder-turn.test.ts", "src/ticket-shape.ts"]);
-    expect(saved()).toEqual(["811"]);
+    expect(handed()).toHaveLength(2);
+    expect(log("-1", "--name-only", "--format=%s").split("\n").filter((line) => line !== "")).toEqual(["Build #811 as its builder", "src/builder-turn.test.ts", "src/ticket-shape.ts"]);
+    expect(landed()).toEqual([`${log("-1", "--format=%H")} --ticket 811`]);
+    expect(closed()).toEqual(["811 9811"]);
   });
 
-  it("builds a ticket nothing has failed on yet, marked building and committed as a build, and pushes once green (#931)", () => {
-    const { run, handed, marked, saved, log } = fixing({ claude: FIXES });
+  it("builds a ticket marked building, commits it as a build, and once green hands it to review, lands it and closes it with the PR bin/land names (#931)", () => {
+    const { run, handed, marked, landed, closed, log } = fixing({ claude: FIXES });
 
     const result = run("811");
 
     expect(result.status, result.stderr).toBe(0);
     expect(handed()[0]).toContain("## Build it");
     expect(handed()[0]).toContain("never the owner");
-    expect(handed()[0]).not.toContain("## How it failed");
     expect(marked()).toEqual(["811 building", "811 checking"]);
     expect(log("-1", "--format=%s")).toBe("Build #811 as its builder");
-    expect(saved()).toEqual(["811"]);
+    expect(landed()).toEqual([`${log("-1", "--format=%H")} --ticket 811`]);
+    expect(closed()).toEqual(["811 9811"]);
   });
 
   it("opens a build with the whole of the contract's steps as they stand in the tree it builds in, whatever repo that is (#990)", () => {
@@ -57,78 +54,22 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(handed()[0]).toContain("check --full");
   });
 
-  it("passes a foreign tree whose check is red only for steps the runner lacks what they need for, leaving them to its own CI, and keeps this repo's own check judging them (#1142)", () => {
-    const unmet = "printf 'check: red integration (needs DATABASE_URL), e2e (needs BASE_URL, TOKEN); log /nowhere/check-full.log\\n'\nexit 1\n";
-    const foreign = fixing({ claude: FIXES, check: unmet, calledFrom: "collod873/Lumaria/.github/workflows/machine.yml@refs/heads/main" });
-    const own = fixing({ claude: FIXES, check: unmet });
 
-    expect(foreign.run("811").status).toBe(0);
-    expect(foreign.saved(), "tells save the check left steps to the repo's CI, so save posts no check status").toEqual(["811 --unjudged"]);
-    expect(foreign.marked()).toEqual(["811 building", "811 checking"]);
-    expect(foreign.handed()[0]).toContain("`<step> (needs <VAR>)`");
-    expect(own.run("811").status).toBe(1);
-    expect(own.saved()).toEqual([]);
-    expect(own.handed()[0]).not.toContain("(needs <VAR>)");
-  });
-
-  it("reads the unmet need off the real check's verdict, which names it red in CI, and opens the foreign tree's PR in its own repo through the real save (#1142, #1146)", () => {
-    const real = onPath("check");
-    const contract = '{ "steps": { "integration": { "run": "true", "needs": ["DATABASE_URL"] } } }\n';
-    const check = `env -u DATABASE_URL CI=true "${real}" "$@" | tee -a ../check-out\nexit "\${PIPESTATUS[0]}"\n`;
-    const { run, saved, opened, calls, session } = fixing({ claude: FIXES, contract, check, realSave: true, reason: "waiting came off", calledFrom: "collod873/Lumaria/.github/workflows/machine.yml@refs/heads/main" });
-
-    const result = run("811");
-
-    expect(result.status, result.stderr).toBe(0);
-    expect(readFileSync(join(session, "..", "check-out"), "utf8")).toMatch(/^check: red integration \(needs DATABASE_URL\)/m);
-    expect(saved()).toEqual(["811 --unjudged"]);
-    expect(opened()).toEqual(["collod873/Lumaria https://github.com/collod873/Lumaria/pull/9811"]);
-    expect(calls().filter((args) => args[0] === "pr").map((args) => args.slice(0, 3).join(" "))).toEqual(["pr view ticket/811", "pr create --base", "pr merge ticket/811", "pr view ticket/811"]);
-    expect(calls().some((args) => args[0] === "api" && args.includes("context=check")), "a check left to the repo's CI posts no status").toBe(false);
-  });
-
-  it("passes a foreign tree red only for an unmet need though its receipts were not published, as a green check whose receipts were not is passed (#1147)", () => {
-    const unpublished = "printf 'check: red integration (needs DATABASE_URL); receipts not published (no origin remote); log /nowhere/check-full.log\\n'\nexit 1\n";
-    const { run, saved } = fixing({ claude: FIXES, check: unpublished, calledFrom: "collod873/Lumaria/.github/workflows/machine.yml@refs/heads/main" });
-
-    expect(run("811").status).toBe(0);
-    expect(saved()).toEqual(["811 --unjudged"]);
-  });
-
-  it("holds a foreign tree red when anything beside an unmet need is red (#1142)", () => {
-    const mixed = "printf 'check: red test src/stops.test.ts:4, integration (needs DATABASE_URL); log /nowhere/check-full.log\\n'\nexit 1\n";
-    const { run, saved } = fixing({ claude: FIXES, check: mixed, calledFrom: "collod873/Lumaria/.github/workflows/machine.yml@refs/heads/main" });
-
-    expect(run("811").status).toBe(1);
-    expect(saved()).toEqual([]);
-  });
-
-  it("hands a builder woken on a red no copy of the contract (#990)", () => {
-    const contract = '{ "steps": { "only-this-tree": { "run": "node src/gate.ts" } } }\n';
-    const { run, handed } = fixing({ reason: "the Check went red", claude: FIXES, contract });
-
-    expect(run("811").status).toBe(0);
-    expect(handed()[0]).not.toContain("only-this-tree");
-  });
 
   it("runs the full check and publishes its receipts in the tree it builds in, reading only the verdict's last line", () => {
-    const { run, saved, session } = fixing({ claude: FIXES, check: `printf '%s %s\\n' "$(pwd -P)" "$*" >../ran\n${CHECK_PASSES}${CHECK_RED}` });
+    const { run, landed, session } = fixing({ claude: FIXES, check: `printf '%s %s\\n' "$(pwd -P)" "$*" >../ran\n${CHECK_PASSES}${CHECK_RED}` });
 
     expect(run().status).toBe(1);
     expect(readFileSync(join(session, "..", "ran"), "utf8")).toBe(`${realpathSync(session)} --full --publish\n`);
-    expect(saved()).toEqual([]);
+    expect(landed()).toEqual([]);
   });
 
-  it("opens a build and a red with the path of the capture of the session that filed its ticket, when the job holds it (#992)", () => {
-    const body = FILED_IN_SESSION;
+  it("opens a build with the path of the capture of the session that filed its ticket, when the job holds it (#992)", () => {
     const captures = { "2026-09-27-ca2517b0.md": "the owner ruled out a second hook\n", "2026-09-27-deadbeef.md": "another session\n" };
-    const building = fixing({ claude: FIXES, body, captures });
-    const red = fixing({ reason: "the Check went red", claude: FIXES, body, captures });
+    const building = fixing({ claude: FIXES, body: FILED_IN_SESSION, captures });
 
     expect(building.run("811").status).toBe(0);
-    expect(red.run("811").status).toBe(0);
     expect(building.handed()[0]).toContain(building.captured("2026-09-27-ca2517b0.md"));
-    expect(red.handed()[0]).toContain(red.captured("2026-09-27-ca2517b0.md"));
     expect(building.handed()[0]).not.toContain("deadbeef");
   });
 
@@ -181,38 +122,38 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(disableAllHooks).toBe(false);
   });
 
-  it("hands a red check back to the same session with the log its verdict names, then commits, pushes and marks the ticket checking", () => {
-    const { run, handed, hired, saved, marked } = fixing({ claude: FIXES_EACH_ROUND, check: FULL_CHECK_RED_ONCE });
+  it("hands a red check back to the same session with the log its verdict names, then marks the ticket checking and lands it", () => {
+    const { run, handed, hired, landed, marked } = fixing({ claude: FIXES_EACH_ROUND, check: FULL_CHECK_RED_ONCE });
 
     const result = run();
 
     expect(result.status, result.stderr).toBe(0);
-    expect(handed()).toHaveLength(2);
+    expect(handed()).toHaveLength(3);
     expect(handed()[1]).toContain("OTHER-TEST-BROKE in src/stops.test.ts");
     expect(hired()[1]).toContain(BUILDER_SESSION);
-    expect(saved()).toEqual(["811"]);
-    expect(marked()).toEqual(["811 building --try", "811 checking"]);
+    expect(landed()).toHaveLength(1);
+    expect(marked()).toEqual(["811 building", "811 checking"]);
   });
 
   it("keeps going past three rounds while every round changes something", () => {
-    const { run, handed, saved } = fixing({ claude: FIXES_EACH_ROUND, check: RED_FOUR_TIMES });
+    const { run, handed, landed } = fixing({ claude: FIXES_EACH_ROUND, check: RED_FOUR_TIMES });
 
     const result = run();
 
     expect(result.status, result.stderr).toBe(0);
-    expect(handed()).toHaveLength(5);
-    expect(saved()).toEqual(["811"]);
+    expect(handed()).toHaveLength(6);
+    expect(landed()).toHaveLength(1);
   });
 
-  it("calls the owner by name, and pushes nothing, when two rounds in a row change nothing", () => {
-    const { run, handed, saved, marked, ticketComments } = fixing({ check: CHECK_RED });
+  it("calls the owner by name, and lands nothing, when two rounds in a row change nothing", () => {
+    const { run, handed, landed, marked, ticketComments } = fixing({ check: CHECK_RED });
 
     const result = run();
 
     expect(result.status).toBe(1);
     expect(handed()).toHaveLength(2);
     expect(handed()[1]).toContain("check: red test src/stops.test.ts:4");
-    expect(saved()).toEqual([]);
+    expect(landed()).toEqual([]);
     expect(marked()).toContain("811 stuck");
     expect(ticketComments().at(-1)).toMatch(/^@collod873 /);
     expect(ticketComments().at(-1)).toContain("changed nothing");
@@ -225,28 +166,11 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     const [argv] = hired();
     if (argv === undefined) throw new Error("no claude hired");
     expect(argv[argv.indexOf("--resume") + 1]).toBe("sess-earlier");
+    expect(hired()[1], "the reviewer is a fresh session, never the builder's").not.toContain("--resume");
     expect(keptSession()).toBe(BUILDER_SESSION);
     expect(keptSession("fixer")).toBeUndefined();
   });
 
-  it("hands the model the Why, the failed run's log, the machine logs, the diff and only the machine's drift gaps", () => {
-    const { run, handed } = fixing({
-      claude: FIXES,
-      logged: { "build-811.log": "1 refusals\nthe checks are still red after 3 of 3 rounds handed back\n" },
-      failedRun: "review\tRun bin/review\tdrifts from the Why of #811\n",
-      onPr: ["a comment nobody needs", { author: "stranger", type: "User", body: "The reviewer read this PR against the Why of #811 and found drift.\n\n- delete the fence\n" }, DRIFT],
-    });
-
-    expect(run("811", "555").status).toBe(0);
-    const prompt = handed()[0];
-    expect(prompt).toContain("never the owner");
-    expect(prompt).toContain("the checks are still red after 3 of 3 rounds handed back");
-    expect(prompt).toContain("drifts from the Why of #811");
-    expect(prompt).toContain('+it("names the behaviour the criterion asks for"');
-    expect(prompt).toContain("never resumes its session");
-    expect(prompt).not.toContain("a comment nobody needs");
-    expect(prompt).not.toContain("delete the fence");
-  });
 
   it("refuses a rewrite that changes one byte of the Why, and posts one that changes only what done looks like, then builds it as rewritten in the same run, never parked on the owner, where Lumaria #1015 and #1286 waited on him against ADR-0005", () => {
     const { body } = fixing();
@@ -254,7 +178,7 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
 
     expect(refused.run().status).toBe(1);
     expect(refused.edits()).toEqual([]);
-    expect(refused.saved()).toEqual([]);
+    expect(refused.landed()).toEqual([]);
 
     const redone = body.replace("The builder clears a red ticket", "The builder clears a ticket red at any stage");
     const written = fixing({ answer: { outcome: "ticket", reason: "Done when named one stage where the Why means every stage", body: redone }, claude: BUILDS_THE_REWRITE });
@@ -267,35 +191,34 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(written.ticketComments().at(-1)).toContain("where the Why means every stage");
     expect(written.marked()).not.toContain("811 waiting");
     expect(written.handed()[1]).toContain("The builder clears a ticket red at any stage");
-    expect(written.saved()).toEqual(["811"]);
+    expect(written.landed()).toHaveLength(1);
   });
 
-  it("marks `stuck` with its reason a ticket the builder cannot build even rewritten, and pushes nothing", () => {
-    const { run, marked, ticketComments, saved } = fixing({ answer: { outcome: "stuck", reason: "the Why needs a runner this repo cannot reach" } });
+  it("marks `stuck` with its reason a ticket the builder cannot build even rewritten, and lands nothing", () => {
+    const { run, marked, ticketComments, landed } = fixing({ answer: { outcome: "stuck", reason: "the Why needs a runner this repo cannot reach" } });
 
     expect(run().status).toBe(1);
     expect(marked().at(-1)).toBe("811 stuck");
     expect(ticketComments().at(-1)).toContain("the Why needs a runner this repo cannot reach");
-    expect(saved()).toEqual([]);
+    expect(landed()).toEqual([]);
   });
 
-  it("hands back a `ticket` answer that returns the ticket unchanged, and never saves it (#1195)", () => {
+  it("hands back a `ticket` answer that returns the ticket unchanged, and never lands it (#1195)", () => {
     const { body } = fixing();
-    const { run, edits, saved, handed } = fixing({ answer: { outcome: "ticket", reason: "it reads fine", body } });
+    const { run, edits, landed, handed } = fixing({ answer: { outcome: "ticket", reason: "it reads fine", body } });
 
     expect(run().status).toBe(1);
     expect(edits()).toEqual([]);
-    expect(saved()).toEqual([]);
+    expect(landed()).toEqual([]);
     expect(handed()[1]).toContain("unchanged");
   });
 
-  it("hands a `code` answer on a branch with no commits past main back as nothing to push, never as a Save failure (#1195)", () => {
-    const { run, saved, handed } = fixing({ claude: "git reset --quiet --hard main\n" });
+  it("hands a `code` answer on a branch with no commits past main back as nothing to land (#1195)", () => {
+    const { run, landed, handed } = fixing({ claude: "git reset --quiet --hard main\n" });
 
     expect(run().status).toBe(1);
-    expect(saved()).toEqual([]);
+    expect(landed()).toEqual([]);
     expect(handed()[1]).toContain("no commits past main");
-    expect(handed()[1]).not.toContain("Save");
   });
 
   it("rewrites past `## Done when` when a builder corrects the body around it, and posts why (#942)", () => {
@@ -308,25 +231,16 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(ticketComments().at(-1)).toContain("the fault it names sits in src/post.ts");
   });
 
-  it("keeps `resolving` with no try when woken on a conflict, since a conflict is not the ticket failing, and marks checking once it pushes", () => {
-    const resolving = fixing({ reason: "PR #9811 conflicts with main", claude: FIXES, labels: ["ticket", "resolving"] });
 
-    expect(resolving.run().status).toBe(0);
-    expect(resolving.marked()).toEqual(["811 checking"]);
-  });
-
-  it("closes the ticket and its PR unbuilt with the reason, calling the owner by name, keeping the branch, and runs no check", () => {
+  it("closes the ticket unbuilt with the reason, calling the owner by name, and runs no check and lands nothing", () => {
     const reason = "the ticket asks for a stage the ruling has since dropped";
-    const { run, closes, ticketComments, labelled, saved, handed } = fixing({ answer: { outcome: "close", reason }, check: "touch ../checked\nexit 1\n" });
+    const { run, closes, ticketComments, labelled, landed, handed } = fixing({ answer: { outcome: "close", reason }, check: "touch ../checked\nexit 1\n" });
 
     expect(run().status).toBe(0);
-    expect(closes()).toEqual([
-      ["issue", "close", "811", "--reason", "not planned"],
-      ["pr", "close", "ticket/811"],
-    ]);
+    expect(closes()).toEqual([["issue", "close", "811", "--reason", "not planned"]]);
     expect(ticketComments().at(-1)).toMatch(new RegExp(`^@collod873 .*${reason}`));
     expect(labelled(), "leaves its labels to the close handler").toEqual([]);
-    expect(saved()).toEqual([]);
+    expect(landed()).toEqual([]);
     expect(handed()).toHaveLength(1);
   });
 
@@ -338,7 +252,7 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
       { title: "Handle the misses in the shape rules", why: "The shape rules refuse a missing read by name.", done: ["Shape reads refuse by name."] },
       { title: "Handle the misses in the post door", why: "The post door refuses a missing read by name.", done: ["Post reads refuse by name."] },
     ];
-    const { run, filed, edits, labelled, marked, closes, ticketComments, saved, handed } = fixing({ answer: { outcome: "split", reason, tickets, body: waits }, check: "touch ../checked\nexit 1\n" });
+    const { run, filed, edits, labelled, marked, closes, ticketComments, landed, handed, log } = fixing({ answer: { outcome: "split", reason, tickets, body: waits }, check: "touch ../checked\nexit 1\n" });
 
     expect(run().status).toBe(0);
     expect(filed()).toHaveLength(2);
@@ -353,9 +267,10 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(edits()).toEqual([...filed().map((piece, at) => (piece ?? "").replace("## Done when", `[sessions](https://github.com/collod873/transcripts/blob/main/issues/claude-workflow-90${at + 1}.md)\n\n## Done when`)), waits]);
     expect(ticketComments().at(-1)).toMatch(new RegExp(`^@collod873 the builder split #811 into #901, #902, which build themselves\\..*${reason}`));
     expect(labelled()).toEqual([]);
-    expect(marked()).toEqual(["811 building --try", "811 waiting"]);
-    expect(closes()).toEqual([["pr", "close", "ticket/811", "--delete-branch"]]);
-    expect(saved()).toEqual([]);
+    expect(marked()).toEqual(["811 building", "811 waiting"]);
+    expect(closes()).toEqual([]);
+    expect(log("-1", "--format=%s"), "drops what it built, which builds again once the pieces close").toBe("what the build stands on");
+    expect(landed()).toEqual([]);
     expect(handed()).toHaveLength(1);
   });
 
@@ -366,10 +281,7 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(run().status).toBe(0);
     expect(filed()).toHaveLength(1);
     expect(ticketComments().at(-1)).toMatch(/^@collod873 the builder split #811 into #901, which build themselves, and closed it/);
-    expect(closes()).toEqual([
-      ["issue", "close", "811", "--reason", "not planned"],
-      ["pr", "close", "ticket/811"],
-    ]);
+    expect(closes()).toEqual([["issue", "close", "811", "--reason", "not planned"]]);
   });
 
   it("files nothing and hands the split back when a follow-up says nothing about what done looks like", () => {
@@ -392,11 +304,11 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(handed()[1]).toContain("itself a follow-up, so it is not split again");
   });
 
-  it("merges a machine fix it landed on main into the ticket, tells the owner, and hands the build back with no Save until it answers `code` (#1195)", () => {
+  it("merges a machine fix it landed on main into the ticket, tells the owner, and hands the build back, landing nothing until it answers `code` (#1195)", () => {
     const reason = "the reviewer read a renamed export as drift";
     const answers = [{ outcome: "machine", reason }, { outcome: "code", reason: "built on the fix" }];
     const claude = `if [ "$CALL" = 1 ]; then ${MOVES_MAIN.trim()}; else ${FIXES.trim()}; printf '%s\\n' '${JSON.stringify({ type: "result", subtype: "success", is_error: false, session_id: "sess-fix", structured_output: answers[1] })}'; exit 0; fi\n`;
-    const { run, ticketComments, saved, log, handed } = fixing({ answer: answers[0], claude });
+    const { run, ticketComments, landed, log, handed } = fixing({ answer: answers[0], claude });
 
     const result = run();
 
@@ -404,29 +316,16 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(ticketComments()).toEqual([expect.stringMatching(new RegExp(`^@collod873 .*changed the machine: ${reason}`))]);
     expect(log("--format=%s")).toContain("Land the reviewer fix #811 needed");
     expect(handed()[1]).toContain("main now carries your machine fix");
-    expect(saved()).toEqual(["811"]);
+    expect(landed()).toHaveLength(1);
   });
 
-  it("hands a PR that save opens already conflicting with main back to its builder with the conflict as the red, where Lumaria #962's PR sat checking with no CI behind it (#1211)", () => {
-    const conflictsOnMain = "if [ ! -f ../main-moved ]; then touch ../main-moved; git update-ref refs/heads/main \"$(git commit-tree -p main -m \"Land #963 on the same code\" \"$(printf '100644 blob %s\\tticket-shape.ts\\n' \"$(printf 'export const shaped = 3;\\n' | git hash-object -w --stdin)\" | git mktree | xargs -I{} printf '040000 tree %s\\tsrc\\n' {} | git mktree)\")\"; fi\n";
-    const resolves = `if [ "$CALL" = 1 ]; then ${FIXES.trim()}; else git merge --quiet --no-edit -X ours origin/main; fi\n`;
-    const { run, handed, saved, marked } = fixing({ claude: resolves, save: conflictsOnMain });
-
-    const result = run("811");
-
-    expect(result.status, result.stderr).toBe(0);
-    expect(handed()).toHaveLength(2);
-    expect(handed()[1]).toMatch(/conflict/);
-    expect(saved()).toEqual(["811", "811"]);
-    expect(marked()).toEqual(["811 building", "811 checking"]);
-  });
 
   it("will not take `machine` for an answer when main has not moved", () => {
-    const { run, handed, saved, ticketComments } = fixing({ answer: { outcome: "machine", reason: "the reviewer is wrong" } });
+    const { run, handed, landed, ticketComments } = fixing({ answer: { outcome: "machine", reason: "the reviewer is wrong" } });
 
     expect(run().status).toBe(1);
     expect(handed()).toHaveLength(2);
-    expect(saved()).toEqual([]);
+    expect(landed()).toEqual([]);
     expect(ticketComments().at(-1)).toContain("main has not moved");
   });
 
@@ -435,7 +334,7 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
 
   it("files a machine fault found in a foreign tree as a ticket in the machine's repo, and parks its own ticket waiting on it, where Lumaria #828 landed a fix into Lumaria's main (#1143)", () => {
     const reason = "the machine's check has no database";
-    const { run, calls, filed, ticketComments, marked, saved, closes, handed } = fixing({ calledFrom: CALLER, answer: { outcome: "machine", reason, tickets: [FAULT] }, claude: FIXES });
+    const { run, calls, filed, ticketComments, marked, landed, closes, handed } = fixing({ calledFrom: CALLER, answer: { outcome: "machine", reason, tickets: [FAULT] }, claude: FIXES });
 
     const result = run();
 
@@ -446,8 +345,8 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(filed()[0]).toContain(`> ${FAULT.why}`);
     expect(filed()[0]).toContain(`## Done when\n\n- ${FAULT.done[0]}`);
     expect(ticketComments().at(-1)).toMatch(new RegExp(`^The builder of #811 found the machine at fault and filed https://github.com/collod873/claude-workflow/issues/901\\. #811 waits on it.*${reason}`));
-    expect(marked()).toEqual(["811 building --try", "811 waiting"]);
-    expect(saved()).toEqual([]);
+    expect(marked()).toEqual(["811 building", "811 waiting"]);
+    expect(landed()).toEqual([]);
     expect(closes()).toEqual([]);
     expect(handed()).toHaveLength(1);
   });
@@ -456,7 +355,7 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     const { run, handed } = fixing({ calledFrom: CALLER, claude: FIXES });
 
     expect(run().status).toBe(0);
-    expect(handed()[0]).not.toContain("`bin/land`");
+    expect(handed()[0]).not.toContain("`bin/land` it first");
     expect(handed()[0]).toContain("file the fault as `tickets`");
   });
 
@@ -465,7 +364,7 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
   it("lands a `machine` answer on main when its caller file is in the machine's own repo, filing nothing, as this repo's own workflows do (#1215)", () => {
     const answers = [{ outcome: "machine", reason: "the reviewer read a renamed export as drift" }, { outcome: "code", reason: "built on the fix" }];
     const claude = `if [ "$CALL" = 1 ]; then ${MOVES_MAIN.trim()}; else ${FIXES.trim()}; printf '%s\\n' '${JSON.stringify({ type: "result", subtype: "success", is_error: false, session_id: "sess-fix", structured_output: answers[1] })}'; exit 0; fi\n`;
-    const { run, filed, log, handed, saved } = fixing({ calledFrom: HOME_CALLER, repo: "collod873/claude-workflow", answer: answers[0], claude });
+    const { run, filed, log, handed, landed } = fixing({ calledFrom: HOME_CALLER, repo: "collod873/claude-workflow", answer: answers[0], claude });
 
     const result = run();
 
@@ -473,17 +372,9 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(handed()[0]).toContain("`bin/land`");
     expect(filed()).toEqual([]);
     expect(log("--format=%s")).toContain("Land the reviewer fix #811 needed");
-    expect(saved()).toEqual(["811"]);
+    expect(landed()).toHaveLength(1);
   });
 
-  it("fails a check red only for a `(needs ...)` step when its caller file is in the machine's own repo, as this repo's own check does (#1215)", () => {
-    const unmet = "printf 'check: red integration (needs DATABASE_URL); log /nowhere/check-full.log\\n'\nexit 1\n";
-    const { run, saved, handed } = fixing({ claude: FIXES, check: unmet, calledFrom: HOME_CALLER, repo: "collod873/claude-workflow" });
-
-    expect(run("811").status).toBe(1);
-    expect(saved()).toEqual([]);
-    expect(handed()[0]).not.toContain("(needs <VAR>)");
-  });
 
   it("hands back a `machine` answer from a foreign tree that files no ticket (#1143)", () => {
     const { run, filed, handed, marked } = fixing({ calledFrom: CALLER, answer: { outcome: "machine", reason: "the check has no database" } });
@@ -494,59 +385,19 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(handed()[1]).toContain("files the machine's fault as one ticket or more in `tickets`");
   });
 
-  it("re-runs, once each has ended, every run red on the head it saved green, so a review it left unchanged judges again and the ticket never sits checking with nothing to wake it (#1108, #1371)", () => {
-    const left = fixing({ red: ["555", "556"] });
-
-    const result = left.run("811", "555");
-
-    expect(result.status, result.stderr).toBe(0);
-    expect(left.saved()).toEqual(["811"]);
-    expect(left.reruns()).toEqual([["rerun=555/1/failed"], ["rerun=556/1/failed"]]);
-    expect(left.marked(), "takes back the try a flake was counted").toEqual(["811 building --try", "811 checking --untry"]);
-    expect(left.ticketComments()).toEqual([]);
-  });
-
-  it("re-runs nothing and marks checking when nothing is red on the head it saved green, since save posted its check and the PR merges on it (#1345)", () => {
-    const { run, marked, reruns, ticketComments, saved } = fixing({ reason: "the owner asked for another look" });
-
-    const result = run("811");
-
-    expect(result.status, result.stderr).toBe(0);
-    expect(reruns()).toEqual([]);
-    expect(saved()).toEqual(["811"]);
-    expect(marked()).toEqual(["811 building --try", "811 checking"]);
-    expect(ticketComments()).toEqual([]);
-  });
-
-  it("calls the owner instead of re-running a run red on its saved head that already re-ran, so an unchanged branch cannot loop", () => {
-    const { run, reruns, marked, ticketComments } = fixing({ red: ["555"], attempt: 2 });
-
-    expect(run("811", "555").status).toBe(1);
-    expect(reruns()).toEqual([]);
-    expect(marked()).toContain("811 stuck");
-    expect(ticketComments().at(-1)).toContain("run 555 is red on the head it saved green and already re-ran");
-  });
-
-  it("calls the owner when the re-run of a run red on its saved head is refused", () => {
-    const { run, marked, ticketComments } = fixing({ red: ["555"], dispatch: "printf 'HTTP 403: Resource not accessible by integration\\n' >&2\nexit 1" });
-
-    expect(run("811", "555").status).toBe(1);
-    expect(marked()).toContain("811 stuck");
-    expect(ticketComments().at(-1)).toContain("HTTP 403");
-  });
 
   it("hands a fresh session the ticket again with the red when resuming its own session fails", () => {
     const resumeFails = 'if printf \'%s\\n\' "$@" | grep -qx -- --resume; then printf \'No conversation found\\n\' >&2; exit 1; fi\n';
     const { run, handed } = fixing({ claude: resumeFails + FIXES_EACH_ROUND, check: FULL_CHECK_RED_ONCE });
 
     expect(run().status).toBe(0);
-    expect(handed().at(-1)).toContain("never the owner");
-    expect(handed().at(-1)).toContain("OTHER-TEST-BROKE in src/stops.test.ts");
+    expect(handed().at(-2)).toContain("never the owner");
+    expect(handed().at(-2)).toContain("OTHER-TEST-BROKE in src/stops.test.ts");
   });
 
-  it("names in its log why the session of the build was refused before it starts fresh on a red (#1180)", () => {
+  it("names in its log why the session of its last run was refused before it starts fresh (#1180)", () => {
     const resumeFails = 'if printf \'%s\\n\' "$@" | grep -qx -- --resume; then printf \'No conversation found with session ID: sess-built\\n\' >&2; exit 1; fi\n';
-    const { run } = fixing({ claude: resumeFails + FIXES, savedSession: "sess-built", reason: "Check went red" });
+    const { run } = fixing({ claude: resumeFails + FIXES, savedSession: "sess-built" });
 
     const result = run();
 
@@ -554,14 +405,6 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(result.stderr).toContain("fix: #811 could not resume its builder's session sess-built, so it starts fresh: the builder ended 1: No conversation found with session ID: sess-built");
   });
 
-  it("names in its log that no session of its builder was saved before it starts fresh on a red (#1180)", () => {
-    const { run } = fixing({ claude: FIXES, reason: "Check went red" });
-
-    const result = run();
-
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.stderr).toContain("fix: #811 has no session of its builder saved, so it starts fresh");
-  });
 
   it("calls the owner and closes nothing when its own model call fails twice (#862)", () => {
     const { run, closes, ticketComments, marked } = fixing({ claude: "printf 'the model overloaded\\n' >&2\nexit 1\n" });
@@ -572,42 +415,98 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(ticketComments().at(-1)).toContain("the model overloaded");
   });
 
-  it("hands a refused Save back to the builder as red rather than stopping", () => {
-    const { run, handed } = fixing({ claude: FIXES_EACH_ROUND, save: "[ -f ../saved-once ] && exit 0\ntouch ../saved-once\nexit 1\n" });
+});
+
+describe("a fresh reviewer reads each green build, fixes or approves it, and bin/land lands it in the same run (ADR-0012)", () => {
+  const LAND_REFUSES_ONCE = "[ -f ../land-refused ] || { touch ../land-refused; printf 'land: the commit subject carries an em dash\\n' >&2; exit 1; }\n";
+  const STEP = { title: "Set the Stripe key in the dashboard", why: "Payments run only once the live key is set." };
+
+  it("hires a second session on Opus that resumes nothing, handed the ticket, its commits and its diff from main", () => {
+    const { run, handed, hired, body } = fixing({ claude: FIXES });
 
     expect(run().status).toBe(0);
-    expect(handed()).toHaveLength(2);
-    expect(handed()[1]).toContain("Save could not push");
+    const review = handed()[1] ?? "";
+    expect(review).toMatch(/^# Review #811 before it lands/);
+    expect(review).toContain(body.trim());
+    expect(review).toContain("- Build #811 as its builder");
+    expect(review).toContain("+export const shaped = 2;");
+    const argv = hired()[1] ?? [];
+    expect(argv[argv.indexOf("--model") + 1]).toBe("opus");
+    expect(argv).not.toContain("--resume");
   });
 
-  it("calls the owner on a repo fault Save names, and hands the builder nothing back (#1150)", () => {
-    const fault = "save: #811's PR is open, but collod873/Lumaria has auto-merge off, the repo's fault and not the ticket's: run bin/enrol collod873/Lumaria";
-    const { run, handed, marked, ticketComments } = fixing({ claude: FIXES_EACH_ROUND, save: `printf '%s\\n' "${fault}" >&2\nexit 3\n` });
+  it("commits what the reviewer fixes as a review, and lands that head", () => {
+    const { run, log, landed, closed } = fixing({ claude: FIXES, reviewer: REVIEWER_FIXES });
+
+    expect(run().status).toBe(0);
+    expect(log("-2", "--format=%s").split("\n")).toEqual(["Review #811 as its reviewer", "Build #811 as its builder"]);
+    expect(landed()).toEqual([`${log("-1", "--format=%H")} --ticket 811`]);
+    expect(closed()).toEqual(["811 9811"]);
+  });
+
+  it("calls the owner by name when the reviewer answers stuck, and lands and closes nothing", () => {
+    const { run, marked, ticketComments, landed, closed } = fixing({ claude: FIXES, review: { outcome: "stuck", reason: "the diff builds a different Why" } });
 
     expect(run().status).toBe(1);
-    expect(handed()).toHaveLength(1);
-    expect(marked()).toContain("811 stuck");
-    expect(ticketComments().at(-1)).toContain(fault);
+    expect(marked()).toEqual(["811 building", "811 checking", "811 stuck"]);
+    expect(ticketComments().at(-1)).toBe("@collod873 the reviewer of #811 stopped and needs you: the diff builds a different Why");
+    expect(landed()).toEqual([]);
+    expect(closed()).toEqual([]);
   });
 
-  it("is handed the reason the closer woke it as how the ticket failed, instead of reading logs (#957)", () => {
-    const reason = "#811 is not done: a check is red on the merge commit\n\n- `test -f built.txt` exited 1 on the merge commit";
+  it("hands what bin/land refuses back to the reviewer's own session, never the builder, and lands once it passes", () => {
+    const { run, handed, hired, landed, closed } = fixing({ claude: FIXES, reviewer: REVIEWER_FIXES, land: LAND_REFUSES_ONCE });
 
-    const { result, prompt } = woken(reason);
-
-    expect(result.status, result.stderr).toBe(0);
-    expect(prompt).toContain("## How it failed");
-    expect(prompt).toContain(reason);
+    expect(run().status).toBe(0);
+    expect(handed()).toHaveLength(3);
+    expect(handed()[2]).toContain("`bin/land` refused to land it");
+    expect(handed()[2]).toContain("the commit subject carries an em dash");
+    expect(hired()[2]?.join(" ")).toContain('"approve"');
+    expect(hired()[2]).toContain(BUILDER_SESSION);
+    expect(landed()).toHaveLength(2);
+    expect(closed()).toEqual(["811 9811"]);
   });
 
-  it("is handed the reason the closer woke it, and a conflict is handed the word to merge main in and resolve it keeping the ticket's Why (#957)", () => {
-    const reason = "#811's PR #903 could not be brought up to date with main: GraphQL: This branch is out-of-date and cannot be updated because of merge conflicts.";
+  it("calls the owner when bin/land refuses twice in a row and the reviewer changes nothing", () => {
+    const { run, marked, ticketComments, closed } = fixing({ claude: FIXES, land: "printf 'land: the full check is red\\n' >&2\nexit 1\n" });
 
-    const { result, prompt } = woken(reason);
+    expect(run().status).toBe(1);
+    expect(marked().at(-1)).toBe("811 stuck");
+    expect(ticketComments().at(-1)).toMatch(/^@collod873 the reviewer of #811 stopped and needs you: two rounds in a row changed nothing: .*the full check is red/);
+    expect(closed()).toEqual([]);
+  });
+
+  it("files each step only the owner can take, the builder's and the reviewer's, as an owner-step note once it lands, and still closes the ticket (ADR-0005)", () => {
+    const { run, filed, calls, closed } = fixing({ claude: FIXES, answer: { outcome: "code", reason: "built", steps: [STEP] }, review: { outcome: "approve", reason: "it builds the Why", steps: [{ ...STEP, title: "Turn on the webhook" }] } });
+
+    expect(run().status).toBe(0);
+    expect(filed()).toHaveLength(2);
+    expect(filed()[0]).toContain(STEP.why);
+    expect(filed()[0]).toContain("Left to the owner by the run that built #811, which closed.");
+    expect(calls().filter((args) => args[1] === "create").map((args) => args[args.indexOf("--title") + 1])).toEqual([STEP.title, "Turn on the webhook"]);
+    expect(calls().find((args) => args[1] === "create")).toEqual(expect.arrayContaining(["owner-step"]));
+    expect(closed()).toEqual(["811 9811"]);
+  });
+
+  it("lands nothing, and ends green keeping the branch, when the ticket is held by the time its review ends", () => {
+    const { run, landed, closed } = fixing({ claude: FIXES, reviewer: "printf 'paused\\n' >>../labels\n" });
+
+    const result = run();
 
     expect(result.status, result.stderr).toBe(0);
-    expect(prompt).toContain(reason);
-    expect(prompt).toMatch(/merge (origin\/)?main/i);
+    expect(result.stdout).toContain("review: #811 is labelled paused, so it does not land");
+    expect(landed()).toEqual([]);
+    expect(closed()).toEqual([]);
+  });
+
+  it("ends red at unread, landing nothing, when the ticket's labels cannot be read at review", () => {
+    const { run, landed } = fixing({ claude: FIXES, unreadable: '*"issue view"*"labels"*"--jq"*' });
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("the labels of #811 could not be read");
+    expect(landed()).toEqual([]);
   });
 });
 
@@ -628,7 +527,7 @@ describe("the builder builds an App-opened ticket only under an open spec the ow
     const { run, handed } = fixing({ claude: FIXES, opener: APP, parent: SPEC });
 
     expect(run("811").status).toBe(0);
-    expect(handed()).toHaveLength(1);
+    expect(handed()).toHaveLength(2);
   });
 
   it("stops a ticket the App opened under a spec the App opened, before its builder runs anything", () => {
@@ -639,7 +538,7 @@ describe("the builder builds an App-opened ticket only under an open spec the ow
     const { run, handed } = fixing({ claude: FIXES });
 
     expect(run("811").status).toBe(0);
-    expect(handed()).toHaveLength(1);
+    expect(handed()).toHaveLength(2);
   });
 });
 
@@ -657,14 +556,11 @@ describe("bin/fix stops at a mark GitHub refused, so it hires no model on a tick
   });
 });
 
-describe("bin/fix reads its ticket, its labels, its PR and their comments before it marks anything, and ends red at a read that fails (#1112)", () => {
+describe("bin/fix reads its ticket, its labels and its comments before it marks anything, and ends red at a read that fails (#1112)", () => {
   const READS = [
     { read: "its ticket", unreadable: '*"issue view"*', line: "#811 could not be read, so no label changed and no model was hired" },
     { read: "the log directory", gitUnreadable: '*"--git-common-dir"*', line: "the log directory could not be named by git, so no model was hired" },
-    { read: "its PR", unreadable: '*"pr view"*"number"*', line: "the PR of #811 could not be read" },
-    { read: "its PR's comments", unreadable: '*"issues/9811/comments"*', line: "the comments on PR #9811 could not be read, so nothing is marked" },
     { read: "its ticket's comments", unreadable: '*"issues/811/comments"*', line: "the comments on #811 could not be read, so nothing is marked" },
-    { read: "its failed run", unreadable: '*"run view"*"--log-failed"*', line: "the failed steps of run 555 could not be read, so nothing is marked" },
   ];
 
   it.each(READS)("ends red at unread naming $read, marking, posting and hiring nothing", ({ line, ...reads }) => {
@@ -674,21 +570,6 @@ describe("bin/fix reads its ticket, its labels, its PR and their comments before
     untouched(unread);
   });
 
-  it("ends red at unread when the checks on its saved head cannot be read, marking it checking for nothing and re-running nothing", () => {
-    const { run, marked, reruns } = fixing({ claude: FIXES, unreadable: '*"pr view"*"statusCheckRollup"*' });
-
-    expect(run()).toMatchObject({ status: 1, stderr: expect.stringMatching(/\nfix: the checks on the PR of #811 could not be read, so nothing red on it is re-run\n$/) });
-    expect(marked()).toEqual(["811 building --try"]);
-    expect(reruns()).toEqual([]);
-  });
-
-  it("builds a ticket that has no PR yet, reading none as none", () => {
-    const { run, handed, marked } = fixing({ claude: FIXES, onPr: undefined });
-
-    expect(run("811").status).toBe(0);
-    expect(handed()).toHaveLength(1);
-    expect(marked()).toEqual(["811 building", "811 checking"]);
-  });
 });
 
 describe("bin/fix opens through the one stage opening (#1117)", () => {
@@ -715,7 +596,7 @@ describe("the builder builds another repo's checkout from this repo's bin/ (#113
   const COMMITLINTED = { "commitlint.config.js": "export default { extends: ['@commitlint/config-conventional'] };\n" };
 
   it("readies the tree with its contract's setup before the hire, and judges it and calls gh from that tree", () => {
-    const { run, session, ranIn, saved, marked } = fixing({ contract: READIED, claude: `${SEES_READIED}${FIXES}` });
+    const { run, session, ranIn, landed, marked } = fixing({ contract: READIED, claude: `${SEES_READIED}${FIXES}` });
 
     const result = run("811");
 
@@ -724,7 +605,7 @@ describe("the builder builds another repo's checkout from this repo's bin/ (#113
     expect(ranIn()).toEqual(expect.arrayContaining([`gh ${realpathSync(session)}`, `check ${realpathSync(session)}`, `claude ${realpathSync(session)}`]));
     expect(ranIn().every((line) => line.endsWith(realpathSync(session)))).toBe(true);
     expect(marked()).toEqual(["811 building", "811 checking"]);
-    expect(saved()).toEqual(["811"]);
+    expect(landed()).toHaveLength(1);
   });
 
   it("runs the tree's setup, its check and its builder's commands on the Node and package manager the tree pins, and itself and the builder's node launcher on the machine's own Node (#1138)", () => {
@@ -735,7 +616,7 @@ describe("the builder builds another repo's checkout from this repo's bin/ (#113
     const result = run("811");
 
     expect(result.status, result.stderr).toBe(0);
-    expect(readFileSync(join(session, "..", "pinned-ran"), "utf8").trim().split("\n")).toEqual(["pnpm install --frozen-lockfile", "v20.0.0", `launcher ${process.version}`, "builder v20.0.0 pnpm", "check v20.0.0 pnpm"]);
+    expect(readFileSync(join(session, "..", "pinned-ran"), "utf8").trim().split("\n")).toEqual(["pnpm install --frozen-lockfile", "v20.0.0", `launcher ${process.version}`, "builder v20.0.0 pnpm", "check v20.0.0 pnpm", `launcher ${process.version}`]);
   });
 
   it("calls the owner and hires no one when its contract's setup fails", () => {
@@ -755,11 +636,11 @@ describe("the builder builds another repo's checkout from this repo's bin/ (#113
     expect(handed()[0]).toContain("commitlint");
   });
 
-  it("writes a repair commit the repo's commitlint accepts when the repo carries one", () => {
-    const { run, log } = fixing({ onMain: COMMITLINTED, claude: FIXES });
+  it("writes a review commit the repo's commitlint accepts when the repo carries one", () => {
+    const { run, log } = fixing({ onMain: COMMITLINTED, claude: FIXES, reviewer: REVIEWER_FIXES });
 
     expect(run().status).toBe(0);
-    expect(log("-1", "--format=%s")).toBe("fix: repair #811 as its builder");
+    expect(log("-1", "--format=%s")).toBe("fix: review #811 as its reviewer");
   });
 
   it("keeps this repo's messages, and tells its builder nothing of commitlint, when the repo carries none", () => {

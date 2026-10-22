@@ -1,12 +1,16 @@
 #!/bin/bash
 set -uo pipefail
 
+usage='land: usage: land [--ticket <number>]; it lands HEAD on the default branch through a PR, from the ticket'"'"'s branch with --ticket'
 if [[ ${1:-} == -h || ${1:-} == --help ]]; then
-  printf 'land: usage: land, with no arguments; it lands HEAD on the default branch through a PR\n'
+  printf '%s\n' "$usage"
   exit 0
 fi
-if [[ $# -ne 0 ]]; then
-  printf 'land: usage: land, with no arguments; it lands HEAD on the default branch through a PR\n' >&2
+ticket=
+if [[ $# -eq 2 && $1 == --ticket && $2 =~ ^[0-9]+$ ]]; then
+  ticket=$2
+elif [[ $# -ne 0 ]]; then
+  printf '%s\n' "$usage" >&2
   exit 2
 fi
 
@@ -101,15 +105,23 @@ for commit in $(git rev-list "origin/$default_branch..HEAD"); do
   fi
 done
 
-branch="land/${head:0:12}"
+if [[ -n $ticket ]]; then
+  call "spelled" "$src/../bin/spelled" TICKET_PREFIX
+  branch="$said$ticket"
+  call "gh issue view" gh issue view "$ticket" --json title --jq .title
+  title=$said
+  body="Builds #$ticket"$'\n\n'
+else
+  branch="land/${head:0:12}"
+  title=
+  body=
+fi
 url=
-judged="judged by land on the owner's PC, on the commit before the push (ADR-0008)"
-skipped="skipped: a session landing is judged by land, not reviewed (ADR-0008)"
+judged="judged by land on the commit before the push (ADR-0008)"
 for (( round = 1; ; round++ )); do
   changed=$(git diff --name-only "origin/$default_branch" HEAD)
   if [[ $changed == docs/buckets.md ]]; then
     judged="docs/buckets.md alone changed from $default_branch, and no check step reads it (#1382)"
-    skipped=$judged
   elif ! check --full --covered >"$err" 2>&1; then
     { printf -- '--- check --full --covered ---\n'; cat "$err"; } >>"$log"
     if ! check --full --publish >&2; then
@@ -119,15 +131,14 @@ for (( round = 1; ; round++ )); do
   fi
   call "git push" git push --quiet --force origin "HEAD:refs/heads/$branch"
   posted check "$judged"
-  posted "tickets / review" "$skipped"
   if [[ -z $url ]]; then
     call "gh pr list" gh pr list --head "$branch" --base "$default_branch" --state open --json url --jq '.[0].url // empty'
     url=$said
   fi
   if [[ -z $url ]]; then
     call "gh pr create" gh pr create --base "$default_branch" --head "$branch" \
-      --title "$(git log -1 --format=%s HEAD)" \
-      --body "$(git log --reverse --format='- %s' "origin/$default_branch..HEAD")"
+      --title "${title:-$(git log -1 --format=%s HEAD)}" \
+      --body "$body$(git log --reverse --format='- %s' "origin/$default_branch..HEAD")"
     url=$said
   fi
   if gh pr merge "$branch" --merge --match-head-commit "$head" >/dev/null 2>"$err"; then

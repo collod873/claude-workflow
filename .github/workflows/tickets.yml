@@ -9,7 +9,7 @@ jobs:
   build:
     if: "${{ github.event_name == 'issues' && github.event.action != 'closed' && (github.event.sender.login == github.repository_owner || (github.event.sender.login == 'collod873-machine[bot]' && (github.event.action == 'unlabeled' || github.event.action == 'opened'))) }}"
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
-    timeout-minutes: 70
+    timeout-minutes: 130
     cache-mode: write
     env:
       GH_REPO: ${{ github.repository }}
@@ -53,10 +53,7 @@ jobs:
           jq -r --arg WAITING "$waiting" --arg TICKET "$ticket" --arg NOTE "$note" --arg SPEC "$spec" --arg PAUSED "$paused" --arg STUCK "$stuck" '
             (any(.issue.labels[]?.name; . == $TICKET) and (any(.issue.labels[]?.name; IN($NOTE, $SPEC)) | not)) as $ticket
             | (any(.issue.labels[]?.name; IN($WAITING, $PAUSED, $STUCK)) | not) as $free
-            | (.action == "unlabeled" and IN(.label.name; $PAUSED, $STUCK) and .issue.state != "closed" and $ticket and $free) as $resumed
-            | "held=\(((.action == "opened" or .action == "reopened" or (.action == "unlabeled" and .label.name == $WAITING)) and $ticket and $free) or $resumed)",
-              "resumed=\($resumed)",
-              "paused=\(.action == "labeled" and .label.name == $PAUSED and $ticket)"
+            | "held=\((.action == "opened" or .action == "reopened" or (.action == "unlabeled" and (IN(.label.name; $WAITING, $PAUSED, $STUCK)) and .issue.state != "closed")) and $ticket and $free)"
           ' "$GITHUB_EVENT_PATH" | tee -a "$GITHUB_OUTPUT"
 
       - id: pinned
@@ -99,18 +96,8 @@ jobs:
           git config user.name "core-app[bot]"
           git config user.email "core-app[bot]@users.noreply.github.com"
 
-      - id: resume
-        if: steps.labelled.outputs.resumed == 'true' && steps.admit.outputs.admitted == 'true'
-        timeout-minutes: 2
-        working-directory: tree
-        env:
-          GH_TOKEN: ${{ steps.app.outputs.token }}
-          QUIET_GH_TOKEN: ${{ steps.app.outputs.token }}
-          CALLED_FROM: ${{ github.workflow_ref }}
-        run: '"$GITHUB_WORKSPACE/bin/resume" ${{ github.event.issue.number }} >>"$GITHUB_OUTPUT"'
-
       - id: start
-        if: steps.labelled.outputs.held == 'true' && (steps.admit.outputs.admitted == 'true' && steps.resume.outputs.builds != 'false')
+        if: steps.labelled.outputs.held == 'true' && steps.admit.outputs.admitted == 'true'
         timeout-minutes: 10
         working-directory: tree
         env:
@@ -120,8 +107,7 @@ jobs:
           branch="$("$machine/spelled" TICKET_PREFIX)${{ github.event.issue.number }}"
           printf 'branch=%s\n' "$branch" >>"$GITHUB_OUTPUT"
           building=$("$machine/spelled" BUILDING)
-          if state=$(gh pr view "$branch" --json state --jq .state 2>/dev/null) && [[ $state == OPEN ]]; then # quiet: a ticket with no PR yet builds from main
-            git fetch --quiet origin "$branch"
+          if git fetch --quiet origin "$branch" 2>/dev/null && ! git merge-base --is-ancestor FETCH_HEAD origin/main; then # quiet: a ticket with no branch yet builds from main
             git checkout --quiet -b "$branch" FETCH_HEAD
           else
             git checkout --quiet -b "$branch"
@@ -132,12 +118,23 @@ jobs:
             "$machine/mark" ${{ github.event.issue.number }} "$building"
           fi
 
+      - id: restore
+        if: steps.start.outcome == 'success'
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.claude/projects
+            ~/.claude/builder
+          key: builder-${{ steps.start.outputs.branch }}-${{ github.run_id }}
+          restore-keys: builder-${{ steps.start.outputs.branch }}-
+
       - id: fix
-        if: steps.labelled.outputs.held == 'true' && (steps.admit.outputs.admitted == 'true' && steps.resume.outputs.builds != 'false')
-        timeout-minutes: 50
+        if: steps.start.outcome == 'success'
+        timeout-minutes: 120
         working-directory: tree
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
+          QUIET_GH_TOKEN: ${{ steps.app.outputs.token }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           STAGE_MINUTES: 45
           CALLED_FROM: ${{ github.workflow_ref }}
@@ -145,365 +142,15 @@ jobs:
           tail --pid=$$ -n +1 -F .git/machine-logs/fix-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
           "$GITHUB_WORKSPACE/bin/fix" ${{ github.event.issue.number }}
 
-      - id: pause
-        if: steps.labelled.outputs.paused == 'true'
+      - if: always() && steps.fix.outcome != 'skipped'
         timeout-minutes: 2
         working-directory: tree
         env:
-          GH_TOKEN: ${{ steps.app.outputs.token }}
-        run: '"$GITHUB_WORKSPACE/bin/pause" ${{ github.event.issue.number }}'
-
-      - if: ${{ steps.labelled.outputs.held != 'false' && (always() && steps.fix.outcome != 'skipped') }}
-        uses: actions/cache/save@v6
-        with:
-          path: |
-            ~/.claude/projects
-            ~/.claude/builder
-          key: builder-${{ steps.start.outputs.branch }}-${{ github.run_id }}
-
-      - if: always() && steps.labelled.outputs.held != 'false'
-        timeout-minutes: 6
-        uses: ./.github/actions/stage-logs
-        with:
-          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
-          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
-
-  review:
-    if: ${{ github.event_name == 'pull_request_target' && github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository }}
-    concurrency:
-      group: review-${{ github.event.pull_request.number }}
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
-    timeout-minutes: 45
-    env:
-      GH_REPO: ${{ github.repository }}
-    outputs:
-      fault: ${{ steps.review.outputs.fault }}
-    steps:
-      - id: app
-        uses: actions/create-github-app-token@v3
-        with:
-          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
-          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-
-      - id: machine
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ github.repository_owner }}/claude-workflow
-          ref: main
-          token: ${{ steps.app.outputs.token }}
-          persist-credentials: false
-
-      - id: setup-node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-
-      - id: labelled
+          BRANCH: ${{ steps.start.outputs.branch }}
         run: |
-          prefix=$(bin/spelled TICKET_PREFIX)
-          held=$(jq --arg prefix "$prefix" '.pull_request.head.ref | startswith($prefix)' "$GITHUB_EVENT_PATH")
-          printf 'held=%s\n' "$held" | tee -a "$GITHUB_OUTPUT"
-          jq -r --arg prefix "$prefix" '"ticket=" + (.pull_request.head.ref | ltrimstr($prefix))' "$GITHUB_EVENT_PATH" >>"$GITHUB_OUTPUT"
-
-      - id: checkout
-        if: steps.labelled.outputs.held == 'true'
-        uses: actions/checkout@v4
-        with:
-          path: tree
-          ref: ${{ github.head_ref }}
-          fetch-depth: 0
-          token: ${{ steps.app.outputs.token }}
-
-      - id: npm-ci
-        if: steps.labelled.outputs.held == 'true'
-        run: npm ci
-
-      - id: logs
-        if: steps.labelled.outputs.held == 'true'
-        run: |
-          mkdir -p tree/.git/machine-logs
-          ln -s "$PWD/tree/.git/machine-logs" .git/machine-logs
-
-      - id: stage
-        if: steps.labelled.outputs.held == 'true'
-        uses: ./.github/actions/stage
-        with:
-          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
-          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
-
-      - id: review
-        if: steps.labelled.outputs.held == 'true'
-        timeout-minutes: 12
-        working-directory: tree
-        env:
-          GH_TOKEN: ${{ steps.app.outputs.token }}
-          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          STAGE_MINUTES: 10
-        run: |
-          tail --pid=$$ -n +1 -F .git/machine-logs/review-${{ github.event.pull_request.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
-          "$GITHUB_WORKSPACE/bin/review" ${{ github.event.pull_request.number }}
-
-      - if: failure() && steps.review.outputs.fault == 'true'
-        uses: ./.github/actions/call-owner
-        with:
-          issue: ${{ steps.labelled.outputs.ticket }}
-          run: the review
-          token: ${{ steps.app.outputs.token }}
-
-      - if: always() && steps.labelled.outputs.held != 'false'
-        timeout-minutes: 6
-        uses: ./.github/actions/stage-logs
-        with:
-          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
-          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
-          artifact: review-logs
-
-  meters:
-    if: ${{ github.event_name == 'pull_request_target' && github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository }}
-    continue-on-error: true
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
-    timeout-minutes: 30
-    env:
-      GH_REPO: ${{ github.repository }}
-    steps:
-      - id: app
-        uses: actions/create-github-app-token@v3
-        with:
-          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
-          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-
-      - id: machine
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ github.repository_owner }}/claude-workflow
-          ref: main
-          token: ${{ steps.app.outputs.token }}
-          persist-credentials: false
-
-      - id: setup-node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-
-      - id: labelled
-        run: |
-          prefix=$(bin/spelled TICKET_PREFIX)
-          held=$(jq --arg prefix "$prefix" '.pull_request.head.ref | startswith($prefix)' "$GITHUB_EVENT_PATH")
-          printf 'held=%s\n' "$held" | tee -a "$GITHUB_OUTPUT"
-
-      - id: checkout
-        if: steps.labelled.outputs.held == 'true'
-        uses: actions/checkout@v4
-        with:
-          path: tree
-          ref: ${{ github.head_ref }}
-          fetch-depth: 0
-          token: ${{ steps.app.outputs.token }}
-
-      - id: npm-ci
-        if: steps.labelled.outputs.held == 'true'
-        run: npm ci
-
-      - id: logs
-        if: steps.labelled.outputs.held == 'true'
-        run: |
-          mkdir -p tree/.git/machine-logs
-          ln -s "$PWD/tree/.git/machine-logs" .git/machine-logs
-
-      - id: stage
-        if: steps.labelled.outputs.held == 'true'
-        uses: ./.github/actions/stage
-        with:
-          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
-          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
-
-      - id: meters
-        if: steps.labelled.outputs.held == 'true'
-        timeout-minutes: 12
-        working-directory: tree
-        env:
-          GH_TOKEN: ${{ steps.app.outputs.token }}
-          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          STAGE_MINUTES: 10
-        run: |
-          tail --pid=$$ -n +1 -F .git/machine-logs/meters-${{ github.event.pull_request.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
-          "$GITHUB_WORKSPACE/bin/meters" ${{ github.event.pull_request.number }}
-
-      - if: always() && steps.labelled.outputs.held != 'false'
-        timeout-minutes: 6
-        uses: ./.github/actions/stage-logs
-        with:
-          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
-          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
-          artifact: meter-logs
-
-  which:
-    needs: [build, review]
-    if: "${{ always() && ((github.event_name == 'workflow_dispatch' && !github.event.inputs.trial_cap && !github.event.inputs.rerun && !github.event.inputs.probe) || needs.build.result == 'failure' || (needs.review.result == 'failure' && needs.review.outputs.fault != 'true') || (github.event_name == 'workflow_run' && github.event.workflow_run.name != github.workflow && (github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'timed_out') && github.event.workflow_run.head_repository.full_name == github.repository)) }}"
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
-    timeout-minutes: 3
-    env:
-      GH_REPO: ${{ github.repository }}
-    outputs:
-      ticket: ${{ steps.which.outputs.ticket }}
-      branch: ${{ steps.which.outputs.branch }}
-    steps:
-      - id: app
-        uses: actions/create-github-app-token@v3
-        with:
-          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
-          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-
-      - id: machine
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ github.repository_owner }}/claude-workflow
-          ref: main
-          token: ${{ steps.app.outputs.token }}
-          persist-credentials: false
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-
-      - id: which
-        env:
-          DISPATCHED: ${{ github.event.inputs.ticket }}
-          BUILT: ${{ needs.build.result == 'failure' && github.event.issue.number || '' }}
-          RAN_ON: ${{ github.event.workflow_run.head_branch || github.event.pull_request.head.ref }}
-          GH_TOKEN: ${{ steps.app.outputs.token }}
-        run: |
-          paused=$(bin/spelled PAUSED)
-          stuck=$(bin/spelled STUCK)
-          prefix=$(bin/spelled TICKET_PREFIX)
-          ticket=${DISPATCHED:-$BUILT}
-          [[ $RAN_ON == "$prefix"* && ${RAN_ON#"$prefix"} =~ ^[0-9]+$ ]] && ticket=${RAN_ON#"$prefix"}
-          if [[ -z $DISPATCHED && -n $ticket ]] && held=$(bin/github issue view "$ticket" --json labels --jq '.labels[].name' | grep -m 1 -x -e "$paused" -e "$stuck"); then
-            printf 'which: #%s is labelled %s, so no builder starts\n' "$ticket" "$held"
-            ticket=
+          if [[ -n $(git rev-list origin/main..HEAD) ]]; then
+            git push --quiet --force origin "HEAD:refs/heads/$BRANCH"
           fi
-          printf 'ticket=%s\n' "$ticket" >>"$GITHUB_OUTPUT"
-          if [[ -n $ticket ]]; then printf 'branch=%s%s\n' "$prefix" "$ticket" >>"$GITHUB_OUTPUT"; fi
-
-  fix:
-    needs: which
-    if: ${{ !cancelled() && needs.which.result == 'success' && needs.which.outputs.ticket != '' }}
-    concurrency:
-      group: fix-${{ needs.which.outputs.ticket }}
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
-    timeout-minutes: 70
-    cache-mode: write
-    env:
-      GH_REPO: ${{ github.repository }}
-      TICKET: ${{ needs.which.outputs.ticket }}
-      HEAD_REF: ${{ needs.which.outputs.branch }}
-    steps:
-      - id: app
-        uses: actions/create-github-app-token@v3
-        with:
-          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
-          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-
-      - id: machine
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ github.repository_owner }}/claude-workflow
-          ref: main
-          token: ${{ steps.app.outputs.token }}
-          persist-credentials: false
-
-      - id: checkout
-        uses: actions/checkout@v4
-        with:
-          path: tree
-          ref: main
-          fetch-depth: 0
-          token: ${{ steps.app.outputs.token }}
-
-      - id: branch
-        working-directory: tree
-        env:
-          RAN_AT: ${{ github.event.workflow_run.head_sha || github.event.pull_request.head.sha }}
-        run: |
-          git config user.name "core-app[bot]"
-          git config user.email "core-app[bot]@users.noreply.github.com"
-          if ! git fetch --quiet origin "$HEAD_REF" || git merge-base --is-ancestor FETCH_HEAD origin/main; then
-            git checkout --quiet -B "$HEAD_REF" origin/main
-            exit 0
-          fi
-          git checkout --quiet -B "$HEAD_REF" FETCH_HEAD
-          if [[ -n $RAN_AT && $(git rev-parse HEAD) != "$RAN_AT" ]]; then
-            printf 'fix: %s moved since its run went red, so a newer run judges it\n' "$HEAD_REF"
-            echo stale=true >>"$GITHUB_OUTPUT"
-          fi
-
-      - id: setup-node
-        if: steps.branch.outputs.stale != 'true'
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-
-      - id: pinned
-        if: steps.branch.outputs.stale != 'true'
-        uses: ./.github/actions/pinned
-
-      - id: npm-ci
-        if: steps.branch.outputs.stale != 'true'
-        run: npm ci
-
-      - id: database
-        if: steps.branch.outputs.stale != 'true'
-        uses: ./.github/actions/database
-
-      - id: logs
-        if: steps.branch.outputs.stale != 'true'
-        run: |
-          mkdir -p tree/.git/machine-logs
-          ln -s "$PWD/tree/.git/machine-logs" .git/machine-logs
-
-      - id: built-logs
-        if: steps.branch.outputs.stale != 'true' && github.event_name == 'issues'
-        continue-on-error: true
-        uses: actions/download-artifact@v5
-        with:
-          name: machine-logs
-          path: tree/.git/machine-logs
-
-      - id: stage
-        if: steps.branch.outputs.stale != 'true'
-        uses: ./.github/actions/stage
-        with:
-          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
-          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
-
-      - id: restore
-        if: steps.branch.outputs.stale != 'true'
-        uses: actions/cache/restore@v6
-        with:
-          path: |
-            ~/.claude/projects
-            ~/.claude/builder
-          key: builder-${{ env.HEAD_REF }}-${{ github.run_id }}
-          restore-keys: builder-${{ env.HEAD_REF }}-
-
-      - id: fix
-        if: steps.branch.outputs.stale != 'true'
-        timeout-minutes: 50
-        working-directory: tree
-        env:
-          GH_TOKEN: ${{ steps.app.outputs.token }}
-          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          STAGE_MINUTES: 45
-          CALLED_FROM: ${{ github.workflow_ref }}
-          RUN: ${{ github.event.workflow_run.id }}
-          REASON: "${{ github.event.inputs.reason || (github.event_name == 'issues' && format('The build of #{0} ended red: {1}/{2}/actions/runs/{3}', needs.which.outputs.ticket, github.server_url, github.repository, github.run_id) || github.event_name == 'pull_request_target' && format('The review of PR #{0} ended red: {1}/{2}/actions/runs/{3}', github.event.pull_request.number, github.server_url, github.repository, github.run_id) || '') }}"
-        run: |
-          tail --pid=$$ -n +1 -F ".git/machine-logs/fix-$TICKET.jsonl" 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
-          "$GITHUB_WORKSPACE/bin/fix" "$TICKET" $RUN
 
       - if: always() && steps.fix.outcome != 'skipped'
         uses: actions/cache/save@v6
@@ -511,22 +158,21 @@ jobs:
           path: |
             ~/.claude/projects
             ~/.claude/builder
-          key: builder-${{ env.HEAD_REF }}-${{ github.run_id }}
+          key: builder-${{ steps.start.outputs.branch }}-${{ github.run_id }}
 
-      - if: failure() || cancelled()
+      - if: (failure() || cancelled()) && steps.start.outcome == 'success'
         uses: ./.github/actions/call-owner
         with:
-          issue: ${{ needs.which.outputs.ticket }}
+          issue: ${{ github.event.issue.number }}
           run: "the builder's job"
           token: ${{ steps.app.outputs.token }}
 
-      - if: always()
+      - if: always() && steps.labelled.outputs.held != 'false'
         timeout-minutes: 6
         uses: ./.github/actions/stage-logs
         with:
           client-id: ${{ vars.CORE_APP_CLIENT_ID }}
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
-          artifact: fix-logs
 
   rerun:
     if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.rerun }}
@@ -560,8 +206,8 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           RERUN: ${{ github.event.inputs.rerun }}
         run: |
-          IFS=/ read -r run attempt failed <<<"$RERUN"
-          bin/rerun ${failed:+--failed} "$run" "$attempt"
+          IFS=/ read -r run attempt <<<"$RERUN"
+          bin/rerun "$run" "$attempt"
 
   probe:
     if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.probe }}
@@ -654,10 +300,9 @@ jobs:
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
 
   close:
-    needs: review
-    if: ${{ !cancelled() && (github.event_name == 'push' || (github.event_name == 'pull_request_target' && (github.event.action == 'closed' || needs.review.result == 'success')) || (github.event_name == 'workflow_run' && github.event.workflow_run.name != github.workflow && !(github.event.sender.login == 'collod873-machine[bot]')) || (github.event_name == 'issues' && github.event.action == 'closed')) }}
+    if: ${{ github.event_name == 'issues' && github.event.action == 'closed' }}
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
-    timeout-minutes: 20
+    timeout-minutes: 10
     env:
       GH_REPO: ${{ github.repository }}
     steps:
@@ -680,59 +325,20 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: tree
-          fetch-depth: 0
           token: ${{ steps.app.outputs.token }}
 
       - uses: actions/setup-node@v4
         with:
           node-version: 24
 
-      - id: queued
-        working-directory: tree
-        env:
-          GH_TOKEN: ${{ steps.app.outputs.token }}
-        run: |
-          prefix=$("$GITHUB_WORKSPACE/bin/spelled" TICKET_PREFIX)
-          behind=$("$GITHUB_WORKSPACE/bin/github" pr list --state open --json headRefName,autoMergeRequest | jq --arg prefix "$prefix" 'any(.[]; (.headRefName | startswith($prefix)) and .autoMergeRequest != null)')
-          printf 'behind=%s\n' "$behind" | tee -a "$GITHUB_OUTPUT"
-
-      - if: steps.queued.outputs.behind == 'true'
-        uses: ./.github/actions/hooks
-        with:
-          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
-          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
-
-      - id: pinned
-        if: steps.queued.outputs.behind == 'true'
-        uses: ./.github/actions/pinned
-
-      - id: database
-        if: steps.queued.outputs.behind == 'true'
-        uses: ./.github/actions/database
-
-      - id: git-config
-        if: steps.queued.outputs.behind == 'true'
-        working-directory: tree
-        run: |
-          git config user.name "core-app[bot]"
-          git config user.email "core-app[bot]@users.noreply.github.com"
-
       - id: close
         working-directory: tree
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           QUIET_GH_TOKEN: ${{ steps.app.outputs.token }}
-          QUEUE_ONLY: ${{ github.event_name != 'push' && 'queue' || '' }}
-          CLOSED_ISSUE: ${{ github.event_name == 'issues' && github.event.issue.number || '' }}
+          CLOSED_ISSUE: ${{ github.event.issue.number }}
           CALLED_FROM: ${{ github.workflow_ref }}
-        run: '"$GITHUB_WORKSPACE/bin/close" $QUEUE_ONLY $CLOSED_ISSUE'
-
-      - if: ${{ (failure() || cancelled()) && steps.close.outputs.ticket != '' }}
-        uses: ./.github/actions/call-owner
-        with:
-          issue: ${{ steps.close.outputs.ticket }}
-          run: the closer run
-          token: ${{ steps.app.outputs.token }}
+        run: '"$GITHUB_WORKSPACE/bin/close" "$CLOSED_ISSUE"'
 
   enrol:
     if: ${{ github.event_name == 'push' && github.repository == format('{0}/claude-workflow', github.repository_owner) }}
@@ -810,8 +416,8 @@ jobs:
           token: ${{ steps.app.outputs.token }}
 
   dispatch-rerun:
-    needs: [build, review, which, fix, close, enrol, strip]
-    if: ${{ always() && (needs.review.outputs.fault == 'true' || needs.build.result == 'failure' || needs.which.result == 'failure' || needs.fix.result == 'failure' || needs.close.result == 'failure' || needs.enrol.result == 'failure' || needs.strip.result == 'failure' || contains(needs.*.result, 'cancelled')) }}
+    needs: [build, close, enrol, strip]
+    if: ${{ always() && (needs.build.result == 'failure' || needs.close.result == 'failure' || needs.enrol.result == 'failure' || needs.strip.result == 'failure' || contains(needs.*.result, 'cancelled')) }}
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
     env:
@@ -841,5 +447,5 @@ jobs:
           RUN: ${{ github.run_id }}
           ATTEMPT: ${{ github.run_attempt }}
           CALLED_FROM: ${{ github.workflow_ref }}
-          TICKET: ${{ github.event.issue.number || github.event.pull_request.number || github.event.inputs.ticket || needs.which.outputs.ticket }}
+          TICKET: ${{ github.event.issue.number || github.event.pull_request.number || github.event.inputs.ticket }}
         run: bin/rerun --dispatch "$RUN" "$ATTEMPT"

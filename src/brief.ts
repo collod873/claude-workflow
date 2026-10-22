@@ -12,9 +12,15 @@ export function capped(text: string, limit: number): string {
   return kept;
 }
 
+export function tailOf(text: string, limit: number): string {
+  const bytes = Buffer.from(text);
+  return bytes.length <= limit ? text : bytes.subarray(bytes.length - limit).toString("utf8").replace(/^\uFFFD+/, "");
+}
+
 export const DIFF_CAP = 32 * 1024;
 export const TICKET_CAP = 8 * 1024;
 export const LIST_CAP = 4 * 1024;
+export const TAIL_CAP = 8 * 1024;
 export const NO_EM_DASH = "^[^\\u2014]*$";
 
 const FILE_START = /^(?=diff --git )/m;

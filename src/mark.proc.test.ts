@@ -7,7 +7,7 @@ const STATES = LABELS.filter(({ kind }) => kind === "state" || kind === "parked"
 
 describe("bin/mark leaves one state on a ticket and its open PR, so one look at either says where it is (#1055)", () => {
   it("sets the state, takes every other state off, and leaves the kind, held and wayfinder labels alone", () => {
-    const marked = marking({ labels: { "811": ["ticket", "checking", "queued", "paused", "stuck", "wayfinder:map"] } });
+    const marked = marking({ labels: { "811": ["ticket", "checking", "waiting", "paused", "stuck", "wayfinder:map"] } });
 
     expect(heard(marked.run("811", "building"))).toEqual({ status: 0, stderr: "", lines: ["mark: #811 is at building"] });
     expect(marked.labels("811")).toEqual(["building", "paused", "stuck", "ticket", "wayfinder:map"]);
@@ -27,7 +27,7 @@ describe("bin/mark leaves one state on a ticket and its open PR, so one look at 
   });
 
   it("labels a ticket past a 404 GitHub answers once for a label that exists, logging the retry (#1206)", () => {
-    const marked = marking({ labels: { "811": ["ticket", "landing"] }, gh: '[[ $2 == -X && $3 == POST && ! -e blipped ]] && { touch blipped; printf "gh: Label does not exist (HTTP 404)\\n" >&2; exit 1; }' });
+    const marked = marking({ labels: { "811": ["ticket", "building"] }, gh: '[[ $2 == -X && $3 == POST && ! -e blipped ]] && { touch blipped; printf "gh: Label does not exist (HTTP 404)\\n" >&2; exit 1; }' });
     const ran = marked.run("811", "checking");
 
     expect(ran.status, ran.stderr).toBe(0);

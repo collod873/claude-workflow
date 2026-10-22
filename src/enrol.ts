@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { isMap, isScalar, type Node, parse, parseDocument } from "yaml";
 import { FAST_CHECK, FULL_CHECK } from "./checks.ts";
-import { ENROLLED_CALLER, ENROLLED_REVIEW, MACHINE_REPO } from "./post.ts";
+import { ENROLLED_CALLER } from "./post.ts";
 import { LABELS, MACHINE } from "./spelled.ts";
 
 const ROOT = join(import.meta.dirname, "..");
@@ -12,7 +12,6 @@ const CALLER_TEXT = readFileSync(join(ROOT, ".github", "caller.yml"), "utf8");
 const PRE_PUSH = ".husky/pre-push";
 const WORKFLOWS = ".github/workflows";
 const TICKETS = `${WORKFLOWS}/tickets.yml`;
-export const HOME_REVIEW = "review";
 const CALLER = `${WORKFLOWS}/${ENROLLED_CALLER}`;
 const CHECK = FAST_CHECK;
 const BRANCH = "enrol/caller";
@@ -23,8 +22,8 @@ const NOT_FOUND = /\(HTTP 404\)/;
 const FORBIDDEN = /\(HTTP 403\)/;
 const HANDED = "ci: hand this repo's tickets to the machine";
 const CALLER_SETTING = "the caller file, check-job rule and pre-push";
-const SWAP_SETTING = `main requiring ${ENROLLED_REVIEW} in place of ${HOME_REVIEW}`;
-const PAUSED_REVIEW = `its ${ENROLLED_CALLER} workflow is disabled, so main requires no ${ENROLLED_REVIEW} until it is enabled and bin/enrol runs again`;
+const RETIRED_REVIEWS = ["tickets / review", "review"];
+const UNREVIEWED_SETTING = `main requiring no ${RETIRED_REVIEWS.join(" or ")}, since the reviewer lands what it reviews`;
 const CALLER_ONLY = "--caller";
 const LINE_LIMIT = 200;
 const SHOWN = 4;
@@ -262,8 +261,6 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
     gh(["api", "-X", "PUT", `repos/${repo}/rulesets/${pinned}`, "--input", "-"], JSON.stringify({ name, target, enforcement, conditions, rules: reshaped(held) }));
     return true;
   };
-  const unpin = (context: string) => reshape(context, (held) => held.map(unpinned));
-  const paused = once(() => (found<{ state: string }>(["api", `repos/${repo}/actions/workflows/${ENROLLED_CALLER}`])?.state ?? "active") !== "active");
   const without = (context: string) => (rule: Rule): Rule[] => {
     const kept = rule.parameters?.required_status_checks?.filter((required) => required.context !== context);
     if (kept === undefined) return [rule];
@@ -277,14 +274,6 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
       if (kept.length === 0) gh(["api", "-X", "DELETE", `repos/${repo}/rulesets/${id}`]);
       else gh(["api", "-X", "PUT", `repos/${repo}/rulesets/${id}`, "--input", "-"], JSON.stringify({ name, target, enforcement, conditions, rules: kept }));
     }
-  };
-  const swapped = (rule: Rule): Rule =>
-    rule.parameters?.required_status_checks === undefined
-      ? rule
-      : { ...rule, parameters: { ...rule.parameters, required_status_checks: rule.parameters.required_status_checks.map((required) => (required.context === HOME_REVIEW ? { context: ENROLLED_REVIEW } : required)) } };
-  const reviewsHome = () => {
-    const review = flowOf(textOf(TICKETS)?.text ?? "")?.jobs?.review;
-    return review != null && !String(review.if ?? "").includes(basename(MACHINE_REPO));
   };
   const write = (branch?: string) => {
     for (const { path, text } of pieces().filter((piece) => textOf(piece.path, branch)?.text !== piece.text)) {
@@ -393,47 +382,17 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
       set: () => (rules().some(({ type }) => type === "pull_request") ? throughPr() : write()),
     },
     {
-      name: "main taking only a PR its review passed",
-      waits: () => (paused() && requiring(ENROLLED_REVIEW).length === 0 ? PAUSED_REVIEW : undefined),
-      held: () => !paused() && requires(ENROLLED_REVIEW),
+      name: UNREVIEWED_SETTING,
+      held: () => RETIRED_REVIEWS.every((context) => requiring(context).length === 0),
       set: () => {
-        if (paused()) {
-          unrequire(ENROLLED_REVIEW);
-          throw new Waits(PAUSED_REVIEW);
+        try {
+          for (const context of RETIRED_REVIEWS) unrequire(context);
+        } catch (error) {
+          if (!(error instanceof Refused && FORBIDDEN.test(error.message))) throw error;
+          throw new Waits(`dropping ${RETIRED_REVIEWS.join(" and ")} from main's required checks waits on bin/enrol run on the owner's token`);
         }
-        if (unpin(ENROLLED_REVIEW)) return;
-        if (textOf(CALLER)?.text !== caller()) {
-          const open = openPr();
-          if (open === undefined) throw new Refused(`the caller file on main runs no ${ENROLLED_REVIEW}, so main would wait on a review that never runs`);
-          return { waits: open.url, opened: false };
-        }
-        const ruleset = {
-          name: "main lands only once its review passes",
-          target: "branch",
-          enforcement: "active",
-          conditions: ON_MAIN,
-          rules: [{ type: "required_status_checks", parameters: { strict_required_status_checks_policy: false, required_status_checks: [{ context: ENROLLED_REVIEW }] } }],
-        };
-        return void gh(["api", "-X", "POST", `repos/${repo}/rulesets`, "--input", "-"], JSON.stringify(ruleset));
       },
     },
-    ...(repo === MACHINE_REPO
-      ? [
-          {
-            name: SWAP_SETTING,
-            waits: () => (requiring(HOME_REVIEW).length === 0 || reviewsHome() ? undefined : `swapping ${HOME_REVIEW} for ${ENROLLED_REVIEW} in main's required checks waits on ${basename(TICKETS)} running its review here`),
-            held: () => requiring(HOME_REVIEW).length === 0,
-            set: () => {
-              try {
-                reshape(HOME_REVIEW, (held) => held.map(swapped));
-              } catch (error) {
-                if (!(error instanceof Refused && FORBIDDEN.test(error.message))) throw error;
-                throw new Waits(`swapping ${HOME_REVIEW} for ${ENROLLED_REVIEW} in main's required checks waits on the next bin/land here, which runs it on the owner's token`);
-              }
-            },
-          },
-        ]
-      : []),
   ];
   return { settings, forPc };
 }
@@ -444,7 +403,7 @@ function enrol(repo: string, callerOnly: boolean): number {
   const refused: string[] = [];
   const told: string[] = [];
   const { settings, forPc } = enrolling(repo);
-  for (const setting of settings.filter(({ name }) => !callerOnly || name === CALLER_SETTING || name === SWAP_SETTING)) {
+  for (const setting of settings.filter(({ name }) => !callerOnly || name === CALLER_SETTING || name === UNREVIEWED_SETTING)) {
     try {
       const waits = setting.waits?.();
       if (waits !== undefined) told.push(`enrol: ${repo}: ${waits}`);
