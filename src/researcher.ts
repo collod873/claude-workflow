@@ -28,7 +28,7 @@ const FINDINGS = {
         properties: {
           fault: { type: "string", pattern: NO_EM_DASH },
           title: { type: "string", pattern: NO_EM_DASH },
-          done: { type: "array", minItems: 1, maxItems: 3, items: { type: "string", pattern: NO_EM_DASH } },
+          done: { type: "array", minItems: 1, items: { type: "string", pattern: NO_EM_DASH } },
         },
         required: ["fault", "title", "done"],
         additionalProperties: false,

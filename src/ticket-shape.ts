@@ -1,9 +1,6 @@
 
 const NAMED = {
   why: "Why",
-  ownerWords: "Owner's words",
-  suggestions: "Agent's suggestions",
-  open: "Open",
   doneWhen: "Done when",
   problem: "Problem Statement",
   solution: "Solution",
@@ -19,8 +16,6 @@ const NAMED = {
 } as const;
 const heading = (name: string): RegExp => new RegExp(`^##[ \\t]+${name.replace("'", "[’']")}[ \\t]*(?=\\r?$)`, "m");
 const WHY = heading(NAMED.why);
-const OWNER_WORDS_HEADING = heading(NAMED.ownerWords);
-const SPOKEN_SECTIONS = [NAMED.ownerWords, NAMED.suggestions, NAMED.open];
 const DONE_WHEN = heading(NAMED.doneWhen);
 const PROBLEM_STATEMENT = heading(NAMED.problem);
 const SOLUTION = heading(NAMED.solution);
@@ -37,36 +32,23 @@ const NAMES_SHARED = /^###[ \t]+Names the tickets share[ \t]*(?=\r?$)/m;
 export const NEXT_HEADING = /^##[ \t]/m;
 const NEXT_SUBHEADING = /^###?[ \t]/m;
 const ITEM = /^[ \t]*-[ \t]*\[[ xX]\][ \t]*/;
-const BULLET = /^[ \t]*-(?:[ \t]*\[[ xX]\])?[ \t]+/;
 const OWNER_WORDS = /"[^"\n]{4,}"|^>[ \t]*\S/m;
 const NUMBERED_ITEM = /^[ \t]*\d+[.)][ \t]/m;
-const FEWEST = 1;
-const MOST = 3;
 const QUOTE = 80;
 
-export const DONE_SENTENCES = `${FEWEST} to ${MOST} sentences saying what done looks like`;
-const DONE_SHAPE = `## ${NAMED.doneWhen}, ${DONE_SENTENCES}, each on a '- ' line`;
-export const SPOKEN_SHAPE = [
-  "three sections.",
-  `## ${NAMED.ownerWords}: his exact sentences from the session that set this, quoted, including any hedge or doubt he voiced.`,
-  `## ${NAMED.suggestions}: anything the agent proposed that he did not say yes to, or said yes to without seeing; empty is fine.`,
-  `## ${NAMED.open}: questions he left unanswered.`,
-].join(" ");
-export const IDEA_SHAPE = "something he floated; nothing builds it.";
-export const LOOK_INTO_SHAPE = "a question he wants answered before deciding; a research agent answers it and nothing builds.";
-export const OWNER_SHAPE = [
-  "a step only he can take before shipped work can run, such as a dashboard setting, an env var or key, signing in or sending a file; nothing builds or researches it.",
-  "Trying finished work by hand, confirming a deploy or watching for something next time is not one: nothing stays broken until he does it.",
-  "Says what to do, where, and what stays broken until it is done.",
+export const DONE_SENTENCES = "what is true once it is done";
+export const WHY_SHAPE = [
+  `Every filing opens with ## ${NAMED.why}, quoting what set it: Collin's words, a short exchange between him and an agent, a problem an agent found with its evidence, or work a session left unfinished.`,
+  "The session and its transcript are linked for you.",
 ].join(" ");
 export const BUILD_SHAPE = [
-  `he said in his own words to build it. Adds ## ${NAMED.doneWhen}, ${FEWEST} to ${MOST} '- ' lines written from his words only.`,
-  "A build starts the moment it is filed, so file one only on an explicit decision; when unsure, file idea or look-into.",
+  `a decision Collin has made. Adds ## ${NAMED.doneWhen}: what we decided to do, said as ${DONE_SENTENCES}.`,
+  "A build starts the moment it is filed, so a question still open makes it an idea or a look-into.",
 ].join(" ");
-export const BUG_SHAPE = [
-  "a fault still standing, with evidence; it builds the moment it is filed.",
-  `Carries only ## ${NAMED.why}, quoting the evidence in "..." or a > line: a log line, a failing test's message, a Signal, error text; and ${DONE_SHAPE}`,
-].join(" ");
+export const BUG_SHAPE = `a fault still standing; its ## ${NAMED.why} quotes the evidence, such as a log line, a failing test or error text. Adds ## ${NAMED.doneWhen}: what working looks like. It builds the moment it is filed.`;
+export const IDEA_SHAPE = "something Collin floated, kept for him to decide.";
+export const LOOK_INTO_SHAPE = "a question Collin wants answered before deciding; a research agent answers it.";
+export const OWNER_SHAPE = `a step only Collin can take before shipped work can run, such as a dashboard setting, a key or a sign-in. Its ## ${NAMED.why} says what to do, where, and what waits on it.`;
 export const SPEC_SHAPE = [
   "he asked for a spec in his own words: the whole statement of a big job, sliced into tickets and never built itself.",
   `  ## ${NAMED.problem} quoting the owner, ## ${NAMED.solution}, ## ${NAMED.stories} numbered, ## ${NAMED.decisions} naming no file paths,`,
@@ -207,15 +189,6 @@ export function quoted(text: string): string {
   return text.length > QUOTE ? `${text.slice(0, QUOTE - 1)}…` : text;
 }
 
-export function spokenRefusals(body: string): string[] {
-  const text = body.replaceAll(/\r\n?/g, "\n");
-  return SPOKEN_SECTIONS.filter((name) => !heading(name).test(text)).map((name) => `the body carries no '## ${name}'`);
-}
-
-export const filedFromSpoken = (body: string): string => body.replace(OWNER_WORDS_HEADING, `## ${NAMED.why}`);
-
-export const inSpokenWords = (refusal: string): string => refusal.replaceAll(`'## ${NAMED.why}'`, `'## ${NAMED.ownerWords}'`);
-
 export function noteRefusals(body: string): string[] {
   const text = body.replaceAll(/\r\n?/g, "\n");
   const refusals: string[] = [];
@@ -230,8 +203,8 @@ interface WhyAsked {
 }
 
 const OWNER_ASKED: WhyAsked = {
-  missing: "the body carries no '## Why', so nothing says what the owner asked for",
-  unquoted: '\'## Why\' quotes no owner words: it carries no "..." quote and no > quoted line',
+  missing: "the body carries no '## Why', so nothing says what set this",
+  unquoted: '\'## Why\' quotes nothing that set this: it carries no "..." quote and no > quoted line',
 };
 
 const EVIDENCE_ASKED: WhyAsked = {
@@ -249,10 +222,7 @@ function builtRefusals(body: string, why: WhyAsked): string[] {
   if (!WHY.test(text)) refusals.push(why.missing);
   else if (!OWNER_WORDS.test(section(text, WHY))) refusals.push(why.unquoted);
   if (!DONE_WHEN.test(text)) refusals.push("the body carries no '## Done when', so nothing says what done looks like");
-  else {
-    const said = itemsUnder(text, DONE_WHEN, BULLET).length;
-    if (said < FEWEST || said > MOST) refusals.push(`'## Done when' carries ${said} '- ' sentences, not ${FEWEST} to ${MOST}`);
-  }
+  else if (section(text, DONE_WHEN).trim() === "") refusals.push("'## Done when' says nothing, so nothing says what done looks like");
   return refusals;
 }
 
