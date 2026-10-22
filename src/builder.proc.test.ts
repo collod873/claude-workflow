@@ -244,6 +244,18 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
     expect(handed()).toHaveLength(1);
   });
 
+  it("closes a ticket whose work it finds already on main as completed, calling no one, where a landed ticket whose close failed was rebuilt and closed not planned (#1453)", () => {
+    const reason = "PR #1431 landed this on main before its close failed";
+    const { run, closes, ticketComments, marked, landed } = fixing({ answer: { outcome: "done", reason }, check: "touch ../checked\nexit 1\n" });
+
+    expect(run().status).toBe(0);
+    expect(closes()).toEqual([["issue", "close", "811", "--reason", "completed"]]);
+    expect(ticketComments().at(-1)).toContain(reason);
+    expect(ticketComments().join("\n")).not.toContain("@collod873");
+    expect(marked()).not.toContain("stuck");
+    expect(landed()).toEqual([]);
+  });
+
   it("splits a ticket too big for one build into follow-up tickets that build themselves, and parks what must wait under `waiting`, where #910 was closed in silence", () => {
     const { body } = fixing();
     const waits = body.replace("The builder clears a red ticket", "The builder turns the flag on once its pieces merge");
@@ -511,15 +523,17 @@ describe("a fresh reviewer reads each green build, fixes or approves it, and bin
     expect(capped(), "the builder's round and the reviewer's two, in seconds").toEqual(["3", "3", "3"]);
   });
 
-  it("files each step only the owner can take, the builder's and the reviewer's, as an owner-step note once it lands, and still closes the ticket (ADR-0005)", () => {
-    const { run, filed, calls, closed } = fixing({ claude: FIXES, answer: { outcome: "code", reason: "built", steps: [STEP] }, review: { outcome: "approve", reason: "it builds the Why", steps: [{ ...STEP, title: "Turn on the webhook" }] } });
+  it("files each step the reviewer names as an owner-step note once it lands, and still closes the ticket, never asking the builder for one, where #1441 and #1442 filed one step twice (ADR-0005, #1453)", () => {
+    const { run, filed, calls, closed, hired } = fixing({ claude: FIXES, review: { outcome: "approve", reason: "it builds the Why", steps: [STEP] } });
 
     expect(run().status).toBe(0);
-    expect(filed()).toHaveLength(2);
+    const builder = hired()[0] ?? [];
+    expect(builder).toContain("--json-schema");
+    expect(builder[builder.indexOf("--json-schema") + 1]).not.toContain('"steps"');
+    expect(filed()).toHaveLength(1);
     expect(filed()[0]).toContain(STEP.why);
     expect(filed()[0]).toContain("Left to the owner by the run that built #811, which closed.");
-    expect(calls().filter((args) => args[1] === "create").map((args) => args[args.indexOf("--title") + 1])).toEqual([STEP.title, "Turn on the webhook"]);
-    expect(calls().find((args) => args[1] === "create")).toEqual(expect.arrayContaining(["owner-step"]));
+    expect(calls().find((args) => args[1] === "create")).toEqual(expect.arrayContaining(["owner-step", STEP.title]));
     expect(closed()).toEqual(["811 9811"]);
   });
 

@@ -40,7 +40,7 @@ export function handedOn(ticket: string, body: string, commits: string, diff: st
     `Commit what you change, each message saying why, with no em dash and no closing keyword such as \`Fixes #12\`. Run \`${FULL_CHECK}\` last if you changed anything. Answer one outcome:`,
     "- `approve`: it builds the Why, with whatever you fixed; `bin/land` then runs the full check and merges it, and anything it refuses comes back to you.",
     "- `stuck`: the work has a gap you cannot fix, one only the owner can close; `reason` says why, and the ticket is marked `stuck`.",
-    "`steps`: each step only the owner can take before this work runs, such as a dashboard setting or a key; each is filed as an `owner-step` note, and the ticket still closes.",
+    "`steps`: each step only the owner can take before this work runs, such as a dashboard setting or a key, read from the finished work; name every one in each answer, since those of the answer that lands are each filed as an `owner-step` note, and the ticket still closes.",
     "`reason`: one paragraph for the owner. Two rounds in a row that change nothing call them.",
     "",
   ].join("\n\n");
@@ -71,7 +71,7 @@ function triedAgainLater(ticket: string, refusal: string): number {
   return 1;
 }
 
-export function reviewedAndLanded(ticket: string, body: string, steps: OwnerStep[]): number {
+export function reviewedAndLanded(ticket: string, body: string): number {
   mark(ticket, CHECKING);
   const commits = gitRead(["log", "--reverse", "--format=- %s%n%n%b", "origin/main..HEAD"], "the commits past main could not be read, so nothing is reviewed");
   const diff = gitRead(["diff", "origin/main...HEAD"], "the diff from main could not be read, so nothing is reviewed");
@@ -95,7 +95,7 @@ export function reviewedAndLanded(ticket: string, body: string, steps: OwnerStep
     }
     const landed = answer === undefined ? { refused: "You gave no outcome. Answer one." } : landing(ticket);
     if ("pr" in landed) {
-      const filed = filedSteps(ticket, [...steps, ...(answer?.steps ?? [])]);
+      const filed = filedSteps(ticket, answer?.steps ?? []);
       console.log(`review: #${ticket} landed as PR #${landed.pr}${filed}`);
       return spawnSync(machineBin("close"), [ticket, landed.pr], { stdio: "inherit" }).status ?? 1;
     }
