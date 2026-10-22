@@ -217,6 +217,14 @@ describe("the shape bin/file-issue --help prints names every heading its kind is
   });
 });
 
+describe("bin/file-issue --help keeps a build's Done when to its own repo (#1467)", () => {
+  it("sends another repo's work to ## Follow-ups, one line per repo, filed there by whoever lands the build", () => {
+    for (const claim of ["only work its own repo does", "proof may stay", "## Follow-ups", "one line per repo", "files each one there as a build"]) {
+      expect(BUILD_SHAPE).toContain(claim);
+    }
+  });
+});
+
 describe("the builder's split and bin/file-issue --help read one Done when phrase, not hand copies (#1004)", () => {
   it.each([
     ["bin/file-issue --help, for a build", BUILD_SHAPE],

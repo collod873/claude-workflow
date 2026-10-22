@@ -185,19 +185,18 @@ _Avoid_: proof comment, audit line, byte check
 
 **Size trial**:
 A slice of a real spec run under a trial cap below the spec cap, so the size refusal happens on the
-running system without padding any spec over the real cap. It is asked for with
-`bin/slice --size-trial <spec> <trial cap>`, through a caller file (see Trial through the caller). The trial cap stands in for the spec cap in the size
-refusal, its sent-back prompt and each round's log line, but not in the room line (see Trial room
-line). The real slicer is hired and sent back each round exactly as in a real slice, answering with
-the record and the wave only.
-When the wave would file, code proves the owner's bytes stand in the body it would post and logs the
-filing line it would have written, starting `slice: trial #N`, with the owner's bytes and the seconds
-from the first size round, and posts nothing: no body edit, no ticket, no note, no label; a wave still
-refused after the rounds back ends red without marking `stuck` or commenting. A trial of a spec with
-nothing left to slice goes through Record at the hand-off under its trial cap and logs
-`slice: trial #N would hand it to the done check` instead. A trial cap at or above
-the spec cap, or below the owner's bytes, is refused before any model is hired, since the first can
-never refuse and the second can never fit.
+running system without padding a spec over the real cap. It is asked for with
+`bin/slice --size-trial <spec> <trial cap>`, through a caller file (see Trial through the caller).
+The trial cap stands in for the spec cap in the size refusal, its sent-back prompt and each round's
+log line, but not in the room line (see Trial room line). The real slicer is hired and sent back
+each round as in a real slice, answering with only the record and wave. When the wave would file,
+code proves the owner's bytes stand in the body it would post, logs `slice: trial #N` with the
+owner's bytes and seconds since the first size round, and posts nothing: no body edit, ticket, note
+or label; a wave still refused after the rounds back ends red without marking `stuck` or commenting.
+A trial of a spec with nothing left to slice goes through Record at the hand-off under its trial cap
+and logs `slice: trial #N would hand it to the done check` instead. A trial cap at or above the spec
+cap, or below the owner's bytes, is refused before hiring, since the first can never refuse and the
+second can never fit.
 _Avoid_: dry run, size test, fake cap
 
 **Trial room line**:
@@ -273,8 +272,9 @@ to happen for it to be seen; that is never a miss, and the next wave check tries
 _Avoid_: wave review, checkpoint, interim check
 
 **Ticket**:
-The unit the machine builds: an issue labelled `ticket` carrying `## Why` in the owner's words and,
-under `## Done when`, sentences of what done looks like. Adding `ticket` to an open issue builds,
+The unit the machine builds: an issue labelled `ticket` carrying `## Why` in the owner's words,
+`## Done when`, what done looks like in its own repo, and any `## Follow-ups`, one line per other
+repo, filed there as a build by whoever lands it. Adding `ticket` to an open issue builds,
 reviews and lands it in one run (ADR-0012), as `spec` slices and `research` answers; opening starts
 nothing, and taking `ticket` off and adding it back builds it again. Its PR merging closes it.
 _Avoid_: issue, sub-issue, card, item
