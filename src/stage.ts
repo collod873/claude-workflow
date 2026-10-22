@@ -59,9 +59,9 @@ function launcher(): string[] {
   return /^#!.*\bnode\b/.test(head.subarray(0, read).toString("utf8").split("\n")[0] ?? "") ? [process.execPath, found] : ["claude"];
 }
 
-function capped(argv: string[], minutes: number, deadline: number): [string, ...string[]] {
+function capped(argv: string[], minutes: number, leftMs: number): [string, ...string[]] {
   if (!(minutes > 0)) return [...launcher(), ...argv] as [string, ...string[]];
-  const left = Math.max(1, Math.ceil((deadline - Date.now()) / 1000));
+  const left = Math.max(1, Math.ceil(leftMs / 1000));
   return ["timeout", `--kill-after=${GRACE_SECONDS}`, String(left), ...launcher(), ...argv];
 }
 
@@ -94,18 +94,21 @@ export function setupRefusal(contract: string): string | undefined {
 
 export function hired(hire: Hire): (input: string, resume?: string) => Spent {
   const minutes = Number(process.env.STAGE_MINUTES);
-  const deadline = Date.now() + minutes * 60_000;
+  const budget = minutes * 60_000;
+  let used = 0;
   const argv = [...stageArgv(hire.model), ...(hire.answers === undefined ? [] : ["--json-schema", JSON.stringify(hire.answers)])];
   rmSync(hire.transcript, { force: true });
-  const readingEnds = deadline - (hire.writeUp?.minutes ?? 0) * 60_000;
+  const writeUpKept = (hire.writeUp?.minutes ?? 0) * 60_000;
   const handed = `${hire.transcript.replace(/\.jsonl$/, "")}.handed.md`;
   rmSync(handed, { force: true });
-  const attempt = (input: string, resume?: string, ends = readingEnds) => {
+  const attempt = (input: string, resume?: string, kept = writeUpKept) => {
     appendFileSync(handed, `${input}\n\n`);
     const from = existsSync(hire.transcript) ? statSync(hire.transcript).size : 0;
     const streamed = openSync(hire.transcript, "a");
-    const [command, ...args] = capped([...argv, ...(resume === undefined ? [] : ["--resume", resume]), ...STREAM], minutes, ends);
+    const [command, ...args] = capped([...argv, ...(resume === undefined ? [] : ["--resume", resume]), ...STREAM], minutes, budget - used - kept);
+    const started = Date.now();
     const spent = spawnSync(command, args, { input, env: treePathed(), stdio: ["pipe", streamed, "pipe"], encoding: "utf8", maxBuffer: Infinity });
+    used += Date.now() - started;
     closeSync(streamed);
     const stdout = readFileSync(hire.transcript).subarray(from).toString("utf8");
     return { stdout, status: spent.status, stderr: String(spent.stderr ?? "") };
@@ -125,7 +128,7 @@ export function hired(hire: Hire): (input: string, resume?: string) => Spent {
     }
     const reading = sessionOf(got.stdout);
     if (got.status === TIMED_OUT && minutes > 0 && hire.writeUp !== undefined && reading !== undefined) {
-      got = attempt(hire.writeUp.told, reading, deadline);
+      got = attempt(hire.writeUp.told, reading, 0);
       refusal = refusalFor(got);
     }
     return refusal === undefined ? { stdout: got.stdout, session: sessionOf(got.stdout), answer: answerIn(got.stdout) } : { stdout: got.stdout, refusal };
