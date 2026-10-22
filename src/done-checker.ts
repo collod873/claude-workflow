@@ -1,7 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { capped, NO_EM_DASH, onDisk } from "./brief.ts";
-import { UNFENCED } from "./fence.ts";
 import { authoredOn, CALLER_FILE, ENROLLED_CALLER, commentEdited, commentOnTicket, commentsRead, FOREIGN, gh, machineBin, mark, OWNER, readOrStop, STUCK, unread, type Asked } from "./post.ts";
 import { CONTRACT, opened, setupRefusal, type Spent } from "./stage.ts";
 import { CHECKING, SPEC } from "./spelled.ts";
@@ -172,7 +171,7 @@ function read(issue: string, wave?: number[]): Read | Stop | undefined {
     issue,
     state: CHECKING,
     stoppedAt,
-    hire: { name: "done checker", reach: UNFENCED, answers: triesOf(wave === undefined ? DONE_OUTCOMES : Object.keys(OUTCOMES)) },
+    hire: { name: "done checker", model: "opus", answers: triesOf(wave === undefined ? DONE_OUTCOMES : Object.keys(OUTCOMES)) },
     ready: (asked) => {
       if (!asked.labels.has(SPEC)) return stoppedAt("notSpec", `${said} is not a spec, so nothing was tried`);
       const listed = sentences(asked.body);

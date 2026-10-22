@@ -82,7 +82,7 @@ function metered(pr: string, print: boolean): Stop | undefined {
   const read = ticketPr(pr, said);
   if (typeof read !== "object") return read;
   const discard = { name: "discard", findings: discards(read.diff) };
-  const spent = answered({ name: "meter reviewer", bin: "meters", answers: ANSWERS }, handedOn(read.body, read.diff), pr);
+  const spent = answered({ name: "meter reviewer", bin: "meters", model: "opus", answers: ANSWERS }, handedOn(read.body, read.diff), pr);
   const unanswered = typeof spent === "string" ? [] : METERS.filter(({ name }) => findingsIn(spent.answer, name) === undefined).map(({ name }) => name);
   if (typeof spent === "string" || unanswered.length > 0) {
     const why = typeof spent === "string" ? spent : `the meter reviewer answered no ${unanswered.join(", ")}`;

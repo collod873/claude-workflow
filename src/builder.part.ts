@@ -68,7 +68,6 @@ export function fixing({
   markRefusal = undefined as string | undefined,
   unreadable = undefined as string | undefined,
   gitUnreadable = undefined as string | undefined,
-  hooks = "",
   treePath = {} as Record<string, string>,
   nodeLauncher = false,
   calledFrom = undefined as string | undefined,
@@ -168,7 +167,7 @@ export function fixing({
     captured: (name: string) => join(root, "captures", name),
     log: (...args: string[]) => git(session, "log", ...args),
     run: (...args: string[]) =>
-      execute(join(BIN, "fix"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}`, HOME: home, MACHINE_BIN: machine, AGENT_HOOKS_SETTINGS: hooks, SESSION_CAPTURES: join(root, "captures"), ...(reason === undefined ? {} : { REASON: reason }), ...(calledFrom === undefined ? {} : { CALLED_FROM: calledFrom, GH_REPO: repo }), ...(Object.keys(treePath).length === 0 ? {} : { TREE_PATH: join(root, "tree-bin") }) }, args.length === 0 ? [ticket, RED_RUN] : args),
+      execute(join(BIN, "fix"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}`, HOME: home, MACHINE_BIN: machine, SESSION_CAPTURES: join(root, "captures"), ...(reason === undefined ? {} : { REASON: reason }), ...(calledFrom === undefined ? {} : { CALLED_FROM: calledFrom, GH_REPO: repo }), ...(Object.keys(treePath).length === 0 ? {} : { TREE_PATH: join(root, "tree-bin") }) }, args.length === 0 ? [ticket, RED_RUN] : args),
   };
 }
 

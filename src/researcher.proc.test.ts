@@ -31,7 +31,7 @@ describe("bin/research answers a research note on the note and closes it, with n
 
     expect(run().status).toBe(0);
     expect(hired()).not.toContain("--tools");
-    expect(hired()[hired().indexOf("--model") + 1]).toBe("sonnet");
+    expect(hired()[hired().indexOf("--model") + 1]).toBe("opus");
     expect(hired()[hired().indexOf("--settings") + 1]).not.toContain("this stage runs only its own commands");
   });
 

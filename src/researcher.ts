@@ -1,5 +1,4 @@
 import { capped, NO_EM_DASH } from "./brief.ts";
-import { OPEN_SHELL } from "./fence.ts";
 import { commentOnTicket, FOLLOW_UP_OF, followUpBody, gh, OWNER, post, readOrStop, RESEARCH } from "./post.ts";
 import { RESEARCHING } from "./spelled.ts";
 import { opened } from "./stage.ts";
@@ -85,7 +84,7 @@ function researched(issue: string): Stop | undefined {
     issue,
     state: RESEARCHING,
     stoppedAt,
-    hire: { name: "researcher", reach: OPEN_SHELL, answers: FINDINGS, writeUp: { minutes: WRITE_UP_MINUTES, told: OUT_OF_TIME } },
+    hire: { name: "researcher", model: "opus", answers: FINDINGS, writeUp: { minutes: WRITE_UP_MINUTES, told: OUT_OF_TIME } },
     ready: (asked) => (asked.labels.has(RESEARCH) ? { carrying: {} } : stoppedAt("notResearch", `${said} is not a research note, so nothing answered or closed it`)),
   });
   if (typeof opening !== "object") return opening;

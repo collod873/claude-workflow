@@ -3,7 +3,6 @@ import { closeSync, mkdtempSync, openSync, readdirSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { capped, onDisk } from "./brief.ts";
-import { UNFENCED } from "./fence.ts";
 import { ENROLLED_CALLER, gh, ghRead, readOrStop } from "./post.ts";
 import { CONTRACT, hire, machineLogs, setupRefusal, treePathed } from "./stage.ts";
 import { exitFor } from "./stops.ts";
@@ -44,9 +43,7 @@ function scripted(text: string, output: string): number {
 }
 
 function spoken(key: string, text: string, output: string): number | string {
-  const spend = hire("probe", key, { name: "probe", gated: true, reach: UNFENCED });
-  if (typeof spend === "string") return `the owner's hooks could not be read from ${spend}`;
-  const spent = spend(asked(text));
+  const spent = hire("probe", key, { name: "probe", model: "opus" })(asked(text));
   writeFileSync(output, spent.refusal ?? resultOf(spent.stdout));
   return spent.refusal ?? 0;
 }

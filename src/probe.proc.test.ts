@@ -32,7 +32,7 @@ describe("a probe runs one command or prompt in a stage's real environment and e
 
     expect(ended.status, ended.stderr).toBe(0);
     expect(probe.handed()).toBe("Run check and say how long it took");
-    expect(probe.hired()).toEqual(expect.arrayContaining(["--print", "--model", "opus", "--setting-sources", "project", "--permission-mode", "bypassPermissions"]));
+    expect(probe.hired()).toEqual(expect.arrayContaining(["--print", "--model", "opus", "--setting-sources", "user,project", "--permission-mode", "bypassPermissions"]));
     expect(probe.hired()).not.toContain("--tools");
     expect(probe.transcripts()).toEqual([`probe-${PROBE_RUN}.jsonl`]);
     expect(probe.kept()).toBe("check took 6.2s");

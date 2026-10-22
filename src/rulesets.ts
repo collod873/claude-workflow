@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { HOME_REVIEW } from "./enrol.ts";
-import { FAST_CHECK } from "./fence.ts";
+import { FAST_CHECK } from "./checks.ts";
 import { ENROLLED_REVIEW, MACHINE_REPO } from "./post.ts";
 
 const HOME = MACHINE_REPO;

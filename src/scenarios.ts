@@ -47,7 +47,7 @@ export interface Run {
 const SRC = import.meta.dirname;
 export const BIN = join(SRC, "..", "bin");
 const WORKFLOWS = join(SRC, "..", ".github", "workflows");
-const env = { ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_") && !name.startsWith("VITEST") && name !== "REASON" && name !== "TREE_PATH" && name !== "CLAUDE_CODE_SESSION_ID")), AGENT_HOOKS_SETTINGS: "", AGENT_SKILLS: "", GH_RETRY_SECONDS: "0" };
+const env = { ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_") && !name.startsWith("VITEST") && name !== "REASON" && name !== "TREE_PATH" && name !== "CLAUDE_CODE_SESSION_ID")), GH_RETRY_SECONDS: "0" };
 
 export interface WorkflowStep {
   id?: string;
@@ -464,26 +464,10 @@ export function plant(root: string, path: string, content: string): void {
   writeFileSync(join(root, path), content);
 }
 
-export function flagValue(argv: string, flag: string): string {
-  const value = argv.split("\n")[argv.split("\n").indexOf(flag) + 1];
-  if (value === undefined) throw new Error(`no value after ${flag} in the argv`);
-  return value;
-}
-
-export function fenceSays(argv: string, input: string) {
-  const { hooks } = JSON.parse(flagValue(argv, "--settings")) as { hooks: { PreToolUse: { matcher: string; hooks: { command: string }[] }[] } };
-  const [bash] = hooks.PreToolUse.filter(({ matcher }) => matcher === "Bash");
-  const command = bash?.hooks[0]?.command;
-  if (command === undefined) throw new Error("no Bash hook command in --settings");
-  return spawnSync("bash", ["-c", command], { input, encoding: "utf8" });
-}
-
 export function filedAs(calls: string[][]): { title: string | undefined; labels: string[]; body: string | undefined; then: string[][] } {
   const [call = [], ...then] = calls;
   return { title: call[call.indexOf("--title") + 1], labels: call.filter((_, at) => call[at - 1] === "--label"), body: call[call.indexOf("--body") + 1], then };
 }
-
-export const askingBash = (command: unknown) => JSON.stringify({ tool_name: "Bash", tool_input: { command } });
 
 export const SAVED_PR = "https://github.com/collod873/claude-workflow/pull/9726";
 

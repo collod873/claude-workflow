@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { appendFileSync } from "node:fs";
-import { FULL_CHECK } from "./fence.ts";
+import { FULL_CHECK } from "./checks.ts";
 import { capped, DIFF_CAP, handedDiff, LIST_CAP, NO_EM_DASH, TICKET_CAP } from "./brief.ts";
 import { answered as readAnswered, commentOnPr, commentOnTicket, commentsRead, drifted, earlierDrift, FOLLOW_UP_OF, followUpBody, foundDrift, foundOverlap, gh, ghRead, git, gitRead, mark, OWNER, post, readOrStop, REVIEW_FOUND, REVIEWED_FROM, STUCK, TICKET_BRANCH, underOwnerSpec, unread, WAITING } from "./post.ts";
 import { hire } from "./stage.ts";
@@ -11,7 +11,6 @@ import { DONE_SENTENCES, quoted, why } from "./ticket-shape.ts";
 const stoppedAt = stopsOf({ drift: "The reviewer finds drift from `## Why`", calledOwner: "Review: a gap named again on the next try, so the ticket is marked `stuck`" });
 export type Stop = ReturnType<typeof stoppedAt>;
 
-const TOOLS = ["Read", "Grep", "Glob", "Skill"];
 export const PLAIN_WORDS = "^(?:(?!`|/|[\\w-]+\\.[A-Za-z]{1,8}\\b)[\\s\\S])*$";
 const foundMatchInWave = (ticket: string) => `The reviewer read this PR against the Why of #${ticket} and found it builds it. Its spec's note for this wave reads it back to the owner.`;
 const foundNoOverlap = (ticket: string) => `The reviewer read this PR for #${ticket} against what merged to main since its last judgement and found no overlap.`;
@@ -196,15 +195,13 @@ function isVerdict(answer: unknown): answer is Verdict {
   return verdict === "match" || verdict === "drift";
 }
 
-export function answered({ name, bin, answers }: { name: string; bin: string; answers: object }, prompt: string, pr: string): { answer: unknown; stdout: string } | string {
-  const spend = hire(bin, pr, { name, tools: TOOLS, answers });
-  if (typeof spend === "string") return spend;
-  const spent = spend(prompt);
+export function answered({ name, bin, model, answers }: { name: string; bin: string; model: string; answers: object }, prompt: string, pr: string): { answer: unknown; stdout: string } | string {
+  const spent = hire(bin, pr, { name, model, answers })(prompt);
   return spent.refusal ?? { answer: spent.answer, stdout: spent.stdout };
 }
 
 function judged(prompt: string, pr: string): Verdict | string {
-  const spent = answered({ name: "reviewer", bin: "review", answers: VERDICT }, prompt, pr);
+  const spent = answered({ name: "reviewer", bin: "review", model: "opus", answers: VERDICT }, prompt, pr);
   if (typeof spent === "string") return spent;
   return isVerdict(spent.answer) ? spent.answer : `the reviewer gave no verdict: ${firstLine(spent.stdout)}`;
 }
@@ -304,7 +301,7 @@ function reviewedSince(judging: Judging & { body: string; diff: string }, from: 
   const line = unspent(pr, "what merged to main since its last judgement");
   const merged = gitRead(["log", "--first-parent", "--format=- %s", `${from}..${to}`], line);
   const landed = gitRead(["diff", from, to], line);
-  const spent = answered({ name: "reviewer", bin: "review", answers: SINCE }, handedSince(judging.body, judging.diff, merged, landed), pr);
+  const spent = answered({ name: "reviewer", bin: "review", model: "opus", answers: SINCE }, handedSince(judging.body, judging.diff, merged, landed), pr);
   if (typeof spent === "string") return stoppedAt("modelRun", `${said} ended red, ${spent}`);
   if (!isSince(spent.answer)) return stoppedAt("modelRun", `${said} ended red, the reviewer gave no finds: ${firstLine(spent.stdout)}`);
   const moved = movedUnder(judging);

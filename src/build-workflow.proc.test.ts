@@ -236,17 +236,16 @@ describe("every job that spends a model is watched as it goes, read after it end
     }
   });
 
-  it("every job hands its stages the owner's hooks from agent-hooks' main, read with a token that can only read agent-hooks", () => {
+  it("every job runs its stages under the owner's claude-config, with his hooks from agent-hooks' main registered at the runner's paths, each read with a token that can only read its repo (ADR-0011)", () => {
     for (const { steps } of modelJobs()) {
-      const minted = steps.findIndex((step) => step.with?.repositories === "agent-hooks");
-      const cloned = steps.findIndex((step) => /git clone [^\n]*--branch main /.test(step.run ?? ""));
-      const handed = steps.findIndex((step) => /AGENT_HOOKS_SETTINGS=.*GITHUB_ENV/.test(step.run ?? ""));
-      expect(steps[minted]?.with).toMatchObject({ owner: "${{ github.repository_owner }}", "permission-contents": "read" });
-      expect(minted).toBeGreaterThanOrEqual(0);
-      expect(cloned).toBeGreaterThan(minted);
-      expect(handed).toBeGreaterThan(cloned);
+      const hooks = steps.findIndex((step) => step.with?.repositories === "agent-hooks");
+      const minted = steps.findIndex((step) => step.with?.repositories === "claude-config");
+      const handed = steps.findIndex((step) => /CLAUDE_CONFIG_DIR=.*GITHUB_ENV/.test(step.run ?? ""));
+      for (const at of [hooks, minted]) expect(steps[at]?.with).toMatchObject({ owner: "${{ github.repository_owner }}", "permission-contents": "read" });
+      expect(minted).toBeGreaterThan(hooks);
+      expect(handed).toBeGreaterThan(minted);
       expect(handed).toBeLessThan(steps.findIndex(spendsModel));
-      expect(steps[handed]?.run).toContain("--emit-stages");
+      expect(steps[handed]?.run).toContain("--write-settings --graded");
     }
   });
 
@@ -585,19 +584,6 @@ describe("the PR check judges only through agent-hooks' main check, which runs t
     expect(fetched).toBeGreaterThanOrEqual(0);
     expect(checked).toBeGreaterThan(fetched);
     expect(steps.filter((step) => /treewide\.py/.test(step.run ?? ""))).toEqual([]);
-  });
-
-  it("runs the full check under the hooks settings the Builder's own full check folded into its receipts, so a tree the Builder checked is covered", () => {
-    const { check } = (parse(readFileSync(join(WORKFLOWS, "check.yml"), "utf8")) as Workflow).jobs;
-    const steps = expanded(check?.steps ?? []);
-    const handing = (step: Step) => /AGENT_HOOKS_SETTINGS=.*GITHUB_ENV/.test(step.run ?? "");
-    const built = expanded(workflow().job.steps).find(handing);
-    const handed = steps.findIndex(handing);
-    const checked = steps.findIndex((step) => /\bcheck --full\b/.test(step.run ?? ""));
-
-    expect(handed).toBeGreaterThanOrEqual(0);
-    expect(handed).toBeLessThan(checked);
-    expect(steps[handed]?.run).toBe(built?.run);
   });
 });
 

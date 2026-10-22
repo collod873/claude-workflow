@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { admission, doesNotBuild } from "./admit.ts";
 import { capped, handedDiff, LIST_CAP, NO_EM_DASH, onDisk, TICKET_CAP } from "./brief.ts";
-import { FULL_CHECK, UNFENCED } from "./fence.ts";
+import { FULL_CHECK } from "./checks.ts";
 import { answered, type Asked, BUILDER_SPLIT, CALLER_FILE, commentOnTicket, commentsRead, earlierDrift, faultOf, FOLLOW_UP_OF, FOREIGN, followUpBody, gh, ghRead, git, gitRead, MACHINE_REPO, machineBin, mark, NOTHING_MARKED, OWNER, post, postRefusals, prOfTicket, readOrStop, repairOf, RESOLVING, rewriteTicket, FILED_IN, STUCK, ticketBranch, unread, WAITING } from "./post.ts";
 import { CONTRACT, machineLogs, opened, setupRefusal, type Spent, treePathed } from "./stage.ts";
 import { BUILDING, CHECKING } from "./spelled.ts";
@@ -409,7 +409,7 @@ function ownTicket(ticket: string, run: string | undefined): number {
     issue: ticket,
     state: BUILDING,
     stoppedAt,
-    hire: { name: "builder", answers: ANSWER, gated: true, reach: UNFENCED },
+    hire: { name: "builder", model: "opus", answers: ANSWER },
     ready: (asked) => owned(ticket, run, asked),
   });
   if (typeof owning !== "object") return exitFor(owning);
