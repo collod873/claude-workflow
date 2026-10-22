@@ -342,6 +342,13 @@ jobs:
           CALLED_FROM: ${{ github.workflow_ref }}
         run: '"$GITHUB_WORKSPACE/bin/close" "$CLOSED_ISSUE"'
 
+      - if: ${{ failure() || cancelled() }}
+        uses: ./.github/actions/call-owner
+        with:
+          issue: ${{ github.event.issue.number }}
+          run: the close run
+          token: ${{ steps.app.outputs.token }}
+
   strip:
     if: ${{ github.event.action == 'closed' }}
     runs-on: ${{ vars.QUICK_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}

@@ -433,6 +433,7 @@ const CALLER = join(REPO, ".github", "actions", "call-owner", "action.yml");
 const CALLERS = [
   { file: "tickets.yml", job: "build", names: "github.event.issue.number" },
   { file: "tickets.yml", job: "strip", names: "github.event.issue.number" },
+  { file: "tickets.yml", job: "close", names: "github.event.issue.number" },
   { file: "specs.yml", job: "research", names: "github.event.issue.number" },
   { file: "specs.yml", job: "slice", names: "github.event.issue.number" },
   { file: "specs.yml", job: "reslice", names: "steps.ended.outputs.spec" },
@@ -441,7 +442,7 @@ const CALLERS = [
 ];
 const callsOwner = (step: Step) => step.uses === "./.github/actions/call-owner";
 
-describe("a build, research, slice, reslice, done check or strip run that ends red leaves its issue and run through one shared step, which bin/rerun reads once the run completes (#1057, #1067, #1178)", () => {
+describe("a build, close, research, slice, reslice, done check or strip run that ends red leaves its issue and run through one shared step, which bin/rerun reads once the run completes, so a wake that ends red runs again (#1057, #1067, #1178, #1445)", () => {
   const [owned] = (parse(readFileSync(CALLER, "utf8")) as { runs: { steps: Step[] } }).runs.steps;
   const calls = (labels: string, run: string) => {
     const root = scratch("called-");
