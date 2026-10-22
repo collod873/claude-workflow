@@ -116,22 +116,29 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
     expect(sharedTemp.stderr).toContain("/tmp is outside this runner");
   });
 
-  it("leaves a mid-job PC runner on its old setup rather than kill the job under it, and gives it the new one once the job ends", () => {
-    const { run, sudo, placed, jobsEnded } = switching({ runners: [pcRunner(`${HOST}-1`, "online", true), pcRunner(`${HOST}-2`)] });
-    const dropIn = `/etc/systemd/system/actions.runner.collod873-Lumaria.${HOST}-1.service.d/pc-runner.conf`;
+  it("gives a mid-job PC runner its new setup at its job's end, by starting its service for one job at a time, so no job is killed and no one runs this again", () => {
+    const { run, sudo, placed } = switching({ runners: [pcRunner(`${HOST}-1`, "online", true), pcRunner(`${HOST}-2`)] });
+    const dropIn = placed.bind(null, `/etc/systemd/system/actions.runner.collod873-Lumaria.${HOST}-1.service.d/pc-runner.conf`);
 
     const result = run("pc");
 
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain(`; ${HOST}-1 kept their old setup mid-job: run this again once they finish`);
+    expect(result.stdout).toBe(`runner: ${REPO} runs on this PC from its next job, 2 PC runners online; ${HOST}-1 take the new setup when their job ends\n`);
+    expect(sudo().filter((call) => call.includes(`${HOST}-1 && `) && call.includes("svc.sh"))).toEqual([]);
+    expect(dropIn().split("\n")).toEqual(expect.arrayContaining(["Slice=pc-runners.slice", "Environment=ACTIONS_RUNNER_INPUT_ONCE=true", "Restart=always", `ExecCondition=/usr/bin/systemctl is-enabled --quiet actions.runner.collod873-Lumaria.${HOST}-1.service`]));
+    expect(placed(`/home/ghrunner/runners/collod873-Lumaria/${HOST}-1/.env`).split("\n")).toContain("PIPELINE_JOB_OOMSCOREADJ=0");
+  });
+
+  it("leaves a mid-job PC runner whose service predates one job at a time on its old setup, rather than kill the job under it, and says it waits on this running again", () => {
+    const { run, sudo, placed, jobsEnded } = switching({ runners: [pcRunner(`${HOST}-1`, "online", true), pcRunner(`${HOST}-2`)], manyJobs: [`${HOST}-1`] });
+    const dropIn = `/etc/systemd/system/actions.runner.collod873-Lumaria.${HOST}-1.service.d/pc-runner.conf`;
+
+    expect(run("pc").stdout).toContain(`; ${HOST}-1 kept their old setup mid-job, since it takes jobs until stopped: run this again once they finish`);
     expect(sudo().filter((call) => call.includes(`${HOST}-1 && `) && call.includes("svc.sh"))).toEqual([]);
     expect(() => placed(dropIn)).toThrow();
     jobsEnded();
-    const before = sudo().length;
 
     expect(run("pc").stdout).not.toContain("mid-job");
-    expect(sudo().slice(before).some((call) => call.includes(`${HOST}-1 &&`) && call.includes("svc.sh stop") && call.includes("svc.sh start"))).toBe(true);
-    expect(placed(dropIn)).toContain("Slice=pc-runners.slice");
+    expect(placed(dropIn)).toContain("Restart=always");
   });
 
   it("gives a runner stopped by hand its new setup at once, though GitHub still shows it mid-job", () => {

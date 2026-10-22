@@ -901,7 +901,7 @@ export const PC_RUNNER_COUNT = 2;
 
 export const pcRunner = (name: string, status = "online", busy = false) => ({ name, status, busy, labels: [{ name: "self-hosted" }, { name: "pc" }] });
 
-export function switching({ isPrivate = true, runners = [] as object[], variable = "", startsOnline = true, slowToStart = [] as string[], stoppedByHand = [] as string[], userExists = true } = {}) {
+export function switching({ isPrivate = true, runners = [] as object[], variable = "", startsOnline = true, slowToStart = [] as string[], stoppedByHand = [] as string[], manyJobs = [] as string[], userExists = true } = {}) {
   const root = scratch("runner-");
   const at = (name: string) => join(root, name);
   writeFileSync(at("runners.json"), JSON.stringify({ runners }));
@@ -936,6 +936,7 @@ export function switching({ isPrivate = true, runners = [] as object[], variable
       `  kept="${at("placed")}/\${BASH_REMATCH[1]//\\//_}"`,
       '  mv "$kept.next" "$kept"',
       "fi",
+      `for name in ${manyJobs.join(" ")}; do [[ $* == *".$name.service"*ACTIONS_RUNNER_INPUT_ONCE* ]] && exit 1; done`,
       "started='runners/[^/ ]+/([^ /]+) && .*svc\\.sh start'",
       `if ${startsOnline} && [[ $* =~ $started ]] && [[ " ${slowToStart.join(" ")} " != *" \${BASH_REMATCH[1]} "* ]]; then`,
       `  jq -c --arg name "\${BASH_REMATCH[1]}" '.runners |= (map(select(.name != $name)) + [{name: $name, status: "online", busy: false, labels: [{name: "self-hosted"}, {name: "pc"}]}])' "${at("runners.json")}" >"${at("runners.next")}"`,

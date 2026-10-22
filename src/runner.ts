@@ -29,7 +29,9 @@ const cpusOf = (at: number) => {
   const start = Math.min(cpus - 1, firstCpu + (at % Math.max(1, PC_RUNNERS_CPUS / RUNNER_CPUS)) * RUNNER_CPUS);
   return `${start}-${Math.min(cpus - 1, start + RUNNER_CPUS - 1)}`;
 };
-const confinement = (at: number) => ["[Service]", `Slice=${SLICE}`, `MemoryMax=${RUNNER_MEMORY_GB}G`, "MemorySwapMax=0", `AllowedCPUs=${cpusOf(at)}`, "OOMPolicy=continue", "KillMode=mixed", ""].join("\n");
+const ONE_JOB = "ACTIONS_RUNNER_INPUT_ONCE=true";
+const confinement = (at: number, unit: string) =>
+  ["[Service]", `Slice=${SLICE}`, `MemoryMax=${RUNNER_MEMORY_GB}G`, "MemorySwapMax=0", `AllowedCPUs=${cpusOf(at)}`, "OOMPolicy=continue", "KillMode=mixed", `Environment=${ONE_JOB}`, "Restart=always", "RestartSec=2", `ExecCondition=/usr/bin/systemctl is-enabled --quiet ${unit}`, ""].join("\n");
 const EARLYOOM = "/etc/default/earlyoom";
 const earlyoom = 'EARLYOOM_ARGS="-r 3600 -m 10,5 -s 10,5"\n';
 const NOT_FOUND = /\(HTTP 404\)|not found/i;
@@ -150,7 +152,17 @@ function provisionEarlyoom(): void {
 
 const running = (repo: string, name: string) => spawnSync("systemctl", ["is-active", "--quiet", unitOf(repo, name)]).status === 0;
 
-function settle(repo: string, name: string, at: number, busy: boolean): "started" | "mid-job" {
+function takesOneJob(repo: string, name: string): boolean {
+  try {
+    asRoot(`tr '\\0' '\\n' </proc/"$(systemctl show --property MainPID --value ${unitOf(repo, name)})"/environ | grep -qx ${ONE_JOB}`);
+    return true;
+  } catch (error) {
+    if (!(error instanceof Refused)) throw error;
+    return false;
+  }
+}
+
+function settle(repo: string, name: string, at: number, busy: boolean): "started" | "at-job-end" | "mid-job" {
   const dir = dirOf(repo, name);
   const dropIns = `${UNITS}/${unitOf(repo, name)}.d`;
   const temp = tempOf(repo, name);
@@ -162,11 +174,15 @@ function settle(repo: string, name: string, at: number, busy: boolean): "started
     staged({ as: asRunnerUser, path: clear, text: clearing(repo, name, unitOf(repo, name)), mode: "755" }),
     staged({ as: asRunnerUser, path: `${dir}/.env`, text: env, mode: "644" }),
     staged({ as: asRunnerUser, path: `${dir}/.path`, text: `${PATH}\n`, mode: "644" }),
-    staged({ as: asRoot, path: `${dropIns}/pc-runner.conf`, text: confinement(at), mode: "644" }),
+    staged({ as: asRoot, path: `${dropIns}/pc-runner.conf`, text: confinement(at, unitOf(repo, name)), mode: "644" }),
   ];
   const changed = files.some((file) => file.changed);
-  if (changed && busy) return "mid-job";
+  if (changed && busy && !takesOneJob(repo, name)) return "mid-job";
   for (const file of files) place(file);
+  if (changed && busy) {
+    asRoot(`systemctl daemon-reload && systemctl enable --quiet ${unitOf(repo, name)}`);
+    return "at-job-end";
+  }
   asRoot(`cd ${dir} && ${changed ? "systemctl daemon-reload && ./svc.sh stop >/dev/null && " : ""}systemctl enable --quiet ${unitOf(repo, name)} && ./svc.sh start >/dev/null`);
   return "started";
 }
@@ -211,15 +227,19 @@ function toPc(repo: string, asked: number | undefined): string {
   provisionSlice();
   provisionEarlyoom();
   for (const name of missing) install(repo, name);
-  const midJob = names.filter((name, at) => settle(repo, name, at, registered.get(name) === true && running(repo, name)) === "mid-job");
+  const settled = names.map((name, at) => ({ name, as: settle(repo, name, at, registered.get(name) === true && running(repo, name)) }));
+  const named = (as: string) => settled.filter((runner) => runner.as === as).map(({ name }) => name);
+  const atJobEnd = named("at-job-end");
+  const midJob = named("mid-job");
   const off = turnOff(repo, extra);
   const count = waitOnline(() => on.pcRunners().filter(({ name, status }) => names.includes(name) && status === "online").length, wanted);
   if (count === 0) throw new Refused(`no PC runner of ${repo} came online within ${WAIT_SECONDS}s, so it stays where it was: start them with \`sudo systemctl start 'actions.runner.*'\``);
   if (on.current() !== "pc") gh(["variable", "set", VARIABLE, "-R", repo, "--body", LABEL]);
   const installed = missing.length > 0 ? `, ${missing.length} installed` : "";
-  const waiting = midJob.length > 0 ? `; ${midJob.join(", ")} kept their old setup mid-job: run this again once they finish` : "";
+  const settling = atJobEnd.length > 0 ? `; ${atJobEnd.join(", ")} take the new setup when their job ends` : "";
+  const waiting = midJob.length > 0 ? `; ${midJob.join(", ")} kept their old setup mid-job, since it takes jobs until stopped: run this again once they finish` : "";
   const up = count < wanted ? `${count} of ${wanted} PC runners online, the rest still starting` : `${count} PC runners online`;
-  return `${repo} runs on this PC from its next job, ${up}${installed}${off}${waiting}`;
+  return `${repo} runs on this PC from its next job, ${up}${installed}${off}${settling}${waiting}`;
 }
 
 function toGithub(repo: string): string {
