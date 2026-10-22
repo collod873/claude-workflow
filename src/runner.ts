@@ -26,8 +26,8 @@ const CHECK_SLOTS_DIR = `${HOME}/check-slots`;
 const PC_RUNNERS_CPUS = 8;
 const RUNNER_CPUS = 4;
 const QUICK_SLICE = "pc-quick-runners.slice";
-const QUICK_RUNNERS_MEMORY_GB = 8;
-const QUICK_RUNNER_MEMORY_GB = 3;
+const QUICK_RUNNER_MEMORY_GB = 2;
+const QUICK_RUNNERS_MEMORY_GB = QUICK_RUNNERS * QUICK_RUNNER_MEMORY_GB;
 const cpus = Number(spawnSync("nproc", { encoding: "utf8" }).stdout);
 const firstCpu = Math.max(0, cpus - PC_RUNNERS_CPUS);
 const quickCpus = firstCpu > 0 ? `0-${firstCpu - 1}` : `0-${cpus - 1}`;
@@ -243,12 +243,13 @@ function toPc(repo: string, asked: number | undefined): string {
   const count = waitOnline(() => on.pcRunners().filter(({ name, status }) => names.includes(name) && status === "online").length, wanted);
   if (count === 0) throw new Refused(`no PC runner of ${repo} came online within ${WAIT_SECONDS}s, so it stays where it was: start them with \`sudo systemctl start 'actions.runner.*'\``);
   if (on.current() !== "pc") gh(["variable", "set", VARIABLE, "-R", repo, "--body", LABEL]);
+  const quick = waitOnline(() => on.quickRunners().filter(({ name, status }) => quickNames.includes(name) && status === "online").length, QUICK_RUNNERS);
   if (!on.quickSet()) gh(["variable", "set", QUICK_VARIABLE, "-R", repo, "--body", QUICK_LABEL]);
-  const quick = on.quickRunners().filter(({ name, status }) => quickNames.includes(name) && status === "online").length;
+  const quickUp = quick > 0 ? `${quick} quick runners online` : `0 of ${QUICK_RUNNERS} quick runners online, so its build runners take its quick jobs until one is`;
   const installed = missing.length + quickMissing.length > 0 ? `, ${missing.length + quickMissing.length} installed` : "";
   const waiting = midJob.length > 0 ? `; ${midJob.join(", ")} kept their old setup mid-job: run this again once they finish` : "";
   const up = count < wanted ? `${count} of ${wanted} PC runners online, the rest still starting` : `${count} PC runners online`;
-  return `${repo} runs on this PC from its next job, ${up}, ${quick} quick runners online${installed}${off}${waiting}`;
+  return `${repo} runs on this PC from its next job, ${up}, ${quickUp}${installed}${off}${waiting}`;
 }
 
 function toGithub(repo: string): string {

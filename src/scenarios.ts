@@ -918,6 +918,7 @@ export function switching({ isPrivate = true, runners = [] as object[], variable
       `printf '%s\\n' "$*" >>"${at("gh-calls")}"`,
       'case "$*" in',
       `  "api repos/${PC_REPO}/actions/runners") cat "${at("runners.json")}" ;;`,
+      `  "api -X POST repos/${PC_REPO}/actions/runners/"*/labels*) id=\${4#repos/${PC_REPO}/actions/runners/}; jq -c --argjson id "\${id%/labels}" --arg label "\${@: -1}" '.runners |= map(if .id == $id then .labels += [{name: ($label | ltrimstr("labels[]="))}] else . end)' "${at("runners.json")}" >"${at("runners.next")}" && mv "${at("runners.next")}" "${at("runners.json")}" ;;`,
       `  "api repos/${PC_REPO}") printf '{"private":${isPrivate}}\\n' ;;`,
       `  "variable get"*) [ -f "${at("variable-")}$3" ] || { printf 'variable %s was not found\\n' "$3" >&2; exit 1; }; cat "${at("variable-")}$3" ;;`,
       `  "variable set"*) printf '%s' "\${@: -1}" >"${at("variable-")}$3" ;;`,
@@ -959,6 +960,7 @@ export function switching({ isPrivate = true, runners = [] as object[], variable
   return {
     run: (...args: string[]) => execute(join(BIN, "runner"), root, { PATH: `${at("bin")}:${process.env.PATH}`, RUNNER_WAIT_SECONDS: "0" }, [PC_REPO, ...args]),
     variable: () => (existsSync(at("variable-CI_RUNNER")) ? readFileSync(at("variable-CI_RUNNER"), "utf8") : undefined),
+    runners: () => (JSON.parse(readFileSync(at("runners.json"), "utf8")) as { runners: { name: string; status: string; labels: { name: string }[] }[] }).runners,
     quickVariable: () => (existsSync(at("variable-QUICK_RUNNER")) ? readFileSync(at("variable-QUICK_RUNNER"), "utf8") : undefined),
     sudo: () => lines("sudo-calls"),
     gh: () => lines("gh-calls"),

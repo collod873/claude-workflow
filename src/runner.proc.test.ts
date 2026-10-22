@@ -194,7 +194,7 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
     expect(sudo()).toContain("bash -c systemctl daemon-reload");
   });
 
-  it("installs quick runners beside the build runners, labelled pc-quick alone, under their own small cap outside the build runners' 20 GB, and points the repo's quick jobs at them", () => {
+  it("installs quick runners beside the build runners, labelled pc-quick alone, under their own cap outside the build runners' 20 GB, 2 GB each and their four together exactly the slice's 8 GB, and points the repo's quick jobs at them", () => {
     const { run, sudo, placed, quickVariable } = switching({ userExists: false });
 
     expect(run("pc").status).toBe(0);
@@ -202,7 +202,7 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
     const configs = sudo().filter((call) => call.includes("config.sh"));
     for (let n = 1; n <= QUICK_RUNNER_COUNT; n += 1) expect(configs.some((call) => call.includes(`--name '${HOST}-quick-${n}' --labels pc-quick `))).toBe(true);
     expect(placed("/etc/systemd/system/pc-quick-runners.slice").split("\n")).toEqual(expect.arrayContaining(["MemoryMax=8G", "MemorySwapMax=0", "AllowedCPUs=0-7"]));
-    expect(placed(`/etc/systemd/system/actions.runner.collod873-Lumaria.${HOST}-quick-1.service.d/pc-runner.conf`).split("\n")).toEqual(expect.arrayContaining(["Slice=pc-quick-runners.slice", "MemoryMax=3G", "MemorySwapMax=0", "AllowedCPUs=0-7"]));
+    expect(placed(`/etc/systemd/system/actions.runner.collod873-Lumaria.${HOST}-quick-1.service.d/pc-runner.conf`).split("\n")).toEqual(expect.arrayContaining(["Slice=pc-quick-runners.slice", "MemoryMax=2G", "MemorySwapMax=0", "AllowedCPUs=0-7"]));
     expect(quickVariable()).toBe("pc-quick");
   });
 
@@ -214,6 +214,18 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
     expect(sudo().some((call) => call.includes(`--name '${HOST}-2' --labels pc,pc-quick `))).toBe(true);
     const labelled = gh().filter((call) => call.includes("/labels"));
     expect(labelled).toEqual([`${HOST}-1`, "imac-1"].map((name) => `api -X POST repos/${REPO}/actions/runners/${pcRunner(name).id}/labels -f labels[]=pc-quick`));
+  });
+
+  it("with no quick runner online, still points quick jobs at the quick label, which an online build runner then carries, and says the build runners take them for now", () => {
+    const quick = Array.from({ length: QUICK_RUNNER_COUNT }, (_, at) => `${HOST}-quick-${at + 1}`);
+    const { run, runners, quickVariable } = switching({ runners: [pcRunner(`${HOST}-1`, "online", false, ["pc"]), pcRunner(`${HOST}-2`, "online", false, ["pc"])], slowToStart: quick });
+
+    const result = run("pc");
+
+    expect(result.stdout).toBe(`runner: ${REPO} runs on this PC from its next job, 2 PC runners online, 0 of 4 quick runners online, so its build runners take its quick jobs until one is, 4 installed\n`);
+    expect(quickVariable()).toBe("pc-quick");
+    const takers = runners().filter(({ status, labels }) => status === "online" && labels.some(({ name }) => name === "pc-quick"));
+    expect(takers.map(({ name }) => name)).toEqual([`${HOST}-1`, `${HOST}-2`]);
   });
 
   it("leaves a repo where it was when no PC runner comes online, so no job queues for a PC that never takes it", () => {
@@ -264,17 +276,17 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
 });
 
 describe("the machine's jobs run where the repo's switch says, a quick job never queued behind a build", () => {
-  const readiesTree = (uses: string | undefined) => uses === "./.github/actions/pinned" || uses === "./.github/actions/database";
+  const BUILDS: Record<string, string[]> = { "tickets.yml": ["build", "fix", "probe", "update"], "specs.yml": ["slice", "reslice", "size-trial", "resume", "research", "check"] };
+  const HEAVY = ["./.github/actions/pinned", "./.github/actions/database", "bin/fix", "--full", "bin/slice\" --", "bin/research", "bin/probe"];
 
-  it("runs every job that readies the tree's toolchain or a database on the build runners, and every other on the quick lane, which falls back to the build runners and then to GitHub's", () => {
-    const quick: string[] = [];
-    for (const file of ["tickets.yml", "specs.yml"]) {
+  it("runs the jobs that build, check or hand a model a shell on the build runners, and every other on the quick lane, which falls back to the build runners and then to GitHub's", () => {
+    for (const [file, builds] of Object.entries(BUILDS)) {
       for (const [name, job] of Object.entries(workflowJobs(file))) {
-        const builds = job.steps.some(({ uses }) => readiesTree(uses));
-        expect(job["runs-on"], `${file} ${name}`).toBe(builds ? PC_RUNS_ON : QUICK_RUNS_ON);
-        if (!builds) quick.push(name);
+        expect(job["runs-on"], `${file} ${name}`).toBe(builds.includes(name) ? PC_RUNS_ON : QUICK_RUNS_ON);
+        if (builds.includes(name)) continue;
+        const ran = job.steps.map(({ uses, run }) => `${uses ?? ""} ${run ?? ""}`).join("\n");
+        for (const heavy of HEAVY) expect(ran, `${file} ${name} is quick, so it never runs ${heavy}`).not.toContain(heavy);
       }
     }
-    expect(quick).toEqual(expect.arrayContaining(["review", "meters", "which", "close", "strip", "dispatch-rerun", "ended", "resumed", "asked"]));
   });
 });

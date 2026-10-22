@@ -36,9 +36,9 @@ _Avoid_: shim, wrapper, vendored workflow
 
 **Home**:
 A stage run is home when it has no caller file, or when its caller file (named by `CALLED_FROM`)
-is in the machine's own repo; it is foreign only when the caller file is in another repo. A home run
-behaves exactly as this repo's own stage workflows did before Gaps first: the builder lands a `machine` outcome on
-main and fails a check on any red step, `(needs ...)` ones included; the closer requires `check`
+is in the machine's own repo; it is foreign only when the caller file is in another repo. In a
+home run the builder lands a `machine` outcome on main and fails a check on any red step,
+`(needs ...)` ones included; the closer requires `check`
 and `check.yml`'s `review`; the done check gets this repo's running-system line and is offered the
 size trial.
 _Avoid_: local, own-repo mode
@@ -71,8 +71,9 @@ Save meets later is the repo's fault, never the ticket's.
 _Avoid_: onboard, install, register
 
 **PC runner**:
-A runner labelled `pc`, where a private repo's `CI_RUNNER` of `pc` sends jobs; `bin/runner`
-sets it up. A **quick runner**, `pc-quick`, runs jobs readying no tree.
+A `pc` runner, where a private repo's `CI_RUNNER` sends jobs, set up by `bin/runner`. A job
+building nothing runs on the **quick lane**: a `pc-quick` **quick runner**, else a PC one;
+`close` hands the **update job** a PR behind main.
 _Avoid_: local runner
 
 **Worker**:

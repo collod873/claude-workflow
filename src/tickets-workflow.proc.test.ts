@@ -265,16 +265,20 @@ describe("a repo's tickets build through one caller file that holds only trigger
   });
 
   it("readies a tree for the closer's full check only in the update job, which runs once the quick close hands it a PR to bring up to date, so a close run with nothing to update pays nothing for it (#1345, #1428)", () => {
-    const readies = ({ uses, id }: WorkflowStep) => ["./.github/actions/hooks", "./.github/actions/pinned", "./.github/actions/database"].includes(uses ?? "") || id === "git-config";
+    const READYING = ["./.github/actions/hooks", "./.github/actions/pinned", "./.github/actions/database", "git-config"];
+    const readying = (step: WorkflowStep) => step.uses ?? step.id ?? "";
     const { close, update } = workflowJobs("tickets.yml");
     const steps = update?.steps ?? [];
     const updating = steps.findIndex(({ run }) => (run ?? "").includes("bin/close\" queue"));
     const runs = (handed: string) => holds(update?.if ?? "true", { needs: { close: { result: "success", outputs: { update: handed } } } });
 
-    expect(close?.steps.filter(readies)).toEqual([]);
+    expect(close?.steps.map(readying).filter((step) => READYING.includes(step))).toEqual([]);
     expect(close?.steps.find(({ run }) => (run ?? "").includes("bin/close"))?.env?.QUICK_LANE).toBe("true");
-    expect(steps.filter(readies).length).toBe(4);
-    expect(steps.filter(readies).every((step) => steps.indexOf(step) < updating)).toBe(true);
+    for (const wanted of READYING) {
+      const at = steps.findIndex((step) => readying(step) === wanted);
+      expect(at, wanted).toBeGreaterThanOrEqual(0);
+      expect(at, wanted).toBeLessThan(updating);
+    }
     expect(runs("true")).toBe(true);
     expect(runs("")).toBe(false);
   });
