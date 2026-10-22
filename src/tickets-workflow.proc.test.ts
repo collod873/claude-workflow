@@ -252,7 +252,7 @@ describe("a repo's tickets build through one caller file that holds only trigger
     const { run, landed, closed } = fixing({ ticket: "828", claude: "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n", contract, check, repo, calledFrom });
     const result = run("828");
     expect(result.status, result.stderr).toBe(0);
-    expect(landed().map((line) => line.split(" ").slice(1).join(" "))).toEqual(["--ticket 828"]);
+    expect(landed().map((line) => line.split(" ").slice(1).join(" "))).toEqual(["--ticket 828 --approved it builds the Why"]);
     expect(closed()).toEqual(["828 9828"]);
   });
 
