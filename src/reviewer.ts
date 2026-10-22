@@ -41,7 +41,7 @@ export function handedOn(ticket: string, body: string, commits: string, diff: st
     "- `approve`: it builds the Why, with whatever you fixed; `bin/land` then runs the full check and merges it, and anything it refuses comes back to you.",
     "- `stuck`: the work has a gap you cannot fix, one only the owner can close; `reason` says why, and the ticket is marked `stuck`.",
     "`steps`: each step only the owner can take before this work runs, such as a dashboard setting or a key, read from the finished work; name every one in each answer, since those of the answer that lands are each filed as an `owner-step` note, and the ticket still closes.",
-    "`reason`: one paragraph for the owner. Two rounds in a row that change nothing call them.",
+    "`reason`: one paragraph for the owner. Two rounds in a row that change nothing call them. An `approve`'s `reason` is commented on the ticket's PR before it merges: name in it every cost or risk you saw and let through, or say you saw none.",
     "",
   ].join("\n\n");
 }
@@ -57,8 +57,8 @@ function filedSteps(ticket: string, steps: OwnerStep[]): string {
   return filed.length === 0 ? "" : `; owner steps filed: ${filed.map(({ said }) => said.trim()).filter((said) => said !== "").join(" ") || "none"}`;
 }
 
-function landing(ticket: string): { pr: string } | { refused: string } {
-  const landed = spawnSync(machineBin("land"), ["--ticket", ticket], { encoding: "utf8", maxBuffer: Infinity });
+function landing(ticket: string, reason: string): { pr: string } | { refused: string } {
+  const landed = spawnSync(machineBin("land"), ["--ticket", ticket, "--approved", reason], { encoding: "utf8", maxBuffer: Infinity });
   const pr = LANDED.exec(landed.stdout)?.[1];
   if (landed.status === 0 && pr !== undefined) return { pr };
   return { refused: tailOf(`${landed.stdout}${landed.stderr}`.trim(), TAIL_CAP) || `bin/land ended ${landed.status} and said nothing` };
@@ -93,7 +93,7 @@ export function reviewedAndLanded(ticket: string, body: string): number {
       console.log(`review: #${ticket} is labelled ${held}, so it does not land; its branch is kept for its next run`);
       return 0;
     }
-    const landed = answer === undefined ? { refused: "You gave no outcome. Answer one." } : landing(ticket);
+    const landed = answer === undefined ? { refused: "You gave no outcome. Answer one." } : landing(ticket, answer.reason);
     if ("pr" in landed) {
       const filed = filedSteps(ticket, answer?.steps ?? []);
       console.log(`review: #${ticket} landed as PR #${landed.pr}${filed}`);

@@ -1,14 +1,16 @@
 #!/bin/bash
 set -uo pipefail
 
-usage='land: usage: land [--ticket <number>]; it lands HEAD on the default branch through a PR, from the ticket'"'"'s branch with --ticket'
+usage='land: usage: land [--ticket <number> [--approved <reason>]]; it lands HEAD on the default branch through a PR, from the ticket'"'"'s branch with --ticket, commenting the reviewer'"'"'s reason on that PR before it merges with --approved'
 if [[ ${1:-} == -h || ${1:-} == --help ]]; then
   printf '%s\n' "$usage"
   exit 0
 fi
 ticket=
-if [[ $# -eq 2 && $1 == --ticket && $2 =~ ^[0-9]+$ ]]; then
+approved=
+if [[ ($# -eq 2 || ($# -eq 4 && $3 == --approved)) && $1 == --ticket && $2 =~ ^[0-9]+$ ]]; then
   ticket=$2
+  approved=${4:-}
 elif [[ $# -ne 0 ]]; then
   printf '%s\n' "$usage" >&2
   exit 2
@@ -144,6 +146,10 @@ for (( round = 1; ; round++ )); do
       --title "${title:-$(git log -1 --format=%s HEAD)}" \
       --body "$body$(git log --reverse --format='- %s' "origin/$default_branch..HEAD")"
     url=$said
+  fi
+  if [[ -n $approved ]]; then
+    call "gh pr comment" gh pr comment "$url" --body "The reviewer approved #$ticket: $approved"
+    approved=
   fi
   if gh pr merge "$branch" --merge --match-head-commit "$head" >/dev/null 2>"$err"; then
     break

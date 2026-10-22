@@ -321,13 +321,25 @@ describe("bin/land refuses what must not reach main (#681)", () => {
     expect(result.stdout).toBe(`Landed ${PR}\n`);
   });
 
-  it.each([[["--ticket"]], [["--ticket", "eleven"]], [["811"]]])("lands nothing and says its usage given %j, since only --ticket and a number name a ticket", (args) => {
+  it("comments the reviewer's approve reason on the ticket's PR before it merges, once however many rounds it rebases, so a cost the reviewer let through reaches the owner (#1471)", () => {
+    const REASON = "it builds the Why; the slice gate now takes a build runner on every label, which I let through";
+    const { run, calls, merged } = sessionAheadOfMain(1, { merges: ["refused", "merged"], views: ["BEHIND"] });
+
+    const result = run(["--ticket", "811", "--approved", REASON]);
+
+    expect(result.status, result.stderr).toBe(0);
+    const commented = calls().findIndex((call) => call[0] === "pr" && call[1] === "comment");
+    expect(calls().filter((call) => call[0] === "pr" && call[1] === "comment")).toEqual([["pr", "comment", PR, "--body", `The reviewer approved #811: ${REASON}`]]);
+    expect(commented).toBeLessThan(calls().findIndex(merged));
+  });
+
+  it.each([[["--ticket"]], [["--ticket", "eleven"]], [["811"]], [["--ticket", "811", "--approved"]], [["--approved", "it builds the Why"]]])("lands nothing and says its usage given %j, since only --ticket and a number name a ticket, and only a ticket takes an approve reason", (args) => {
     const { remote, run, calls } = landSession();
 
     const result = run(args);
 
     expect(result.status).toBe(2);
-    expect(result.stderr).toMatch(/^land: usage: land \[--ticket <number>\]/);
+    expect(result.stderr).toMatch(/^land: usage: land \[--ticket <number> \[--approved <reason>\]\]/);
     expect(git(remote, "for-each-ref", "--format=%(refname)")).toBe("refs/heads/main");
     expect(calls()).toEqual([]);
   });

@@ -27,7 +27,7 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
     expect(result.status, result.stderr).toBe(0);
     expect(handed()).toHaveLength(2);
     expect(log("-1", "--name-only", "--format=%s").split("\n").filter((line) => line !== "")).toEqual(["Build #811 as its builder", "src/builder-turn.test.ts", "src/ticket-shape.ts"]);
-    expect(landed()).toEqual([`${log("-1", "--format=%H")} --ticket 811`]);
+    expect(landed()).toEqual([`${log("-1", "--format=%H")} --ticket 811 --approved it builds the Why`]);
     expect(closed()).toEqual(["811 9811"]);
   });
 
@@ -41,7 +41,7 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
     expect(handed()[0]).toContain("never the owner");
     expect(marked()).toEqual(["811 building", "811 checking"]);
     expect(log("-1", "--format=%s")).toBe("Build #811 as its builder");
-    expect(landed()).toEqual([`${log("-1", "--format=%H")} --ticket 811`]);
+    expect(landed()).toEqual([`${log("-1", "--format=%H")} --ticket 811 --approved it builds the Why`]);
     expect(closed()).toEqual(["811 9811"]);
   });
 
@@ -452,7 +452,7 @@ describe("a fresh reviewer reads each green build, fixes or approves it, and bin
 
     expect(run().status).toBe(0);
     expect(log("-2", "--format=%s").split("\n")).toEqual(["Review #811 as its reviewer", "Build #811 as its builder"]);
-    expect(landed()).toEqual([`${log("-1", "--format=%H")} --ticket 811`]);
+    expect(landed()).toEqual([`${log("-1", "--format=%H")} --ticket 811 --approved it builds the Why`]);
     expect(closed()).toEqual(["811 9811"]);
   });
 
