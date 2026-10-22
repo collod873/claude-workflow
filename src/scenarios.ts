@@ -6,7 +6,7 @@ import { dirname, join, matchesGlob } from "node:path";
 import { parse } from "yaml";
 import { onTestFinished } from "vitest";
 import vitest from "../vitest.config.ts";
-import { MACHINE, OWNER } from "./spelled.ts";
+import { MACHINE, OWNER, SPELLINGS } from "./spelled.ts";
 
 export const LINE_LIMIT = 200;
 export const MOST_LINES = 6;
@@ -126,6 +126,16 @@ export const heldBy = async (step: WorkflowStep, cwd: string, event: IssueEvent)
 };
 
 const HELD = new Map<string, ReturnType<typeof labelledOutputs>>();
+let spelledOnce: string | undefined;
+
+function answeredOnce(): string {
+  if (spelledOnce !== undefined) return spelledOnce;
+  const root = mkdtempSync(join(tmpdir(), "spelled-once-"));
+  process.once("exit", () => rmSync(root, { recursive: true, force: true }));
+  const known = SPELLINGS.filter(([key]) => key !== "labels").map(([key, spelling]) => `  ${key}) printf '%s\\n' '${spelling.replaceAll("'", "'\\''")}'; exit 0 ;;`);
+  script(join(root, "bin", "spelled"), ['[ "$#" -eq 1 ] && case "$1" in', ...known, "esac", `exec "${join(BIN, "spelled")}" "$@"`, ""].join("\n"));
+  return (spelledOnce = root);
+}
 
 export async function starts(file: string, gated: string, event: IssueEvent): Promise<boolean> {
   const jobs = workflowJobs(file);
@@ -135,7 +145,7 @@ export async function starts(file: string, gated: string, event: IssueEvent): Pr
   const { labels, ...rest } = event;
   if (!holds(jobs[gate]?.if ?? "true", rest)) return false;
   const seen = `${file} ${gate} ${JSON.stringify([labels, rest.action, rest.label, rest.head, rest.state])}`;
-  const heard = HELD.get(seen) ?? labelledOutputs(labelledStep(file, gate), join(SRC, ".."), { ...rest, labels, sender: OWNER });
+  const heard = HELD.get(seen) ?? labelledOutputs(labelledStep(file, gate), answeredOnce(), { ...rest, labels, sender: OWNER });
   HELD.set(seen, heard);
   const { failed, outputs } = await heard;
   if (failed || Object.keys(outputs).length === 0) throw new Error(`the labelled step of ${file} ended red on ${JSON.stringify(labels)}`);
