@@ -528,6 +528,7 @@ describe("a fresh reviewer reads each green build, fixes or approves it, and bin
 
     expect(run().status).toBe(0);
     const builder = hired()[0] ?? [];
+    expect(builder).toContain("--json-schema");
     expect(builder[builder.indexOf("--json-schema") + 1]).not.toContain('"steps"');
     expect(filed()).toHaveLength(1);
     expect(filed()[0]).toContain(STEP.why);
