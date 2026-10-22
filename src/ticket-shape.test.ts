@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { handedOn as builderBrief } from "./builder.ts";
-import { handedOn as reviewerBrief } from "./reviewer.ts";
 import { BUG_SHAPE, BUILD_SHAPE, DONE_SENTENCES, IDEA_SHAPE, SPEC_CAP, SPEC_SHAPE, WHY_SHAPE, bugRefusals, noteRefusals, specRefusals, ticketRefusals } from "./ticket-shape.ts";
 
 const QUOTED = 'The owner, in session: "file a ticket the machine can build".';
@@ -218,11 +217,10 @@ describe("the shape bin/file-issue --help prints names every heading its kind is
   });
 });
 
-describe("the builder's split, the reviewer's follow-ups and bin/file-issue --help read one Done when phrase, not hand copies (#1004)", () => {
+describe("the builder's split and bin/file-issue --help read one Done when phrase, not hand copies (#1004)", () => {
   it.each([
     ["bin/file-issue --help, for a build", BUILD_SHAPE],
     ["the builder's split", builderBrief({ ticket: "1", body: body() })],
-    ["the reviewer's follow-ups", reviewerBrief(body(), "", { after: { earlier: "", fix: "" } })],
   ])("%s", (_, text) => {
     expect(text).toContain(DONE_SENTENCES);
     expect(text.replace(DONE_SENTENCES, "")).not.toMatch(/\d+ to \d+/);

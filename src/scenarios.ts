@@ -224,10 +224,6 @@ export function git(cwd: string, ...args: string[]): string {
   return execFileSync("git", args, { cwd, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 }
 
-export function commitAt(cwd: string, date: string, args: string[]): string {
-  return execFileSync("git", args, { cwd, env: { ...env, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date }, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
-}
-
 export function script(path: string, body: string): void {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `#!/bin/bash\n${body}`);
@@ -376,6 +372,8 @@ export const MERGE_REFUSAL = "GraphQL: Pull Request is not mergeable (mergePullR
 
 export type Merge = "merged" | "refused";
 
+export const TICKET_TITLE = "Build what the ticket asks";
+
 export function landSession({
   gh,
   remoteRefuses,
@@ -411,6 +409,7 @@ export function landSession({
         `merges=(${merges.join(" ")})`,
         `views=(${views.join(" ")})`,
         'case "$1 $2" in',
+        `  "issue view") echo ${JSON.stringify(TICKET_TITLE)} ;;`,
         ...(openPr
           ? ['  "pr list") echo ' + LANDED_PR + " ;;", `  "pr create") printf 'a pull request for branch "%s" into branch "${defaultBranch}" already exists:\\n%s\\n' "$5" ${LANDED_PR} >&2; exit 1 ;;`]
           : [`  "pr create") echo ${LANDED_PR} ;;`]),
@@ -469,8 +468,6 @@ export function filedAs(calls: string[][]): { title: string | undefined; labels:
   return { title: call[call.indexOf("--title") + 1], labels: call.filter((_, at) => call[at - 1] === "--label"), body: call[call.indexOf("--body") + 1], then };
 }
 
-export const SAVED_PR = "https://github.com/collod873/claude-workflow/pull/9726";
-
 export function ghArgv(dir: string): { setup: string; calls: () => string[][] } {
   mkdirSync(dir, { recursive: true });
   return {
@@ -480,79 +477,6 @@ export function ghArgv(dir: string): { setup: string; calls: () => string[][] } 
 }
 
 const CONSENT_ONLY_WHY = 'The owner, in session: "a plan carrying its own intent, spoken plainly, at length, right where it was proposed".';
-
-export function saving({
-  remoteRefuses,
-  alreadyOpen = false,
-  autoMergeRefused = false,
-  autoMergeOff = false,
-  held = "",
-  why = CONSENT_ONLY_WHY,
-  statusRefused = false,
-}: {
-  remoteRefuses?: string;
-  alreadyOpen?: boolean;
-  autoMergeRefused?: boolean;
-  autoMergeOff?: boolean;
-  held?: string;
-  why?: string;
-  statusRefused?: boolean;
-} = {}) {
-  const root = scratch("save-");
-  const { remote, session } = cloned(root, "base");
-  const calls = join(root, "gh-calls");
-  const argvDir = join(root, "gh-argv");
-  const judged = join(root, "judged");
-  const { setup, calls: argvCalls } = ghArgv(argvDir);
-  const ticketBody = ["## Why", "", why, "", "## Done when", "", "- a fix lands", ""].join("\n");
-  git(session, "checkout", "--quiet", "-b", "ticket/726");
-  plant(session, "src/ticket-shape.ts", "export const shaped = 2;\n");
-  git(session, "add", ".");
-  git(session, "commit", "--quiet", "-m", "Build #726 against its failing tests");
-  const built = git(session, "rev-parse", "HEAD");
-  script(join(session, ".git", "hooks", "pre-push"), `touch "${judged}"\nprintf 'the gate refuses a red build\\n' >&2\nexit 1\n`);
-  git(remote, "config", "user.email", "github@test");
-  git(remote, "config", "user.name", "github");
-  git(remote, "update-ref", "refs/heads/main", git(remote, "commit-tree", "main^{tree}", "-p", "main", "-m", "main moved on"));
-  if (remoteRefuses !== undefined) script(join(remote, "hooks", "pre-receive"), `cat >/dev/null\nprintf '%s\\n' '${remoteRefuses}' >&2\nexit 1\n`);
-  script(join(root, "bin", "npx"), `touch "${judged}"\nexit 1\n`);
-  script(
-    join(root, "bin", "gh"),
-    [
-      `printf '%s|%s\\n' "$(printf '%s' "$*" | tr '\\n' ' ')" "$(git --git-dir="${remote}" rev-parse --verify --quiet refs/heads/ticket/726)" >>"${calls}"`,
-      setup,
-      'case "$*" in',
-      statusRefused ? "  *\"api -X POST\"*\"/statuses/\"*) printf 'gh: Resource not accessible by integration (HTTP 403)\\n' >&2; exit 1 ;;" : "",
-      "  *\"issue view\"*\"--json body\"*)",
-      "    cat <<'TICKET_BODY'",
-      ticketBody,
-      "TICKET_BODY",
-      "    ;;",
-      `  *"issue view"*"--json labels"*) printf 'ticket\\n%s\\n' '${held}' ;;`,
-      "  *\"issue view\"*) printf 'Push the branch before anything can refuse it\\n' ;;",
-      alreadyOpen ? "  *\"pr create\"*) exit 1 ;;" : `  *"pr create"*) printf '%s\\n' '${SAVED_PR}' ;;`,
-      `  *"pr view"*) printf '%s\\n' '${SAVED_PR}' ;;`,
-      autoMergeRefused ? "  *\"pr merge\"*) printf 'auto-merge is not enabled for this repository\\n' >&2; exit 1 ;;" : "",
-      autoMergeOff ? "  *\"pr merge\"*) printf 'GraphQL: Auto merge is not allowed for this repository (enablePullRequestAutoMerge)\\n' >&2; exit 1 ;;" : "",
-      "esac",
-      "",
-    ].join("\n"),
-  );
-  return {
-    session,
-    built,
-    pushed: () => git(remote, "for-each-ref", "--format=%(objectname)", "refs/heads/ticket/726"),
-    judged: () => existsSync(judged),
-    log: () => (existsSync(join(session, ".git", "machine-logs", "save-726.log")) ? readFileSync(join(session, ".git", "machine-logs", "save-726.log"), "utf8") : ""),
-    calls: () => (existsSync(calls) ? readFileSync(calls, "utf8").trimEnd().split("\n").map((line) => line.split("|")) : []),
-    prBody: () => {
-      const call = argvCalls().find((args) => args[0] === "pr" && args[1] === "create");
-      const at = call?.indexOf("--body") ?? -1;
-      return at === -1 ? undefined : call?.[at + 1];
-    },
-    run: (ticket = "726", ...flags: string[]) => execute(join(BIN, "save"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, [ticket, ...flags]),
-  };
-}
 
 export const FIXED_TICKET = [
   "## Why",
@@ -575,7 +499,7 @@ export function openedCases(root: string, opener: string, body: string, parent: 
 export const gitRefusing = (root: string, unreadable: string) =>
   script(join(root, "bin", "git"), `case "$*" in\n  ${unreadable}) printf 'fatal: unable to read\\n' >&2; exit 128 ;;\nesac\nPATH="\${PATH#*:}" exec git "$@"\n`);
 
-export function parentSays(root: string, parent: Parent): string {
+function parentSays(root: string, parent: Parent): string {
   plant(root, "parent.json", JSON.stringify(parent ?? {}));
   if (parent === undefined) return "printf 'gh: Not Found (HTTP 404)\\n' >&2; exit 1";
   if (parent === "unreadable") return "printf 'gh: Bad credentials (HTTP 401)\\n' >&2; exit 1";
@@ -690,7 +614,6 @@ interface Held {
   labels: string[];
   appKey: string;
   rules: { type: string; ruleset_id?: number; parameters?: unknown }[];
-  paused: boolean;
   refused: Record<string, string>;
   writes: string[][];
 }
@@ -804,10 +727,6 @@ else if (args[0] === "api" && method === "DELETE" && route.startsWith("repos/" +
   held.writes.at(-1).push("ruleset");
   save();
 }
-else if (args[0] === "api" && route === "repos/" + repo + "/actions/workflows/machine.yml") {
-  if (held.files[".github/workflows/machine.yml"] === undefined) { process.stderr.write("gh: Not Found (HTTP 404)\n"); process.exit(1); }
-  out({ path: ".github/workflows/machine.yml", state: held.paused ? "disabled_manually" : "active" });
-}
 else if (args[0] === "variable" && args[1] === "list") out(held.variables.map((name) => ({ name })));
 else if (args[0] === "variable" && args[1] === "set") { wrote(); held.variables.push(args[2]); save(); }
 else if (args[0] === "secret" && args[1] === "list") out((args.includes("dependabot") ? held.dependabot : held.secrets).map((name) => ({ name })));
@@ -834,7 +753,6 @@ export function bare(extra: Partial<Held> = {}): Held {
     labels: ["bug"],
     appKey: appKeys().publicKey,
     rules: [],
-    paused: false,
     refused: {},
     writes: [],
     ...extra,
@@ -842,17 +760,16 @@ export function bare(extra: Partial<Held> = {}): Held {
 }
 
 export const HOME = `${OWNER}/claude-workflow`;
-export const homeTickets = () => readFileSync(join(SRC, "..", ".github", "workflows", "tickets.yml"), "utf8");
 const HOME_RULES: Held["rules"] = [
   { type: "pull_request", ruleset_id: 3 },
   { type: "required_status_checks", ruleset_id: 3, parameters: { strict_required_status_checks_policy: true, required_status_checks: [{ context: "check" }, { context: "review" }] } },
 ];
-export const home = (tickets = homeTickets(), rules = HOME_RULES) =>
+export const home = () =>
   bare({
     repo: HOME,
     allow_auto_merge: true,
-    rules,
-    files: Object.fromEntries([".github/workflows/check.yml", ".github/workflows/machine.yml"].map((path) => [path, readFileSync(join(SRC, "..", path), "utf8")]).concat([[".github/workflows/tickets.yml", tickets]])),
+    rules: HOME_RULES,
+    files: Object.fromEntries([".github/workflows/check.yml", ".github/workflows/machine.yml", ".github/workflows/tickets.yml"].map((path) => [path, readFileSync(join(SRC, "..", path), "utf8")])),
   });
 
 export function enrolling(held: Held, env: Record<string, string> = { CORE_APP_PRIVATE_KEY: key(), CLAUDE_CODE_OAUTH_TOKEN: "sk-token" }) {

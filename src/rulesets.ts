@@ -1,11 +1,9 @@
 import { execFileSync } from "node:child_process";
-import { HOME_REVIEW } from "./enrol.ts";
 import { FAST_CHECK } from "./checks.ts";
-import { ENROLLED_REVIEW, MACHINE_REPO } from "./post.ts";
+import { MACHINE_REPO } from "./post.ts";
 
 const HOME = MACHINE_REPO;
 export const CHECK = FAST_CHECK;
-export const REVIEW = ENROLLED_REVIEW;
 export const ON_MAIN = ["pull_request", "non_fast_forward", "deletion", "required_status_checks"];
 
 export interface Live {
@@ -22,7 +20,7 @@ export interface Ruled {
 }
 
 export const RULED: Record<string, Ruled> = {
-  "main lands only through a PR": { ref: "~DEFAULT_BRANCH", rules: ON_MAIN, checks: [CHECK, REVIEW] },
+  "main lands only through a PR": { ref: "~DEFAULT_BRANCH", rules: ON_MAIN, checks: [CHECK] },
 };
 
 function requiredIn(ruleset: Live): { contexts: string[]; strict: boolean } {
@@ -55,11 +53,7 @@ function gh(path: string): unknown {
   return JSON.parse(execFileSync("gh", ["api", path], { encoding: "utf8" }));
 }
 
-const swapped = (ruleset: Live): Live => ({
-  ...ruleset,
-  rules: ruleset.rules.map((rule) => (rule.parameters?.required_status_checks === undefined ? rule : { ...rule, parameters: { ...rule.parameters, required_status_checks: rule.parameters.required_status_checks.map(({ context }) => ({ context: context === HOME_REVIEW ? REVIEW : context })) } })),
-});
-const live = () => (gh(`repos/${HOME}/rulesets`) as { id: number }[]).map(({ id }) => swapped(gh(`repos/${HOME}/rulesets/${id}`) as Live));
+const live = () => (gh(`repos/${HOME}/rulesets`) as { id: number }[]).map(({ id }) => gh(`repos/${HOME}/rulesets/${id}`) as Live);
 const appliesToMe = () => (gh(`repos/${HOME}/rules/branches/main`) as { type: string }[]).map(({ type }) => type);
 
 export const asRuled = (name: string, ruled: Ruled): Live => ({

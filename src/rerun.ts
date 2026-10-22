@@ -111,16 +111,8 @@ function rerun(run: string, attempt: string): Stop | undefined {
   return undefined;
 }
 
-function failedAgain(run: string, attempt: string): Stop | undefined {
-  if (ended(run, attempt) === undefined) return undefined;
-  const again = rerunFailed(run);
-  if (again.status !== 0) return stoppedAt("unrerun", `rerun: run ${run} could not be re-run once it ended, so it stays red: ${firstLine(again)}`);
-  console.log(`rerun: run ${run} ended, so its failed jobs re-run on the head its builder saved green`);
-  return undefined;
-}
-
 if (import.meta.main) {
-  const mode = { "--dispatch": handOn, "--failed": failedAgain }[process.argv[2] ?? ""];
+  const mode = process.argv[2] === "--dispatch" ? handOn : undefined;
   const [run, attempt] = process.argv.slice(mode === undefined ? 2 : 3);
   if (run === undefined || attempt === undefined) throw new Error("no run id and attempt in the arguments");
   process.exit(exitFor(readOrStop("rerun", () => (mode ?? rerun)(run, attempt))));

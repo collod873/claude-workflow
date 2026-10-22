@@ -26,20 +26,19 @@ The one workflow another repo carries to have its tickets built and its specs an
 run: its triggers and calls to `tickets.yml` and `specs.yml` here, nothing else, so no part of the
 machine is copied into it. `.github/caller.yml` is its text. Its specs are tried on its own checkout,
 readied by its contract's setup, and a ticket the closer closes there starts the re-slice through
-the caller's own `issues: closed`, since the App's close is heard. The closer wakes a builder by dispatching the caller file with
-`ticket` and `reason`, which GitHub starts only from the caller's default branch, so the file lands
-on main before any ticket there builds. A builder it reaches passes a check red only for
+the caller's own `issues: closed`, since the App's close is heard. The closer wakes a builder by taking `waiting` off its ticket, which
+the caller's `issues: unlabeled` hears from the caller's default branch alone, so the file lands on
+main before any ticket there builds. A builder it reaches passes a check red only for
 `(needs ...)` steps, which the machine's runner lacks, or unpublished receipts; that repo's own CI
 judges its PR. A `DATABASE_URL` step is not one: the builder's job starts Postgres.
-`tickets.yml` judges its ticket PRs with the reviewer and meters, as `tickets / review`.
+A ticket's own run reviews and lands it (ADR-0012); no job judges its PR after.
 _Avoid_: shim, wrapper, vendored workflow
 
 **Home**:
 A stage run is home when it has no caller file, or when its caller file (named by `CALLED_FROM`)
 is in the machine's own repo; it is foreign only when the caller file is in another repo. A home run
 behaves exactly as this repo's own stage workflows did before Gaps first: the builder lands a `machine` outcome on
-main and fails a check on any red step, `(needs ...)` ones included; the closer requires `check`
-and `check.yml`'s `review`; the done check gets this repo's running-system line and is offered the
+main and fails a check on any red step, `(needs ...)` ones included; the done check gets this repo's running-system line and is offered the
 size trial.
 _Avoid_: local, own-repo mode
 
@@ -50,7 +49,7 @@ _Avoid_: migration, switchover
 
 **No caller, same file**:
 A stage run with no caller file reaches the machine through `machine.yml`, the name `bin/enrol`
-writes: builders wake and size trials start through it, and the closer dispatches no re-slice, as
+writes: reruns and size trials start through it, and the closer dispatches no re-slice, as
 the caller's `issues: closed` starts it.
 _Avoid_: default caller, fallback workflow
 
@@ -63,11 +62,9 @@ _Avoid_: self-checkout, same tree
 Give a repo everything its tickets need to build: in one PR, the caller file naming its own CI,
 the **check-job rule** (`check.yml`'s `check` job `if` and `name`; enrol's own PR still runs it) on
 that CI's, and no pre-push, since `bin/land` is the gate; the App's reach, client id and keys, every label the
-machine spells, auto-merge, and main taking changes only by a PR passing `check` and, once
-its caller file runs it if enabled, `tickets / review`, here too. The **home swap** trades `review` for that
-here once `tickets.yml` runs its review at home.
-`bin/enrol <repo>` sets what is missing and names what it could not set; a missing auto-merge
-Save meets later is the repo's fault, never the ticket's.
+machine spells, auto-merge, and main taking changes only by a PR passing `check`, here too. It drops the
+`tickets / review` and `review` main once also required, since no job posts them (ADR-0012).
+`bin/enrol <repo>` sets what is missing and names what it could not set.
 _Avoid_: onboard, install, register
 
 **PC runner**:
@@ -95,7 +92,7 @@ _Avoid_: validator, guardrail, lint
 agent-hooks' words. A check is one run of `check`; a step is one named entry in
 `.claude/contract.json`, all the machine knows of a repo it builds; a receipt records a step's pass
 for exactly its inputs, so no step runs twice on one tree. The fast check runs mid-session; the
-full check (`--full`) in `bin/land`, the builder and the closer's branch update. Its pass, posted
+full check (`--full`) in `bin/land` and the builder. Its pass, posted
 after the push as the head's `check` status by whoever pushed, is the whole check a PR merges on;
 `Check` runs no `check` job on a landing's or a ticket's PR, since a pending run of that name
 holds it (ADR-0008).
@@ -103,7 +100,7 @@ _Avoid_: gate (for a step), gauntlet, a repo-local check script, static check
 
 **Meter**:
 A rule that reports in the PR body what it would have refused, and refuses nothing. None is added any
-more (ADR-0006).
+more, and none runs (ADR-0006, ADR-0012).
 _Avoid_: soft gate, warning, advisory check
 
 **Refusal**:
@@ -111,10 +108,22 @@ A gate that fires before a run spends model time, so it is free when it fires.
 _Avoid_: precondition, validation, check
 
 **Builder**:
-The one agent that builds a ticket, and owns it from that build until it merges, one session across
-every red run; a run that cannot resume that session says why in its log before it starts fresh. It fixes the code, ticket or machine, splits the ticket, or closes it unbuilt; when it
-stops, it marks `stuck`.
+The one agent that builds a ticket until its full check is green, then hands it to the reviewer. A
+later run of the ticket resumes its session, or says in its log why it starts fresh. It fixes the
+code, ticket or machine, splits the ticket, or closes it unbuilt; when it stops, it marks `stuck`.
 _Avoid_: fixer, mechanic, fresh eyes, repair agent
+
+**Reviewer**:
+A fresh agent with the builder's access, in the builder's run: it reads the ticket, commit messages
+and diff, fixes what it finds or approves, and lands it with `bin/land`, which hands back what it
+refuses. Nothing goes back to the builder (ADR-0012). A step only the owner can take is filed as an
+`owner-step` note, and the ticket still closes.
+_Avoid_: review job, judge, second builder
+
+**Closer**:
+`bin/close`: given a ticket and its merged PR, it closes the ticket; given a closed issue, it takes
+`waiting` off each ticket that waited on it. It holds no queue and merges nothing.
+_Avoid_: merger, queue, landing job
 
 ### The work
 
@@ -265,7 +274,7 @@ _Avoid_: wave review, checkpoint, interim check
 
 **Ticket**:
 The unit the machine builds: an issue labelled `ticket` carrying `## Why` in the owner's words and,
-under `## Done when`, sentences of what done looks like. Filing one builds it; its PR merging closes it.
+under `## Done when`, sentences of what done looks like. Filing one builds, reviews and lands it in one run; its PR merging closes it.
 _Avoid_: issue, sub-issue, card, item
 
 **Note**:
@@ -291,9 +300,8 @@ _Avoid_: preamble, setup, bootstrap
 **Paused**:
 An issue the owner labelled `paused`, a `held` label the machine never adds or removes. Each stage
 reads it when it opens and stands down, so a run already going finishes and none starts after it;
-a pause on a spec holds the spec alone, not its wave's tickets. A paused ticket's PR does not merge:
-adding `paused` turns its auto-merge off, and a save on a held ticket leaves it off, so the closer
-neither queues nor merges it.
+a pause on a spec holds the spec alone, not its wave's tickets. A paused ticket does not land: its
+reviewer reads the label before `bin/land` and keeps the branch for the ticket's next run.
 _Avoid_: on hold, frozen, blocked
 
 **Stuck**:
@@ -310,12 +318,12 @@ The machine's second try at a stage run that stopped. A job that ends red or is 
 time limit leaves an `owner call` notice naming its issue, unless that issue is `held`; once the run
 completes, Rerun by dispatch hands it to `bin/rerun`, which re-runs its failed jobs once on a
 first attempt, marking nothing and posting nothing, and marks the issue `stuck` on a later one. A run the owner cancelled is neither re-run nor
-marked. The closer names the ticket in its hands when it stops, so its run calls the owner on that.
+marked.
 _Avoid_: retry, second chance
 
 **Rerun by dispatch**:
 How a stopped run reaches `bin/rerun`, as the caller cannot hear itself: each reusable workflow's
-last job needs every stage job but the probe and review and, when one stopped,
+last job needs every stage job but the probe and rerun and, when one stopped,
 dispatches the run's caller file with `rerun` set to `<run id>/<attempt>`. Only the `rerun` job runs on that dispatch: it waits for that attempt
 to complete and stands down if the run has moved past it, so two hand-offs act once. A caller
 lacking the input refuses the dispatch: logged, not red.
@@ -336,10 +344,8 @@ _Avoid_: flake, glitch
 **Resume**:
 Setting a held issue going again. Taking `waiting` off a ticket resumes its build; the closer takes it
 off once every piece of its split, fault it filed and issue its `## Waits on` names has closed. Taking `paused`
-or `stuck` off a ticket that then holds neither picks it up from where it stands: with no PR it
-builds, with a red PR its builder resumes its session, with a green PR auto-merge comes back on at
-its head, and a green PR behind main gets the closer's own branch update: marked landing, or on a
-conflict reported at its head or a red check, marked resolving and its builder woken once. Taking either off an open spec that then holds neither reads where it stands, as a wave's
+or `stuck` off a ticket that then holds neither builds it again on the branch its last run kept,
+its builder resuming its session. Taking either off an open spec that then holds neither reads where it stands, as a wave's
 end does: a slice cut short slices again; a wave closed during the hold gets its wave check, then its
 slice, or only its slice once checked; with nothing left to slice, the done check runs. A wave still
 open waits for its last close.

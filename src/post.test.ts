@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { authoredOn, commentOnPr, labelsHeld, opened, post, readOrStop, type Posting } from "./post.ts";
+import { authoredOn, labelsHeld, opened, post, readOrStop, type Posting } from "./post.ts";
 import { filedAs, wellFormedNote as NOTE, wellFormedSpec as SPEC } from "./scenarios.ts";
 
 const URL = "https://github.com/collod873/claude-workflow/issues/700";
@@ -122,14 +122,6 @@ describe("src/post.ts is the one way the machine writes text to GitHub (#662)", 
     expect(post(posting({ kind: "research", text: "What does the closer judge?" }), gh).refusals).toEqual([
       "the body carries no '## Why', so nothing says why this was worth keeping",
     ]);
-  });
-
-  it("comments on a PR with each em dash taken out, as a filing is", () => {
-    const { gh, calls } = github();
-    const dash = String.fromCodePoint(0x2014);
-
-    expect(commentOnPr("901", `The reviewer found drift ${dash} the Why asks for more than was built.\n`, gh)).toEqual({ refusals: [], said: URL });
-    expect(calls).toEqual([["pr", "comment", "901", "--body", "The reviewer found drift, the Why asks for more than was built.\n"]]);
   });
 
   it("files with each em dash taken out rather than refusing, since a cold filing to PW-Rosters was lost to one on 2026-10-12", () => {
