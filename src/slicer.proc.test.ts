@@ -337,11 +337,12 @@ describe("bin/slice turns a filed spec into its first wave of tickets under it, 
     expect(sliced.linked()).toEqual([]);
   });
 
-  it("the owner's spec starts the slice job, which files its wave with the App's token; not a spec, or someone else's, does not", async () => {
+  it("spec added by the owner or the machine's App starts the slice job, which files its wave with the App's token; not a spec, or a stranger's, does not", async () => {
     const slice = workflowJobs("specs.yml").slice ?? { steps: [] };
-    const slices = (labels: string[], sender = "collod873") => starts("specs.yml", "slice", { labels, sender, action: "opened" });
+    const slices = (labels: string[], sender = "collod873") => starts("specs.yml", "slice", { labels, sender, action: "labeled", label: "spec" });
 
     expect(await slices(["spec"])).toBe(true);
+    expect(await slices(["spec"], "collod873-machine[bot]")).toBe(true);
     expect(await slices([])).toBe(false);
     expect(await slices(["note"])).toBe(false);
     expect(await slices(["spec"], "stranger")).toBe(false);

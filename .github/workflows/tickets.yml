@@ -7,7 +7,7 @@ permissions: {}
 
 jobs:
   wake:
-    if: "${{ github.event_name == 'issues' && github.event.action != 'closed' && (github.event.sender.login == github.repository_owner || (github.event.sender.login == 'collod873-machine[bot]' && (github.event.action == 'unlabeled' || github.event.action == 'opened'))) }}"
+    if: "${{ github.event_name == 'issues' && github.event.action != 'closed' && (github.event.sender.login == github.repository_owner || (github.event.sender.login == 'collod873-machine[bot]' && (github.event.action == 'unlabeled' || github.event.action == 'labeled'))) }}"
     runs-on: ${{ vars.QUICK_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
     env:
@@ -46,7 +46,7 @@ jobs:
           jq -r --arg WAITING "$waiting" --arg TICKET "$ticket" --arg NOTE "$note" --arg SPEC "$spec" --arg PAUSED "$paused" --arg STUCK "$stuck" '
             (any(.issue.labels[]?.name; . == $TICKET) and (any(.issue.labels[]?.name; IN($NOTE, $SPEC)) | not)) as $ticket
             | (any(.issue.labels[]?.name; IN($WAITING, $PAUSED, $STUCK)) | not) as $free
-            | "held=\((.action == "opened" or .action == "reopened" or (.action == "unlabeled" and (IN(.label.name; $WAITING, $PAUSED, $STUCK)) and .issue.state != "closed")) and $ticket and $free)"
+            | "held=\(((.action == "labeled" and .label.name == $TICKET) or (.action == "unlabeled" and IN(.label.name; $WAITING, $PAUSED, $STUCK))) and .issue.state != "closed" and $ticket and $free)"
           ' "$GITHUB_EVENT_PATH" | tee -a "$GITHUB_OUTPUT"
 
       - if: ${{ failure() || cancelled() }}
@@ -139,12 +139,14 @@ jobs:
           branch="$("$machine/spelled" TICKET_PREFIX)${{ github.event.issue.number }}"
           printf 'branch=%s\n' "$branch" >>"$GITHUB_OUTPUT"
           building=$("$machine/spelled" BUILDING)
+          kept=false
           if git fetch --quiet origin "$branch" 2>/dev/null && ! git merge-base --is-ancestor FETCH_HEAD origin/main; then # quiet: a ticket with no branch yet builds from main
             git checkout --quiet -b "$branch" FETCH_HEAD
+            kept=true
           else
             git checkout --quiet -b "$branch"
           fi
-          if [[ '${{ github.event.action }}' == reopened ]]; then
+          if [[ '${{ github.event.action }}' == labeled && $kept == true ]]; then
             "$machine/mark" ${{ github.event.issue.number }} "$building" --try
           else
             "$machine/mark" ${{ github.event.issue.number }} "$building"

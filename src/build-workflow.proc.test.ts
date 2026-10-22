@@ -75,13 +75,13 @@ function stagesRun(job: Job, failing: Stage | undefined, given: Record<string, R
   return STAGES.filter((stage) => ran.includes(stageStep(job, stage)));
 }
 
-describe("tickets.yml builds a ticket the moment it is filed (#826)", () => {
-  const starts = ({ labels = ["ticket"], ...event }: IssueEvent) => startsJob("tickets.yml", "build", { ...event, labels });
+describe("tickets.yml builds a ticket the moment ticket is added, so filing with it builds once (#826, #1464)", () => {
+  const starts = ({ labels = ["ticket"], action = "labeled", label = "ticket", ...event }: IssueEvent) => startsJob("tickets.yml", "build", { ...event, action, label, labels });
 
   it("an issue not labelled ticket, or labelled note, starts no build (collod873/agent-hooks#38)", async () => {
     const { on } = workflow();
 
-    expect(on.issues?.types).toContain("opened");
+    expect(on.issues?.types).toContain("labeled");
     expect(await starts({ labels: [] })).toBe(false);
     expect(await starts({ labels: ["ticket"] })).toBe(true);
     expect(await starts({ labels: ["note"] })).toBe(false);
@@ -93,15 +93,17 @@ describe("tickets.yml builds a ticket the moment it is filed (#826)", () => {
     expect(await starts({ labels: ["ticket", "spec"] })).toBe(false);
   });
 
-  it("an issue a stranger files or reopens starts no build, since its checks run as shell with the App's token", async () => {
+  it("ticket added by a stranger starts no build, since its checks run as shell with the App's token", async () => {
     expect(await starts({ sender: "collod873" })).toBe(true);
     expect(await starts({ sender: "stranger" })).toBe(false);
-    expect(await starts({ sender: "stranger", action: "reopened" })).toBe(false);
   });
 
-  it("builds nothing on the App's reopen", async () => {
-    expect(await starts({ sender: "collod873-machine[bot]", action: "opened" })).toBe(true);
-    expect(await starts({ sender: "collod873-machine[bot]", action: "reopened" })).toBe(false);
+  it("builds on ticket added by the App, and on nothing opened or reopened, so filing with the label builds once", async () => {
+    expect(await starts({ sender: "collod873-machine[bot]" })).toBe(true);
+    for (const sender of ["collod873", "collod873-machine[bot]"]) {
+      for (const action of ["opened", "reopened"]) expect(await starts({ sender, action }), `${sender} ${action}`).toBe(false);
+    }
+    expect(await starts({ state: "closed" }), "ticket added to a closed issue").toBe(false);
     expect(await starts({ sender: "collod873-machine[bot]", action: "unlabeled", label: "waiting" })).toBe(true);
   });
 
@@ -386,7 +388,7 @@ function runOf(step: Step, ticket: string, action: string): string {
   return (step.run ?? "").replaceAll(/\$\{\{ github\.event\.issue\.number \}\}/g, ticket).replaceAll(/\$\{\{ github\.event\.action \}\}/g, action);
 }
 
-describe("tickets.yml builds a woken or reopened ticket on the branch its last run kept, so nothing it built is lost (#1108, #1371, ADR-0012)", () => {
+describe("tickets.yml builds a woken or restarted ticket on the branch its last run kept, so nothing it built is lost (#1108, #1371, #1464, ADR-0012)", () => {
   it("checks out the ticket's branch when it holds work main lacks, and a fresh branch off main when it has none", () => {
     const { job } = workflow();
     const start = stageStep(job, "start");
@@ -408,18 +410,19 @@ describe("tickets.yml builds a woken or reopened ticket on the branch its last r
       return { built, main, head: git(session, "rev-parse", "HEAD"), on: git(session, "branch", "--show-current"), marks: readFileSync(calls, "utf8"), output: parseOutput(join(root, "output")) };
     };
 
-    for (const action of ["reopened", "unlabeled"]) {
+    for (const action of ["labeled", "unlabeled"]) {
       const woken = startedOn("kept", action);
       expect(woken.head, action).toBe(woken.built);
       expect(woken.on, action).toBe("ticket/9");
       expect(woken.marks, action).not.toContain("checking");
       expect(stagesRun(job, undefined, { start: woken.output }), action).toEqual(["start", "fix"]);
     }
-    const filed = startedOn("none", "opened");
+    const filed = startedOn("none", "labeled");
     expect(filed.head).toBe(filed.main);
     expect(filed.on).toBe("ticket/9");
     expect(filed.marks, "a first build is no try").toMatch(/^mark 9 building$/m);
-    expect(startedOn("none", "reopened").marks, "a reopen is a try").toContain("mark 9 building --try\n");
+    expect(startedOn("kept", "labeled").marks, "ticket added back onto kept work is a try").toContain("mark 9 building --try\n");
+    expect(startedOn("kept", "unlabeled").marks, "a resume is no try").toMatch(/^mark 9 building$/m);
   });
 });
 

@@ -133,7 +133,7 @@ export async function starts(file: string, gated: string, event: IssueEvent): Pr
   const gate = gateOf(file, gated);
   const { labels, ...rest } = event;
   if (!holds(jobs[gate]?.if ?? "true", rest)) return false;
-  const seen = `${file} ${gate} ${JSON.stringify([labels, rest.action, rest.label, rest.head])}`;
+  const seen = `${file} ${gate} ${JSON.stringify([labels, rest.action, rest.label, rest.head, rest.state])}`;
   const heard = HELD.get(seen) ?? heldBy(labelledStep(file, gate), join(SRC, ".."), { ...rest, labels, sender: OWNER });
   HELD.set(seen, heard);
   const { failed, held } = await heard;
@@ -167,6 +167,7 @@ export function holds(
     head = "",
     event = "issues",
     inputs = {},
+    state = "open",
   }: {
     labels?: string[];
     steps?: Record<string, StepOutcome>;
@@ -180,6 +181,7 @@ export function holds(
     head?: string;
     event?: string;
     inputs?: Record<string, string>;
+    state?: string;
   },
 ): boolean {
   const bare = condition.replace(/^\s*\$\{\{|\}\}\s*$/g, "");
@@ -187,6 +189,7 @@ export function holds(
     .replace(/github\.event_name/g, JSON.stringify(event))
     .replace(/github\.event\.action/g, JSON.stringify(action))
     .replace(/github\.event\.label\.name/g, JSON.stringify(label))
+    .replace(/github\.event\.issue\.state/g, JSON.stringify(state))
     .replace(/github\.event\.sender\.login/g, JSON.stringify(sender))
     .replace(/github\.head_ref/g, JSON.stringify(head))
     .replace(/contains\(\s*github\.event\.issue\.body\s*,\s*('[^']*')\s*\)/g, `${JSON.stringify(body)}.includes($1)`)
