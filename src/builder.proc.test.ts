@@ -1,17 +1,17 @@
 import { readdirSync, readFileSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { BUILDER_SESSION, CHECK_PASSES, CHECK_RED, FULL_CHECK_RED_ONCE, fixing } from "./builder.part.ts";
+import { BUILDER_SESSION, CHECK_PASSES, CHECK_RED, FULL_CHECK_RED_ONCE, fixing, SPENT_BY_THE_THIRD_ROUND } from "./builder.part.ts";
 import { onPath } from "./scenarios.ts";
 import { HELD } from "./spelled.ts";
 
 const FIXES = "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n";
 const REVIEWER_FIXES = "printf 'export const shaped = 3;\\n' >src/ticket-shape.ts\n";
 const RED_FOUR_TIMES = ["n=$(cat ../reds 2>/dev/null || echo 0)", `[ "$n" -ge 4 ] && { ${CHECK_PASSES.trim()}; exit 0; }`, "echo $((n + 1)) >../reds", CHECK_RED].join("\n");
-const BUILDS_THE_REWRITE = `[ "$CALL" = 2 ] && { ${FIXES.trim()}; sed -i 's/"outcome":"ticket"/"outcome":"code"/' ../answer.jsonl; }\n`;
 const FIXES_EACH_ROUND = "printf 'export const shaped = %s;\\n' \"$((CALL + 1))\" >src/ticket-shape.ts\n";
 const MOVES_MAIN = 'git update-ref refs/heads/main "$(git commit-tree -p main -m "Land the reviewer fix #811 needed" "$(git rev-parse "main^{tree}")")"\n';
 const FILED_IN_SESSION = "## Why\n\nThe owner: \"read what I said\".\n\nSession: `ca2517b0-5e2d-46e7-a894-7fc3a4b978b2` · [sessions](https://github.com/collod873/transcripts/blob/main/issues/claude-workflow-811.md)\n\n## Done when\n\n- The builder reads it.\n";
+const FIXED_TICKET_NAMING = (files: string) => `## Why\n\nThe owner: "the fault sits in ${files}".\n\n## Done when\n\n- The builder clears a red ticket.\n`;
 const untouched = ({ marked, handed, calls }: ReturnType<typeof fixing>) => {
   expect(marked()).toEqual([]);
   expect(handed()).toEqual([]);
@@ -45,22 +45,62 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
     expect(closed()).toEqual(["811 9811"]);
   });
 
-  it("opens a build with the whole of the contract's steps as they stand in the tree it builds in, whatever repo that is (#990)", () => {
+  it("opens a build pointing at `tdd` and at `check --full`, carrying no build loop of its own, none of the contract's steps and none of the lines that never fired (#1477)", () => {
     const contract = '{\n  "steps": {\n    "only-this-tree": { "run": "node src/gate.ts", "fast": true }\n  }\n}\n';
     const { run, handed } = fixing({ claude: FIXES, contract });
 
     expect(run("811").status).toBe(0);
-    expect(handed()[0]).toContain(contract.trim());
-    expect(handed()[0]).toContain("check --full");
+    const opening = handed()[0] ?? "";
+    expect(opening).toContain("Call the Skill tool with `tdd` and follow it to the end");
+    expect(opening).toContain("Run `check --full` last");
+    expect(opening).toContain("the machine commits whatever you left");
+    expect(opening).not.toContain("only-this-tree");
+    expect(opening).not.toMatch(/red before green|failing test/i);
+    for (const dead of ["Read its Why first", "`gh` reads any run", "Test count drop", "Two rounds in a row", "`ticket`:"]) expect(opening).not.toContain(dead);
+  });
+
+  it("names, by number and title, the open tickets whose body names a file its own body names, where #1464's builder never saw #1462 (#1477)", () => {
+    const body = FIXED_TICKET_NAMING("`src/builder.ts:111` and `specs.yml`");
+    const openTickets = [
+      { number: 1462, title: "Slice and research wait for one quick gate", body: "In `.github/workflows/specs.yml`, slice and research run on the build lane." },
+      { number: 1459, title: "Evaluate the reviewer", body: "Its prompt sits in `src/builder.ts` beside the builder's." },
+      { number: 1455, title: "Something apart", body: "Only `src/closer.ts` and builder.tsx." },
+      { number: 811, title: "Build what the ticket asks", body },
+    ];
+    const { run, handed } = fixing({ claude: FIXES, body, openTickets });
+
+    expect(run("811").status).toBe(0);
+    const opening = handed()[0] ?? "";
+    expect(opening).toContain("- #1462 Slice and research wait for one quick gate");
+    expect(opening).toContain("- #1459 Evaluate the reviewer");
+    expect(opening).not.toContain("#1455");
+    expect(opening).not.toContain("- #811 ");
+  });
+
+  it("names no other tickets when none shares a file with its own", () => {
+    const { run, handed } = fixing({ claude: FIXES, openTickets: [{ number: 1455, title: "Something apart", body: "Only `src/closer.ts`." }] });
+
+    expect(run("811").status).toBe(0);
+    expect(handed()[0]).not.toContain("#1455");
+    expect(handed()[0]).not.toContain("Open tickets");
+  });
+
+  it("says where it cut a ticket longer than its cap (#1477)", () => {
+    const { body } = fixing();
+    const { run, handed } = fixing({ claude: FIXES, body: `${body}\n${"A further sentence the ticket goes on with.\n".repeat(400)}` });
+
+    expect(run("811").status).toBe(0);
+    expect(handed()[0]).toContain("[cut here, at its cap of 8192 bytes]");
+    expect(handed()[0]?.indexOf("[cut here")).toBeLessThan(handed()[0]?.indexOf("## Build it") ?? 0);
   });
 
 
 
   it("runs the full check and publishes its receipts in the tree it builds in, reading only the verdict's last line", () => {
-    const { run, landed, session } = fixing({ claude: FIXES, check: `printf '%s %s\\n' "$(pwd -P)" "$*" >../ran\n${CHECK_PASSES}${CHECK_RED}` });
+    const { run, landed, session } = fixing({ claude: SPENT_BY_THE_THIRD_ROUND + FIXES, stageMinutes: "1", check: `printf '%s %s\\n' "$(pwd -P)" "$*" >../ran\n${CHECK_PASSES}${CHECK_RED}` });
 
     expect(run().status).toBe(1);
-    expect(readFileSync(join(session, "..", "ran"), "utf8")).toBe(`${realpathSync(session)} --full --publish\n`);
+    expect(readFileSync(join(session, "..", "ran"), "utf8").split("\n")[0]).toBe(`${realpathSync(session)} --full --publish`);
     expect(landed()).toEqual([]);
   });
 
@@ -145,18 +185,17 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
     expect(landed()).toHaveLength(1);
   });
 
-  it("calls the owner by name, and lands nothing, when two rounds in a row change nothing", () => {
-    const { run, handed, landed, marked, ticketComments } = fixing({ check: CHECK_RED });
+  it("hands a check that stays red back round after round, changed or not, until the stage's time cap ends it, then calls the owner by name and lands nothing (#1477)", () => {
+    const { run, handed, landed, marked, ticketComments } = fixing({ check: CHECK_RED, claude: SPENT_BY_THE_THIRD_ROUND, stageMinutes: "1" });
 
     const result = run();
 
     expect(result.status).toBe(1);
-    expect(handed()).toHaveLength(2);
-    expect(handed()[1]).toContain("check: red test src/stops.test.ts:4");
+    expect(handed()[2]).toContain("check: red test src/stops.test.ts:4");
     expect(landed()).toEqual([]);
     expect(marked()).toContain("811 stuck");
     expect(ticketComments().at(-1)).toMatch(/^@collod873 /);
-    expect(ticketComments().at(-1)).toContain("changed nothing");
+    expect(ticketComments().at(-1)).toContain("ran past its 1 minute cap");
   });
 
   it("resumes the session saved under `.claude/builder` from the builder's last job on this ticket, and saves the one it ends on there alone", () => {
@@ -172,26 +211,37 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
   });
 
 
-  it("refuses a rewrite that changes one byte of the Why, and posts one that changes only what done looks like, then builds it as rewritten in the same run, never parked on the owner, where Lumaria #1015 and #1286 waited on him against ADR-0005", () => {
+  it("refuses a rewrite that changes one byte of the Why, and posts one that changes only what done looks like, then checks, reviews and lands it as rewritten in the same round, never parked on the owner, where Lumaria #1015 and #1286 waited on him against ADR-0005 and 3 of 16 rewrites cost a round (#1477)", () => {
     const { body } = fixing();
-    const refused = fixing({ answer: { outcome: "ticket", reason: "the Why reads better this way", body: body.replace("never the owner", "never The owner") } });
+    const refused = fixing({ answer: { outcome: "code", reason: "the Why reads better this way", body: body.replace("never the owner", "never The owner") }, claude: SPENT_BY_THE_THIRD_ROUND + FIXES, stageMinutes: "1" });
 
     expect(refused.run().status).toBe(1);
     expect(refused.edits()).toEqual([]);
+    expect(refused.handed()[1]).toContain("Your rewrite of the ticket was refused");
     expect(refused.landed()).toEqual([]);
 
     const redone = body.replace("The builder clears a red ticket", "The builder clears a ticket red at any stage");
-    const written = fixing({ answer: { outcome: "ticket", reason: "Done when named one stage where the Why means every stage", body: redone }, claude: BUILDS_THE_REWRITE });
+    const written = fixing({ answer: { outcome: "code", reason: "Done when named one stage where the Why means every stage", body: redone }, claude: FIXES });
 
     const result = written.run();
 
     expect(result.status, result.stderr).toBe(0);
     expect(written.edits()).toEqual([redone]);
-    expect(written.ticketComments().at(-1)).toContain("The builder clears a ticket red at any stage");
-    expect(written.ticketComments().at(-1)).toContain("where the Why means every stage");
+    expect(written.ticketComments()[0]).toContain("The builder clears a ticket red at any stage");
+    expect(written.ticketComments()[0]).toContain("where the Why means every stage");
     expect(written.marked()).not.toContain("811 waiting");
-    expect(written.handed()[1]).toContain("The builder clears a ticket red at any stage");
+    expect(written.handed()).toHaveLength(2);
+    expect(written.handed()[1], "the reviewer reads the ticket as rewritten").toContain("The builder clears a ticket red at any stage");
     expect(written.landed()).toHaveLength(1);
+  });
+
+  it("posts nothing for a `code` answer whose `body` is the ticket unchanged, and lands it", () => {
+    const { body } = fixing();
+    const { run, edits, landed } = fixing({ answer: { outcome: "code", reason: "it reads fine", body }, claude: FIXES });
+
+    expect(run().status).toBe(0);
+    expect(edits()).toEqual([]);
+    expect(landed()).toHaveLength(1);
   });
 
   it("marks `stuck` with its reason a ticket the builder cannot build even rewritten, and lands nothing", () => {
@@ -203,18 +253,8 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
     expect(landed()).toEqual([]);
   });
 
-  it("hands back a `ticket` answer that returns the ticket unchanged, and never lands it (#1195)", () => {
-    const { body } = fixing();
-    const { run, edits, landed, handed } = fixing({ answer: { outcome: "ticket", reason: "it reads fine", body } });
-
-    expect(run().status).toBe(1);
-    expect(edits()).toEqual([]);
-    expect(landed()).toEqual([]);
-    expect(handed()[1]).toContain("unchanged");
-  });
-
   it("hands a `code` answer on a branch with no commits past main back as nothing to land (#1195)", () => {
-    const { run, landed, handed } = fixing({ claude: "git reset --quiet --hard main\n" });
+    const { run, landed, handed } = fixing({ claude: `${SPENT_BY_THE_THIRD_ROUND}git reset --quiet --hard main\n`, stageMinutes: "1" });
 
     expect(run().status).toBe(1);
     expect(landed()).toEqual([]);
@@ -224,11 +264,11 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
   it("rewrites past `## Done when` when a builder corrects the body around it, and posts why (#942)", () => {
     const { body } = fixing();
     const corrected = `${body.replace("The builder clears a red ticket", "The builder clears a ticket red at any stage")}\n## Out of scope\n\n- The post door.\n`;
-    const { run, edits, ticketComments } = fixing({ answer: { outcome: "ticket", reason: "the ticket named the shape rules, but the fault it names sits in src/post.ts", body: corrected }, claude: BUILDS_THE_REWRITE });
+    const { run, edits, ticketComments } = fixing({ answer: { outcome: "code", reason: "the ticket named the shape rules, but the fault it names sits in src/post.ts", body: corrected }, claude: FIXES });
 
     expect(run().status).toBe(0);
     expect(edits()).toEqual([corrected]);
-    expect(ticketComments().at(-1)).toContain("the fault it names sits in src/post.ts");
+    expect(ticketComments()[0]).toContain("the fault it names sits in src/post.ts");
   });
 
 
@@ -298,7 +338,7 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
 
   it("files nothing and hands the split back when a follow-up says nothing about what done looks like", () => {
     const piece = { title: "Handle the misses", why: "The rules refuse a missing read by name.", done: [] };
-    const unshaped = fixing({ answer: { outcome: "split", reason: "no Done when", tickets: [piece] } });
+    const unshaped = fixing({ answer: { outcome: "split", reason: "no Done when", tickets: [piece] }, claude: SPENT_BY_THE_THIRD_ROUND, stageMinutes: "1" });
 
     expect(unshaped.run().status).toBe(1);
     expect(unshaped.filed()).toEqual([]);
@@ -309,7 +349,7 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
     const { body } = fixing();
     const followUp = body.replace("The owner, in session:", "Follow-up of #700: its builder split it, since it does not fit one build.\n\n>");
     const piece = { title: "Handle the misses", why: "The rules refuse a missing read by name.", done: ["Reads refuse by name."] };
-    const { run, filed, handed } = fixing({ body: followUp, answer: { outcome: "split", reason: "still too big", tickets: [piece] } });
+    const { run, filed, handed } = fixing({ body: followUp, answer: { outcome: "split", reason: "still too big", tickets: [piece] }, claude: SPENT_BY_THE_THIRD_ROUND, stageMinutes: "1" });
 
     expect(run().status).toBe(1);
     expect(filed()).toEqual([]);
@@ -333,12 +373,11 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
 
 
   it("will not take `machine` for an answer when main has not moved", () => {
-    const { run, handed, landed, ticketComments } = fixing({ answer: { outcome: "machine", reason: "the reviewer is wrong" } });
+    const { run, handed, landed } = fixing({ answer: { outcome: "machine", reason: "the reviewer is wrong" }, claude: SPENT_BY_THE_THIRD_ROUND, stageMinutes: "1" });
 
     expect(run().status).toBe(1);
-    expect(handed()).toHaveLength(2);
+    expect(handed()[1]).toContain("main has not moved");
     expect(landed()).toEqual([]);
-    expect(ticketComments().at(-1)).toContain("main has not moved");
   });
 
   const CALLER = "collod873/Lumaria/.github/workflows/machine.yml@refs/heads/main";
@@ -389,7 +428,7 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
 
 
   it("hands back a `machine` answer from a foreign tree that files no ticket (#1143)", () => {
-    const { run, filed, handed, marked } = fixing({ calledFrom: CALLER, answer: { outcome: "machine", reason: "the check has no database" } });
+    const { run, filed, handed, marked } = fixing({ calledFrom: CALLER, answer: { outcome: "machine", reason: "the check has no database" }, claude: SPENT_BY_THE_THIRD_ROUND, stageMinutes: "1" });
 
     expect(run().status).toBe(1);
     expect(filed()).toEqual([]);

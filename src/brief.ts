@@ -2,14 +2,20 @@ import { existsSync, readFileSync } from "node:fs";
 
 export const onDisk = (path: string): string | undefined => (existsSync(path) ? readFileSync(path, "utf8") : undefined);
 
-export function capped(text: string, limit: number): string {
-  if (Buffer.byteLength(text) <= limit) return text;
+function cutTo(text: string, limit: number): string {
   let kept = "";
   for (const char of text) {
     if (Buffer.byteLength(kept) + Buffer.byteLength(char) > limit) break;
     kept += char;
   }
   return kept;
+}
+
+export function capped(text: string, limit: number): string {
+  if (Buffer.byteLength(text) <= limit) return text;
+  const cut = `\n\n[cut here, at its cap of ${limit} bytes]`;
+  const room = limit - Buffer.byteLength(cut);
+  return room < 0 ? cutTo(text, limit) : `${cutTo(text, room)}${cut}`;
 }
 
 export function tailOf(text: string, limit: number): string {

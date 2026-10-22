@@ -1,6 +1,6 @@
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { CONTRACT_CAP, handedOn, repaired } from "./builder.ts";
+import { handedOn, repaired } from "./builder.ts";
 import { handedOn as reviewing } from "./reviewer.ts";
 import { DIFF_CAP, LIST_CAP, TAIL_CAP, TICKET_CAP } from "./brief.ts";
 import { authored, BIN, execute, FIXED_TICKET, ghArgv, git, gitRefusing, openedCases, type Parent, plant, refusedMark, type Said, scratch, script } from "./scenarios.ts";
@@ -23,6 +23,7 @@ export const FULL_CHECK_RED_ONCE = [
 const AUTHORED_TEST = 'import { it } from "vitest";\nit("names the behaviour the criterion asks for", () => {});\n';
 
 export const BUILDER_SESSION = "sess-fix";
+export const SPENT_BY_THE_THIRD_ROUND = '[ "$CALL" -ge 3 ] && exit 124\n';
 
 function branchedSession(session: string, who: string, onMain: Record<string, string>, tests: Record<string, string>, branch: string): void {
   mkdirSync(session, { recursive: true });
@@ -68,6 +69,7 @@ export function fixing({
   stageMinutes = "",
   ticket = "811",
   repo = "collod873/Lumaria",
+  openTickets = [] as { number: number; title: string; body: string }[],
 } = {}) {
   const root = scratch("builder-");
   const session = join(root, "session");
@@ -99,6 +101,7 @@ export function fixing({
   plant(root, "ticket-body", body);
   plant(root, "on-ticket.json", authored(onTicket));
   plant(root, "labels", labels.map((label) => `${label}\n`).join(""));
+  plant(root, "open-tickets.json", JSON.stringify(openTickets));
   const answering = (output: object) => `${JSON.stringify({ type: "system", session_id: BUILDER_SESSION })}\n${JSON.stringify({ type: "result", subtype: "success", is_error: false, session_id: BUILDER_SESSION, structured_output: output })}\n`;
   plant(root, "answer.jsonl", answering(answer));
   plant(root, "review.jsonl", answering(review));
@@ -112,6 +115,7 @@ export function fixing({
       ...(unreadable === undefined ? [] : [`  ${unreadable}) printf 'gh: Bad credentials (HTTP 401)\\n' >&2; exit 1 ;;`]),
       `  *"api"*"issues/${ticket}/comments"*) cat "${join(root, "on-ticket.json")}" ;;`,
       ...openedCases(root, opener, body, parent, ticket),
+      `  *"issue list"*) cat "${join(root, "open-tickets.json")}" ;;`,
       `  *"issue create"*) n=$(( $(cat "${join(root, "created")}" 2>/dev/null || echo 900) + 1 )); printf '%s\\n' "$n" >"${join(root, "created")}"; printf 'https://github.com/collod873/claude-workflow/issues/%s\\n' "$n" ;;`,
       `  *"issue view"*"title,body,labels"*) cat "${join(root, "ticket.json")}" ;;`,
       `  *"issue view"*"body,title"*) printf 'Build what the ticket asks\\001%s' "$(cat "${join(root, "ticket-body")}")" ;;`,
@@ -180,9 +184,9 @@ declareStage({
     {
       name: "builder building",
       file: "src/builder.ts",
-      cap: TICKET_CAP + CONTRACT_CAP + LIST_CAP + 2 * HANDED_ON,
-      slots: ["body", "contract", "woken"],
-      build: (filled) => handedOn({ ticket: "", body: filled.body ?? "", contract: filled.contract ?? "", woken: filled.woken ?? "", commitlint: true, foreign: true }),
+      cap: TICKET_CAP + 2 * LIST_CAP + 2 * HANDED_ON,
+      slots: ["body", "woken", "alongside"],
+      build: (filled) => handedOn({ ticket: "", body: filled.body ?? "", woken: filled.woken ?? "", alongside: filled.alongside ?? "", commitlint: true, foreign: true }),
     },
     {
       name: "repair",
@@ -202,6 +206,6 @@ declareStage({
   scenarios: [
     { label: "building, reviewing and landing a ticket", run: () => fixing({ claude: "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n" }).run() },
     { label: "with its labels unreadable at review", run: () => fixing({ claude: "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n", unreadable: '*"issue view"*"labels"*"--jq"*' }).run() },
-    { label: "calling the owner when two rounds in a row change nothing", run: () => fixing({ check: CHECK_RED }).run() },
+    { label: "calling the owner when the check stays red to the stage's time cap", run: () => fixing({ check: CHECK_RED, claude: SPENT_BY_THE_THIRD_ROUND, stageMinutes: "1" }).run() },
   ],
 });
