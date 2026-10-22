@@ -58,7 +58,7 @@ function filedSteps(ticket: string, steps: OwnerStep[]): string {
 }
 
 function landing(ticket: string): { pr: string } | { refused: string } {
-  const landed = spawnSync(machineBin("land"), ["--ticket", ticket], { encoding: "utf8" });
+  const landed = spawnSync(machineBin("land"), ["--ticket", ticket], { encoding: "utf8", maxBuffer: Infinity });
   const pr = LANDED.exec(landed.stdout)?.[1];
   if (landed.status === 0 && pr !== undefined) return { pr };
   return { refused: tailOf(`${landed.stdout}${landed.stderr}`.trim(), TAIL_CAP) || `bin/land ended ${landed.status} and said nothing` };

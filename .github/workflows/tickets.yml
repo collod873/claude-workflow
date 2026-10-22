@@ -8,8 +8,10 @@ permissions: {}
 jobs:
   build:
     if: "${{ github.event_name == 'issues' && github.event.action != 'closed' && (github.event.sender.login == github.repository_owner || (github.event.sender.login == 'collod873-machine[bot]' && (github.event.action == 'unlabeled' || github.event.action == 'opened'))) }}"
+    concurrency:
+      group: build-${{ github.event.issue.number }}
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
-    timeout-minutes: 130
+    timeout-minutes: 190
     cache-mode: write
     env:
       GH_REPO: ${{ github.repository }}
@@ -130,7 +132,7 @@ jobs:
 
       - id: fix
         if: steps.start.outcome == 'success'
-        timeout-minutes: 120
+        timeout-minutes: 170
         working-directory: tree
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
