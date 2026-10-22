@@ -84,8 +84,17 @@ export interface IssueEvent {
 
 export const workflowJobs = (file: string) => (parse(readFileSync(join(WORKFLOWS, file), "utf8")) as { jobs: Record<string, WorkflowJob> }).jobs;
 
+const labelledIn = (job: WorkflowJob | undefined) => job?.steps.find(({ id }) => id === "labelled");
+
+export function gateOf(file: string, job: string): string {
+  const jobs = workflowJobs(file);
+  const gate = [job, ...[jobs[job]?.needs ?? []].flat()].find((name) => labelledIn(jobs[name]) !== undefined);
+  if (gate === undefined) throw new Error(`no labelled step in the ${job} job of ${file} or a job it needs`);
+  return gate;
+}
+
 export function labelledStep(file: string, job: string): WorkflowStep {
-  const step = workflowJobs(file)[job]?.steps.find(({ id }) => id === "labelled");
+  const step = labelledIn(workflowJobs(file)[gateOf(file, job)]);
   if (step === undefined) throw new Error(`no labelled step in the ${job} job of ${file}`);
   return step;
 }
@@ -118,15 +127,18 @@ export const heldBy = async (step: WorkflowStep, cwd: string, event: IssueEvent)
 const HELD = new Map<string, ReturnType<typeof heldBy>>();
 
 export async function starts(file: string, gated: string, event: IssueEvent): Promise<boolean> {
-  const job = workflowJobs(file)[gated];
+  const jobs = workflowJobs(file);
+  const job = jobs[gated];
   if (job === undefined) throw new Error(`no ${gated} job in ${file}`);
+  const gate = gateOf(file, gated);
   const { labels, ...rest } = event;
-  if (!holds(job.if ?? "true", rest)) return false;
-  const seen = `${file} ${gated} ${JSON.stringify([labels, rest.action, rest.label, rest.head])}`;
-  const heard = HELD.get(seen) ?? heldBy(labelledStep(file, gated), join(SRC, ".."), { ...rest, labels, sender: OWNER });
+  if (!holds(jobs[gate]?.if ?? "true", rest)) return false;
+  const seen = `${file} ${gate} ${JSON.stringify([labels, rest.action, rest.label, rest.head])}`;
+  const heard = HELD.get(seen) ?? heldBy(labelledStep(file, gate), join(SRC, ".."), { ...rest, labels, sender: OWNER });
   HELD.set(seen, heard);
   const { failed, held } = await heard;
   if (failed || held === undefined) throw new Error(`the labelled step of ${file} ended red on ${JSON.stringify(labels)}`);
+  if (gate !== gated) return holds(job.if ?? "success()", { ...rest, needs: { [gate]: { result: "success", outputs: { held } } } });
   const [next] = afterLabelled(job.steps);
   return holds(next?.if ?? "success()", { steps: labelledAs(job.steps, held) });
 }

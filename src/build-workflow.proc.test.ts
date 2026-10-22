@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { cloned, copyMark, git, holds, labelledAs, scratch, script, starts as startsJob, type IssueEvent, type StepOutcome } from "./scenarios.ts";
+import { cloned, copyMark, gateOf, git, holds, labelledAs, scratch, script, starts as startsJob, type IssueEvent, type StepOutcome } from "./scenarios.ts";
 import * as spelledKeys from "./spelled.ts";
 import { HELD, MACHINE, OWNER, OWNER_CALL } from "./spelled.ts";
 
@@ -28,6 +28,7 @@ interface Step {
 
 interface Job {
   if?: string;
+  concurrency?: { group?: string };
   outputs?: Record<string, string>;
   needs?: string | string[];
   env?: Record<string, unknown>;
@@ -114,6 +115,17 @@ describe("tickets.yml builds a ticket the moment it is filed (#826)", () => {
     for (const held of HELD) expect(await unlabeled("collod873", held), held).toBe(true);
     expect(await unlabeled("stranger", "waiting")).toBe(false);
     expect(await starts({ sender: "collod873-machine[bot]", action: "unlabeled", label: "waiting", labels: ["note"] })).toBe(false);
+  });
+
+  it("the job holding the build-<issue> group runs on no label change the build makes itself, so none cancels an unpause queued behind a running build (#1445)", async () => {
+    const [grouped = "", job] = Object.entries(ticketsJobs()).find(([, one]) => String(one.concurrency?.group ?? "").startsWith("build-")) ?? [];
+    const queued = async ({ labels = ["ticket"], ...event }: IssueEvent) => (gateOf("tickets.yml", grouped) === grouped ? holds(job?.if ?? "success()", event) : startsJob("tickets.yml", grouped, { ...event, labels }));
+
+    expect(grouped).toBe("build");
+    for (const label of ["building", "checking", "try-2"]) expect(await queued({ sender: MACHINE, action: "unlabeled", label, labels: ["ticket", label === "building" ? "checking" : "building"] }), label).toBe(false);
+    expect(await queued({ sender: OWNER, action: "labeled", label: "paused", labels: ["ticket", "building", "paused"] })).toBe(false);
+    expect(await queued({ sender: OWNER, action: "unlabeled", label: "paused", labels: ["ticket", "building"] })).toBe(true);
+    expect(await queued({ sender: MACHINE, action: "unlabeled", label: "waiting" })).toBe(true);
   });
 
   it("a follow-up the reviewer files labelled `waiting` starts no build when opened, only once `waiting` comes off (#1033)", async () => {
