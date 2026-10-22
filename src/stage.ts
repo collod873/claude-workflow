@@ -1,8 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { appendFileSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, realpathSync, rmSync, statSync, symlinkSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { stageArgv, type Reach, type Registration } from "./fence.ts";
 import { type Asked, askedIssue, ghRead, gitRead, heldOn, mark, unread, type MarkedLabel } from "./post.ts";
 import type { Stop } from "./stops.ts";
 import { quoted } from "./ticket-shape.ts";
@@ -11,6 +9,13 @@ const STREAM = ["--output-format", "stream-json", "--verbose"];
 const TIMED_OUT = 124;
 const GRACE_SECONDS = "30";
 const RETRY_WAIT_SECONDS = "5";
+
+const FOREGROUND_ONLY = {
+  env: { CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1", BASH_DEFAULT_TIMEOUT_MS: "600000", BASH_MAX_TIMEOUT_MS: "1200000" },
+  permissions: { deny: ["Agent", "Monitor", "Workflow", "ScheduleWakeup", "CronCreate", "RemoteTrigger"] },
+};
+
+const stageArgv = (model: string) => ["--print", "--model", model, "--setting-sources", "user,project", "--settings", JSON.stringify({ disableAllHooks: false, ...FOREGROUND_ONLY }), "--permission-mode", "bypassPermissions"];
 
 function events(stdout: string): unknown[] {
   return stdout
@@ -59,55 +64,11 @@ function capped(argv: string[], minutes: number, deadline: number): [string, ...
   return ["timeout", `--kill-after=${GRACE_SECONDS}`, String(left), ...launcher(), ...argv];
 }
 
-function hooksIn(read: () => string, refusal: string, gated: boolean): Registration | string {
-  try {
-    const stages = JSON.parse(read()) as { hooks?: Registration; gated?: Registration };
-    return (gated ? stages.gated : stages.hooks) ?? {};
-  } catch {
-    return refusal;
-  }
-}
-
-function liveHooks(gated: boolean): Registration | string {
-  const checkout = join(homedir(), ".agents", "hooks");
-  if (!existsSync(checkout)) return `no owner hooks for this stage: AGENT_HOOKS_SETTINGS is unset and ${checkout} is missing`;
-  const root = realpathSync(checkout);
-  const unregistered = mkdtempSync(join(tmpdir(), "agent-hooks-"));
-  const emitted = spawnSync("python3", [join(root, "hookcheck.py"), "--root", root, "--settings", join(unregistered, "unregistered.json"), "--emit-stages"], { encoding: "utf8" });
-  rmSync(unregistered, { recursive: true, force: true });
-  const refusal = `the main checkout at ${root} emitted no hooks: ${quoted(String(emitted.stderr ?? "").trim().split("\n")[0] ?? "")}`;
-  return emitted.status === 0 ? hooksIn(() => emitted.stdout, refusal, gated) : refusal;
-}
-
-function registered(gated: boolean): Registration | string {
-  const path = process.env.AGENT_HOOKS_SETTINGS;
-  if (path === "") return {};
-  if (path === undefined) return liveHooks(gated);
-  return hooksIn(() => readFileSync(path, "utf8"), `the owner's hooks could not be read from ${path}`, gated);
-}
-
-const CRAFT_SKILLS = ["codebase-design", "diagnosing-bugs", "domain-modeling", "tdd", "testing", "writing-for-agents"];
-
-function skillsAdded(names = CRAFT_SKILLS): string[] | string {
-  const repo = process.env.AGENT_SKILLS ?? join(homedir(), ".agents", "skills");
-  if (repo === "") return [];
-  const root = join(repo, "skills");
-  const missing = names.filter((name) => !existsSync(join(root, name, "SKILL.md")));
-  if (missing.length > 0) return `the owner's ${missing.join(", ")} skill is not in ${root}`;
-  const home = mkdtempSync(join(tmpdir(), "agent-skills-"));
-  mkdirSync(join(home, ".claude", "skills"), { recursive: true });
-  for (const name of names) symlinkSync(join(root, name), join(home, ".claude", "skills", name));
-  return ["--add-dir", home];
-}
-
 export interface Hire {
   name: string;
   transcript: string;
-  commands?: string[];
-  tools?: string[];
+  model: string;
   answers?: object;
-  gated?: boolean;
-  reach?: Reach;
   writeUp?: { minutes: number; told: string };
 }
 
@@ -130,14 +91,10 @@ export function setupRefusal(contract: string): string | undefined {
   return `${readied.stderr}${readied.stdout}`.trim().split("\n").at(-1) || `it ended ${readied.status}`;
 }
 
-export function hired(hire: Hire): ((input: string, resume?: string) => Spent) | string {
+export function hired(hire: Hire): (input: string, resume?: string) => Spent {
   const minutes = Number(process.env.STAGE_MINUTES);
   const deadline = Date.now() + minutes * 60_000;
-  const hooks = registered(hire.gated ?? false);
-  if (typeof hooks === "string") return hooks;
-  const skills = skillsAdded();
-  if (typeof skills === "string") return skills;
-  const argv = [...stageArgv(hire.commands ?? [], hooks, hire.tools, hire.reach), ...skills, ...(hire.answers === undefined ? [] : ["--json-schema", JSON.stringify(hire.answers)])];
+  const argv = [...stageArgv(hire.model), ...(hire.answers === undefined ? [] : ["--json-schema", JSON.stringify(hire.answers)])];
   rmSync(hire.transcript, { force: true });
   const readingEnds = deadline - (hire.writeUp?.minutes ?? 0) * 60_000;
   const handed = `${hire.transcript.replace(/\.jsonl$/, "")}.handed.md`;
@@ -210,7 +167,5 @@ export function opened<Carried, Own extends string>({ stage, issue, state, tried
   const readied = ready(asked);
   if (typeof readied !== "object") return readied;
   if (readied.unmarked !== true) mark(issue, state, ...((readied.tried ?? tried) === true ? (["--try"] as const) : []));
-  const spend = hire(stage, issue, hiring);
-  if (typeof spend === "string") return stoppedAt("modelRun", `${said} ended red, ${spend}`);
-  return { asked, carried: readied.carrying, spend };
+  return { asked, carried: readied.carrying, spend: hire(stage, issue, hiring) };
 }

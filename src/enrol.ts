@@ -3,7 +3,7 @@ import { createSign } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { isMap, isScalar, type Node, parse, parseDocument } from "yaml";
-import { FAST_CHECK, FULL_CHECK } from "./fence.ts";
+import { FAST_CHECK, FULL_CHECK } from "./checks.ts";
 import { ENROLLED_CALLER, ENROLLED_REVIEW, MACHINE_REPO } from "./post.ts";
 import { LABELS, MACHINE } from "./spelled.ts";
 

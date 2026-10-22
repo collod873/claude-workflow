@@ -1,10 +1,10 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { askingBash, cloned, fenceSays, flagValue, git, holds, plant, scratch, starts } from "./scenarios.ts";
+import { cloned, git, holds, plant, scratch, starts } from "./scenarios.ts";
 import { EARLY_REPAIR, fileDiff, BUILDER_LINE, FROM_MAIN, JUDGED_GAP, JUDGEMENT, RESOLVED, REVIEWED_TICKET, reviewing } from "./reviewer.part.ts";
 import { capped, LIST_CAP, NO_EM_DASH, TICKET_CAP } from "./brief.ts";
 import { METERS } from "./meter-reviewer.ts";
@@ -86,14 +86,11 @@ describe("bin/review reads a green ticket PR against its Why before it merges (#
     for (const path of ["src/bulk.ts", "docs/notes.md"]) expect(handed()).toContain(path);
   });
 
-  it("hires its model through the stage launcher, so it runs under the owner's hooks and leaves its transcript in the machine logs", () => {
+  it("hires its model through the stage launcher, so it runs under the owner's own settings and leaves its transcript in the machine logs", () => {
     const { root, run, hired } = reviewing();
-    const capture = "python3 /runner/agent-hooks/hooks/session-capture.py";
-    const settings = join(root, "agent-hooks.json");
-    writeFileSync(settings, JSON.stringify({ hooks: { SessionEnd: [{ hooks: [{ command: capture }] }] } }));
 
-    expect(run("9810", { AGENT_HOOKS_SETTINGS: settings }).status).toBe(0);
-    expect(hired().join(" ")).toContain(capture);
+    expect(run("9810").status).toBe(0);
+    expect(hired()).toEqual(expect.arrayContaining(["--setting-sources", "user,project"]));
     expect(hired()).toContain("stream-json");
     expect(readFileSync(join(root, ".git", "machine-logs", "review-9810.jsonl"), "utf8")).toContain('"verdict":"match"');
   });
@@ -109,35 +106,6 @@ describe("bin/review reads a green ticket PR against its Why before it merges (#
     expect(run().status).toBe(0);
     expect(spent()).toBe(false);
     expect(comments()).toEqual([]);
-  });
-});
-
-describe("bin/review fences its shell to the fast check and its plan, which the permission mode alone would not (#962)", () => {
-  it("lets through `check` and `check --explain`, and refuses the full check and anything else", () => {
-    const { run, hired } = reviewing();
-
-    run();
-
-    const argv = hired().join("\n");
-    expect(fenceSays(argv, askingBash("check")).status).toBe(0);
-    expect(fenceSays(argv, askingBash("check --explain")).status).toBe(0);
-    expect(fenceSays(argv, askingBash("check --full --publish")).status).toBe(2);
-    const refused = fenceSays(argv, askingBash("touch unlisted-marker"));
-    expect(refused.status).toBe(2);
-    expect(refused.stderr).toContain("check, check --explain");
-    expect(flagValue(argv, "--tools").split(",")).not.toContain("Bash");
-    expect(flagValue(argv, "--tools").split(",")).not.toContain("Edit");
-    expect(flagValue(argv, "--tools").split(",")).not.toContain("Write");
-  });
-
-  it("refuses a shell command its fence cannot read, rather than let it through", () => {
-    const { run, hired } = reviewing();
-
-    run();
-
-    const argv = hired().join("\n");
-    expect(fenceSays(argv, askingBash(42)).status).toBe(2);
-    expect(fenceSays(argv, "what a broken hook call looks like").status).toBe(2);
   });
 });
 

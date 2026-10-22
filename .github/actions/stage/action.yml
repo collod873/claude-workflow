@@ -1,5 +1,5 @@
 name: Stage
-description: Readies a job to run stages under the owner's hooks, with a live feed of each transcript
+description: Readies a job to run stages as the owner's own session runs, under his claude-config, hooks and skills, with a live feed of each transcript
 
 inputs:
   client-id:
@@ -43,10 +43,41 @@ runs:
           rm -rf "$skills/.git"
           printf '%s\n' "$skills/bin" >>"$GITHUB_PATH"
         else
-          skills=""
-          printf '::warning::%s\n' "A job cannot fetch the owner's skills, so its stages run without the owner's craft skills and bin tools"
+          printf '::warning::%s\n' "A job cannot fetch the owner's skills, so its stages run without the owner's skills and bin tools"
         fi
-        printf 'AGENT_SKILLS=%s\n' "$skills" >>"$GITHUB_ENV"
+
+    - id: config-app
+      uses: actions/create-github-app-token@v3
+      with:
+        client-id: ${{ inputs.client-id }}
+        private-key: ${{ inputs.private-key }}
+        owner: ${{ github.repository_owner }}
+        repositories: claude-config
+        permission-contents: read
+
+    - id: config-fetch
+      shell: bash
+      env:
+        CONFIG_TOKEN: ${{ steps.config-app.outputs.token }}
+      run: |
+        config="$RUNNER_TEMP/claude-config"
+        attempt=1
+        until git clone --quiet --depth 1 "https://x-access-token:$CONFIG_TOKEN@github.com/$GITHUB_REPOSITORY_OWNER/claude-config" "$config"; do
+          rm -rf "$config"
+          if [ "$attempt" -ge 3 ]; then
+            printf '%s\n' "A job cannot fetch the owner's claude-config after 3 tries" >&2
+            exit 1
+          fi
+          attempt=$((attempt + 1))
+        done
+        rm -rf "$config/.git" "$config/skills"
+        ln -s "$RUNNER_TEMP/agent-skills/skills" "$config/skills"
+        mkdir -p "$HOME/.claude/projects"
+        ln -s "$HOME/.claude/projects" "$config/projects"
+        jq 'del(.hooks)' "$config/settings.json" >"$RUNNER_TEMP/unregistered.json"
+        mv "$RUNNER_TEMP/unregistered.json" "$config/settings.json"
+        python3 "$RUNNER_TEMP/agent-hooks/hookcheck.py" --root "$RUNNER_TEMP/agent-hooks" --settings "$config/settings.json" --write-settings --graded
+        printf 'CLAUDE_CONFIG_DIR=%s\n' "$config" >>"$GITHUB_ENV"
 
     - id: captures-app
       continue-on-error: true

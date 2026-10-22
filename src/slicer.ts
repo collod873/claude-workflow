@@ -2,7 +2,6 @@ import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { capped, LIST_CAP, NO_EM_DASH, TICKET_CAP } from "./brief.ts";
 import { FILED } from "./builder.ts";
-import { FENCED_OPUS } from "./fence.ts";
 import { commentOnTicket, commentsRead, gh, ghRead, mark, post, readOrStop, STUCK } from "./post.ts";
 import { BUILDING, SLICING, SPEC } from "./spelled.ts";
 import { opened, type Spent } from "./stage.ts";
@@ -22,7 +21,6 @@ const stoppedAt = stopsOf({
 });
 type Stop = ReturnType<typeof stoppedAt>;
 
-const TOOLS = ["Read", "Grep", "Glob", "Skill"];
 const ROUNDS_BACK = 2;
 export const COMMENTS_CAP = 16 * 1024;
 const DONE_CHECK = join(import.meta.dirname, "..", "bin", "done-check");
@@ -330,7 +328,7 @@ function sliced(issue: string, fix?: number[], trial?: number): Stop | undefined
     state: SLICING,
     tried: fix !== undefined,
     stoppedAt,
-    hire: { name: "slicer", tools: TOOLS, reach: FENCED_OPUS, answers: ANSWERS },
+    hire: { name: "slicer", model: "opus", answers: ANSWERS },
     ready: (asked) => {
       if (!asked.labels.has(SPEC)) return stoppedAt("notSpec", `${said} is not a spec, so nothing sliced it`);
       const untried = trial === undefined ? undefined : trialRefusal(trial, Buffer.byteLength(filedRecord(asked.body).owner));

@@ -164,7 +164,7 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     expect(handed()[0]).not.toContain("split into has closed");
   });
 
-  it("runs on Opus with no fence, every command in the foreground under a ten minute default, with nothing it could leave running after it answers, under the repo's own CLAUDE.md and hooks that no repo setting can switch the owner's off beside", () => {
+  it("runs on Opus with no fence, every command in the foreground under a ten minute default, with nothing it could leave running after it answers, under the owner's own settings beside the repo's that no repo setting can switch his hooks off in", () => {
     const { run, hired } = fixing({ claude: FIXES });
 
     expect(run().status).toBe(0);
@@ -172,7 +172,7 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
     if (argv === undefined) throw new Error("no claude hired");
     expect(argv[argv.indexOf("--model") + 1]).toBe("opus");
     expect(argv).not.toContain("--tools");
-    expect(argv[argv.indexOf("--setting-sources") + 1]).toBe("project");
+    expect(argv[argv.indexOf("--setting-sources") + 1]).toBe("user,project");
     expect(argv[argv.indexOf("--settings") + 1]).not.toContain("node");
     const { env, permissions, disableAllHooks } = JSON.parse(argv[argv.indexOf("--settings") + 1] ?? "{}") as { env: Record<string, string>; permissions: { deny: string[] }; disableAllHooks: boolean };
     expect(env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS).toBe("1");
@@ -700,15 +700,6 @@ describe("bin/fix opens through the one stage opening (#1117)", () => {
       untouched(stopped);
     });
   }
-
-  it("ends red at modelRun when the owner's hooks cannot be read, leaving the owner to the workflow's call-owner step", () => {
-    const { run, marked, handed, ticketComments } = fixing({ claude: FIXES, hooks: "/nowhere/agent-hooks.json" });
-
-    expect(run("811")).toMatchObject({ status: 1, stderr: "fix: #811 ended red, the owner's hooks could not be read from /nowhere/agent-hooks.json\n" });
-    expect(marked()).toEqual(["811 building"]);
-    expect(handed()).toEqual([]);
-    expect(ticketComments()).toEqual([]);
-  });
 
   it("refuses an unadmitted ticket after the stuck rule, so a stopped ticket stays green", () => {
     const { run, marked } = fixing({ claude: FIXES, opener: "collod873-machine[bot]", labels: ["ticket", "stuck"] });
