@@ -936,7 +936,7 @@ export function switching({ isPrivate = true, runners = [] as object[], variable
       `  kept="${at("placed")}/\${BASH_REMATCH[1]//\\//_}"`,
       '  mv "$kept.next" "$kept"',
       "fi",
-      "[[ $* =~ ^bash\\ -c\\ cat\\ ([^ ]+/environ)$ ]] && exec cat \"${BASH_REMATCH[1]}\"",
+      `[[ $* == *"${at("proc")}/"* ]] && exec "$@"`,
       "started='runners/[^/ ]+/([^ /]+) && .*svc\\.sh start'",
       `if ${startsOnline} && [[ $* =~ $started ]] && [[ " ${slowToStart.join(" ")} " != *" \${BASH_REMATCH[1]} "* ]]; then`,
       `  jq -c --arg name "\${BASH_REMATCH[1]}" '.runners |= (map(select(.name != $name)) + [{name: $name, status: "online", busy: false, labels: [{name: "self-hosted"}, {name: "pc"}]}])' "${at("runners.json")}" >"${at("runners.next")}"`,
