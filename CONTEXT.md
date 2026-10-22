@@ -68,9 +68,12 @@ machine spells, auto-merge, and main taking changes only by a PR passing `check`
 _Avoid_: onboard, install, register
 
 **PC runner**:
-A `pc` runner, where a private repo's `CI_RUNNER` sends jobs, else GitHub's. The **quick
-lane**, jobs building nothing, prefers a `pc-quick` **quick runner**; `bin/runner` sets both.
+A `pc` runner, where a private repo's `CI_RUNNER` sends jobs, else GitHub's.
 _Avoid_: local runner
+
+**Quick lane**:
+Jobs building nothing, sent by `QUICK_RUNNER` to `pc-quick` runners.
+_Avoid_: fast lane
 
 **Worker**:
 A part of the machine whose worth is the work it does: a step, a script, a stage.
