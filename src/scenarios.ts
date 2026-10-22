@@ -373,7 +373,8 @@ export function landSession({
   changes = {},
   defaultBranch = "main",
   openPr = false,
-}: { gh?: string; remoteRefuses?: string; messages?: string[]; merges?: Merge[]; views?: string[]; mainMovesOnRefusal?: boolean; rounds?: string; covered?: boolean; green?: boolean; changes?: Record<string, string>; defaultBranch?: string; openPr?: boolean } = {}) {
+  treeNode = false,
+}: { gh?: string; remoteRefuses?: string; messages?: string[]; merges?: Merge[]; views?: string[]; mainMovesOnRefusal?: boolean; rounds?: string; covered?: boolean; green?: boolean; changes?: Record<string, string>; defaultBranch?: string; openPr?: boolean; treeNode?: boolean } = {}) {
   const root = scratch("land-");
   const { remote, session } = clonedOn(root, defaultBranch, ["base"]);
   git(remote, "config", "user.email", "github@test");
@@ -428,7 +429,10 @@ export function landSession({
   const checks = join(state, "check-calls");
   const covering = covered ? "printf 'check: covered, all 9 steps\\n'" : "printf 'check: due test\\n'\nexit 3";
   const publishing = green ? "printf 'check: green, all 9 steps\\n'" : "printf 'check: red test; log .git/check-logs/test.log\\n'\nexit 1";
-  script(join(root, "bin", "check"), `printf '%s\\n' "$*" >>${JSON.stringify(checks)}\nif [[ $* == *--publish* ]]; then\n${publishing}\nelse\n${covering}\nfi\n`);
+  const checkNodes = join(state, "check-nodes");
+  const treeBin = join(root, "tree-bin");
+  if (treeNode) script(join(treeBin, "node"), "exit 9\n");
+  script(join(root, "bin", "check"), `printf '%s\\n' "$*" >>${JSON.stringify(checks)}\ncommand -v node >>${JSON.stringify(checkNodes)}\nif [[ $* == *--publish* ]]; then\n${publishing}\nelse\n${covering}\nfi\n`);
   const head = git(session, "rev-parse", "HEAD");
   return {
     root,
@@ -436,11 +440,13 @@ export function landSession({
     session,
     head,
     branch: `land/${head.slice(0, 12)}`,
-    run: (args: string[] = [], from = session) => execute(join(BIN, "land"), from, { PATH: `${join(root, "bin")}:${process.env.PATH}`, LAND_ROUNDS: rounds, LAND_PAUSE_SECONDS: "0" }, args),
+    run: (args: string[] = [], from = session) => execute(join(BIN, "land"), from, { PATH: `${join(root, "bin")}:${process.env.PATH}`, LAND_ROUNDS: rounds, LAND_PAUSE_SECONDS: "0", ...(treeNode ? { TREE_PATH: treeBin } : {}) }, args),
     calls: (): string[][] => (existsSync(log) ? readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as string[]) : []),
     merged: (call: string[]) => call[0] === "pr" && call[1] === "merge",
     posted: (call: string[]) => call[0] === "api" && call[3]?.startsWith("repos/{owner}/{repo}/statuses/") === true,
     checked: () => (existsSync(checks) ? readFileSync(checks, "utf8").trim().split("\n") : []),
+    checkedOn: () => (existsSync(checkNodes) ? readFileSync(checkNodes, "utf8").trim().split("\n") : []),
+    treeBin,
   };
 }
 

@@ -65,6 +65,7 @@ export function fixing({
   treePath = {} as Record<string, string>,
   nodeLauncher = false,
   calledFrom = undefined as string | undefined,
+  stageMinutes = "",
   ticket = "811",
   repo = "collod873/Lumaria",
 } = {}) {
@@ -80,12 +81,14 @@ export function fixing({
   const machine = join(root, "machine", "bin");
   const ranIn = join(root, "ran-in");
   const opens = join(root, "pr-opens");
+  const caps = join(root, "caps");
   const { setup, calls } = ghArgv(argvDir);
   mkdirSync(spent, { recursive: true });
   mkdirSync(hires, { recursive: true });
   script(join(root, "bin", "check"), `printf 'check %s\\n' "$PWD" >>"${ranIn}"\n${check}`);
   script(join(machine, "mark"), `printf '%s\\n' "$*" >>"${marks}"\n${refusedMark(markRefusal)}`);
   script(join(machine, "land"), `printf '%s %s\\n' "$(git rev-parse HEAD)" "$*" >>"${lands}"\n${land}\nprintf 'Landed https://github.com/%s/pull/9${ticket}\\n' "\${GH_REPO:-collod873/claude-workflow}"\n`);
+  script(join(root, "bin", "timeout"), `printf '%s\\n' "$2" >>"${caps}"\nshift 2\nexec "$@"\n`);
   script(join(machine, "close"), `printf '%s\\n' "$*" >>"${closes}"\n`);
   branchedSession(session, "builder", { "src/ticket-shape.ts": "export const shaped = 1;\n", ...onMain, ...(contract === undefined ? {} : { ".claude/contract.json": contract }) }, { "src/ticket-shape.test.ts": AUTHORED_TEST }, `ticket/${ticket}`);
   git(session, "commit", "--quiet", "--allow-empty", "-m", `Build #${ticket} against its failing tests`);
@@ -152,6 +155,7 @@ export function fixing({
     marked: () => listed(marks),
     landed: () => listed(lands),
     closed: () => listed(closes),
+    capped: () => listed(caps),
     calls,
     ranIn: () => [...new Set(listed(ranIn))],
     ticketComments: () => calls().filter((args) => args[0] === "issue" && args[1] === "comment").map(bodyOf),
@@ -166,7 +170,7 @@ export function fixing({
     captured: (name: string) => join(root, "captures", name),
     log: (...args: string[]) => git(session, "log", ...args),
     run: (...args: string[]) =>
-      execute(join(BIN, "fix"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}`, HOME: home, MACHINE_BIN: machine, SESSION_CAPTURES: join(root, "captures"), ...(calledFrom === undefined ? {} : { CALLED_FROM: calledFrom, GH_REPO: repo }), ...(Object.keys(treePath).length === 0 ? {} : { TREE_PATH: join(root, "tree-bin") }) }, args.length === 0 ? [ticket] : args),
+      execute(join(BIN, "fix"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}`, HOME: home, MACHINE_BIN: machine, SESSION_CAPTURES: join(root, "captures"), STAGE_MINUTES: stageMinutes, ...(calledFrom === undefined ? {} : { CALLED_FROM: calledFrom, GH_REPO: repo }), ...(Object.keys(treePath).length === 0 ? {} : { TREE_PATH: join(root, "tree-bin") }) }, args.length === 0 ? [ticket] : args),
   };
 }
 

@@ -39,7 +39,7 @@ export function handedOn(ticket: string, body: string, commits: string, diff: st
     "Where the diff misses the Why or its `## Done when`, or breaks what it touches, fix it here yourself: nothing goes back to the builder. A new or changed test that would stay green on the bug it guards, or go red on a refactor that keeps the behavior, is yours to fix; call the Skill tool with `testing` for the standard.",
     `Commit what you change, each message saying why, with no em dash and no closing keyword such as \`Fixes #12\`. Run \`${FULL_CHECK}\` last if you changed anything. Answer one outcome:`,
     "- `approve`: it builds the Why, with whatever you fixed; `bin/land` then runs the full check and merges it, and anything it refuses comes back to you.",
-    "- `stuck`: it cannot land, even fixed; `reason` says why, and the ticket is marked `stuck`.",
+    "- `stuck`: the work has a gap you cannot fix, one only the owner can close; `reason` says why, and the ticket is marked `stuck`.",
     "`steps`: each step only the owner can take before this work runs, such as a dashboard setting or a key; each is filed as an `owner-step` note, and the ticket still closes.",
     "`reason`: one paragraph for the owner. Two rounds in a row that change nothing call them.",
     "",
@@ -66,6 +66,11 @@ function landing(ticket: string): { pr: string } | { refused: string } {
 
 const landRefused = (refused: string) => ["`bin/land` refused to land it. Its output:", refused, "Fix what it names, commit, and answer again."].join("\n\n");
 
+function triedAgainLater(ticket: string, refusal: string): number {
+  console.error(`review: #${ticket} was not reviewed, as ${refusal}; its run ends red, so the machine re-runs it`);
+  return 1;
+}
+
 export function reviewedAndLanded(ticket: string, body: string, steps: OwnerStep[]): number {
   mark(ticket, CHECKING);
   const commits = gitRead(["log", "--reverse", "--format=- %s%n%n%b", "origin/main..HEAD"], "the commits past main could not be read, so nothing is reviewed");
@@ -78,10 +83,11 @@ export function reviewedAndLanded(ticket: string, body: string, steps: OwnerStep
     const before = head();
     const spent = spend(input, session);
     session = spent.session ?? session;
-    if (spent.refusal !== undefined) return calledOwner(ticket, "reviewer", spent.refusal);
+    if (spent.refusal !== undefined) return triedAgainLater(ticket, spent.refusal);
     const answer = spent.answer as Answer | undefined;
     if (answer?.outcome === "stuck") return calledOwner(ticket, "reviewer", answer.reason);
     committed(reviewedBy(ticket), "fix");
+    const changed = head() !== before;
     const held = heldOn(labelsHeld(ticket, gh));
     if (held !== undefined) {
       console.log(`review: #${ticket} is labelled ${held}, so it does not land; its branch is kept for its next run`);
@@ -93,7 +99,6 @@ export function reviewedAndLanded(ticket: string, body: string, steps: OwnerStep
       console.log(`review: #${ticket} landed as PR #${landed.pr}${filed}`);
       return spawnSync(machineBin("close"), [ticket, landed.pr], { stdio: "inherit" }).status ?? 1;
     }
-    const changed = head() !== before;
     if (!changed && idle) return calledOwner(ticket, "reviewer", `two rounds in a row changed nothing: ${quoted(landed.refused.split("\n").at(-1) ?? "")}`);
     idle = !changed;
     input = answer === undefined ? landed.refused : landRefused(landed.refused);

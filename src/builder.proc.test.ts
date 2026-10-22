@@ -476,6 +476,41 @@ describe("a fresh reviewer reads each green build, fixes or approves it, and bin
     expect(closed()).toEqual([]);
   });
 
+  it("counts a round its reviewer changed nothing in as idle though bin/land rebased the branch onto a main that moved", () => {
+    const REBASES_THEN_REFUSES = [
+      "moved=$(cat ../main-moves 2>/dev/null || echo 0); echo $((moved + 1)) >../main-moves",
+      'if [ "$moved" -lt 2 ]; then git update-ref refs/remotes/origin/main "$(git commit-tree -p origin/main -m "another ticket landed" "origin/main^{tree}")"; git rebase --quiet origin/main; fi',
+      "printf 'land: the full check is red\\n' >&2; exit 1",
+      "",
+    ].join("\n");
+    const { run, handed, ticketComments } = fixing({ claude: FIXES, land: REBASES_THEN_REFUSES });
+
+    expect(run().status).toBe(1);
+    expect(handed(), "the builder's round and the reviewer's two").toHaveLength(3);
+    expect(ticketComments().at(-1)).toContain("two rounds in a row changed nothing");
+  });
+
+  it("leaves a ticket whose reviewer's model call fails twice unmarked and the owner uncalled, and ends red so the machine re-runs it", () => {
+    const { run, marked, ticketComments, landed } = fixing({ claude: FIXES, reviewer: "printf 'the model overloaded\\n' >&2\nexit 1\n" });
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("the model overloaded");
+    expect(marked()).not.toContain("811 stuck");
+    expect(ticketComments().filter((said) => said?.includes("needs you"))).toEqual([]);
+    expect(landed()).toEqual([]);
+  });
+
+  it("gives the reviewer's next round its whole cap however long bin/land's full check took", () => {
+    const LAND_CHECKS_PAST_THE_CAP_THEN_REFUSES = "[ -f ../land-refused ] || { touch ../land-refused; sleep 4; printf 'land: the full check is red\\n' >&2; exit 1; }\n";
+    const { run, capped, landed } = fixing({ claude: FIXES, land: LAND_CHECKS_PAST_THE_CAP_THEN_REFUSES, stageMinutes: "0.05" });
+
+    expect(run().status).toBe(0);
+    expect(landed()).toHaveLength(2);
+    expect(capped(), "the builder's round and the reviewer's two, in seconds").toEqual(["3", "3", "3"]);
+  });
+
   it("files each step only the owner can take, the builder's and the reviewer's, as an owner-step note once it lands, and still closes the ticket (ADR-0005)", () => {
     const { run, filed, calls, closed } = fixing({ claude: FIXES, answer: { outcome: "code", reason: "built", steps: [STEP] }, review: { outcome: "approve", reason: "it builds the Why", steps: [{ ...STEP, title: "Turn on the webhook" }] } });
 
