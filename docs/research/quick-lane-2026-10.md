@@ -6,49 +6,42 @@ Recorded 2026-10-22. Facts behind `QUICK_RUNNERS` and `QUICK_RUNNER_MEMORY_GB` i
 `src/runner.ts`. Times are UTC.
 
 Sources: every Lumaria Actions run created 2026-10-22 (769 runs, every attempt, from the runs and
-jobs APIs, pulled at about 14:30), of which 474 quick-lane jobs ran between 02:04 and 13:56; and
-the memory of the processes a quick job starts, read on the GitHub runner that built #1428.
+jobs APIs, pulled at about 14:30), and the memory of what each quick job starts, read on the GitHub
+runner that built #1428.
+
+## Which jobs
+
+Since ADR-0012 a ticket's one `build` run builds, reviews and lands it, so `review`, `which`,
+`meters` and `fix` are gone. The jobs left that build nothing are `close`, `strip`, `enrol`,
+`rerun` and `dispatch-rerun` in `tickets.yml`, and `ended`, `resumed`, `asked` and
+`dispatch-rerun` in `specs.yml`. `research` hands its model an open shell, so it stays with the
+builds.
 
 ## Memory
 
-A quick job runs one of three things at a time, so its peak is the largest, not their sum.
+None of them hires a model. A job runs one thing at a time, so its peak is the largest.
 
 | What | Peak | How read |
 |---|---|---|
-| `npm ci` of the machine checkout (`review`, `meters`) | 388 MiB | `/usr/bin/time` max RSS |
-| a stage's model session and its node driver (`review`, `meters`) | 327 + 90 = 417 MiB | `VmHWM` of `claude` and of the driver, read in a builder session after three rounds, longer than any review |
-| a machine script and `gh` (`which`, `close`, `strip`, the rest) | about 50 to 90 MiB | `/usr/bin/time` max RSS of `bin/close` and `bin/which` |
+| `npm ci` of the machine checkout (`enrol`) | 388 MiB | `/usr/bin/time` max RSS |
+| a machine script and `gh` (the rest) | about 50 to 90 MiB | `/usr/bin/time` max RSS of `bin/close`, and `VmHWM` of a stage's node driver |
 
-The reviewer and the meters are handed Read, Grep and Glob, no shell, so nothing they do builds or
-tests. The heaviest quick job peaks near 420 MiB. Each quick runner gets **1 GB**, over twice that,
-and the slice holds **8 GB**, exactly its runners' caps added up, so the slice never picks who is
-killed.
-
-## Time
-
-| Job | Ran | p50 | p95 | Max |
-|---|---|---|---|---|
-| `review` | 51 | 1.5 min | 2.0 min | 2.2 min |
-| `meters` | 51 | 1.4 min | 1.9 min | 2.1 min |
-| `close` | 123 | 0.2 min | 2.2 min | 4.3 min |
-| `which` | 23 | 0.1 min | 0.2 min | 2.2 min |
-| `strip`, `rerun`, `dispatch-rerun`, `ended`, `resumed`, `asked` | 226 | 0.2 min or less | 0.3 min | 0.3 min |
-
-The 22 `close` runs over 30 s brought a PR up to date with a full check, which now runs in the
-`update` job on the build runners.
+Each quick runner gets **1 GB**, over twice the heaviest, and the slice holds **8 GB**, exactly
+its runners' caps added up, so the slice never picks who is killed.
 
 ## How many runners
 
-The day's quick jobs replayed in queue order, each starting on the first free quick runner and
-running as long as it did:
+The 349 runs of those jobs on 2026-10-22 took 8 to 15 s at the median and 21 s at most,
+all but `close`, whose 22 runs over 30 s brought a PR up to date, which ADR-0012 took out of it; each
+`close` is cut to 30 s below. Replayed in queue order, each starting on the first free quick runner
+and running as long as it did:
 
-| Quick runners | `which` and `close` wait, p95 | Max | Over a minute |
+| Quick runners | `close` wait, p95 | Max | Over a minute |
 |---|---|---|---|
-| 4 | 154 s | 193 s | 26 of 146 |
-| 6 | 82 s | 98 s | 14 of 146 |
-| 8 | 42 s | 53 s | 0 of 146 |
+| 2 | 390 s | 499 s | 33 of 123 |
+| 4 | 161 s | 191 s | 22 of 123 |
+| 6 | 87 s | 98 s | 13 of 123 |
+| 8 | 42 s | 52 s | 0 of 123 |
 
-The waits come from bursts: at 13:37:35 to 13:37:37, 25 jobs were queued in three seconds. Replayed
-with every `close` cut to 30 s, as moving its update out does, 4 runners still leave 23 over a
-minute and 6 and 8 do not move, since the bursts are short jobs. **Eight** quick runners
-start every `which` and `close` of the day within a minute; at 1 GB each they fit the 8 GB slice.
+The waits come from bursts: between 13:37 and 13:38, 39 of them were queued, 16 `close` and 15
+`strip`. **Eight** quick runners start every `close` of the day within a minute.

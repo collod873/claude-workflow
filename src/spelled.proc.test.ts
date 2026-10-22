@@ -19,9 +19,6 @@ const KEYS = [
   ["OWNER_STEP", "owner-step"],
   ["BUILDING", "building"],
   ["CHECKING", "checking"],
-  ["QUEUED", "queued"],
-  ["RESOLVING", "resolving"],
-  ["LANDING", "landing"],
   ["SLICING", "slicing"],
   ["RESEARCHING", "researching"],
   ["WAITING", "waiting"],
@@ -90,13 +87,13 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
       "src/raw.ts",
       [
         `import { mark, type Held, type MarkedLabel } from "${join(BIN, "..", "src", "post.ts")}";`,
-        'const LANDING = "landing" as const satisfies MarkedLabel;',
-        'export const raw = (held: Held) => { mark("1", "building"); return held.has("spec") ? LANDING : "a building"; };',
+        'const SLICING = "slicing" as const satisfies MarkedLabel;',
+        'export const raw = (held: Held) => { mark("1", "building"); return held.has("spec") ? SLICING : "a building"; };',
         "",
       ].join("\n"),
     );
 
-    expect(rawLabels([join(planted, "src", "raw.ts")], names)).toEqual(['raw.ts:2 "landing"', 'raw.ts:3 "building"', 'raw.ts:3 "spec"']);
+    expect(rawLabels([join(planted, "src", "raw.ts")], names)).toEqual(['raw.ts:2 "slicing"', 'raw.ts:3 "building"', 'raw.ts:3 "spec"']);
     expect(rawLabels(NAMING, names)).toEqual([]);
   });
 
@@ -123,7 +120,7 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
           .split("\n")
           .flatMap((line) => (line.includes("collod873-machine") && !line.startsWith("export const MACHINE = ") ? [file.slice(REPO.length + 1)] : [])),
       ),
-    ).toEqual([".github/workflows/check.yml", ".github/workflows/check.yml", ".github/workflows/tickets.yml", ".github/workflows/tickets.yml"]);
+    ).toEqual([".github/workflows/check.yml", ".github/workflows/check.yml", ".github/workflows/tickets.yml"]);
     expect(readFileSync(join(ACTIONS, "stage-logs", "action.yml"), "utf8")).toMatch(/bin\/spelled MACHINE/);
   });
 

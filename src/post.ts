@@ -18,7 +18,7 @@ import {
   specRefusals,
   ticketRefusals,
 } from "./ticket-shape.ts";
-import { BUG, HELD, LABELS, MACHINE, NOTE, OWNER, OWNER_STEP, RESEARCH, RESOLVING, SPEC, STUCK, TICKET, TICKET_PREFIX, WAITING, type LabelName, type MarkedLabel } from "./spelled.ts";
+import { BUG, HELD, LABELS, MACHINE, NOTE, OWNER, OWNER_STEP, RESEARCH, SPEC, STUCK, TICKET, TICKET_PREFIX, WAITING, type LabelName, type MarkedLabel } from "./spelled.ts";
 import { type Stop, stoppedAt } from "./stops.ts";
 
 export interface Posting {
@@ -60,11 +60,6 @@ export function ghWhole(args: string[], line: string): string {
   return got.status === 0 ? got.stdout : unread(line);
 }
 export const gitRead = (args: string[], line: string, input?: string) => readOrUnread(git(args, input), line);
-
-export function answered(got: ReturnType<Gh>, line: string): boolean {
-  if (got.status !== 0 && got.status !== 1) unread(line);
-  return got.status === 0;
-}
 
 export function readOrStop<Ended>(stage: string, run: () => Ended): Ended | Stop {
   try {
@@ -109,10 +104,9 @@ const filed = (refuses: (text: string) => string[], labels: LabelName[]): Kind =
 
 export const MISSING = /HTTP 404/;
 export const ticketBranch = (ticket: string) => `${TICKET_PREFIX}${ticket}`;
-export const TICKET_BRANCH = new RegExp(`^${ticketBranch("(\\d+)")}$`);
 
 export const FOLLOW_UP_OF = "Follow-up of #";
-export const REVIEW_FOUND = ": its review found";
+const REVIEW_FOUND = ": its review found";
 export const BUILDER_SPLIT = ": its builder split it";
 export const REVIEWED_FROM = new RegExp(`^${FOLLOW_UP_OF}(\\d+)${REVIEW_FOUND}`, "m");
 export const SPLIT_FROM = new RegExp(`^${FOLLOW_UP_OF}(\\d+)${BUILDER_SPLIT}`, "m");
@@ -123,19 +117,13 @@ export const MACHINE_REPO = `${OWNER}/claude-workflow`;
 const callerRepo = /^([^/]+\/[^/]+)\//.exec(process.env.CALLED_FROM ?? "")?.[1];
 export const FOREIGN = callerRepo !== undefined && callerRepo !== MACHINE_REPO;
 export const ENROLLED_CALLER = "machine.yml";
-export const ENROLLED_REVIEW = "tickets / review";
 export const CALLER_FILE = /\/([^/@]+)@/.exec(process.env.CALLED_FROM ?? "")?.[1] ?? ENROLLED_CALLER;
 export const FAULT_FROM = new RegExp(`^${FAULT_OF}(${OWNER}/[\\w.-]+)#(\\d+)${FAULT_WAITS}\\.`, "m");
 export function followUpBody(whyLines: string[], done: string[]): string {
   return ["## Why", "", ...whyLines, "", "## Done when", "", ...done.map((sentence) => `- ${sentence}`), ""].join("\n");
 }
 
-export const foundDrift = (ticket: string) => `The reviewer read this PR against the Why of #${ticket} and found drift.`;
-export const foundOverlap = (ticket: string) => `The reviewer read this PR for #${ticket} against what merged to main since its last judgement and found overlap.`;
-export const drifted = (ticket: string, comment: string) => comment.startsWith(foundDrift(ticket)) || comment.startsWith(foundOverlap(ticket));
-export const earlierDrift = (ticket: string, comments: string[]) => comments.filter((comment) => drifted(ticket, comment)).join("\n\n");
-export const repairOf = (ticket: string) => `Repair #${ticket} as its builder`;
-export { OWNER, RESEARCH, RESOLVING, STUCK, WAITING, type MarkedLabel };
+export { OWNER, RESEARCH, STUCK, WAITING, type MarkedLabel };
 
 const KINDS: Record<string, Kind> = {
   ticket: filed(ticketRefusals, [TICKET]),
@@ -269,7 +257,7 @@ export function underOwnerSpec(ticket: string, line: string, gh: Gh, repo?: stri
   return undefined;
 }
 
-export const NO_PR = /^no pull requests found/m;
+const NO_PR = /^no pull requests found/m;
 
 export interface TicketPr {
   number?: number;
@@ -302,8 +290,6 @@ export function askedIssue(stdout: string): Asked | undefined {
     return undefined;
   }
 }
-
-export const commentOnPr = (pr: string, text: string, gh: Gh) => written(gh, ["pr", "comment", pr, "--body", dedashed(text)]);
 
 export function rewriteTicket(ticket: string, read: string, rewrite: string, gh: Gh): { refusals: string[]; said: string } {
   const refused = rewriteRefusals(read, dedashed(rewrite));

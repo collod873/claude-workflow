@@ -52,14 +52,14 @@ describe("bin/slice turns a filed spec into its first wave of tickets under it, 
     expect(first).toContain("## Done when\n\n- It holds.");
   });
 
-  it("hires opus fenced to reading, and hands it the spec with its Problem Statement numbered passage by passage", () => {
+  it("hires opus with no fence, and hands it the spec with its Problem Statement numbered passage by passage", () => {
     const sliced = slicing({ body: SPEC, answers: [wave()] });
 
     expect(sliced.run().status).toBe(0);
     const [hired = []] = sliced.hired();
     const [handed = ""] = sliced.handed();
     expect(hired[hired.indexOf("--model") + 1]).toBe("opus");
-    expect(hired[hired.indexOf("--tools") + 1]).toBe("Read,Grep,Glob,Skill");
+    expect(hired).not.toContain("--tools");
     expect(handed).toContain(SPEC.trim());
     expect(handed).toContain(`1. ${ATTRIBUTION}`);
     expect(handed).toContain(`3. ${WATCHING}`);

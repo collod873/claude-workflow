@@ -18,10 +18,7 @@ export const LABELS = [
   { name: "research", kind: "kind", colour: KIND_GREY, description: "A note the machine answers and closes when filed" },
   { name: "owner-step", kind: "kind", colour: KIND_GREY, description: "A note naming a step only the owner can take; nothing builds or researches it" },
   { name: "building", kind: "state", colour: STATE_BLUE, description: "The builder is writing the ticket's code, or a spec's wave is building" },
-  { name: "checking", kind: "state", colour: STATE_BLUE, description: "The check and the reviewer judge the head, or the done check tries a spec's sentences" },
-  { name: "queued", kind: "state", colour: STATE_BLUE, description: "Check and the review passed; it waits in the closer's queue" },
-  { name: "resolving", kind: "state", colour: STATE_BLUE, description: "The builder is resolving a merge conflict" },
-  { name: "landing", kind: "state", colour: STATE_BLUE, description: "Up to date with main and next to merge; auto-merge fires once its checks pass" },
+  { name: "checking", kind: "state", colour: STATE_BLUE, description: "The reviewer reads the green build and lands it, or the done check tries a spec's sentences" },
   { name: "slicing", kind: "state", colour: STATE_BLUE, description: "The slicer is writing the next wave" },
   { name: "researching", kind: "state", colour: STATE_BLUE, description: "The researcher is answering this note" },
   { name: "waiting", kind: "parked", colour: "fbca04", description: "Waits for other tickets before it builds" },
@@ -41,9 +38,6 @@ export const RESEARCH = "research" as const satisfies LabelName;
 export const OWNER_STEP = "owner-step" as const satisfies LabelName;
 export const BUILDING = "building" as const satisfies MarkedLabel;
 export const CHECKING = "checking" as const satisfies MarkedLabel;
-export const QUEUED = "queued" as const satisfies MarkedLabel;
-export const RESOLVING = "resolving" as const satisfies MarkedLabel;
-export const LANDING = "landing" as const satisfies MarkedLabel;
 export const SLICING = "slicing" as const satisfies MarkedLabel;
 export const RESEARCHING = "researching" as const satisfies MarkedLabel;
 export const WAITING = "waiting" as const satisfies MarkedLabel;
@@ -56,7 +50,7 @@ export const MACHINE = "collod873-machine[bot]";
 export const OWNER_CALL = "owner call";
 type SpelledAs<Key extends string> = Lowercase<Key> extends `${infer Head}_${infer Tail}` ? `${Head}-${Tail}` : Lowercase<Key>;
 const namedAsSpelled = <Keyed extends { [Key in keyof Keyed & string]: SpelledAs<Key> }>(keyed: Keyed): Keyed => keyed;
-const LABEL_KEYS = namedAsSpelled({ TICKET, BUG, SPEC, NOTE, RESEARCH, OWNER_STEP, BUILDING, CHECKING, QUEUED, RESOLVING, LANDING, SLICING, RESEARCHING, WAITING, PAUSED, STUCK });
+const LABEL_KEYS = namedAsSpelled({ TICKET, BUG, SPEC, NOTE, RESEARCH, OWNER_STEP, BUILDING, CHECKING, SLICING, RESEARCHING, WAITING, PAUSED, STUCK });
 const KEYED: Record<string, string> = { ...LABEL_KEYS, TICKET_PREFIX, OWNER, MACHINE, OWNER_CALL };
 
 export const SPELLINGS: [key: string, spelling: string][] = [

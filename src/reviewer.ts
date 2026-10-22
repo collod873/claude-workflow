@@ -1,382 +1,101 @@
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
-import { appendFileSync } from "node:fs";
-import { FULL_CHECK } from "./fence.ts";
-import { capped, DIFF_CAP, handedDiff, LIST_CAP, NO_EM_DASH, TICKET_CAP } from "./brief.ts";
-import { answered as readAnswered, commentOnPr, commentOnTicket, commentsRead, drifted, earlierDrift, FOLLOW_UP_OF, followUpBody, foundDrift, foundOverlap, gh, ghRead, git, gitRead, mark, OWNER, post, readOrStop, REVIEW_FOUND, REVIEWED_FROM, STUCK, TICKET_BRANCH, underOwnerSpec, unread, WAITING } from "./post.ts";
-import { hire } from "./stage.ts";
-import { exitFor, stopsOf } from "./stops.ts";
-import { DONE_SENTENCES, quoted, why } from "./ticket-shape.ts";
+import { capped, handedDiff, LIST_CAP, NO_EM_DASH, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
+import { FULL_CHECK } from "./checks.ts";
+import { commentOnTicket, gh, gitRead, heldOn, labelsHeld, machineBin, mark, post } from "./post.ts";
+import { CHECKING } from "./spelled.ts";
+import { calledOwner, committed, commitlinted, head, hire, linted, type OwnerStep, OWNER_STEPS } from "./stage.ts";
+import { quoted } from "./ticket-shape.ts";
 
-const stoppedAt = stopsOf({ drift: "The reviewer finds drift from `## Why`", calledOwner: "Review: a gap named again on the next try, so the ticket is marked `stuck`" });
-export type Stop = ReturnType<typeof stoppedAt>;
-
-const TOOLS = ["Read", "Grep", "Glob", "Skill"];
-export const PLAIN_WORDS = "^(?:(?!`|/|[\\w-]+\\.[A-Za-z]{1,8}\\b)[\\s\\S])*$";
-const foundMatchInWave = (ticket: string) => `The reviewer read this PR against the Why of #${ticket} and found it builds it. Its spec's note for this wave reads it back to the owner.`;
-const foundNoOverlap = (ticket: string) => `The reviewer read this PR for #${ticket} against what merged to main since its last judgement and found no overlap.`;
-
-const unspentOn = (pr: string, unreadable: string) => `#${pr} stopped at a machine fault, not a red PR: ${unreadable}, so no model was spent`;
-const unspent = (pr: string, read: string) => unspentOn(pr, `${read} could not be read`);
-
-export const METER_MARK = " (meter): ";
-
-const withoutMeterLines = (body: string) =>
-  body
-    .split("\n")
-    .filter((line) => !line.includes(METER_MARK))
-    .join("\n");
-
-const withoutBlankLines = (body: string) =>
-  body
-    .split("\n")
-    .filter((line) => line.trim() !== "")
-    .join("\n");
-
-interface Read {
-  body: string;
-  diff: string;
-  prBody: string;
-}
-
-function fingerprintOf(pr: string, { diff, body, prBody }: Read): string {
-  const id = (gitRead(["patch-id", "--stable"], unspent(pr, "the patch id of its diff"), diff).match(/^\S+/) ?? [""])[0];
-  return `${id}-${createHash("sha256").update(body).update(withoutBlankLines(prBody)).digest("hex").slice(0, 12)}`;
-}
-
-const fingerprintLine = (fingerprint: string) => `Fingerprint: \`${fingerprint}\``;
-const FINGERPRINT = /Fingerprint: `([^`]+)`/;
-const headLine = (head: string) => `Head: \`${head}\``;
-const HEAD_LINE = /^Head: `([0-9a-f]{40,64})`$/m;
-const mainLine = (main: string) => `Main: \`${main}\``;
-const MAIN_LINE = /^Main: `([0-9a-f]{40,64})`$/m;
-const stamped = (fingerprint: string, main: string | undefined, head?: string) => [fingerprintLine(fingerprint), ...(main === undefined ? [] : [mainLine(main)]), ...(head === undefined ? [] : [headLine(head)])];
-
-interface Judgement {
-  fingerprint: string;
-  verdict: "match" | "drift";
-  main?: string;
-}
-
-function lastJudgement(ticket: string, comments: string[]): Judgement | undefined {
-  let found: Judgement | undefined;
-  for (const comment of comments) {
-    const fingerprint = FINGERPRINT.exec(comment)?.[1];
-    if (fingerprint === undefined) continue;
-    found = { fingerprint, verdict: drifted(ticket, comment) ? "drift" : "match", main: MAIN_LINE.exec(comment)?.[1] };
-  }
-  return found;
-}
-const QUOTE_LINE = /^>.*$/gm;
-const DOUBLE_QUOTE = /"[^"\n]+"/g;
-const READBACK_PROMPT = "`readback`: for someone who does not read code, what to try and what should happen, or what it now does and did not before.";
-
-function ownerQuotes(body: string): string[] {
-  const text = why(body);
-  return text.match(QUOTE_LINE) ?? text.match(DOUBLE_QUOTE) ?? [];
-}
-
-function ownerWords(pr: string, body: string): string[] {
-  const parent = REVIEWED_FROM.exec(why(body))?.[1];
-  if (parent === undefined) return ownerQuotes(body);
-  return ownerQuotes(ghRead(["issue", "view", parent, "--json", "body", "--jq", ".body"], unspent(pr, `the owner's words on #${parent}`)));
-}
-
-function readbackText(words: string[], account: string, fingerprint: string, main: string): string {
-  return [...stamped(fingerprint, main), "", ...words, "", account, "", "Did this build what you meant, yes or no?"].join("\n");
-}
-
-const VERDICT = {
+const ANSWER = {
   type: "object",
   properties: {
-    verdict: { enum: ["match", "drift"] },
-    gaps: { type: "array", items: { type: "string", pattern: NO_EM_DASH } },
-    again: { type: "array", items: { type: "string", pattern: NO_EM_DASH } },
-    readback: { type: "string", pattern: PLAIN_WORDS },
-    later: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          gap: { type: "string", pattern: NO_EM_DASH },
-          title: { type: "string", pattern: NO_EM_DASH },
-          done: { type: "array", items: { type: "string", pattern: NO_EM_DASH } },
-        },
-        required: ["gap", "title", "done"],
-        additionalProperties: false,
-      },
-    },
+    outcome: { enum: ["approve", "stuck"] },
+    reason: { type: "string", pattern: NO_EM_DASH },
+    steps: OWNER_STEPS,
   },
-  required: ["verdict", "gaps", "readback"],
+  required: ["outcome", "reason"],
   additionalProperties: false,
 };
 
-const SINCE = {
-  type: "object",
-  properties: { finds: { type: "array", items: { type: "string", pattern: NO_EM_DASH } } },
-  required: ["finds"],
-  additionalProperties: false,
-};
+interface Answer {
+  outcome: "approve" | "stuck";
+  reason: string;
+  steps?: OwnerStep[];
+}
 
-const isSince = (answer: unknown): answer is { finds: string[] } => Array.isArray((answer as { finds?: unknown } | undefined)?.finds);
+const LANDED = /^Landed \S+\/pull\/(\d+)/m;
 
-export function handedSince(body: string, diff: string, merged: string, landed: string): string {
+export function handedOn(ticket: string, body: string, commits: string, diff: string, commitlint: boolean): string {
   return [
-    "This PR matched the `## Why` below at its last review. Since then main gained what is under `## Merged since`, and the PR was brought up to date with it. Judge only that. Change nothing; read the repo if the diff is unclear.",
+    `# Review #${ticket} before it lands`,
+    "A builder built the ticket below on this branch, and its full check is green. You did not build it: read the ticket, its commit messages and the diff as its reviewer.",
     capped(body, TICKET_CAP),
-    "## This PR's diff",
+    "## Commits",
+    capped(commits, LIST_CAP),
+    "## Diff from main",
     handedDiff(diff),
-    "## Merged since",
-    capped(merged, LIST_CAP),
-    handedDiff(landed),
-    "## Your finds",
-    "`finds`: each place this PR duplicates what merged, gives a second name to one thing, or clashes with it, naming which of the two to keep. Each goes to the PR's builder to act on. None if there is none.",
+    ...linted(commitlint),
+    "## Fix it or approve it",
+    "Where the diff misses the Why or its `## Done when`, or breaks what it touches, fix it here yourself: nothing goes back to the builder. A new or changed test that would stay green on the bug it guards, or go red on a refactor that keeps the behavior, is yours to fix; call the Skill tool with `testing` for the standard.",
+    `Commit what you change, each message saying why, with no em dash and no closing keyword such as \`Fixes #12\`. Run \`${FULL_CHECK}\` last if you changed anything. Answer one outcome:`,
+    "- `approve`: it builds the Why, with whatever you fixed; `bin/land` then runs the full check and merges it, and anything it refuses comes back to you.",
+    "- `stuck`: it cannot land, even fixed; `reason` says why, and the ticket is marked `stuck`.",
+    "`steps`: each step only the owner can take before this work runs, such as a dashboard setting or a key; each is filed as an `owner-step` note, and the ticket still closes.",
+    "`reason`: one paragraph for the owner. Two rounds in a row that change nothing call them.",
     "",
   ].join("\n\n");
 }
 
-interface Later {
-  gap: string;
-  title: string;
-  done: string[];
+const reviewedBy = (ticket: string) => `Review #${ticket} as its reviewer`;
+
+const stepBody = (ticket: string, { why }: OwnerStep) => `## Why\n\n${why}\n\nLeft to the owner by the run that built #${ticket}, which closed.\n`;
+
+function filedSteps(ticket: string, steps: OwnerStep[]): string {
+  const filed = steps.map((step) => ({ step, ...post({ kind: "owner", title: step.title, text: stepBody(ticket, step) }, gh) }));
+  const refused = filed.filter(({ refusals }) => refusals.length > 0);
+  if (refused.length > 0) commentOnTicket(ticket, ["These steps only the owner can take could not be filed as notes:", "", ...refused.map(({ step, refusals }) => `- ${step.title}: ${step.why} (${quoted(refusals[0] ?? "")})`), ""].join("\n"), gh);
+  return filed.length === 0 ? "" : `; owner steps filed: ${filed.map(({ said }) => said.trim()).filter((said) => said !== "").join(" ") || "none"}`;
 }
 
-interface Verdict {
-  verdict: "match" | "drift";
-  gaps: string[];
-  again?: string[];
-  later?: Later[];
-  readback: string;
+function landing(ticket: string): { pr: string } | { refused: string } {
+  const landed = spawnSync(machineBin("land"), ["--ticket", ticket], { encoding: "utf8", maxBuffer: Infinity });
+  const pr = LANDED.exec(landed.stdout)?.[1];
+  if (landed.status === 0 && pr !== undefined) return { pr };
+  return { refused: tailOf(`${landed.stdout}${landed.stderr}`.trim(), TAIL_CAP) || `bin/land ended ${landed.status} and said nothing` };
 }
 
-interface AfterTurn {
-  earlier: string;
-  fix: string;
-}
+const landRefused = (refused: string) => ["`bin/land` refused to land it. Its output:", refused, "Fix what it names, commit, and answer again."].join("\n\n");
 
-const laterFinds = (ticket: string) => `The reviewer found these on #${ticket} after its builder's repair, outside the earlier gaps and the fix's own lines, so they do not block its merge:`;
-const reviewerOn = (ticket: string) => `The reviewer, on #${ticket}:`;
-const namedAgain = (ticket: string, pr: string) => `@${OWNER} the reviewer of #${pr} named these gaps on #${ticket} again after its builder's repair, so #${ticket} is marked \`${STUCK}\` and no builder runs on it until you take that off:`;
-
-const firstLine = (text: string) => quoted(text.trim().split("\n")[0] ?? "");
-
-export function handedOn(body: string, diff: string, { prBody = "", after }: { prBody?: string; after?: AfterTurn } = {}): string {
-  const turn =
-    after === undefined
-      ? []
-      : ["## The builder's repair", "This PR was judged drift, then its builder repaired it. The earlier judgements:", capped(after.earlier, LIST_CAP), "The fix's own diff:", capped(after.fix, DIFF_CAP) || "(none, the builder changed the ticket)"];
-  const sorted =
-    after === undefined
-      ? []
-      : [
-          "`gaps` holds only an earlier gap still open or a gap in the fix's own lines; these block, and the verdict is `drift` while any remain. Put every other gap in `later`: it never blocks.",
-          "`again`: each gap in `gaps` the last of the earlier judgements named too, as you wrote it in `gaps`. A gap named on two tries in a row stops the builder and goes to the owner, so leave out one that is new.",
-          `Each \`later\` item becomes its own ticket: the \`gap\` in one sentence, a \`title\`, and \`done\` as ${DONE_SENTENCES}.`,
-        ];
-  return [
-    `Review this PR against the \`## Why\` and its \`## Done when\`. Change nothing; \`${FULL_CHECK}\` is green. Read the repo if the diff is unclear.`,
-    capped(body, TICKET_CAP),
-    "## Diff",
-    handedDiff(diff),
-    "## The PR's body",
-    "What it says was done outside the repo, such as on GitHub, counts as shown; the repo outweighs it where they differ.",
-    capped(prBody, LIST_CAP),
-    ...turn,
-    "## Your verdict",
-    "`match` if the diff builds the Why, else `drift`. Name every gap in one pass, each a builder can act on.",
-    "A new or changed test that would stay green on the bug it guards, or go red on a refactor that keeps the behavior, is a gap. Call the Skill tool with `testing` for the standard and its fixes.",
-    READBACK_PROMPT,
-    ...sorted,
-    "",
-  ].join("\n\n");
-}
-
-function isVerdict(answer: unknown): answer is Verdict {
-  const verdict = (answer as Partial<Verdict> | undefined)?.verdict;
-  return verdict === "match" || verdict === "drift";
-}
-
-export function answered({ name, bin, answers }: { name: string; bin: string; answers: object }, prompt: string, pr: string): { answer: unknown; stdout: string } | string {
-  const spend = hire(bin, pr, { name, tools: TOOLS, answers });
-  if (typeof spend === "string") return spend;
-  const spent = spend(prompt);
-  return spent.refusal ?? { answer: spent.answer, stdout: spent.stdout };
-}
-
-function judged(prompt: string, pr: string): Verdict | string {
-  const spent = answered({ name: "reviewer", bin: "review", answers: VERDICT }, prompt, pr);
-  if (typeof spent === "string") return spent;
-  return isVerdict(spent.answer) ? spent.answer : `the reviewer gave no verdict: ${firstLine(spent.stdout)}`;
-}
-
-function judgement(found: string, gaps: string[], stamp: string[]): string {
-  const named = gaps.length === 0 ? ["- the reviewer ruled drift and named no gap"] : gaps.map((gap) => `- ${gap}`);
-  return [found, "", ...named, "", ...stamp, ""].join("\n");
-}
-
-const headNow = (pr: string) => gitRead(["rev-parse", "HEAD"], unspent(pr, "its head"));
-const mainNow = (pr: string) => gitRead(["merge-base", "origin/main", "HEAD"], unspent(pr, "where it stands on main"));
-
-function judgedHead(ticket: string, comments: string[]): string | undefined {
-  const drifts = comments.filter((comment) => drifted(ticket, comment));
-  return HEAD_LINE.exec(drifts.at(-1) ?? "")?.[1];
-}
-
-function fixSince(pr: string, head: string): string {
-  const line = unspent(pr, "the fix's own diff");
-  const merged = git(["merge-tree", "--write-tree", head, mainNow(pr)]);
-  readAnswered(merged, line);
-  const tree = merged.stdout.split("\n")[0] ?? "";
-  return gitRead(["diff", tree === "" ? unread(line) : tree, "HEAD"], line);
-}
-
-const followUp = (ticket: string, { gap, done }: Later): string =>
-  followUpBody([`${FOLLOW_UP_OF}${ticket}${REVIEW_FOUND} this after its builder's repair, outside the earlier gaps and the fix's own lines.`, "", reviewerOn(ticket), "", `> ${gap}`], done);
-
-function recordedLater(ticket: string, body: string, later: Later[], turns: string[]): string {
-  if (later.length === 0) return "";
-  if (turns.some((said) => said.startsWith(laterFinds(ticket)))) return `, its later finds already on #${ticket}`;
-  const deep = body.includes(FOLLOW_UP_OF);
-  const fate = deep ? `Not filed, since #${ticket} is itself a follow-up.` : "Each is filed as a follow-up ticket that builds itself once this PR merges or closes.";
-  const posted = commentOnTicket(ticket, [laterFinds(ticket), "", ...later.map(({ gap }) => `- ${gap}`), "", fate, ""].join("\n"), gh);
-  const [refusal] = posted.refusals;
-  if (refusal !== undefined) return `, its later finds refused: ${quoted(refusal)}`;
-  if (deep) return `, ${later.length} later finds posted, not filed: ${posted.said}`;
-  const filed = later.map((find) => ({ find, ...post({ kind: "ticket", title: find.title, text: followUp(ticket, find), labels: [WAITING] }, gh) }));
-  const refused = filed.flatMap(({ find, refusals }) => refusals.slice(0, 1).map((refusal) => `- ${find.gap}: ${quoted(refusal)}`));
-  if (refused.length > 0) commentOnTicket(ticket, [`These later finds on #${ticket} were not filed, their follow-up tickets were refused:`, "", ...refused, ""].join("\n"), gh);
-  return `, ${later.length} later finds posted: ${posted.said}; follow-ups filed: ${filed.map(({ said }) => said).filter((said) => said !== "").join(" ") || "none"}`;
-}
-
-const READ_TRIES = 3;
-const retrySeconds = Number(process.env.GH_RETRY_SECONDS ?? "1");
-
-function readTried(args: string[], read: string): string | { unread: string } {
-  for (let tried = 1; ; tried++) {
-    const got = gh(args);
-    if (got.status === 0) return got.stdout;
-    if (tried === READ_TRIES) return { unread: `${read} could not be read in ${READ_TRIES} tries: ${firstLine(got.stderr || got.stdout)}` };
-    spawnSync("sleep", [String(retrySeconds * tried)]);
-  }
-}
-
-function bodyAndDiff(pr: string, ticket: string): Read | { unread: string } {
-  const body = readTried(["issue", "view", ticket, "--json", "body", "--jq", ".body"], `ticket #${ticket}`);
-  if (typeof body !== "string") return body;
-  const diff = readTried(["pr", "diff", pr], "its diff");
-  if (typeof diff !== "string") return diff;
-  const prBody = readTried(["pr", "view", pr, "--json", "body", "--jq", ".body"], "its body");
-  if (typeof prBody !== "string") return prBody;
-  return { body, diff, prBody: withoutMeterLines(prBody) };
-}
-
-export function ticketPr(pr: string, said: string): ({ ticket: string } & Read) | undefined {
-  const branch = ghRead(["pr", "view", pr, "--json", "headRefName", "--jq", ".headRefName"], `#${pr} could not be read, so nothing read it`);
-  const ticket = TICKET_BRANCH.exec(branch)?.[1];
-  if (ticket === undefined) {
-    console.log(`${said} is not a ticket PR, so there is no Why to read it against`);
-    return undefined;
-  }
-  const read = bodyAndDiff(pr, ticket);
-  return "unread" in read ? unread(unspentOn(pr, read.unread)) : { ticket, ...read };
-}
-
-interface Judging {
-  pr: string;
-  ticket: string;
-  said: string;
-  fingerprint: string;
-}
-
-function movedUnder({ pr, ticket, said, fingerprint }: Judging): { ended: Stop | undefined } | undefined {
-  const now = bodyAndDiff(pr, ticket);
-  if ("unread" in now) {
-    console.log(`${said} keeps the judgement its model gave on #${ticket}, as ${now.unread}, so whether the PR moved under it is left to a newer run`);
-    return undefined;
-  }
-  if (fingerprintOf(pr, now) === fingerprint) return undefined;
-  console.log(`${said} writes nothing, a newer run judges #${ticket}: the PR moved under it while its model answered`);
-  return { ended: undefined };
-}
-
-function reviewedSince(judging: Judging & { body: string; diff: string }, from: string, to: string): Stop | undefined {
-  const { pr, ticket, said, fingerprint } = judging;
-  const line = unspent(pr, "what merged to main since its last judgement");
-  const merged = gitRead(["log", "--first-parent", "--format=- %s", `${from}..${to}`], line);
-  const landed = gitRead(["diff", from, to], line);
-  const spent = answered({ name: "reviewer", bin: "review", answers: SINCE }, handedSince(judging.body, judging.diff, merged, landed), pr);
-  if (typeof spent === "string") return stoppedAt("modelRun", `${said} ended red, ${spent}`);
-  if (!isSince(spent.answer)) return stoppedAt("modelRun", `${said} ended red, the reviewer gave no finds: ${firstLine(spent.stdout)}`);
-  const moved = movedUnder(judging);
-  if (moved !== undefined) return moved.ended;
-  const { finds } = spent.answer;
-  if (finds.length === 0) {
-    const posted = commentOnPr(pr, [foundNoOverlap(ticket), "", ...stamped(fingerprint, to), ""].join("\n"), gh);
-    console.log(`${said} overlaps nothing merged to main since its last judgement on #${ticket}: ${posted.said || quoted(posted.refusals[0] ?? "")}`);
-    return undefined;
-  }
-  const posted = commentOnPr(pr, judgement(foundOverlap(ticket), finds, stamped(fingerprint, to, headNow(pr))), gh);
-  const [refusal] = posted.refusals;
-  if (refusal !== undefined) return stoppedAt("drift", `${said} overlaps what merged to main since its last judgement on #${ticket}, and its judgement was refused: ${quoted(refusal)}`);
-  return stoppedAt("drift", `${said} overlaps what merged to main since its last judgement on #${ticket}, ${finds.length} finds posted: ${posted.said}`);
-}
-
-function review(pr: string): Stop | undefined {
-  const said = `review: #${pr}`;
-  const read = ticketPr(pr, said);
-  if (typeof read !== "object") return read;
-  const { ticket, body, diff } = read;
-  const onPr = commentsRead(pr, unspent(pr, "the comments on its PR"), gh);
-  const fingerprint = fingerprintOf(pr, read);
-  const past = lastJudgement(ticket, onPr);
-  const main = mainNow(pr);
-  if (past?.fingerprint === fingerprint) {
-    if (past.verdict === "match" && past.main !== undefined && past.main !== main) {
-      return reviewedSince({ pr, ticket, body, diff, said, fingerprint }, past.main, main);
+export function reviewedAndLanded(ticket: string, body: string, steps: OwnerStep[]): number {
+  mark(ticket, CHECKING);
+  const commits = gitRead(["log", "--reverse", "--format=- %s%n%n%b", "origin/main..HEAD"], "the commits past main could not be read, so nothing is reviewed");
+  const diff = gitRead(["diff", "origin/main...HEAD"], "the diff from main could not be read, so nothing is reviewed");
+  const spend = hire("review", ticket, { name: "reviewer", model: "opus", answers: ANSWER });
+  let input = handedOn(ticket, body, commits, diff, commitlinted());
+  let session: string | undefined;
+  let idle = false;
+  for (;;) {
+    const before = head();
+    const spent = spend(input, session);
+    session = spent.session ?? session;
+    if (spent.refusal !== undefined) return calledOwner(ticket, "reviewer", spent.refusal);
+    const answer = spent.answer as Answer | undefined;
+    if (answer?.outcome === "stuck") return calledOwner(ticket, "reviewer", answer.reason);
+    committed(reviewedBy(ticket), "fix");
+    const held = heldOn(labelsHeld(ticket, gh));
+    if (held !== undefined) {
+      console.log(`review: #${ticket} is labelled ${held}, so it does not land; its branch is kept for its next run`);
+      return 0;
     }
-    if (past.verdict === "match") {
-      console.log(`${said} reuses its last judgement on #${ticket}, a match, hiring no model`);
-      return undefined;
+    const landed = answer === undefined ? { refused: "You gave no outcome. Answer one." } : landing(ticket);
+    if ("pr" in landed) {
+      const filed = filedSteps(ticket, [...steps, ...(answer?.steps ?? [])]);
+      console.log(`review: #${ticket} landed as PR #${landed.pr}${filed}`);
+      return spawnSync(machineBin("close"), [ticket, landed.pr], { stdio: "inherit" }).status ?? 1;
     }
-    return stoppedAt("drift", `${said} reuses its last judgement on #${ticket}, a drift, hiring no model`);
+    const changed = head() !== before;
+    if (!changed && idle) return calledOwner(ticket, "reviewer", `two rounds in a row changed nothing: ${quoted(landed.refused.split("\n").at(-1) ?? "")}`);
+    idle = !changed;
+    input = answer === undefined ? landed.refused : landRefused(landed.refused);
   }
-  const turns = commentsRead(ticket, unspent(pr, `the comments on #${ticket}`), gh);
-  const head = headNow(pr);
-  const inWave = underOwnerSpec(ticket, unspent(pr, `the parent of #${ticket}`), gh) === undefined;
-  const words = inWave ? [] : ownerWords(pr, body);
-  const earlier = earlierDrift(ticket, onPr);
-  const since = judgedHead(ticket, onPr);
-  const after = earlier === "" ? undefined : { earlier, fix: since === undefined ? diff : fixSince(pr, since) };
-  const verdict = judged(handedOn(body, diff, { prBody: read.prBody, after }), pr);
-  if (typeof verdict === "string") return stoppedAt("modelRun", `${said} ended red, ${verdict}`);
-  const moved = movedUnder({ pr, ticket, said, fingerprint });
-  if (moved !== undefined) return moved.ended;
-  const blocking = after === undefined ? [...verdict.gaps, ...(verdict.later ?? []).map(({ gap }) => gap)] : verdict.gaps;
-  const recorded = recordedLater(ticket, body, after === undefined ? [] : (verdict.later ?? []), turns);
-  if (verdict.verdict === "match") {
-    const text = inWave ? [foundMatchInWave(ticket), "", ...stamped(fingerprint, main), ""].join("\n") : readbackText(words, verdict.readback, fingerprint, main);
-    const posted = commentOnPr(pr, text, gh);
-    const [refusal] = posted.refusals;
-    const kind = inWave ? "judgement, its readback left to its spec's wave note," : "readback";
-    console.log(`${said} matches the Why of #${ticket}${recorded}, ${refusal === undefined ? `its ${kind} posted: ${posted.said}` : `its ${kind} was refused: ${quoted(refusal)}`}`);
-    return undefined;
-  }
-  const posted = commentOnPr(pr, judgement(foundDrift(ticket), blocking, stamped(fingerprint, main, head)), gh);
-  const [refusal] = posted.refusals;
-  const told = refusal === undefined ? `${blocking.length} gaps posted: ${posted.said}` : `and its judgement was refused: ${quoted(refusal)}`;
-  const again = after === undefined ? [] : (verdict.again ?? []);
-  if (again.length === 0) return stoppedAt("drift", `${said} drifts from the Why of #${ticket}, ${told}${recorded}`);
-  mark(ticket, STUCK);
-  const called = commentOnTicket(ticket, [namedAgain(ticket, pr), "", reviewerOn(ticket), "", ...again.map((gap) => `> ${gap}`), ""].join("\n"), gh);
-  const [unheard] = called.refusals;
-  const calling = unheard === undefined ? called.said : `its call was refused: ${quoted(unheard)}`;
-  return stoppedAt("calledOwner", `${said} marked ${STUCK}, ${again.length} gaps named again on #${ticket} after its builder's repair, ${told}, ${calling}${recorded}`);
-}
-
-if (import.meta.main) {
-  const pr = process.argv[2];
-  if (pr === undefined) throw new Error("no PR number in the arguments");
-  const ended = readOrStop("review", () => review(pr));
-  if (ended === "unread" && process.env.GITHUB_OUTPUT !== undefined) appendFileSync(process.env.GITHUB_OUTPUT, "fault=true\n");
-  process.exit(exitFor(ended));
 }

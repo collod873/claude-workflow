@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
-import { authored, BIN, commitAt, execute, git, plant, refusedMark, scratch, script } from "./scenarios.ts";
+import { BIN, execute, git, plant, refusedMark, scratch, script } from "./scenarios.ts";
 import { MACHINE } from "./spelled.ts";
-import { ENROLLED_REVIEW, WAITING } from "./post.ts";
+import { WAITING } from "./post.ts";
 import { declareStage } from "./stages.ts";
 
 const CLOSER_TICKET = [
@@ -15,35 +15,6 @@ const CLOSER_TICKET = [
   "- The fix lands.",
   "",
 ].join("\n");
-
-const FAST_TIMING = {
-  firstCommit: "2026-01-01T00:00:01Z",
-  prOpened: "2026-01-01T00:00:02Z",
-  merged: "2026-01-01T00:00:04Z",
-};
-
-export interface WaitingFollowUp {
-  ticket: string;
-  parent: string;
-  parentPr: "OPEN" | "MERGED" | "CLOSED";
-  split?: boolean;
-  waitsOn?: { ticket: string; state: string };
-}
-
-const followUpBody = ({ ticket, parent, waitsOn }: WaitingFollowUp) =>
-  [
-    "## Why",
-    "",
-    `Follow-up of #${parent}: its review found this after its builder's repair, outside the earlier gaps and the fix's own lines.`,
-    "",
-    `> #${ticket} is still to build.`,
-    "",
-    ...(waitsOn === undefined ? [] : ["## Waits on", "", `- #${waitsOn.ticket}`, ""]),
-    "## Done when",
-    "",
-    "- It lands.",
-    "",
-  ].join("\n");
 
 export interface FaultOrigin {
   repo: string;
@@ -61,98 +32,41 @@ interface SplitFrom {
   body?: string;
 }
 
-const waitingListed = (followUps: WaitingFollowUp[], splitFrom: SplitFrom | undefined) => [
-  ...followUps.map((waiting) => ({ number: Number(waiting.ticket), body: followUpBody(waiting) })),
-  ...(splitFrom !== undefined && splitFrom.labels.split("\n").includes(WAITING) ? [{ number: Number(splitFrom.parent), body: splitFrom.body ?? CLOSER_TICKET }] : []),
-];
-
-export interface QueuedPr {
-  number: string;
-  ticket: string;
-  branch?: string;
-  refused?: string;
-  upToDate?: boolean;
-  checks?: "green" | "pending" | "red";
-  checkStatus?: "SUCCESS" | "FAILURE" | "PENDING";
-  checkRun?: "IN_PROGRESS" | "COMPLETED";
-  autoMerge?: boolean;
-  refusedBefore?: boolean;
-  conflicts?: boolean;
-  held?: string;
-  labels?: string[];
-  labelsUnreadable?: boolean;
-  unreviewed?: boolean;
-  mergeRefused?: string;
-}
-
-const RUNS = { green: ["COMPLETED", "SUCCESS"], pending: ["IN_PROGRESS", ""], red: ["COMPLETED", "FAILURE"] } as const;
-
-function listed(pr: QueuedPr, head: string) {
-  const [status, conclusion] = RUNS[pr.checks ?? "green"];
-  return {
-    number: Number(pr.number),
-    headRefName: pr.branch ?? `ticket/${pr.ticket}`,
-    headRefOid: head,
-    autoMergeRequest: pr.autoMerge === false ? null : { mergeMethod: "MERGE" },
-    statusCheckRollup: [
-      { __typename: "StatusContext", context: "check", state: pr.checkStatus ?? "SUCCESS" },
-      ...(pr.checkRun === undefined ? [] : [{ __typename: "CheckRun", name: "check", status: pr.checkRun, conclusion: pr.checkRun === "COMPLETED" ? "SUCCESS" : "" }]),
-      { __typename: "CheckRun", name: "meters", status: "COMPLETED", conclusion: "FAILURE" },
-      ...(pr.unreviewed === true ? [] : [{ __typename: "CheckRun", name: ENROLLED_REVIEW, status, conclusion }]),
-    ],
-  };
-}
+const waitingListed = (splitFrom: SplitFrom | undefined) => (splitFrom !== undefined && splitFrom.labels.split("\n").includes(WAITING) ? [{ number: Number(splitFrom.parent), body: splitFrom.body ?? CLOSER_TICKET }] : []);
 
 const CLOSE_RUN_ID = "36740874094";
-
-export const CLOSE_RUN = `https://github.com/collod873/claude-workflow/actions/runs/${CLOSE_RUN_ID}`;
 
 export function closing({
   ticket = "812",
   ticketBody = CLOSER_TICKET,
   readable = true,
   closedAs,
-  openPrs = [] as QueuedPr[],
   splitFrom,
-  afterCheck = false,
-  followUps = [] as WaitingFollowUp[],
-  prLookupRefused,
-  mergedFrom = `collod873/ticket/${ticket}`,
-  prUnreadable = false,
+  waking = false,
   markRefusal,
   calledFrom,
   foreign = false,
   faultOrigin,
   closedIssue,
-  check = "green" as "green" | "red",
   statusRefused = false,
   buckets,
-  quickLane = false,
 }: {
   ticket?: string;
   ticketBody?: string;
   readable?: boolean;
   closedAs?: "COMPLETED" | "NOT_PLANNED";
-  openPrs?: QueuedPr[];
   splitFrom?: SplitFrom;
-  afterCheck?: boolean;
-  followUps?: WaitingFollowUp[];
-  prLookupRefused?: string;
-  mergedFrom?: string;
-  prUnreadable?: boolean;
+  waking?: boolean;
   markRefusal?: string;
   calledFrom?: string;
   foreign?: boolean;
   faultOrigin?: FaultOrigin;
   closedIssue?: string;
-  check?: "green" | "red";
   statusRefused?: boolean;
   buckets?: string;
-  quickLane?: boolean;
 } = {}) {
   const root = scratch("closer-");
   const session = join(root, "session");
-  const output = join(root, "github-output");
   const callsDir = join(root, "gh-calls");
   const tokensDir = join(root, "gh-tokens");
   const reposDir = join(root, "gh-repos");
@@ -167,38 +81,11 @@ export function closing({
   if (buckets !== undefined) plant(session, "docs/buckets.md", buckets);
   git(session, "add", ".");
   git(session, "commit", "--quiet", "-m", "base");
-  git(session, "checkout", "--quiet", "-b", `ticket/${ticket}`);
-  if (openPrs.some((pr) => pr.conflicts === true)) plant(session, "src/clash.ts", "export const clash = \"main\";\n");
-  git(session, "add", "-A");
-  commitAt(session, FAST_TIMING.firstCommit, ["commit", "--quiet", "--allow-empty", "-m", `Build #${ticket} against its failing tests`]);
-  git(session, "checkout", "--quiet", "main");
-  commitAt(session, FAST_TIMING.merged, ["merge", "--quiet", "--no-ff", "-m", `Merge pull request #900 from ${mergedFrom}`, `ticket/${ticket}`]);
   const origin = join(root, "origin.git");
   git(root, "init", "--quiet", "--bare", "--initial-branch=main", origin);
   git(session, "remote", "add", "origin", origin);
   git(session, "push", "--quiet", "origin", "main");
-  const heads = openPrs.map((pr) => {
-    git(session, "checkout", "--quiet", "-b", `queued/${pr.number}`, pr.upToDate === true ? "main" : "main^1");
-    if (pr.conflicts === true) plant(session, "src/clash.ts", `export const clash = "${pr.number}";\n`);
-    git(session, "add", "-A");
-    git(session, "commit", "--quiet", "--allow-empty", "-m", `Build PR #${pr.number}`);
-    git(session, "push", "--quiet", "origin", `HEAD:refs/heads/${pr.branch ?? `ticket/${pr.ticket}`}`);
-    git(session, "checkout", "--quiet", "main");
-    return git(session, "rev-parse", `queued/${pr.number}`);
-  });
-  openPrs.forEach((pr, at) => {
-    if (pr.refusedBefore === true) plant(root, `pr-${pr.number}-comments.json`, authored([`PR #${pr.number} could not be brought up to date with main: ${pr.refused ?? ""}\n\nHead: \`${heads[at] ?? ""}\``]));
-  });
-  const pushes = join(root, "pushes");
-  const refusing = openPrs.filter((pr) => pr.refused !== undefined);
-  if (refusing.length > 0) {
-    script(
-      join(origin, "hooks", "pre-receive"),
-      ["while read -r _old _new ref; do", `  printf '%s\\n' "$ref" >>"${pushes}"`, "  case $ref in", ...refusing.map((pr) => `    refs/heads/${pr.branch ?? `ticket/${pr.ticket}`}) printf '%s\\n' '${pr.refused ?? ""}' >&2; exit 1 ;;`), "  esac", "done", ""].join("\n"),
-    );
-  }
-  const checks = join(root, "check-calls");
-  script(join(root, "bin", "check"), `printf '%s %s\\n' "$PWD" "$*" >>"${checks}"\n${check === "green" ? "printf 'check: ok, 2 steps in 0.3s\\n'" : "printf 'check: red test src/stops.test.ts:4; log /nowhere/check-full.log\\n'\nexit 1"}\n`);
+  script(join(root, "bin", "check"), "printf 'check: ok, 2 steps in 0.3s\\n'\n");
   script(
     join(root, "bin", "gh"),
     [
@@ -215,16 +102,7 @@ export function closing({
             ...Object.entries(faultOrigin.filed).map(([filed, state]) => `  *"issue view ${filed} "*"state"*) printf '%s\\n' '${state}' ;;`),
           ]),
       `  "api repos/{owner}/{repo}/issues/${ticket} --jq"*) printf 'ticket\\nbuilding\\ntry-2\\nwayfinder:map\\n' ;;`,
-      `  *"issue list"*"${WAITING}"*) cat <<'LISTED'\n${JSON.stringify(waitingListed(followUps, splitFrom))}\nLISTED\n    ;;`,
-      ...openPrs.filter((pr) => pr.labelsUnreadable === true).map((pr) => `  *"issue view ${pr.ticket} "*"labels"*) printf 'GraphQL: labels could not be read\\n' >&2; exit 1 ;;`),
-      ...openPrs.map((pr) => ({ ticket: pr.ticket, labels: [...(pr.labels ?? []), ...(pr.held === undefined ? [] : [pr.held])] })).filter(({ ticket, labels }) => ticket !== "" && labels.length > 0).flatMap(({ ticket, labels }) => [
-        `  *"issue view ${ticket} "*"labels"*) printf '%s\\n' ${labels.map((label) => `'${label}'`).join(" ")} ;;`,
-        `  "api repos/{owner}/{repo}/issues/${ticket} --jq"*) printf '%s\\n' ${labels.map((label) => `'${label}'`).join(" ")} ;;`,
-      ]),
-      `  *"pr list --head"*) ${prLookupRefused === undefined ? "exit 0" : `printf '%s\\n' '${prLookupRefused}' >&2; exit 1`} ;;`,
-      ...followUps.map(({ parent, parentPr }) => `  *"pr view ticket/${parent} "*"state"*) printf '{"state":"%s"}\\n' '${parentPr}' ;;`),
-      ...followUps.flatMap(({ waitsOn }) => (waitsOn === undefined ? [] : [`  *"issue view ${waitsOn.ticket} "*"state"*) printf '%s\\n' '${waitsOn.state}' ;;`])),
-      ...followUps.map(({ ticket, split }) => `  *"api"*"issues/${ticket}/comments"*) ${split === true ? `printf '%s\\n' '${JSON.stringify({ author: MACHINE, type: "Bot", body: `@collod873 the builder split #${ticket} into #990, which build themselves. #${ticket} keeps what must wait for them, labelled \`${WAITING}\`, and builds once they all close.` })}'` : "exit 0"} ;;`),
+      `  *"issue list"*"${WAITING}"*) cat <<'LISTED'\n${JSON.stringify(waitingListed(splitFrom))}\nLISTED\n    ;;`,
       ...(splitFrom === undefined
         ? []
         : [
@@ -238,12 +116,7 @@ export function closing({
       ticketBody,
       "BODY",
       "    ;;",
-      `  *"pr list"*) printf '%s\\n' '${JSON.stringify(openPrs.map((pr, at) => listed(pr, heads[at] ?? "")))}' ;;`,
-      ...openPrs.filter((pr) => pr.refusedBefore === true).map((pr) => `  *"issues/${pr.number}/comments"*) cat "${join(root, `pr-${pr.number}-comments.json`)}" ;;`),
       ...(statusRefused ? ["  *\"api -X POST repos/{owner}/{repo}/statuses/\"*) printf 'gh: Server Error (HTTP 502)\\n' >&2; exit 1 ;;"] : []),
-      ...openPrs.filter((pr) => pr.mergeRefused !== undefined).map((pr) => `  *"pr merge ${pr.number} "*) printf '%s\\n' '${pr.mergeRefused ?? ""}' >&2; exit 1 ;;`),
-      ...(prUnreadable ? ["  *\"pr view 900 \"*) printf 'gh: Bad credentials (HTTP 401)\\n' >&2; exit 1 ;;"] : []),
-      `  *"pr view"*) printf '%s\\n' '${FAST_TIMING.prOpened}' ;;`,
       "  *) exit 0 ;;",
       "esac",
       "",
@@ -257,18 +130,12 @@ export function closing({
   const lines = (file: string) => (existsSync(file) ? readFileSync(file, "utf8").trimEnd().split("\n") : []);
   return {
     session,
-    heads,
-    branchHead: (branch: string) => git(session, "--git-dir", origin, "rev-parse", `refs/heads/${branch}`),
     landed: () =>
       git(session, "--git-dir", origin, "for-each-ref", "--format=%(refname)", "refs/heads/land/")
         .split("\n")
         .filter((ref) => ref !== "")
         .map((ref) => ({ head: git(session, "--git-dir", origin, "rev-parse", ref), parents: git(session, "--git-dir", origin, "rev-list", "--parents", "-n", "1", ref).split(" ").slice(1), buckets: git(session, "--git-dir", origin, "show", `${ref}:docs/buckets.md`), changed: git(session, "--git-dir", origin, "diff", "--name-only", `${ref}^`, ref) })),
-    parentsOf: (sha: string) => git(session, "--git-dir", origin, "rev-list", "--parents", "-n", "1", sha).split(" ").slice(1),
-    checked: () => lines(checks),
-    pushes: () => lines(pushes),
     calls: () => readdirSync(callsDir).sort((a, b) => Number(a) - Number(b)).map((file) => readFileSync(join(callsDir, file), "utf8")),
-    output: () => (existsSync(output) ? readFileSync(output, "utf8") : ""),
     repos: () => readdirSync(reposDir).sort((a, b) => Number(a) - Number(b)).map((file) => readFileSync(join(reposDir, file), "utf8")),
     tokens: () => readdirSync(tokensDir).sort((a, b) => Number(a) - Number(b)).map((file) => readFileSync(join(tokensDir, file), "utf8")),
     run: () =>
@@ -282,13 +149,11 @@ export function closing({
           GITHUB_SERVER_URL: "https://github.com",
           GITHUB_REPOSITORY: "collod873/claude-workflow",
           GITHUB_RUN_ID: CLOSE_RUN_ID,
-          GITHUB_OUTPUT: output,
           GH_RETRY_SECONDS: "0",
           ...(calledFrom === undefined ? {} : { CALLED_FROM: calledFrom }),
           ...(foreign ? { MACHINE_BIN: BIN } : {}),
-          ...(quickLane ? { QUICK_LANE: "true" } : {}),
         },
-        closedIssue !== undefined ? ["queue", closedIssue] : afterCheck ? ["queue"] : [],
+        closedIssue !== undefined ? [closedIssue] : waking ? [] : [ticket, "900"],
       ),
   };
 }

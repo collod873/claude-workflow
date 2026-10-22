@@ -22,7 +22,8 @@ export default tseslint.config(
           paths: [
             {
               name: "./reviewer.ts",
-              message: "The builder borrows nothing from the reviewer, so a change to one leaves the other alone (#1121).",
+              allowImportNames: ["reviewedAndLanded"],
+              message: "The builder hands its green build to the reviewer and borrows nothing else from it, so a change to one leaves the other alone (#1121, ADR-0012).",
             },
           ],
         },

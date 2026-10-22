@@ -1,66 +1,21 @@
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { scratch } from "./scenarios.ts";
 import { hired } from "./stage.ts";
 
-const HOOKCHECK = `import json, sys
-if "--emit-stages" not in sys.argv:
-    sys.exit(1)
-root = sys.argv[sys.argv.index("--root") + 1]
-hook = {"type": "command", "command": f"python3 {root}/hooks/no-prose.py"}
-gate = {"type": "command", "command": f"python3 {root}/hooks/check-gate.py"}
-every = {"PreToolUse": [{"matcher": "Write|Edit", "hooks": [hook]}]}
-print(json.dumps({"hooks": every, "gated": {**every, "Stop": [{"hooks": [gate]}]}}))
-`;
-
-const NO_PROSE = `import sys
-sys.stdin.read()
-sys.stderr.write("no-prose: say it in code, not prose\\n")
-sys.exit(2)
-`;
-
 const CLAUDE = `#!/usr/bin/env node
-const { spawnSync } = require("child_process");
 const { writeFileSync } = require("fs");
-const argv = process.argv.slice(2);
-const { hooks } = JSON.parse(argv[argv.indexOf("--settings") + 1]);
-writeFileSync("stopped-by.txt", JSON.stringify(hooks.Stop ?? []));
-writeFileSync("argv.json", JSON.stringify(argv));
-const input = { tool_name: "Write", tool_input: { file_path: "notes.md", content: "A paragraph of prose." } };
-for (const { matcher, hooks: commands } of hooks.PreToolUse ?? []) {
-  if (matcher !== undefined && !new RegExp(matcher).test("Write")) continue;
-  for (const { command } of commands) {
-    const ran = spawnSync("bash", ["-c", command], { input: JSON.stringify(input), encoding: "utf8" });
-    if (ran.status === 2) {
-      console.log(JSON.stringify({ type: "result", result: "blocked: " + ran.stderr.trim() }));
-      process.exit(0);
-    }
-  }
-}
-writeFileSync(input.tool_input.file_path, input.tool_input.content);
-console.log(JSON.stringify({ type: "result", result: "wrote" }));
+writeFileSync("argv.json", JSON.stringify(process.argv.slice(2)));
+console.log(JSON.stringify({ type: "result", result: "done" }));
 `;
 
-const CRAFT = ["codebase-design", "diagnosing-bugs", "domain-modeling", "tdd", "testing", "writing-for-agents"];
-
-function onThisPc(skills = [...CRAFT, "load-calc"]): string {
+function onThisPc(): string {
   const root = scratch("stage-live-");
-  for (const name of skills) {
-    mkdirSync(join(root, "home", ".agents", "skills", "skills", name), { recursive: true });
-    writeFileSync(join(root, "home", ".agents", "skills", "skills", name, "SKILL.md"), `# ${name}`);
-  }
-  const hooks = join(root, "home", ".agents", "hooks");
-  mkdirSync(join(hooks, "hooks"), { recursive: true });
-  writeFileSync(join(hooks, "hookcheck.py"), HOOKCHECK);
-  writeFileSync(join(hooks, "hooks", "no-prose.py"), NO_PROSE);
   mkdirSync(join(root, "bin"));
   writeFileSync(join(root, "bin", "claude"), CLAUDE);
   chmodSync(join(root, "bin", "claude"), 0o755);
-  vi.stubEnv("HOME", join(root, "home"));
   vi.stubEnv("PATH", `${join(root, "bin")}:${process.env.PATH}`);
-  vi.stubEnv("AGENT_HOOKS_SETTINGS", undefined);
-  vi.stubEnv("AGENT_SKILLS", undefined);
   vi.stubEnv("STAGE_MINUTES", undefined);
   return root;
 }
@@ -69,38 +24,20 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-describe("a stage started on this PC runs under the owner's hooks from the agent-hooks main checkout (#1096)", () => {
-  it("is refused by no-prose when it writes prose, though nothing set AGENT_HOOKS_SETTINGS", () => {
+describe("a stage runs as the owner's own session does (ADR-0011)", () => {
+  it("loads the owner's settings beside the repo's, on the model it was hired on, with full access", () => {
     const root = onThisPc();
     const cwd = process.cwd();
     process.chdir(root);
     try {
-      const stage = hired({ name: "reviewer", transcript: join(root, "transcript.jsonl") });
-      if (typeof stage === "string") throw new Error(stage);
-      const { stdout, refusal } = stage("write the notes");
+      hired({ name: "reviewer", model: "opus", transcript: join(root, "transcript.jsonl") })("review it");
 
-      expect(refusal).toBeUndefined();
-      expect(stdout).toContain("blocked: no-prose: say it in code, not prose");
-      expect(existsSync(join(root, "notes.md"))).toBe(false);
-    } finally {
-      process.chdir(cwd);
-    }
-  });
-
-  it("gives the gate hooks the checkout declares gated to a gated stage alone", () => {
-    const root = onThisPc();
-    const cwd = process.cwd();
-    process.chdir(root);
-    try {
-      const stopped = (gated: boolean) => {
-        const stage = hired({ name: "builder", transcript: join(root, "transcript.jsonl"), gated });
-        if (typeof stage === "string") throw new Error(stage);
-        stage("build it");
-        return readFileSync(join(root, "stopped-by.txt"), "utf8");
-      };
-
-      expect(stopped(true)).toContain("/hooks/check-gate.py");
-      expect(stopped(false)).not.toContain("check-gate");
+      const argv = JSON.parse(readFileSync(join(root, "argv.json"), "utf8")) as string[];
+      expect(argv[argv.indexOf("--setting-sources") + 1]).toBe("user,project");
+      expect(argv[argv.indexOf("--model") + 1]).toBe("opus");
+      expect(argv[argv.indexOf("--permission-mode") + 1]).toBe("bypassPermissions");
+      expect(argv).not.toContain("--tools");
+      expect(argv).not.toContain("--add-dir");
     } finally {
       process.chdir(cwd);
     }
@@ -111,8 +48,7 @@ describe("a stage started on this PC runs under the owner's hooks from the agent
     const cwd = process.cwd();
     process.chdir(root);
     try {
-      const stage = hired({ name: "builder", transcript: join(root, "fix-7.jsonl") });
-      if (typeof stage === "string") throw new Error(stage);
+      const stage = hired({ name: "builder", model: "opus", transcript: join(root, "fix-7.jsonl") });
       stage("# Ticket #7\n\nbuild it");
       stage("## How it failed\n\ncheck: red unit");
 
@@ -122,37 +58,5 @@ describe("a stage started on this PC runs under the owner's hooks from the agent
     } finally {
       process.chdir(cwd);
     }
-  });
-
-  it("refuses to start when nothing set AGENT_HOOKS_SETTINGS and this PC has no agent-hooks main checkout, rather than run with no owner hooks", () => {
-    const root = onThisPc();
-    vi.stubEnv("HOME", join(root, "elsewhere"));
-
-    expect(hired({ name: "reviewer", transcript: join(root, "transcript.jsonl") })).toMatch(/\.agents\/hooks is missing/);
-  });
-
-  it("hands every stage the owner's craft skills, and none of his personal ones", () => {
-    const root = onThisPc();
-    const cwd = process.cwd();
-    process.chdir(root);
-    try {
-      const stage = hired({ name: "slicer", transcript: join(root, "transcript.jsonl") });
-      if (typeof stage === "string") throw new Error(stage);
-      stage("build it");
-
-      const argv = JSON.parse(readFileSync(join(root, "argv.json"), "utf8")) as string[];
-      const added = join(argv[argv.indexOf("--add-dir") + 1] ?? "", ".claude", "skills");
-      expect(readFileSync(join(added, "testing", "SKILL.md"), "utf8")).toBe("# testing");
-      expect(readdirSync(added)).toContain("tdd");
-      expect(readdirSync(added)).not.toContain("load-calc");
-    } finally {
-      process.chdir(cwd);
-    }
-  });
-
-  it("refuses to start a stage when the owner's skills lack a craft skill, rather than run without its standard", () => {
-    const root = onThisPc(CRAFT.filter((name) => name !== "testing"));
-
-    expect(hired({ name: "reviewer", transcript: join(root, "transcript.jsonl") })).toMatch(/owner's testing skill is not in .*\.agents\/skills/);
   });
 });

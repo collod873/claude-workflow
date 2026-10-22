@@ -177,18 +177,16 @@ describe("tickets.yml builds a ticket the moment it is filed (#826)", () => {
     }
   });
 
-  it("keeps the session the builder built in, whatever ended it, so the first red resumes it in the fix job (#931)", () => {
+  it("keeps the session the builder built in, whatever ended it, so its next run resumes it (#931)", () => {
     const { job } = workflow();
-    const fix = namedJob(ticketsJobs(), "fix", WORKFLOW);
     const saved = job.steps.find((step) => step.uses?.startsWith("actions/cache/save@") === true);
-    const restored = fix.steps.find((step) => step.uses?.startsWith("actions/cache/restore@") === true);
+    const restored = job.steps.find((step) => step.uses?.startsWith("actions/cache/restore@") === true);
     const key = String(saved?.with?.key).replace("${{ steps.start.outputs.branch }}", "ticket/9");
-    const resumedFrom = String(restored?.with?.["restore-keys"]).replace("${{ env.HEAD_REF }}", "ticket/9");
-
-    expect(fix.env?.HEAD_REF).toBe("${{ needs.which.outputs.branch }}");
+    const resumedFrom = String(restored?.with?.["restore-keys"]).replace("${{ steps.start.outputs.branch }}", "ticket/9");
     const ended = (fixed: string) => holds(saved?.if ?? "success()", { steps: { ...allSkipped(job.steps), fix: outcome(fixed) }, failed: fixed === "failure" });
 
     expect(job["cache-mode"]).toBe("write");
+    expect(job.steps.indexOf(restored as Step)).toBeLessThan(job.steps.indexOf(stageStep(job, "fix")));
     expect(saved?.with?.path).toBe(restored?.with?.path);
     expect(key.startsWith(resumedFrom), `${key} resumes from ${resumedFrom}`).toBe(true);
     expect(ended("success")).toBe(true);
@@ -229,24 +227,23 @@ describe("every job that spends a model is watched as it goes, read after it end
   it("every step that spends a model stops it before the step's own cap, which kills only the step's shell", () => {
     const steps = modelJobs().flatMap(({ steps }) => steps.filter(spendsModel));
 
-    expect(steps.some((step) => /bin\/review\b/.test(step.run ?? ""))).toBe(true);
+    expect(steps.some((step) => RUNS_FIX.test(step.run ?? ""))).toBe(true);
     for (const step of steps) {
       expect(Number(step.env?.STAGE_MINUTES)).toBeGreaterThan(0);
       expect(Number(step.env?.STAGE_MINUTES)).toBeLessThan(step["timeout-minutes"] ?? 0);
     }
   });
 
-  it("every job hands its stages the owner's hooks from agent-hooks' main, read with a token that can only read agent-hooks", () => {
+  it("every job runs its stages under the owner's claude-config, with his hooks from agent-hooks' main registered at the runner's paths, each read with a token that can only read its repo (ADR-0011)", () => {
     for (const { steps } of modelJobs()) {
-      const minted = steps.findIndex((step) => step.with?.repositories === "agent-hooks");
-      const cloned = steps.findIndex((step) => /git clone [^\n]*--branch main /.test(step.run ?? ""));
-      const handed = steps.findIndex((step) => /AGENT_HOOKS_SETTINGS=.*GITHUB_ENV/.test(step.run ?? ""));
-      expect(steps[minted]?.with).toMatchObject({ owner: "${{ github.repository_owner }}", "permission-contents": "read" });
-      expect(minted).toBeGreaterThanOrEqual(0);
-      expect(cloned).toBeGreaterThan(minted);
-      expect(handed).toBeGreaterThan(cloned);
+      const hooks = steps.findIndex((step) => step.with?.repositories === "agent-hooks");
+      const minted = steps.findIndex((step) => step.with?.repositories === "claude-config");
+      const handed = steps.findIndex((step) => /CLAUDE_CONFIG_DIR=.*GITHUB_ENV/.test(step.run ?? ""));
+      for (const at of [hooks, minted]) expect(steps[at]?.with).toMatchObject({ owner: "${{ github.repository_owner }}", "permission-contents": "read" });
+      expect(minted).toBeGreaterThan(hooks);
+      expect(handed).toBeGreaterThan(minted);
       expect(handed).toBeLessThan(steps.findIndex(spendsModel));
-      expect(steps[handed]?.run).toContain("--emit-stages");
+      expect(steps[handed]?.run).toContain("--write-settings --graded");
     }
   });
 
@@ -321,38 +318,6 @@ function ranStep(step: Step, cwd: string, env: Record<string, string>): { status
   return { status: ran.status, stdout: ran.stdout, stderr: ran.stderr, output: parseOutput(output) };
 }
 
-describe("the fix job hands every red run of a ticket to its builder, unless the ticket moved on (#898)", () => {
-  it("stands down, spending no model, when the ticket moved on since the run that went red", () => {
-    const fix = namedJob(ticketsJobs(), "fix", WORKFLOW);
-    const branch = fix.steps.find((step) => step.id === "branch") as Step;
-    const root = scratch("fix-branch-");
-    const { session } = cloned(root, "main as it was");
-    git(session, "checkout", "--quiet", "-b", "ticket/9");
-    git(session, "commit", "--quiet", "--allow-empty", "-m", "Build #9 against its failing tests");
-    const judged = git(session, "rev-parse", "HEAD");
-    git(session, "push", "--quiet", "origin", "ticket/9");
-    git(session, "checkout", "--quiet", "main");
-    const env = { HEAD_REF: "ticket/9", EVENT: "workflow_run" };
-
-    const current = ranStep(branch, session, { ...env, RAN_AT: judged });
-    expect(current.status, current.stderr).toBe(0);
-    expect(current.output.stale).toBeUndefined();
-    expect(git(session, "rev-parse", "HEAD")).toBe(judged);
-
-    const moved = ranStep(branch, session, { ...env, RAN_AT: "0000000000000000000000000000000000000000" });
-    expect(moved.status, moved.stderr).toBe(0);
-    expect(moved.output.stale).toBe("true");
-    const skipped = { ...allSkipped(fix.steps), branch: { outcome: "success", conclusion: "success", outputs: { stale: "true" } } };
-    expect(fix.steps.filter(spendsModel).map((step) => holds(step.if ?? "success()", { steps: skipped }))).toEqual([false]);
-
-    const fresh = ranStep(branch, session, { ...env, HEAD_REF: "ticket/10", RAN_AT: judged });
-    expect(fresh.status, fresh.stderr).toBe(0);
-    expect(fresh.output.stale).toBeUndefined();
-    expect(git(session, "branch", "--show-current")).toBe("ticket/10");
-    expect(git(session, "rev-parse", "HEAD")).toBe(git(session, "rev-parse", "origin/main"));
-  });
-});
-
 describe("every step that runs gh names its repo, since gh otherwise reads it from a checkout that may never have run, or that holds the machine's own repo in an enrolled one (#864)", () => {
   it("every step that runs gh, itself or through a bin tool, sets GH_REPO or runs only once a checkout of the repo itself succeeded", () => {
     const runsGh = (step: Step) => /(^|[\s|;&(])gh\s|\bbin\/(?!spelled\b)[\w-]+/.test(step.run ?? "");
@@ -396,21 +361,20 @@ function runOf(step: Step, ticket: string, action: string): string {
   return (step.run ?? "").replaceAll(/\$\{\{ github\.event\.issue\.number \}\}/g, ticket).replaceAll(/\$\{\{ github\.event\.action \}\}/g, action);
 }
 
-describe("tickets.yml builds a woken or reopened ticket whose PR is open from that PR's branch, so its push is not refused as a duplicate of main (#1108, #1371)", () => {
-  it("checks out the open PR's branch to build on, and a fresh branch off main when the ticket has no open PR", () => {
+describe("tickets.yml builds a woken or reopened ticket on the branch its last run kept, so nothing it built is lost (#1108, #1371, ADR-0012)", () => {
+  it("checks out the ticket's branch when it holds work main lacks, and a fresh branch off main when it has none", () => {
     const { job } = workflow();
     const start = stageStep(job, "start");
-    const startedOn = (pr: "OPEN" | "none", action: string) => {
+    const startedOn = (kept: "kept" | "none", action: string) => {
       const root = scratch("start-");
       const calls = join(root, "calls");
       copyMark(root);
       script(join(root, "bin", "mark"), `printf 'mark %s\\n' "$*" >>"${calls}"\n`);
-      script(join(root, "bin", "gh"), ['case "$*" in', `  *"pr view ticket/9"*) ${pr === "OPEN" ? "printf 'OPEN\\n'" : "exit 1"} ;;`, "  *) exit 0 ;;", "esac", ""].join("\n"));
       const { session } = cloned(root, "main as it was");
       git(session, "checkout", "--quiet", "-b", "ticket/9");
       git(session, "commit", "--quiet", "--allow-empty", "-m", "Build #9 against its failing tests");
       const built = git(session, "rev-parse", "HEAD");
-      git(session, "push", "--quiet", "origin", "ticket/9");
+      if (kept === "kept") git(session, "push", "--quiet", "origin", "ticket/9");
       git(session, "checkout", "--quiet", "main");
       git(session, "branch", "--quiet", "-D", "ticket/9");
       const main = git(session, "rev-parse", "HEAD");
@@ -420,7 +384,7 @@ describe("tickets.yml builds a woken or reopened ticket whose PR is open from th
     };
 
     for (const action of ["reopened", "unlabeled"]) {
-      const woken = startedOn("OPEN", action);
+      const woken = startedOn("kept", action);
       expect(woken.head, action).toBe(woken.built);
       expect(woken.on, action).toBe("ticket/9");
       expect(woken.marks, action).not.toContain("checking");
@@ -455,8 +419,7 @@ describe("tickets.yml strips the machine's labels from every issue and PR that c
 
 const CALLER = join(REPO, ".github", "actions", "call-owner", "action.yml");
 const CALLERS = [
-  { file: "tickets.yml", job: "fix", names: "needs.which.outputs.ticket" },
-  { file: "tickets.yml", job: "close", names: "steps.close.outputs.ticket" },
+  { file: "tickets.yml", job: "build", names: "github.event.issue.number" },
   { file: "tickets.yml", job: "strip", names: "github.event.issue.number" },
   { file: "specs.yml", job: "research", names: "github.event.issue.number" },
   { file: "specs.yml", job: "slice", names: "github.event.issue.number" },
@@ -466,7 +429,7 @@ const CALLERS = [
 ];
 const callsOwner = (step: Step) => step.uses === "./.github/actions/call-owner";
 
-describe("a fix, research, slice, reslice, done check, closer or strip run that ends red leaves its issue and run through one shared step, which bin/rerun reads once the run completes (#1057, #1067, #1178)", () => {
+describe("a build, research, slice, reslice, done check or strip run that ends red leaves its issue and run through one shared step, which bin/rerun reads once the run completes (#1057, #1067, #1178)", () => {
   const [owned] = (parse(readFileSync(CALLER, "utf8")) as { runs: { steps: Step[] } }).runs.steps;
   const calls = (labels: string, run: string) => {
     const root = scratch("called-");
@@ -505,7 +468,7 @@ describe("a fix, research, slice, reslice, done check, closer or strip run that 
   for (const caller of CALLERS) {
     const job = namedJob((parse(readFileSync(join(WORKFLOWS, caller.file), "utf8")) as { jobs: Record<string, Job> }).jobs, caller.job, caller.file);
     const calling = job.steps.find(callsOwner);
-    const named = { ...allSkipped(job.steps), ended: { outcome: "success", conclusion: "success", outputs: { spec: "9" } }, close: { outcome: "failure", conclusion: "failure", outputs: { ticket: "9" } } };
+    const named = { ...allSkipped(job.steps), start: outcome("success"), ended: { outcome: "success", conclusion: "success", outputs: { spec: "9" } } };
 
     it(`${caller.file}'s ${caller.job} job runs the shared owner call naming its issue and run when it ends red, and not when it ends green`, () => {
       expect(calling, `a step in ${caller.file} using ./.github/actions/call-owner`).toBeDefined();
@@ -518,14 +481,6 @@ describe("a fix, research, slice, reslice, done check, closer or strip run that 
       if (logs !== -1) expect(job.steps.indexOf(calling ?? {})).toBeLessThan(logs);
     });
   }
-
-  it("the close job calls the owner on nothing when the closer stops before a ticket is in its hands", () => {
-    const job = namedJob(ticketsJobs(), "close", WORKFLOW);
-    const calling = job.steps.find(callsOwner);
-    const unnamed = { ...allSkipped(job.steps), close: { outcome: "failure", conclusion: "failure", outputs: { ticket: "" } } };
-
-    expect(holds(calling?.if ?? "false", { steps: unnamed, failed: true })).toBe(false);
-  });
 
   it("the reslice job marks nothing when its run ends red before it names its spec", () => {
     const job = namedJob((parse(readFileSync(join(WORKFLOWS, "specs.yml"), "utf8")) as { jobs: Record<string, Job> }).jobs, "reslice", "specs.yml");
@@ -585,19 +540,6 @@ describe("the PR check judges only through agent-hooks' main check, which runs t
     expect(fetched).toBeGreaterThanOrEqual(0);
     expect(checked).toBeGreaterThan(fetched);
     expect(steps.filter((step) => /treewide\.py/.test(step.run ?? ""))).toEqual([]);
-  });
-
-  it("runs the full check under the hooks settings the Builder's own full check folded into its receipts, so a tree the Builder checked is covered", () => {
-    const { check } = (parse(readFileSync(join(WORKFLOWS, "check.yml"), "utf8")) as Workflow).jobs;
-    const steps = expanded(check?.steps ?? []);
-    const handing = (step: Step) => /AGENT_HOOKS_SETTINGS=.*GITHUB_ENV/.test(step.run ?? "");
-    const built = expanded(workflow().job.steps).find(handing);
-    const handed = steps.findIndex(handing);
-    const checked = steps.findIndex((step) => /\bcheck --full\b/.test(step.run ?? ""));
-
-    expect(handed).toBeGreaterThanOrEqual(0);
-    expect(handed).toBeLessThan(checked);
-    expect(steps[handed]?.run).toBe(built?.run);
   });
 });
 

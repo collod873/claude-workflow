@@ -116,22 +116,64 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
     expect(sharedTemp.stderr).toContain("/tmp is outside this runner");
   });
 
-  it("leaves a mid-job PC runner on its old setup rather than kill the job under it, and gives it the new one once the job ends", () => {
-    const { run, sudo, placed, jobsEnded } = switching({ runners: [pcRunner(`${HOST}-1`, "online", true), pcRunner(`${HOST}-2`)] });
-    const dropIn = `/etc/systemd/system/actions.runner.collod873-Lumaria.${HOST}-1.service.d/pc-runner.conf`;
+  it("gives a mid-job PC runner its new setup at its job's end, by starting its service for one job at a time, so no job is killed and no one runs this again", () => {
+    const { run, sudo, placed } = switching({ runners: [pcRunner(`${HOST}-1`, "online", true), pcRunner(`${HOST}-2`), ...quickRunners()] });
+    const unit = `actions.runner.collod873-Lumaria.${HOST}-1.service`;
+    const dropIn = `/etc/systemd/system/${unit}.d/pc-runner.conf`;
 
     const result = run("pc");
 
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain(`; ${HOST}-1 kept their old setup mid-job: run this again once they finish`);
+    expect(result.stdout).toBe(`runner: ${REPO} runs on this PC from its next job, 2 PC runners online, 8 quick runners online; ${HOST}-1 take the new setup when their job ends\n`);
+    expect(sudo().filter((call) => call.includes(`${HOST}-1 && `) && call.includes("svc.sh"))).toEqual([]);
+    const placedAt = sudo().findIndex((call) => call.includes(`mv ${dropIn}.next`));
+    const reloadedAt = sudo().findIndex((call) => call.includes("daemon-reload") && call.includes(`enable --quiet ${unit}`));
+    expect(placedAt).toBeGreaterThanOrEqual(0);
+    expect(reloadedAt).toBeGreaterThan(placedAt);
+    expect(placed(dropIn)).toContain("ACTIONS_RUNNER_INPUT_ONCE=true");
+    expect(placed(dropIn)).toMatch(/^Restart=always$/m);
+    expect(placed(`/home/ghrunner/runners/collod873-Lumaria/${HOST}-1/.env`).split("\n")).toContain("PIPELINE_JOB_OOMSCOREADJ=0");
+  });
+
+  it("leaves a PC runner alone when run again while the job it took the new setup under is still going", () => {
+    const { run, sudo } = switching({ runners: [pcRunner(`${HOST}-1`, "online", true), pcRunner(`${HOST}-2`)] });
+    run("pc");
+    const before = sudo().length;
+
+    expect(run("pc").stdout).toBe(`runner: ${REPO} runs on this PC from its next job, 2 PC runners online, 8 quick runners online\n`);
+    expect(sudo().slice(before).filter((call) => call.includes(`${HOST}-1`) && /svc\.sh|systemctl/.test(call))).toEqual([]);
+  });
+
+  it("keeps a PC runner turned off mid-job from starting again once its job ends", () => {
+    const { run, sudo, placed, jobStarted } = switching();
+    const unit = `actions.runner.collod873-Lumaria.${HOST}-2.service`;
+    run("pc");
+    jobStarted(`${HOST}-2`);
+    const before = sudo().length;
+
+    expect(run("pc", "1").stdout).toBe(`runner: ${REPO} runs on this PC from its next job, 1 PC runners online, 8 quick runners online, 1 turned off, 1 once its job ends\n`);
+    const calls = sudo().slice(before);
+    expect(calls).toContain(`bash -c systemctl disable --quiet ${unit}`);
+    expect(calls.filter((call) => call.includes(`${HOST}-2 && `) && call.includes("svc.sh"))).toEqual([]);
+    expect(placed(`/etc/systemd/system/${unit}.d/pc-runner.conf`)).toMatch(new RegExp(`^ExecCondition=.*is-enabled.* ${unit.replaceAll(".", "\\.")}$`, "m"));
+  });
+
+  it("names a PC runner turned off mid-job whose service predates one job at a time as taking jobs until stopped", () => {
+    const { run } = switching({ runners: [pcRunner(`${HOST}-1`), pcRunner(`${HOST}-2`, "online", true), ...quickRunners()], manyJobs: [`${HOST}-2`] });
+
+    expect(run("pc", "1").stdout).toBe(`runner: ${REPO} runs on this PC from its next job, 1 PC runners online, 8 quick runners online, 1 turned off; ${HOST}-2 take jobs until stopped: run this again once they finish\n`);
+  });
+
+  it("leaves a mid-job PC runner whose service predates one job at a time on its old setup, rather than kill the job under it, and says it waits on this running again", () => {
+    const { run, sudo, placed, jobsEnded } = switching({ runners: [pcRunner(`${HOST}-1`, "online", true), pcRunner(`${HOST}-2`)], manyJobs: [`${HOST}-1`] });
+    const dropIn = `/etc/systemd/system/actions.runner.collod873-Lumaria.${HOST}-1.service.d/pc-runner.conf`;
+
+    expect(run("pc").stdout).toContain(`; ${HOST}-1 kept their old setup mid-job, since it takes jobs until stopped: run this again once they finish`);
     expect(sudo().filter((call) => call.includes(`${HOST}-1 && `) && call.includes("svc.sh"))).toEqual([]);
     expect(() => placed(dropIn)).toThrow();
     jobsEnded();
-    const before = sudo().length;
 
     expect(run("pc").stdout).not.toContain("mid-job");
-    expect(sudo().slice(before).some((call) => call.includes(`${HOST}-1 &&`) && call.includes("svc.sh stop") && call.includes("svc.sh start"))).toBe(true);
-    expect(placed(dropIn)).toContain("Slice=pc-runners.slice");
+    expect(placed(dropIn)).toContain("Restart=always");
   });
 
   it("gives a runner stopped by hand its new setup at once, though GitHub still shows it mid-job", () => {
@@ -276,7 +318,7 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
 });
 
 describe("the machine's jobs run where the repo's switch says, a quick job never queued behind a build", () => {
-  const BUILDS: Record<string, string[]> = { "tickets.yml": ["build", "fix", "probe", "update"], "specs.yml": ["slice", "reslice", "size-trial", "resume", "research", "check"] };
+  const BUILDS: Record<string, string[]> = { "tickets.yml": ["build", "probe"], "specs.yml": ["slice", "reslice", "size-trial", "resume", "research", "check"] };
   const HEAVY = ["./.github/actions/pinned", "./.github/actions/database", "bin/fix", "--full", "bin/slice\" --", "bin/research", "bin/probe"];
 
   it("runs the jobs that build, check or hand a model a shell on the build runners, and every other on the quick lane, which falls back to the build runners and then to GitHub's", () => {
