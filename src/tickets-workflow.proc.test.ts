@@ -264,20 +264,19 @@ describe("a repo's tickets build through one caller file that holds only trigger
     }
   });
 
-  it("readies the closer's tree for the full check it runs on a PR it brings up to date, only once a ticket PR with auto-merge waits, so a close run with nothing queued pays nothing for it (#1345)", () => {
-    const close = workflowJobs("tickets.yml").close;
-    const steps = close?.steps ?? [];
-    const queued = steps.find(({ id }) => id === "queued");
-    const readying = steps.filter(({ uses, id }) => ["./.github/actions/hooks", "./.github/actions/pinned", "./.github/actions/database"].includes(uses ?? "") || id === "git-config");
-    const closing = steps.findIndex(({ run }) => (run ?? "").includes("bin/close"));
-    const waits = (behind: string) => readying.filter((step) => holds(step.if ?? "success()", { steps: { queued: { outcome: "success", conclusion: "success", outputs: { behind } } } })).length;
+  it("readies a tree for the closer's full check only in the update job, which runs once the quick close hands it a PR to bring up to date, so a close run with nothing to update pays nothing for it (#1345, #1428)", () => {
+    const readies = ({ uses, id }: WorkflowStep) => ["./.github/actions/hooks", "./.github/actions/pinned", "./.github/actions/database"].includes(uses ?? "") || id === "git-config";
+    const { close, update } = workflowJobs("tickets.yml");
+    const steps = update?.steps ?? [];
+    const updating = steps.findIndex(({ run }) => (run ?? "").includes("bin/close\" queue"));
+    const runs = (handed: string) => holds(update?.if ?? "true", { needs: { close: { result: "success", outputs: { update: handed } } } });
 
-    expect(queued?.env?.GH_TOKEN).toBe(APP);
-    expect(queued?.run).toContain("autoMergeRequest != null");
-    expect(readying.length).toBeGreaterThan(0);
-    expect(readying.every((step) => steps.indexOf(step) > steps.indexOf(queued as WorkflowStep) && steps.indexOf(step) < closing)).toBe(true);
-    expect(waits("true")).toBe(readying.length);
-    expect(waits("false")).toBe(0);
+    expect(close?.steps.filter(readies)).toEqual([]);
+    expect(close?.steps.find(({ run }) => (run ?? "").includes("bin/close"))?.env?.QUICK_LANE).toBe("true");
+    expect(steps.filter(readies).length).toBe(4);
+    expect(steps.filter(readies).every((step) => steps.indexOf(step) < updating)).toBe(true);
+    expect(runs("true")).toBe(true);
+    expect(runs("")).toBe(false);
   });
 
   it("tells the closer which caller file it runs under, so a builder it wakes starts through that file", () => {
