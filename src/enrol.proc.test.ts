@@ -100,10 +100,10 @@ describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#11
 
     expect(result.status).toBe(1);
     const [headline, ...shown] = result.stderr.trimEnd().split("\n");
-    expect(headline).toBe(`enrol: ${REPO} is not enrolled, 10 could not be set and 0 were:`);
+    expect(headline).toBe(`enrol: ${REPO} is not enrolled, 11 could not be set and 0 were:`);
     expect(shown).toHaveLength(5);
     for (const line of shown.slice(0, 4)) expect(line).toMatch(/^- .+: gh: Bad credentials \(HTTP 401\)$/);
-    expect(shown[4]).toBe("- and 6 more");
+    expect(shown[4]).toBe("- and 7 more");
   });
 
   it("refuses the caller file when no one workflow runs a check job on pull requests, naming them", () => {
@@ -193,6 +193,17 @@ describe("bin/enrol keeps an enrolled repo current with the owner's own login (#
     expect(held().labels).not.toContain("ticket");
     expect(JSON.stringify(held().rules)).not.toContain(ENROLLED_REVIEW);
     expect(result.stdout).toBe(`enrol: ${REPO} enrolled, 1 settings set\n`);
+  });
+
+  it("takes off the queued, resolving and landing labels under --caller, since nothing marks them since one run builds, reviews and lands a ticket (ADR-0012, #1447)", () => {
+    const { run, held } = enrolling(bare({ rules: HELD_FOR_CHECK, allow_auto_merge: true, labels: ["bug", "queued", "resolving", "landing", "stuck"], files: { ".github/workflows/ci.yml": ci().replace("name: Gate", "name: CI"), ".github/workflows/machine.yml": CALLER } }), {});
+
+    const result = run(REPO, "--caller");
+
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+    expect(held().labels).toEqual(["bug", "stuck"]);
+    expect(run(REPO, "--caller").stdout).toBe(`enrol: ${REPO} was already enrolled, nothing changed\n`);
   });
 
   it("opens the PR afresh from main when a branch is left from an earlier enrolment", () => {

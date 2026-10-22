@@ -735,6 +735,7 @@ else if (args[0] === "secret" && args[1] === "list") out((args.includes("dependa
 else if (args[0] === "secret" && args[1] === "set") { wrote(); held.writes.at(-1).push("value " + stdin()); (args.includes("dependabot") ? held.dependabot : held.secrets).push(args[2]); save(); }
 else if (args[0] === "label" && args[1] === "list") out(held.labels.map((name) => ({ name })));
 else if (args[0] === "label" && args[1] === "create") { wrote(); held.labels.push(args[2]); save(); }
+else if (args[0] === "label" && args[1] === "delete") { wrote(); held.labels = held.labels.filter((name) => name !== args[2]); save(); }
 else { process.stderr.write("fake gh: unknown call " + said + "\n"); process.exit(9); }
 `;
 

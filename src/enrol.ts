@@ -24,6 +24,8 @@ const HANDED = "ci: hand this repo's tickets to the machine";
 const CALLER_SETTING = "the caller file, check-job rule and pre-push";
 const RETIRED_REVIEWS = ["tickets / review", "review"];
 const UNREVIEWED_SETTING = `main requiring no ${RETIRED_REVIEWS.join(" or ")}, since the reviewer lands what it reviews`;
+const RETIRED_LABELS = ["queued", "resolving", "landing"];
+const UNLABELLED_SETTING = `no ${RETIRED_LABELS.join(", ")} label, since one run builds, reviews and lands a ticket`;
 const CALLER_ONLY = "--caller";
 const LINE_LIMIT = 200;
 const SHOWN = 4;
@@ -352,6 +354,13 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
       },
     },
     {
+      name: UNLABELLED_SETTING,
+      held: () => RETIRED_LABELS.every((name) => !labels().includes(name)),
+      set: () => {
+        for (const name of RETIRED_LABELS.filter((label) => labels().includes(label))) gh(["label", "delete", name, "-R", repo, "--yes"]);
+      },
+    },
+    {
       name: "auto-merge",
       held: () => held().allow_auto_merge,
       set: () => void gh(["api", "-X", "PATCH", `repos/${repo}`, "-F", "allow_auto_merge=true"]),
@@ -403,7 +412,7 @@ function enrol(repo: string, callerOnly: boolean): number {
   const refused: string[] = [];
   const told: string[] = [];
   const { settings, forPc } = enrolling(repo);
-  for (const setting of settings.filter(({ name }) => !callerOnly || name === CALLER_SETTING || name === UNREVIEWED_SETTING)) {
+  for (const setting of settings.filter(({ name }) => !callerOnly || name === CALLER_SETTING || name === UNREVIEWED_SETTING || name === UNLABELLED_SETTING)) {
     try {
       const waits = setting.waits?.();
       if (waits !== undefined) told.push(`enrol: ${repo}: ${waits}`);
