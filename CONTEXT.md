@@ -68,7 +68,7 @@ machine spells, auto-merge, and main taking changes only by a PR passing `check`
 _Avoid_: onboard, install, register
 
 **PC runner**:
-A `pc` runner, where a private repo's `CI_RUNNER` sends builds, else GitHub's.
+A `pc` runner, where a private repo's `CI_RUNNER` sends jobs, else GitHub's.
 _Avoid_: local runner
 
 **Quick lane**:
