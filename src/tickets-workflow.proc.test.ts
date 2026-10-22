@@ -75,9 +75,11 @@ describe("a repo's tickets build through one caller file that holds only trigger
   });
 
   it("answers each trigger the caller holds: a ticket opened builds, lands and closes in its own run, a closed issue is stripped and wakes what waited on it (ADR-0012)", () => {
-    expect(jobsRun({ event: "issues", action: "opened" })).toEqual(["build"]);
-    expect(jobsRun({ event: "issues", action: "reopened" })).toEqual(["build"]);
-    expect(jobsRun({ event: "issues", action: "unlabeled", sender: MACHINE })).toEqual(["build"]);
+    const woken = { wake: { held: "true" } };
+    expect(jobsRun({ event: "issues", action: "opened", outputs: woken })).toEqual(["wake", "build"]);
+    expect(jobsRun({ event: "issues", action: "reopened", outputs: woken })).toEqual(["wake", "build"]);
+    expect(jobsRun({ event: "issues", action: "unlabeled", sender: MACHINE, outputs: woken })).toEqual(["wake", "build"]);
+    expect(jobsRun({ event: "issues", action: "unlabeled", sender: MACHINE, outputs: { wake: { held: "false" } } })).toEqual(["wake"]);
     expect(jobsRun({ event: "issues", action: "opened", sender: "stranger" })).toEqual([]);
     expect(jobsRun({ event: "issues", action: "closed" })).toEqual(["close", "strip"]);
   });
@@ -104,11 +106,12 @@ describe("a repo's tickets build through one caller file that holds only trigger
   });
 
   it("hands a run whose stage job ended red, was cancelled or timed out to a dispatch of the caller file, and on that dispatch only re-runs it or calls the owner, no build or size trial starting (#1225)", () => {
-    const named = { which: { ticket: "828" } };
+    const named = { which: { ticket: "828" }, wake: { held: "true" } };
     const handed = { event: "workflow_dispatch", action: "", inputs: { ticket: "828", rerun: "4417/1" }, outputs: named };
 
-    expect(jobsRun({ event: "issues", action: "opened", sender: OWNER, red: ["build"], outputs: named })).toEqual(["build", "dispatch-rerun"]);
-    expect(jobsRun({ event: "issues", action: "opened", sender: OWNER, stopped: ["build"], outputs: named })).toEqual(["build", "dispatch-rerun"]);
+    expect(jobsRun({ event: "issues", action: "opened", sender: OWNER, red: ["wake"] })).toEqual(["wake", "dispatch-rerun"]);
+    expect(jobsRun({ event: "issues", action: "opened", sender: OWNER, red: ["build"], outputs: named })).toEqual(["wake", "build", "dispatch-rerun"]);
+    expect(jobsRun({ event: "issues", action: "opened", sender: OWNER, stopped: ["build"], outputs: named })).toEqual(["wake", "build", "dispatch-rerun"]);
     expect(jobsRun({ event: "issues", action: "closed", stopped: ["close"] })).toEqual(["close", "strip", "dispatch-rerun"]);
     expect(jobsRun({ event: "issues", action: "opened", sender: OWNER, red: ["slice"] }, "specs.yml")).toEqual(["slice", "research", "dispatch-rerun"]);
     expect(jobsRun({ event: "issues", action: "opened", sender: OWNER }, "specs.yml")).toEqual(["slice", "research"]);
@@ -228,7 +231,7 @@ describe("a repo's tickets build through one caller file that holds only trigger
 
   it("ends taking waiting off Lumaria #828 with its PR open in Lumaria: the build job starts and holds, its fix step runs, and the builder, given the repo and caller the workflow resolves there, lands it through the real check and closes it (#1146, ADR-0012)", async () => {
     const unlabeled = { action: "unlabeled", label: "waiting", sender: MACHINE, labels: ["ticket"] };
-    const job = workflowJobs("tickets.yml").build;
+    const { build: job, wake } = workflowJobs("tickets.yml");
     const fix = job?.steps.find(({ id }) => id === "fix");
     const { held } = await heldBy(labelledStep("tickets.yml", "build"), REPO, unlabeled);
     const steps = { ...labelledAs(job?.steps ?? [], held), admit: { outcome: "success", conclusion: "success", outputs: { admitted: "true" } }, start: { outcome: "success", conclusion: "success", outputs: { branch: "ticket/828" } } };
@@ -238,8 +241,9 @@ describe("a repo's tickets build through one caller file that holds only trigger
     const contract = '{ "steps": { "integration": { "run": "true", "needs": ["DATABASE_URL"] } } }\n';
     const check = `DATABASE_URL=postgres://localhost/postgres CI=true "${real}" "$@"\n`;
 
-    expect(holds(job?.if ?? "", unlabeled)).toBe(true);
+    expect(holds(wake?.if ?? "", unlabeled)).toBe(true);
     expect(held).toBe("true");
+    expect(holds(job?.if ?? "", { ...unlabeled, needs: { wake: { result: "success", outputs: { held: held ?? "" } } } })).toBe(true);
     expect(holds(fix?.if ?? "", { steps })).toBe(true);
     const repo = resolved(job?.env?.GH_REPO);
     const calledFrom = resolved(fix?.env?.CALLED_FROM);

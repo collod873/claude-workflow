@@ -6,7 +6,6 @@ const APP = "collod873-machine[bot]";
 const FAULT = ["## Why", "", "Filed by the builder of collod873/Lumaria#931, which waits on it, as the machine's fault.", "", "> Save runs on a ticket outcome.", "", "## Done when", "", "- Save never runs on a ticket outcome.", ""].join("\n");
 const followUp = (line: string) => ["## Why", "", line, "", "> The Day clock spans and punches.", "", "## Done when", "", "- Riley clocks in on /team/timesheets.", ""].join("\n");
 const SPLIT_PIECE = followUp("Follow-up of #1089: its builder split it, since it does not fit one build.");
-const REVIEW_FOLLOW_UP = followUp("Follow-up of #1089: its review found");
 const fromLumaria = (opener: string, parent: object | undefined, body?: string) => ({ repo: "collod873/Lumaria", ticket: "931", opener, parent, body });
 const ticketWhy = (line: string) => `## Why\n\n${line}\n\n## Done when\n\n- The builder builds it.\n`;
 const parentReads = (calls: string[][]) => calls.filter((args) => args.some((arg) => arg.endsWith("/parent")));
@@ -14,7 +13,6 @@ const parentReads = (calls: string[][]) => calls.filter((args) => args.some((arg
 describe("bin/admit lets a ticket into its build before anything marks it (#1022)", () => {
   it.each([
     ["the owner's own ticket", {}],
-    ["the reviewer's follow-up under no spec", { opener: APP, body: ticketWhy("Follow-up of #865: its review found this after its builder's repair.") }],
     ["the builder's follow-up under no spec", { opener: APP, body: ticketWhy("Follow-up of #865: its builder split it, since it does not fit one build.") }],
   ])("admits %s without reading any parent", (_, scenario) => {
     const { run, calls, comments } = admitting(scenario);
@@ -63,8 +61,8 @@ describe("bin/admit lets a ticket into its build before anything marks it (#1022
     expect(result.stdout).toBe("admitted=true\n");
   });
 
-  it("admits a machine fault the App filed from a split piece or a review follow-up, which builds in its own repo with no spec above it (Lumaria #1090)", () => {
-    for (const body of [SPLIT_PIECE, REVIEW_FOLLOW_UP]) {
+  it("admits a machine fault the App filed from a split piece, which builds in its own repo with no spec above it (Lumaria #1090)", () => {
+    for (const body of [SPLIT_PIECE]) {
       const { run, comments } = admitting({ opener: APP, body: FAULT, origin: fromLumaria(APP, undefined, body) });
 
       const result = run();
@@ -86,7 +84,7 @@ describe("bin/admit lets a ticket into its build before anything marks it (#1022
   });
 });
 
-describe("bin/admit lets the App's ticket in only under an open spec the owner opened, or as a follow-up the reviewer or the builder wrote (#1022)", () => {
+describe("bin/admit lets the App's ticket in only under an open spec the owner opened, or as a follow-up the builder wrote (#1022)", () => {
 
   it.each([
     ["a closed spec", { ...SPEC, state: "closed" }, "open"],
@@ -101,8 +99,9 @@ describe("bin/admit lets the App's ticket in only under an open spec the owner o
   });
 
   it.each([
-    ["only quotes a follow-up line", ticketWhy("> Follow-up of #865: its review found this after the builder's one turn.")],
-    ["has a follow-up line neither the reviewer nor the builder writes", ticketWhy("Follow-up of #865: its notes.")],
+    ["only quotes a follow-up line", ticketWhy("> Follow-up of #865: its builder split it, since it does not fit one build.")],
+    ["has a follow-up line the builder does not write", ticketWhy("Follow-up of #865: its notes.")],
+    ["is a review follow-up, which nothing files since one run builds, reviews and lands a ticket (#1445)", ticketWhy("Follow-up of #865: its review found this after its builder's repair.")],
   ])("refuses a ticket the App opened under no spec whose Why %s", (_, body) => {
     const { run, comments } = admitting({ opener: APP, body });
 

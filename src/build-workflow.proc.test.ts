@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { cloned, copyMark, git, holds, labelledAs, scratch, script, starts as startsJob, type IssueEvent, type StepOutcome } from "./scenarios.ts";
+import { cloned, copyMark, gateOf, git, holds, labelledAs, scratch, script, starts as startsJob, type IssueEvent, type StepOutcome } from "./scenarios.ts";
 import * as spelledKeys from "./spelled.ts";
 import { HELD, MACHINE, OWNER, OWNER_CALL } from "./spelled.ts";
 
@@ -28,6 +28,7 @@ interface Step {
 
 interface Job {
   if?: string;
+  concurrency?: { group?: string };
   outputs?: Record<string, string>;
   needs?: string | string[];
   env?: Record<string, unknown>;
@@ -116,7 +117,18 @@ describe("tickets.yml builds a ticket the moment it is filed (#826)", () => {
     expect(await starts({ sender: "collod873-machine[bot]", action: "unlabeled", label: "waiting", labels: ["note"] })).toBe(false);
   });
 
-  it("a follow-up the reviewer files labelled `waiting` starts no build when opened, only once `waiting` comes off (#1033)", async () => {
+  it("the job holding the build-<issue> group runs on no label change the build makes itself, so none cancels an unpause queued behind a running build (#1445)", async () => {
+    const [grouped = "", job] = Object.entries(ticketsJobs()).find(([, one]) => String(one.concurrency?.group ?? "").startsWith("build-")) ?? [];
+    const queued = async ({ labels = ["ticket"], ...event }: IssueEvent) => (gateOf("tickets.yml", grouped) === grouped ? holds(job?.if ?? "success()", event) : startsJob("tickets.yml", grouped, { ...event, labels }));
+
+    expect(grouped).toBe("build");
+    for (const label of ["building", "checking", "try-2"]) expect(await queued({ sender: MACHINE, action: "unlabeled", label, labels: ["ticket", label === "building" ? "checking" : "building"] }), label).toBe(false);
+    expect(await queued({ sender: OWNER, action: "labeled", label: "paused", labels: ["ticket", "building", "paused"] })).toBe(false);
+    expect(await queued({ sender: OWNER, action: "unlabeled", label: "paused", labels: ["ticket", "building"] })).toBe(true);
+    expect(await queued({ sender: MACHINE, action: "unlabeled", label: "waiting" })).toBe(true);
+  });
+
+  it("a ticket the App files labelled `waiting` starts no build when opened, only once `waiting` comes off (#1033)", async () => {
     expect(await starts({ sender: "collod873-machine[bot]", action: "opened", labels: ["ticket", "waiting"] })).toBe(false);
     expect(await starts({ sender: "collod873-machine[bot]", action: "unlabeled", label: "waiting" })).toBe(true);
   });
@@ -431,8 +443,10 @@ describe("tickets.yml strips the machine's labels from every issue that closes, 
 
 const CALLER = join(REPO, ".github", "actions", "call-owner", "action.yml");
 const CALLERS = [
+  { file: "tickets.yml", job: "wake", names: "github.event.issue.number" },
   { file: "tickets.yml", job: "build", names: "github.event.issue.number" },
   { file: "tickets.yml", job: "strip", names: "github.event.issue.number" },
+  { file: "tickets.yml", job: "close", names: "github.event.issue.number" },
   { file: "specs.yml", job: "research", names: "github.event.issue.number" },
   { file: "specs.yml", job: "slice", names: "github.event.issue.number" },
   { file: "specs.yml", job: "reslice", names: "steps.ended.outputs.spec" },
@@ -441,7 +455,7 @@ const CALLERS = [
 ];
 const callsOwner = (step: Step) => step.uses === "./.github/actions/call-owner";
 
-describe("a build, research, slice, reslice, done check or strip run that ends red leaves its issue and run through one shared step, which bin/rerun reads once the run completes (#1057, #1067, #1178)", () => {
+describe("a build, close, research, slice, reslice, done check or strip run that ends red leaves its issue and run through one shared step, which bin/rerun reads once the run completes, so a wake that ends red runs again (#1057, #1067, #1178, #1445)", () => {
   const [owned] = (parse(readFileSync(CALLER, "utf8")) as { runs: { steps: Step[] } }).runs.steps;
   const calls = (labels: string, run: string) => {
     const root = scratch("called-");
