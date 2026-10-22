@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { holds, labelledOutputs, labelledStep, starts, workflowJobs, type IssueEvent, type StepOutcome } from "./scenarios.ts";
+import { gateOf, holds, labelledOutputs, labelledStep, starts, workflowJobs, type IssueEvent, type StepOutcome } from "./scenarios.ts";
 import { HELD, MACHINE, PAUSED, STUCK, TICKET, WAITING } from "./spelled.ts";
 
 const REPO = join(import.meta.dirname, "..");
@@ -8,12 +8,15 @@ const WATCHED = ["start", "fix"] as const;
 const other = (held: string) => (held === PAUSED ? STUCK : PAUSED);
 
 async function stepsRun(file: string, event: IssueEvent): Promise<string[]> {
-  const job = workflowJobs(file).build;
+  const jobs = workflowJobs(file);
+  const job = jobs.build;
   if (job === undefined) throw new Error(`no build job in ${file}`);
+  const gate = gateOf(file, "build");
   const { labels, ...rest } = event;
-  if (!holds(job.if ?? "true", rest)) return [];
+  if (!holds(jobs[gate]?.if ?? "true", rest)) return [];
   const { failed, outputs } = await labelledOutputs(labelledStep(file, "build"), REPO, event);
   expect(failed, `the labelled step of ${file}`).toBe(false);
+  if (gate !== "build" && !holds(job.if ?? "success()", { ...rest, needs: { [gate]: { result: "success", outputs } } })) return [];
   const given: Record<string, Record<string, string>> = { labelled: outputs, admit: { admitted: "true" } };
   const steps: Record<string, StepOutcome> = Object.fromEntries(job.steps.flatMap(({ id }) => (id === undefined ? [] : [[id, { outcome: "skipped", conclusion: "skipped", outputs: {} }]])));
   const ran: string[] = [];
