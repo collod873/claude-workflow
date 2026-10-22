@@ -102,8 +102,8 @@ holds it (ADR-0008).
 _Avoid_: gate (for a step), gauntlet, a repo-local check script, static check
 
 **Meter**:
-A rule that reports in the PR body what it would have refused, and refuses nothing. A rule in doubt
-enters as one; on 30 merged PRs it becomes a gate or is deleted (ADR-0006).
+A rule that reports in the PR body what it would have refused, and refuses nothing. None is added any
+more (ADR-0006).
 _Avoid_: soft gate, warning, advisory check
 
 **Refusal**:

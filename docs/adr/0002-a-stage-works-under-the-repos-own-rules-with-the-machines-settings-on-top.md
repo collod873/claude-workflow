@@ -1,5 +1,6 @@
 ---
-status: constraint
+status: superseded
+superseded_by: ADR-0011
 date: 2026-10-07
 reversal: Each repo's rules would have to be copied into stage prompts or go unread, and the copies would drift from what interactive sessions follow.
 ---
