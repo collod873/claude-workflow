@@ -294,13 +294,14 @@ describe("bin/slice hands the re-slice the diff of every PR the wave merged, so 
     expect(sliced.handed()[0]).not.toContain(helper("slicer.ts"));
   });
 
-  it("cuts the diffs at DIFF_CAP and says whose diff was cut and whose were not shown", () => {
+  it("cuts the diffs at DIFF_CAP and says once whose diff was cut and whose were not shown", () => {
     const big = helper("slicer.ts") + "+x\n".repeat(DIFF_CAP);
     const sliced = reslicing({ prs: MERGED, diffs: { "1002": big, "1001": helper("done-checker.ts") } });
 
     expect(sliced.run().status).toBe(0);
     const [handed = ""] = sliced.handed();
     expect(handed).toContain(`(cut at the ${DIFF_CAP} byte cap inside #1002's diff; not shown: #1001)`);
+    expect(handed).not.toContain("[cut here");
     expect(handed).not.toContain(helper("done-checker.ts"));
   });
 });
