@@ -1,5 +1,5 @@
 import { capped, NO_EM_DASH } from "./brief.ts";
-import { commentOnTicket, FOLLOW_UP_OF, followUpBody, gh, OWNER, post, readOrStop, RESEARCH } from "./post.ts";
+import { commentOnTicket, FOLLOW_UP_OF, followUpBody, gh, OWNER, post, readOrStop, RESEARCH, RESEARCH_FOUND } from "./post.ts";
 import { RESEARCHING } from "./spelled.ts";
 import { opened } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
@@ -68,7 +68,7 @@ export function handedOn(title: string, body: string, sources?: string): string 
   ].join("\n\n");
 }
 
-const researchFound = (note: string) => `${FOLLOW_UP_OF}${note}: its research found this.`;
+const researchFound = (note: string) => `${FOLLOW_UP_OF}${note}${RESEARCH_FOUND}`;
 
 function followedUp(note: string, noteTitle: string, fixes: Fix[], asks: string[]): { refusals: string[]; said: string }[] {
   const tickets = fixes.map(({ fault, title, done }) => post({ kind: "ticket", title, text: followUpBody([researchFound(note), "", `> ${fault}`], done) }, gh));

@@ -84,6 +84,34 @@ describe("bin/admit lets a ticket into its build before anything marks it (#1022
   });
 });
 
+describe("bin/admit lets research's follow-up in when its note is a research note the owner opened (#1470)", () => {
+  const FOUND = ticketWhy("Follow-up of #1461: its research found this.");
+  const NOTE = { number: "1461", opener: "collod873", labels: ["note", "research"], state: "closed" };
+
+  it.each([
+    ["closed", NOTE],
+    ["open", { ...NOTE, state: "open" }],
+  ])("admits research's follow-up under no spec from a research note the owner opened, %s", (_, note) => {
+    const { run, calls, comments } = admitting({ opener: APP, body: FOUND, note });
+
+    const result = run();
+
+    expect(result.stdout, result.stderr).toBe("admitted=true\n");
+    expect(parentReads(calls())).toEqual([]);
+    expect(comments()).toEqual([]);
+  });
+
+  it.each([
+    ["the App opened", { ...NOTE, opener: APP }],
+    ["is not labelled research", { ...NOTE, labels: ["note"] }],
+  ])("refuses research's follow-up under no spec whose note %s, as any ticket under no spec", (_, note) => {
+    const { run, comments } = admitting({ opener: APP, body: FOUND, note });
+
+    expect(run().stdout).toBe("admitted=false\n");
+    expect(comments()[0]).toContain("no spec");
+  });
+});
+
 describe("bin/admit lets the App's ticket in only under an open spec the owner opened, or as a follow-up the builder wrote (#1022)", () => {
 
   it.each([
