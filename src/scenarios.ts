@@ -936,7 +936,7 @@ export function switching({ isPrivate = true, runners = [] as object[], variable
       `  kept="${at("placed")}/\${BASH_REMATCH[1]//\\//_}"`,
       '  mv "$kept.next" "$kept"',
       "fi",
-      `for name in ${manyJobs.join(" ")}; do [[ $* == *".$name.service"*ACTIONS_RUNNER_INPUT_ONCE* ]] && exit 1; done`,
+      "[[ $* =~ ^bash\\ -c\\ cat\\ ([^ ]+/environ)$ ]] && exec cat \"${BASH_REMATCH[1]}\"",
       "started='runners/[^/ ]+/([^ /]+) && .*svc\\.sh start'",
       `if ${startsOnline} && [[ $* =~ $started ]] && [[ " ${slowToStart.join(" ")} " != *" \${BASH_REMATCH[1]} "* ]]; then`,
       `  jq -c --arg name "\${BASH_REMATCH[1]}" '.runners |= (map(select(.name != $name)) + [{name: $name, status: "online", busy: false, labels: [{name: "self-hosted"}, {name: "pc"}]}])' "${at("runners.json")}" >"${at("runners.next")}"`,
@@ -946,16 +946,22 @@ export function switching({ isPrivate = true, runners = [] as object[], variable
     ].join("\n"),
   );
   script(at("bin/id"), `exit ${userExists ? 0 : 1}\n`);
-  script(at("bin/systemctl"), `for name in ${stoppedByHand.join(" ")}; do [[ \${@: -1} == *".$name.service" ]] && exit 3; done\nexit 0\n`);
+  for (const [pid, environ] of [["1", "ACTIONS_RUNNER_INPUT_ONCE=true"], ["2", "LANG=C.UTF-8"]]) {
+    mkdirSync(at(`proc/${pid}`), { recursive: true });
+    writeFileSync(at(`proc/${pid}/environ`), `HOME=/home/ghrunner\0${environ}\0`);
+  }
+  const manyJobsUnits = manyJobs.map((name) => `actions.runner.${PC_REPO.replace("/", "-")}.${name}.service`).join(" ");
+  script(at("bin/systemctl"), `if [[ $1 == show ]]; then [[ " ${manyJobsUnits} " == *" \${@: -1} "* ]] && echo 2 || echo 1; exit 0; fi\nfor name in ${stoppedByHand.join(" ")}; do [[ \${@: -1} == *".$name.service" ]] && exit 3; done\nexit 0\n`);
   script(at("bin/curl"), "printf '%s\\n' '[{\"version\":\"v25.1.0\",\"lts\":false},{\"version\":\"v24.11.0\",\"lts\":\"Krypton\"}]'\n");
   script(at("bin/sleep"), "");
   script(at("bin/nproc"), "printf '16\\n'\n");
   const lines = (name: string) => (existsSync(at(name)) ? readFileSync(at(name), "utf8").trim().split("\n") : []);
   return {
-    run: (...args: string[]) => execute(join(BIN, "runner"), root, { PATH: `${at("bin")}:${process.env.PATH}`, RUNNER_WAIT_SECONDS: "0" }, [PC_REPO, ...args]),
+    run: (...args: string[]) => execute(join(BIN, "runner"), root, { PATH: `${at("bin")}:${process.env.PATH}`, RUNNER_WAIT_SECONDS: "0", RUNNER_PROC: at("proc") }, [PC_REPO, ...args]),
     variable: () => (existsSync(at("variable")) ? readFileSync(at("variable"), "utf8") : undefined),
     sudo: () => lines("sudo-calls"),
     gh: () => lines("gh-calls"),
+    jobStarted: (name: string) => writeFileSync(at("runners.json"), JSON.stringify({ runners: (JSON.parse(readFileSync(at("runners.json"), "utf8")) as { runners: { name: string }[] }).runners.map((runner) => ({ ...runner, busy: runner.name === name })) })),
     jobsEnded: () => writeFileSync(at("runners.json"), JSON.stringify({ runners: (JSON.parse(readFileSync(at("runners.json"), "utf8")) as { runners: object[] }).runners.map((runner) => ({ ...runner, busy: false })) })),
     placed: (path: string) => readFileSync(join(at("placed"), path.replaceAll("/", "_")), "utf8"),
   };

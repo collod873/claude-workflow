@@ -14,6 +14,7 @@ const NODE_RELEASES = "https://nodejs.org/dist";
 const GH_RELEASES = "https://github.com/cli/cli/releases/download";
 const RUNNER_RELEASES = "https://github.com/actions/runner/releases/download";
 const WAIT_SECONDS = Number(process.env.RUNNER_WAIT_SECONDS ?? "60");
+const PROC = process.env.RUNNER_PROC ?? "/proc";
 const UNITS = "/etc/systemd/system";
 const SLICE = "pc-runners.slice";
 const PC_RUNNERS_MEMORY_GB = 20;
@@ -153,16 +154,16 @@ function provisionEarlyoom(): void {
 const running = (repo: string, name: string) => spawnSync("systemctl", ["is-active", "--quiet", unitOf(repo, name)]).status === 0;
 
 function takesOneJob(repo: string, name: string): boolean {
+  const pid = spawnSync("systemctl", ["show", "--property", "MainPID", "--value", unitOf(repo, name)], { encoding: "utf8" }).stdout.trim();
   try {
-    asRoot(`tr '\\0' '\\n' </proc/"$(systemctl show --property MainPID --value ${unitOf(repo, name)})"/environ | grep -qx ${ONE_JOB}`);
-    return true;
+    return asRoot(`cat ${PROC}/${pid}/environ`).split("\0").includes(ONE_JOB);
   } catch (error) {
     if (!(error instanceof Refused)) throw error;
     return false;
   }
 }
 
-function settle(repo: string, name: string, at: number, busy: boolean): "started" | "at-job-end" | "mid-job" {
+function settle(repo: string, name: string, at: number, busy: boolean): "started" | "running" | "at-job-end" | "mid-job" {
   const dir = dirOf(repo, name);
   const dropIns = `${UNITS}/${unitOf(repo, name)}.d`;
   const temp = tempOf(repo, name);
@@ -177,9 +178,13 @@ function settle(repo: string, name: string, at: number, busy: boolean): "started
     staged({ as: asRoot, path: `${dropIns}/pc-runner.conf`, text: confinement(at, unitOf(repo, name)), mode: "644" }),
   ];
   const changed = files.some((file) => file.changed);
-  if (changed && busy && !takesOneJob(repo, name)) return "mid-job";
+  if (busy && !changed) {
+    for (const file of files) place(file);
+    return "running";
+  }
+  if (busy && !takesOneJob(repo, name)) return "mid-job";
   for (const file of files) place(file);
-  if (changed && busy) {
+  if (busy) {
     asRoot(`systemctl daemon-reload && systemctl enable --quiet ${unitOf(repo, name)}`);
     return "at-job-end";
   }
@@ -189,9 +194,11 @@ function settle(repo: string, name: string, at: number, busy: boolean): "started
 
 function turnOff(repo: string, extra: { name: string; busy: boolean }[]): string {
   for (const { name, busy } of extra) asRoot(`systemctl disable --quiet ${busy ? "" : "--now "}${unitOf(repo, name)}`);
-  const busy = extra.filter(({ busy }) => busy).length;
+  const busy = extra.filter(({ busy }) => busy);
+  const untilStopped = busy.filter(({ name }) => running(repo, name) && !takesOneJob(repo, name)).map(({ name }) => name);
   if (extra.length === 0) return "";
-  return busy === 0 ? `, ${extra.length} turned off` : `, ${extra.length} turned off, ${busy} once its job ends`;
+  const atJobEnd = busy.length - untilStopped.length;
+  return `, ${extra.length} turned off${atJobEnd > 0 ? `, ${atJobEnd} once its job ends` : ""}${untilStopped.length > 0 ? `; ${untilStopped.join(", ")} take jobs until stopped: run this again once they finish` : ""}`;
 }
 
 function stopIdle(repo: string, runners: { name: string; status: string; busy: boolean }[]): string {
