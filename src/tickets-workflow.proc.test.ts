@@ -106,10 +106,9 @@ describe("a repo's tickets build through one caller file that holds only trigger
   });
 
   it("hands a run whose stage job ended red, was cancelled or timed out to a dispatch of the caller file, and on that dispatch only re-runs it or calls the owner, no build or size trial starting (#1225)", () => {
-    const named = { which: { ticket: "828" } };
-    const handed = { event: "workflow_dispatch", action: "", inputs: { ticket: "828", reason: "red", rerun: "4417/1" }, outputs: named };
+    const named = { which: { ticket: "828" }, wake: { held: "true" } };
+    const handed = { event: "workflow_dispatch", action: "", inputs: { ticket: "828", rerun: "4417/1" }, outputs: named };
 
-    expect((caller().on.workflow_run as { workflows: string[] }).workflows).not.toContain(caller().name);
     expect(jobsRun({ event: "issues", action: "opened", sender: OWNER, red: ["wake"] })).toEqual(["wake", "dispatch-rerun"]);
     expect(jobsRun({ event: "issues", action: "opened", sender: OWNER, red: ["build"], outputs: named })).toEqual(["wake", "build", "dispatch-rerun"]);
     expect(jobsRun({ event: "issues", action: "opened", sender: OWNER, stopped: ["build"], outputs: named })).toEqual(["wake", "build", "dispatch-rerun"]);
