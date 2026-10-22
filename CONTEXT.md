@@ -63,13 +63,13 @@ Give a repo everything its tickets need to build: in one PR, the caller file nam
 the **check-job rule** (`check.yml`'s `check` job `if` and `name`; enrol's own PR still runs it) on
 that CI's, and no pre-push, since `bin/land` is the gate; the App's reach, client id and keys, every label the
 machine spells, auto-merge, and main taking changes only by a PR passing `check`, here too. It drops the
-`tickets / review` and `review` main once also required, since no job posts them (ADR-0012).
+`tickets / review` and `review` checks no job posts (ADR-0012).
 `bin/enrol <repo>` sets what is missing and names what it could not set.
 _Avoid_: onboard, install, register
 
 **PC runner**:
-A runner on the PC, labelled `pc`; a private repo's `CI_RUNNER` set to `pc` sends its jobs
-there; unset, to GitHub's. `bin/runner` installs and flips it.
+A `pc` runner, where a private repo's `CI_RUNNER` sends jobs, else GitHub's. The **quick
+lane**, jobs building nothing, prefers a `pc-quick` **quick runner**; `bin/runner` sets both.
 _Avoid_: local runner
 
 **Worker**:

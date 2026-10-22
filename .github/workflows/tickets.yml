@@ -180,7 +180,7 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.rerun }}
     concurrency:
       group: rerun-${{ github.event.inputs.rerun }}
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ vars.QUICK_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 180
     env:
       GH_REPO: ${{ github.repository }}
@@ -303,7 +303,7 @@ jobs:
 
   close:
     if: ${{ github.event_name == 'issues' && github.event.action == 'closed' }}
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ vars.QUICK_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
     env:
       GH_REPO: ${{ github.repository }}
@@ -344,7 +344,7 @@ jobs:
 
   enrol:
     if: ${{ github.event_name == 'push' && github.repository == format('{0}/claude-workflow', github.repository_owner) }}
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ vars.QUICK_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
     env:
       GH_REPO: ${{ github.repository }}
@@ -381,7 +381,7 @@ jobs:
 
   strip:
     if: ${{ github.event.action == 'closed' }}
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ vars.QUICK_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
     env:
       GH_REPO: ${{ github.repository }}
@@ -420,7 +420,7 @@ jobs:
   dispatch-rerun:
     needs: [build, close, enrol, strip]
     if: ${{ always() && (needs.build.result == 'failure' || needs.close.result == 'failure' || needs.enrol.result == 'failure' || needs.strip.result == 'failure' || contains(needs.*.result, 'cancelled')) }}
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ vars.QUICK_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
     env:
       GH_REPO: ${{ github.repository }}

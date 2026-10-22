@@ -67,6 +67,7 @@ interface WorkflowJob {
   "cache-mode"?: string;
   "timeout-minutes"?: number;
   concurrency?: unknown;
+  "runs-on"?: string;
   steps: WorkflowStep[];
 }
 
@@ -590,6 +591,7 @@ export function sessionExtras({
 
 export const ENROLLED = "collod873/Next";
 export const PC_RUNS_ON = "${{ vars.CI_RUNNER || 'ubuntu-latest' }}";
+export const QUICK_RUNS_ON = "${{ vars.QUICK_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}";
 export const CI_ON_EVERY_PR = ["name: Gate", "on:", "  pull_request:", "jobs:", "  check:", `    runs-on: ${PC_RUNS_ON}`, "    steps:", "      - run: check --full", ""].join("\n");
 export const checkJobRule = () => (/^ {2}check:\n((?: {4}.*\n)+?) {4}runs-on:/m.exec(readFileSync(join(import.meta.dirname, "..", ".github", "workflows", "check.yml"), "utf8"))?.[1] ?? "").trimEnd().split("\n");
 export const ci = () => CI_ON_EVERY_PR.replace("  check:\n", ["  check:", ...checkJobRule(), ""].join("\n"));
@@ -799,24 +801,29 @@ export function githubCall(refusals: string[], args = ["issue", "edit", "1202", 
 export const PC_REPO = "collod873/Lumaria";
 export const PC_HOST = hostname().toLowerCase();
 export const PC_RUNNER_COUNT = 2;
+export const QUICK_RUNNER_COUNT = 8;
 
-export const pcRunner = (name: string, status = "online", busy = false) => ({ name, status, busy, labels: [{ name: "self-hosted" }, { name: "pc" }] });
+const runnerId = (name: string) => [...name].reduce((sum, char) => sum + char.charCodeAt(0), 0);
+export const pcRunner = (name: string, status = "online", busy = false, labels = ["pc", "pc-quick"]) => ({ id: runnerId(name), name, status, busy, labels: ["self-hosted", ...labels].map((label) => ({ name: label })) });
+export const quickRunners = () => Array.from({ length: QUICK_RUNNER_COUNT }, (_, at) => pcRunner(`${PC_HOST}-quick-${at + 1}`, "online", false, ["pc-quick"]));
 
-export function switching({ isPrivate = true, runners = [] as object[], variable = "", startsOnline = true, slowToStart = [] as string[], stoppedByHand = [] as string[], manyJobs = [] as string[], userExists = true } = {}) {
+export function switching({ isPrivate = true, runners = [] as object[], variable = "", quickVariable = "", startsOnline = true, slowToStart = [] as string[], stoppedByHand = [] as string[], manyJobs = [] as string[], userExists = true } = {}) {
   const root = scratch("runner-");
   const at = (name: string) => join(root, name);
   writeFileSync(at("runners.json"), JSON.stringify({ runners }));
-  if (variable !== "") writeFileSync(at("variable"), variable);
+  if (variable !== "") writeFileSync(at("variable-CI_RUNNER"), variable);
+  if (quickVariable !== "") writeFileSync(at("variable-QUICK_RUNNER"), quickVariable);
   script(
     at("bin/gh"),
     [
       `printf '%s\\n' "$*" >>"${at("gh-calls")}"`,
       'case "$*" in',
       `  "api repos/${PC_REPO}/actions/runners") cat "${at("runners.json")}" ;;`,
+      `  "api -X POST repos/${PC_REPO}/actions/runners/"*/labels*) id=\${4#repos/${PC_REPO}/actions/runners/}; jq -c --argjson id "\${id%/labels}" --arg label "\${@: -1}" '.runners |= map(if .id == $id then .labels += [{name: ($label | ltrimstr("labels[]="))}] else . end)' "${at("runners.json")}" >"${at("runners.next")}" && mv "${at("runners.next")}" "${at("runners.json")}" ;;`,
       `  "api repos/${PC_REPO}") printf '{"private":${isPrivate}}\\n' ;;`,
-      `  "variable get"*) [ -f "${at("variable")}" ] || { printf 'variable CI_RUNNER was not found\\n' >&2; exit 1; }; cat "${at("variable")}" ;;`,
-      `  "variable set"*) printf '%s' "\${@: -1}" >"${at("variable")}" ;;`,
-      `  "variable delete"*) rm "${at("variable")}" ;;`,
+      `  "variable get"*) [ -f "${at("variable-")}$3" ] || { printf 'variable %s was not found\\n' "$3" >&2; exit 1; }; cat "${at("variable-")}$3" ;;`,
+      `  "variable set"*) printf '%s' "\${@: -1}" >"${at("variable-")}$3" ;;`,
+      `  "variable delete"*) rm "${at("variable-")}$3" ;;`,
       '  *cli/cli/releases/latest*) printf "v2.96.0\\n" ;;',
       '  *releases/latest*) printf "v2.330.0\\n" ;;',
       '  *registration-token*) printf "TOKEN\\n" ;;',
@@ -840,7 +847,7 @@ export function switching({ isPrivate = true, runners = [] as object[], variable
       `[[ $* == *"${at("proc")}/"* ]] && exec "$@"`,
       "started='runners/[^/ ]+/([^ /]+) && .*svc\\.sh start'",
       `if ${startsOnline} && [[ $* =~ $started ]] && [[ " ${slowToStart.join(" ")} " != *" \${BASH_REMATCH[1]} "* ]]; then`,
-      `  jq -c --arg name "\${BASH_REMATCH[1]}" '.runners |= (map(select(.name != $name)) + [{name: $name, status: "online", busy: false, labels: [{name: "self-hosted"}, {name: "pc"}]}])' "${at("runners.json")}" >"${at("runners.next")}"`,
+      `  jq -c --arg name "\${BASH_REMATCH[1]}" '.runners |= (map(select(.name != $name)) + [{id: ($name | explode | add), name: $name, status: "online", busy: false, labels: ([{name: "self-hosted"}] + (if ($name | test("-quick-")) then [{name: "pc-quick"}] else [{name: "pc"}, {name: "pc-quick"}] end))}])' "${at("runners.json")}" >"${at("runners.next")}"`,
       `  mv "${at("runners.next")}" "${at("runners.json")}"`,
       "fi",
       "",
@@ -859,7 +866,9 @@ export function switching({ isPrivate = true, runners = [] as object[], variable
   const lines = (name: string) => (existsSync(at(name)) ? readFileSync(at(name), "utf8").trim().split("\n") : []);
   return {
     run: (...args: string[]) => execute(join(BIN, "runner"), root, { PATH: `${at("bin")}:${process.env.PATH}`, RUNNER_WAIT_SECONDS: "0", RUNNER_PROC: at("proc") }, [PC_REPO, ...args]),
-    variable: () => (existsSync(at("variable")) ? readFileSync(at("variable"), "utf8") : undefined),
+    variable: () => (existsSync(at("variable-CI_RUNNER")) ? readFileSync(at("variable-CI_RUNNER"), "utf8") : undefined),
+    runners: () => (JSON.parse(readFileSync(at("runners.json"), "utf8")) as { runners: { name: string; status: string; labels: { name: string }[] }[] }).runners,
+    quickVariable: () => (existsSync(at("variable-QUICK_RUNNER")) ? readFileSync(at("variable-QUICK_RUNNER"), "utf8") : undefined),
     sudo: () => lines("sudo-calls"),
     gh: () => lines("gh-calls"),
     jobStarted: (name: string) => writeFileSync(at("runners.json"), JSON.stringify({ runners: (JSON.parse(readFileSync(at("runners.json"), "utf8")) as { runners: { name: string }[] }).runners.map((runner) => ({ ...runner, busy: runner.name === name })) })),
