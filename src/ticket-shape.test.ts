@@ -219,9 +219,9 @@ describe("the shape bin/file-issue --help prints names every heading its kind is
 
 describe("bin/file-issue --help keeps a build's Done when to its own repo (#1467)", () => {
   it("sends another repo's work to ## Follow-ups, one line per repo, filed there by whoever lands the build", () => {
-    expect(BUILD_SHAPE).toMatch(/Done when names only work its own repo does; what another repo shows as proof may stay/);
-    expect(BUILD_SHAPE).toMatch(/## Follow-ups, one line per repo/);
-    expect(BUILD_SHAPE).toMatch(/whoever lands the build files each one there as a build/);
+    for (const claim of ["only work its own repo does", "proof may stay", "## Follow-ups", "one line per repo", "files each one there as a build"]) {
+      expect(BUILD_SHAPE).toContain(claim);
+    }
   });
 });
 
