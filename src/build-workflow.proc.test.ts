@@ -443,6 +443,7 @@ describe("tickets.yml strips the machine's labels from every issue that closes, 
 
 const CALLER = join(REPO, ".github", "actions", "call-owner", "action.yml");
 const CALLERS = [
+  { file: "tickets.yml", job: "wake", names: "github.event.issue.number" },
   { file: "tickets.yml", job: "build", names: "github.event.issue.number" },
   { file: "tickets.yml", job: "strip", names: "github.event.issue.number" },
   { file: "tickets.yml", job: "close", names: "github.event.issue.number" },

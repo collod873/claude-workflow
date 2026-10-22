@@ -49,6 +49,13 @@ jobs:
             | "held=\((.action == "opened" or .action == "reopened" or (.action == "unlabeled" and (IN(.label.name; $WAITING, $PAUSED, $STUCK)) and .issue.state != "closed")) and $ticket and $free)"
           ' "$GITHUB_EVENT_PATH" | tee -a "$GITHUB_OUTPUT"
 
+      - if: ${{ failure() || cancelled() }}
+        uses: ./.github/actions/call-owner
+        with:
+          issue: ${{ github.event.issue.number }}
+          run: the wake run
+          token: ${{ steps.app.outputs.token }}
+
   build:
     needs: wake
     if: ${{ needs.wake.outputs.held == 'true' }}
@@ -412,7 +419,7 @@ jobs:
 
   dispatch-rerun:
     needs: [wake, build, close, strip]
-    if: ${{ always() && (needs.build.result == 'failure' || needs.close.result == 'failure' || needs.strip.result == 'failure' || contains(needs.*.result, 'cancelled')) }}
+    if: ${{ always() && (needs.wake.result == 'failure' || needs.build.result == 'failure' || needs.close.result == 'failure' || needs.strip.result == 'failure' || contains(needs.*.result, 'cancelled')) }}
     runs-on: ${{ vars.QUICK_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
     env:
