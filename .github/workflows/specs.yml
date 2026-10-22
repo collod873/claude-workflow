@@ -6,8 +6,59 @@ name: Specs
 permissions: {}
 
 jobs:
+  wake:
+    if: ${{ github.event_name == 'issues' && ((github.event.action == 'labeled' && (github.event.sender.login == github.repository_owner || github.event.sender.login == 'collod873-machine[bot]')) || (github.event.action == 'unlabeled' && github.event.sender.login == github.repository_owner)) }}
+    runs-on: ${{ vars.QUICK_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 5
+    env:
+      GH_REPO: ${{ github.repository }}
+    outputs:
+      slice: ${{ steps.labelled.outputs.slice }}
+      research: ${{ steps.labelled.outputs.research }}
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - id: machine
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/claude-workflow
+          ref: main
+          token: ${{ steps.app.outputs.token }}
+          persist-credentials: false
+
+      - id: setup-node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - id: labelled
+        run: |
+          spec=$(bin/spelled SPEC)
+          research=$(bin/spelled RESEARCH)
+          paused=$(bin/spelled PAUSED)
+          stuck=$(bin/spelled STUCK)
+          jq -r --arg SPEC "$spec" --arg RESEARCH "$research" --arg PAUSED "$paused" --arg STUCK "$stuck" '
+            (.issue.state != "closed") as $open
+            | (any(.issue.labels[]?.name; IN($PAUSED, $STUCK)) | not) as $free
+            | "slice=\(.action == "labeled" and .label.name == $SPEC and $open and any(.issue.labels[]?.name; . == $SPEC))",
+              "research=\(any(.issue.labels[]?.name; . == $RESEARCH) and $open and ((.action == "labeled" and .label.name == $RESEARCH) or (.action == "unlabeled" and (.label.name | IN($PAUSED, $STUCK)) and $free)))"
+          ' "$GITHUB_EVENT_PATH" | tee -a "$GITHUB_OUTPUT"
+
+      - if: ${{ failure() || cancelled() }}
+        uses: ./.github/actions/call-owner
+        with:
+          issue: ${{ github.event.issue.number }}
+          run: the wake run
+          token: ${{ steps.app.outputs.token }}
+
   slice:
-    if: ${{ github.event_name == 'issues' && github.event.action == 'labeled' && (github.event.sender.login == github.repository_owner || github.event.sender.login == 'collod873-machine[bot]') }}
+    needs: wake
+    if: ${{ needs.wake.outputs.slice == 'true' }}
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 60
     env:
@@ -33,14 +84,7 @@ jobs:
         with:
           node-version: 24
 
-      - id: labelled
-        run: |
-          spec=$(bin/spelled SPEC)
-          held=$(jq --arg SPEC "$spec" '.label.name == $SPEC and .issue.state != "closed" and any(.issue.labels[]?.name; . == $SPEC)' "$GITHUB_EVENT_PATH")
-          printf 'held=%s\n' "$held" | tee -a "$GITHUB_OUTPUT"
-
       - id: checkout
-        if: steps.labelled.outputs.held == 'true'
         uses: actions/checkout@v4
         with:
           path: tree
@@ -50,28 +94,23 @@ jobs:
           persist-credentials: false
 
       - id: pinned
-        if: steps.labelled.outputs.held == 'true'
         uses: ./.github/actions/pinned
 
       - id: npm-ci
-        if: steps.labelled.outputs.held == 'true'
         run: npm ci
 
       - id: logs
-        if: steps.labelled.outputs.held == 'true'
         run: |
           mkdir -p tree/.git/machine-logs
           ln -s "$PWD/tree/.git/machine-logs" .git/machine-logs
 
       - id: stage
-        if: steps.labelled.outputs.held == 'true'
         uses: ./.github/actions/stage
         with:
           client-id: ${{ vars.CORE_APP_CLIENT_ID }}
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
 
       - id: slice
-        if: steps.labelled.outputs.held == 'true'
         timeout-minutes: 50
         working-directory: tree
         env:
@@ -83,14 +122,14 @@ jobs:
           tail --pid=$$ -n +1 -F .git/machine-logs/slice-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
           "$GITHUB_WORKSPACE/bin/slice" ${{ github.event.issue.number }}
 
-      - if: ${{ steps.labelled.outputs.held != 'false' && (failure() || cancelled()) }}
+      - if: ${{ failure() || cancelled() }}
         uses: ./.github/actions/call-owner
         with:
           issue: ${{ github.event.issue.number }}
           run: the slice run
           token: ${{ steps.app.outputs.token }}
 
-      - if: always() && steps.labelled.outputs.held != 'false'
+      - if: always()
         timeout-minutes: 6
         uses: ./.github/actions/stage-logs
         with:
@@ -473,7 +512,8 @@ jobs:
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
 
   research:
-    if: ${{ github.event_name == 'issues' && ((github.event.action == 'labeled' && (github.event.sender.login == github.repository_owner || github.event.sender.login == 'collod873-machine[bot]')) || (github.event.action == 'unlabeled' && github.event.sender.login == github.repository_owner)) }}
+    needs: wake
+    if: ${{ needs.wake.outputs.research == 'true' }}
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 60
     env:
@@ -499,20 +539,7 @@ jobs:
         with:
           node-version: 24
 
-      - id: labelled
-        run: |
-          research=$(bin/spelled RESEARCH)
-          paused=$(bin/spelled PAUSED)
-          stuck=$(bin/spelled STUCK)
-          held=$(jq --arg RESEARCH "$research" --arg PAUSED "$paused" --arg STUCK "$stuck" '
-            any(.issue.labels[]?.name; . == $RESEARCH)
-            and .issue.state != "closed"
-            and ((.action == "labeled" and .label.name == $RESEARCH) or (.action == "unlabeled" and (.label.name | IN($PAUSED, $STUCK)) and (any(.issue.labels[]?.name; IN($PAUSED, $STUCK)) | not)))
-          ' "$GITHUB_EVENT_PATH")
-          printf 'held=%s\n' "$held" | tee -a "$GITHUB_OUTPUT"
-
       - id: checkout
-        if: steps.labelled.outputs.held == 'true'
         uses: actions/checkout@v4
         with:
           path: tree
@@ -522,24 +549,20 @@ jobs:
           persist-credentials: false
 
       - id: npm-ci
-        if: steps.labelled.outputs.held == 'true'
         run: npm ci
 
       - id: logs
-        if: steps.labelled.outputs.held == 'true'
         run: |
           mkdir -p tree/.git/machine-logs
           ln -s "$PWD/tree/.git/machine-logs" .git/machine-logs
 
       - id: stage
-        if: steps.labelled.outputs.held == 'true'
         uses: ./.github/actions/stage
         with:
           client-id: ${{ vars.CORE_APP_CLIENT_ID }}
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
 
       - id: sources
-        if: steps.labelled.outputs.held == 'true'
         timeout-minutes: 6
         shell: bash
         working-directory: tree
@@ -564,7 +587,6 @@ jobs:
           printf 'RESEARCH_SOURCES=%s\n' "$sources" >>"$GITHUB_ENV"
 
       - id: research
-        if: steps.labelled.outputs.held == 'true'
         timeout-minutes: 42
         working-directory: tree
         env:
@@ -575,14 +597,14 @@ jobs:
           tail --pid=$$ -n +1 -F .git/machine-logs/research-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
           "$GITHUB_WORKSPACE/bin/research" ${{ github.event.issue.number }}
 
-      - if: ${{ steps.labelled.outputs.held != 'false' && (failure() || cancelled()) }}
+      - if: ${{ failure() || cancelled() }}
         uses: ./.github/actions/call-owner
         with:
           issue: ${{ github.event.issue.number }}
           run: the research run
           token: ${{ steps.app.outputs.token }}
 
-      - if: always() && steps.labelled.outputs.held != 'false'
+      - if: always()
         timeout-minutes: 6
         uses: ./.github/actions/stage-logs
         with:
@@ -716,7 +738,7 @@ jobs:
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
 
   dispatch-rerun:
-    needs: [slice, ended, reslice, size-trial, resumed, resume, research, asked, check]
+    needs: [wake, slice, ended, reslice, size-trial, resumed, resume, research, asked, check]
     if: ${{ always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) }}
     runs-on: ${{ vars.QUICK_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
