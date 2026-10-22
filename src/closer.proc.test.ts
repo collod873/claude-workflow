@@ -111,6 +111,27 @@ describe("bin/close brings ticket PRs left behind by a merge up to date itself, 
   });
 });
 
+describe("bin/close on the quick lane hands a branch update to the update job on the build runners, so a close that only merges or closes never waits behind a build (#1428)", () => {
+  it("brings no PR up to date and runs no full check, and asks for the update job, while still closing the ticket that merged", () => {
+    const { calls, checked, output, run } = closing({ ticket: "819", openPrs: [{ number: "901", ticket: "820" }], quickLane: true });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(checked()).toEqual([]);
+    expect(updated(calls())).toEqual([]);
+    expect(output()).toContain("update=true\n");
+    expect(calls().some((call) => call.startsWith("issue\ncomment\n819\n")), "still closes the ticket that merged").toBe(true);
+  });
+
+  it("asks for no update job when nothing green waits behind main", () => {
+    const { output, run } = closing({ ticket: "819", openPrs: [{ number: "901", ticket: "820", checks: "pending" }], quickLane: true });
+
+    expect(run().status).toBe(0);
+    expect(output()).not.toContain("update=");
+  });
+});
+
 describe("bin/close queues ticket PRs alone, since a session landing merges at once on its own statuses and never waits behind main (#869, #1344)", () => {
   it("leaves alone a land PR and a PR from a branch the machine did not open", () => {
     const { calls, run } = closing({ ticket: "819", openPrs: [{ number: "905", ticket: "", branch: "land/ba9876543210" }, { number: "906", ticket: "", branch: "dependabot/npm_and_yarn/vitest-5.0.0" }] });

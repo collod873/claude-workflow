@@ -232,8 +232,10 @@ function queue(): Queued {
   const merging = queued.find((pr) => pr.checks !== "red" && upToDate(pr));
   const moved = new Map<QueuedPr, Moved>();
   let stranded: Queued["stranded"];
+  const handedOn = merging === undefined && process.env.QUICK_LANE === "true" ? queued.find((pr) => pr.checks === "green") : undefined;
+  if (handedOn !== undefined && process.env.GITHUB_OUTPUT !== undefined) appendFileSync(process.env.GITHUB_OUTPUT, "update=true\n");
   const next =
-    merging === undefined
+    merging === undefined && handedOn === undefined
       ? queued
           .filter((pr) => pr.checks === "green")
           .find((pr) => {
@@ -245,11 +247,12 @@ function queue(): Queued {
       : undefined;
   for (const pr of queued) {
     const ticket = TICKET_BRANCH.exec(pr.headRefName)?.[1];
-    if (ticket !== undefined && moved.get(pr) !== "updated") holding(ticket, () => settle(ticket, pr, merging, moved.get(pr) === "conflicted" || moved.get(pr) === "red"));
+    if (ticket !== undefined && moved.get(pr) !== "updated" && !(handedOn !== undefined && pr.checks === "green")) holding(ticket, () => settle(ticket, pr, merging, moved.get(pr) === "conflicted" || moved.get(pr) === "red"));
   }
   if (merging?.checks === "green") return { said: merged(merging) };
   if (merging !== undefined) return { said: `PR #${merging.number} is up to date with main, so the queue waits for it` };
   if (next !== undefined) return { said: `PR #${next.number} brought up to date with main` };
+  if (handedOn !== undefined) return { said: `PR #${handedOn.number} waits for the update job to bring it up to date with main` };
   return { said: "no green PR waits behind main", stranded };
 }
 

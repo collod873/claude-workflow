@@ -172,7 +172,7 @@ jobs:
     if: ${{ github.event_name == 'pull_request_target' && github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository }}
     concurrency:
       group: review-${{ github.event.pull_request.number }}
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ vars.QUICK_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 45
     env:
       GH_REPO: ${{ github.repository }}
@@ -262,7 +262,7 @@ jobs:
   meters:
     if: ${{ github.event_name == 'pull_request_target' && github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository }}
     continue-on-error: true
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ vars.QUICK_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 30
     env:
       GH_REPO: ${{ github.repository }}
@@ -342,7 +342,7 @@ jobs:
   which:
     needs: [build, review]
     if: "${{ always() && ((github.event_name == 'workflow_dispatch' && !github.event.inputs.trial_cap && !github.event.inputs.rerun && !github.event.inputs.probe) || needs.build.result == 'failure' || (needs.review.result == 'failure' && needs.review.outputs.fault != 'true') || (github.event_name == 'workflow_run' && github.event.workflow_run.name != github.workflow && (github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'timed_out') && github.event.workflow_run.head_repository.full_name == github.repository)) }}"
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ vars.QUICK_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 3
     env:
       GH_REPO: ${{ github.repository }}
@@ -532,7 +532,7 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.rerun }}
     concurrency:
       group: rerun-${{ github.event.inputs.rerun }}
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ vars.QUICK_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 180
     env:
       GH_REPO: ${{ github.repository }}
@@ -656,6 +656,60 @@ jobs:
   close:
     needs: review
     if: ${{ !cancelled() && (github.event_name == 'push' || (github.event_name == 'pull_request_target' && (github.event.action == 'closed' || needs.review.result == 'success')) || (github.event_name == 'workflow_run' && github.event.workflow_run.name != github.workflow && !(github.event.sender.login == 'collod873-machine[bot]')) || (github.event_name == 'issues' && github.event.action == 'closed')) }}
+    runs-on: ${{ vars.QUICK_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 20
+    env:
+      GH_REPO: ${{ github.repository }}
+    outputs:
+      update: ${{ steps.close.outputs.update }}
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - id: machine
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/claude-workflow
+          ref: main
+          token: ${{ steps.app.outputs.token }}
+          persist-credentials: false
+
+      - id: checkout
+        uses: actions/checkout@v4
+        with:
+          path: tree
+          fetch-depth: 0
+          token: ${{ steps.app.outputs.token }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - id: close
+        working-directory: tree
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          QUIET_GH_TOKEN: ${{ steps.app.outputs.token }}
+          QUEUE_ONLY: ${{ github.event_name != 'push' && 'queue' || '' }}
+          CLOSED_ISSUE: ${{ github.event_name == 'issues' && github.event.issue.number || '' }}
+          CALLED_FROM: ${{ github.workflow_ref }}
+          QUICK_LANE: "true"
+        run: '"$GITHUB_WORKSPACE/bin/close" $QUEUE_ONLY $CLOSED_ISSUE'
+
+      - if: ${{ (failure() || cancelled()) && steps.close.outputs.ticket != '' }}
+        uses: ./.github/actions/call-owner
+        with:
+          issue: ${{ steps.close.outputs.ticket }}
+          run: the closer run
+          token: ${{ steps.app.outputs.token }}
+
+  update:
+    needs: close
+    if: ${{ !cancelled() && needs.close.outputs.update == 'true' }}
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 20
     env:
@@ -687,56 +741,41 @@ jobs:
         with:
           node-version: 24
 
-      - id: queued
-        working-directory: tree
-        env:
-          GH_TOKEN: ${{ steps.app.outputs.token }}
-        run: |
-          prefix=$("$GITHUB_WORKSPACE/bin/spelled" TICKET_PREFIX)
-          behind=$("$GITHUB_WORKSPACE/bin/github" pr list --state open --json headRefName,autoMergeRequest | jq --arg prefix "$prefix" 'any(.[]; (.headRefName | startswith($prefix)) and .autoMergeRequest != null)')
-          printf 'behind=%s\n' "$behind" | tee -a "$GITHUB_OUTPUT"
-
-      - if: steps.queued.outputs.behind == 'true'
-        uses: ./.github/actions/hooks
+      - uses: ./.github/actions/hooks
         with:
           client-id: ${{ vars.CORE_APP_CLIENT_ID }}
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
 
       - id: pinned
-        if: steps.queued.outputs.behind == 'true'
         uses: ./.github/actions/pinned
 
       - id: database
-        if: steps.queued.outputs.behind == 'true'
         uses: ./.github/actions/database
 
       - id: git-config
-        if: steps.queued.outputs.behind == 'true'
         working-directory: tree
         run: |
           git config user.name "core-app[bot]"
           git config user.email "core-app[bot]@users.noreply.github.com"
 
-      - id: close
+      - id: update
         working-directory: tree
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           QUIET_GH_TOKEN: ${{ steps.app.outputs.token }}
-          QUEUE_ONLY: ${{ github.event_name != 'push' && 'queue' || '' }}
-          CLOSED_ISSUE: ${{ github.event_name == 'issues' && github.event.issue.number || '' }}
           CALLED_FROM: ${{ github.workflow_ref }}
-        run: '"$GITHUB_WORKSPACE/bin/close" $QUEUE_ONLY $CLOSED_ISSUE'
+        run: '"$GITHUB_WORKSPACE/bin/close" queue'
 
-      - if: ${{ (failure() || cancelled()) && steps.close.outputs.ticket != '' }}
+      - if: ${{ (failure() || cancelled()) && steps.update.outputs.ticket != '' }}
         uses: ./.github/actions/call-owner
         with:
-          issue: ${{ steps.close.outputs.ticket }}
-          run: the closer run
+          issue: ${{ steps.update.outputs.ticket }}
+          run: the update run
           token: ${{ steps.app.outputs.token }}
 
   enrol:
     if: ${{ github.event_name == 'push' && github.repository == format('{0}/claude-workflow', github.repository_owner) }}
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ vars.QUICK_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
     env:
       GH_REPO: ${{ github.repository }}
@@ -773,7 +812,7 @@ jobs:
 
   strip:
     if: ${{ github.event.action == 'closed' }}
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ vars.QUICK_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
     env:
       GH_REPO: ${{ github.repository }}
@@ -810,9 +849,9 @@ jobs:
           token: ${{ steps.app.outputs.token }}
 
   dispatch-rerun:
-    needs: [build, review, which, fix, close, enrol, strip]
-    if: ${{ always() && (needs.review.outputs.fault == 'true' || needs.build.result == 'failure' || needs.which.result == 'failure' || needs.fix.result == 'failure' || needs.close.result == 'failure' || needs.enrol.result == 'failure' || needs.strip.result == 'failure' || contains(needs.*.result, 'cancelled')) }}
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    needs: [build, review, which, fix, close, update, enrol, strip]
+    if: ${{ always() && (needs.review.outputs.fault == 'true' || needs.build.result == 'failure' || needs.which.result == 'failure' || needs.fix.result == 'failure' || needs.close.result == 'failure' || needs.update.result == 'failure' || needs.enrol.result == 'failure' || needs.strip.result == 'failure' || contains(needs.*.result, 'cancelled')) }}
+    runs-on: ${{ vars.QUICK_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
     env:
       GH_REPO: ${{ github.repository }}

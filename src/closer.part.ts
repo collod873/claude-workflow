@@ -127,6 +127,7 @@ export function closing({
   check = "green" as "green" | "red",
   statusRefused = false,
   buckets,
+  quickLane = false,
 }: {
   ticket?: string;
   ticketBody?: string;
@@ -147,6 +148,7 @@ export function closing({
   check?: "green" | "red";
   statusRefused?: boolean;
   buckets?: string;
+  quickLane?: boolean;
 } = {}) {
   const root = scratch("closer-");
   const session = join(root, "session");
@@ -284,6 +286,7 @@ export function closing({
           GH_RETRY_SECONDS: "0",
           ...(calledFrom === undefined ? {} : { CALLED_FROM: calledFrom }),
           ...(foreign ? { MACHINE_BIN: BIN } : {}),
+          ...(quickLane ? { QUICK_LANE: "true" } : {}),
         },
         closedIssue !== undefined ? ["queue", closedIssue] : afterCheck ? ["queue"] : [],
       ),

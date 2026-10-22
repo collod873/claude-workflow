@@ -5,6 +5,9 @@ import { hostname } from "node:os";
 const VARIABLE = "CI_RUNNER";
 const LABEL = "pc";
 const PC_RUNNERS = 2;
+const QUICK_VARIABLE = "QUICK_RUNNER";
+const QUICK_LABEL = "pc-quick";
+const QUICK_RUNNERS = 4;
 const USER = "ghrunner";
 const HOME = `/home/${USER}`;
 const NODE = `${HOME}/node`;
@@ -22,14 +25,20 @@ const CHECK_SLOTS = 2;
 const CHECK_SLOTS_DIR = `${HOME}/check-slots`;
 const PC_RUNNERS_CPUS = 8;
 const RUNNER_CPUS = 4;
+const QUICK_SLICE = "pc-quick-runners.slice";
+const QUICK_RUNNERS_MEMORY_GB = 8;
+const QUICK_RUNNER_MEMORY_GB = 3;
 const cpus = Number(spawnSync("nproc", { encoding: "utf8" }).stdout);
 const firstCpu = Math.max(0, cpus - PC_RUNNERS_CPUS);
-const slice = ["[Slice]", `MemoryMax=${PC_RUNNERS_MEMORY_GB}G`, "MemorySwapMax=0", `AllowedCPUs=${firstCpu}-${cpus - 1}`, ""].join("\n");
+const quickCpus = firstCpu > 0 ? `0-${firstCpu - 1}` : `0-${cpus - 1}`;
+const sliceOf = (memoryGb: number, allowed: string) => ["[Slice]", `MemoryMax=${memoryGb}G`, "MemorySwapMax=0", `AllowedCPUs=${allowed}`, ""].join("\n");
 const cpusOf = (at: number) => {
   const start = Math.min(cpus - 1, firstCpu + (at % Math.max(1, PC_RUNNERS_CPUS / RUNNER_CPUS)) * RUNNER_CPUS);
   return `${start}-${Math.min(cpus - 1, start + RUNNER_CPUS - 1)}`;
 };
-const confinement = (at: number) => ["[Service]", `Slice=${SLICE}`, `MemoryMax=${RUNNER_MEMORY_GB}G`, "MemorySwapMax=0", `AllowedCPUs=${cpusOf(at)}`, "OOMPolicy=continue", "KillMode=mixed", ""].join("\n");
+const confinementIn = (slice: string, memoryGb: number, allowed: string) => ["[Service]", `Slice=${slice}`, `MemoryMax=${memoryGb}G`, "MemorySwapMax=0", `AllowedCPUs=${allowed}`, "OOMPolicy=continue", "KillMode=mixed", ""].join("\n");
+const confinement = (at: number) => confinementIn(SLICE, RUNNER_MEMORY_GB, cpusOf(at));
+const quickConfinement = () => confinementIn(QUICK_SLICE, QUICK_RUNNER_MEMORY_GB, quickCpus);
 const EARLYOOM = "/etc/default/earlyoom";
 const earlyoom = 'EARLYOOM_ARGS="-r 3600 -m 10,5 -s 10,5"\n';
 const NOT_FOUND = /\(HTTP 404\)|not found/i;
@@ -70,20 +79,27 @@ const asRunnerUser = (script: string, input?: string) => run("sudo", ["-u", USER
 const asRoot = (script: string, input?: string) => run("sudo", ["bash", "-c", script], input);
 const quoted = (text: string) => `'${text.replace(/'/g, "'\\''")}'`;
 
+type Runner = { id: number; name: string; status: string; busy: boolean; labels: { name: string }[] };
+
+const labelled = (runner: Runner, label: string) => runner.labels.some(({ name }) => name === label);
+
 function onRepo(repo: string) {
-  const pcRunners = () =>
-    (JSON.parse(gh(["api", `repos/${repo}/actions/runners`])) as { runners: { name: string; status: string; busy: boolean; labels: { name: string }[] }[] }).runners.filter(({ labels }) => labels.some(({ name }) => name === LABEL));
+  const runners = () => (JSON.parse(gh(["api", `repos/${repo}/actions/runners`])) as { runners: Runner[] }).runners;
+  const pcRunners = () => runners().filter((runner) => labelled(runner, LABEL));
+  const quickRunners = () => runners().filter((runner) => labelled(runner, QUICK_LABEL) && !labelled(runner, LABEL));
   const online = () => pcRunners().filter(({ status }) => status === "online").length;
-  const current = (): Mode => {
+  const read = (variable: string) => {
     try {
-      return gh(["variable", "get", VARIABLE, "-R", repo]).trim() === LABEL ? "pc" : "github";
+      return gh(["variable", "get", variable, "-R", repo]).trim();
     } catch (error) {
-      if (error instanceof Refused && NOT_FOUND.test(error.message)) return "github";
+      if (error instanceof Refused && NOT_FOUND.test(error.message)) return undefined;
       throw error;
     }
   };
+  const current = (): Mode => (read(VARIABLE) === LABEL ? "pc" : "github");
+  const quickSet = () => read(QUICK_VARIABLE) === QUICK_LABEL;
   const isPrivate = () => (JSON.parse(gh(["api", `repos/${repo}`])) as { private: boolean }).private;
-  return { pcRunners, online, current, isPrivate };
+  return { pcRunners, quickRunners, online, current, quickSet, isPrivate };
 }
 
 function provisionUser(): void {
@@ -113,7 +129,7 @@ const dirOf = (repo: string, name: string) => `${HOME}/runners/${repo.replace("/
 const tempOf = (repo: string, name: string) => `${HOME}/tmp/${createHash("sha256").update(`${repo}/${name}`).digest("hex").slice(0, 8)}`;
 const unitOf = (repo: string, name: string) => `actions.runner.${repo.replace("/", "-")}.${name}.service`;
 
-function install(repo: string, name: string): void {
+function install(repo: string, name: string, labels: string): void {
   const dir = dirOf(repo, name);
   const version = gh(["api", "repos/actions/runner/releases/latest", "--jq", ".tag_name"]).trim().replace(/^v/, "");
   const tarball = `${RUNNER_RELEASES}/v${version}/actions-runner-linux-x64-${version}.tar.gz`;
@@ -123,7 +139,7 @@ function install(repo: string, name: string): void {
       `mkdir -p ${dir}`,
       `cd ${dir}`,
       `{ [ -x ./config.sh ] || curl -fsSL ${tarball} | tar -xz; }`,
-      `./config.sh --unattended --replace --url https://github.com/${repo} --token ${quoted(token)} --name ${quoted(name)} --labels ${LABEL} >/dev/null`,
+      `./config.sh --unattended --replace --url https://github.com/${repo} --token ${quoted(token)} --name ${quoted(name)} --labels ${labels} >/dev/null`,
     ].join(" && "),
   );
   asRoot(`cd ${dir} && ./bin/installdependencies.sh >/dev/null && ./svc.sh install ${USER} >/dev/null`);
@@ -135,10 +151,13 @@ const staged = (file: Placing) => ({ ...file, changed: file.as(`cat >${file.path
 
 const place = (file: Placing & { changed: boolean }) => file.as(file.changed ? `mv ${file.path}.next ${file.path}` : `rm ${file.path}.next`);
 
-function provisionSlice(): void {
-  const file = staged({ as: asRoot, path: `${UNITS}/${SLICE}`, text: slice, mode: "644" });
-  place(file);
-  if (file.changed) asRoot("systemctl daemon-reload");
+function provisionSlices(): void {
+  const files = [
+    staged({ as: asRoot, path: `${UNITS}/${SLICE}`, text: sliceOf(PC_RUNNERS_MEMORY_GB, `${firstCpu}-${cpus - 1}`), mode: "644" }),
+    staged({ as: asRoot, path: `${UNITS}/${QUICK_SLICE}`, text: sliceOf(QUICK_RUNNERS_MEMORY_GB, quickCpus), mode: "644" }),
+  ];
+  for (const file of files) place(file);
+  if (files.some((file) => file.changed)) asRoot("systemctl daemon-reload");
 }
 
 function provisionEarlyoom(): void {
@@ -150,7 +169,7 @@ function provisionEarlyoom(): void {
 
 const running = (repo: string, name: string) => spawnSync("systemctl", ["is-active", "--quiet", unitOf(repo, name)]).status === 0;
 
-function settle(repo: string, name: string, at: number, busy: boolean): "started" | "mid-job" {
+function settle(repo: string, name: string, confined: string, busy: boolean): "started" | "mid-job" {
   const dir = dirOf(repo, name);
   const dropIns = `${UNITS}/${unitOf(repo, name)}.d`;
   const temp = tempOf(repo, name);
@@ -162,7 +181,7 @@ function settle(repo: string, name: string, at: number, busy: boolean): "started
     staged({ as: asRunnerUser, path: clear, text: clearing(repo, name, unitOf(repo, name)), mode: "755" }),
     staged({ as: asRunnerUser, path: `${dir}/.env`, text: env, mode: "644" }),
     staged({ as: asRunnerUser, path: `${dir}/.path`, text: `${PATH}\n`, mode: "644" }),
-    staged({ as: asRoot, path: `${dropIns}/pc-runner.conf`, text: confinement(at), mode: "644" }),
+    staged({ as: asRoot, path: `${dropIns}/pc-runner.conf`, text: confined, mode: "644" }),
   ];
   const changed = files.some((file) => file.changed);
   if (changed && busy) return "mid-job";
@@ -178,7 +197,7 @@ function turnOff(repo: string, extra: { name: string; busy: boolean }[]): string
   return busy === 0 ? `, ${extra.length} turned off` : `, ${extra.length} turned off, ${busy} once its job ends`;
 }
 
-function stopIdle(repo: string, runners: { name: string; status: string; busy: boolean }[]): string {
+function stopIdle(repo: string, runners: Runner[]): string {
   const ours = runners.filter(({ name, status }) => name.startsWith(`${hostname().toLowerCase()}-`) && status === "online");
   for (const { name } of ours.filter(({ busy }) => !busy)) asRoot(`cd ${dirOf(repo, name)} && ./svc.sh stop >/dev/null`);
   const busy = ours.filter(({ busy }) => busy).length;
@@ -205,34 +224,46 @@ function toPc(repo: string, asked: number | undefined): string {
   const names = Array.from({ length: wanted }, (_, at) => `${host}-${at + 1}`);
   const missing = names.filter((name) => !registered.has(name));
   const extra = runners.filter(({ name }) => name.startsWith(`${host}-`) && !names.includes(name));
+  const quickRegistered = new Map(on.quickRunners().map(({ name, busy }) => [name, busy]));
+  const quickNames = Array.from({ length: QUICK_RUNNERS }, (_, at) => `${host}-quick-${at + 1}`);
+  const quickMissing = quickNames.filter((name) => !quickRegistered.has(name));
   provisionUser();
   provisionNode();
   provisionGh();
-  provisionSlice();
+  provisionSlices();
   provisionEarlyoom();
-  for (const name of missing) install(repo, name);
-  const midJob = names.filter((name, at) => settle(repo, name, at, registered.get(name) === true && running(repo, name)) === "mid-job");
+  for (const name of missing) install(repo, name, `${LABEL},${QUICK_LABEL}`);
+  for (const name of quickMissing) install(repo, name, QUICK_LABEL);
+  for (const { id } of runners.filter((runner) => !labelled(runner, QUICK_LABEL))) gh(["api", "-X", "POST", `repos/${repo}/actions/runners/${id}/labels`, "-f", `labels[]=${QUICK_LABEL}`]);
+  const midJob = [
+    ...names.filter((name, at) => settle(repo, name, confinement(at), registered.get(name) === true && running(repo, name)) === "mid-job"),
+    ...quickNames.filter((name) => settle(repo, name, quickConfinement(), quickRegistered.get(name) === true && running(repo, name)) === "mid-job"),
+  ];
   const off = turnOff(repo, extra);
   const count = waitOnline(() => on.pcRunners().filter(({ name, status }) => names.includes(name) && status === "online").length, wanted);
   if (count === 0) throw new Refused(`no PC runner of ${repo} came online within ${WAIT_SECONDS}s, so it stays where it was: start them with \`sudo systemctl start 'actions.runner.*'\``);
   if (on.current() !== "pc") gh(["variable", "set", VARIABLE, "-R", repo, "--body", LABEL]);
-  const installed = missing.length > 0 ? `, ${missing.length} installed` : "";
+  if (!on.quickSet()) gh(["variable", "set", QUICK_VARIABLE, "-R", repo, "--body", QUICK_LABEL]);
+  const quick = on.quickRunners().filter(({ name, status }) => quickNames.includes(name) && status === "online").length;
+  const installed = missing.length + quickMissing.length > 0 ? `, ${missing.length + quickMissing.length} installed` : "";
   const waiting = midJob.length > 0 ? `; ${midJob.join(", ")} kept their old setup mid-job: run this again once they finish` : "";
   const up = count < wanted ? `${count} of ${wanted} PC runners online, the rest still starting` : `${count} PC runners online`;
-  return `${repo} runs on this PC from its next job, ${up}${installed}${off}${waiting}`;
+  return `${repo} runs on this PC from its next job, ${up}, ${quick} quick runners online${installed}${off}${waiting}`;
 }
 
 function toGithub(repo: string): string {
   const on = onRepo(repo);
   const already = on.current() === "github";
   if (!already) gh(["variable", "delete", VARIABLE, "-R", repo]);
-  const stopped = stopIdle(repo, on.pcRunners());
+  if (on.quickSet()) gh(["variable", "delete", QUICK_VARIABLE, "-R", repo]);
+  const stopped = stopIdle(repo, [...on.pcRunners(), ...on.quickRunners()]);
   return already ? `${repo} already runs on GitHub's runners, ${stopped}` : `${repo} runs on GitHub's runners from its next job, ${stopped}; a job already queued for the PC waits until it is switched back`;
 }
 
 function where(repo: string): string {
   const on = onRepo(repo);
-  return `${repo} runs on ${on.current() === "pc" ? "this PC" : "GitHub's runners"}, ${on.online()} of ${on.pcRunners().length} PC runners online`;
+  const quick = on.quickRunners();
+  return `${repo} runs on ${on.current() === "pc" ? "this PC" : "GitHub's runners"}, ${on.online()} of ${on.pcRunners().length} PC runners online, ${quick.filter(({ status }) => status === "online").length} of ${quick.length} quick runners`;
 }
 
 function runner(repo: string, mode: string | undefined, count: string | undefined): number {

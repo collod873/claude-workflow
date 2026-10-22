@@ -71,8 +71,8 @@ Save meets later is the repo's fault, never the ticket's.
 _Avoid_: onboard, install, register
 
 **PC runner**:
-A runner on the PC, labelled `pc`; a private repo's `CI_RUNNER` set to `pc` sends its jobs
-there; unset, to GitHub's. `bin/runner` installs and flips it.
+A runner labelled `pc`, where a private repo's `CI_RUNNER` of `pc` sends jobs; `bin/runner`
+sets it up. A **quick runner**, `pc-quick`, runs jobs readying no tree.
 _Avoid_: local runner
 
 **Worker**:
