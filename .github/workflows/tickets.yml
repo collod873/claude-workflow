@@ -141,7 +141,7 @@ jobs:
           STAGE_MINUTES: 45
           CALLED_FROM: ${{ github.workflow_ref }}
         run: |
-          tail --pid=$$ -n +1 -F .git/machine-logs/fix-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
+          tail --pid=$$ -q -n +1 -F .git/machine-logs/fix-${{ github.event.issue.number }}.jsonl .git/machine-logs/review-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
           "$GITHUB_WORKSPACE/bin/fix" ${{ github.event.issue.number }}
 
       - if: always() && steps.fix.outcome != 'skipped'

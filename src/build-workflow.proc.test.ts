@@ -290,6 +290,19 @@ describe("every job that spends a model is watched as it goes, read after it end
       expect(watched.status).toBe(3);
     }
   });
+
+  it("the build's feed shows the reviewer's reading and verdict as it shows the builder's, since one run builds and reviews its ticket (#1447)", () => {
+    const run = (stageStep(workflow().job, "fix").run ?? "").replaceAll(BARE_EXPRESSIONS, "9");
+    const cwd = scratch("review-feed-");
+    mkdirSync(join(cwd, ".git", "machine-logs"), { recursive: true });
+    const verdict = { type: "assistant", message: { content: [{ type: "tool_use", name: "StructuredOutput", input: { outcome: "approve", reason: "it builds the Why" } }] } };
+    const stage = [`printf '%s\\n' '${JSON.stringify(SAID)}' >>.git/machine-logs/review-9.jsonl`, `printf '%s\\n' '${JSON.stringify(verdict)}' >>.git/machine-logs/review-9.jsonl`, "sleep 1.5"].join("\n");
+
+    const watched = spawnSync("bash", ["-e", "-c", `${run.split("\n")[0]}\n${stage}`], { cwd, env: { ...process.env, FEED }, encoding: "utf8", timeout: 10000 });
+
+    expect(watched.stdout).toContain("said: reading the brief");
+    expect(watched.stdout).toContain('StructuredOutput: {"outcome":"approve","reason":"it builds the Why"}');
+  });
 });
 
 function namedJob(jobs: Record<string, Job>, name: string, where: string): Job {
