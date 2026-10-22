@@ -128,7 +128,7 @@ describe("tickets.yml builds a ticket the moment it is filed (#826)", () => {
     expect(await queued({ sender: MACHINE, action: "unlabeled", label: "waiting" })).toBe(true);
   });
 
-  it("a follow-up the reviewer files labelled `waiting` starts no build when opened, only once `waiting` comes off (#1033)", async () => {
+  it("a ticket the App files labelled `waiting` starts no build when opened, only once `waiting` comes off (#1033)", async () => {
     expect(await starts({ sender: "collod873-machine[bot]", action: "opened", labels: ["ticket", "waiting"] })).toBe(false);
     expect(await starts({ sender: "collod873-machine[bot]", action: "unlabeled", label: "waiting" })).toBe(true);
   });
