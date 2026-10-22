@@ -13,6 +13,7 @@ const NAMED = {
   record: "Decisions record",
   reliesOn: "Decisions it relies on",
   waitsOn: "Waits on",
+  followUps: "Follow-ups",
 } as const;
 const heading = (name: string): RegExp => new RegExp(`^##[ \\t]+${name.replace("'", "[’']")}[ \\t]*(?=\\r?$)`, "m");
 const WHY = heading(NAMED.why);
@@ -43,6 +44,8 @@ export const WHY_SHAPE = [
 ].join(" ");
 export const BUILD_SHAPE = [
   `a decision Collin has made. Adds ## ${NAMED.doneWhen}: what we decided to do, said as ${DONE_SENTENCES}.`,
+  `Its ${NAMED.doneWhen} names only work its own repo does; what another repo shows as proof may stay.`,
+  `What another repo must do once the build lands goes under ## ${NAMED.followUps}, one line per repo, and whoever lands the build files each one there as a build.`,
   "A build starts the moment it is filed, so a question still open makes it an idea or a look-into.",
 ].join(" ");
 export const BUG_SHAPE = `a fault still standing; its ## ${NAMED.why} quotes the evidence, such as a log line, a failing test or error text. Adds ## ${NAMED.doneWhen}: what working looks like. It builds the moment it is filed.`;
