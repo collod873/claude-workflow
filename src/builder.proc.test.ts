@@ -490,6 +490,18 @@ describe("a fresh reviewer reads each green build, fixes or approves it, and bin
     expect(ticketComments().at(-1)).toContain("two rounds in a row changed nothing");
   });
 
+  it("leaves a ticket whose reviewer's model call fails twice unmarked and the owner uncalled, and ends red so the machine re-runs it", () => {
+    const { run, marked, ticketComments, landed } = fixing({ claude: FIXES, reviewer: "printf 'the model overloaded\\n' >&2\nexit 1\n" });
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("the model overloaded");
+    expect(marked()).not.toContain("811 stuck");
+    expect(ticketComments().filter((said) => said?.includes("needs you"))).toEqual([]);
+    expect(landed()).toEqual([]);
+  });
+
   it("gives the reviewer's next round its whole cap however long bin/land's full check took", () => {
     const LAND_CHECKS_PAST_THE_CAP_THEN_REFUSES = "[ -f ../land-refused ] || { touch ../land-refused; sleep 4; printf 'land: the full check is red\\n' >&2; exit 1; }\n";
     const { run, capped, landed } = fixing({ claude: FIXES, land: LAND_CHECKS_PAST_THE_CAP_THEN_REFUSES, stageMinutes: "0.05" });
