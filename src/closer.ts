@@ -29,20 +29,20 @@ const recorded = (said: string) => (said === "" ? "" : `; record ${said}`);
 
 const firstLine = (got: { stdout: string; stderr: string }) => (got.stderr || got.stdout).trim().split("\n")[0] || "no reason given";
 
-const endedOrMerged = (ticket: string, merged: string | undefined, held: string) => (ticket === merged ? "CLOSED COMPLETED" : ticketState(ticket, `so #${held} is not woken`));
+const ended = (ticket: string, held: string) => ticketState(ticket, `so #${held} is not woken`);
 const stillWaits = (ticket: string, open: string[]) => `; #${ticket} still waits for ${open.map((waited) => `#${waited}`).join(", ")}`;
 
-function openWaitedOn(ticket: string, body: string, merged: string | undefined, known: string[]): string[] {
-  return waitsOn(body).filter((waited) => waited !== ticket && !known.includes(waited) && !endedOrMerged(waited, merged, ticket).startsWith("CLOSED"));
+function openWaitedOn(ticket: string, body: string, known: string[]): string[] {
+  return waitsOn(body).filter((waited) => waited !== ticket && !known.includes(waited) && !ended(waited, ticket).startsWith("CLOSED"));
 }
 
 const howEnded = (states: { number: string; state: string }[]) => states.map(({ number, state }) => `#${number} ${state === "CLOSED COMPLETED" ? "merged" : "closed unbuilt"}`).join(", ");
 
-function wokenFromSplit(parent: string, body: string, split: string, merged: string | undefined): string {
+function wokenFromSplit(parent: string, body: string, split: string): string {
   const pieces = ((NAMED.exec(split.slice(splitInto(parent).length).trimStart())?.[0] ?? "").match(/#\d+/g) ?? []).map((named) => named.slice(1));
   if (pieces.length === 0) return `; #${parent} waits, and no split record names what for`;
-  const states = pieces.map((piece) => ({ piece, state: endedOrMerged(piece, merged, parent) }));
-  const open = [...states.filter(({ state }) => !state.startsWith("CLOSED")).map(({ piece }) => piece), ...openWaitedOn(parent, body, merged, pieces)];
+  const states = pieces.map((piece) => ({ piece, state: ended(piece, parent) }));
+  const open = [...states.filter(({ state }) => !state.startsWith("CLOSED")).map(({ piece }) => piece), ...openWaitedOn(parent, body, pieces)];
   if (open.length > 0) return stillWaits(parent, open);
   const how = howEnded(states.map(({ piece, state }) => ({ number: piece, state })));
   commentOnTicket(parent, `${splitClosed(parent)} ${how}. #${parent} builds now.\n\nRun: ${thisRun}`, gh);
@@ -50,15 +50,15 @@ function wokenFromSplit(parent: string, body: string, split: string, merged: str
   return woke.status === 0 ? `; #${parent} builds now, its split tickets all closed: ${how}` : `; #${parent} could not be woken: ${quoted((woke.stderr || woke.stdout).trim().split("\n")[0] ?? "")}`;
 }
 
-function wokenWaiting(ticket: string, body: string, merged: string | undefined): string {
+function wokenWaiting(ticket: string, body: string): string {
   const comments = commentsRead(ticket, `the comments on #${ticket} could not be read, so it is not woken`, gh);
   const parked = comments.filter((said) => said.includes(LABELLED_WAITING)).at(-1);
-  return parked?.startsWith(splitInto(ticket)) === true ? wokenFromSplit(ticket, body, parked, merged) : "";
+  return parked?.startsWith(splitInto(ticket)) === true ? wokenFromSplit(ticket, body, parked) : "";
 }
 
 const FAULT_FILED = new RegExp(`https://github\\.com/${MACHINE_REPO}/issues/(\\d+)`, "g");
 
-function wokenAtFaultOrigin(fault: string, body: string, merged: string | undefined): string {
+function wokenAtFaultOrigin(fault: string, body: string): string {
   const [, repo, origin] = FAULT_FROM.exec(why(body)) ?? [];
   if (repo === undefined || origin === undefined) return "";
   const at = `${repo}#${origin}`;
@@ -68,7 +68,7 @@ function wokenAtFaultOrigin(fault: string, body: string, merged: string | undefi
   const parked = commentsRead(origin, `the comments on ${at} could not be read, so it is not woken`, inOrigin).filter((said) => said.includes(LABELLED_WAITING)).at(-1) ?? "";
   const filed = [...new Set(Array.from(parked.matchAll(FAULT_FILED), ([, number]) => number ?? ""))];
   if (!filed.includes(fault)) return "";
-  const states = filed.map((number) => ({ number, state: endedOrMerged(number, merged, at) }));
+  const states = filed.map((number) => ({ number, state: ended(number, at) }));
   const open = states.filter(({ state }) => !state.startsWith("CLOSED")).map(({ number }) => `#${number}`);
   if (open.length > 0) return `; ${at} still waits for ${open.join(", ")}`;
   const how = howEnded(states);
@@ -80,10 +80,10 @@ function wokenAtFaultOrigin(fault: string, body: string, merged: string | undefi
 function wokenByClosedFault(closed: string | undefined): string {
   if (closed === undefined) return "";
   const body = ghRead(["issue", "view", closed, "--json", "body", "--jq", ".body"], `#${closed} could not be read, so the ticket waiting on it is not woken`);
-  return wokenAtFaultOrigin(closed, body, undefined);
+  return wokenAtFaultOrigin(closed, body);
 }
 
-function wokenAfterParents(merged?: string): string {
+function wokenAfterParents(): string {
   const line = `the tickets labelled ${WAITING} could not be read, so none is woken`;
   const listed = ghRead(["issue", "list", "--state", "open", "--label", WAITING, "--limit", "100", "--json", "number,body"], line);
   let waiting: { number: number; body: string }[];
@@ -92,7 +92,7 @@ function wokenAfterParents(merged?: string): string {
   } catch {
     return unread(line);
   }
-  return waiting.map(({ number, body }) => wokenWaiting(String(number), body, merged)).join("");
+  return waiting.map(({ number, body }) => wokenWaiting(String(number), body)).join("");
 }
 
 function close(closed: string | undefined): undefined {
@@ -174,7 +174,7 @@ function closeMerged(merge: Built): Stop | undefined {
     if (state.startsWith("CLOSED")) quietGh(["issue", "reopen", ticket]);
     if (quietGh(["issue", "close", ticket, "--reason", "completed"]).status !== 0) return stoppedAt("unrecorded", `close: #${ticket} is done but could not be closed${recorded(posted.said)}`);
   }
-  console.log(`close: #${ticket} closed as completed, its PR merged${recorded(posted.said)}${wokenAfterParents(ticket)}${wokenAtFaultOrigin(ticket, asked.stdout, ticket)}${rowMovedFor(ticket, asked.stdout)}`);
+  console.log(`close: #${ticket} closed as completed, its PR merged${recorded(posted.said)}${rowMovedFor(ticket, asked.stdout)}`);
   return undefined;
 }
 
