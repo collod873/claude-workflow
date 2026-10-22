@@ -5,17 +5,17 @@ import { dirname, join, resolve } from "node:path";
 import { admission, doesNotBuild } from "./admit.ts";
 import { capped, LIST_CAP, NO_EM_DASH, onDisk, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
 import { FULL_CHECK } from "./checks.ts";
-import { BUILDER_SPLIT, commentOnTicket, commentsRead, faultOf, FOLLOW_UP_OF, FOREIGN, followUpBody, gh, git, gitRead, MACHINE_REPO, mark, NOTHING_MARKED, OWNER, post, postRefusals, readOrStop, rewriteTicket, FILED_IN, STUCK, ticketBranch, WAITING } from "./post.ts";
+import { BUILDER_SPLIT, commentOnTicket, commentsRead, faultOf, FOLLOW_UP_OF, FOREIGN, followUpBody, gh, ghRead, git, gitRead, MACHINE_REPO, mark, NOTHING_MARKED, OWNER, post, postRefusals, readOrStop, rewriteTicket, FILED_IN, STUCK, ticketBranch, WAITING } from "./post.ts";
 import { reviewedAndLanded } from "./reviewer.ts";
-import { calledOwner, committed, commitlinted, CONTRACT, head, linted, opened, setupRefusal, type Spent, treePathed } from "./stage.ts";
-import { BUILDING } from "./spelled.ts";
+import { calledOwner, committed, commitlinted, CONTRACT, linted, opened, setupRefusal, type Spent, treePathed } from "./stage.ts";
+import { BUILDING, TICKET } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { DONE_SENTENCES, doneWhen, quoted, why, whyChanged } from "./ticket-shape.ts";
 
 const ANSWER = {
   type: "object",
   properties: {
-    outcome: { enum: ["code", "ticket", "split", "done", "close", "stuck", "machine"] },
+    outcome: { enum: ["code", "split", "done", "close", "stuck", "machine"] },
     reason: { type: "string", pattern: NO_EM_DASH },
     body: { type: "string", pattern: NO_EM_DASH },
     tickets: {
@@ -43,7 +43,7 @@ interface Piece {
 }
 
 interface Answer {
-  outcome: "code" | "ticket" | "split" | "done" | "close" | "stuck" | "machine";
+  outcome: "code" | "split" | "done" | "close" | "stuck" | "machine";
   reason: string;
   body?: string;
   tickets?: Piece[];
@@ -61,9 +61,9 @@ export const FILED = /\/issues\/(\d+)\s*$/;
 interface Handed {
   ticket: string;
   body: string;
-  contract?: string;
   capture?: string;
   woken?: string;
+  alongside?: string;
   commitlint?: boolean;
   foreign?: boolean;
 }
@@ -72,7 +72,6 @@ type Round = { red?: string; ended?: number; body?: string };
 
 type Spend = (input: string, resume?: string) => Spent;
 
-export const CONTRACT_CAP = 4 * 1024;
 const CHECK = `${FULL_CHECK} --publish`;
 const PASSED = /^check: ok\b/;
 const LOGGED = /; log (.+?)\s*$/;
@@ -94,11 +93,6 @@ export function repaired(output: string): string {
   return [`\`${CHECK}\` is still red. The end of its output:`, tailOf(output, TAIL_CAP), "Make it pass.", ""].join("\n\n");
 }
 
-function readiedTree(): { contract: string; unready: string | undefined } {
-  const contract = onDisk(join(process.cwd(), CONTRACT)) ?? "";
-  return { contract, unready: setupRefusal(contract) };
-}
-
 function checked(): string | undefined {
   const { GITHUB_ACTIONS: _annotating, ...env } = process.env;
   const { stdout, stderr } = spawnSync("bash", ["-c", CHECK], { env: treePathed(env), encoding: "utf8" });
@@ -109,38 +103,52 @@ function checked(): string | undefined {
   return [output, log === undefined ? "" : (onDisk(resolve(log)) ?? "")].join("\n");
 }
 
-const buildIt = (contract: string) => [
+const BUILD_IT = [
   "## Build it",
-  "Build what the ticket's Why asks for until its `## Done when` holds.",
-  "Call the Skill tool with `testing` before the first test: it is the standard for which tests are worth writing and what to do when an existing one goes red. Then work red before green, one slice at a time: write one failing test, see it fail, write only enough to pass it, repeat.",
-  "Commit your own work, each message saying why, with no em dash and no closing keyword such as `Fixes #12`: `bin/land` refuses them. If the test count drops, give the reason on a line of its own: `Test count drop: <why>`; a test `testing` says to cut is reason enough.",
-  `Run \`${FULL_CHECK}\` last: it runs every step of \`${CONTRACT}\` no receipt already covers, so running a step apart only repeats it. The steps stand in your tree as:`,
-  ["```json", capped(contract, CONTRACT_CAP).trimEnd(), "```"].join("\n"),
+  "Build what the ticket's Why asks for until its `## Done when` holds. Call the Skill tool with `tdd` and follow it to the end.",
+  "Commit your work, each message saying why, with no em dash and no closing keyword such as `Fixes #12`: `bin/land` refuses them.",
+  `Run \`${FULL_CHECK}\` last: it runs every step of \`${CONTRACT}\`, so running a step apart only repeats it.`,
 ];
+
+const NAMED_FILE = /(?<![\w./-])(?:[\w.-]+\/)*([\w-][\w.-]*\.(?:tsx?|[cm]?js|jsx|json|md|ya?ml|py|sh|sql|toml|css|html))\b/g;
+const filesNamed = (text: string) => new Set([...text.matchAll(NAMED_FILE)].map(([, file]) => file));
+
+function onTheSameFiles(ticket: string, body: string): string {
+  const named = filesNamed(body);
+  if (named.size === 0) return "";
+  const open = JSON.parse(ghRead(["issue", "list", "--state", "open", "--label", TICKET, "--limit", "200", "--json", "number,title,body"], `the open tickets could not be read, ${NOTHING_MARKED}`)) as { number: number; title: string; body: string }[];
+  return open
+    .filter((other) => String(other.number) !== ticket && [...filesNamed(other.body)].some((file) => named.has(file)))
+    .map((other) => `- #${other.number} ${other.title}`)
+    .join("\n");
+}
+
+const sameFiles = (alongside: string | undefined) =>
+  alongside === undefined || alongside === "" ? [] : ["## Open tickets on the same files", "Each names a file this ticket names, and may already ask for part of its fix:", capped(alongside, LIST_CAP)];
 
 const machineAtFault = (foreign: boolean | undefined) =>
   foreign === true
     ? `- \`machine\`: the machine is at fault, reviewer included; it lives in ${MACHINE_REPO}, not this tree, so change nothing here for it: file the fault as \`tickets\`, and this ticket waits on them.`
     : "- `machine`: the machine is at fault, reviewer included; fix it in a worktree off `origin/main`, commit naming this ticket, and `bin/land` it first.";
 
-export function handedOn({ ticket, body, contract = "", capture, woken, commitlint, foreign }: Handed): string {
+export function handedOn({ ticket, body, capture, woken, alongside, commitlint, foreign }: Handed): string {
   return [
     `# Ticket #${ticket}`,
     capped(body, TICKET_CAP),
     ...(woken === undefined ? [] : ["## How its split ended", "Build what a piece closed unbuilt left, or rule it out:", capped(woken, LIST_CAP)]),
+    ...sameFiles(alongside),
     ...filedIn(capture),
-    ...buildIt(contract),
+    ...BUILD_IT,
     ...linted(commitlint),
     "## Your answer",
-    "Read its Why first; `gh` reads any run. Answer one outcome:",
-    `- \`code\`: build it; the machine commits, runs \`${CHECK}\` and hands back each red until it passes, then a fresh reviewer reads your diff, fixes what it finds, and lands it with \`bin/land\`.`,
-    "- `ticket`: its `## Done when` is wrong; return the ticket rewritten against its Why as `body`, Why byte-identical; it is posted on the ticket, and you build it in this run.",
+    "Answer one outcome:",
+    `- \`code\`: built; the machine commits whatever you left, runs \`${CHECK}\` and hands back each red until it passes, then a fresh reviewer reads your diff, fixes what it finds, and lands it with \`bin/land\`. Where its \`## Done when\` was wrong, give the ticket rewritten against its Why as \`body\`, Why byte-identical; it is posted on the ticket before the check.`,
     `- \`split\`: too big for one build; file \`tickets\` that build at once, each with \`done\` as ${DONE_SENTENCES}. What must wait for them stays as \`body\`, Why byte-identical, and builds once they merge.`,
     "- `done`: main already does what it asks, as when an earlier run landed it and its close failed; it closes completed, and no one is called.",
     "- `close`: the ticket should not exist as written, and nothing should replace it, as for a gate you cannot make pass, since a gate is proven first.",
     "- `stuck`: you cannot build it, even rewritten; `reason` says why, and the ticket is marked `stuck`.",
     machineAtFault(foreign),
-    "`reason`: one paragraph for the owner. Two rounds in a row that change nothing call them.",
+    "`reason`: one paragraph for the owner.",
     "",
   ].join("\n\n");
 }
@@ -217,13 +225,13 @@ function split(ticket: string, body: string, answer: Answer): Round {
 }
 
 function rewritten(ticket: string, body: string, answer: Answer): Round {
-  if (answer.body === undefined || answer.body.trim() === body.trim()) return { red: "Your `ticket` answer returned the ticket unchanged: return it rewritten as `body`, or answer another outcome." };
+  if (answer.body === undefined || answer.body.trim() === body.trim()) return {};
   const written = rewriteTicket(ticket, body, answer.body, gh);
   const [refusal] = written.refusals;
   if (refusal !== undefined) return { red: `Your rewrite of the ticket was refused: ${quoted(refusal)}` };
   commentOnTicket(ticket, `The builder of #${ticket} rewrote what done looks like against its Why, and builds it as rewritten in this run: ${answer.reason}\n\n## Done when\n\n${doneWhen(answer.body)}`, gh);
   console.log(`fix: #${ticket} rewritten; it builds as rewritten`);
-  return { red: `Your rewrite is posted on #${ticket}, and its body is now:\n\n${capped(answer.body, TICKET_CAP)}\n\nBuild it as rewritten and answer \`code\`; answer \`stuck\` or \`close\` if you cannot.`, body: answer.body };
+  return { body: answer.body };
 }
 
 const faultBody = (ticket: string, { why: fault, done }: Piece): string =>
@@ -257,10 +265,9 @@ function outcomeOf(ticket: string, body: string, answer: Answer | undefined, mai
   if (answer.outcome === "close") return { ended: closedAs(ticket, "not planned", `@${OWNER} the builder closed #${ticket} unbuilt and kept its branch: ${answer.reason}`) };
   if (answer.outcome === "stuck") return { ended: calledOwner(ticket, "builder", answer.reason) };
   if (answer.outcome === "split") return split(ticket, body, answer);
-  if (answer.outcome === "ticket") return rewritten(ticket, body, answer);
   if (answer.outcome === "machine" && FOREIGN) return filedForMachine(ticket, answer);
   if (answer.outcome === "machine") return landedOnMain(ticket, answer.reason, mainBefore);
-  return {};
+  return rewritten(ticket, body, answer);
 }
 
 function spentOn(ticket: string, spend: Spend, input: string, session: string | undefined, opening: string): Spent {
@@ -278,10 +285,10 @@ function judged(): Round {
   return red === undefined ? {} : { red: repaired(red) };
 }
 
-function owned(ticket: string) {
+function owned(ticket: string, body: string) {
   const refused = admission(ticket, NOTHING_MARKED);
   if (refused !== undefined) return stoppedAt("unadmitted", `fix: ${doesNotBuild(ticket, refused)}`);
-  return { carrying: { onTicket: commentsRead(ticket, `the comments on #${ticket} could not be read, ${NOTHING_MARKED}`, gh) } };
+  return { carrying: { onTicket: commentsRead(ticket, `the comments on #${ticket} could not be read, ${NOTHING_MARKED}`, gh), alongside: onTheSameFiles(ticket, body) } };
 }
 
 function ownTicket(ticket: string): number {
@@ -291,41 +298,37 @@ function ownTicket(ticket: string): number {
     state: BUILDING,
     stoppedAt,
     hire: { name: "builder", model: "opus", answers: ANSWER },
-    ready: () => owned(ticket),
+    ready: (asked) => owned(ticket, asked.body),
   });
   if (typeof owning !== "object") return exitFor(owning);
   const { asked, spend } = owning;
   let body = asked.body;
   let session = savedSession(ticket);
-  const { contract, unready } = readiedTree();
+  const unready = setupRefusal(onDisk(join(process.cwd(), CONTRACT)) ?? "");
   if (unready !== undefined) return calledOwner(ticket, "builder", `its tree's setup failed: ${quoted(unready)}`);
   const opening = handedOn({
     ticket,
     body,
-    contract,
+    alongside: owning.carried.alongside,
     commitlint: commitlinted(),
     foreign: FOREIGN,
     capture: captureOf(body, process.env.SESSION_CAPTURES),
     woken: owning.carried.onTicket.filter((said) => said.startsWith(splitClosed(ticket))).at(-1),
   });
   let input = opening;
-  let idle = false;
   for (;;) {
-    const before = { head: head(), main: fetchedMain() };
+    const mainBefore = fetchedMain();
     const spent = spentOn(ticket, spend, input, session, opening);
     session = spent.session ?? session;
     keepSession(ticket, session);
     if (spent.refusal !== undefined) return calledOwner(ticket, "builder", spent.refusal);
     const answer = spent.answer as Answer | undefined;
-    const round = outcomeOf(ticket, body, answer, before.main);
+    const round = outcomeOf(ticket, body, answer, mainBefore);
     if (round.ended !== undefined) return round.ended;
     body = round.body ?? body;
     committed(builtBy(ticket), "feat");
-    const changed = round.body !== undefined || head() !== before.head || fetchedMain() !== before.main;
     const { red } = round.red === undefined ? judged() : round;
     if (red === undefined) return reviewedAndLanded(ticket, body);
-    if (!changed && idle) return calledOwner(ticket, "builder", `two rounds in a row changed nothing: ${round.red ?? answer?.reason ?? "it gave no outcome"}`);
-    idle = !changed;
     input = red;
   }
 }

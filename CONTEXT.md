@@ -110,9 +110,10 @@ A gate that fires before a run spends model time, so it is free when it fires.
 _Avoid_: precondition, validation, check
 
 **Builder**:
-The one agent that builds a ticket until its full check is green, then hands it to the reviewer. A
-later run resumes its session or logs why it starts fresh. It fixes the code, ticket or machine,
-splits the ticket, or closes it, done if main holds it, else unbuilt; stopped, it marks `stuck`.
+The agent that builds a ticket until its full check is green, then hands it to the reviewer. A
+later run resumes its session or logs why not. It fixes the code, the ticket only in a `code`
+answer, or the machine, splits or closes it, done if main holds it, else unbuilt; stopped, it marks
+`stuck`.
 _Avoid_: fixer, mechanic, fresh eyes, repair agent
 
 **Reviewer**:

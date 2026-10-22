@@ -106,7 +106,7 @@ function testCountDrop(repo: string): string[] {
   execFileSync("tar", ["-x", "-C", atBase], { input: archive });
   const before = testsIn(atBase);
   const now = testsIn(repo);
-  return now < before ? [`the machine holds ${now} tests, below ${before} at the merge base ${base.slice(0, 12)}`] : [];
+  return now < before ? [`the machine holds ${now} tests, below ${before} at the merge base ${base.slice(0, 12)}; a commit line \`Test count drop: <why>\` clears it`] : [];
 }
 
 function missingFiles(repo: string, registry: Part[]): string[] {
@@ -174,7 +174,7 @@ describe("the machine holds its growth limits", () => {
     git(copy, "commit", "--quiet", "-m", "base");
     git(copy, "update-ref", "refs/remotes/origin/main", "HEAD");
     plant(copy, "src/kept.test.ts", "import { it } from \"vitest\";\nit(\"one\", () => {});\n");
-    expect(testCountDrop(copy)).toEqual([expect.stringMatching(/^the machine holds 1 tests, below 2 at the merge base [0-9a-f]{12}$/)]);
+    expect(testCountDrop(copy)).toEqual([expect.stringMatching(/^the machine holds 1 tests, below 2 at the merge base [0-9a-f]{12}; a commit line `Test count drop: <why>` clears it$/)]);
 
     git(copy, "commit", "--quiet", "-am", "Cut a copy\n\nTest count drop: the second test repeated the first");
     expect(testCountDrop(copy)).toEqual([]);

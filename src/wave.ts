@@ -1,4 +1,4 @@
-import { capped } from "./brief.ts";
+import { capped, cutTo } from "./brief.ts";
 import { commentsRead, gh, ghRead, ghWhole, heldOf, opened, type Opened, prOfTicket, readOrStop, SPLIT_FROM, ticketBranch, unread } from "./post.ts";
 import { heldBefore, WAVE_CHECK_HEADING } from "./done-checker.ts";
 import { HELD, NOTE, SPEC, type LabelName } from "./spelled.ts";
@@ -102,7 +102,7 @@ export function waveDiffs(tickets: Listed[]): string {
   let upTo = 0;
   const cutAt = shown.findIndex(({ text }) => (upTo += Buffer.byteLength(text) + 2) > kept);
   const unshown = shown.slice(cutAt + 1).map(({ number }) => `#${number}`);
-  return capped(all, kept) + capped(`\n\n(cut at the ${DIFF_CAP} byte cap inside #${shown[cutAt]?.number ?? ""}'s diff; not shown: ${unshown.join(", ") || "none"})`, CUT_NOTE_CAP);
+  return cutTo(all, kept) + cutTo(`\n\n(cut at the ${DIFF_CAP} byte cap inside #${shown[cutAt]?.number ?? ""}'s diff; not shown: ${unshown.join(", ") || "none"})`, CUT_NOTE_CAP);
 }
 
 function openFollowUps(tied: Set<string>, unreadLine: string): string[] {
