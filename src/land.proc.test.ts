@@ -73,6 +73,15 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
     expect(calls().filter(merged)).toEqual([["pr", "merge", branch, "--merge", "--match-head-commit", head]]);
   });
 
+  it("runs the full check on the Node the ticket repo pins, handed on as TREE_PATH, and its own scripts on the machine's, as the builder's check does (#1446)", () => {
+    const { run, checkedOn, treeBin } = sessionAheadOfMain(1, { covered: false, treeNode: true });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(checkedOn()).toEqual([join(treeBin, "node"), join(treeBin, "node")]);
+  });
+
   it("keeps the coverage probe's reason in the land log when no receipt covers the commit, so a full check that ran can be traced to what was due", () => {
     const { session, head, run } = sessionAheadOfMain(1, { covered: false });
 

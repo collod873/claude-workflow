@@ -116,15 +116,19 @@ else
   title=
   body=
 fi
+tree_pathed() {
+  PATH="${TREE_PATH:+$TREE_PATH:}$PATH" "$@"
+}
+
 url=
 judged="judged by land on the commit before the push (ADR-0008)"
 for (( round = 1; ; round++ )); do
   changed=$(git diff --name-only "origin/$default_branch" HEAD)
   if [[ $changed == docs/buckets.md ]]; then
     judged="docs/buckets.md alone changed from $default_branch, and no check step reads it (#1382)"
-  elif ! check --full --covered >"$err" 2>&1; then
+  elif ! tree_pathed check --full --covered >"$err" 2>&1; then
     { printf -- '--- check --full --covered ---\n'; cat "$err"; } >>"$log"
-    if ! check --full --publish >&2; then
+    if ! tree_pathed check --full --publish >&2; then
       printf 'land: the full check went red on the commit, so nothing was pushed; fix what it names and land again\n' >&2
       exit 1
     fi
