@@ -7,7 +7,7 @@ import { capped, LIST_CAP, NO_EM_DASH, onDisk, TAIL_CAP, tailOf, TICKET_CAP } fr
 import { FULL_CHECK } from "./checks.ts";
 import { BUILDER_SPLIT, commentOnTicket, commentsRead, faultOf, FOLLOW_UP_OF, FOREIGN, followUpBody, gh, git, gitRead, MACHINE_REPO, mark, NOTHING_MARKED, OWNER, post, postRefusals, readOrStop, rewriteTicket, FILED_IN, STUCK, ticketBranch, WAITING } from "./post.ts";
 import { reviewedAndLanded } from "./reviewer.ts";
-import { calledOwner, committed, commitlinted, CONTRACT, head, linted, opened, OWNER_STEPS, type OwnerStep, setupRefusal, type Spent, treePathed } from "./stage.ts";
+import { calledOwner, committed, commitlinted, CONTRACT, head, linted, opened, setupRefusal, type Spent, treePathed } from "./stage.ts";
 import { BUILDING } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { DONE_SENTENCES, doneWhen, quoted, why, whyChanged } from "./ticket-shape.ts";
@@ -15,7 +15,7 @@ import { DONE_SENTENCES, doneWhen, quoted, why, whyChanged } from "./ticket-shap
 const ANSWER = {
   type: "object",
   properties: {
-    outcome: { enum: ["code", "ticket", "split", "close", "stuck", "machine"] },
+    outcome: { enum: ["code", "ticket", "split", "done", "close", "stuck", "machine"] },
     reason: { type: "string", pattern: NO_EM_DASH },
     body: { type: "string", pattern: NO_EM_DASH },
     tickets: {
@@ -31,7 +31,6 @@ const ANSWER = {
         additionalProperties: false,
       },
     },
-    steps: OWNER_STEPS,
   },
   required: ["outcome", "reason"],
   additionalProperties: false,
@@ -44,11 +43,10 @@ interface Piece {
 }
 
 interface Answer {
-  outcome: "code" | "ticket" | "split" | "close" | "stuck" | "machine";
+  outcome: "code" | "ticket" | "split" | "done" | "close" | "stuck" | "machine";
   reason: string;
   body?: string;
   tickets?: Piece[];
-  steps?: OwnerStep[];
 }
 
 const stoppedAt = stopsOf({ unadmitted: "Build refused: the ticket's checks would run as shell with the App's token" });
@@ -138,10 +136,10 @@ export function handedOn({ ticket, body, contract = "", capture, woken, commitli
     `- \`code\`: build it; the machine commits, runs \`${CHECK}\` and hands back each red until it passes, then a fresh reviewer reads your diff, fixes what it finds, and lands it with \`bin/land\`.`,
     "- `ticket`: its `## Done when` is wrong; return the ticket rewritten against its Why as `body`, Why byte-identical; it is posted on the ticket, and you build it in this run.",
     `- \`split\`: too big for one build; file \`tickets\` that build at once, each with \`done\` as ${DONE_SENTENCES}. What must wait for them stays as \`body\`, Why byte-identical, and builds once they merge.`,
+    "- `done`: main already does what it asks, as when an earlier run landed it and its close failed; it closes completed, and no one is called.",
     "- `close`: the ticket should not exist as written, and nothing should replace it, as for a gate you cannot make pass, since a gate is proven first.",
     "- `stuck`: you cannot build it, even rewritten; `reason` says why, and the ticket is marked `stuck`.",
     machineAtFault(foreign),
-    "`steps`: with `code`, each step only the owner can take before this work runs, such as a dashboard setting or a key; each is filed as an `owner-step` note once it lands, and the ticket still closes.",
     "`reason`: one paragraph for the owner. Two rounds in a row that change nothing call them.",
     "",
   ].join("\n\n");
@@ -167,12 +165,12 @@ function keepSession(ticket: string, session: string | undefined): void {
   writeFileSync(file, `${session}\n`);
 }
 
-function closedUnbuilt(ticket: string, said: string): number {
+function closedAs(ticket: string, reason: "completed" | "not planned", said: string): number {
   const posted = commentOnTicket(ticket, said, gh);
   const [refusal] = posted.refusals;
   if (refusal !== undefined) return calledOwner(ticket, "builder", `its closing reason was refused: ${quoted(refusal)}`);
-  if (gh(["issue", "close", ticket, "--reason", "not planned"]).status !== 0) return calledOwner(ticket, "builder", "it ruled the ticket closed and the ticket would not close");
-  console.log(`fix: #${ticket} closed unbuilt: ${said}`);
+  if (gh(["issue", "close", ticket, "--reason", reason]).status !== 0) return calledOwner(ticket, "builder", "it ruled the ticket closed and the ticket would not close");
+  console.log(`fix: #${ticket} closed ${reason}: ${said}`);
   return 0;
 }
 
@@ -207,7 +205,7 @@ function split(ticket: string, body: string, answer: Answer): Round {
   const numbers = filed.flatMap(({ said }) => FILED.exec(said)?.slice(1) ?? []);
   const named = numbers.map((number) => `#${number}`).join(", ");
   if (numbers.length < filed.length) return { ended: calledOwner(ticket, "builder", `its split filed ${numbers.length} of ${filed.length} tickets${named === "" ? "" : `, ${named}`}: ${quoted(filed.find(({ said }) => !FILED.test(said))?.refusals[0] ?? "")}`) };
-  if (answer.body === undefined) return { ended: closedUnbuilt(ticket, `${splitInto(ticket)} ${named}, which build themselves, and closed it: ${answer.reason}`) };
+  if (answer.body === undefined) return { ended: closedAs(ticket, "not planned", `${splitInto(ticket)} ${named}, which build themselves, and closed it: ${answer.reason}`) };
   const written = gh(["issue", "edit", ticket, "--body", answer.body]);
   if (written.status !== 0) return { ended: calledOwner(ticket, "builder", `it filed ${named} and its rewrite of what waits would not save: ${quoted((written.stderr || written.stdout).trim().split("\n")[0] ?? "")}`) };
   commentOnTicket(ticket, `${splitInto(ticket)} ${named}, which build themselves. #${ticket} keeps what must wait for them, ${LABELLED_WAITING}, and builds once they all close: ${answer.reason}`, gh);
@@ -255,7 +253,8 @@ function landedOnMain(ticket: string, reason: string, before: string): Round {
 
 function outcomeOf(ticket: string, body: string, answer: Answer | undefined, mainBefore: string): Round {
   if (answer === undefined) return { red: "You gave no outcome. Answer one." };
-  if (answer.outcome === "close") return { ended: closedUnbuilt(ticket, `@${OWNER} the builder closed #${ticket} unbuilt and kept its branch: ${answer.reason}`) };
+  if (answer.outcome === "done") return { ended: closedAs(ticket, "completed", `The builder of #${ticket} found its work already on main and closed it: ${answer.reason}`) };
+  if (answer.outcome === "close") return { ended: closedAs(ticket, "not planned", `@${OWNER} the builder closed #${ticket} unbuilt and kept its branch: ${answer.reason}`) };
   if (answer.outcome === "stuck") return { ended: calledOwner(ticket, "builder", answer.reason) };
   if (answer.outcome === "split") return split(ticket, body, answer);
   if (answer.outcome === "ticket") return rewritten(ticket, body, answer);
@@ -274,7 +273,7 @@ function spentOn(ticket: string, spend: Spend, input: string, session: string | 
 }
 
 function judged(): Round {
-  if (gitRead(["rev-list", "--count", "origin/main..HEAD"], "the commits past main could not be read, so nothing is reviewed") === "0") return { red: "You answered `code`, and this branch has no commits past main, so there is nothing to land: build the ticket, or answer `close` if main already does what it asks." };
+  if (gitRead(["rev-list", "--count", "origin/main..HEAD"], "the commits past main could not be read, so nothing is reviewed") === "0") return { red: "You answered `code`, and this branch has no commits past main, so there is nothing to land: build the ticket, or answer `done` if main already does what it asks." };
   const red = checked();
   return red === undefined ? {} : { red: repaired(red) };
 }
@@ -324,7 +323,7 @@ function ownTicket(ticket: string): number {
     committed(builtBy(ticket), "feat");
     const changed = round.body !== undefined || head() !== before.head || fetchedMain() !== before.main;
     const { red } = round.red === undefined ? judged() : round;
-    if (red === undefined) return reviewedAndLanded(ticket, body, answer?.steps ?? []);
+    if (red === undefined) return reviewedAndLanded(ticket, body);
     if (!changed && idle) return calledOwner(ticket, "builder", `two rounds in a row changed nothing: ${round.red ?? answer?.reason ?? "it gave no outcome"}`);
     idle = !changed;
     input = red;

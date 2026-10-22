@@ -113,15 +113,15 @@ _Avoid_: precondition, validation, check
 
 **Builder**:
 The one agent that builds a ticket until its full check is green, then hands it to the reviewer. A
-later run of the ticket resumes its session, or says in its log why it starts fresh. It fixes the
-code, ticket or machine, splits the ticket, or closes it unbuilt; when it stops, it marks `stuck`.
+later run resumes its session or logs why it starts fresh. It fixes the code, ticket or machine,
+splits the ticket, or closes it, done if main holds it, else unbuilt; stopped, it marks `stuck`.
 _Avoid_: fixer, mechanic, fresh eyes, repair agent
 
 **Reviewer**:
 A fresh agent with the builder's access, in the builder's run: it reads the ticket, commit messages
 and diff, fixes what it finds or approves, and lands it with `bin/land`, which hands back what it
-refuses. Nothing goes back to the builder (ADR-0012). A step only the owner can take is filed as an
-`owner-step` note, and the ticket still closes.
+refuses. Nothing goes back to the builder (ADR-0012). It alone names steps only the owner can
+take, filed as an `owner-step` note; the ticket closes.
 _Avoid_: review job, judge, second builder
 
 **Closer**:
