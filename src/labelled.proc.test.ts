@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { afterLabelled, BIN, copyMark, execute, gateOf, heldBy, holds, labelledAs, labelledStep, scratch, script, starts, workflowJobs, type IssueEvent } from "./scenarios.ts";
+import { afterLabelled, BIN, copyMark, execute, gateOf, holds, labelledAs, labelledOutputs, labelledStep, scratch, script, starts, workflowJobs, type IssueEvent } from "./scenarios.ts";
 import { MACHINE, OWNER } from "./spelled.ts";
 
 const GITHUB = join(BIN, "..", ".github");
@@ -50,7 +50,7 @@ describe("the workflows ask spelled for each label they test, so a renamed label
       const root = scratch("unspelled-");
       script(join(root, "bin", "spelled"), "printf 'node: not found\\n' >&2\nexit 127\n");
 
-      expect(await heldBy(labelledStep(file, job), root, { labels: ["spec"] }), file).toEqual({ failed: true, held: undefined });
+      expect(await labelledOutputs(labelledStep(file, job), root, { labels: ["spec"] }), file).toEqual({ failed: true, outputs: {} });
     }
   });
 
@@ -75,7 +75,7 @@ describe("the workflows ask spelled for each label they test, so a renamed label
       const { steps } = workflowJobs(file)[gate] ?? { steps: [] };
       const at = steps.findIndex(({ id }) => id === "labelled");
       const before = steps.slice(0, at);
-      const gated = gate === job ? afterLabelled(steps).map((step) => ({ name: step.id ?? step.uses ?? "", if: step.if, context: { steps: labelledAs(steps, "false") } })) : [{ name: job, if: workflowJobs(file)[job]?.if, context: { needs: { [gate]: { result: "success", outputs: { held: "false" } } } } }];
+      const gated = gate === job ? afterLabelled(steps).map((step) => ({ name: step.id ?? step.uses ?? "", if: step.if, context: { steps: labelledAs(steps, "false") } })) : [{ name: job, if: workflowJobs(file)[job]?.if, context: { needs: { [gate]: { result: "success", outputs: Object.fromEntries(Object.keys(workflowJobs(file)[gate]?.outputs ?? {}).map((output) => [output, "false"])) } } } }];
 
       expect(before.every((step) => step.uses?.startsWith("actions/") === true), `${file} ${job}`).toBe(true);
       expect(before.some((step) => step.uses?.startsWith("actions/setup-node@") === true), `${file} ${job}`).toBe(true);

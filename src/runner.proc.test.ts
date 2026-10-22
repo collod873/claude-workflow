@@ -2,7 +2,8 @@ import { spawn } from "node:child_process";
 import { chmodSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { execute, PC_HOST as HOST, PC_REPO as REPO, PC_RUNNER_COUNT, PC_RUNS_ON, pcRunner, QUICK_RUNNER_COUNT, quickRunners, QUICK_RUNS_ON, scratch, script, switching, workflowJobs } from "./scenarios.ts";
+import { execute, holds, PC_HOST as HOST, PC_REPO as REPO, PC_RUNNER_COUNT, PC_RUNS_ON, pcRunner, QUICK_RUNNER_COUNT, quickRunners, QUICK_RUNS_ON, scratch, script, switching, workflowJobs } from "./scenarios.ts";
+import { MACHINE } from "./spelled.ts";
 
 const SOCKET_PATH_MAX = 107;
 
@@ -328,6 +329,20 @@ describe("the machine's jobs run where the repo's switch says, a quick job never
         if (builds.includes(name)) continue;
         const ran = job.steps.map(({ uses, run }) => `${uses ?? ""} ${run ?? ""}`).join("\n");
         for (const heavy of HEAVY) expect(ran, `${file} ${name} is quick, so it never runs ${heavy}`).not.toContain(heavy);
+      }
+    }
+  });
+
+  it("starts no job on a build runner for a label the App adds or takes off unless it needs a quick gate, so a label read never holds the build lane (#1462)", () => {
+    for (const file of Object.keys(BUILDS)) {
+      const jobs = workflowJobs(file);
+      for (const [name, job] of Object.entries(jobs)) {
+        const needs = [job.needs ?? []].flat();
+        if (needs.some((need) => jobs[need]?.["runs-on"] === QUICK_RUNS_ON)) continue;
+        const succeeded = Object.fromEntries(needs.map((need) => [need, { result: "success" }]));
+        for (const action of ["labeled", "unlabeled"]) {
+          if (holds(job.if ?? "success()", { sender: MACHINE, action, label: "building", needs: succeeded })) expect(job["runs-on"], `${file} ${name} on the App's ${action}`).toBe(QUICK_RUNS_ON);
+        }
       }
     }
   });
