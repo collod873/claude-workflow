@@ -476,6 +476,20 @@ describe("a fresh reviewer reads each green build, fixes or approves it, and bin
     expect(closed()).toEqual([]);
   });
 
+  it("counts a round its reviewer changed nothing in as idle though bin/land rebased the branch onto a main that moved", () => {
+    const REBASES_THEN_REFUSES = [
+      "moved=$(cat ../main-moves 2>/dev/null || echo 0); echo $((moved + 1)) >../main-moves",
+      'if [ "$moved" -lt 2 ]; then git update-ref refs/remotes/origin/main "$(git commit-tree -p origin/main -m "another ticket landed" "origin/main^{tree}")"; git rebase --quiet origin/main; fi',
+      "printf 'land: the full check is red\\n' >&2; exit 1",
+      "",
+    ].join("\n");
+    const { run, handed, ticketComments } = fixing({ claude: FIXES, land: REBASES_THEN_REFUSES });
+
+    expect(run().status).toBe(1);
+    expect(handed(), "the builder's round and the reviewer's two").toHaveLength(3);
+    expect(ticketComments().at(-1)).toContain("two rounds in a row changed nothing");
+  });
+
   it("files each step only the owner can take, the builder's and the reviewer's, as an owner-step note once it lands, and still closes the ticket (ADR-0005)", () => {
     const { run, filed, calls, closed } = fixing({ claude: FIXES, answer: { outcome: "code", reason: "built", steps: [STEP] }, review: { outcome: "approve", reason: "it builds the Why", steps: [{ ...STEP, title: "Turn on the webhook" }] } });
 

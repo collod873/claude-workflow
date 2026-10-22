@@ -82,6 +82,7 @@ export function reviewedAndLanded(ticket: string, body: string, steps: OwnerStep
     const answer = spent.answer as Answer | undefined;
     if (answer?.outcome === "stuck") return calledOwner(ticket, "reviewer", answer.reason);
     committed(reviewedBy(ticket), "fix");
+    const changed = head() !== before;
     const held = heldOn(labelsHeld(ticket, gh));
     if (held !== undefined) {
       console.log(`review: #${ticket} is labelled ${held}, so it does not land; its branch is kept for its next run`);
@@ -93,7 +94,6 @@ export function reviewedAndLanded(ticket: string, body: string, steps: OwnerStep
       console.log(`review: #${ticket} landed as PR #${landed.pr}${filed}`);
       return spawnSync(machineBin("close"), [ticket, landed.pr], { stdio: "inherit" }).status ?? 1;
     }
-    const changed = head() !== before;
     if (!changed && idle) return calledOwner(ticket, "reviewer", `two rounds in a row changed nothing: ${quoted(landed.refused.split("\n").at(-1) ?? "")}`);
     idle = !changed;
     input = answer === undefined ? landed.refused : landRefused(landed.refused);
