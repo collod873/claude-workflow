@@ -255,7 +255,7 @@ export function execute(file: string, cwd: string, extra: Record<string, string>
   return { status, stdout, stderr };
 }
 
-const wellFormedTicket = [
+export const wellFormedTicket = [
   "## Why",
   "",
   'The owner, in session: "a ticket is the only way in, so its shape is where intent survives".',
@@ -282,15 +282,6 @@ export const wellFormedBug = [
 ].join("\n");
 
 export const wellFormedNote = ["## Why", "", "Three passes over the standards left four proposals nobody can build until the owner weighs them.", ""].join("\n");
-
-const SPOKEN_REST = "## Agent's suggestions\n\n## Open\n";
-const spoken = (filed: string): string => {
-  const words = filed.replace("## Why", "## Owner's words");
-  return words.includes("## Done when") ? words.replace("## Done when", `${SPOKEN_REST}\n## Done when`) : `${words}\n${SPOKEN_REST}`;
-};
-export const asFiled = (body: string): string => body.replace("## Owner's words", "## Why");
-export const spokenBuild = spoken(wellFormedTicket);
-export const spokenIdea = spoken(wellFormedNote);
 
 export const wellFormedSpec = [
   "## Problem Statement",

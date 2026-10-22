@@ -61,7 +61,7 @@ describe("src/post.ts is the one way the machine writes text to GitHub (#662)", 
 
     expect(post(posting({}), gh).refusals).toEqual([]);
     expect(post(posting({ text: TICKET.replace("## Why", "## Background") }), gh).refusals).toEqual([
-      "the body carries no '## Why', so nothing says what the owner asked for",
+      "the body carries no '## Why', so nothing says what set this",
     ]);
     expect(post(posting({ title: undefined }), gh).refusals).toEqual(["a ticket carries no title"]);
     expect(calls).toHaveLength(2);

@@ -378,7 +378,7 @@ describe("the builder owns a red ticket until it merges (#898)", () => {
 
     expect(unshaped.run().status).toBe(1);
     expect(unshaped.filed()).toEqual([]);
-    expect(unshaped.handed()[1]).toContain("Handle the misses: '## Done when' carries 0");
+    expect(unshaped.handed()[1]).toContain("Handle the misses: '## Done when' says nothing");
   });
 
   it("will not split a follow-up again, so a chain of splits stops at one generation", () => {

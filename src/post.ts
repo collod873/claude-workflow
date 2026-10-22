@@ -10,15 +10,12 @@ import {
   OWNER_SHAPE,
   NEXT_HEADING,
   SPEC_SHAPE,
-  SPOKEN_SHAPE,
+  WHY_SHAPE,
   bugRefusals,
-  filedFromSpoken,
-  inSpokenWords,
   matchEnd,
   noteRefusals,
   rewriteRefusals,
   specRefusals,
-  spokenRefusals,
   ticketRefusals,
 } from "./ticket-shape.ts";
 import { BUG, HELD, LABELS, MACHINE, NOTE, OWNER, OWNER_STEP, RESEARCH, RESOLVING, SPEC, STUCK, TICKET, TICKET_PREFIX, WAITING, type LabelName, type MarkedLabel } from "./spelled.ts";
@@ -152,32 +149,20 @@ const KINDS: Record<string, Kind> = {
 interface DoorKind {
   files: string;
   says: string;
-  spoken: boolean;
 }
 
 const DOOR: Record<string, DoorKind> = {
-  idea: { files: "note", says: IDEA_SHAPE, spoken: true },
-  "look-into": { files: "research", says: LOOK_INTO_SHAPE, spoken: true },
-  build: { files: "ticket", says: BUILD_SHAPE, spoken: true },
-  bug: { files: "bug", says: BUG_SHAPE, spoken: false },
-  spec: { files: "spec", says: SPEC_SHAPE, spoken: false },
-  owner: { files: "owner", says: OWNER_SHAPE, spoken: true },
+  idea: { files: "note", says: IDEA_SHAPE },
+  "look-into": { files: "research", says: LOOK_INTO_SHAPE },
+  build: { files: "ticket", says: BUILD_SHAPE },
+  bug: { files: "bug", says: BUG_SHAPE },
+  spec: { files: "spec", says: SPEC_SHAPE },
+  owner: { files: "owner", says: OWNER_SHAPE },
 };
 
 const DOOR_USAGE = `file-issue: usage: file-issue ${Object.keys(DOOR).join("|")} --title <title> --body-file <path>`;
 
-function doorHelp(): string[] {
-  const spoken = Object.keys(DOOR).filter((kind) => DOOR[kind]?.spoken);
-  return [DOOR_USAGE, `${spoken.join(", ")}: ${SPOKEN_SHAPE}`, ...Object.entries(DOOR).map(([kind, { says }]) => `${kind}: ${says}`)];
-}
-
-function filedAtDoor(door: DoorKind, posting: Omit<Posting, "kind">, gh: Gh): { refusals: string[]; said: string } {
-  if (!door.spoken) return post({ ...posting, kind: door.files }, gh);
-  const unspoken = spokenRefusals(posting.text);
-  if (unspoken.length > 0) return { refusals: unspoken, said: "" };
-  const { refusals, said } = post({ ...posting, kind: door.files, text: filedFromSpoken(posting.text) }, gh);
-  return { refusals: refusals.map(inSpokenWords), said };
-}
+const doorHelp = (): string[] => [DOOR_USAGE, WHY_SHAPE, ...Object.entries(DOOR).map(([kind, { says }]) => `${kind}: ${says}`)];
 
 const FIRST_HEADING = /^##[ \t].*$/m;
 
@@ -368,7 +353,7 @@ if (import.meta.main) {
   }
   const door = DOOR[kind];
   if (door === undefined) throw new Error(`${kind} is not a kind file-issue files`);
-  const { refusals, said } = filedAtDoor(door, { text: await read(process.stdin), title, sessionId }, gh);
+  const { refusals, said } = post({ kind: door.files, text: await read(process.stdin), title, sessionId }, gh);
   for (const refusal of refusals) console.error(refusal);
   if (said !== "") console.log(said);
   process.exit(refusals.length > 0 ? 1 : 0);

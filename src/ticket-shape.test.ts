@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { handedOn as builderBrief } from "./builder.ts";
 import { handedOn as reviewerBrief } from "./reviewer.ts";
-import { BUG_SHAPE, BUILD_SHAPE, DONE_SENTENCES, IDEA_SHAPE, SPEC_CAP, SPEC_SHAPE, SPOKEN_SHAPE, bugRefusals, inSpokenWords, noteRefusals, specRefusals, spokenRefusals, ticketRefusals } from "./ticket-shape.ts";
+import { BUG_SHAPE, BUILD_SHAPE, DONE_SENTENCES, IDEA_SHAPE, SPEC_CAP, SPEC_SHAPE, WHY_SHAPE, bugRefusals, noteRefusals, specRefusals, ticketRefusals } from "./ticket-shape.ts";
 
 const QUOTED = 'The owner, in session: "file a ticket the machine can build".';
 const SIGNAL = "The Signals of the session read:\n\n> hookkit: check-gate crashed 3 times: TypeError: Cannot read properties of undefined";
@@ -12,25 +12,24 @@ function body({ why = QUOTED, done = ["- Filing a body with no why files nothing
 }
 
 const misshapen: [string, string, string[]][] = [
-  ["a body with no '## Why'", body().replace("## Why", "## Background"), ["the body carries no '## Why', so nothing says what the owner asked for"]],
+  ["a body with no '## Why'", body().replace("## Why", "## Background"), ["the body carries no '## Why', so nothing says what set this"]],
   [
-    "a '## Why' quoting no owner words",
+    "a '## Why' quoting nothing",
     body({ why: "The session decided this would be worth building." }),
-    ["'## Why' quotes no owner words: it carries no \"...\" quote and no > quoted line"],
+    ["'## Why' quotes nothing that set this: it carries no \"...\" quote and no > quoted line"],
   ],
   ["a body with no '## Done when'", body().replace("## Done when", "## Plan"), ["the body carries no '## Done when', so nothing says what done looks like"]],
-  ["a '## Done when' with no sentence under it", body({ done: ["Filing refuses a bad body."] }), ["'## Done when' carries 0 '- ' sentences, not 1 to 3"]],
-  ["four sentences", body({ done: [1, 2, 3, 4].map((n) => `- Filing refuses defect ${n}.`) }), ["'## Done when' carries 4 '- ' sentences, not 1 to 3"]],
+  ["a '## Done when' that says nothing", body({ done: [] }), ["'## Done when' says nothing, so nothing says what done looks like"]],
 ];
 
 describe("src/ticket-shape refuses a ticket body that hides what was meant (#662, #931)", () => {
-  it("accepts a Why in the owner's words and 1 to 3 plain sentences, checked or not, with any other heading after them", () => {
+  it("accepts a quoted Why and a Done when of plain or checked lines, however many, with any other heading after them", () => {
     expect(ticketRefusals(body())).toEqual([]);
     expect(
       ticketRefusals(
         `${body({
           why: "> file a ticket the machine can build\n\nThe session's summary of what that means.",
-          done: ["- [ ] Filing refuses each defect.", "- The refusals reach the caller,", "  one to a line."],
+          done: ["- [ ] Filing refuses each defect.", "- The refusals reach the caller,", "  one to a line.", "- Nothing is filed.", "- The caller hears why."],
         })}\n## Out of scope\n\n- Specs.\n- Notes.\n- Research.\n- Anything else.\n`,
       ),
     ).toEqual([]);
@@ -42,7 +41,7 @@ describe("src/ticket-shape refuses a ticket body that hides what was meant (#662
 
   it("names every defect at once, so one filing does not trickle them out", () => {
     expect(ticketRefusals("nothing shaped like a ticket at all")).toEqual([
-      "the body carries no '## Why', so nothing says what the owner asked for",
+      "the body carries no '## Why', so nothing says what set this",
       "the body carries no '## Done when', so nothing says what done looks like",
     ]);
   });
@@ -56,7 +55,6 @@ const misshapenBug: [string, string, string[]][] = [
     ['\'## Why\' quotes no evidence: it carries no "..." quote and no > quoted line from a log, a test or a Signal'],
   ],
   ["a body with no '## Done when'", body({ why: SIGNAL }).replace("## Done when", "## Fix"), ["the body carries no '## Done when', so nothing says what done looks like"]],
-  ["four sentences", body({ why: SIGNAL, done: [1, 2, 3, 4].map((n) => `- check-gate survives fault ${n}.`) }), ["'## Done when' carries 4 '- ' sentences, not 1 to 3"]],
 ];
 
 describe("src/ticket-shape refuses a bug body that proves no fault, since no owner spoke for it", () => {
@@ -208,9 +206,9 @@ describe("the shape bin/file-issue --help prints names every heading its kind is
   const HEADING_NAMED = /'## (.+?)'(?=[,\s]|$)/g;
 
   it.each([
-    ["build", `${SPOKEN_SHAPE} ${BUILD_SHAPE}`, (body: string) => [...spokenRefusals(body), ...ticketRefusals(body).map(inSpokenWords)]],
-    ["bug", BUG_SHAPE, bugRefusals],
-    ["idea", `${SPOKEN_SHAPE} ${IDEA_SHAPE}`, (body: string) => [...spokenRefusals(body), ...noteRefusals(body).map(inSpokenWords)]],
+    ["build", `${WHY_SHAPE} ${BUILD_SHAPE}`, ticketRefusals],
+    ["bug", `${WHY_SHAPE} ${BUG_SHAPE}`, bugRefusals],
+    ["idea", `${WHY_SHAPE} ${IDEA_SHAPE}`, noteRefusals],
     ["spec", SPEC_SHAPE, specRefusals],
   ])("%s", (_, shape, refusals) => {
     const named = refusals("").flatMap((refusal) => [...refusal.matchAll(HEADING_NAMED)].map(([, name]) => name ?? ""));
@@ -222,7 +220,7 @@ describe("the shape bin/file-issue --help prints names every heading its kind is
 
 describe("the builder's split, the reviewer's follow-ups and bin/file-issue --help read one Done when phrase, not hand copies (#1004)", () => {
   it.each([
-    ["bin/file-issue --help, for a bug", BUG_SHAPE],
+    ["bin/file-issue --help, for a build", BUILD_SHAPE],
     ["the builder's split", builderBrief({ ticket: "1", body: body() })],
     ["the reviewer's follow-ups", reviewerBrief(body(), "", { after: { earlier: "", fix: "" } })],
   ])("%s", (_, text) => {
