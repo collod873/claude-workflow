@@ -8,7 +8,7 @@ if [[ ${1:-} == -h || ${1:-} == --help ]]; then
 fi
 ticket=
 approved=
-if [[ ($# -eq 2 || ($# -eq 4 && $3 == --approved)) && $1 == --ticket && $2 =~ ^[0-9]+$ ]]; then
+if [[ ($# -eq 2 || ($# -eq 4 && $3 == --approved && -n $4)) && $1 == --ticket && $2 =~ ^[0-9]+$ ]]; then
   ticket=$2
   approved=${4:-}
 elif [[ $# -ne 0 ]]; then

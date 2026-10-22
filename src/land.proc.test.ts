@@ -333,7 +333,7 @@ describe("bin/land refuses what must not reach main (#681)", () => {
     expect(commented).toBeLessThan(calls().findIndex(merged));
   });
 
-  it.each([[["--ticket"]], [["--ticket", "eleven"]], [["811"]], [["--ticket", "811", "--approved"]], [["--approved", "it builds the Why"]]])("lands nothing and says its usage given %j, since only --ticket and a number name a ticket, and only a ticket takes an approve reason", (args) => {
+  it.each([[["--ticket"]], [["--ticket", "eleven"]], [["811"]], [["--ticket", "811", "--approved"]], [["--ticket", "811", "--approved", ""]], [["--approved", "it builds the Why"]]])("lands nothing and says its usage given %j, since only --ticket and a number name a ticket, and only a ticket takes an approve reason, one that says something", (args) => {
     const { remote, run, calls } = landSession();
 
     const result = run(args);
