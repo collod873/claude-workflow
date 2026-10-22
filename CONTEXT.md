@@ -31,7 +31,6 @@ the caller's `issues: unlabeled` hears from the caller's default branch alone, s
 main before any ticket there builds. A builder it reaches passes a check red only for
 `(needs ...)` steps, which the machine's runner lacks, or unpublished receipts; that repo's own CI
 judges its PR. A `DATABASE_URL` step is not one: the builder's job starts Postgres.
-A ticket's own run reviews and lands it (ADR-0012); no job judges its PR after.
 _Avoid_: shim, wrapper, vendored workflow
 
 **Home**:
@@ -49,8 +48,7 @@ _Avoid_: migration, switchover
 
 **No caller, same file**:
 A stage run with no caller file reaches the machine through `machine.yml`, the name `bin/enrol`
-writes: reruns and size trials start through it, and the closer dispatches no re-slice, as
-the caller's `issues: closed` starts it.
+writes: reruns and size trials start through it.
 _Avoid_: default caller, fallback workflow
 
 **One checkout**:
@@ -276,7 +274,9 @@ _Avoid_: wave review, checkpoint, interim check
 
 **Ticket**:
 The unit the machine builds: an issue labelled `ticket` carrying `## Why` in the owner's words and,
-under `## Done when`, sentences of what done looks like. Filing one builds, reviews and lands it in one run; its PR merging closes it.
+under `## Done when`, sentences of what done looks like. Adding `ticket` to an open issue builds,
+reviews and lands it in one run (ADR-0012), as `spec` slices and `research` answers; opening starts
+nothing, and taking `ticket` off and adding it back builds it again. Its PR merging closes it.
 _Avoid_: issue, sub-issue, card, item
 
 **Note**:

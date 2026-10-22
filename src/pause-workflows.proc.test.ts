@@ -38,7 +38,7 @@ describe.each(["tickets.yml"])("%s builds nothing on a pause and builds the tick
   });
 
   it("builds nothing and pauses nothing on any other label added, nor on paused added to a spec or a note", async () => {
-    for (const label of [STUCK, WAITING, "ticket"]) expect(await stepsRun(file, owner("labeled", label, [label])), label).toEqual([]);
+    for (const label of [STUCK, WAITING, "bug"]) expect(await stepsRun(file, owner("labeled", label, [label])), label).toEqual([]);
     for (const kind of ["spec", "note"]) expect(await stepsRun(file, owner("labeled", PAUSED, [kind, PAUSED])), kind).toEqual([]);
   });
 

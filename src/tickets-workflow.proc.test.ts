@@ -74,13 +74,14 @@ describe("a repo's tickets build through one caller file that holds only trigger
     expect(Object.values(jobs)).toEqual(CALLED.map((file) => ({ uses: `collod873/claude-workflow/.github/workflows/${file}@main`, secrets: "inherit" })));
   });
 
-  it("answers each trigger the caller holds: a ticket opened builds, lands and closes in its own run, a closed issue is stripped and wakes what waited on it (ADR-0012)", () => {
+  it("answers each trigger the caller holds: a ticket labelled builds, lands and closes in its own run, a closed issue is stripped and wakes what waited on it (ADR-0012)", () => {
     const woken = { wake: { held: "true" } };
-    expect(jobsRun({ event: "issues", action: "opened", outputs: woken })).toEqual(["wake", "build"]);
-    expect(jobsRun({ event: "issues", action: "reopened", outputs: woken })).toEqual(["wake", "build"]);
+    expect(jobsRun({ event: "issues", action: "labeled", outputs: woken })).toEqual(["wake", "build"]);
+    expect(jobsRun({ event: "issues", action: "labeled", sender: MACHINE, outputs: woken })).toEqual(["wake", "build"]);
     expect(jobsRun({ event: "issues", action: "unlabeled", sender: MACHINE, outputs: woken })).toEqual(["wake", "build"]);
     expect(jobsRun({ event: "issues", action: "unlabeled", sender: MACHINE, outputs: { wake: { held: "false" } } })).toEqual(["wake"]);
-    expect(jobsRun({ event: "issues", action: "opened", sender: "stranger" })).toEqual([]);
+    expect(jobsRun({ event: "issues", action: "opened", sender: MACHINE })).toEqual([]);
+    expect(jobsRun({ event: "issues", action: "labeled", sender: "stranger" })).toEqual([]);
     expect(jobsRun({ event: "issues", action: "closed" })).toEqual(["close", "strip"]);
   });
 
@@ -109,12 +110,12 @@ describe("a repo's tickets build through one caller file that holds only trigger
     const named = { which: { ticket: "828" }, wake: { held: "true" } };
     const handed = { event: "workflow_dispatch", action: "", inputs: { ticket: "828", rerun: "4417/1" }, outputs: named };
 
-    expect(jobsRun({ event: "issues", action: "opened", sender: OWNER, red: ["wake"] })).toEqual(["wake", "dispatch-rerun"]);
-    expect(jobsRun({ event: "issues", action: "opened", sender: OWNER, red: ["build"], outputs: named })).toEqual(["wake", "build", "dispatch-rerun"]);
-    expect(jobsRun({ event: "issues", action: "opened", sender: OWNER, stopped: ["build"], outputs: named })).toEqual(["wake", "build", "dispatch-rerun"]);
+    expect(jobsRun({ event: "issues", action: "labeled", sender: OWNER, red: ["wake"] })).toEqual(["wake", "dispatch-rerun"]);
+    expect(jobsRun({ event: "issues", action: "labeled", sender: OWNER, red: ["build"], outputs: named })).toEqual(["wake", "build", "dispatch-rerun"]);
+    expect(jobsRun({ event: "issues", action: "labeled", sender: OWNER, stopped: ["build"], outputs: named })).toEqual(["wake", "build", "dispatch-rerun"]);
     expect(jobsRun({ event: "issues", action: "closed", stopped: ["close"] })).toEqual(["close", "strip", "dispatch-rerun"]);
-    expect(jobsRun({ event: "issues", action: "opened", sender: OWNER, red: ["slice"] }, "specs.yml")).toEqual(["slice", "research", "dispatch-rerun"]);
-    expect(jobsRun({ event: "issues", action: "opened", sender: OWNER }, "specs.yml")).toEqual(["slice", "research"]);
+    expect(jobsRun({ event: "issues", action: "labeled", sender: OWNER, red: ["slice"] }, "specs.yml")).toEqual(["slice", "research", "dispatch-rerun"]);
+    expect(jobsRun({ event: "issues", action: "labeled", sender: OWNER }, "specs.yml")).toEqual(["slice", "research"]);
     expect(jobsRun(handed)).toEqual(["rerun"]);
     expect(jobsRun({ ...handed, inputs: { ...handed.inputs, trial_cap: "60000" } }, "specs.yml")).toEqual([]);
     expect(jobsRun(handed, "specs.yml")).toEqual([]);
@@ -393,10 +394,11 @@ describe("a repo's specs and research notes run through the same caller file, on
   const specs = (fired: Fired) => jobsRun(fired, "specs.yml");
   const stageSteps = () => Object.entries(workflowJobs("specs.yml")).flatMap(([name, { steps }]) => steps.filter(({ env }) => env?.CLAUDE_CODE_OAUTH_TOKEN !== undefined).map((step) => ({ name, steps, step })));
 
-  it("slices a spec and answers a research note the owner opens, and nothing anyone else opens", () => {
-    expect(specs({ event: "issues", action: "opened" })).toEqual(["slice", "research"]);
-    expect(specs({ event: "issues", action: "opened", sender: "stranger" })).toEqual([]);
-    expect(specs({ event: "issues", action: "opened", sender: MACHINE })).toEqual([]);
+  it("slices a spec and answers a research note the owner or the machine's App labels, and nothing a stranger labels or anyone opens", () => {
+    expect(specs({ event: "issues", action: "labeled" })).toEqual(["slice", "research"]);
+    expect(specs({ event: "issues", action: "labeled", sender: MACHINE })).toEqual(["slice", "research"]);
+    expect(specs({ event: "issues", action: "labeled", sender: "stranger" })).toEqual([]);
+    expect(specs({ event: "issues", action: "opened" })).toEqual([]);
   });
 
   it("reslices the spec of any issue that closes, once it names one", () => {

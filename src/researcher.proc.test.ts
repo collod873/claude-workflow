@@ -106,14 +106,15 @@ describe("bin/research answers a research note on the note and closes it, with n
     expect(calls()).toEqual([]);
   });
 
-  it("the owner's research note starts the research job and never a build", async () => {
-    const researches = (labels: string[], sender = "collod873") => starts("specs.yml", "research", { labels, sender });
+  it("research added to a note by the owner or the machine's App starts the research job and never a build", async () => {
+    const researches = (labels: string[], sender = "collod873") => starts("specs.yml", "research", { labels, sender, action: "labeled", label: "research" });
 
     expect(await researches(["note", "research"])).toBe(true);
+    expect(await researches(["note", "research"], "collod873-machine[bot]")).toBe(true);
     expect(await researches(["note"])).toBe(false);
     expect(await researches([])).toBe(false);
     expect(await researches(["note", "research"], "stranger")).toBe(false);
-    expect(await starts("tickets.yml", "build", { labels: ["note", "research"] })).toBe(false);
+    expect(await starts("tickets.yml", "build", { labels: ["note", "research"], action: "labeled", label: "research" })).toBe(false);
   });
 });
 

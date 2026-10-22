@@ -110,7 +110,7 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
     ).toEqual([]);
   });
 
-  it("prints the owner's login under OWNER and the bot's login under MACHINE, the bot's spelled nowhere else the machine runs but the sender and actor tests of tickets.yml and check.yml, which no shell can ask (#1123, #1135, #1220, #1345, #1386)", () => {
+  it("prints the owner's login under OWNER and the bot's login under MACHINE, the bot's spelled nowhere else the machine runs but the sender and actor tests of tickets.yml, specs.yml and check.yml, which no shell can ask (#1123, #1135, #1220, #1345, #1386, #1464)", () => {
 
     expect(spelled("OWNER")).toEqual({ status: 0, stdout: "collod873\n", stderr: "" });
     expect(spelled("MACHINE")).toEqual({ status: 0, stdout: "collod873-machine[bot]\n", stderr: "" });
@@ -120,7 +120,7 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
           .split("\n")
           .flatMap((line) => (line.includes("collod873-machine") && !line.startsWith("export const MACHINE = ") ? [file.slice(REPO.length + 1)] : [])),
       ),
-    ).toEqual([".github/workflows/check.yml", ".github/workflows/check.yml", ".github/workflows/tickets.yml"]);
+    ).toEqual([".github/workflows/check.yml", ".github/workflows/check.yml", ".github/workflows/specs.yml", ".github/workflows/specs.yml", ".github/workflows/tickets.yml"]);
     expect(readFileSync(join(ACTIONS, "stage-logs", "action.yml"), "utf8")).toMatch(/bin\/spelled MACHINE/);
   });
 
