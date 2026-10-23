@@ -1,7 +1,7 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { agedLogs, git, landSession, LANDED_PR as PR, MERGE_REFUSAL as REFUSAL, plant, TICKET_TITLE, type Merge } from "./scenarios.ts";
+import { agedLogs, git, GITHUB_ERRED, landSession, LANDED_PR as PR, MAIN_RACED, MERGE_REFUSAL as REFUSAL, plant, TICKET_TITLE, type Merge } from "./scenarios.ts";
 
 const JUDGED_CHECK = "description=judged by land on the commit before the push (ADR-0008)";
 const DASH = "\u2014";
@@ -161,8 +161,8 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
     expect(git(session, "rev-parse", "HEAD")).toBe(git(remote, "rev-parse", "main"));
   });
 
-  it("rebases, re-pushes the same branch and merges again when GitHub refuses the merge as behind a main that moved after the push", () => {
-    const { remote, session, head, branch, run, calls, merged, posted } = sessionAheadOfMain(1, { merges: ["refused", "merged"], views: ["BEHIND"], mainMovesOnRefusal: true });
+  it("rebases, re-pushes the same branch and merges again when GitHub refuses the merge because main moved after the push, \"Base branch was modified\" (#1503)", () => {
+    const { remote, session, head, branch, run, calls, merged, posted } = sessionAheadOfMain(1, { merges: ["raced", "merged"], mainMovesOnRefusal: true });
 
     const result = run();
 
@@ -180,8 +180,11 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
     expect(result.stdout).toBe(`Landed ${PR}\n`);
   });
 
-  it("tries the merge again when GitHub has not yet worked out whether the PR is behind", () => {
-    const { head, branch, run, calls, merged } = sessionAheadOfMain(1, { merges: ["refused", "merged"], views: ["UNKNOWN"] });
+  it.each<[string, { merges: Merge[]; views?: string[] }]>([
+    ["with its own transient error (#1503)", { merges: ["erred", "merged"] }],
+    ["before it has worked out whether the PR is behind", { merges: ["refused", "merged"], views: ["UNKNOWN"] }],
+  ])("tries the same head again when GitHub refuses the merge %s", (_, options) => {
+    const { head, branch, run, calls, merged } = sessionAheadOfMain(1, options);
 
     const result = run();
 
@@ -192,8 +195,22 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
     ]);
   });
 
-  it.each<[string, { merges: Merge[]; views: string[]; rounds?: string }, string, number]>([
-    ["once its rounds of rebase and push are spent", { merges: ["refused"], views: ["BEHIND"], rounds: "2" }, `land: ${PR} did not merge in 2 rounds of rebase and push: ${REFUSAL}; it is left open\n`, 2],
+  it("lands without trying again when GitHub merged the PR but answered with its transient error (#1503)", () => {
+    const { remote, session, run, calls, merged, checked } = sessionAheadOfMain(1, { merges: ["mergedErred"], rounds: "1" });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toBe(`Landed ${PR}\n`);
+    expect(calls().filter(merged)).toHaveLength(1);
+    expect(checked()).toEqual(["--full --covered"]);
+    expect(git(session, "rev-parse", "HEAD")).toBe(git(remote, "rev-parse", "main"));
+  });
+
+  it.each<[string, { merges: Merge[]; views?: string[]; rounds?: string }, string, number]>([
+    ["once its rounds of rebase and push are spent", { merges: ["raced"], rounds: "2" }, `land: ${PR} did not merge in 2 rounds of rebase and push: ${MAIN_RACED}; it is left open\n`, 2],
+    ["once its rounds are spent on GitHub's transient error", { merges: ["erred"], rounds: "2" }, `land: ${PR} did not merge in 2 rounds of rebase and push: ${GITHUB_ERRED}; it is left open\n`, 2],
+    ["at once when the PR reads as behind but GitHub refused it for another reason, since no ruleset refuses a merge for being behind (#1503)", { merges: ["refused"], views: ["BEHIND"] }, `land: GitHub refused to merge ${PR}: ${REFUSAL}; it is left open\n`, 1],
     ["at once on a refusal that is neither behind nor a conflict, such as a push that skipped land and so carries no check status", { merges: ["refused"], views: ["BLOCKED"] }, `land: GitHub refused to merge ${PR}: ${REFUSAL}; it is left open\n`, 1],
   ])("ends red naming GitHub's refusal and leaves the PR open %s", (_, options, said, tried) => {
     const { session, head, run, calls, merged } = sessionAheadOfMain(1, options);
@@ -208,15 +225,18 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
     expect(git(session, "rev-parse", "HEAD")).toBe(head);
   });
 
-  it("closes the PR and says to land again when GitHub refuses the merge over a conflict with main", () => {
-    const { session, head, branch, run, calls } = sessionAheadOfMain(1, { merges: ["refused"], views: ["DIRTY"] });
+  it("closes the PR, deletes its branch on origin, and leaves the local ticket branch checked out where it was when GitHub refuses the merge over a conflict with main (#1503)", () => {
+    const { remote, session, head, run, calls } = sessionAheadOfMain(1, { merges: ["refused"], views: ["DIRTY"] });
+    git(session, "checkout", "--quiet", "-b", "ticket/811");
 
-    const result = run();
+    const result = run(["--ticket", "811"]);
 
     expect(result.status).toBe(1);
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe(`land: ${PR} conflicts with main; closed it, so land again to rebase\n`);
-    expect(calls()).toContainEqual(["pr", "close", branch, "--delete-branch"]);
+    expect(calls().filter((call) => call[1] === "close").map((call) => call.slice(0, 3))).toEqual([["pr", "close", "ticket/811"]]);
+    expect(git(remote, "for-each-ref", "--format=%(refname)")).toBe("refs/heads/main");
+    expect(git(session, "symbolic-ref", "--short", "HEAD")).toBe("ticket/811");
     expect(git(session, "rev-parse", "HEAD")).toBe(head);
   });
 
@@ -335,7 +355,7 @@ describe("bin/land refuses what must not reach main (#681)", () => {
 
   it("comments the reviewer's approve reason on the ticket's PR before it merges, once however many rounds it rebases, so a cost the reviewer let through reaches the owner (#1471)", () => {
     const REASON = "it builds the Why; the slice gate now takes a build runner on every label, which I let through";
-    const { run, calls, merged } = sessionAheadOfMain(1, { merges: ["refused", "merged"], views: ["BEHIND"] });
+    const { run, calls, merged } = sessionAheadOfMain(1, { merges: ["raced", "merged"] });
 
     const result = run(["--ticket", "811", "--approved", REASON]);
 

@@ -381,8 +381,12 @@ export function agedLogs(logs: string, tool: string) {
 
 export const LANDED_PR = "https://github.com/collod873/claude-workflow/pull/1";
 export const MERGE_REFUSAL = "GraphQL: Pull Request is not mergeable (mergePullRequest)";
+export const MAIN_RACED = "GraphQL: Base branch was modified. Review and try the merge again. (mergePullRequest)";
+export const GITHUB_ERRED = "GraphQL: Something went wrong while executing your query. Please include `C0B4:2D8E:1A2B3C:1D4E5F:671234AB` when reporting this issue.";
 
-export type Merge = "merged" | "refused";
+const REFUSALS = { refused: MERGE_REFUSAL, raced: MAIN_RACED, erred: GITHUB_ERRED };
+
+export type Merge = "merged" | "mergedErred" | keyof typeof REFUSALS;
 
 export const TICKET_TITLE = "Build what the ticket asks";
 
@@ -435,14 +439,18 @@ export function landSession({
         "    (( n > ${#views[@]} )) && n=${#views[@]}",
         '    echo "${views[n - 1]}"',
         "    ;;",
+        '  "pr close")',
+        '    for arg in "$@"; do [[ $arg == --delete-branch ]] && git checkout --quiet ' + defaultBranch + ' 2>/dev/null && git branch --quiet -D "$3"; done',
+        "    ;;",
         '  "pr merge")',
         `    n=${counted("merge")}; touch ${JSON.stringify(state)}/merge-$n`,
         "    (( n > ${#merges[@]} )) && n=${#merges[@]}",
-        "    if [[ ${merges[n - 1]} == merged ]]; then",
+        "    if [[ ${merges[n - 1]} == merged* ]]; then",
         "      for (( at = 1; at <= $#; at++ )); do [[ ${!at} == --match-head-commit ]] && { next=$(( at + 1 )); sha=${!next}; }; done",
         `      git -C "$remote" update-ref refs/heads/${defaultBranch} "$(git -C "$remote" commit-tree "$sha^{tree}" -p ${defaultBranch} -p "$sha" -m merged)"`,
+        `      [[ \${merges[n - 1]} == mergedErred ]] && { printf '%s\\n' '${GITHUB_ERRED}' >&2; exit 1; }`,
         "    else",
-        `      printf '%s\\n' ${JSON.stringify(MERGE_REFUSAL)} >&2`,
+        ...Object.entries(REFUSALS).map(([merge, refusal]) => `      [[ \${merges[n - 1]} == ${merge} ]] && printf '%s\\n' '${refusal}' >&2`),
         ...(mainMovesOnRefusal ? [`      git -C "$remote" update-ref refs/heads/${defaultBranch} "$(git -C "$remote" commit-tree "${defaultBranch}^{tree}" -p ${defaultBranch} -m "another session landed")"`] : []),
         "      exit 1",
         "    fi",
