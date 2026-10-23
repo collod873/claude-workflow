@@ -50,8 +50,8 @@ const FIXED: Part[] = [
     stops: "https://github.com/collod873/claude-workflow/issues/912",
   },
   {
-    name: "buckets step",
-    file: "src/buckets.ts",
+    name: "root-causes step",
+    file: "src/root-causes.ts",
     stops: "https://github.com/collod873/claude-workflow/pull/1489",
   },
   {

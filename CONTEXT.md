@@ -5,15 +5,18 @@ itself*, not any project it ships.
 
 ## Language
 
-**Failure**:
+**Symptom**:
 A way the machine broke, linked as an issue, PR or failed run. Every part names the one it stops.
-_Avoid_: problem, antipattern
+_Avoid_: failure
 
-**Bucket**:
-Failures with one cause, a row in `docs/buckets.md` with their evidence, the one change that
-prevents them, and where it stands. A change to the machine names its bucket; a failure no
-bucket holds gets one before it gets a fix.
-_Avoid_: theme, category, epic
+**Root cause**:
+What one change would stop a set of symptoms: a row in `docs/root-causes.md`.
+_Avoid_: bucket, theme
+
+**Countermeasure**:
+That one change. A **recurrence** after it lands disproves it; past the third is
+**whack-a-mole**, Collin's call to reshape or scrap.
+_Avoid_: fix, spot fix
 
 ### The machine
 
@@ -79,7 +82,7 @@ A part of the machine whose worth is the work it does: a step, a script, a stage
 _Avoid_: job, component
 
 **Guard**:
-A part whose worth is the failure it stops, however rarely: a run time cap, a refusal, a hold.
+A part whose worth is the symptom it stops, however rarely: a run time cap, a refusal, a hold.
 It refuses out loud and never undoes the work.
 _Avoid_: rail, safety net, guardrail
 
