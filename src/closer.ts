@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BUCKETS, builtState, cellsOf } from "./buckets.ts";
+import { ROOT_CAUSES, builtState, cellsOf } from "./root-causes.ts";
 import { faultsClosed, LABELLED_WAITING, splitClosed, splitInto } from "./builder.ts";
 import { commentOnTicket, commentsRead, FAULT_FROM, gh, ghAs, ghRead, git, gitRead, MACHINE_REPO, markWith, opened, readOrStop, unread, WAITING } from "./post.ts";
 import { exitFor, type Stop, stoppedAt } from "./stops.ts";
@@ -135,13 +135,13 @@ function rowLanded(ticket: string, row: string): { said: string; failed?: true }
   const fetched = git(["fetch", "--quiet", "origin", "main"]);
   if (fetched.status !== 0) return unmoved(`and main could not be fetched, so no row moved: ${firstLine(fetched)}`);
   const main = gitRead(["rev-parse", "origin/main"], `main could not be read, so the row #${ticket} names is not moved`);
-  const read = git(["show", `${main}:${BUCKETS}`]);
-  if (read.status !== 0) return { said: named(ticket, row, `and main has no ${BUCKETS}, so no row moved`) };
+  const read = git(["show", `${main}:${ROOT_CAUSES}`]);
+  if (read.status !== 0) return { said: named(ticket, row, `and main has no ${ROOT_CAUSES}, so no row moved`) };
   if (read.stdout.split("\n").some((line) => line.startsWith(`| ${row} |`) && cellsOf(line).at(-1) === builtState(ticket))) return { said: named(ticket, row, `which already says #${ticket} built it, so no row moved again`) };
   const table = rowMoved(read.stdout, row, builtState(ticket));
-  if (table === undefined) return unmoved(`which ${BUCKETS} on main lacks, so no row moved`);
+  if (table === undefined) return unmoved(`which ${ROOT_CAUSES} on main lacks, so no row moved`);
   const blob = git(["hash-object", "-w", "--stdin"], table);
-  const tree = blob.status === 0 ? treeWith(`${main}^{tree}`, BUCKETS.split("/"), blob.stdout.trim()) : undefined;
+  const tree = blob.status === 0 ? treeWith(`${main}^{tree}`, ROOT_CAUSES.split("/"), blob.stdout.trim()) : undefined;
   const commit = tree === undefined ? undefined : git(["commit-tree", tree, "-p", main, "-m", `Move the row "${row}" now #${ticket} has merged`]);
   if (commit === undefined || commit.status !== 0) return unmoved("and its move could not be written, so no row moved");
   const at = mkdtempSync(join(tmpdir(), "row-move-"));
@@ -156,7 +156,7 @@ function rowMovedFor(ticket: string, body: string): string {
   const row = ROW.exec(why(body))?.[1];
   if (row === undefined) return "";
   const move = rowLanded(ticket, row);
-  if (move.failed) commentOnTicket(ticket, `The closer could not move the row ${JSON.stringify(row)} in ${BUCKETS}, so its State still needs to read \`${builtState(ticket)}\`: ${move.said.slice(2)}\n\nRun: ${thisRun}`, gh);
+  if (move.failed) commentOnTicket(ticket, `The closer could not move the row ${JSON.stringify(row)} in ${ROOT_CAUSES}, so its State still needs to read \`${builtState(ticket)}\`: ${move.said.slice(2)}\n\nRun: ${thisRun}`, gh);
   return move.said;
 }
 

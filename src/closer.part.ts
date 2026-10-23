@@ -49,7 +49,7 @@ export function closing({
   faultOrigin,
   closedIssue,
   statusRefused = false,
-  buckets,
+  rootCauses,
 }: {
   ticket?: string;
   ticketBody?: string;
@@ -63,7 +63,7 @@ export function closing({
   faultOrigin?: FaultOrigin;
   closedIssue?: string;
   statusRefused?: boolean;
-  buckets?: string;
+  rootCauses?: string;
 } = {}) {
   const root = scratch("closer-");
   const session = join(root, "session");
@@ -78,7 +78,7 @@ export function closing({
   git(session, "config", "user.email", "closer@test");
   git(session, "config", "user.name", "closer");
   plant(session, "src/built.ts", "export const built = 1;\n");
-  if (buckets !== undefined) plant(session, "docs/buckets.md", buckets);
+  if (rootCauses !== undefined) plant(session, "docs/root-causes.md", rootCauses);
   git(session, "add", ".");
   git(session, "commit", "--quiet", "-m", "base");
   const origin = join(root, "origin.git");
@@ -134,7 +134,7 @@ export function closing({
       git(session, "--git-dir", origin, "for-each-ref", "--format=%(refname)", "refs/heads/land/")
         .split("\n")
         .filter((ref) => ref !== "")
-        .map((ref) => ({ head: git(session, "--git-dir", origin, "rev-parse", ref), parents: git(session, "--git-dir", origin, "rev-list", "--parents", "-n", "1", ref).split(" ").slice(1), buckets: git(session, "--git-dir", origin, "show", `${ref}:docs/buckets.md`), changed: git(session, "--git-dir", origin, "diff", "--name-only", `${ref}^`, ref) })),
+        .map((ref) => ({ head: git(session, "--git-dir", origin, "rev-parse", ref), parents: git(session, "--git-dir", origin, "rev-list", "--parents", "-n", "1", ref).split(" ").slice(1), rootCauses: git(session, "--git-dir", origin, "show", `${ref}:docs/root-causes.md`), changed: git(session, "--git-dir", origin, "diff", "--name-only", `${ref}^`, ref) })),
     calls: () => readdirSync(callsDir).sort((a, b) => Number(a) - Number(b)).map((file) => readFileSync(join(callsDir, file), "utf8")),
     repos: () => readdirSync(reposDir).sort((a, b) => Number(a) - Number(b)).map((file) => readFileSync(join(reposDir, file), "utf8")),
     tokens: () => readdirSync(tokensDir).sort((a, b) => Number(a) - Number(b)).map((file) => readFileSync(join(tokensDir, file), "utf8")),
