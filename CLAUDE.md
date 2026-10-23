@@ -13,10 +13,13 @@ only through `docs/buckets.md`:
 2. No row holds it: add the row with the failure as its evidence, and bring the row to Collin
    instead of a fix.
 3. A row holds it: build that row's prevention at its cause, before any gate.
-4. In the same change, add the failure to the row's evidence and move its state. A ticket's PR
+4. In the same change, rewrite the row's cells to hold the failure and its new state, replacing
+   what they said rather than adding to it: git keeps the old text, the commit message the why,
+   and a ruling later work must follow goes to Collin as an ADR. A ticket's PR
    leaves `docs/buckets.md` alone, since every ticket branching together would edit that one
    table: the session filing the ticket lands the evidence first, the ticket's Why names its row as
-   `Row: "<bucket>"`, and the closer moves that row's state on main once the PR merges.
+   `Row: "<bucket>"`, and the closer sets that row's State to `built (#<ticket>)` on main once the
+   PR merges.
 
 Unsticking one ticket by hand, with a rerun or a label, is operating the machine, not changing
 it, and needs no row.
