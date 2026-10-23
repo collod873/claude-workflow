@@ -2,7 +2,7 @@
 status: constraint
 date: 2026-10-22
 supersedes: ADR-0002
-reversal: Stages would run fenced again, without the owner's own rules and tools, and each guard would cut access for a failure that never happened.
+reversal: Stages would run fenced again, without the owner's own rules and tools, and each guard would cut access for a symptom that never showed.
 ---
 
 # Every stage runs as the owner's own session does
@@ -15,7 +15,7 @@ own code included. A guard is added only against a stall, such as a stage answer
 started still runs (0b95278b).
 
 **Rejected: a fence, allowlist or deny list per stage.** It cut what a stage could do and stopped no
-failure, and stages missed every rule the owner keeps outside the repo.
+symptom, and stages missed every rule the owner keeps outside the repo.
 
 **Rejected: a gate on edits to the machine's own instructions.** It would hold the owner up before
-any failure showed it was needed (ADR-0006).
+any symptom showed it was needed (ADR-0006).
