@@ -1,8 +1,8 @@
 import { spawnSync } from "node:child_process";
 import { capped, handedDiff, LIST_CAP, NO_EM_DASH, sameFiles, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
-import { commentOnTicket, gh, gitRead, heldOn, labelsHeld, machineBin, mark, post } from "./post.ts";
+import { commentOnTicket, FOLLOW_UP_OF, gh, gitRead, heldOn, labelsHeld, machineBin, mark, post, REVIEW_LET_THROUGH } from "./post.ts";
 import { CHECKING } from "./spelled.ts";
-import { calledOwner, committed, commitlinted, head, hire, linted, type OwnerStep, OWNER_STEPS } from "./stage.ts";
+import { calledOwner, committed, commitlinted, FIXES_ASKED, type Fix, FOLLOW_UPS, followedUp, head, hire, linted, type OwnerStep, OWNER_STEPS } from "./stage.ts";
 import { quoted } from "./ticket-shape.ts";
 
 const ANSWER = {
@@ -11,6 +11,7 @@ const ANSWER = {
     outcome: { enum: ["approve", "stuck"] },
     reason: { type: "string", pattern: NO_EM_DASH },
     steps: OWNER_STEPS,
+    ...FOLLOW_UPS,
   },
   required: ["outcome", "reason"],
   additionalProperties: false,
@@ -20,6 +21,8 @@ interface Answer {
   outcome: "approve" | "stuck";
   reason: string;
   steps?: OwnerStep[];
+  fixes?: Fix[];
+  asks?: string[];
 }
 
 const LANDED = /^Landed \S+\/pull\/(\d+)/m;
@@ -46,11 +49,13 @@ export function handedOn({ ticket, body, commits, diff, stat, alongside, commitl
     ...sameFiles(alongside),
     ...linted(commitlint),
     "## Fix it or approve it",
-    "Where the diff misses the Why or its `## Done when`, or breaks what it touches, fix it here yourself: nothing goes back to the builder. A new or changed test that would stay green on the bug it guards, or go red on a refactor that keeps the behavior, is yours to fix. Before judging it, call the Skill tool with `coding-standards` for the code standard and `testing` for the test standard.",
+    "Where the diff misses the Why or its `## Done when`, or breaks what it touches, fix it here yourself: nothing goes back to the builder. A new or changed test that would stay green on the bug it guards, or go red on a refactor that keeps the behavior, is yours to fix. A fault of the same cause in the code you read is yours to fix too when the fix is small, though the `## Done when` does not name it; a bigger one you name in `fixes` or `asks`. Before judging it, call the Skill tool with `coding-standards` for the code standard and `testing` for the test standard.",
     "Commit what you change, each message saying why, with no em dash and no closing keyword such as `Fixes #12`. Answer one outcome:",
     "- `approve`: it builds the Why, with whatever you fixed; `bin/land` then runs the full check and merges it, and anything it refuses comes back to you.",
     "- `stuck`: the work has a gap you cannot fix, one only the owner can close; `reason` says why, and the ticket is marked `stuck`.",
     "`steps`: each step only the owner can take before this work runs, such as a dashboard setting or a key, read from the finished work; name every one in each answer, since those of the answer that lands are each filed as an `owner-step` note, and the ticket still closes.",
+    `\`fixes\`: of the faults you saw and let through, ${FIXES_ASKED} filed once it lands.`,
+    "`asks`: the calls you let through that only the owner can make, each with your pick; those of the answer that lands are filed as one note to the owner.",
     "`reason`: one paragraph for the owner. An `approve`'s `reason` is commented on the ticket's PR before it merges: name in it every cost or risk you saw and let through, or say you saw none.",
     "",
   ].join("\n\n");
@@ -60,11 +65,14 @@ const reviewedBy = (ticket: string) => `Review #${ticket} as its reviewer`;
 
 const stepBody = (ticket: string, { why }: OwnerStep) => `## Why\n\n${why}\n\nLeft to the owner by the run that built #${ticket}, which closed.\n`;
 
-function filedSteps(ticket: string, steps: OwnerStep[]): string {
-  const filed = steps.map((step) => ({ step, ...post({ kind: "owner", title: step.title, text: stepBody(ticket, step) }, gh) }));
+function filedOnceLanded(ticket: string, { steps = [], fixes = [], asks = [] }: Answer): string {
+  const filed = [
+    ...steps.map((step) => ({ named: `${step.title}: ${step.why}`, ...post({ kind: "owner", title: step.title, text: stepBody(ticket, step) }, gh) })),
+    ...followedUp(`${FOLLOW_UP_OF}${ticket}${REVIEW_LET_THROUGH}`, fixes, asks, { title: `Your call after #${ticket}'s review`, by: `#${ticket}'s reviewer` }),
+  ];
   const refused = filed.filter(({ refusals }) => refusals.length > 0);
-  if (refused.length > 0) commentOnTicket(ticket, ["These steps only the owner can take could not be filed as notes:", "", ...refused.map(({ step, refusals }) => `- ${step.title}: ${step.why} (${quoted(refusals[0] ?? "")})`), ""].join("\n"), gh);
-  return filed.length === 0 ? "" : `; owner steps filed: ${filed.map(({ said }) => said.trim()).filter((said) => said !== "").join(" ") || "none"}`;
+  if (refused.length > 0) commentOnTicket(ticket, [`What the reviewer of #${ticket} left that could not be filed:`, "", ...refused.map(({ named, refusals }) => `- ${named} (${quoted(refusals[0] ?? "")})`), ""].join("\n"), gh);
+  return filed.length === 0 ? "" : `; filed: ${filed.map(({ said }) => said.trim()).filter((said) => said !== "").join(" ") || "none"}`;
 }
 
 function landing(ticket: string, reason: string): { pr: string } | { refused: string } {
@@ -106,7 +114,7 @@ export function reviewedAndLanded(ticket: string, body: string, alongside: strin
     }
     const landed = answer === undefined ? { refused: "You gave no outcome. Answer one." } : landing(ticket, answer.reason);
     if ("pr" in landed) {
-      const filed = filedSteps(ticket, answer?.steps ?? []);
+      const filed = answer === undefined ? "" : filedOnceLanded(ticket, answer);
       console.log(`review: #${ticket} landed as PR #${landed.pr}${filed}`);
       return spawnSync(machineBin("close"), [ticket, landed.pr], { stdio: "inherit" }).status ?? 1;
     }
