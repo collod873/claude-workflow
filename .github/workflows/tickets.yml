@@ -186,14 +186,25 @@ jobs:
           tail --pid=$$ -q -n +1 -F .git/machine-logs/fix-${{ github.event.issue.number }}.jsonl .git/machine-logs/review-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
           "$GITHUB_WORKSPACE/bin/fix" ${{ github.event.issue.number }}
 
+      - id: after-fix-app
+        if: always() && steps.start.outcome == 'success'
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
       - if: always() && steps.fix.outcome != 'skipped'
         timeout-minutes: 2
         working-directory: tree
         env:
           BRANCH: ${{ steps.start.outputs.branch }}
+          TOKEN: ${{ steps.after-fix-app.outputs.token || steps.app.outputs.token }}
         run: |
           if [[ -n $(git rev-list origin/main..HEAD) ]]; then
-            git push --quiet --force origin "HEAD:refs/heads/$BRANCH"
+            header=http.https://github.com/.extraheader
+            GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=$header GIT_CONFIG_VALUE_0= GIT_CONFIG_KEY_1=$header GIT_CONFIG_VALUE_1="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)" \
+              git push --quiet --force origin "HEAD:refs/heads/$BRANCH"
           fi
 
       - if: always() && steps.fix.outcome != 'skipped'
@@ -209,7 +220,7 @@ jobs:
         with:
           issue: ${{ github.event.issue.number }}
           run: "the builder's job"
-          token: ${{ steps.app.outputs.token }}
+          token: ${{ steps.after-fix-app.outputs.token || steps.app.outputs.token }}
 
       - if: always()
         timeout-minutes: 6

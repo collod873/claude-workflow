@@ -216,7 +216,12 @@ describe("a repo's tickets build through one caller file that holds only trigger
       for (const step of steps.filter((later) => later.env !== undefined)) {
         for (const token of ["GH_TOKEN", "QUIET_GH_TOKEN"]) if (step.env?.[token] !== undefined) expect(step.env[token], `${name} ${step.id ?? ""}`).toBe(APP);
       }
-      for (const step of steps.filter((later) => later.uses?.startsWith("./.github/actions/call-owner") === true)) expect(step.with?.token, name).toBe(APP);
+      const minters = new Set(steps.filter((step) => step.uses?.startsWith("actions/create-github-app-token@") === true).map(({ id }) => id));
+      for (const step of steps.filter((later) => later.uses?.startsWith("./.github/actions/call-owner") === true)) {
+        const named = [...String(step.with?.token).matchAll(/steps\.([\w-]+)\.outputs\.token/g)].map(([, id]) => id);
+        expect(named.length, name).toBeGreaterThan(0);
+        for (const id of named) expect(minters.has(id), `${name} owner call token from ${id ?? ""}`).toBe(true);
+      }
       for (const step of steps.filter((later) => (later.run ?? "").includes("$GITHUB_WORKSPACE/bin/"))) expect((step as WorkflowStep & { "working-directory"?: string })["working-directory"], `${name} ${step.id ?? ""}`).toBe("tree");
     }
   });
