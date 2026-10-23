@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { handedOn, repaired } from "./builder.ts";
 import { handedOn as reviewing } from "./reviewer.ts";
 import { DIFF_CAP, LIST_CAP, TAIL_CAP, TICKET_CAP } from "./brief.ts";
-import { authored, BIN, execute, FIXED_TICKET, ghArgv, git, gitRefusing, openedCases, type Parent, plant, refusedMark, type Said, scratch, script } from "./scenarios.ts";
+import { authored, BIN, execute, FIXED_TICKET, ghArgv, git, gitRefusing, nulSplit, openedCases, type Parent, plant, refusedMark, type Said, scratch, script } from "./scenarios.ts";
 import { OWNER } from "./spelled.ts";
 import { declareStage, HANDED_ON } from "./stages.ts";
 
@@ -45,7 +45,7 @@ function branchedSession(session: string, who: string, onMain: Record<string, st
 export function fixing({
   body = FIXED_TICKET,
   answer = { outcome: "code", reason: "the export was never renamed" } as { outcome: string; reason: string; body?: string; tickets?: unknown[]; steps?: unknown[] },
-  review = { outcome: "approve", reason: "it builds the Why" } as { outcome: string; reason: string; steps?: unknown[]; fixes?: unknown[]; asks?: string[] },
+  review = { outcome: "approve", reason: "it builds the Why", risks: [] } as { outcome: string; reason: string; steps?: unknown[]; fixes?: unknown[]; risks?: unknown[] },
   reviewer = "",
   land = "",
   onTicket = [] as Said[],
@@ -79,6 +79,7 @@ export function fixing({
   const hires = join(root, "claude-argv");
   const marks = join(root, "mark-calls");
   const lands = join(root, "land-calls");
+  const approvals = join(root, "approvals");
   const closes = join(root, "close-calls");
   const argvDir = join(root, "gh-argv");
   const machine = join(root, "machine", "bin");
@@ -93,7 +94,7 @@ export function fixing({
   const envKept = (who: string) => `{ env; printf -- '--- github headers\\n'; git config --get-all http.https://github.com/.extraheader; ${appKeyFile === undefined ? "" : `cat "${appKeyFile}" 2>/dev/null; `}} >"${envs}/${who}-$(ls "${envs}" | wc -l)"\ntrue\n`;
   script(join(root, "bin", "check"), `printf 'check %s\\n' "$PWD" >>"${ranIn}"\n${check}`);
   script(join(machine, "mark"), `printf '%s\\n' "$*" >>"${marks}"\n${envKept("mark")}${refusedMark(markRefusal)}`);
-  script(join(machine, "land"), `printf '%s %s\\n' "$(git rev-parse HEAD)" "$*" >>"${lands}"\n${envKept("land")}${land}\nprintf 'Landed https://github.com/%s/pull/9${ticket}\\n' "\${GH_REPO:-collod873/claude-workflow}"\n`);
+  script(join(machine, "land"), `printf '%s %s\\n' "$(git rev-parse HEAD)" "$(printf '%s' "$*" | tr '\\n' ' ')" >>"${lands}"\nprintf '%s\\0' "$4" >>"${approvals}"\n${envKept("land")}${land}\nprintf 'Landed https://github.com/%s/pull/9${ticket}\\n' "\${GH_REPO:-collod873/claude-workflow}"\n`);
   script(join(root, "bin", "timeout"), `printf '%s\\n' "$2" >>"${caps}"\nshift 2\nexec "$@"\n`);
   script(join(machine, "close"), `printf '%s\\n' "$*" >>"${closes}"\n${envKept("close")}`);
   branchedSession(session, "builder", { "src/ticket-shape.ts": "export const shaped = 1;\n", ...onMain, ...(contract === undefined ? {} : { ".claude/contract.json": contract }) }, { "src/ticket-shape.test.ts": AUTHORED_TEST }, `ticket/${ticket}`);
@@ -165,6 +166,7 @@ export function fixing({
     hired: () => numbered(hires).map((argv) => argv.split("\0").filter((part) => part !== "")),
     marked: () => listed(marks),
     landed: () => listed(lands),
+    approved: () => nulSplit(approvals),
     closed: () => listed(closes),
     capped: () => listed(caps),
     ranWith: (who: string) => readdirSync(envs).filter((name) => name.startsWith(`${who}-`)).sort((one, other) => Number(one.split("-")[1]) - Number(other.split("-")[1])).map((name) => readFileSync(join(envs, name), "utf8")),
@@ -206,9 +208,9 @@ declareStage({
     {
       name: "reviewer",
       file: "src/reviewer.ts",
-      cap: TICKET_CAP + 2 * LIST_CAP + DIFF_CAP + HANDED_ON,
-      slots: ["body", "commits", "diff", "stat", "alongside"],
-      build: (filled) => reviewing({ ticket: "", body: filled.body ?? "", commits: filled.commits ?? "", diff: filled.diff ?? "", stat: filled.stat ?? "", alongside: filled.alongside ?? "", commitlint: true }),
+      cap: TICKET_CAP + 3 * LIST_CAP + DIFF_CAP + HANDED_ON,
+      slots: ["body", "commits", "diff", "stat", "alongside", "said"],
+      build: (filled) => reviewing({ ticket: "", body: filled.body ?? "", commits: filled.commits ?? "", diff: filled.diff ?? "", stat: filled.stat ?? "", alongside: filled.alongside ?? "", said: filled.said ?? "", commitlint: true }),
     },
   ],
   scenarios: [

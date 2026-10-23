@@ -69,7 +69,7 @@ export function handedOn(title: string, body: string, { replies = "", foreign = 
     "## The sentences to try",
     capped(numbered(sentences(body)), SPEC_CAP),
     "## Your answer",
-    `\`tries\`: one item per sentence, \`sentence\` its number in that list. \`outcome\`: \`held\` when you saw it hold; \`missed\` when you saw it fail; \`owner\` when only the owner can try it, since it needs his phone, eyes or a real customer, or a key, account or live service this checkout lacks.${foreign ? "" : SELF} \`tried\`: what you did to try it and what you saw; for \`missed\`, also where it broke as far as you saw, since the spec's one fix pass starts from it; for \`owner\`, what is missing, what of the sentence did hold, and what the owner should do to try it.`,
+    `\`tries\`: one item per sentence, \`sentence\` its number in that list. \`outcome\`: \`held\` when you saw it hold; \`missed\` when you saw it fail; \`owner\` when only the owner can try it, since it needs the owner's phone, eyes or a real customer, or a key, account or live service this checkout lacks.${foreign ? "" : SELF} \`tried\`: what you did to try it and what you saw; for \`missed\`, also where it broke as far as you saw, since the spec's one fix pass starts from it; for \`owner\`, what is missing, what of the sentence did hold, and what the owner should do to try it.`,
     "",
   ].join("\n\n");
 }

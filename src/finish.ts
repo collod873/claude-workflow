@@ -1,9 +1,9 @@
 import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
 import { capped, NO_EM_DASH, TAIL_CAP, tailOf } from "./brief.ts";
 import { CHECK, checkedBy } from "./builder.ts";
-import { doneCheck, lastDoneCheck } from "./done-checker.ts";
-import { askedIssue, commentOnTicket, gh, ghRead, git, gitRead, heldOn, labelsHeld, mark, OWNER, readOrStop, STUCK, unread } from "./post.ts";
-import { COMMIT_WHY, landing, landRefused, ownerStepFiled, reviewedChange, RISKS_LET_THROUGH, STANDARDS_LOADED, STEPS_ASKED, stuckAsked, TESTS_ARE_YOURS } from "./reviewer.ts";
+import { doneCheck, lastDoneCheck, missesOf } from "./done-checker.ts";
+import { askedIssue, commentOnTicket, FOLLOW_UP_OF, gh, ghRead, git, gitRead, heldOn, labelsHeld, mark, OWNER, readOrStop, REVIEW_LET_THROUGH, STUCK, unread } from "./post.ts";
+import { approvedOn, COMMIT_WHY, firstTimeNamed, landing, landRefused, ownerStepFiled, reviewedChange, type Routed, ROUTED, ROUTED_REQUIRED, routedFiled, STANDARDS_LOADED, STEPS_ASKED, stuckAsked, TESTS_ARE_YOURS } from "./reviewer.ts";
 import { type Progress, progressOn, specBranch } from "./scheduler.ts";
 import { sliceTrailed } from "./slice-builder.ts";
 import { FINDINGS_CAP } from "./slicer.ts";
@@ -29,8 +29,8 @@ const ONE_REVIEWER_CAP = 200 * 1024;
 
 const ANSWER = {
   type: "object",
-  properties: { outcome: { enum: ["approve", "stuck"] }, reason: { type: "string", pattern: NO_EM_DASH }, steps: OWNER_STEPS },
-  required: ["outcome", "reason"],
+  properties: { outcome: { enum: ["approve", "stuck"] }, reason: { type: "string", pattern: NO_EM_DASH }, steps: OWNER_STEPS, ...ROUTED },
+  required: ["outcome", "reason", ...ROUTED_REQUIRED],
   additionalProperties: false,
 };
 const { steps: _stepsOnTheSpecAlone, ...unstepped } = ANSWER.properties;
@@ -61,8 +61,11 @@ const answerAsked = [
   "Answer one outcome:",
   "- `approve`: it holds, with whatever you fixed; once every reviewer approves, `bin/land` runs the full check and merges it, and anything it refuses comes back to the last reviewer.",
   stuckAsked("spec"),
-  `${STEPS_ASKED}, since those of each reviewer's last answer are each filed as an \`owner-step\` note once the spec lands.`,
-  `\`reason\`: one paragraph for the owner. An \`approve\`'s \`reason\` is commented on the spec's PR before it merges: ${RISKS_LET_THROUGH}`,
+  `${STEPS_ASKED}, since those of your last answer are each filed as an \`owner-step\` note once the spec lands.`,
+  "`fixes`: each fault you leave for a later build, at most three, each with one sure fix: `fault` with its evidence, `title`, and `done` as the sentences true once it is fixed; each becomes a ticket the machine builds after the spec lands.",
+  "`risks`: any other fault, cost or risk you found, as `risk`, with `ends` naming its end: `fixed` by you here, `why` telling how; `owner`, which only the owner can decide, `why` holding your pick, every reviewer's gathered into one note to the owner once the spec lands; `nothing`, `why` telling why it can stand.",
+  "You are done reviewing when each fault, cost or risk you found sits in `fixes` or `risks`; both stay empty only when you found none. Your last answer is the one filed, so it names them all.",
+  "`reason`: one paragraph for the owner on what the spec built. Every reviewer's `approve` `reason` is commented on the spec's PR before it merges, and below them each of your `fixes` and `risks` with its end.",
 ];
 
 export function onTheCode(changes: Changes, { spec, red, commitlint, findings }: { spec: string; red?: string; commitlint: boolean; findings?: string }): string {
@@ -160,14 +163,12 @@ interface Finished {
   missed?: number[];
 }
 
-interface Approved {
+interface Approved extends Routed {
   reason: string;
   steps: OwnerStep[];
 }
 
 interface Reviewed {
-  reasons: Map<string, string>;
-  steps: OwnerStep[];
   last: Reviewer;
   whole: boolean;
 }
@@ -177,6 +178,8 @@ interface Run {
   said: string;
   app: AppKey | undefined;
   reasons: Map<string, string>;
+  later: string[];
+  left: Map<string, Approved>;
 }
 
 function reviewed(spec: string, said: string, spent: Spent, app: AppKey | undefined): Approved | undefined {
@@ -185,7 +188,7 @@ function reviewed(spec: string, said: string, spent: Spent, app: AppKey | undefi
     stoppedAt("modelRun", `${said} ended red, ${spent.refusal}`);
     return undefined;
   }
-  const answer = spent.answer as { outcome?: unknown; reason?: unknown; steps?: OwnerStep[] } | undefined;
+  const answer = spent.answer as ({ outcome?: unknown; reason?: unknown; steps?: OwnerStep[] } & Routed) | undefined;
   const reason = typeof answer?.reason === "string" ? answer.reason.trim() : "";
   if (reason === "") {
     stoppedAt("modelRun", `${said} ended red, its reviewer gave no reason`);
@@ -197,12 +200,12 @@ function reviewed(spec: string, said: string, spent: Spent, app: AppKey | undefi
     stoppedAt("reviewerStuck", `${said} marked ${STUCK}, ${reason}`);
     return undefined;
   }
-  return { reason, steps: answer?.steps ?? [] };
+  return { reason, steps: answer?.steps ?? [], fixes: answer?.fixes, risks: answer?.risks };
 }
 
 const pushedForRerun = (spec: string) => gitRead(["push", "--quiet", "--force", "origin", `HEAD:refs/heads/${specBranch(spec)}`], `${specBranch(spec)} would not push, so a rerun would lose its reviewers' fixes`);
 
-function answered({ spec, said, app, reasons }: Run, reviewer: Reviewer, input: string, commit: string): Approved | undefined {
+function answered({ spec, said, app, left }: Run, reviewer: Reviewer, input: string, commit: string): Approved | undefined {
   const before = head();
   const spent = reviewer.spend(input, reviewer.session);
   reviewer.session = spent.session ?? reviewer.session;
@@ -211,19 +214,22 @@ function answered({ spec, said, app, reasons }: Run, reviewer: Reviewer, input: 
   committed(commit, "fix");
   if (reviewer.slice !== undefined && reviewer.slice !== UNSLICED && git(["merge-base", "--is-ancestor", before, "HEAD"]).status === 0) sliceTrailed(before, reviewer.slice);
   pushedForRerun(spec);
-  reasons.set(reviewer.seat, `${reviewer.on}: ${approved.reason}`);
+  left.set(reviewer.seat, approved);
   return approved;
 }
 
 type Round<Done> = { done: Done } | { refused: string; told: string };
 
-function rounds<Done>(run: Run, reviewer: Reviewer, { failed, stop, commit }: { failed: string; stop: "unlanded" | "unchecked"; commit: string }, attempt: () => Round<Done>): Done | undefined {
+function rounds<Done>(run: Run, reviewer: Reviewer, { failed, stop, commit, kept }: { failed: string; stop: "unlanded" | "unchecked"; commit: string; kept: (approved: Approved) => void }, attempt: () => Round<Done>): Done | undefined {
   let idle = false;
+  const later: string[] = [];
   for (;;) {
     const tried = attempt();
     if ("done" in tried) return tried.done;
     const before = head();
-    if (answered(run, reviewer, tried.told, commit) === undefined) return undefined;
+    const approved = answered(run, reviewer, tried.told, commit);
+    if (approved === undefined) return undefined;
+    kept(approved);
     const changed = head() !== before;
     if (!changed && idle) {
       stoppedAt(stop, `${run.said} ${failed}, and two rounds in a row of its reviewer changed nothing: ${quoted(tried.refused.split("\n").at(-1) ?? "")}`);
@@ -234,16 +240,22 @@ function rounds<Done>(run: Run, reviewer: Reviewer, { failed, stop, commit }: { 
 }
 
 const greened = (run: Run, reviewer: Reviewer, commit: string) =>
-  rounds(run, reviewer, { failed: "stayed red on its full check", stop: "unchecked", commit }, () => {
+  rounds(run, reviewer, { failed: "stayed red on its full check", stop: "unchecked", commit, kept: (approved) => run.reasons.set(reviewer.seat, `${reviewer.on}: ${approved.reason}`) }, () => {
     const red = checkedBy(CHECK);
     return red === undefined ? { done: true } : { refused: red, told: stillRedOnReview(red) };
   });
+
+function told(run: Run, reviewer: Reviewer, input: string, commit: string): Approved | undefined {
+  const approved = answered(run, reviewer, input, commit);
+  if (approved !== undefined) run.reasons.set(reviewer.seat, `${reviewer.on}: ${approved.reason}`);
+  return approved;
+}
 
 function reviews(run: Run, { title, body }: { title: string; body: string }): Reviewed | undefined {
   const { spec } = run;
   const commitlint = commitlinted();
   const { progress } = progressOn(spec);
-  const findings = progress.fixPass ? (lastDoneCheck(spec, `the comments on #${spec} could not be read, so nothing was reviewed`) ?? "") : undefined;
+  const findings = progress.fixPass ? missesOf(lastDoneCheck(spec, `the comments on #${spec} could not be read, so nothing was reviewed`) ?? "") : undefined;
   const reviewer = (seat: string, on: "spec" | "code standard", answers: object, slice?: string): Reviewer => ({
     spend: hire("finish", seat, { name: `reviewer on the ${on}`, model: "opus", answers }),
     seat,
@@ -251,7 +263,7 @@ function reviews(run: Run, { title, body }: { title: string; body: string }): Re
     slice,
   });
   const onSpec = reviewer(`${spec}-spec`, "spec", ANSWER);
-  const approved = answered(run, onSpec, onTheSpec(wholeBranch(), { spec, title, body, commitlint, briefs: briefsOf(progress), findings }), `Review #${spec} on the spec`);
+  const approved = told(run, onSpec, onTheSpec(wholeBranch(), { spec, title, body, commitlint, briefs: briefsOf(progress), findings }), `Review #${spec} on the spec`);
   if (approved === undefined) return undefined;
   let red = checkedBy(CHECK);
   const parts = onTheCodeInParts();
@@ -259,33 +271,33 @@ function reviews(run: Run, { title, body }: { title: string; body: string }): Re
   for (const [at, changes] of parts.entries()) {
     const onCode = reviewer(`${spec}-code-${at + 1}`, "code standard", CODE_ANSWER, changes.slice);
     const commit = `Review #${spec} on the code standard`;
-    if (answered(run, onCode, onTheCode(changes, { spec, red, commitlint, findings }), commit) === undefined) return undefined;
+    if (told(run, onCode, onTheCode(changes, { spec, red, commitlint, findings }), commit) === undefined) return undefined;
     if (red !== undefined && greened(run, onCode, commit) === undefined) return undefined;
     red = undefined;
     last = onCode;
   }
-  return { reasons: run.reasons, steps: approved.steps, last, whole: parts.length === 1 };
+  return { last, whole: parts.length === 1 };
 }
 
 function landed(run: Run, { last, whole }: Reviewed): string | undefined {
-  const { spec, said, reasons } = run;
-  return rounds(run, last, { failed: "did not land", stop: "unlanded", commit: `Fix what bin/land refused for #${spec}` }, (): Round<string | undefined> => {
+  const { spec, said, reasons, later, left } = run;
+  return rounds(run, last, { failed: "did not land", stop: "unlanded", commit: `Fix what bin/land refused for #${spec}`, kept: (approved) => later.push(approved.reason) }, (): Round<string | undefined> => {
     const held = heldOn(labelsHeld(spec, gh));
     if (held !== undefined) {
       console.log(`${said} is marked ${held}, so its reviewed branch does not land`);
       return { done: undefined };
     }
-    const attempt = landing(["--spec", spec], [...reasons.values()].join("\n\n"));
+    const attempt = landing(["--spec", spec], approvedOn([...reasons.values()], later, [...left.values()]));
     if ("pr" in attempt) return { done: attempt.pr };
     return { refused: attempt.refused, told: whole ? landRefused(attempt.refused) : [WHOLE_BRANCH, landRefused(attempt.refused)].join("\n\n") };
   });
 }
 
-const titled = (step: OwnerStep) => step.title.trim().toLowerCase();
-
-function stepsFiled(spec: string, steps: OwnerStep[]): void {
-  const once = steps.filter((step, at) => steps.findIndex((other) => titled(other) === titled(step)) === at);
-  const refused = once.map(ownerStepFiled(`Left to the owner by the run that landed spec #${spec}.`)).filter(({ refusals }) => refusals.length > 0);
+function leftFiled(spec: string, approved: Approved[]): void {
+  const unfiled = firstTimeNamed();
+  const once = approved.flatMap(({ steps }) => steps).filter(({ title }) => unfiled(title));
+  const filed = [...once.map(ownerStepFiled(`Left to the owner by the run that landed spec #${spec}.`)), ...routedFiled(`${FOLLOW_UP_OF}${spec}${REVIEW_LET_THROUGH}`, approved, { title: `Your call after spec #${spec}'s review`, by: `the review of spec #${spec}` })];
+  const refused = filed.filter(({ refusals }) => refusals.length > 0);
   if (refused.length > 0) commentOnTicket(spec, [`What the reviewers of #${spec} left that could not be filed:`, "", ...refused.map(({ named, refusals }) => `- ${named} (${quoted(refusals[0] ?? "")})`), ""].join("\n"), gh);
 }
 
@@ -306,12 +318,12 @@ function finished(spec: string, app: AppKey | undefined): Finished {
     stoppedAt("unfinishable", `${said} holds nothing past main on its integration branch, ${unchanged}`);
     return {};
   }
-  const run: Run = { spec, said, app, reasons: new Map() };
+  const run: Run = { spec, said, app, reasons: new Map(), later: [], left: new Map() };
   const review = reviews(run, asked);
   if (review === undefined) return {};
   const pr = landed(run, review);
   if (pr === undefined) return {};
-  stepsFiled(spec, review.steps);
+  leftFiled(spec, [...run.left.values()]);
   const checked = readOrStop("done-check", () => doneCheck(spec, app));
   return { landed: pr, missed: typeof checked === "object" ? checked.missed : undefined };
 }

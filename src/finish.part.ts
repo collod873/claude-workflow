@@ -4,7 +4,7 @@ import { DIFF_CAP, LIST_CAP, TAIL_CAP } from "./brief.ts";
 import { specWith } from "./done-checker.part.ts";
 import { BRIEFS_CAP, onTheCode, onTheSpec, SLICE_CAP } from "./finish.ts";
 import { FINDINGS_CAP } from "./slicer.ts";
-import { authored, BIN, execute, ghArgv, git, key, plant, type Said, scratch, script } from "./scenarios.ts";
+import { authored, BIN, execute, ghArgv, git, key, nulSplit, plant, type Said, scratch, script } from "./scenarios.ts";
 import { PAUSED } from "./spelled.ts";
 import { declareStage, HANDED_ON } from "./stages.ts";
 import { SPEC_CAP } from "./ticket-shape.ts";
@@ -109,7 +109,7 @@ export function finishing({
     handed: () => numbered(prompts),
     hired: () => numbered(hires).map((argv) => argv.split("\0").filter((part) => part !== "")),
     landed: () => listed(lands).map((line) => line.split(" ")),
-    approved: () => (existsSync(approvals) ? readFileSync(approvals, "utf8").split("\0").filter((reason) => reason !== "") : []),
+    approved: () => nulSplit(approvals),
     checked: () => listed(checks),
     marked: () => listed(marks),
     calls,

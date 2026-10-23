@@ -502,6 +502,10 @@ export function ghArgv(dir: string): { setup: string; calls: () => string[][] } 
   };
 }
 
+export const nulSplit = (file: string) => (existsSync(file) ? readFileSync(file, "utf8").split("\0").filter((said) => said !== "") : []);
+
+export const schemaIn = (argv: string[]) => JSON.parse(argv[argv.indexOf("--json-schema") + 1] ?? "{}") as { required: string[]; properties: Record<string, { items?: { required: string[]; properties: Record<string, { enum?: string[] }> } }> };
+
 export const createdIssues = (calls: string[][]) =>
   calls.filter((args) => args[0] === "issue" && args[1] === "create").map((args) => ({ title: args[args.indexOf("--title") + 1], body: args[args.indexOf("--body") + 1], labels: args.flatMap((arg, at) => (args[at - 1] === "--label" ? [arg] : [])) }));
 

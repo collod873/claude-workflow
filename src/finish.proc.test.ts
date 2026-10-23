@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { finishing, type Slice } from "./finish.part.ts";
-import { heard } from "./scenarios.ts";
+import { createdIssues, heard, schemaIn } from "./scenarios.ts";
 import { HELD } from "./spelled.ts";
 
 const SENTENCES = ["see the spec land on main", "see each slice's file on main"];
@@ -311,5 +311,33 @@ describe("bin/finish acts on a fresh App token after each model run, since a spe
     const [postedOn = ""] = finished.tokenOf((args) => args[0] === "issue" && args[1] === "comment");
     expect(postedOn).toMatch(/^minted-\d+$/);
     expect(postedOn).not.toBe(landedOn);
+  });
+});
+
+describe("every risk a spec's reviewer names ends somewhere, as a ticket's reviewer's does, where the spec's two reviewers never got #1491's filing", () => {
+  const FIX = { fault: "A zone with no tenant falls back to UTC.", title: "Give a zone with no tenant the business's time zone", done: ["A zone with no tenant reads the business's time zone."] };
+  const OWNERS = { risk: "Storm alerts text every zone at once.", ends: "owner", why: "Whether to stagger them; my pick is no." };
+  const NEEDS_NOTHING = { risk: "The zone list loads before the map.", ends: "nothing", why: "Both render in the same frame." };
+
+  it("asks each reviewer for its risks, files each fix and owner's call once in all though both name it, once the spec lands, and posts each risk with where it ends", () => {
+    const finished = finishing({ answer: { outcome: "approve", reason: "reason $CALL", fixes: [FIX], risks: [OWNERS, NEEDS_NOTHING] } });
+
+    expect(finished.run().status).toBe(0);
+    expect(schemaIn(finished.hired()[0] ?? []).required).toContain("risks");
+    expect(finished.handed()[0]).toContain("sits in `fixes` or `risks`");
+    const created = createdIssues(finished.calls());
+    expect(created.map(({ title }) => title)).toEqual([FIX.title, "Your call after spec #974's review"]);
+    expect(created[0]?.body).toContain("Follow-up of #974: its reviewer let this through.");
+    expect(created[1]?.body).toContain(`@collod873 the review of spec #974 leaves these to you:\n\n- ${OWNERS.risk} ${OWNERS.why}\n`);
+    const [approved = ""] = finished.approved();
+    expect(approved).toContain(`- filed as the ticket "${FIX.title}" once it lands: ${FIX.fault}`);
+    expect(approved).toContain(`- needs nothing: ${NEEDS_NOTHING.risk} ${NEEDS_NOTHING.why}`);
+  });
+
+  it("posts the reviewers' reasons and then what the last one changed for bin/land, once bin/land refused", () => {
+    const finished = finishing({ land: REFUSES_ONCE });
+
+    expect(finished.run().status).toBe(0);
+    expect(finished.approved()).toEqual(["On the code standard: reason 1\n\nOn the spec: reason 2", "On the code standard: reason 1\n\nOn the spec: reason 2\n\nAfter `bin/land` refused it: reason 3"]);
   });
 });

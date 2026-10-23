@@ -147,7 +147,7 @@ export function handedOn({ ticket, body, capture, woken, alongside, commitlint, 
     "- `close`: the ticket should not exist as written, and nothing should replace it, as for a gate you cannot make pass, since a gate is proven first.",
     "- `stuck`: you cannot build it, even rewritten; `reason` says why, and the ticket is marked `stuck`.",
     machineAtFault(foreign),
-    "`reason`: one paragraph for the owner.",
+    "`reason`: one paragraph for the owner; a `code` answer's goes to its reviewer, who files each gap, wait or step for the owner it names.",
     "",
   ].join("\n\n");
 }
@@ -336,6 +336,7 @@ function ownTicket(ticket: string, app: AppKey | undefined): number {
     woken: owning.carried.onTicket.filter((said) => said.startsWith(splitClosed(ticket))).at(-1),
   });
   let input = opening;
+  const said: string[] = [];
   for (;;) {
     const mainBefore = fetchedMain();
     const spent = spentOn(`fix: #${ticket}`, spend, input, session, opening);
@@ -344,12 +345,13 @@ function ownTicket(ticket: string, app: AppKey | undefined): number {
     if (app !== undefined) freshAppToken(app, gh, `so the build of #${ticket} is not acted on`);
     if (spent.refusal !== undefined) return calledOwner(ticket, "builder", spent.refusal);
     const answer = spent.answer as Answer | undefined;
+    if (answer?.outcome === "code") said.push(answer.reason);
     const round = outcomeOf(ticket, body, answer, mainBefore);
     if (round.ended !== undefined) return round.ended;
     body = round.body ?? body;
     committed(builtBy(ticket), "feat");
     const { red } = round.red === undefined ? judged() : round;
-    if (red === undefined) return reviewedAndLanded(ticket, body, owning.carried.alongside, app);
+    if (red === undefined) return reviewedAndLanded(ticket, { body, alongside: owning.carried.alongside, said: said.join("\n\n") }, app);
     input = red;
   }
 }
