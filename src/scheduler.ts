@@ -5,7 +5,7 @@ import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
 import { capped, LIST_CAP } from "./brief.ts";
 import { askedIssue, commentEdited, commentOnTicket, gh, ghRead, git, gitRead, heldOn, labelsHeld, machineBin, mark, OWNER, readOrStop, STUCK, unread } from "./post.ts";
 import type { Slice } from "./slicer.ts";
-import { BUILDING, MACHINE, SPEC } from "./spelled.ts";
+import { BUILDING, MACHINE, SPEC, SPEC_PREFIX } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { filedOutOfScope, quoted } from "./ticket-shape.ts";
 
@@ -51,7 +51,7 @@ const PROGRESS_OPEN = "<!-- progress: ";
 const PROGRESS_CLOSE = " -->";
 const PROGRESS = new RegExp(`${PROGRESS_OPEN}(.*)${PROGRESS_CLOSE}`, "s");
 
-export const specBranch = (spec: string) => `spec/${spec}`;
+export const specBranch = (spec: string) => `${SPEC_PREFIX}${spec}`;
 const sliceBranch = (spec: string, id: string) => `slice/${spec}-${id}`;
 
 export function briefOf(slice: Slice, specBody: string): string {
@@ -294,6 +294,11 @@ async function scheduled(spec: string, app: AppKey | undefined): Promise<Stop | 
     tracked.state = "hired";
     running.set(tracked.id, building(spec, tracked, dir, brief, join(logs, `build-slice-${spec}-${tracked.id}.out`), keyed(join(root, `${tracked.id}-app-key.json`), app), how));
   };
+  const stoodDown = (after: string) => {
+    const held = heldOn(labelsHeld(spec, gh));
+    if (held !== undefined) console.log(`${said} is marked ${held}, so ${after}`);
+    return held !== undefined;
+  };
   let plan = true;
   let cutNothing = false;
   let slicerStopped = false;
@@ -331,14 +336,14 @@ async function scheduled(spec: string, app: AppKey | undefined): Promise<Stop | 
         return undefined;
       }
       if (slicerStopped) {
-        if (heldOn(labelsHeld(spec, gh)) !== undefined) return undefined;
+        if (stoodDown("its slicer stood down and nothing more was hired")) return undefined;
         return stoppedAt("unsliced", `${said} ended red, its slicer ended red or gave no slices, so nothing more was hired`);
       }
       if (!cutNothing || progress.slices.some(({ state }) => state !== "merged")) return calledOwner(spec, "unmoved", unmovedWhy(progress));
       const ended = finished(spec, root, logs, app);
       fresh("bin/finish");
       if (ended.status !== 0) {
-        if (heldOn(labelsHeld(spec, gh)) !== undefined) return undefined;
+        if (stoodDown("bin/finish stood down and the spec did not land")) return undefined;
         return stoppedAt("unfinished", `${said} ended red, bin/finish ${spec} ended ${String(ended.status)}`);
       }
       if (ended.missed === "") {
@@ -347,9 +352,6 @@ async function scheduled(spec: string, app: AppKey | undefined): Promise<Stop | 
       }
       if (progress.fixPass) return calledOwner(spec, "missedTwice", `the done check missed sentence ${ended.missed} after its one fix pass`);
       progress.fixPass = true;
-      fetchedMain();
-      branchedOff(spec, "origin/main");
-      pushed(spec);
       plan = true;
       posted(spec, found);
       continue;

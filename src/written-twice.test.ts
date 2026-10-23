@@ -67,8 +67,8 @@ describe("written twice refuses text the machine spells in two places, so renami
   it("refuses the machine's own source once a line spells an existing marker a second time", () => {
     const machine = machineSource(import.meta.dirname);
 
-    expect(writtenTwice([...machine, source("src/planted.ts", "export const MOVED = /<!-- moves: ([\\d, ]*) -->/;")])).toEqual([
-      expect.stringMatching(/^written twice: src\/planted\.ts:1 reads "<!-- moves: " that src\/[\w-]+\.ts:\d+ writes; /),
+    expect(writtenTwice([...machine, source("src/planted.ts", "export const PROGRESSED = /<!-- progress: (.*) -->/;")])).toEqual([
+      expect.stringMatching(/^written twice: src\/planted\.ts:1 reads "<!-- progress: " that src\/[\w-]+\.ts:\d+ writes; /),
     ]);
   });
 });

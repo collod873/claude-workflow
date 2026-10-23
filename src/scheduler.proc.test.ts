@@ -67,7 +67,7 @@ describe("bin/schedule runs a spec from its first cut to its landing, one slice 
 
     expect(run.run().status).toBe(0);
     expect(run.sliced()[1]).toContain("Build seam\nMain moved\nStart");
-    expect(git(run.remote, "rev-list", "--merges", "--count", "main")).toBe("0");
+    expect(git(run.remote, "rev-list", "--merges", "--count", SPEC_BRANCH)).toBe("0");
   });
 
   it("resumes a builder whose slice no longer fast-forwards because another merged first, telling it the tip moved", () => {
@@ -119,8 +119,15 @@ describe("bin/schedule runs a spec from its first cut to its landing, one slice 
 
     expect(ended).toMatchObject({ status: 0, stdout: `schedule: #${SPEC_ISSUE} landed as #1601, and its done check found every sentence held or put to the owner\n` });
     expect(run.sliced()[2]).toContain("past-main=0");
-    expect(run.finished()[1]).toContain(`branch=${SPEC_BRANCH}\nBuild mend\nBuild seam\nStart`);
+    expect(run.finished()[1]).toContain(`branch=${SPEC_BRANCH}\nBuild mend\nMerge the spec\n`);
     expect(run.progress()).toMatchObject({ fixPass: true, slices: [{ id: "seam", fix: false }, { id: "mend", fix: true, state: "merged" }] });
+  });
+
+  it("stands down green when bin/finish stands down on a spec paused before it landed, calling no owner", () => {
+    const run = scheduling({ cuts: [[sliceOf("seam")], []], finishes: [{ status: 1, landed: "", then: PAUSES }] });
+
+    expect(run.run()).toMatchObject({ status: 0, stdout: `schedule: #${SPEC_ISSUE} is marked paused, so bin/finish stood down and the spec did not land\n` });
+    expect(run.order()).not.toContain(`mark ${SPEC_ISSUE} stuck`);
   });
 
   it("marks the spec stuck and calls the owner when the done check misses again after its one fix pass", () => {

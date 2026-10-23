@@ -20,6 +20,7 @@ export interface Finish {
   landed?: string;
   missed?: string;
   status?: number;
+  then?: string;
 }
 
 export interface Comment {
@@ -155,9 +156,10 @@ export function scheduling({
       `{ printf 'token=%s\\n' "\${GH_TOKEN:-}"; printf 'key=%s\\n' "$(jq -r .clientId "\${APP_KEY_FILE:-/dev/null}" 2>/dev/null)"; printf 'branch=%s\\n' "$(git rev-parse --abbrev-ref HEAD)"; git log --format=%s; } >"${at("finished")}/$n"`,
       ORDER(root).replace('"$*"', '"finish $*"'),
       `f="${at("finishes")}/$n"`,
-      "[[ -f $f ]] && finish=$(cat \"$f\") || finish='{}'",
+      `ROOT="${root}"; [[ -f $f ]] && finish=$(cat "$f") || finish='{}'`,
+      "eval \"$(jq -r '.then // \"\"' <<<\"$finish\")\"",
       `landed=$(jq -r '.landed // "${LANDED}"' <<<"$finish"); missed=$(jq -r '.missed // ""' <<<"$finish"); status=$(jq -r '.status // 0' <<<"$finish")`,
-      "[[ $status == 0 ]] && git push --quiet origin HEAD:main",
+      '[[ $status == 0 ]] && git fetch --quiet origin main && git push --quiet origin "$(git commit-tree -p origin/main -p HEAD -m "Merge the spec" "HEAD^{tree}"):refs/heads/main"',
       "printf 'landed=%s\\nmissed=%s\\n' \"$landed\" \"$missed\"",
       'exit "$status"',
       "",

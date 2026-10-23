@@ -25,7 +25,7 @@ const KEYS = [
   ["PAUSED", "paused"],
   ["STUCK", "stuck"],
 ] as const;
-const SPELLED = [...KEYS, ["TICKET_PREFIX", "ticket/"], ["OWNER", "collod873"], ["MACHINE", "collod873-machine[bot]"], ["OWNER_CALL", "owner call"]] as const;
+const SPELLED = [...KEYS, ["TICKET_PREFIX", "ticket/"], ["SPEC_PREFIX", "spec/"], ["OWNER", "collod873"], ["MACHINE", "collod873-machine[bot]"], ["OWNER_CALL", "owner call"]] as const;
 const USAGE = `spelled: usage: spelled labels | <key>\nspelled: keys: ${SPELLED.map(([key]) => key).join("|")}\n`;
 const NAMING = ["post.ts", "slicer.ts", "scheduler.ts", "done-checker.ts", "researcher.ts", "closer.ts", "builder.ts"].map((file) => join(BIN, "..", "src", file));
 
