@@ -29,7 +29,7 @@ stalled, 998 on one ticket. Before it: Lumaria#902 Waves 12 to 16
 | A held sentence is never tried again until the done check | all three done-check misses had held earlier and broke unseen, one for 58 h; 169 of 289 min of Waves 12-16 were the rework | every wave check also tries every sentence that held at an earlier wave or done check | built |
 | A fix wave sliced without the done check's findings | Wave 14 fixed the wrong cause of sentence 11, so Wave 15 (72 min) fixed what the done check had named | the done check posts its findings first and hands their cause to `slice --fix` | built |
 | A gate that ends green without judging | in #1086, 8 of 17 reviews stood down as "moved" and 6 of 9 Spec PRs merged with no verdict; #1096's dropped drift was sentence 9's 22 min fix wave | the reviewer never ends green without a verdict on the head it read; built for the meters' race only, an App edit's real move still ends green | built |
-| A run that goes red without judging | from 2026-10-19 11 of 13 landings' Check runs went red though each merged, the branch gone before checkout (run 39349940159) | a run is red only when something it judged failed | built (#1373) |
+| A run that goes red without judging | `bin/land` handed back two green PRs GitHub refused only for racing main, "Base branch was modified": claude-workflow#1492 (2026-10-23) and PW-Zone2#165 (2026-10-21) | a run is red only when something it judged failed | built (#1373) |
 | Each check writes its own browser driver | wave and done checks took 106 of 289 min and 39% of model spend in Waves 12-16; #1086's five checks wrote five drivers | the check stages carry one browser driver, `ui-check` | built |
 | Jobs on the PC share Docker, /tmp and processes | another repo's job deleted Lumaria #1090's Postgres twice (2026-10-13); on 2026-10-22 eight runners sat on four CPUs and two full checks filled the 20 GB slice | each job gets its own Postgres, ports and paths, an equal CPU share, and room for two full checks in a 28 GB slice | built (#1487) |
 | A fix spanning two repos carried by the owner | 8 of 14 by hand in a week (#1233); agent-skills#220 moved `~/bin` and `skills/`, so every push failed at the hook and every stage refused to start until a session fixed them | one owning repo per kind of fix; every repo judges a PR under one shape written by `bin/enrol` | built (#1368, #1386) |
@@ -42,10 +42,11 @@ stalled, 998 on one ticket. Before it: Lumaria#902 Waves 12 to 16
 | Jobs started for nothing hold the build lane: a job takes a build runner only to read its labels and skip | 62 Lumaria slice and research jobs took a `pc` runner to read labels and skip, about 25 runner-minutes (#1461) | one quick job on the quick runner reads the labels before any build-runner job starts | built (#1462) |
 | A finding with nowhere to go: a judge sees a fault and its verdict carries it nowhere | Lumaria#1325's reviewer named two money faults it let through, left only in PR #1327's comment; #1464's approve reason was dropped | the reviewer posts its approve reason, files each fault it lets through, and fixes a small one of the same cause | built (#1471, #1491) |
 | A stage's prompt carries dead, copied or missing text | 3 of 16 builders sent back after a `ticket` rewrite (#1458); 0 of 15 reviewers loaded the code standard (#1459) | each stage's prompt points at its skills, not its own copy, names the open tickets on the same files, and drops lines that never fire | built (#1477, #1484, agent-skills#284) |
+| A job outlives its App token: the one-run path mints one token, which GitHub ends after an hour | Lumaria#1332's run minted its token at 16:42 on 2026-10-23; at 17:42 `bin/land`'s push failed on credentials after a green 452 s full check, and the ticket landed 27 min later on a rerun | none yet: brought to Collin 2026-10-23 | unruled |
 
 ## Next
 
 Build what is ruled, then measure it all on one Spec, so the measurement covers one machine
 version (#1377): file the Lumaria kit Spec, measure it at its done check as
 [spec-1086-2026-10.md](research/spec-1086-2026-10.md) was, move each `built` row, then read #1335
-against it. Waiting on Collin: the Wave barrier and no gate running the app.
+against it. Waiting on Collin: the Wave barrier, no gate running the app, and a job outliving its App token.
