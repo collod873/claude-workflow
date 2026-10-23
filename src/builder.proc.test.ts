@@ -45,14 +45,14 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
     expect(closed()).toEqual(["811 9811"]);
   });
 
-  it("opens a build pointing at `tdd` and at `check --full`, carrying no build loop of its own, none of the contract's steps and none of the lines that never fired (#1477)", () => {
+  it("opens a build pointing at `tdd`, leaving `check --full` to the machine outside its cap, carrying no build loop of its own, none of the contract's steps and none of the lines that never fired (#1477, Lumaria#1283)", () => {
     const contract = '{\n  "steps": {\n    "only-this-tree": { "run": "node src/gate.ts", "fast": true }\n  }\n}\n';
     const { run, handed } = fixing({ claude: FIXES, contract });
 
     expect(run("811").status).toBe(0);
     const opening = handed()[0] ?? "";
     expect(opening).toContain("Call the Skill tool with `tdd` and follow it to the end");
-    expect(opening).toContain("Run `check --full` last");
+    expect(opening).not.toContain("Run `check --full` last");
     expect(opening).toContain("the machine commits whatever you left");
     expect(opening).not.toContain("only-this-tree");
     expect(opening).not.toMatch(/red before green|failing test/i);
