@@ -390,13 +390,23 @@ export type Merge = "merged" | "mergedErred" | keyof typeof REFUSALS;
 
 export const TICKET_TITLE = "Build what the ticket asks";
 
+function landedBeside(root: string, remote: string, files: Record<string, string>): string {
+  const elsewhere = join(root, "elsewhere");
+  git(root, "clone", "--quiet", remote, elsewhere);
+  for (const [path, content] of Object.entries(files)) plant(elsewhere, path, content);
+  git(elsewhere, "add", "-A");
+  git(elsewhere, "-c", "user.email=other@test", "-c", "user.name=other", "commit", "--quiet", "--allow-empty", "-m", "another session landed");
+  git(remote, "fetch", "--quiet", elsewhere, "HEAD");
+  return git(elsewhere, "rev-parse", "HEAD");
+}
+
 export function landSession({
   gh,
   remoteRefuses,
   messages = ["change"],
   merges = ["merged"],
   views = ["BLOCKED"],
-  mainMovesOnRefusal = false,
+  mainMovesOnRefusal,
   rounds = "3",
   covered = true,
   green = true,
@@ -404,7 +414,7 @@ export function landSession({
   defaultBranch = "main",
   openPr = false,
   treeNode = false,
-}: { gh?: string; remoteRefuses?: string; messages?: string[]; merges?: Merge[]; views?: string[]; mainMovesOnRefusal?: boolean; rounds?: string; covered?: boolean; green?: boolean; changes?: Record<string, string>; defaultBranch?: string; openPr?: boolean; treeNode?: boolean } = {}) {
+}: { gh?: string; remoteRefuses?: string; messages?: string[]; merges?: Merge[]; views?: string[]; mainMovesOnRefusal?: Record<string, string>; rounds?: string; covered?: boolean; green?: boolean; changes?: Record<string, string>; defaultBranch?: string; openPr?: boolean; treeNode?: boolean } = {}) {
   const root = scratch("land-");
   const { remote, session } = clonedOn(root, defaultBranch, ["base"]);
   git(remote, "config", "user.email", "github@test");
@@ -412,6 +422,7 @@ export function landSession({
   for (const [path, content] of Object.entries(changes)) plant(session, path, content);
   if (Object.keys(changes).length > 0) git(session, "add", "-A");
   for (const message of messages) git(session, "commit", "--quiet", "--allow-empty", "-m", message);
+  const movedMain = mainMovesOnRefusal === undefined ? undefined : landedBeside(root, remote, mainMovesOnRefusal);
   if (remoteRefuses !== undefined) script(join(remote, "hooks", "pre-receive"), `cat >/dev/null\ncat >&2 <<'REFUSAL'\n${remoteRefuses}\nREFUSAL\nexit 1\n`);
   const state = join(root, "gh-state");
   mkdirSync(state);
@@ -451,7 +462,7 @@ export function landSession({
         `      [[ \${merges[n - 1]} == mergedErred ]] && { printf '%s\\n' '${GITHUB_ERRED}' >&2; exit 1; }`,
         "    else",
         ...Object.entries(REFUSALS).map(([merge, refusal]) => `      [[ \${merges[n - 1]} == ${merge} ]] && printf '%s\\n' '${refusal}' >&2`),
-        ...(mainMovesOnRefusal ? [`      git -C "$remote" update-ref refs/heads/${defaultBranch} "$(git -C "$remote" commit-tree "${defaultBranch}^{tree}" -p ${defaultBranch} -m "another session landed")"`] : []),
+        ...(movedMain === undefined ? [] : [`      git -C "$remote" update-ref refs/heads/${defaultBranch} ${movedMain}`]),
         "      exit 1",
         "    fi",
         "    ;;",
