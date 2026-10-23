@@ -7,8 +7,8 @@ reversal: A spec would wait on a frozen machine, or every number would average a
 # The machine keeps changing while a spec runs, and a measurement counts one machine version
 
 A spec is measured at its done check: wall time, rework, stalls and spend, cut by the machine
-version each run referenced. Fixes the machine needs land as soon as they are ready, during a spec
-included, since a broken spec needs them to finish and a fix held back is a failure left to repeat.
+version each run referenced. Countermeasures the machine needs land as soon as they are ready, during a spec
+included, since a broken spec needs them to finish and one held back leaves its symptom to recur.
 Runs under an older version are history: they say what that version cost, never what the current
 one does, and no number averages across versions. A session asked for a clean read gives the
 segmented one.

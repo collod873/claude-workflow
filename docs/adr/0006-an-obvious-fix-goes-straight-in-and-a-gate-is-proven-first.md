@@ -7,7 +7,7 @@ reversal: Doubtful rules would sit again as meters nobody promotes, or unproven 
 # An obvious fix goes straight in, and a gate is proven first
 
 A rule that will plainly improve things is built at once, as a changed default at its cause.
-Anything that would stop work is built only once real runs show the failure it prevents and where
+Anything that would stop work is built only once real runs show the symptom it stops and where
 it should fire. Nothing is built in between to watch and report.
 
 **Rejected: a meter, a rule that reports what it would have refused.** Meters ran on about 250
