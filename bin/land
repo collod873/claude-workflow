@@ -68,8 +68,14 @@ onto_default_branch() {
       conflicted=$(git diff --name-only --diff-filter=U | paste -sd, - | sed 's/,/, /g')
       git rebase --abort >/dev/null 2>&1 # quiet: the rebase's own error is already in the log
       checkout=$(git symbolic-ref --quiet --short HEAD || git rev-parse --short HEAD)
+      pr_left=${url:+$url is left open and }
+      if [[ -n $url && $branch == land/* ]]; then
+        call "gh pr close" gh pr close "$url"
+        call "git push --delete" git push --quiet origin --delete "$branch"
+        pr_left="$url is closed, since the next landing opens its own, and "
+      fi
       printf 'land: HEAD does not rebase cleanly onto origin/%s%s, so nothing landed; %sthis checkout is left on %s as it was: run git rebase origin/%s and resolve them\n' \
-        "$default_branch" "${conflicted:+, conflicting in $conflicted}" "${url:+$url is left open and }" "$checkout" "$default_branch" >&2
+        "$default_branch" "${conflicted:+, conflicting in $conflicted}" "$pr_left" "$checkout" "$default_branch" >&2
       exit 1
     fi
     head=$(git rev-parse HEAD)

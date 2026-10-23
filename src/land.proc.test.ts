@@ -258,6 +258,19 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
     expect(git(session, "status", "--porcelain")).toBe("");
   });
 
+  it("closes a session's land PR and deletes its branch on origin, keeping the session's checkout where it was, when main moved after the push into a real conflict, since the next landing opens its own PR under a new head", () => {
+    const { remote, session, head, branch, run, calls } = sessionAheadOfMain(1, { merges: ["refused"], views: ["DIRTY"], mainMovesOnRefusal: { "shared.txt": "theirs\n" }, changes: { "shared.txt": "mine\n" } });
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toBe(`land: HEAD does not rebase cleanly onto origin/main, conflicting in shared.txt, so nothing landed; ${PR} is closed, since the next landing opens its own, and this checkout is left on main as it was: run git rebase origin/main and resolve them\n`);
+    expect(calls().filter((call) => call[1] === "close")).toEqual([["pr", "close", PR]]);
+    expect(git(remote, "for-each-ref", "--format=%(refname)", `refs/heads/${branch}`)).toBe("");
+    expect(git(session, "symbolic-ref", "--short", "HEAD")).toBe("main");
+    expect(git(session, "rev-parse", "HEAD")).toBe(head);
+  });
+
   it("lands nothing and says to rebase by hand when the session's commits conflict with a main that moved (#869)", () => {
     const { root, remote, session, run, calls } = sessionAheadOfMain(0);
     writeFileSync(join(session, "shared.txt"), "mine\n");
