@@ -191,6 +191,47 @@ describe("tickets.yml builds a ticket the moment ticket is added, so filing with
     }
   });
 
+  describe("pushes the ticket's branch and calls the owner after fix on an App token minted once fix ends, since GitHub ends the job's first token after an hour (#1511)", () => {
+    const afterFix = (job: Job, step: Step | undefined, token: unknown) => {
+      const minted = /^\$\{\{ steps\.([\w-]+)\.outputs\.token\b/.exec(String(token))?.[1];
+      const minting = job.steps.find(({ id }) => id === minted);
+      const ended = (fixed: string) => ({ steps: { ...allSkipped(job.steps), start: outcome("success"), fix: outcome(fixed) }, failed: fixed === "failure", cancelled: fixed === "cancelled" });
+
+      expect(minting?.uses, `${String(token)} is an App token`).toMatch(/^actions\/create-github-app-token@/);
+      expect(job.steps.indexOf(minting ?? {})).toBeGreaterThan(job.steps.indexOf(stageStep(job, "fix")));
+      expect(job.steps.indexOf(minting ?? {})).toBeLessThan(job.steps.indexOf(step ?? {}));
+      for (const fixed of ["success", "failure", "cancelled"]) {
+        if (holds(step?.if ?? "success()", ended(fixed))) expect(holds(minting?.if ?? "success()", ended(fixed)), `minted when fix ended ${fixed}`).toBe(true);
+      }
+    };
+
+    it("pushes an unlanded branch with the fresh token's header alone, never the one the checkout stored", () => {
+      const { job } = workflow();
+      const push = job.steps.find((step) => /git push\b/.test(step.run ?? ""));
+      afterFix(job, push, push?.env?.TOKEN);
+
+      const root = scratch("pushed-");
+      const seen = join(root, "headers");
+      const { remote, session: tree } = cloned(root, "Start main");
+      git(tree, "commit", "--quiet", "--allow-empty", "-m", "Build #9 against its failing tests");
+      git(tree, "config", "http.https://github.com/.extraheader", "AUTHORIZATION: basic job-start");
+      const real = spawnSync("bash", ["-c", "command -v git"], { encoding: "utf8" }).stdout.trim();
+      script(join(root, "stub", "git"), `[[ $1 == push ]] && "${real}" config --get-all http.https://github.com/.extraheader >"${seen}"\nexec "${real}" "$@"\n`);
+      const ran = ranStep(push ?? {}, tree, { PATH: `${join(root, "stub")}:${process.env.PATH}`, BRANCH: "ticket/9", TOKEN: "after-fix" });
+
+      expect(ran.status, ran.stderr).toBe(0);
+      expect(git(remote, "rev-parse", "ticket/9")).toBe(git(tree, "rev-parse", "HEAD"));
+      const headers = readFileSync(seen, "utf8").replace(/\n$/, "").split("\n");
+      expect(headers.slice(headers.lastIndexOf("") + 1)).toEqual([`AUTHORIZATION: basic ${Buffer.from("x-access-token:after-fix").toString("base64")}`]);
+    });
+
+    it("calls the owner with the fresh token", () => {
+      const { job } = workflow();
+      const calling = job.steps.find(callsOwner);
+      afterFix(job, calling, calling?.with?.token);
+    });
+  });
+
   it("keeps the session the builder built in, whatever ended it, so its next run resumes it (#931)", () => {
     const { job } = workflow();
     const saved = job.steps.find((step) => step.uses?.startsWith("actions/cache/save@") === true);
