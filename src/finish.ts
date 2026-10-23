@@ -2,9 +2,9 @@ import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
 import { capped, DIFF_CAP, NO_EM_DASH, TAIL_CAP, tailOf } from "./brief.ts";
 import { CHECK, checkedBy } from "./builder.ts";
 import { doneCheck } from "./done-checker.ts";
-import { askedIssue, gh, ghRead, gitRead, heldOn, labelsHeld, readOrStop, unread } from "./post.ts";
-import { COMMIT_WHY, landing, landRefused, reviewedChange, RISKS_LET_THROUGH, STANDARDS_LOADED, TESTS_ARE_YOURS } from "./reviewer.ts";
-import { committed, commitlinted, head, hire, linted, type Spent } from "./stage.ts";
+import { askedIssue, commentOnTicket, gh, ghRead, gitRead, heldOn, labelsHeld, mark, OWNER, readOrStop, STUCK, unread } from "./post.ts";
+import { COMMIT_WHY, landing, landRefused, ownerStepFiled, reviewedChange, RISKS_LET_THROUGH, STANDARDS_LOADED, STEPS_ASKED, stuckAsked, TESTS_ARE_YOURS } from "./reviewer.ts";
+import { committed, commitlinted, head, hire, linted, type OwnerStep, OWNER_STEPS, type Spent } from "./stage.ts";
 import { SPEC } from "./spelled.ts";
 import { stopsOf } from "./stops.ts";
 import { quoted, SPEC_CAP } from "./ticket-shape.ts";
@@ -12,6 +12,7 @@ import { quoted, SPEC_CAP } from "./ticket-shape.ts";
 const stoppedAt = stopsOf({
   unfinishable: "Finish refused: the issue is not labelled `spec`, or its integration branch holds nothing past main",
   unlanded: "Finish: `bin/land` refused the integration branch, and two rounds in a row of its last reviewer changed nothing",
+  reviewerStuck: "Finish: a reviewer answered `stuck`, so the spec is marked `stuck` and the owner is called",
 });
 
 const PAST_MAIN = "origin/main..HEAD";
@@ -22,8 +23,8 @@ export const SLICE_CAP = 256;
 
 const ANSWER = {
   type: "object",
-  properties: { reason: { type: "string", pattern: NO_EM_DASH } },
-  required: ["reason"],
+  properties: { outcome: { enum: ["approve", "stuck"] }, reason: { type: "string", pattern: NO_EM_DASH }, steps: OWNER_STEPS },
+  required: ["outcome", "reason"],
   additionalProperties: false,
 };
 
@@ -42,7 +43,13 @@ const alone = (changes: Changes) => {
 };
 const trailer = ({ slice }: Changes) => (slice === undefined || slice === UNSLICED ? "" : `Slice: ${capped(slice, SLICE_CAP)}`);
 const trailed = (changes: Changes) => (trailer(changes) === "" ? "" : ` End each message with the line \`${trailer(changes)}\`, so the review after yours reads your fix with its slice.`);
-const reasonAsked = `\`reason\`: one paragraph for the owner, commented on the spec's PR before it merges: ${RISKS_LET_THROUGH}`;
+const answerAsked = [
+  "Answer one outcome:",
+  "- `approve`: it holds, with whatever you fixed; once every reviewer approves, `bin/land` runs the full check and merges it, and anything it refuses comes back to the last reviewer.",
+  stuckAsked("spec"),
+  `${STEPS_ASKED}, since those of each reviewer's last answer are each filed as an \`owner-step\` note once the spec lands.`,
+  `\`reason\`: one paragraph for the owner. An \`approve\`'s \`reason\` is commented on the spec's PR before it merges: ${RISKS_LET_THROUGH}`,
+];
 
 export function onTheCode(changes: Changes, { spec, red, commitlint }: { spec: string; red?: string; commitlint: boolean }): string {
   return [
@@ -56,7 +63,7 @@ export function onTheCode(changes: Changes, { spec, red, commitlint }: { spec: s
     `${STANDARDS_LOADED} Where the code breaks the code standard, fix it here yourself: nothing goes back to a builder, and no one holds it to the code standard after you. ${TESTS_ARE_YOURS}`,
     `${COMMIT_WHY}${trailed(changes)}`,
     "## Your answer",
-    reasonAsked,
+    ...answerAsked,
     "",
   ].join("\n\n");
 }
@@ -74,7 +81,7 @@ export function onTheSpec(changes: Changes, { spec, title, body, commitlint }: {
     "Where the diff misses what the spec asks, builds what it rules out of scope, or leaves a sentence under `## I'll know it works when I can` with nothing on the running system to show it, fix it here yourself: nothing goes back to a builder. Once it lands, a fresh done check tries each of those sentences.",
     `${COMMIT_WHY}${trailed(changes)}`,
     "## Your answer",
-    reasonAsked,
+    ...answerAsked,
     "",
   ].join("\n\n");
 }
@@ -97,6 +104,7 @@ function changesToReview(): Changes[] {
 interface Reviewer {
   spend: (input: string, resume?: string) => Spent;
   session?: string;
+  seat: string;
 }
 
 interface Finished {
@@ -104,40 +112,63 @@ interface Finished {
   missed?: number[];
 }
 
-function reviewed(spec: string, said: string, spent: Spent, app: AppKey | undefined): string | undefined {
+interface Approved {
+  reason: string;
+  steps: OwnerStep[];
+}
+
+interface Reviewed {
+  reasons: string[];
+  steps: Map<string, OwnerStep[]>;
+  last: Reviewer;
+}
+
+function reviewed(spec: string, said: string, spent: Spent, app: AppKey | undefined): Approved | undefined {
   if (app !== undefined) freshAppToken(app, gh, `so the review of #${spec} is not acted on`);
   if (spent.refusal !== undefined) {
     stoppedAt("modelRun", `${said} ended red, ${spent.refusal}`);
     return undefined;
   }
-  const reason = (spent.answer as { reason?: unknown } | undefined)?.reason;
-  if (typeof reason === "string" && reason.trim() !== "") return reason;
-  stoppedAt("modelRun", `${said} ended red, its reviewer gave no reason`);
-  return undefined;
+  const answer = spent.answer as { outcome?: unknown; reason?: unknown; steps?: OwnerStep[] } | undefined;
+  const reason = typeof answer?.reason === "string" ? answer.reason.trim() : "";
+  if (reason === "") {
+    stoppedAt("modelRun", `${said} ended red, its reviewer gave no reason`);
+    return undefined;
+  }
+  if (answer?.outcome === "stuck") {
+    mark(spec, STUCK);
+    commentOnTicket(spec, `@${OWNER} a reviewer of #${spec} stopped and needs you: ${reason}`, gh);
+    stoppedAt("reviewerStuck", `${said} marked ${STUCK}, ${reason}`);
+    return undefined;
+  }
+  return { reason, steps: answer?.steps ?? [] };
 }
 
-function reviews(spec: string, said: string, app: AppKey | undefined, { title, body }: { title: string; body: string }): { reasons: string[]; last: Reviewer } | undefined {
+function reviews(spec: string, said: string, app: AppKey | undefined, { title, body }: { title: string; body: string }): Reviewed | undefined {
   const commitlint = commitlinted();
   let red = checkedBy(CHECK);
   const reasons: string[] = [];
+  const steps = new Map<string, OwnerStep[]>();
   let last: Reviewer | undefined;
   for (const on of ["code standard", "spec"] as const) {
     for (const [at, changes] of changesToReview().entries()) {
-      const spend = hire("finish", `${spec}-${on === "spec" ? "spec" : "code"}-${at + 1}`, { name: `reviewer on the ${on}`, model: "opus", answers: ANSWER });
+      const seat = `${spec}-${on === "spec" ? "spec" : "code"}-${at + 1}`;
+      const spend = hire("finish", seat, { name: `reviewer on the ${on}`, model: "opus", answers: ANSWER });
       const spent = spend(on === "spec" ? onTheSpec(changes, { spec, title, body, commitlint }) : onTheCode(changes, { spec, red, commitlint }));
       red = undefined;
-      const reason = reviewed(spec, said, spent, app);
-      if (reason === undefined) return undefined;
+      const approved = reviewed(spec, said, spent, app);
+      if (approved === undefined) return undefined;
       committed([`Review #${spec} on the ${on}`, trailer(changes)].filter((line) => line !== "").join("\n\n"), "fix");
       const slice = sliceNamed(changes);
-      reasons.push(`On the ${on}${slice === undefined ? "" : `, ${slice}`}: ${reason}`);
-      last = { spend, session: spent.session };
+      reasons.push(`On the ${on}${slice === undefined ? "" : `, ${slice}`}: ${approved.reason}`);
+      steps.set(seat, approved.steps);
+      last = { spend, session: spent.session, seat };
     }
   }
-  return last === undefined ? undefined : { reasons, last };
+  return last === undefined ? undefined : { reasons, steps, last };
 }
 
-function landed(spec: string, said: string, app: AppKey | undefined, { reasons, last }: { reasons: string[]; last: Reviewer }): string | undefined {
+function landed(spec: string, said: string, app: AppKey | undefined, { reasons, steps, last }: Reviewed): string | undefined {
   let idle = false;
   for (;;) {
     const attempt = landing(["--spec", spec], reasons.join("\n\n"));
@@ -145,7 +176,9 @@ function landed(spec: string, said: string, app: AppKey | undefined, { reasons, 
     const before = head();
     const spent = last.spend(landRefused(attempt.refused), last.session);
     last.session = spent.session ?? last.session;
-    if (reviewed(spec, said, spent, app) === undefined) return undefined;
+    const approved = reviewed(spec, said, spent, app);
+    if (approved === undefined) return undefined;
+    steps.set(last.seat, approved.steps);
     committed(`Fix what bin/land refused for #${spec}`, "fix");
     const changed = head() !== before;
     if (!changed && idle) {
@@ -154,6 +187,14 @@ function landed(spec: string, said: string, app: AppKey | undefined, { reasons, 
     }
     idle = !changed;
   }
+}
+
+const titled = (step: OwnerStep) => step.title.trim().toLowerCase();
+
+function stepsFiled(spec: string, steps: OwnerStep[]): void {
+  const once = steps.filter((step, at) => steps.findIndex((other) => titled(other) === titled(step)) === at);
+  const refused = once.map(ownerStepFiled(`Left to the owner by the run that landed spec #${spec}.`)).filter(({ refusals }) => refusals.length > 0);
+  if (refused.length > 0) commentOnTicket(spec, [`What the reviewers of #${spec} left that could not be filed:`, "", ...refused.map(({ named, refusals }) => `- ${named} (${quoted(refusals[0] ?? "")})`), ""].join("\n"), gh);
 }
 
 function finished(spec: string, app: AppKey | undefined): Finished {
@@ -182,6 +223,7 @@ function finished(spec: string, app: AppKey | undefined): Finished {
   }
   const pr = landed(spec, said, app, review);
   if (pr === undefined) return {};
+  stepsFiled(spec, [...review.steps.values()].flat());
   const checked = readOrStop("done-check", () => doneCheck(spec, app));
   return { landed: pr, missed: typeof checked === "object" ? checked.missed : undefined };
 }

@@ -10,6 +10,7 @@ import { SPEC_CAP } from "./ticket-shape.ts";
 
 const FINISHED_PR = "https://github.com/collod873/claude-workflow/pull/9974";
 const POSTED = "https://github.com/collod873/claude-workflow/issues/974#issuecomment-1";
+const FILED_NOTE = "https://github.com/collod873/claude-workflow/issues/975";
 
 export interface Slice {
   id?: string;
@@ -23,6 +24,7 @@ export function finishing({
   sentences = ["see the spec land on main"],
   tries = [{ sentence: 1, outcome: "held", tried: "saw it on main" }] as { sentence: number; outcome: string; tried: string }[],
   reviewer = "",
+  answer = { outcome: "approve", reason: "reason $CALL" } as object,
   check = "printf 'check: ok\\n'\n",
   land = "",
   said = [] as Said[],
@@ -68,7 +70,7 @@ export function finishing({
       `  cat <<'TRIES'\n${answering({ tries })}TRIES`,
       "else",
       reviewer,
-      `  cat <<ANSWER\n${answering({ reason: "reason $CALL" })}ANSWER`,
+      `  cat <<ANSWER\n${answering(answer)}ANSWER`,
       "fi",
       "",
     ].join("\n"),
@@ -86,6 +88,7 @@ export function finishing({
       `  *"issue view"*"labels"*"--jq"*) cat "${join(root, "labels-at-land")}" ;;`,
       `  *"api"*"issues/974/comments"*) cat "${join(root, "comments.json")}" ;;`,
       `  *"issue comment"*) printf '%s\\n' '${POSTED}' ;;`,
+      `  *"issue create"*) printf '%s\\n' '${FILED_NOTE}' ;;`,
       "esac",
       "",
     ].join("\n"),

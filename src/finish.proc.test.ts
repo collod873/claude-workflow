@@ -66,6 +66,36 @@ describe("bin/finish reviews a spec's integration branch twice, lands it once an
   });
 });
 
+describe("bin/finish takes a reviewer's stuck and owner steps, as a ticket's review does (ADR-0005)", () => {
+  const STEP = { title: "Add the Twilio key to Railway", why: "Storm alerts text through Twilio, which needs TWILIO_KEY set on the Railway service." };
+
+  it("marks the spec stuck and calls the owner on a reviewer's stuck, landing nothing", () => {
+    const finished = finishing({ answer: { outcome: "stuck", reason: "only the owner can say which zones count" } });
+
+    const ran = heard(finished.run());
+
+    expect(ran.status).toBe(1);
+    expect(ran.lines).toEqual(["landed=", "missed="]);
+    expect(finished.marked()).toEqual(["974 stuck"]);
+    expect(finished.calls().find((args) => args[1] === "comment")?.join(" ")).toContain("@collod873 a reviewer of #974 stopped and needs you: only the owner can say which zones count");
+    expect(finished.handed()).toHaveLength(1);
+    expect(finished.landed()).toEqual([]);
+  });
+
+  it("files each reviewer's owner steps once as owner-step notes after the spec lands, before its done check, though both reviewers name it", () => {
+    const finished = finishing({ answer: { outcome: "approve", reason: "reason $CALL", steps: [STEP] } });
+
+    expect(finished.run().status).toBe(0);
+    const created = finished.calls().filter((args) => args[1] === "create");
+    expect(created).toHaveLength(1);
+    expect(created[0]).toEqual(expect.arrayContaining(["owner-step", STEP.title]));
+    expect(created[0]?.join(" ")).toContain("Left to the owner by the run that landed spec #974.");
+    const firstCreate = finished.calls().findIndex((args) => args[1] === "create");
+    const doneCheckClose = finished.calls().findIndex((args) => args[1] === "close");
+    expect(firstCreate).toBeLessThan(doneCheckClose);
+  });
+});
+
 describe("bin/finish splits each review per slice by the commits' Slice trailers when the diff is over its cap", () => {
   const SLICES: Slice[] = [
     { id: "zone", files: { "src/zone.ts": big("zone") } },
