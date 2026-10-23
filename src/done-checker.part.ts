@@ -1,4 +1,3 @@
-import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { handedOn, REPLIES_CAP } from "./done-checker.ts";
 import { authored, BIN, execute, issueStage, plant, type Said, script, stubbedMark, wellFormedSpec } from "./scenarios.ts";
@@ -19,26 +18,20 @@ export function doneChecking({
   tries = [{ sentence: 1, outcome: "held", tried: "read the spec issue and saw the spec label on it" }] as { sentence: number; outcome: string; tried: string }[],
   gh = "",
   said = [] as Said[],
-  slice = "exit 0\n",
   markRefusal,
   contract,
   calledFrom,
-}: { labels?: string[]; body?: string; tries?: { sentence: number; outcome: string; tried: string }[]; gh?: string; said?: Said[]; slice?: string; markRefusal?: string; contract?: string; calledFrom?: string } = {}) {
+}: { labels?: string[]; body?: string; tries?: { sentence: number; outcome: string; tried: string }[]; gh?: string; said?: Said[]; markRefusal?: string; contract?: string; calledFrom?: string } = {}) {
   const comments = '[[ $1 == api ]] && { cat "$(dirname "$0")/../comments.json"; exit 0; }';
   const { root, argv, ...stage } = issueStage("done-check-", { title: "A spec worth trying", body, labels: labels.map((name) => ({ name })) }, { tries }, DONE_CHECK_POSTED, `${gh}\n${comments}\n`);
   plant(root, "comments.json", authored(said));
-  const sliced = join(root, "sliced");
   const marked = stubbedMark(root, undefined, markRefusal);
-  script(join(root, "bin", "slice"), `printf '%s\\n' "$*" >>"${sliced}"\ncat "${root}"/gh-argv/* | tr '\\0' ' ' >"${root}/seen-by-slice"\n${slice}`);
   if (contract !== undefined) plant(root, ".claude/contract.json", contract);
   return {
     ...stage,
     root,
     closes: () => argv().filter((args) => args[1] === "close"),
     marked,
-    seenBySlice: () => (existsSync(join(root, "seen-by-slice")) ? readFileSync(join(root, "seen-by-slice"), "utf8") : ""),
-    sliced: () => (existsSync(sliced) ? readFileSync(sliced, "utf8").trimEnd().split("\n") : []),
-    edited: () => argv().filter((args) => args[0] === "api" && args[2] === "PATCH").map((args) => [args[3], args[5]?.replace(/^body=/, "")]),
     run: (...args: string[]) => execute(join(BIN, "done-check"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}`, ...(calledFrom === undefined ? {} : { CALLED_FROM: calledFrom }) }, args.length > 0 ? args : ["974"]),
   };
 }
@@ -58,7 +51,7 @@ declareStage({
       file: "src/done-checker.ts",
       cap: SPEC_CAP + REPLIES_CAP + 2 * HANDED_ON,
       slots: ["title", "body", "replies"],
-      build: (filled) => handedOn(filled.title ?? "", filled.body ?? "", { issue: "99999", wave: [1, 2, 3], replies: filled.replies ?? "" }),
+      build: (filled) => handedOn(filled.title ?? "", filled.body ?? "", { replies: filled.replies ?? "" }),
     },
   ],
   scenarios: [

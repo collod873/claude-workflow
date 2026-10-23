@@ -104,8 +104,8 @@ describe("written twice refuses a script, workflow or action that spells by hand
   });
 
   it("refuses a heading or marker the TypeScript holds as a constant, naming the constant", () => {
-    expect(refused(source("bin/planted", "#!/bin/bash", "grep -q '<!-- fix-wave -->' <<<\"$said\""))).toEqual([
-      expect.stringMatching(/^written twice: bin\/planted:2 spells "<!-- fix-wave -->" that src\/[\w-]+\.ts:\d+ declares; /),
+    expect(refused(source("bin/planted", "#!/bin/bash", "grep -q '## Done check' <<<\"$said\""))).toEqual([
+      expect.stringMatching(/^written twice: bin\/planted:2 spells "## Done check" that src\/[\w-]+\.ts:\d+ declares; /),
     ]);
   });
 

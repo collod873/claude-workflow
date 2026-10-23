@@ -6,7 +6,6 @@ import { parse } from "yaml";
 import { execute, heard, holds, plant, type Said, scratch, script, starts, wellFormedSpec, workflowJobs, type WorkflowStep } from "./scenarios.ts";
 import { HELD, MACHINE, OWNER, STUCK } from "./spelled.ts";
 import { DONE_CHECK_POSTED, doneChecking, specWith } from "./done-checker.part.ts";
-import { missedIn } from "./done-checker.ts";
 
 const READ_COMMENTS = "api --paginate repos/{owner}/{repo}/issues/974/comments";
 const SENTENCES = ["file a spec and see its first wave show up under it", "open any ticket it filed and see my own words copied over", "see the spec close itself once every sentence held"];
@@ -48,8 +47,7 @@ describe("bin/done-check leaves the spec open unless every sentence held (#1023)
     ];
     const checked = doneChecking({ body: specWith(SENTENCES), tries });
 
-    expect(heard(checked.run())).toEqual({ status: 0, stderr: "", lines: [`done-check: #974 did not hold sentence 2, so bin/slice --fix filed its one fix wave: ${DONE_CHECK_POSTED}`] });
-    expect(checked.sliced()).toEqual(["974 --fix 2"]);
+    expect(heard(checked.run())).toEqual({ status: 0, stderr: "", lines: [`done-check: #974 did not hold sentence 2, so it stays open: ${DONE_CHECK_POSTED}`] });
     expect(checked.comments()[0]).toContain(`2. **Did not hold**: ${SENTENCES[1]}\n   opened a ticket it filed`);
     expect(checked.closes()).toEqual([]);
   });
@@ -102,167 +100,22 @@ describe("bin/done-check refuses before spending a model (#1023)", () => {
   });
 });
 
-describe("bin/done-check --wave tries only the sentences a wave should have moved, and closes nothing (#1038)", () => {
-  it("tries only the named sentences, skips the ones only the owner can try, and posts one comment headed ## Wave check", () => {
-    const tries = [
-      { sentence: 1, outcome: "held", tried: "saw the first wave under it" },
-      { sentence: 3, outcome: "owner", tried: "only the owner sees it close on his phone" },
-    ];
-    const checked = doneChecking({ body: specWith(SENTENCES), tries });
-
-    expect(heard(checked.run("974", "--wave", "1,3"))).toEqual({ status: 0, stderr: "", lines: [`done-check: #974 wave check held every sentence it tried, and closes nothing: ${DONE_CHECK_POSTED}`] });
-    expect(checked.closes()).toEqual([]);
-    expect(checked.comments()).toHaveLength(1);
-    const [comment = ""] = checked.comments();
-    expect(comment.split("\n")[0]).toBe("## Wave check");
-    expect(comment).toContain(`- Sentence 1, **Held**: ${SENTENCES[0]}\n  saw the first wave under it`);
-    expect(comment).toContain(`- Sentence 3, **Waits for the end**: ${SENTENCES[2]}`);
-    expect(comment).not.toContain(SENTENCES[1]);
-    expect(checked.handed()).toContain("try only sentences 1, 3");
-    expect(checked.sliced()).toEqual([]);
-  });
-
-  it("says which sentence missed and leaves the spec open and unlabelled when it missed for the first time", () => {
-    const tries = [{ sentence: 2, outcome: "missed", tried: "opened a ticket and found no Out of Scope" }];
-    const checked = doneChecking({ body: specWith(SENTENCES), tries, said: ["## Wave check\n\n- Sentence 1, **Did not hold**: an earlier miss"] });
-
-    expect(heard(checked.run("974", "--wave", "2"))).toEqual({ status: 0, stderr: "", lines: [`done-check: #974 wave check missed sentence 2, and closes nothing: ${DONE_CHECK_POSTED}`] });
-    expect(checked.comments()[0]).toContain(`- Sentence 2, **Did not hold**: ${SENTENCES[1]}\n  opened a ticket and found no Out of Scope`);
-    expect(checked.marked()).toEqual(["974 checking"]);
-    expect(checked.closes()).toEqual([]);
-    expect(checked.sliced()).toEqual([]);
-  });
-
-  it("marks the spec stuck, saying which sentence and why, when a sentence that missed at the last wave check misses again", () => {
-    const tries = [{ sentence: 2, outcome: "missed", tried: "opened a ticket and found no Out of Scope" }];
-    const said = ["## Wave check\n\n- Sentence 2, **Did not hold**: the first miss", "## Wave 3\n\nThe fix ticket merged.", "## Wave check\n\n- Sentence 2, **Held**: an older hold"].reverse();
-    const checked = doneChecking({ body: specWith(SENTENCES), tries, said });
-
-    expect(checked.run("974", "--wave", "2")).toEqual({ status: 1, stdout: "", stderr: `done-check: #974 marked stuck, sentence 2 missed at two wave checks in a row: ${DONE_CHECK_POSTED}\n` });
-    expect(checked.comments()).toHaveLength(1);
-    expect(checked.comments()[0]).toContain(`Sentence 2 missed at this wave check and the last one, so the spec is marked \`stuck\`: ${SENTENCES[1]}. Why: opened a ticket and found no Out of Scope`);
-    expectMarkedNeedsHuman(checked);
-    expect(checked.closes()).toEqual([]);
-  });
-
-  it("tries again every sentence that held at an earlier wave check or done check, beside the ones the wave moved (#1302)", () => {
-    const tries = [1, 2, 3].map((sentence) => ({ sentence, outcome: "held", tried: `tried ${sentence}` }));
-    const said = ["## Wave check\n\n- Sentence 1, **Held**: one\n  saw it", "## Done check\n\n1. **Held**: one\n   saw it\n3. **Held**: three\n   saw it\n2. **Did not hold**: two\n   saw it fail"];
-    const checked = doneChecking({ body: specWith(SENTENCES), tries, said });
-
-    expect(heard(checked.run("974", "--wave", "2"))).toEqual({ status: 0, stderr: "", lines: [`done-check: #974 wave check held every sentence it tried, and closes nothing: ${DONE_CHECK_POSTED}`] });
-    expect(checked.handed()).toContain("try only sentences 1, 2, 3");
-    expect(checked.handed()).toContain("Sentence 1, 3 held at an earlier check and are tried again");
-    for (const number of [1, 2, 3]) expect(checked.comments()[0]).toContain(`- Sentence ${number}, **Held**`);
-  });
-
-  it("runs a wave check on held sentences alone when the wave moved none", () => {
-    const tries = [{ sentence: 1, outcome: "missed", tried: "the seed now starts at 1004" }];
-    const checked = doneChecking({ body: specWith(SENTENCES), tries, said: ["## Wave check\n\n- Sentence 1, **Held**: one\n  saw it"] });
-
-    expect(heard(checked.run("974", "--wave", ""))).toEqual({ status: 0, stderr: "", lines: [`done-check: #974 wave check missed sentence 1, and closes nothing: ${DONE_CHECK_POSTED}`] });
-    expect(checked.handed()).toContain("try only sentences 1, and give no try for any other. Sentence 1 held at an earlier check and is tried again");
-  });
-
-  it("hires no model and marks nothing when the wave moved no sentence and none has held yet", () => {
-    const checked = doneChecking({ body: specWith(SENTENCES) });
-
-    expect(checked.run("974", "--wave", "")).toEqual({ status: 0, stdout: "done-check: #974 wave check has no sentence to try, since the wave moved none and none has held yet\n", stderr: "" });
-    expect(checked.hired()).toEqual([]);
-    expect(checked.marked()).toEqual([]);
-    expect(checked.comments()).toEqual([]);
-  });
-
-  it("refuses a sentence number the spec does not carry, trying nothing", () => {
-    const checked = doneChecking({ body: specWith(SENTENCES) });
-
-    expect(checked.run("974", "--wave", "2,7")).toEqual({ status: 1, stdout: "", stderr: "done-check: #974 carries no sentence 7, so nothing was tried\n" });
-    expect(checked.hired()).toEqual([]);
-    expect(checked.comments()).toEqual([]);
-  });
-});
-
-describe("bin/done-check spends the spec's one fix wave on a first miss, and calls the owner on a second (#1038)", () => {
+describe("bin/done-check leaves a miss to the scheduler, which owns the one fix pass and the second miss (ADR-0013)", () => {
   const missing = [
     { sentence: 1, outcome: "held", tried: "saw the first wave under it" },
     { sentence: 2, outcome: "missed", tried: "opened a ticket and found no Out of Scope" },
-    { sentence: 3, outcome: "missed", tried: "saw the spec stay open" },
+    { sentence: 3, outcome: "owner", tried: "open the spec on your phone" },
   ];
 
-  it("posts what it saw before bin/slice --fix runs, so the slicer reads the cause, then marks that comment with the fix wave (#1302)", () => {
-    const checked = doneChecking({ body: specWith(SENTENCES), tries: missing, said: ["## Wave check\n\n- Sentence 1, **Did not hold**: a wave miss on a sentence that held since spends no fix wave"] });
-
-    expect(heard(checked.run())).toEqual({ status: 0, stderr: "", lines: [`done-check: #974 did not hold sentence 2, 3, so bin/slice --fix filed its one fix wave: ${DONE_CHECK_POSTED}`] });
-    expect(checked.sliced()).toEqual(["974 --fix 2,3"]);
-    expect(checked.seenBySlice()).toContain("issue comment 974");
-    expect(checked.comments()).toHaveLength(1);
-    expect(checked.comments()[0]).toMatch(/^## Done check\n/);
-    expect(checked.comments()[0]).toContain("opened a ticket and found no Out of Scope");
-    expect(checked.comments()[0]).not.toContain("<!-- fix-wave -->");
-    expect(checked.edited()).toEqual([["repos/{owner}/{repo}/issues/comments/1", `${checked.comments()[0]?.trimEnd()}\n\n<!-- fix-wave -->\n`]]);
-    expect(checked.closes()).toEqual([]);
-    expect(checked.marked()).toEqual(["974 checking"]);
-  });
-
-  it("marks the spec stuck, saying which sentence failed and why, when a sentence misses after the fix wave was spent", () => {
+  it("posts what it saw, so the fix pass's slicer reads the cause, and marks, closes and slices nothing, even on a second miss", () => {
     const checked = doneChecking({ body: specWith(SENTENCES), tries: missing, said: ["## Done check\n\n2. **Did not hold**: the first miss\n\n<!-- fix-wave -->"] });
 
-    expect(checked.run()).toEqual({ status: 1, stdout: "", stderr: `done-check: #974 marked stuck, sentence 2, 3 missed again after the fix wave: ${DONE_CHECK_POSTED}\n` });
-    expect(checked.sliced()).toEqual([]);
+    expect(heard(checked.run())).toEqual({ status: 0, stderr: "", lines: [`done-check: #974 did not hold sentence 2, so it stays open: ${DONE_CHECK_POSTED}`] });
     expect(checked.comments()).toHaveLength(1);
-    expect(checked.comments()[0]).not.toContain("<!-- fix-wave -->");
-    expect(checked.comments()[0]).toContain(`Sentence 2 missed again after the fix wave, so the spec is marked \`stuck\`: ${SENTENCES[1]}. Why: opened a ticket and found no Out of Scope`);
-    expect(checked.comments()[0]).toContain(`Sentence 3 missed again after the fix wave, so the spec is marked \`stuck\`: ${SENTENCES[2]}. Why: saw the spec stay open`);
-    expectMarkedNeedsHuman(checked);
+    expect(checked.comments()[0]).toContain(`2. **Did not hold**: ${SENTENCES[1]}\n   opened a ticket and found no Out of Scope`);
+    expect(checked.comments()[0]).not.toContain("Closed with sentence");
+    expect(checked.marked()).toEqual(["974 checking"]);
     expect(checked.closes()).toEqual([]);
-  });
-
-  it("spends the fix wave when the last done check only quoted the fix wave marker in its evidence (#1161)", () => {
-    const checked = doneChecking({ body: specWith(SENTENCES), tries: missing, said: ["## Done check\n\n1. **Put to the owner**: one\n   found '<!-- fix-wave -->' spelled only in src/done-checker.ts\n"] });
-
-    expect(checked.run().status).toBe(0);
-    expect(checked.sliced()).toEqual(["974 --fix 2,3"]);
-  });
-
-  it("marks the spec stuck, spending no fix wave, when a sentence that missed at the last wave check misses again at the end", () => {
-    const checked = doneChecking({ body: specWith(SENTENCES), tries: missing, said: ["## Wave check\n\n- Sentence 3, **Did not hold**: the wave's miss"] });
-
-    expect(checked.run()).toEqual({ status: 1, stdout: "", stderr: `done-check: #974 marked stuck, sentence 3 missed at the last wave check and again at the end: ${DONE_CHECK_POSTED}\n` });
-    expect(checked.sliced()).toEqual([]);
-    expect(checked.comments()[0]).toContain(`Sentence 3 missed at the last wave check and again at the end, so the spec is marked \`stuck\`: ${SENTENCES[2]}. Why: saw the spec stay open`);
-    expect(checked.comments()[0]).not.toContain("<!-- fix-wave -->");
-    expectMarkedNeedsHuman(checked);
-  });
-
-  it("reads a wave check from before the last done check as no miss in a row", () => {
-    const checked = doneChecking({ body: specWith(SENTENCES), tries: missing, said: ["## Wave check\n\n- Sentence 3, **Did not hold**: an old miss", "## Done check\n\n3. **Put to the owner**: three"] });
-
-    expect(checked.run().status).toBe(0);
-    expect(checked.sliced()).toEqual(["974 --fix 2,3"]);
-  });
-
-  it("records no fix wave and ends red when bin/slice --fix files none, so the next done check can still spend it", () => {
-    const checked = doneChecking({ body: specWith(SENTENCES), tries: missing, slice: "printf 'slice: usage: slice <issue number>\\n' >&2\nexit 2\n" });
-
-    expect(checked.run()).toEqual({ status: 1, stdout: "", stderr: `done-check: #974 did not hold sentence 2, 3, and bin/slice --fix filed no fix wave: "slice: usage: slice <issue number>": ${DONE_CHECK_POSTED}\n` });
-    expect(checked.sliced()).toEqual(["974 --fix 2,3"]);
-    expect(checked.comments()[0]).not.toContain("<!-- fix-wave -->");
-    expect(checked.edited()).toEqual([]);
-  });
-
-  it("ends red when the fix wave is filed but its comment will not take the mark, since the next miss would file another", () => {
-    const checked = doneChecking({ body: specWith(SENTENCES), tries: missing, gh: '[[ $1 == api && $3 == PATCH ]] && { echo "HTTP 403" >&2; exit 1; }' });
-
-    expect(checked.run()).toEqual({ status: 1, stdout: "", stderr: `done-check: #974 filed its fix wave, but its comment would not take the fix wave mark, so the next miss would file another: gh api -X failed: HTTP 403: ${DONE_CHECK_POSTED}\n` });
-    expect(checked.sliced()).toEqual(["974 --fix 2,3"]);
-  });
-
-  it("spends no fix wave on a sentence only put to the owner", () => {
-    const checked = doneChecking({ body: specWith(SENTENCES), tries: missing.map((one) => ({ ...one, outcome: one.outcome === "missed" ? "owner" : one.outcome })) });
-
-    expect(checked.run().status).toBe(0);
-    expect(checked.sliced()).toEqual([]);
-    expect(checked.comments()[0]).not.toContain("<!-- fix-wave -->");
   });
 });
 
@@ -330,12 +183,10 @@ describe("specs.yml runs the done check again on the owner's reply to a sentence
 
   it("runs bin/done-check on the spec only when the last ## Done check put a sentence to the owner", () => {
     const putToOwner = "## Done check\n\n1. **Held**: one\n   saw it\n2. **Put to the owner**: two\n   open it on your phone\n";
-    const allTried = "## Done check\n\n1. **Held**: one\n   saw it\n2. **Did not hold**: two\n   saw it fail\n\n<!-- fix-wave -->\n";
+    const allTried = "## Done check\n\n1. **Held**: one\n   saw it\n2. **Did not hold**: two\n   saw it fail\n";
 
     expect(lastAsked([putToOwner, "an aside"])).toBe("true");
     expect(lastAsked([putToOwner, allTried, "an aside"])).toBe("false");
-    expect(lastAsked([`${putToOwner}\n<!-- fix-wave -->\n`, "an aside"])).toBe("false");
-    expect(lastAsked([`${putToOwner}   found '<!-- fix-wave -->' spelled only in src/done-checker.ts\n`, "an aside"])).toBe("true");
     expect(lastAsked(["## Wave check\n\n- Sentence 2, **Waits for the end**: two"])).toBe("false");
     expect(lastAsked([`${putToOwner}\nClosed with sentence 2 put to the owner: each says what the owner could try, and a miss seen live is filed as a new ticket.\n`, "an aside"])).toBe("false");
     expect(lastAsked([])).toBe("false");
@@ -369,8 +220,8 @@ describe("bin/done-check --asked answers whether the last ## Done check put a se
   });
 
   it("refuses --asked beside anything else, naming its usage", () => {
-    for (const args of [["974", "--asked", "1"], ["--asked"], ["974", "--wave", "1", "--asked"]]) {
-      expect(doneChecking().run(...args), args.join(" ")).toEqual({ status: 2, stdout: "", stderr: "done-check: usage: done-check <issue number> [--wave <sentence numbers> | --asked]\n" });
+    for (const args of [["974", "--asked", "1"], ["--asked"], ["974", "--wave", "1"], ["974", "--wave", "1", "--asked"]]) {
+      expect(doneChecking().run(...args), args.join(" ")).toEqual({ status: 2, stdout: "", stderr: "done-check: usage: done-check <issue number> [--asked]\n" });
     }
   });
 });
@@ -391,22 +242,13 @@ describe("bin/done-check settles a sentence about its own close by what this run
     expect(checked.handed()).toContain("`self`");
   });
 
-  it("posts the self sentence as held and files the fix wave on the other sentence's miss alone", () => {
+  it("posts the self sentence as held and names the other sentence's miss alone", () => {
     const checked = doneChecking({ body: specWith(SENTENCES), tries: selfTries("missed") });
 
-    expect(heard(checked.run())).toEqual({ status: 0, stderr: "", lines: [`done-check: #974 did not hold sentence 2, so bin/slice --fix filed its one fix wave: ${DONE_CHECK_POSTED}`] });
-    expect(checked.sliced()).toEqual(["974 --fix 2"]);
+    expect(heard(checked.run())).toEqual({ status: 0, stderr: "", lines: [`done-check: #974 did not hold sentence 2, so it stays open: ${DONE_CHECK_POSTED}`] });
     expect(checked.comments()[0]).toContain(`3. **Held**: ${SENTENCES[2]}\n   This run names each other sentence that did not hold, and why.`);
     expect(checked.closes()).toEqual([]);
     expect(checked.marked()).toEqual(["974 checking"]);
-  });
-
-  it("stops on the other sentence's miss alone after the fix wave, never naming the self sentence", () => {
-    const checked = doneChecking({ body: specWith(SENTENCES), tries: selfTries("missed"), said: ["## Done check\n\n2. **Did not hold**: the first miss\n\n<!-- fix-wave -->"] });
-
-    expect(checked.run()).toEqual({ status: 1, stdout: "", stderr: `done-check: #974 marked stuck, sentence 2 missed again after the fix wave: ${DONE_CHECK_POSTED}\n` });
-    expect(checked.comments()[0]).toContain(`3. **Held**: ${SENTENCES[2]}\n   This run names each other sentence that did not hold, and why.`);
-    expect(checked.comments()[0]).not.toContain("Sentence 3 missed");
   });
 
   it("posts the self sentence as held and closes the spec when another was put to the owner (#1213)", () => {
@@ -416,27 +258,14 @@ describe("bin/done-check settles a sentence about its own close by what this run
     expect(checked.comments()[0]).toContain(`3. **Held**: ${SENTENCES[2]}\n   This run closed the spec, since every other sentence held or was put to the owner.`);
     expect(checked.closes()).toHaveLength(1);
   });
-
-  it("posts a self sentence at a wave check as waiting for the end, which the next re-slice reads as no miss", () => {
-    const checked = doneChecking({ body: specWith(SENTENCES), tries: [{ sentence: 3, outcome: "self", tried: "this run closes it" }] });
-
-    expect(heard(checked.run("974", "--wave", "3"))).toEqual({ status: 0, stderr: "", lines: [`done-check: #974 wave check held every sentence it tried, and closes nothing: ${DONE_CHECK_POSTED}`] });
-    const [comment = ""] = checked.comments();
-    expect(comment).toContain(`- Sentence 3, **Waits for the end**: ${SENTENCES[2]}\n`);
-    expect(comment).not.toContain("this run closes it");
-    expect(missedIn(comment)).toEqual(new Set());
-  });
 });
 
 describe("bin/done-check marks the spec checking while it runs (#1064)", () => {
-  it("marks checking at the start of the done check and of a wave check", () => {
+  it("marks checking at the start of the done check", () => {
     const whole = doneChecking();
-    const wave = doneChecking({ body: specWith(SENTENCES), tries: [{ sentence: 1, outcome: "held", tried: "saw it" }] });
 
     expect(whole.run().status).toBe(0);
     expect(whole.marked()).toEqual(["974 checking"]);
-    expect(wave.run("974", "--wave", "1").status).toBe(0);
-    expect(wave.marked()).toEqual(["974 checking"]);
   });
 
   it("marks nothing on an issue that is not a spec, or on a spec marked paused or stuck", () => {
@@ -450,58 +279,6 @@ describe("bin/done-check marks the spec checking while it runs (#1064)", () => {
       expect(stopped.marked(), held).toEqual([]);
       expect(stopped.hired(), held).toEqual([]);
     }
-  });
-});
-
-describe("bin/done-check --wave gives a sentence nothing on main could show yet as not tried yet, and never as a miss (#1082)", () => {
-  const unexercised = { sentence: 2, outcome: "unexercised", tried: "a spec would have to be filed after the ticket label exists" };
-
-  it("lists it as not tried yet with what would have to happen for it to be seen, counting no miss", () => {
-    const checked = doneChecking({ body: specWith(SENTENCES), tries: [unexercised] });
-
-    expect(checked.run("974", "--wave", "2").status).toBe(0);
-    const [comment = ""] = checked.comments();
-    expect(comment).toContain(`- Sentence 2, **Not tried yet**: ${SENTENCES[1]}\n  a spec would have to be filed after the ticket label exists`);
-    expect(missedIn(comment)).toEqual(new Set());
-    expect(checked.handed()).toContain("`unexercised`");
-    expect(checked.hired()[checked.hired().indexOf("--json-schema") + 1]).toContain("unexercised");
-  });
-
-  it.each([
-    ["not tried yet at the last wave check and again now", "Not tried yet", unexercised],
-    ["missed at the last wave check and not tried yet now", "Did not hold", unexercised],
-    ["not tried yet at the last wave check and missed now", "Not tried yet", { ...unexercised, outcome: "missed" }],
-  ])("marks the spec nothing when a sentence was %s", (_, before, now) => {
-    const checked = doneChecking({ body: specWith(SENTENCES), tries: [now], said: [`## Wave check\n\n- Sentence 2, **${before}**: ${SENTENCES[1]}`] });
-
-    expect(checked.run("974", "--wave", "2").status).toBe(0);
-    expect(checked.marked()).toEqual(["974 checking"]);
-  });
-
-  it("tries again a sentence the last wave check gave not tried yet, beside the ones this wave moved", () => {
-    const tries = [
-      { sentence: 1, outcome: "held", tried: "saw the first wave under it" },
-      { sentence: 2, outcome: "held", tried: "opened a ticket filed since" },
-    ];
-    const checked = doneChecking({ body: specWith(SENTENCES), tries, said: [`## Wave check\n\n- Sentence 2, **Not tried yet**: ${SENTENCES[1]}\n  a ticket would have to be filed`] });
-
-    expect(checked.run("974", "--wave", "1").status).toBe(0);
-    expect(checked.handed()).toContain("try only sentences 1, 2");
-    expect(checked.comments()[0]).toContain(`- Sentence 2, **Held**: ${SENTENCES[1]}`);
-  });
-});
-
-describe("bin/done-check's final check may not give a sentence not tried yet (#1082)", () => {
-  it("offers no unexercised, and ends red naming the sentence without posting or closing when one is given anyway", () => {
-    const tries = SENTENCES.map((_, at) => ({ sentence: at + 1, outcome: at === 1 ? "unexercised" : "held", tried: "saw it" }));
-    const checked = doneChecking({ body: specWith(SENTENCES), tries });
-
-    expect(checked.run()).toEqual({ status: 1, stdout: "", stderr: "done-check: #974 ended red, the done checker gave sentence 2 as not tried yet, which only a wave check may give\n" });
-    expect(checked.hired()[checked.hired().indexOf("--json-schema") + 1]).not.toContain("unexercised");
-    expect(checked.handed()).not.toContain("`unexercised`");
-    expect(checked.comments()).toEqual([]);
-    expect(checked.closes()).toEqual([]);
-    expect(checked.sliced()).toEqual([]);
   });
 });
 
@@ -549,38 +326,3 @@ describe("bin/done-check tries a caller's spec on that repo's own checkout, read
   });
 });
 
-describe("bin/done-check lets a check on this repo start a size trial to try a sentence about the size refusal (#1198)", () => {
-  it("tells the checker a size trial counts as leaving GitHub as it is, how to start one, wait for it and read its log, and what misses", () => {
-    const handed = doneChecking();
-    expect(handed.run().status).toBe(0);
-    const told = handed.handed();
-
-    expect(told).toContain("Starting a size trial counts as leaving GitHub as it is, since a trial posts nothing.");
-  });
-
-  it("sets the trial cap to the owner's bytes plus half the record's, both counted from the spec's current body, so the slicer's own folding cannot fit without being sent back (#1200)", () => {
-    const record = "### Picks\n\n- **Read back**: read it back, once the wave merged.";
-    const body = wellFormedSpec.replace("## I'll know it works when I can", `## Decisions record\n\n${record}\n\n## I'll know it works when I can`);
-    const handed = doneChecking({ body });
-    expect(handed.run().status).toBe(0);
-
-    expect(handed.handed()).toContain(`gh workflow run machine.yml -f ticket=974 -f trial_cap=${Buffer.byteLength(wellFormedSpec) + Math.floor(Buffer.byteLength(record) / 2)}\``);
-    expect(handed.handed()).toContain("the owner's bytes plus half the record's bytes");
-  });
-
-  it("tells a checker called from a caller file in the machine's own repo this repo's running system and the size trial, as at home (#1215)", () => {
-    const checked = doneChecking({ calledFrom: "collod873/claude-workflow/.github/workflows/machine.yml@refs/heads/main" });
-
-    expect(checked.run().status).toBe(0);
-    expect(checked.handed()).toContain("For this repo the running system is its own Actions runs");
-  });
-
-  it("tells a checker under a caller file to start the size trial by dispatching that file, and to find its run under it (#1216)", () => {
-    const checked = doneChecking({ contract: '{ "setup": "true", "steps": {} }\n', calledFrom: "collod873/claude-workflow/.github/workflows/machine.yml@refs/heads/main" });
-
-    expect(checked.run().status).toBe(0);
-    expect(checked.handed()).toContain(`\`gh workflow run machine.yml -f ticket=974 -f trial_cap=${Buffer.byteLength(wellFormedSpec)}\``);
-    expect(checked.handed()).toContain("`gh run list --workflow machine.yml`");
-    expect(checked.handed()).not.toContain("reslice.yml");
-  });
-});

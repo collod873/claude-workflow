@@ -6,7 +6,7 @@ import { heard, holds, type Said, starts, wellFormedSpec, workflowJobs, type Wor
 import { HELD, MACHINE, OWNER } from "./spelled.ts";
 import { closing } from "./closer.part.ts";
 import { slicing } from "./slicer.part.ts";
-import { doneChecking, specWith } from "./done-checker.part.ts";
+import { specWith } from "./done-checker.part.ts";
 import { DIFF_CAP } from "./wave.ts";
 
 const SPEC_ISSUE = { number: 968, state: "open", labels: [{ name: "spec" }], user: { login: OWNER }, body: "" };
@@ -341,12 +341,8 @@ describe("bin/slice <spec> --fix <numbers> files the spec's one fix wave for the
   const FIX_SPEC = specWith(SENTENCES);
   const fixPiece = { ...piece, title: "Carry the owner's words", why: "The fix wave." };
   const fixing = (answers: object[]) => {
-    const checked = doneChecking({ body: FIX_SPEC, tries: [{ sentence: 1, outcome: "held", tried: "saw it" }, { sentence: 2, outcome: "missed", tried: "saw it fail" }] });
-    expect(checked.run().status).toBe(0);
-    const [args = ""] = checked.sliced();
-    const [spec = ""] = args.split(" ");
-    const sliced = slicing({ body: FIX_SPEC, answers, issues: { [`${spec}/sub_issues`]: [{ ...ticket(1001), title: "Ticket 1001", state_reason: "completed" }] }, comments: { [spec]: [NOTE, "## Done check\n\n2. **Did not hold**: two"] } });
-    return { sliced, ran: sliced.run(...args.split(" ")) };
+    const sliced = slicing({ body: FIX_SPEC, answers, issues: { "974/sub_issues": [{ ...ticket(1001), title: "Ticket 1001", state_reason: "completed" }] }, comments: { "974": [NOTE, "## Done check\n\n2. **Did not hold**: two"] } });
+    return { sliced, ran: sliced.run("974", "--fix", "2") };
   };
 
   it("files the fix wave under the spec, with every ticket closed, from the arguments the done check passes, and notes it moving exactly those sentences", () => {

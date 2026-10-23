@@ -73,7 +73,7 @@ type Round = { red?: string; ended?: number; body?: string };
 
 type Spend = (input: string, resume?: string) => Spent;
 
-const CHECK = `${FULL_CHECK} --publish`;
+export const CHECK = `${FULL_CHECK} --publish`;
 const PASSED = /^check: ok\b/;
 const LOGGED = /; log (.+?)\s*$/;
 
