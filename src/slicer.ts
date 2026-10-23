@@ -16,7 +16,7 @@ const ROUNDS_BACK = 2;
 export const BUILT_CAP = 8 * 1024;
 export const SLICES_CAP = 16 * 1024;
 export const FINDINGS_CAP = 8 * 1024;
-const KEBAB = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+export const SLICE_ID = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
 export interface Slice {
   id: string;
@@ -29,7 +29,7 @@ export interface Slice {
 const SLICE = {
   type: "object",
   properties: {
-    id: { type: "string", pattern: KEBAB.source },
+    id: { type: "string", pattern: SLICE_ID.source },
     title: { type: "string", pattern: NO_EM_DASH },
     why: { type: "string", pattern: NO_EM_DASH },
     done: { type: "array", items: { type: "string", pattern: NO_EM_DASH } },
@@ -128,7 +128,7 @@ function sliceRefusals(answer: Slice[], progress: Progress, body: string, fixSta
   const empty = fixStarts && answer.length === 0 ? ["the fix pass carries no slice, so nothing would make the missed sentences hold"] : [];
   const each = answer.flatMap((slice, at) => {
     const named = `slice ${at + 1}, \`${slice.id}\`,`;
-    const id = !KEBAB.test(slice.id) ? [`${named} has an id that is not kebab-case`] : known.has(slice.id) ? [`${named} reuses the id of a slice already cut`] : given.indexOf(slice.id) !== at ? [`${named} has the id of an earlier slice in this answer`] : [];
+    const id = !SLICE_ID.test(slice.id) ? [`${named} has an id that is not kebab-case`] : known.has(slice.id) ? [`${named} reuses the id of a slice already cut`] : given.indexOf(slice.id) !== at ? [`${named} has the id of an earlier slice in this answer`] : [];
     const blocked = slice.blockedBy.filter((other) => other === slice.id || !(known.has(other) || given.includes(other))).map((other) => (other === slice.id ? `${named} is blocked by itself` : `${named} is blocked by \`${other}\`, which no slice is`));
     const brief = briefOf(slice, body);
     const bytes = Buffer.byteLength(brief);

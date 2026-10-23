@@ -115,7 +115,8 @@ if [[ -n $issue ]]; then
     call "spelled" "$src/../bin/spelled" TICKET_PREFIX
     branch="$said$ticket"
   else
-    branch="spec/$spec"
+    call "spelled" "$src/../bin/spelled" SPEC_PREFIX
+    branch="$said$spec"
     approver="The reviewers"
   fi
   call "gh issue view" gh issue view "$issue" --json title --jq .title

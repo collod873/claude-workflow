@@ -8,6 +8,7 @@ import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
 import { capped, LIST_CAP, NO_EM_DASH, onDisk, TICKET_CAP } from "./brief.ts";
 import { buildIt, checkedBy, spentOn, stillRed } from "./builder.ts";
 import { FAST_CHECK } from "./checks.ts";
+import { SLICE_ID } from "./slicer.ts";
 import { gh, git, gitRead, readOrStop, unread } from "./post.ts";
 import { commitlinted, committed, CONTRACT, hire, linted, setupRefusal } from "./stage.ts";
 
@@ -46,7 +47,6 @@ interface Slicing {
   told?: string;
 }
 
-const SLICE_ID = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const DATABASE_WAIT_SECONDS = 60;
 const PAST_ONTO_UNREAD = "the commits past the integration branch could not be read";
 

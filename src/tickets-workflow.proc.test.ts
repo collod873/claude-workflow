@@ -141,7 +141,7 @@ describe("a repo's tickets build through one caller file that holds only trigger
         .filter(({ id }) => ["checkout", "setup-node", "pinned", "npm-ci", "database", "logs", "stage"].includes(id ?? ""))
         .map(({ if: _when, with: given, ...rest }) => ({ ...rest, with: { ...given, "persist-credentials": undefined } }));
 
-    it("starts the probe job alone, whether it ends green or red, so no builder, fix, rerun or size trial starts and no owner is called", () => {
+    it("starts the probe job alone, whether it ends green or red, so no builder, fix or rerun starts and no owner is called", () => {
       expect(jobsRun(probed)).toEqual(["probe"]);
       expect(jobsRun({ ...probed, red: ["probe"] })).toEqual(["probe"]);
       expect(jobsRun(probed, "specs.yml")).toEqual([]);

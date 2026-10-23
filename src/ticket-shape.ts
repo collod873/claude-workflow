@@ -10,7 +10,6 @@ const NAMED = {
   outOfScope: "Out of Scope",
   furtherNotes: "Further Notes",
   sentences: "I'll know it works when I can",
-  record: "Decisions record",
   waitsOn: "Waits on",
   followUps: "Follow-ups",
 } as const;
@@ -25,12 +24,9 @@ const TESTING_DECISIONS = heading(NAMED.testing);
 const OUT_OF_SCOPE = heading(NAMED.outOfScope);
 const FURTHER_NOTES = heading(NAMED.furtherNotes);
 const SENTENCES = heading(NAMED.sentences);
-const DECISIONS_RECORD = heading(NAMED.record);
 const WAITS_ON = heading(NAMED.waitsOn);
 const ISSUE_REFERENCE = /(?<![\w/-])#(\d+)\b/g;
-const NAMES_SHARED = /^###[ \t]+Names the tickets share[ \t]*(?=\r?$)/m;
 export const NEXT_HEADING = /^##[ \t]/m;
-const NEXT_SUBHEADING = /^###?[ \t]/m;
 const ITEM = /^[ \t]*-[ \t]*\[[ xX]\][ \t]*/;
 const OWNER_WORDS = /"[^"\n]{4,}"|^>[ \t]*\S/m;
 const NUMBERED_ITEM = /^[ \t]*\d+[.)][ \t]/m;
@@ -89,27 +85,6 @@ export const doneWhen = (body: string): string => section(body.replaceAll(/\r\n?
 const blankLinesTrimmed = (text: string): string => text.replace(/^(?:[ \t]*\r?\n)+/, "").replace(/(?:\r?\n[ \t]*)+$/, "");
 
 export const filedOutOfScope = (body: string): string => blankLinesTrimmed(section(body, OUT_OF_SCOPE));
-
-export interface Recorded {
-  owner: string;
-  record: string;
-}
-
-function lifted(body: string, heading: RegExp, next: RegExp): { owner: string; whole: string; inner: string } | undefined {
-  const found = heading.exec(body);
-  if (found === null) return undefined;
-  const start = matchEnd(found);
-  const end = next.exec(body.slice(start));
-  const stop = end === null ? body.length : start + end.index;
-  return { owner: body.slice(0, found.index) + body.slice(stop), whole: body.slice(found.index, stop), inner: body.slice(start, stop) };
-}
-
-export function filedRecord(body: string): Recorded {
-  const standing = lifted(body, DECISIONS_RECORD, NEXT_HEADING);
-  if (standing !== undefined) return { owner: standing.owner, record: blankLinesTrimmed(standing.inner) };
-  const named = lifted(body, NAMES_SHARED, NEXT_SUBHEADING);
-  return named === undefined ? { owner: body, record: "" } : { owner: named.owner, record: blankLinesTrimmed(named.whole) };
-}
 
 export const whyChanged = (read: string, written: string): string[] => (why(written) === why(read) ? [] : ["the rewrite changes '## Why', the owner's words, which stay byte-identical"]);
 

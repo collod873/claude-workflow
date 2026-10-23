@@ -28,8 +28,7 @@ _Avoid_: core, new core, v2
 The one workflow another repo carries to have its tickets built and its specs and research notes
 run: its triggers and calls to `tickets.yml` and `specs.yml` here, nothing else, so no part of the
 machine is copied into it. `.github/caller.yml` is its text. Its specs are tried on its own checkout,
-readied by its contract's setup, and a ticket the closer closes there starts the re-slice through
-the caller's own `issues: closed`, since the App's close is heard. The closer wakes a builder by taking `waiting` off its ticket, which
+readied by its contract's setup. The closer wakes a builder by taking `waiting` off its ticket, which
 the caller's `issues: unlabeled` hears from the caller's default branch alone, so the file lands on
 main before any ticket there builds. A builder it reaches passes a check red only for
 `(needs ...)` steps, which the machine's runner lacks, or unpublished receipts; that repo's own CI
@@ -40,8 +39,7 @@ _Avoid_: shim, wrapper, vendored workflow
 A stage run is home when it has no caller file, or when its caller file (named by `CALLED_FROM`)
 is in the machine's own repo; it is foreign only when the caller file is in another repo. A home run
 behaves exactly as this repo's own stage workflows did before Gaps first: the builder lands a `machine` outcome on
-main and fails a check on any red step, `(needs ...)` ones included; the done check gets this repo's running-system line and is offered the
-size trial.
+main and fails a check on any red step, `(needs ...)` ones included; the done check gets this repo's running-system line.
 _Avoid_: local, own-repo mode
 
 **Gaps first**:
@@ -51,7 +49,7 @@ _Avoid_: migration, switchover
 
 **No caller, same file**:
 A stage run with no caller file reaches the machine through `machine.yml`, the name `bin/enrol`
-writes: reruns and size trials start through it.
+writes: reruns start through it.
 _Avoid_: default caller, fallback workflow
 
 **One checkout**:
@@ -116,14 +114,17 @@ _Avoid_: precondition, validation, check
 The agent that builds a ticket until its full check is green, then hands it to the reviewer. A
 later run resumes its session or logs why not. It fixes the code, the ticket only in a `code`
 answer, or the machine, splits or closes it, done if main holds it, else unbuilt; stopped, it marks
-`stuck`.
+`stuck`. A spec's slice gets a **slice builder** instead (`bin/build-slice`): fast check only, its
+own Postgres, port and temp dir, done when its branch fast-forwards the integration branch, or
+`partial`, saying what is left.
 _Avoid_: fixer, mechanic, fresh eyes, repair agent
 
 **Reviewer**:
 A fresh agent with the builder's access, in the builder's run: it reads the ticket, commit messages
 and diff, fixes what it finds or approves, and lands it with `bin/land`, which hands back what it
 refuses. Nothing goes back to the builder (ADR-0012). It files owner steps as `owner-step` notes
-and what it lets through as research does.
+and what it lets through as research does. A spec gets two in series at its finish, one on the code
+standard and one on the spec, each split per slice on a big diff.
 _Avoid_: review job, judge, second builder
 
 **Closer**:
@@ -139,140 +140,28 @@ a spec in a file or a conversation has not been published yet.
 _Avoid_: PRD document, requirements doc, brief
 
 **Slicer**:
-The stage that turns a filed spec into tickets under it, one wave at a time. It answers with the
-spec's decisions record, never the spec: code keeps every other byte as filed and splices the
-record in. When a wave's last ticket closes, it slices the next against the spec and what that wave
-found, cutting each pick whose ticket merged to a shipped name. A shared surface's slot is sliced a
-wave ahead of the pieces that plug into it.
+The stage that cuts a spec into slices with their blocked-by edges, the seams first, each slice at
+its last responsible moment. The scheduler hires a fresh one at the start and after each merge,
+reading the integration branch as built and the slices in flight; it files no ticket.
 _Avoid_: splitter, decomposer, to-tickets, planner
-
-**Decisions record**:
-The one section of a spec the slicer writes, `## Decisions record` just before the sentences:
-`### Picks` and `### Shipped names`, each bullet starting `- **name**:`. It names no file path, and
-it is what gives way when the spec nears the spec cap; the owner's sections never do. Builders never
-read the spec, so tickets carry the entries they cite: code copies each cited bullet word for word
-under the ticket's `## Decisions it relies on`.
-_Avoid_: names section, spec rewrite, Names the tickets share
-
-**Pick**:
-A choice the slicer made where the spec was silent, or a name two tickets of a wave both need,
-written in full under `### Picks` until its ticket merges.
-_Avoid_: decision, assumption, settled name
-
-**Shipped name**:
-A pick whose ticket merged, cut to one line under `### Shipped names` saying what it names, since
-the code now says the rest.
-_Avoid_: done pick, built name
-
-**Wave**:
-The tickets under one spec open at once, building side by side on different parts. Code refuses
-two naming one file in `files`, blind to undeclared files and later waves. Only the current wave
-is tickets; the rest is the spec.
-_Avoid_: batch, phase, sprint, round
-
-**Wave note**:
-The one comment the slicer posts on a spec for each wave it files, starting `## Wave` and its
-number: the owner's words the wave's tickets quote, copied by code, what the wave before it did,
-what comes next, and a `<!-- moves: ... -->` marker naming the sentences the wave should move. It
-is the wave's readback.
-_Avoid_: wave summary, status update, progress report
-
-**Slice proof line**:
-What every slice that files a wave says on the running system, so a wave check reads it from the
-spec's wave notes and the run logs instead of rebuilding each body from edit history. Before it
-posts, code compares the owner's bytes of the body it would post with those it read, and stops red
-without posting if they differ. Each round that comes back for the spec's size logs the bytes over
-the spec cap and the bytes the record had to lose. The filing line says the owner's bytes, with their
-count, stand as filed, and gives the seconds from the first size round to filing, or says no round
-came back for the size; the wave note carries the same owner's-bytes line for the owner.
-_Avoid_: proof comment, audit line, byte check
-
-**Size trial**:
-A slice of a real spec run under a trial cap below the spec cap, so the size refusal happens on the
-running system without padding a spec over the real cap. It is asked for with
-`bin/slice --size-trial <spec> <trial cap>`, through a caller file (see Trial through the caller).
-The trial cap stands in for the spec cap in the size refusal, its sent-back prompt and each round's
-log line, but not in the room line (see Trial room line). The real slicer is hired and sent back
-each round as in a real slice, answering with only the record and wave. When the wave would file,
-code proves the owner's bytes stand in the body it would post, logs `slice: trial #N` with the
-owner's bytes and seconds since the first size round, and posts nothing: no body edit, ticket, note
-or label; a wave still refused after the rounds back ends red without marking `stuck` or commenting.
-A trial of a spec with nothing left to slice goes through Record at the hand-off under its trial cap
-and logs `slice: trial #N would hand it to the done check` instead. A trial cap at or above the spec
-cap, or below the owner's bytes, is refused before hiring, since the first can never refuse and the
-second can never fit.
-_Avoid_: dry run, size test, fake cap
-
-**Trial room line**:
-In a size trial, the room line the slicer reads before its first answer gives the room under the
-spec cap, not the trial cap; only the size refusal, its sent-back prompt and its round log lines use
-the trial cap.
-_Avoid_: trial room, dry room line
-
-**Trial cap a check sets**:
-The trial cap the checker's size trial command carries: the owner's bytes plus half the record's
-bytes, both counted from the spec's current body.
-_Avoid_: trial size, check cap
-
-**Record at the hand-off**:
-When a slice gives no ticket and the last wave check missed nothing, code still holds its record to
-the cap with the size refusal like any wave, proves the owner's bytes stand, and posts the spec with
-the record spliced in before it runs the done check, so the last wave's picks are folded into shipped
-names before the sentences are tried. Its line, `slice: #N has nothing left to slice, so it posted
-its record and the done check tries its sentences`, says the owner's bytes stand and gives the
-seconds from the first size round. A size trial of such a spec takes the same path under its trial
-cap: sent back while over, then it logs `slice: trial #N would hand it to the done check` with the
-owner's bytes standing and the seconds from the first size round, and posts nothing.
-_Avoid_: trial of a finished spec, final record
-
-**Check-started size trial**:
-A size trial a wave check or done check on this repo starts itself, to try a sentence about the size
-refusal, since a trial posts nothing to any spec. The checker's prompt names the manual run of the
-caller file to start, with the spec and the trial cap a check sets, and says starting it counts
-as leaving GitHub as it is. The checker waits for that run
-to end and answers from its log: each size round with the bytes over and the bytes the record had to
-lose, and the `slice: trial #N` line saying the owner's bytes stand and the seconds from the first
-size round. The check holds the app's unnarrowed token, the one the closer wakes builders with, so
-it can start the run. The trial's concurrency group is apart from the re-slice's, so a check inside
-a re-slice never queues behind itself, and a trial posts nothing, so it cannot race the re-slice.
-A trial that ends red, or whose filing line gives 60 seconds or more, is a miss.
-_Avoid_: self-test, trial hook
-
-**Trial through the caller**:
-A size trial started through a caller file, so every repo on the caller file can run one. The
-caller file's dispatch takes an optional `trial_cap` beside `ticket`; a dispatch
-carrying it runs the `size-trial` job in `specs.yml` on the spec named in `ticket`, with the
-re-slice job's checkouts and caps and a token that can only read, and starts no builder.
-A check under a caller file reads the file's name from the run it is called from and is told to
-start the trial with `gh workflow run <caller file> -f ticket=<spec> -f trial_cap=<cap>` and to
-find its run under that file. A dispatch with no trial cap, `rerun` or `probe` runs nothing.
-_Avoid_: caller trial, foreign trial
 
 **Run names**:
 The `run-name` the caller file carries, so every run under it names what it does: the event and
-its issue, a comment, a dispatch's rerun, trial cap or probe, as `.github/caller.yml` spells each.
+its issue, a comment, a dispatch's rerun or probe, as `.github/caller.yml` spells each.
 _Avoid_: run title, display name
 
 **Done check**:
 The stage that tries each of a spec's "I'll know it works when I can ___" sentences on the running
-system once nothing is left to slice, and closes the spec once every one held or was put to the
-owner. A first miss gets the spec's one fix wave; a second marks the spec `stuck`. A sentence put
-to the owner holds nothing open: the closing comment says what the owner could try for it, and a
-miss seen live later is a new ticket. It may not give a sentence `unexercised`; one it gives anyway
-ends the run red, posting and closing nothing.
+system once the spec has landed, and closes the spec once every one held or was put to the
+owner. A miss leaves the spec open for the scheduler's one **fix pass**; a second miss marks it
+`stuck`. A sentence put to the owner holds nothing open: the closing comment says what the owner
+could try for it, and a miss seen live later is a new ticket.
 _Avoid_: audit, acceptance test, verification
 
-**Wave check**:
-The done check at a wave's end, trying the sentences that wave should have moved and every one
-that held before, so a wave moving none still gets one once any has held. It skips
-the ones only the owner can try and closes nothing. A sentence that misses at a wave check and
-again at the next wave check or at the end marks the spec `stuck`. A sentence nothing on
-main could have shown yet it gives `unexercised`, listed as **Not tried yet** with what would have
-to happen for it to be seen; that is never a miss, and the next wave check tries it again.
-_Avoid_: wave review, checkpoint, interim check
-
 **Integration branch**:
-The one branch a spec builds on; every slice fast-forwards it, and it lands once (ADR-0013).
+`spec/<N>`, the one branch a spec builds on; every slice fast-forwards it, it is rebased onto main
+before each slicer, and it lands once (ADR-0013). Each slice builds on `slice/<N>-<id>`, and each
+of its commits carries a `Slice: <id>` trailer.
 _Avoid_: spec branch
 
 **Slice**:
@@ -284,7 +173,10 @@ The slices whose blockers have all merged; only these get a builder.
 _Avoid_: ready queue
 
 **Scheduler**:
-The code that runs a spec, hiring each fresh slicer and builder; it holds no model context.
+`bin/schedule`, the code that runs a spec, hiring each fresh slicer and slice builder, at most
+three at once, then `bin/finish` (full check, two reviewers, `bin/land`, done check); it holds no
+model context. Its state is the integration branch and the `## Spec run` progress comment it alone
+writes, so a rerun resumes from them.
 _Avoid_: orchestrator
 
 **Ticket**:
@@ -318,8 +210,8 @@ _Avoid_: preamble, setup, bootstrap
 **Paused**:
 An issue the owner labelled `paused`, a `held` label the machine never adds or removes. Each stage
 reads it when it opens and stands down, so a run already going finishes and none starts after it;
-a pause on a spec holds the spec alone, not its wave's tickets. A paused ticket does not land: its
-reviewer reads the label before `bin/land` and keeps the branch for the ticket's next run.
+on a spec, its builders mid-slice finish into the integration branch and no new one is hired. A
+paused ticket or spec does not land: its reviewer reads the label before `bin/land`.
 _Avoid_: on hold, frozen, blocked
 
 **Stuck**:
@@ -363,8 +255,7 @@ _Avoid_: flake, glitch
 Setting a held issue going again. Taking `waiting` off a ticket resumes its build; the closer takes it
 off once every piece of its split, fault it filed and issue its `## Waits on` names has closed. Taking `paused`
 or `stuck` off a ticket that then holds neither builds it again on the branch its last run kept,
-its builder resuming its session. Taking either off an open spec that then holds neither reads where it stands, as a wave's
-end does: a slice cut short slices again; a wave closed during the hold gets its wave check, then its
-slice, or only its slice once checked; with nothing left to slice, the done check runs. A wave still
-open waits for its last close.
+its builder resuming its session. Taking either off an open spec that then holds neither runs its
+scheduler again from its integration branch and progress comment.
 _Avoid_: unpause, restart, unblock
+

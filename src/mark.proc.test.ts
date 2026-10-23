@@ -90,7 +90,7 @@ describe("bin/mark leaves one state on a ticket and its open PR, so one look at 
     expect(stopped.labels("900")).toEqual(["building", "stuck", "try-2"]);
   });
 
-  it("keeps a spec's try-2 from its fix wave's slicing through building and checking (#1064)", () => {
+  it("keeps a spec's try-2 from its fix pass's slicing through building and checking (#1064)", () => {
     const marked = marking({ labels: { "974": ["spec", "checking"] } });
 
     const steps: [string[], string[]][] = [
