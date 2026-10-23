@@ -1,15 +1,16 @@
 #!/bin/bash
 set -uo pipefail
 
-usage='land: usage: land [--ticket <number> [--approved <reason>]]; it lands HEAD on the default branch through a PR, from the ticket'"'"'s branch with --ticket, commenting the reviewer'"'"'s reason on that PR before it merges with --approved'
+usage='land: usage: land [--ticket <number> | --spec <number> [--approved <reason>]]; it lands HEAD on the default branch through a PR, from the ticket'"'"'s branch with --ticket or the spec'"'"'s integration branch with --spec, commenting the reviewer'"'"'s reason on that PR before it merges with --approved'
 if [[ ${1:-} == -h || ${1:-} == --help ]]; then
   printf '%s\n' "$usage"
   exit 0
 fi
 ticket=
+spec=
 approved=
-if [[ ($# -eq 2 || ($# -eq 4 && $3 == --approved && -n $4)) && $1 == --ticket && $2 =~ ^[0-9]+$ ]]; then
-  ticket=$2
+if [[ ($# -eq 2 || ($# -eq 4 && $3 == --approved && -n $4)) && ($1 == --ticket || $1 == --spec) && $2 =~ ^[0-9]+$ ]]; then
+  [[ $1 == --ticket ]] && ticket=$2 || spec=$2
   approved=${4:-}
 elif [[ $# -ne 0 ]]; then
   printf '%s\n' "$usage" >&2
@@ -107,12 +108,20 @@ for commit in $(git rev-list "origin/$default_branch..HEAD"); do
   fi
 done
 
-if [[ -n $ticket ]]; then
-  call "spelled" "$src/../bin/spelled" TICKET_PREFIX
-  branch="$said$ticket"
-  call "gh issue view" gh issue view "$ticket" --json title --jq .title
+issue=$ticket$spec
+approver="The reviewer"
+if [[ -n $issue ]]; then
+  if [[ -n $ticket ]]; then
+    call "spelled" "$src/../bin/spelled" TICKET_PREFIX
+    branch="$said$ticket"
+  else
+    call "spelled" "$src/../bin/spelled" SPEC_PREFIX
+    branch="$said$spec"
+    approver="The reviewers"
+  fi
+  call "gh issue view" gh issue view "$issue" --json title --jq .title
   title=$said
-  body="Builds #$ticket"$'\n\n'
+  body="Builds #$issue"$'\n\n'
 else
   branch="land/${head:0:12}"
   title=
@@ -152,7 +161,7 @@ for (( round = 1; ; round++ )); do
     url=$said
   fi
   if [[ -n $approved ]]; then
-    call "gh pr comment" gh pr comment "$url" --body "The reviewer approved #$ticket: $approved"
+    call "gh pr comment" gh pr comment "$url" --body "$approver approved #$issue: $approved"
     approved=
   fi
   if gh pr merge "$branch" --merge --match-head-commit "$head" >/dev/null 2>"$err"; then

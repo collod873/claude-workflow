@@ -36,7 +36,7 @@ declareStage({
   part: { name: "bin/admit", file: "bin/admit", stops: "https://github.com/collod873/claude-workflow/issues/1022" },
   scenarios: [
     { label: "admitting a ticket", run: () => admitting().run() },
-    { label: "refusing a ticket the App opened under no spec", run: () => admitting({ opener: MACHINE }).run() },
+    { label: "refusing a ticket the App opened as no follow-up", run: () => admitting({ opener: MACHINE }).run() },
     { label: "with the ticket unreadable", run: () => admitting({ unread: true }).run() },
   ],
 });

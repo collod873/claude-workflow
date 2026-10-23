@@ -67,8 +67,8 @@ describe("written twice refuses text the machine spells in two places, so renami
   it("refuses the machine's own source once a line spells an existing marker a second time", () => {
     const machine = machineSource(import.meta.dirname);
 
-    expect(writtenTwice([...machine, source("src/planted.ts", "export const MOVED = /<!-- moves: ([\\d, ]*) -->/;")])).toEqual([
-      expect.stringMatching(/^written twice: src\/planted\.ts:1 reads "<!-- moves: " that src\/[\w-]+\.ts:\d+ writes; /),
+    expect(writtenTwice([...machine, source("src/planted.ts", "export const PROGRESSED = /<!-- progress: (.*) -->/;")])).toEqual([
+      expect.stringMatching(/^written twice: src\/planted\.ts:1 reads "<!-- progress: " that src\/[\w-]+\.ts:\d+ writes; /),
     ]);
   });
 });
@@ -104,8 +104,8 @@ describe("written twice refuses a script, workflow or action that spells by hand
   });
 
   it("refuses a heading or marker the TypeScript holds as a constant, naming the constant", () => {
-    expect(refused(source("bin/planted", "#!/bin/bash", "grep -q '<!-- fix-wave -->' <<<\"$said\""))).toEqual([
-      expect.stringMatching(/^written twice: bin\/planted:2 spells "<!-- fix-wave -->" that src\/[\w-]+\.ts:\d+ declares; /),
+    expect(refused(source("bin/planted", "#!/bin/bash", "grep -q '## Done check' <<<\"$said\""))).toEqual([
+      expect.stringMatching(/^written twice: bin\/planted:2 spells "## Done check" that src\/[\w-]+\.ts:\d+ declares; /),
     ]);
   });
 

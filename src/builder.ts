@@ -57,7 +57,7 @@ export const splitClosed = (ticket: string) => `Every ticket #${ticket} was spli
 export const LABELLED_WAITING = `labelled \`${WAITING}\``;
 export const waitsOnFault = (ticket: string, filed: string[]) => `The builder of #${ticket} found the machine at fault and filed ${filed.join(", ")}. #${ticket} waits on it, ${LABELLED_WAITING}, and the closer wakes it once every one of them closes:`;
 export const faultsClosed = (ticket: string) => `Every machine fault #${ticket} waits on has closed:`;
-export const FILED = /\/issues\/(\d+)\s*$/;
+const FILED = /\/issues\/(\d+)\s*$/;
 
 interface Handed {
   ticket: string;
@@ -73,7 +73,7 @@ type Round = { red?: string; ended?: number; body?: string };
 
 type Spend = (input: string, resume?: string) => Spent;
 
-const CHECK = `${FULL_CHECK} --publish`;
+export const CHECK = `${FULL_CHECK} --publish`;
 const PASSED = /^check: ok\b/;
 const LOGGED = /; log (.+?)\s*$/;
 
@@ -90,13 +90,15 @@ function captureOf(body: string, captures: string | undefined): string | undefin
 const filedIn = (capture: string | undefined) =>
   capture === undefined ? [] : [`The conversation that filed this ticket is captured at \`${capture}\`: what the owner ruled out, asked twice, or meant by a word, around the quotes in its Why. Read it before you build.`];
 
-export function repaired(output: string): string {
-  return [`\`${CHECK}\` is still red. The end of its output:`, tailOf(output, TAIL_CAP), "Make it pass.", ""].join("\n\n");
+export function stillRed(check: string, output: string): string {
+  return [`\`${check}\` is still red. The end of its output:`, tailOf(output, TAIL_CAP), "Make it pass.", ""].join("\n\n");
 }
 
-function checked(): string | undefined {
+export const repaired = (output: string) => stillRed(CHECK, output);
+
+export function checkedBy(check: string): string | undefined {
   const { GITHUB_ACTIONS: _annotating, ...env } = process.env;
-  const { stdout, stderr } = spawnSync("bash", ["-c", CHECK], { env: treePathed(env), encoding: "utf8" });
+  const { stdout, stderr } = spawnSync("bash", ["-c", check], { env: treePathed(env), encoding: "utf8" });
   const output = `${stdout}${stderr}`.trim();
   const verdict = stdout.trim().split("\n").at(-1) ?? "";
   if (PASSED.test(verdict)) return undefined;
@@ -104,9 +106,9 @@ function checked(): string | undefined {
   return [output, log === undefined ? "" : (onDisk(resolve(log)) ?? "")].join("\n");
 }
 
-const BUILD_IT = [
+export const buildIt = (unit: typeof TICKET | "slice") => [
   "## Build it",
-  "Build what the ticket's Why asks for until its `## Done when` holds. Call the Skill tool with `tdd` and follow it to the end.",
+  `Build what the ${unit}'s Why asks for until its \`## Done when\` holds. Call the Skill tool with \`tdd\` and follow it to the end.`,
   "Commit your work, each message saying why, with no em dash and no closing keyword such as `Fixes #12`: `bin/land` refuses them.",
 ];
 
@@ -135,7 +137,7 @@ export function handedOn({ ticket, body, capture, woken, alongside, commitlint, 
     ...(woken === undefined ? [] : ["## How its split ended", "Build what a piece closed unbuilt left, or rule it out:", capped(woken, LIST_CAP)]),
     ...sameFiles(alongside),
     ...filedIn(capture),
-    ...BUILD_IT,
+    ...buildIt(TICKET),
     ...linted(commitlint),
     "## Your answer",
     "Answer one outcome:",
@@ -267,12 +269,12 @@ function outcomeOf(ticket: string, body: string, answer: Answer | undefined, mai
   return rewritten(ticket, body, answer);
 }
 
-function spentOn(ticket: string, spend: Spend, input: string, session: string | undefined, opening: string): Spent {
+export function spentOn(said: string, spend: Spend, input: string, session: string | undefined, opening: string): Spent {
   const fresh = () => spend(input === opening ? input : [opening, input].join("\n\n"));
   if (session === undefined) return fresh();
   const resumed = spend(input, session);
   if (resumed.refusal === undefined) return resumed;
-  console.error(`fix: #${ticket} could not resume its builder's session ${session}, so it starts fresh: ${resumed.refusal}`);
+  console.error(`${said} could not resume its builder's session ${session}, so it starts fresh: ${resumed.refusal}`);
   return fresh();
 }
 
@@ -299,7 +301,7 @@ function judged(): Round {
   if (gitRead(["rev-list", "--count", "origin/main..HEAD"], PAST_MAIN_UNREAD) === "0") return { red: "You answered `code`, and this branch has no commits past main, so there is nothing to land: build the ticket, or answer `done` if main already does what it asks." };
   const lost = mergesCarryingWork();
   if (lost.length > 0) return { red: `You answered \`code\`, and a rebase drops merge commits, so these past main would land without the work they carry beyond a clean merge of their parents: ${lost.join(", ")}. Leave that work out of merge commits and add its work as plain commits on top of main, such as with \`git reset --soft origin/main\` and a fresh commit.` };
-  const red = checked();
+  const red = checkedBy(CHECK);
   return red === undefined ? {} : { red: repaired(red) };
 }
 
@@ -336,7 +338,7 @@ function ownTicket(ticket: string, app: AppKey | undefined): number {
   let input = opening;
   for (;;) {
     const mainBefore = fetchedMain();
-    const spent = spentOn(ticket, spend, input, session, opening);
+    const spent = spentOn(`fix: #${ticket}`, spend, input, session, opening);
     session = spent.session ?? session;
     keepSession(ticket, session);
     if (app !== undefined) freshAppToken(app, gh, `so the build of #${ticket} is not acted on`);

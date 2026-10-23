@@ -753,28 +753,20 @@ describe("a fresh reviewer reads each green build, fixes or approves it, and bin
   });
 });
 
-describe("the builder builds an App-opened ticket only under an open spec the owner opened (#1022)", () => {
+describe("the builder builds an App-opened ticket only as a follow-up a stage wrote, never for its spec alone (#1022, #1509)", () => {
   const SPEC = { state: "open", user: { login: "collod873" }, labels: [{ name: "spec" }] };
   const APP = "collod873-machine[bot]";
-  const ticketWhy = (line: string) => `## Why\n\n${line}\n\n## Done when\n\n- The builder builds it.\n`;
-  const stopped = (scenario: ReturnType<typeof fixing>) => {
+
+  it("stops a ticket the App opened under an open spec the owner opened, before its builder runs anything", () => {
+    const scenario = fixing({ claude: FIXES, opener: APP, parent: SPEC });
+
     const result = scenario.run("811");
+
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain("#811");
+    expect(result.stderr).toContain("as no follow-up the machine builds");
     expect(scenario.handed()).toEqual([]);
     expect(scenario.marked()).toEqual([]);
-    return result.stderr;
-  };
-
-  it("builds a ticket the App opened under an open spec the owner opened", () => {
-    const { run, handed } = fixing({ claude: FIXES, opener: APP, parent: SPEC });
-
-    expect(run("811").status).toBe(0);
-    expect(handed()).toHaveLength(2);
-  });
-
-  it("stops a ticket the App opened under a spec the App opened, before its builder runs anything", () => {
-    expect(stopped(fixing({ claude: FIXES, opener: APP, parent: { ...SPEC, user: { login: APP } } }))).toContain("the owner");
   });
 
   it("builds the owner's own ticket under no spec, as before", () => {

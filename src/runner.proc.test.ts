@@ -335,8 +335,8 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
 });
 
 describe("the machine's jobs run where the repo's switch says, a quick job never queued behind a build", () => {
-  const BUILDS: Record<string, string[]> = { "tickets.yml": ["build", "probe"], "specs.yml": ["slice", "reslice", "size-trial", "resume", "research", "check"] };
-  const HEAVY = ["./.github/actions/pinned", "./.github/actions/database", "bin/fix", "--full", "bin/slice\" --", "bin/research", "bin/probe"];
+  const BUILDS: Record<string, string[]> = { "tickets.yml": ["build", "probe"], "specs.yml": ["spec", "research", "check"] };
+  const HEAVY = ["./.github/actions/pinned", "./.github/actions/database", "bin/fix", "--full", "bin/schedule", "bin/research", "bin/probe"];
 
   it("runs the jobs that build, check or hand a model a shell on the build runners, and every other on the quick lane, which falls back to the build runners and then to GitHub's", () => {
     for (const [file, builds] of Object.entries(BUILDS)) {

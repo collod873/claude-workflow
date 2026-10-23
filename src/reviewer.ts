@@ -38,37 +38,42 @@ interface Handed {
   commitlint: boolean;
 }
 
+export const reviewedChange = (commits: string, diff: string, stat: string) => ["## Commits", capped(commits, LIST_CAP), "## Diff from main", handedDiff(diff, stat)];
+export const TESTS_ARE_YOURS = "A new or changed test that would stay green on the bug it guards, or go red on a refactor that keeps the behavior, is yours to fix.";
+export const STANDARDS_LOADED = "Before judging it, call the Skill tool with `coding-standards` for the code standard and `testing` for the test standard.";
+export const COMMIT_WHY = "Commit what you change, each message saying why, with no em dash and no closing keyword such as `Fixes #12`.";
+export const RISKS_LET_THROUGH = "name in it every cost or risk you saw and let through, or say you saw none.";
+export const stuckAsked = (unit: "ticket" | "spec") => `- \`stuck\`: the work has a gap you cannot fix, one only the owner can close; \`reason\` says why, and the ${unit} is marked \`stuck\`.`;
+export const STEPS_ASKED = "`steps`: each step only the owner can take before this work runs, such as a dashboard setting or a key, read from the finished work; name every one in each answer";
+
 export function handedOn({ ticket, body, commits, diff, stat, alongside, commitlint }: Handed): string {
   return [
     `# Review #${ticket} before it lands`,
     "A builder built the ticket below on this branch, and its full check is green. You did not build it: read the ticket, its commit messages and the diff as its reviewer.",
     capped(body, TICKET_CAP),
-    "## Commits",
-    capped(commits, LIST_CAP),
-    "## Diff from main",
-    handedDiff(diff, stat),
+    ...reviewedChange(commits, diff, stat),
     ...sameFiles(alongside),
     ...linted(commitlint),
     "## Fix it or approve it",
-    "Where the diff misses the Why or its `## Done when`, or breaks what it touches, fix it here yourself: nothing goes back to the builder. A new or changed test that would stay green on the bug it guards, or go red on a refactor that keeps the behavior, is yours to fix. A fault of the same cause in the code you read is yours to fix too when the fix is small, though the `## Done when` does not name it; a bigger one you name in `fixes` or `asks`. Before judging it, call the Skill tool with `coding-standards` for the code standard and `testing` for the test standard.",
-    "Commit what you change, each message saying why, with no em dash and no closing keyword such as `Fixes #12`. Answer one outcome:",
+    `Where the diff misses the Why or its \`## Done when\`, or breaks what it touches, fix it here yourself: nothing goes back to the builder. ${TESTS_ARE_YOURS} A fault of the same cause in the code you read is yours to fix too when the fix is small, though the \`## Done when\` does not name it; a bigger one you name in \`fixes\` or \`asks\`. ${STANDARDS_LOADED}`,
+    `${COMMIT_WHY} Answer one outcome:`,
     "- `approve`: it builds the Why, with whatever you fixed; `bin/land` then runs the full check and merges it, and anything it refuses comes back to you.",
-    "- `stuck`: the work has a gap you cannot fix, one only the owner can close; `reason` says why, and the ticket is marked `stuck`.",
-    "`steps`: each step only the owner can take before this work runs, such as a dashboard setting or a key, read from the finished work; name every one in each answer, since those of the answer that lands are each filed as an `owner-step` note, and the ticket still closes.",
+    stuckAsked("ticket"),
+    `${STEPS_ASKED}, since those of the answer that lands are each filed as an \`owner-step\` note, and the ticket still closes.`,
     `\`fixes\`: of the faults you saw and let through, ${FIXES_ASKED} filed once it lands.`,
     "`asks`: the calls you let through that only the owner can make, each with your pick; those of the answer that lands are filed as one note to the owner.",
-    "`reason`: one paragraph for the owner. An `approve`'s `reason` is commented on the ticket's PR before it merges: name in it every cost or risk you saw and let through, or say you saw none.",
+    `\`reason\`: one paragraph for the owner. An \`approve\`'s \`reason\` is commented on the ticket's PR before it merges: ${RISKS_LET_THROUGH}`,
     "",
   ].join("\n\n");
 }
 
 const reviewedBy = (ticket: string) => `Review #${ticket} as its reviewer`;
 
-const stepBody = (ticket: string, { why }: OwnerStep) => `## Why\n\n${why}\n\nLeft to the owner by the run that built #${ticket}, which closed.\n`;
+export const ownerStepFiled = (left: string) => (step: OwnerStep) => ({ named: `${step.title}: ${step.why}`, ...post({ kind: "owner", title: step.title, text: `## Why\n\n${step.why}\n\n${left}\n` }, gh) });
 
 function filedOnceLanded(ticket: string, { steps = [], fixes = [], asks = [] }: Answer): string {
   const filed = [
-    ...steps.map((step) => ({ named: `${step.title}: ${step.why}`, ...post({ kind: "owner", title: step.title, text: stepBody(ticket, step) }, gh) })),
+    ...steps.map(ownerStepFiled(`Left to the owner by the run that built #${ticket}, which closed.`)),
     ...followedUp(`${FOLLOW_UP_OF}${ticket}${REVIEW_LET_THROUGH}`, fixes, asks, { title: `Your call after #${ticket}'s review`, by: `#${ticket}'s reviewer` }),
   ];
   const refused = filed.filter(({ refusals }) => refusals.length > 0);
@@ -76,14 +81,14 @@ function filedOnceLanded(ticket: string, { steps = [], fixes = [], asks = [] }: 
   return filed.length === 0 ? "" : `; filed: ${filed.map(({ said }) => said.trim()).filter((said) => said !== "").join(" ") || "none"}`;
 }
 
-function landing(ticket: string, reason: string): { pr: string } | { refused: string } {
-  const landed = spawnSync(machineBin("land"), ["--ticket", ticket, "--approved", reason], { encoding: "utf8", maxBuffer: Infinity });
+export function landing(named: ["--ticket" | "--spec", string], reason: string): { pr: string } | { refused: string } {
+  const landed = spawnSync(machineBin("land"), [...named, "--approved", reason], { encoding: "utf8", maxBuffer: Infinity });
   const pr = LANDED.exec(landed.stdout)?.[1];
   if (landed.status === 0 && pr !== undefined) return { pr };
   return { refused: tailOf(`${landed.stdout}${landed.stderr}`.trim(), TAIL_CAP) || `bin/land ended ${landed.status} and said nothing` };
 }
 
-const landRefused = (refused: string) => ["`bin/land` refused to land it. Its output:", refused, "Fix what it names, commit, and answer again."].join("\n\n");
+export const landRefused = (refused: string) => ["`bin/land` refused to land it. Its output:", refused, "Fix what it names, commit, and answer again."].join("\n\n");
 
 function triedAgainLater(ticket: string, refusal: string): number {
   console.error(`review: #${ticket} was not reviewed, as ${refusal}; its run ends red, so the machine re-runs it`);
@@ -114,7 +119,7 @@ export function reviewedAndLanded(ticket: string, body: string, alongside: strin
       console.log(`review: #${ticket} is labelled ${held}, so it does not land; its branch is kept for its next run`);
       return 0;
     }
-    const landed = answer === undefined ? { refused: "You gave no outcome. Answer one." } : landing(ticket, answer.reason);
+    const landed = answer === undefined ? { refused: "You gave no outcome. Answer one." } : landing(["--ticket", ticket], answer.reason);
     if ("pr" in landed) {
       const filed = answer === undefined ? "" : filedOnceLanded(ticket, answer);
       console.log(`review: #${ticket} landed as PR #${landed.pr}${filed}`);

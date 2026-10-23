@@ -55,10 +55,6 @@ export const unread = (line: string): never => {
 const readOrUnread = (got: ReturnType<Gh>, line: string): string => (got.status === 0 ? got.stdout.trim() : unread(line));
 
 export const ghRead = (args: string[], line: string) => readOrUnread(gh(args), line);
-export function ghWhole(args: string[], line: string): string {
-  const got = gh(args);
-  return got.status === 0 ? got.stdout : unread(line);
-}
 export const gitRead = (args: string[], line: string, input?: string) => readOrUnread(git(args, input), line);
 
 export function readOrStop<Ended>(stage: string, run: () => Ended): Ended | Stop {
@@ -246,34 +242,6 @@ export function opened(path: string, line: string, gh: Gh, repo = "{owner}/{repo
   if (got.status !== 0) return MISSING.test(got.stderr) ? "missing" : unread(line);
   try {
     return JSON.parse(got.stdout) as Opened;
-  } catch {
-    return unread(line);
-  }
-}
-
-export function underOwnerSpec(ticket: string, line: string, gh: Gh, repo?: string): Admission {
-  const spec = opened(`${ticket}/parent`, line, gh, repo);
-  if (spec === "missing") return "the App opened it under no spec";
-  if (!heldOf(spec.labels).has(SPEC)) return "the App opened it under an issue not labelled `spec`";
-  if (spec.user?.login !== OWNER) return "the App opened it under a spec the owner did not open";
-  if (spec.state !== "open") return "the App opened it under a spec that is not open";
-  return undefined;
-}
-
-const NO_PR = /^no pull requests found/m;
-
-export interface TicketPr {
-  number?: number;
-  state?: string;
-  files?: { path?: string }[];
-}
-
-export function prOfTicket(ticket: string, fields: (keyof TicketPr)[], gh: Gh): TicketPr | "none" {
-  const line = `the PR of #${ticket} could not be read`;
-  const got = gh(["pr", "view", ticketBranch(ticket), "--json", fields.join(",")]);
-  if (got.status !== 0) return NO_PR.test(got.stderr) ? "none" : unread(line);
-  try {
-    return JSON.parse(got.stdout) as TicketPr;
   } catch {
     return unread(line);
   }
