@@ -161,12 +161,20 @@ jobs:
             ~/.claude/slice-builder
           key: spec-${{ github.event.issue.number }}-${{ github.run_id }}
 
+      - id: after-schedule-app
+        if: always() && steps.schedule.outcome != 'skipped'
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
       - if: ${{ failure() || cancelled() }}
         uses: ./.github/actions/call-owner
         with:
           issue: ${{ github.event.issue.number }}
           run: the spec run
-          token: ${{ steps.app.outputs.token }}
+          token: ${{ steps.after-schedule-app.outputs.token || steps.app.outputs.token }}
 
       - if: always()
         timeout-minutes: 6
