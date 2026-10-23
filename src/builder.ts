@@ -275,8 +275,26 @@ function spentOn(ticket: string, spend: Spend, input: string, session: string | 
   return fresh();
 }
 
+const PAST_MAIN_UNREAD = "the commits past main could not be read, so nothing is reviewed";
+
+function mergesCarryingWork(): string[] {
+  const merges = gitRead(["log", "--merges", "--format=%h%x09%T%x09%P%x09%s", "origin/main..HEAD"], PAST_MAIN_UNREAD);
+  return merges === ""
+    ? []
+    : merges
+        .split("\n")
+        .map((line) => line.split("\t"))
+        .filter(([, tree = "", parents = ""]) => {
+          const cleanMerge = git(["merge-tree", "--write-tree", ...parents.split(" ")]);
+          return cleanMerge.status !== 0 || cleanMerge.stdout.split("\n")[0] !== tree;
+        })
+        .map(([short = "", , , subject = ""]) => `${short} ${subject}`);
+}
+
 function judged(): Round {
-  if (gitRead(["rev-list", "--count", "origin/main..HEAD"], "the commits past main could not be read, so nothing is reviewed") === "0") return { red: "You answered `code`, and this branch has no commits past main, so there is nothing to land: build the ticket, or answer `done` if main already does what it asks." };
+  if (gitRead(["rev-list", "--count", "origin/main..HEAD"], PAST_MAIN_UNREAD) === "0") return { red: "You answered `code`, and this branch has no commits past main, so there is nothing to land: build the ticket, or answer `done` if main already does what it asks." };
+  const lost = mergesCarryingWork();
+  if (lost.length > 0) return { red: `You answered \`code\`, and a rebase drops merge commits, so these past main would land without the work they carry beyond a clean merge of their parents: ${lost.join(", ")}. Leave that work out of merge commits and add its work as plain commits on top of main, such as with \`git reset --soft origin/main\` and a fresh commit.` };
   const red = checked();
   return red === undefined ? {} : { red: repaired(red) };
 }
