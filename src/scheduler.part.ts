@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { LIST_CAP } from "./brief.ts";
 import { BIN, cloned, execute, git, key, plant, scratch, script, wellFormedSpec } from "./scenarios.ts";
-import { type Progress, resumedAfterStop, tipMoved } from "./scheduler.ts";
+import { type Progress, resumedAfterStop } from "./scheduler.ts";
 import type { Slice } from "./slicer.ts";
 import { MACHINE } from "./spelled.ts";
 import { declareStage, HANDED_ON } from "./stages.ts";
@@ -11,7 +11,7 @@ export const SPEC_ISSUE = "968";
 export const LANDED = "1600";
 
 export interface Attempt {
-  outcome?: "built" | "partial" | "stuck";
+  outcome?: "built" | "partial" | "done" | "stuck" | "stopped" | "outOfTime";
   wait?: number;
   then?: string;
 }
@@ -122,9 +122,9 @@ export function scheduling({
   script(
     join(root, "bin", "build-slice"),
     [
-      `ROOT="${root}"; id=""; onto=""`,
+      `ROOT="${root}"; id=""; onto=""; answer=""`,
       'argv=("$@")',
-      "while (($#)); do case $1 in --slice) id=$2; shift 2 ;; --onto) onto=$2; shift 2 ;; *) shift ;; esac; done",
+      "while (($#)); do case $1 in --slice) id=$2; shift 2 ;; --onto) onto=$2; shift 2 ;; --answer) answer=$2; shift 2 ;; *) shift ;; esac; done",
       `mkdir -p "${at("built")}" "${at("running")}"`,
       `k=$(( $(ls "${at("built")}" | grep -c "^$id-[0-9]*$") + 1 ))`,
       `{ printf 'token=%s\\n' "\${GH_TOKEN:-}"; printf 'key=%s\\n' "$(jq -r .clientId "\${APP_KEY_FILE:-/dev/null}" 2>/dev/null)"; printf 'dir=%s\\n' "$PWD"; printf 'branch=%s\\n' "$(git rev-parse --abbrev-ref HEAD)"; git log --format=%s; } >"${at("built")}/$id-$k.seen"`,
@@ -135,7 +135,7 @@ export function scheduling({
       `plan="${at("plans")}/$id/$k"`,
       "[[ -f $plan ]] && attempt=$(cat \"$plan\") || attempt='{}'",
       "outcome=$(jq -r '.outcome // \"built\"' <<<\"$attempt\"); wait=$(jq -r '.wait // 0' <<<\"$attempt\"); then=$(jq -r '.then // \"\"' <<<\"$attempt\")",
-      'if [[ $outcome != stuck ]]; then git rebase --quiet "$onto" && printf \'%s\\n\' "$id" >"$id-$k.txt" && git add "$id-$k.txt" && git commit --quiet -m "Build $id" -m "Slice: $id"; fi',
+      'if [[ -n $answer ]]; then git rebase --quiet "$onto"; elif [[ $outcome == built || $outcome == partial ]]; then git rebase --quiet "$onto" && printf \'%s\\n\' "$id" >"$id-$k.txt" && git add "$id-$k.txt" && git commit --quiet -m "Build $id" -m "Slice: $id"; fi',
       'sleep "$wait"',
       'eval "$then"',
       `rmdir "${at("running")}/$id"`,
@@ -143,7 +143,8 @@ export function scheduling({
       "case $outcome in",
       '  built) printf \'{"outcome":"built","left":"","reason":"","session":"session-%s-%s"}\\n\' "$id" "$k" ;;',
       '  partial) printf \'{"outcome":"partial","left":"the rest of %s","reason":"","session":"session-%s-%s"}\\n\' "$id" "$id" "$k" ;;',
-      '  stuck) printf \'{"outcome":"stuck","left":"","reason":"%s hit a wall","session":"session-%s-%s"}\\n\' "$id" "$id" "$k"; exit 1 ;;',
+      '  done) printf \'{"outcome":"done","left":"","reason":"","session":"session-%s-%s"}\\n\' "$id" "$k" ;;',
+      '  stuck|stopped|outOfTime) printf \'{"outcome":"%s","left":"","reason":"%s hit a wall","session":"session-%s-%s"}\\n\' "$outcome" "$id" "$id" "$k"; exit 1 ;;',
       "esac",
       "",
     ].join("\n"),
@@ -190,13 +191,6 @@ declareStage({
   part: { name: "bin/schedule", file: "bin/schedule", stops: "https://github.com/collod873/claude-workflow/issues/1509" },
   prompts: [
     {
-      name: "slice builder told the tip moved",
-      file: "src/scheduler.ts",
-      cap: HANDED_ON,
-      slots: [],
-      build: () => tipMoved(SPEC_ISSUE),
-    },
-    {
       name: "slice builder resumed after a stop",
       file: "src/scheduler.ts",
       cap: LIST_CAP + HANDED_ON,
@@ -207,6 +201,6 @@ declareStage({
   scenarios: [
     { label: "building a spec's slices and landing it", run: () => scheduling({ cuts: [[sliceOf("seam")], []] }).run() },
     { label: "refusing a ticket", run: () => scheduling({ labels: ["ticket"] }).run() },
-    { label: "calling the owner when no slice can move", run: () => scheduling({ cuts: [[sliceOf("seam")], []], plans: { seam: [{ outcome: "stuck" }, { outcome: "stuck" }] } }).run() },
+    { label: "calling the owner when no slice can move", run: () => scheduling({ cuts: [[sliceOf("seam")], []], plans: { seam: [{ outcome: "stuck" }] } }).run() },
   ],
 });

@@ -71,19 +71,20 @@ describe("bin/schedule runs a spec from its first cut to its landing, one slice 
     expect(git(run.remote, "rev-list", "--merges", "--count", SPEC_BRANCH)).toBe("0");
   });
 
-  it("resumes a builder whose slice no longer fast-forwards because another merged first, telling it the tip moved", () => {
+  it("lands a builder's answer again, with no model turn, when its slice no longer fast-forwards because another merged first", () => {
     const run = scheduling({ cuts: [[sliceOf("first"), sliceOf("second")], []], plans: { second: [{ wait: 1 }] } });
 
     expect(run.run().status).toBe(0);
     const again = run.built("second", 2);
     expect(optionOf(again, "--resume")).toBe("session-second-1");
-    expect(optionOf(again, "--told")).toContain(`Another slice merged into \`${SPEC_BRANCH}\``);
-    expect(run.onRemote(SPEC_BRANCH).filter((subject) => subject.startsWith("Build"))).toEqual(["Build second", "Build second", "Build first"]);
+    expect(JSON.parse(optionOf(again, "--answer") ?? "{}")).toMatchObject({ outcome: "built" });
+    expect(again).not.toContain("--told");
+    expect(run.onRemote(SPEC_BRANCH).filter((subject) => subject.startsWith("Build"))).toEqual(["Build second", "Build first"]);
     expect(stateOf(run)).toEqual({ first: "merged", second: "merged" });
   });
 
   it("resumes a stopped builder once with its reason, leaves the slice out on its second stop while the others build and merge, and marks stuck only once nothing can move", () => {
-    const run = scheduling({ cuts: [[sliceOf("wall"), sliceOf("free"), sliceOf("after", ["wall"])], []], plans: { wall: [{ outcome: "stuck" }, { outcome: "stuck" }], free: [{ wait: 1 }] } });
+    const run = scheduling({ cuts: [[sliceOf("wall"), sliceOf("free"), sliceOf("after", ["wall"])], []], plans: { wall: [{ outcome: "stopped" }, { outcome: "stopped" }], free: [{ wait: 1 }] } });
 
     const ended = run.run();
 
@@ -91,7 +92,7 @@ describe("bin/schedule runs a spec from its first cut to its landing, one slice 
     expect(ended.stderr).toContain("marked stuck");
     const again = run.built("wall", 2);
     expect(optionOf(again, "--resume")).toBe("session-wall-1");
-    expect(optionOf(again, "--told")).toContain("wall hit a wall");
+    expect(optionOf(again, "--told")).toBe(`Your last run on this slice stopped: wall hit a wall. Go on from where it stopped until the slice is built and fast-forwards \`${SPEC_BRANCH}\`.`);
     expect(/^dir=.*$/m.exec(run.seen("wall", 2))?.[0]).toBe(/^dir=.*$/m.exec(run.seen("wall"))?.[0]);
     expect(run.built("wall", 3)).toBeUndefined();
     expect(run.built("after")).toBeUndefined();
@@ -99,6 +100,43 @@ describe("bin/schedule runs a spec from its first cut to its landing, one slice 
     expect(run.order().indexOf(`mark ${SPEC_ISSUE} stuck`)).toBeGreaterThan(run.order().indexOf("build free built"));
     expect(run.comments().at(-1)?.body).toContain("@collod873");
     expect(run.finished()).toEqual([]);
+  });
+
+  it("puts a slice out at once when its builder answers stuck, resuming no one", () => {
+    const run = scheduling({ cuts: [[sliceOf("wall")], []], plans: { wall: [{ outcome: "stuck" }] } });
+
+    expect(run.run().status).toBe(1);
+    expect(run.built("wall", 2)).toBeUndefined();
+    expect(stateOf(run)).toEqual({ wall: "out" });
+    expect(run.comments().at(-1)?.body).toContain("`wall` is out: wall hit a wall");
+  });
+
+  it("resumes a builder that ran out of time telling it to hand back what holds", () => {
+    const run = scheduling({ cuts: [[sliceOf("slow")], []], plans: { slow: [{ outcome: "outOfTime" }] } });
+
+    expect(run.run().status).toBe(0);
+    const again = run.built("slow", 2);
+    expect(optionOf(again, "--resume")).toBe("session-slow-1");
+    expect(again).toContain("--out-of-time");
+    expect(again).not.toContain("--told");
+    expect(stateOf(run)).toEqual({ slow: "merged" });
+  });
+
+  it("counts a slice whose builder found it already on the integration branch as merged, even once that branch has moved, hiring no one again and calling no one", () => {
+    const run = scheduling({ cuts: [[sliceOf("first"), sliceOf("seam")], []], plans: { seam: [{ outcome: "done", wait: 1 }] } });
+
+    expect(run.run().status).toBe(0);
+    expect(stateOf(run)).toEqual({ first: "merged", seam: "merged" });
+    expect(run.built("seam", 2)).toBeUndefined();
+    expect(run.onRemote(SPEC_BRANCH)).toEqual(["Build first", "Start"]);
+    expect(run.order()).not.toContain(`mark ${SPEC_ISSUE} stuck`);
+  });
+
+  it("names a builder killed by a signal as killed, and hires it again", () => {
+    const run = scheduling({ cuts: [[sliceOf("seam")], []], plans: { seam: [{ then: "kill -KILL $$" }] } });
+
+    expect(run.run().status).toBe(0);
+    expect(run.progress()?.slices[0]).toMatchObject({ state: "merged", tries: 2, stopped: "bin/build-slice was killed by SIGKILL with no outcome" });
   });
 
   it("finishes and merges the builders in flight when the spec is paused mid-run, and hires none after", () => {

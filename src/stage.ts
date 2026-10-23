@@ -76,6 +76,7 @@ export interface Hire {
 export interface Spent {
   stdout: string;
   refusal?: string;
+  timedOut?: boolean;
   session?: string;
   answer?: unknown;
 }
@@ -131,7 +132,8 @@ export function hired(hire: Hire): (input: string, resume?: string) => Spent {
       got = attempt(hire.writeUp.told, reading, 0);
       refusal = refusalFor(got);
     }
-    return refusal === undefined ? { stdout: got.stdout, session: sessionOf(got.stdout), answer: answerIn(got.stdout) } : { stdout: got.stdout, refusal };
+    if (refusal === undefined) return { stdout: got.stdout, session: sessionOf(got.stdout), answer: answerIn(got.stdout) };
+    return got.status === TIMED_OUT && minutes > 0 ? { stdout: got.stdout, refusal, timedOut: true, session: sessionOf(got.stdout) ?? reading } : { stdout: got.stdout, refusal };
   };
 }
 

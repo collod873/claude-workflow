@@ -39,7 +39,7 @@ export const ghAs =
 export const gh = ghAs(process.env);
 export const git = (args: string[], input?: string) => spawnSync("git", args, { input, encoding: "utf8", maxBuffer: Infinity });
 
-class Stopped extends Error {
+export class Stopped extends Error {
   readonly stop: Stop;
 
   constructor(stop: Stop, line: string) {

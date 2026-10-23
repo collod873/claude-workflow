@@ -20,7 +20,7 @@ type Stop = ReturnType<typeof stoppedAt>;
 
 export const MOST_BUILDERS = 3;
 const MOST_TRIES = 2;
-const LEFT_CAP = 1024;
+export const LEFT_CAP = 1024;
 
 type SliceState = "cut" | "hired" | "merged" | "out";
 
@@ -31,6 +31,7 @@ interface Tracked extends Slice {
   session?: string;
   left?: string;
   stopped?: string;
+  outOfTime?: boolean;
 }
 
 export interface Progress {
@@ -40,7 +41,7 @@ export interface Progress {
 
 interface Built {
   id: string;
-  outcome: "built" | "partial" | "stopped";
+  outcome: "built" | "partial" | "done" | "stuck" | "stopped" | "outOfTime";
   reason: string;
   left?: string;
   session?: string;
@@ -61,11 +62,8 @@ export function briefOf(slice: Slice, specBody: string): string {
   return [`# ${slice.title.trim()}`, "## Why", slice.why.trim(), ...decisions, "## Done when", bullets(slice.done), "## Out of Scope", filedOutOfScope(specBody), ""].join("\n\n");
 }
 
-export const tipMoved = (spec: string) =>
-  `Another slice merged into \`${specBranch(spec)}\` while you built, so your branch no longer fast-forwards it. Bring your slice onto its tip again, resolving any conflict, until it fast-forwards \`${specBranch(spec)}\` with the fast check green.`;
-
 export const resumedAfterStop = (spec: string, reason: string) =>
-  `Your last run on this slice stopped: ${capped(reason, LIST_CAP)}. Go on from where it stopped until the slice is built and fast-forwards \`${specBranch(spec)}\`.`;
+  `Your last run on this slice stopped: ${capped(reason.trim().replace(/\.$/, ""), LIST_CAP)}. Go on from where it stopped until the slice is built and fast-forwards \`${specBranch(spec)}\`.`;
 
 const cell = (text: string) => text.replaceAll("|", "\\|").replaceAll(/\s*\n\s*/g, " ");
 
@@ -184,24 +182,38 @@ function cutBySlicer(spec: string, logs: string): Slice[] | undefined {
   return ran.status === 0 && Array.isArray(slices) ? (slices as Slice[]) : undefined;
 }
 
-function builtOf(id: string, status: number | null, line: string): Built {
+function builtOf(id: string, status: number | null, signal: string | null, line: string): Built {
   const said = parsed(line);
   const outcome = said?.outcome;
-  const reason = text(said?.reason) ?? `bin/build-slice ended ${String(status)} with ${said === undefined ? "no outcome" : `outcome ${JSON.stringify(outcome)}`}`;
+  const ending = status === null ? `was killed by ${String(signal)}` : `ended ${String(status)}`;
+  const reason = text(said?.reason) ?? `bin/build-slice ${ending} with ${said === undefined ? "no outcome" : `outcome ${JSON.stringify(outcome)}`}`;
   const session = text(said?.session);
-  if (status === 0 && (outcome === "built" || outcome === "partial")) return { id, outcome, reason, left: text(said?.left), session };
-  return { id, outcome: "stopped", reason, session };
+  if (status === 0 && (outcome === "built" || outcome === "partial" || outcome === "done")) return { id, outcome, reason, left: text(said?.left), session };
+  return { id, outcome: outcome === "stuck" || outcome === "outOfTime" ? outcome : "stopped", reason, session };
 }
 
-function building(spec: string, tracked: Tracked, dir: string, brief: string, log: string, env: NodeJS.ProcessEnv, how: { resume?: string; told?: string }): Promise<Built> {
-  const args = ["--spec", spec, "--slice", tracked.id, "--brief", brief, "--onto", specBranch(spec), ...(how.resume === undefined ? [] : ["--resume", how.resume]), ...(how.told === undefined ? [] : ["--told", how.told])];
+interface Hiring {
+  resume?: string;
+  told?: string;
+  outOfTime?: boolean;
+  answer?: { outcome: string; reason: string; left?: string };
+}
+
+function building(spec: string, tracked: Tracked, dir: string, brief: string, log: string, env: NodeJS.ProcessEnv, how: Hiring): Promise<Built> {
+  const args = [
+    ...["--spec", spec, "--slice", tracked.id, "--brief", brief, "--onto", specBranch(spec)],
+    ...(how.resume === undefined ? [] : ["--resume", how.resume]),
+    ...(how.told === undefined ? [] : ["--told", how.told]),
+    ...(how.outOfTime === true ? ["--out-of-time"] : []),
+    ...(how.answer === undefined ? [] : ["--answer", JSON.stringify(how.answer)]),
+  ];
   const from = existsSync(log) ? statSync(log).size : 0;
   const out = openSync(log, "a");
   return new Promise((resolve) => {
     const child = spawn(machineBin("build-slice"), args, { cwd: dir, env, stdio: ["ignore", out, "inherit"] });
     closeSync(out);
     child.on("error", (error) => resolve({ id: tracked.id, outcome: "stopped", reason: `bin/build-slice did not start: ${error.message}` }));
-    child.on("exit", (status) => resolve(builtOf(tracked.id, status, lastLine(log, from))));
+    child.on("exit", (status, signal) => resolve(builtOf(tracked.id, status, signal, lastLine(log, from))));
   });
 }
 
@@ -259,8 +271,13 @@ function calledOwner(spec: string, stop: Stop, why: string): Stop {
   return stoppedAt(stop, `schedule: #${spec} marked ${STUCK}, ${why}`);
 }
 
+function retried(spec: string, { session, outOfTime, stopped }: Tracked): Hiring {
+  if (session === undefined) return {};
+  return outOfTime === true ? { resume: session, outOfTime } : { resume: session, told: resumedAfterStop(spec, stopped ?? "") };
+}
+
 const unmovedWhy = (progress: Progress) => {
-  const out = progress.slices.filter(({ state }) => state === "out").map(({ id, stopped }) => `\`${id}\` is out, its builder stopped twice: ${quoted(stopped ?? "")}`);
+  const out = progress.slices.filter(({ state }) => state === "out").map(({ id, stopped }) => `\`${id}\` is out: ${quoted(stopped ?? "")}`);
   const blocked = progress.slices.filter(({ state }) => state === "cut").map(({ id }) => `\`${id}\``);
   return `no slice can move. ${out.join("; ") || "No slice is out"}. ${blocked.length === 0 ? "Nothing waits on them." : `Waiting on them: ${blocked.join(", ")}.`}`;
 };
@@ -290,7 +307,7 @@ async function scheduled(spec: string, app: AppKey | undefined): Promise<Stop | 
   const fresh = (what: string) => {
     if (app !== undefined) freshAppToken(app, gh, `so the spec run of #${spec} does not act after ${what}`);
   };
-  const hire = (tracked: Tracked, how: { resume?: string; told?: string }) => {
+  const hire = (tracked: Tracked, how: Hiring) => {
     const dir = worktree(spec, tracked.id, root);
     const brief = join(root, `${tracked.id}.md`);
     writeFileSync(brief, briefOf(tracked, asked.body));
@@ -325,7 +342,7 @@ async function scheduled(spec: string, app: AppKey | undefined): Promise<Stop | 
       const hiring = frontier(progress).slice(0, MOST_BUILDERS - running.size);
       for (const tracked of hiring) {
         tracked.tries += 1;
-        hire(tracked, tracked.session === undefined ? {} : { resume: tracked.session, told: resumedAfterStop(spec, tracked.stopped ?? "") });
+        hire(tracked, retried(spec, tracked));
       }
       if (running.size > 0 && !markedBuilding) {
         mark(spec, BUILDING);
@@ -365,17 +382,22 @@ async function scheduled(spec: string, app: AppKey | undefined): Promise<Stop | 
     const tracked = progress.slices.find(({ id }) => id === built.id);
     if (tracked === undefined) continue;
     tracked.session = built.session ?? tracked.session;
-    if (built.outcome === "stopped") {
+    if (built.outcome === "stopped" || built.outcome === "outOfTime" || built.outcome === "stuck") {
       tracked.stopped = built.reason;
-      tracked.state = tracked.tries < MOST_TRIES ? "cut" : "out";
+      tracked.outOfTime = built.outcome === "outOfTime";
+      tracked.state = built.outcome !== "stuck" && tracked.tries < MOST_TRIES ? "cut" : "out";
       if (tracked.state === "out") removed(spec, tracked.id, root);
+    } else if (built.outcome === "done") {
+      tracked.state = "merged";
+      removed(spec, tracked.id, root);
+      plan = true;
     } else if (fastForwarded(spec, tracked.id)) {
       tracked.state = "merged";
       tracked.left = built.outcome === "partial" ? capped(built.left ?? "", LEFT_CAP) : undefined;
       removed(spec, tracked.id, root);
       plan = true;
     } else {
-      hire(tracked, { resume: tracked.session, told: tipMoved(spec) });
+      hire(tracked, { resume: tracked.session, answer: { outcome: built.outcome, reason: built.reason, ...(built.left === undefined ? {} : { left: built.left }) } });
     }
     posted(spec, found);
   }

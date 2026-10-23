@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { CHECK_PASSES } from "./builder.part.ts";
 import { LIST_CAP, onDisk, TAIL_CAP, TICKET_CAP } from "./brief.ts";
-import { CARRY_ON, conflicted, handedOn, mergesRefused, nothingBuilt, repaired } from "./slice-builder.ts";
+import { builtNotDone, CARRY_ON, conflicted, handedOn, LEFT_UNNAMED, mergesRefused, nothingBuilt, OUT_OF_TIME, repaired, unrebased } from "./slice-builder.ts";
 import { BIN, execute, ghArgv, git, plant, scratch, script } from "./scenarios.ts";
 import { declareStage, HANDED_ON } from "./stages.ts";
 
@@ -120,12 +120,16 @@ declareStage({
       file: "src/slice-builder.ts",
       cap: TICKET_CAP + HANDED_ON,
       slots: ["brief"],
-      build: (filled) => handedOn({ spec: "", slice: "", onto: "", brief: filled.brief ?? "", commitlint: true }),
+      build: (filled) => handedOn({ onto: "", brief: filled.brief ?? "", commitlint: true }),
     },
     { name: "slice repair", file: "src/slice-builder.ts", cap: TAIL_CAP + HANDED_ON, slots: ["output"], build: (filled) => repaired(filled.output ?? "") },
     { name: "slice conflict", file: "src/slice-builder.ts", cap: LIST_CAP + HANDED_ON, slots: ["files"], build: (filled) => conflicted("", filled.files ?? "") },
     { name: "slice merges refused", file: "src/slice-builder.ts", cap: LIST_CAP + HANDED_ON, slots: ["merges"], build: (filled) => mergesRefused("", filled.merges ?? "") },
-    { name: "slice nothing built", file: "src/slice-builder.ts", cap: HANDED_ON, slots: [], build: () => nothingBuilt("") },
+    { name: "slice rebase failed", file: "src/slice-builder.ts", cap: LIST_CAP + HANDED_ON, slots: ["said"], build: (filled) => unrebased("", filled.said ?? "") },
+    { name: "slice nothing built", file: "src/slice-builder.ts", cap: HANDED_ON, slots: [], build: () => nothingBuilt("partial", "") },
+    { name: "slice done with commits", file: "src/slice-builder.ts", cap: HANDED_ON, slots: [], build: () => builtNotDone("") },
+    { name: "slice partial with no left", file: "src/slice-builder.ts", cap: HANDED_ON, slots: [], build: () => LEFT_UNNAMED },
+    { name: "slice builder out of time", file: "src/slice-builder.ts", cap: HANDED_ON, slots: [], build: () => OUT_OF_TIME },
     { name: "slice carry on", file: "src/slice-builder.ts", cap: HANDED_ON, slots: [], build: () => CARRY_ON },
   ],
   scenarios: [
