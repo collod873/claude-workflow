@@ -7,7 +7,6 @@ import { HELD, OWNER } from "./spelled.ts";
 import { DONE_CHECK_POSTED, doneChecking, specWith, TRYING_SESSION } from "./done-checker.part.ts";
 import { OUT_OF_TIME, REPLIES_CAP } from "./done-checker.ts";
 
-const READ_COMMENTS = "api --paginate repos/{owner}/{repo}/issues/974/comments";
 const SENTENCES = ["file a spec and see its first wave show up under it", "open any ticket it filed and see my own words copied over", "see the spec close itself once every sentence held"];
 
 const expectNothingDone = (checked: ReturnType<typeof doneChecking>) => {
@@ -15,6 +14,9 @@ const expectNothingDone = (checked: ReturnType<typeof doneChecking>) => {
   expect(checked.comments()).toEqual([]);
   expect(checked.closes()).toEqual([]);
 };
+
+const RERUN_SAFE = "Nothing was posted, so once its cause is fixed the done check is safe to run again on its own: `bin/done-check 974` on a checkout of main, with `stuck` off.";
+const ownerCall = (why: string) => `@${OWNER} the done check of #974 stopped and needs you: ${why}. ${RERUN_SAFE}`;
 
 const expectMarkedNeedsHuman = (checked: ReturnType<typeof doneChecking>) => {
   expect(checked.marked()).toEqual(["974 checking", "974 stuck"]);
@@ -72,8 +74,9 @@ describe("bin/done-check closes the spec when every sentence held or was put to 
   });
 });
 
-describe("bin/done-check posts nothing it did not try (#1023)", () => {
-  it("ends red with no comment and the spec open when the model gives no try for a sentence", () => {
+describe("bin/done-check marks a landed spec stuck and calls the owner with the real reason when it cannot finish, since nothing else wakes it (ADR-0009)", () => {
+
+  it("posts no done check and closes nothing when the model gives no try for a sentence", () => {
     const tries = [
       { sentence: 1, outcome: "held", tried: "saw the first wave under it" },
       { sentence: 3, outcome: "held", tried: "saw it close" },
@@ -81,8 +84,33 @@ describe("bin/done-check posts nothing it did not try (#1023)", () => {
     ];
     const checked = doneChecking({ body: specWith(SENTENCES), tries });
 
-    expect(checked.run()).toEqual({ status: 1, stdout: "", stderr: "done-check: #974 ended red, the done checker gave no try for sentence 2\n" });
-    expect(checked.calls()).toEqual(["issue view 974", READ_COMMENTS]);
+    expect(checked.run()).toEqual({ status: 1, stdout: "", stderr: "done-check: #974 marked stuck, the done checker gave no try for sentence 2\n" });
+    expectMarkedNeedsHuman(checked);
+    expect(checked.comments()).toEqual([ownerCall("the done checker gave no try for sentence 2")]);
+    expect(checked.closes()).toEqual([]);
+  });
+
+  it("names GitHub's refusal when its comment will not post", () => {
+    const checked = doneChecking({ gh: "[[ $1 == issue && $2 == comment && $* == *'## Done check'* ]] && { printf 'HTTP 422: Validation Failed (body is too long)\\n' >&2; exit 1; }" });
+
+    const { status, stderr } = checked.run();
+
+    expect(status).toBe(1);
+    expect(stderr).toBe("done-check: #974 marked stuck, its comment would not post: gh issue comment failed: HTTP 422: Validation Failed (body is too long)\n");
+    expectMarkedNeedsHuman(checked);
+    expect(checked.comments().at(-1)).toBe(ownerCall("its comment would not post: gh issue comment failed: HTTP 422: Validation Failed (body is too long)"));
+    expect(checked.closes()).toEqual([]);
+  });
+
+  it("asks the owner to close the spec by hand when every sentence held and its comment posted but the spec would not close", () => {
+    const checked = doneChecking({ gh: "[[ $1 == issue && $2 == close ]] && { printf 'HTTP 403: Resource not accessible\\n' >&2; exit 1; }" });
+
+    const { status, stderr } = checked.run();
+
+    expect(status).toBe(1);
+    expect(stderr).toBe(`done-check: #974 marked stuck, it held every sentence but would not close: ${DONE_CHECK_POSTED}\n`);
+    expectMarkedNeedsHuman(checked);
+    expect(checked.comments().at(-1)).toBe(`@${OWNER} the done check of #974 stopped and needs you: it held every sentence but would not close: ${DONE_CHECK_POSTED}. Its comment is posted, so nothing is left to try: close #974 by hand.`);
   });
 });
 
@@ -276,14 +304,17 @@ describe("bin/done-check tries a caller's spec on that repo's own checkout, read
     expect(checked.handed()).not.toContain("For this repo the running system is the landed code in this checkout");
   });
 
-  it("ends red when the tree's setup fails, hiring, posting and closing nothing", () => {
+  it("marks the spec stuck and calls the owner when the tree's setup fails, hiring, posting and closing nothing else", () => {
     const checked = doneChecking({ contract: '{ "setup": "echo no lockfile >&2; exit 3", "steps": {} }\n', calledFrom: LUMARIA });
 
     const { status, stderr } = checked.run();
 
     expect(status).toBe(1);
-    expect(stderr).toContain("done-check: #974 ended red, its tree's setup failed: no lockfile");
-    expectNothingDone(checked);
+    expect(stderr).toContain("done-check: #974 marked stuck, its tree's setup failed: no lockfile\n");
+    expectMarkedNeedsHuman(checked);
+    expect(checked.hired()).toEqual([]);
+    expect(checked.comments()).toEqual([ownerCall("its tree's setup failed: no lockfile")]);
+    expect(checked.closes()).toEqual([]);
   });
 
   it("tries this repo's own spec on the landed code in its checkout, putting to the owner what only a live run can show", () => {

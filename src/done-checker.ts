@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
 import { capped, NO_EM_DASH, onDisk, tailOf } from "./brief.ts";
-import { authoredOn, commentOnTicket, commentsRead, FOREIGN, gh, OWNER, readOrStop, type Asked } from "./post.ts";
+import { authoredOn, commentOnTicket, commentsRead, FOREIGN, gh, mark, OWNER, readOrStop, STUCK, type Asked } from "./post.ts";
 import { CONTRACT, opened, setupRefusal, type Spent } from "./stage.ts";
 import { CHECKING, SPEC } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
@@ -109,6 +109,14 @@ interface Read {
   spend: (input: string) => Spent;
 }
 
+const NOTHING_POSTED = (issue: string) => `Nothing was posted, so once its cause is fixed the done check is safe to run again on its own: \`bin/done-check ${issue}\` on a checkout of main, with \`${STUCK}\` off.`;
+
+function calledOwner({ issue, said }: Pick<Read, "issue" | "said">, stop: Stop, why: string, next = NOTHING_POSTED(issue)): Stop {
+  mark(issue, STUCK);
+  commentOnTicket(issue, `@${OWNER} the done check of #${issue} stopped and needs you: ${why}. ${next}`, gh);
+  return stoppedAt(stop, `${said} marked ${STUCK}, ${why}`);
+}
+
 function read(issue: string): Read | Stop | undefined {
   const said = `done-check: #${issue}`;
   const opening = opened({
@@ -126,33 +134,34 @@ function read(issue: string): Read | Stop | undefined {
   });
   if (typeof opening !== "object") return opening;
   const unready = setupRefusal(onDisk(join(process.cwd(), CONTRACT)) ?? "");
-  if (unready !== undefined) return stoppedAt("unready", `${said} ended red, its tree's setup failed: ${quoted(unready)}`);
+  if (unready !== undefined) return calledOwner({ issue, said }, "unready", `its tree's setup failed: ${quoted(unready)}`);
   const { asked, spend, carried: { listed, authored } } = opening;
   const since = authored.map(({ body }) => body.startsWith(DONE_CHECK_HEADING)).lastIndexOf(true);
   const replies = since === -1 ? "" : authored.slice(since + 1).flatMap(({ author, body }) => (author === OWNER ? [body] : [])).join("\n\n");
   return { issue, said, asked, replies, listed, spend };
 }
 
-function tried({ issue, said, asked, replies, listed, spend }: Read, app: AppKey | undefined): [number, string, Try][] | Stop {
+function tried(spec: Read, app: AppKey | undefined): [number, string, Try][] | Stop {
+  const { issue, asked, replies, listed, spend } = spec;
   if (app !== undefined) freshAppToken(app, gh, `so the done check of #${issue} is not tried`);
   const spent = spend(handedOn(asked.title, asked.body, { replies, foreign: FOREIGN }));
   if (app !== undefined) freshAppToken(app, gh, `so the done check of #${issue} is not posted`);
-  if (spent.refusal !== undefined) return stoppedAt("modelRun", `${said} ended red, ${spent.refusal}`);
+  if (spent.refusal !== undefined) return calledOwner(spec, "modelRun", spent.refusal);
   const given = (spent.answer as { tries?: unknown } | undefined)?.tries;
   const tries = Array.isArray(given) ? given.filter(isTry) : [];
   const found: [number, string, Try][] = [];
   for (const [at, { said: sentence }] of listed.entries()) {
     const one = tries.find((each) => each.sentence === at + 1);
-    if (one === undefined) return stoppedAt("modelRun", `${said} ended red, the done checker gave no try for sentence ${at + 1}`);
+    if (one === undefined) return calledOwner(spec, "modelRun", `the done checker gave no try for sentence ${at + 1}`);
     found.push([at + 1, sentence, one]);
   }
   return found;
 }
 
-function commented({ issue, said }: Read, text: string): { url: string } | Stop {
-  const comment = commentOnTicket(issue, text, gh);
+function commented(spec: Read, text: string): { url: string } | Stop {
+  const comment = commentOnTicket(spec.issue, text, gh);
   const [refusal] = comment.refusals;
-  return refusal === undefined ? { url: comment.said } : stoppedAt("unrecorded", `${said} ended red, its comment would not post: ${quoted(refusal)}`);
+  return refusal === undefined ? { url: comment.said } : calledOwner(spec, "unrecorded", `its comment would not post: ${quoted(refusal)}`);
 }
 
 const SELF_SETTLED = {
@@ -187,7 +196,7 @@ export function doneCheck(issue: string, app: AppKey | undefined): Checked | Sto
     return { missed: missed.map(([number]) => number) };
   }
   const held = putToOwner.length === 0 ? "held every sentence" : "held every sentence it could try, put the rest to the owner,";
-  if (gh(["issue", "close", issue, "--reason", "completed"]).status !== 0) return stoppedAt("unrecorded", `${said} ${held} but would not close: ${comment.url}`);
+  if (gh(["issue", "close", issue, "--reason", "completed"]).status !== 0) return calledOwner(spec, "unrecorded", `it ${held} but would not close: ${comment.url}`, `Its comment is posted, so nothing is left to try: close #${issue} by hand.`);
   console.log(`${said} ${held} and is closed: ${comment.url}`);
   return { missed: [] };
 }

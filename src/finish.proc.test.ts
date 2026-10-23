@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { finishing, type Slice } from "./finish.part.ts";
 import { createdIssues, heard, schemaIn } from "./scenarios.ts";
-import { HELD } from "./spelled.ts";
+import { HELD, OWNER } from "./spelled.ts";
 
 const SENTENCES = ["see the spec land on main", "see each slice's file on main"];
 const FIXES_ZONE = '  [ "$CALL" = 1 ] && printf \'export const zone = 2;\\n\' >src/zone.ts';
@@ -69,6 +69,19 @@ describe("bin/finish reviews a spec's integration branch on the spec, then on th
     expect(ran.lines.slice(-2)).toEqual(["landed=9974", "missed=2"]);
     expect(finished.calls().filter((args) => args[1] === "close")).toEqual([]);
     expect(finished.marked()).toEqual(["974 checking"]);
+  });
+
+  it("marks the landed spec stuck and calls the owner with the done check's reason when the done check cannot finish, so the scheduler stands down on stuck rather than leave a landed spec that nothing wakes (ADR-0009)", () => {
+    const finished = finishing({ sentences: SENTENCES, tries: [{ sentence: 1, outcome: "held", tried: "saw it" }] });
+
+    const ran = heard(finished.run());
+
+    expect(ran.status).toBe(1);
+    expect(ran.lines.slice(-2)).toEqual(["landed=9974", "missed="]);
+    expect(finished.marked()).toEqual(["974 checking", "974 stuck"]);
+    const called = finished.calls().filter((args) => args[1] === "comment").map((args) => args[args.indexOf("--body") + 1] ?? "");
+    expect(called.filter((body) => body.startsWith(`@${OWNER} the done check of #974 stopped and needs you: the done checker gave no try for sentence 2.`))).toHaveLength(1);
+    expect(finished.calls().filter((args) => args[1] === "close")).toEqual([]);
   });
 
   it("tells both reviewers of the fix pass that the spec landed and this branch holds only the fix, with the done check's findings and the fix pass's slices alone", () => {
