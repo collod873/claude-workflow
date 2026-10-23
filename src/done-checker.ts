@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
 import { capped, NO_EM_DASH, onDisk, tailOf } from "./brief.ts";
-import { authoredOn, commentOnTicket, FOREIGN, gh, OWNER, readOrStop, type Asked } from "./post.ts";
+import { authoredOn, commentOnTicket, commentsRead, FOREIGN, gh, OWNER, readOrStop, type Asked } from "./post.ts";
 import { CONTRACT, opened, setupRefusal, type Spent } from "./stage.ts";
 import { CHECKING, SPEC } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
@@ -79,7 +79,8 @@ const isTry = (given: unknown): given is Try => {
   return typeof one?.sentence === "number" && typeof one.tried === "string" && typeof one.outcome === "string" && one.outcome in OUTCOMES;
 };
 
-export const DONE_CHECK_HEADING = "## Done check";
+const DONE_CHECK_HEADING = "## Done check";
+export const lastDoneCheck = (issue: string, line: string) => commentsRead(issue, line, gh).filter((comment) => comment.startsWith(DONE_CHECK_HEADING)).at(-1);
 
 const posted = (tried: [number, string, Try][], after: string[] = []) =>
   [DONE_CHECK_HEADING, "", ...tried.map(([number, sentence, one]) => `${number}. **${OUTCOMES[one.outcome]}**: ${sentence}\n   ${one.tried}`), ...after.flatMap((line) => ["", line]), ""].join("\n");

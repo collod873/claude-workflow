@@ -31,7 +31,7 @@ export const NO_EM_DASH = "^[^\\u2014]*$";
 
 const FILE_START = /^(?=diff --git )/m;
 const CHANGED_PATH = /^diff --git a\/.+? b\/(.+)$/m;
-const changedPaths = (diff: string): string[] => diff.split(FILE_START).flatMap((text) => CHANGED_PATH.exec(text)?.slice(1) ?? []);
+const changedPaths = (diff: string): string[] => [...new Set(diff.split(FILE_START).flatMap((text) => CHANGED_PATH.exec(text)?.slice(1) ?? []))];
 
 export function handedDiff(diff: string, stat: string): string {
   const bytes = Buffer.byteLength(diff);

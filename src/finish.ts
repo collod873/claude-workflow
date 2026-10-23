@@ -1,9 +1,12 @@
 import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
-import { capped, DIFF_CAP, NO_EM_DASH, TAIL_CAP, tailOf } from "./brief.ts";
+import { capped, NO_EM_DASH, TAIL_CAP, tailOf } from "./brief.ts";
 import { CHECK, checkedBy } from "./builder.ts";
-import { doneCheck } from "./done-checker.ts";
-import { askedIssue, commentOnTicket, gh, ghRead, gitRead, heldOn, labelsHeld, mark, OWNER, readOrStop, STUCK, unread } from "./post.ts";
+import { doneCheck, lastDoneCheck } from "./done-checker.ts";
+import { askedIssue, commentOnTicket, gh, ghRead, git, gitRead, heldOn, labelsHeld, mark, OWNER, readOrStop, STUCK, unread } from "./post.ts";
 import { COMMIT_WHY, landing, landRefused, ownerStepFiled, reviewedChange, RISKS_LET_THROUGH, STANDARDS_LOADED, STEPS_ASKED, stuckAsked, TESTS_ARE_YOURS } from "./reviewer.ts";
+import { type Progress, progressOn, specBranch } from "./scheduler.ts";
+import { sliceTrailed } from "./slice-builder.ts";
+import { FINDINGS_CAP } from "./slicer.ts";
 import { committed, commitlinted, head, hire, linted, type OwnerStep, OWNER_STEPS, type Spent } from "./stage.ts";
 import { SPEC } from "./spelled.ts";
 import { stopsOf } from "./stops.ts";
@@ -12,14 +15,17 @@ import { quoted, SPEC_CAP } from "./ticket-shape.ts";
 const stoppedAt = stopsOf({
   unfinishable: "Finish refused: the issue is not labelled `spec`, or its integration branch holds nothing past main",
   unlanded: "Finish: `bin/land` refused the integration branch, and two rounds in a row of its last reviewer changed nothing",
+  unchecked: "Finish: the full check stayed red, and two rounds in a row of the reviewer handed it changed nothing",
   reviewerStuck: "Finish: a reviewer answered `stuck`, so the spec is marked `stuck` and the owner is called",
 });
 
 const PAST_MAIN = "origin/main..HEAD";
 const FROM_MAIN = "origin/main...HEAD";
-const COMMITS = "--format=- %s%n%n%b";
+const COMMITS = "--format=- %h %s%n%n%b";
 const UNREAD = "the commits past main could not be read, so nothing was reviewed";
 export const SLICE_CAP = 256;
+export const BRIEFS_CAP = 16 * 1024;
+const ONE_REVIEWER_CAP = 200 * 1024;
 
 const ANSWER = {
   type: "object",
@@ -27,6 +33,8 @@ const ANSWER = {
   required: ["outcome", "reason"],
   additionalProperties: false,
 };
+const { steps: _stepsOnTheSpecAlone, ...unstepped } = ANSWER.properties;
+const CODE_ANSWER = { ...ANSWER, properties: unstepped };
 
 export interface Changes {
   slice?: string;
@@ -36,13 +44,19 @@ export interface Changes {
 }
 
 const UNSLICED = "";
-const sliceNamed = ({ slice }: Changes) => (slice === undefined ? undefined : slice === UNSLICED ? "the commits naming no slice" : `slice \`${capped(slice, SLICE_CAP)}\``);
+const sliceNamed = (slice: string | undefined) => (slice === undefined ? undefined : slice === UNSLICED ? "the commits naming no slice" : `slice \`${capped(slice, SLICE_CAP)}\``);
 const alone = (changes: Changes) => {
-  const slice = sliceNamed(changes);
-  return slice === undefined ? [] : [`The diff is over its cap, so you review only what ${slice} built, and each other slice has its own reviewer: judge this part alone.`];
+  const slice = sliceNamed(changes.slice);
+  return slice === undefined
+    ? []
+    : [
+        `The diff is over ${ONE_REVIEWER_CAP} bytes, so each slice has its own reviewer on the code standard, and you review what ${slice} built: the commits and diff below are its alone, one patch per commit. Read the rest of the branch too for code that copies what this slice wrote, such as a helper, a type or a query written twice, and make it one.`,
+      ];
 };
-const trailer = ({ slice }: Changes) => (slice === undefined || slice === UNSLICED ? "" : `Slice: ${capped(slice, SLICE_CAP)}`);
-const trailed = (changes: Changes) => (trailer(changes) === "" ? "" : ` End each message with the line \`${trailer(changes)}\`, so the review after yours reads your fix with its slice.`);
+const NEWEST_FIRST = "Its commits are listed newest first, each with its id: `git show <id>` reads one, and `git log origin/main..HEAD` reads any the list cuts.";
+const FIX_PASS =
+  "The spec landed on main, and its done check found sentences that did not hold; its findings are under `## The done check's findings`. This is the spec's one fix pass: its integration branch is fresh off main and holds only the fix, built slice by slice, so the rest of the spec is on main already.";
+const foundBy = (findings: string | undefined) => (findings === undefined ? [] : ["## The done check's findings", capped(findings, FINDINGS_CAP)]);
 const answerAsked = [
   "Answer one outcome:",
   "- `approve`: it holds, with whatever you fixed; once every reviewer approves, `bin/land` runs the full check and merges it, and anything it refuses comes back to the last reviewer.",
@@ -51,46 +65,78 @@ const answerAsked = [
   `\`reason\`: one paragraph for the owner. An \`approve\`'s \`reason\` is commented on the spec's PR before it merges: ${RISKS_LET_THROUGH}`,
 ];
 
-export function onTheCode(changes: Changes, { spec, red, commitlint }: { spec: string; red?: string; commitlint: boolean }): string {
+export function onTheCode(changes: Changes, { spec, red, commitlint, findings }: { spec: string; red?: string; commitlint: boolean; findings?: string }): string {
+  const built = findings === undefined ? "Builders built this spec slice by slice on its integration branch, and a reviewer on the spec has read it and fixed what it missed." : `${FIX_PASS} A reviewer on the spec has read it.`;
   return [
     `# Hold spec #${spec} to the code standard before it lands`,
-    "Builders built this spec slice by slice on its integration branch. You did not build it: read its commit messages and diff as its one reviewer on the code standard; a reviewer on the spec reads it after you.",
+    `${built} You did not build it: read its commit messages and diff as its reviewer on the code standard.`,
     ...alone(changes),
-    ...(red === undefined ? [] : ["## Its full check is red", `\`${CHECK}\` went red on this branch, so make it pass first. The end of its output:`, tailOf(red, TAIL_CAP)]),
+    ...(red === undefined
+      ? []
+      : [
+          "## Its full check is red",
+          `\`${CHECK}\` went red on this branch once the reviewer on the spec was done. The red may sit in any slice's code, and it is yours wherever it sits: make it pass, since the check runs again when you answer and holds you until it passes. The end of its output:`,
+          tailOf(red, TAIL_CAP),
+        ]),
+    ...foundBy(findings),
+    NEWEST_FIRST,
     ...reviewedChange(changes.commits, changes.diff, changes.stat),
     ...linted(commitlint),
     "## Fix it",
-    `${STANDARDS_LOADED} Where the code breaks the code standard, fix it here yourself: nothing goes back to a builder, and no one holds it to the code standard after you. ${TESTS_ARE_YOURS}`,
-    `${COMMIT_WHY}${trailed(changes)}`,
+    `${STANDARDS_LOADED} Where the code breaks the code standard, fix it here yourself: nothing goes back to a builder, and nothing after you but \`bin/land\`'s full check reads it. Done when every file the diff changes meets every rule of \`coding-standards\`, and every new or changed test passes all three of the \`testing\` skill's checks. ${TESTS_ARE_YOURS}`,
+    COMMIT_WHY,
+    "## Your answer",
+    ...answerAsked.filter((line) => !line.startsWith(STEPS_ASKED)),
+    "",
+  ].join("\n\n");
+}
+
+export function onTheSpec(changes: Changes, { spec, title, body, commitlint, briefs, findings }: { spec: string; title: string; body: string; commitlint: boolean; briefs: string; findings?: string }): string {
+  const built =
+    findings === undefined
+      ? "Builders built the spec below slice by slice on its integration branch, each slice to its brief under `## Its slices`. You did not build it: read the spec, the briefs, its commit messages and its diff, over the whole branch, as its reviewer on the spec."
+      : `${FIX_PASS} You did not build the fix: read the spec, the fix's slices under \`## Its slices\`, its commit messages and its diff as its reviewer on the spec, and judge whether it makes those sentences hold.`;
+  const fix =
+    findings === undefined
+      ? "Where the branch misses what the spec asks, builds what it rules out of scope, or leaves a sentence under `## I'll know it works when I can` with nothing built that would show it, fix it here yourself: nothing goes back to a builder. Once it lands, a fresh done check tries each of those sentences."
+      : "Where the fix leaves a finding's sentence unmet, builds what the spec rules out of scope, or breaks what already landed, fix it here yourself: nothing goes back to a builder. Once it lands, a fresh done check tries each sentence again.";
+  return [
+    `# Hold spec #${spec} to what it asks before it lands`,
+    `${built} A reviewer on the code standard reads the branch after you, your fixes with it.`,
+    "## The spec",
+    capped(`# ${title}\n\n${body}`, SPEC_CAP),
+    "## Its slices",
+    "Each slice the slicer cut, with the brief its builder built to:",
+    capped(briefs, BRIEFS_CAP) || "(none on record)",
+    ...foundBy(findings),
+    NEWEST_FIRST,
+    ...reviewedChange(changes.commits, changes.diff, changes.stat),
+    ...linted(commitlint),
+    "## Fix it",
+    fix,
+    COMMIT_WHY,
     "## Your answer",
     ...answerAsked,
     "",
   ].join("\n\n");
 }
 
-export function onTheSpec(changes: Changes, { spec, title, body, commitlint }: { spec: string; title: string; body: string; commitlint: boolean }): string {
-  return [
-    `# Hold spec #${spec} to what it asks before it lands`,
-    "Builders built the spec below slice by slice on its integration branch, and a reviewer has held it to the code standard. You did not build it: read the spec, its commit messages and its diff as its one reviewer on the spec.",
-    ...alone(changes),
-    "## The spec",
-    capped(`# ${title}\n\n${body}`, SPEC_CAP),
-    ...reviewedChange(changes.commits, changes.diff, changes.stat),
-    ...linted(commitlint),
-    "## Fix it",
-    "Where the diff misses what the spec asks, builds what it rules out of scope, or leaves a sentence under `## I'll know it works when I can` with nothing on the running system to show it, fix it here yourself: nothing goes back to a builder. Once it lands, a fresh done check tries each of those sentences.",
-    `${COMMIT_WHY}${trailed(changes)}`,
-    "## Your answer",
-    ...answerAsked,
-    "",
-  ].join("\n\n");
-}
+const WHOLE_BRANCH = "This refusal covers the whole integration branch, not only your slice: it is yours wherever it sits.";
+const stillRedOnReview = (red: string) => ["The full check still ends red after your answer; the last of its output:", tailOf(red, TAIL_CAP), "Make it pass, commit, and answer again.", ""].join("\n\n");
+
+const briefsOf = (progress: Progress) =>
+  progress.slices
+    .filter(({ fix }) => fix === progress.fixPass)
+    .map(({ id, title, why, done }) => `- \`${id}\`: ${title.trim()}\n  Why: ${why.trim()}\n  Done when: ${done.map((sentence) => sentence.trim()).join(" ")}`)
+    .join("\n");
 
 const shown = (shas: string[], ...args: string[]) => gitRead(["show", ...args, ...shas], UNREAD);
 
-function changesToReview(): Changes[] {
-  const diff = gitRead(["diff", FROM_MAIN], UNREAD);
-  if (Buffer.byteLength(diff) <= DIFF_CAP) return [{ commits: gitRead(["log", "--reverse", COMMITS, PAST_MAIN], UNREAD), diff, stat: gitRead(["diff", "--stat", FROM_MAIN], UNREAD) }];
+const wholeBranch = (): Changes => ({ commits: gitRead(["log", COMMITS, PAST_MAIN], UNREAD), diff: gitRead(["diff", FROM_MAIN], UNREAD), stat: gitRead(["diff", "--stat", FROM_MAIN], UNREAD) });
+
+function onTheCodeInParts(): Changes[] {
+  const whole = wholeBranch();
+  if (Buffer.byteLength(whole.diff) <= ONE_REVIEWER_CAP) return [whole];
   const bySlice = new Map<string, string[]>();
   for (const line of gitRead(["log", "--reverse", "--format=%H%x00%(trailers:key=Slice,valueonly,separator=%x00)", PAST_MAIN], UNREAD).split("\n")) {
     const [sha = "", slice = UNSLICED] = line.split("\0");
@@ -98,13 +144,15 @@ function changesToReview(): Changes[] {
   }
   return [...bySlice]
     .sort(([one], [other]) => Number(one === UNSLICED) - Number(other === UNSLICED))
-    .map(([slice, shas]) => ({ slice, commits: shown(shas, "--no-patch", COMMITS), diff: shown(shas, "--format="), stat: shown(shas, "--format=", "--stat") }));
+    .map(([slice, shas]) => ({ slice, commits: shown([...shas].reverse(), "--no-patch", COMMITS), diff: shown(shas, "--format="), stat: shown(shas, "--format=", "--stat") }));
 }
 
 interface Reviewer {
   spend: (input: string, resume?: string) => Spent;
   session?: string;
   seat: string;
+  on: string;
+  slice?: string;
 }
 
 interface Finished {
@@ -118,9 +166,17 @@ interface Approved {
 }
 
 interface Reviewed {
-  reasons: string[];
-  steps: Map<string, OwnerStep[]>;
+  reasons: Map<string, string>;
+  steps: OwnerStep[];
   last: Reviewer;
+  whole: boolean;
+}
+
+interface Run {
+  spec: string;
+  said: string;
+  app: AppKey | undefined;
+  reasons: Map<string, string>;
 }
 
 function reviewed(spec: string, said: string, spent: Spent, app: AppKey | undefined): Approved | undefined {
@@ -144,49 +200,85 @@ function reviewed(spec: string, said: string, spent: Spent, app: AppKey | undefi
   return { reason, steps: answer?.steps ?? [] };
 }
 
-function reviews(spec: string, said: string, app: AppKey | undefined, { title, body }: { title: string; body: string }): Reviewed | undefined {
-  const commitlint = commitlinted();
-  let red = checkedBy(CHECK);
-  const reasons: string[] = [];
-  const steps = new Map<string, OwnerStep[]>();
-  let last: Reviewer | undefined;
-  for (const on of ["code standard", "spec"] as const) {
-    for (const [at, changes] of changesToReview().entries()) {
-      const seat = `${spec}-${on === "spec" ? "spec" : "code"}-${at + 1}`;
-      const spend = hire("finish", seat, { name: `reviewer on the ${on}`, model: "opus", answers: ANSWER });
-      const spent = spend(on === "spec" ? onTheSpec(changes, { spec, title, body, commitlint }) : onTheCode(changes, { spec, red, commitlint }));
-      red = undefined;
-      const approved = reviewed(spec, said, spent, app);
-      if (approved === undefined) return undefined;
-      committed([`Review #${spec} on the ${on}`, trailer(changes)].filter((line) => line !== "").join("\n\n"), "fix");
-      const slice = sliceNamed(changes);
-      reasons.push(`On the ${on}${slice === undefined ? "" : `, ${slice}`}: ${approved.reason}`);
-      steps.set(seat, approved.steps);
-      last = { spend, session: spent.session, seat };
-    }
-  }
-  return last === undefined ? undefined : { reasons, steps, last };
+const pushedForRerun = (spec: string) => gitRead(["push", "--quiet", "--force", "origin", `HEAD:refs/heads/${specBranch(spec)}`], `${specBranch(spec)} would not push, so a rerun would lose its reviewers' fixes`);
+
+function answered({ spec, said, app, reasons }: Run, reviewer: Reviewer, input: string, commit: string): Approved | undefined {
+  const before = head();
+  const spent = reviewer.spend(input, reviewer.session);
+  reviewer.session = spent.session ?? reviewer.session;
+  const approved = reviewed(spec, said, spent, app);
+  if (approved === undefined) return undefined;
+  committed(commit, "fix");
+  if (reviewer.slice !== undefined && reviewer.slice !== UNSLICED && git(["merge-base", "--is-ancestor", before, "HEAD"]).status === 0) sliceTrailed(before, reviewer.slice);
+  pushedForRerun(spec);
+  reasons.set(reviewer.seat, `${reviewer.on}: ${approved.reason}`);
+  return approved;
 }
 
-function landed(spec: string, said: string, app: AppKey | undefined, { reasons, steps, last }: Reviewed): string | undefined {
+type Round<Done> = { done: Done } | { refused: string; told: string };
+
+function rounds<Done>(run: Run, reviewer: Reviewer, { failed, stop, commit }: { failed: string; stop: "unlanded" | "unchecked"; commit: string }, attempt: () => Round<Done>): Done | undefined {
   let idle = false;
   for (;;) {
-    const attempt = landing(["--spec", spec], reasons.join("\n\n"));
-    if ("pr" in attempt) return attempt.pr;
+    const tried = attempt();
+    if ("done" in tried) return tried.done;
     const before = head();
-    const spent = last.spend(landRefused(attempt.refused), last.session);
-    last.session = spent.session ?? last.session;
-    const approved = reviewed(spec, said, spent, app);
-    if (approved === undefined) return undefined;
-    steps.set(last.seat, approved.steps);
-    committed(`Fix what bin/land refused for #${spec}`, "fix");
+    if (answered(run, reviewer, tried.told, commit) === undefined) return undefined;
     const changed = head() !== before;
     if (!changed && idle) {
-      stoppedAt("unlanded", `${said} did not land, and two rounds in a row of its last reviewer changed nothing: ${quoted(attempt.refused.split("\n").at(-1) ?? "")}`);
+      stoppedAt(stop, `${run.said} ${failed}, and two rounds in a row of its reviewer changed nothing: ${quoted(tried.refused.split("\n").at(-1) ?? "")}`);
       return undefined;
     }
     idle = !changed;
   }
+}
+
+const greened = (run: Run, reviewer: Reviewer, commit: string) =>
+  rounds(run, reviewer, { failed: "stayed red on its full check", stop: "unchecked", commit }, () => {
+    const red = checkedBy(CHECK);
+    return red === undefined ? { done: true } : { refused: red, told: stillRedOnReview(red) };
+  });
+
+function reviews(run: Run, { title, body }: { title: string; body: string }): Reviewed | undefined {
+  const { spec } = run;
+  const commitlint = commitlinted();
+  const { progress } = progressOn(spec);
+  const findings = progress.fixPass ? (lastDoneCheck(spec, `the comments on #${spec} could not be read, so nothing was reviewed`) ?? "") : undefined;
+  const reviewer = (seat: string, on: "spec" | "code standard", answers: object, slice?: string): Reviewer => ({
+    spend: hire("finish", seat, { name: `reviewer on the ${on}`, model: "opus", answers }),
+    seat,
+    on: `On the ${on}${slice === undefined ? "" : `, ${sliceNamed(slice)}`}`,
+    slice,
+  });
+  const onSpec = reviewer(`${spec}-spec`, "spec", ANSWER);
+  const approved = answered(run, onSpec, onTheSpec(wholeBranch(), { spec, title, body, commitlint, briefs: briefsOf(progress), findings }), `Review #${spec} on the spec`);
+  if (approved === undefined) return undefined;
+  let red = checkedBy(CHECK);
+  const parts = onTheCodeInParts();
+  let last = onSpec;
+  for (const [at, changes] of parts.entries()) {
+    const onCode = reviewer(`${spec}-code-${at + 1}`, "code standard", CODE_ANSWER, changes.slice);
+    const commit = `Review #${spec} on the code standard`;
+    if (answered(run, onCode, onTheCode(changes, { spec, red, commitlint, findings }), commit) === undefined) return undefined;
+    if (red !== undefined && greened(run, onCode, commit) === undefined) return undefined;
+    red = undefined;
+    last = onCode;
+  }
+  return { reasons: run.reasons, steps: approved.steps, last, whole: parts.length === 1 };
+}
+
+function landed(run: Run, { last, whole }: Reviewed): string | undefined {
+  const { spec, said, reasons } = run;
+  return rounds(run, last, { failed: "did not land", stop: "unlanded", commit: `Fix what bin/land refused for #${spec}` }, (): Round<string | undefined> => {
+    const held = heldOn(labelsHeld(spec, gh));
+    if (held !== undefined) {
+      console.log(`${said} is marked ${held}, so its reviewed branch does not land`);
+      return { done: undefined };
+    }
+    const attempt = landing(["--spec", spec], [...reasons.values()].join("\n\n"));
+    if ("pr" in attempt) return { done: attempt.pr };
+    return { refused: attempt.refused, told: whole ? landRefused(attempt.refused) : [WHOLE_BRANCH, landRefused(attempt.refused)].join("\n\n") };
+  });
 }
 
 const titled = (step: OwnerStep) => step.title.trim().toLowerCase();
@@ -214,16 +306,12 @@ function finished(spec: string, app: AppKey | undefined): Finished {
     stoppedAt("unfinishable", `${said} holds nothing past main on its integration branch, ${unchanged}`);
     return {};
   }
-  const review = reviews(spec, said, app, asked);
+  const run: Run = { spec, said, app, reasons: new Map() };
+  const review = reviews(run, asked);
   if (review === undefined) return {};
-  const heldNow = heldOn(labelsHeld(spec, gh));
-  if (heldNow !== undefined) {
-    console.log(`${said} is marked ${heldNow}, so its reviewed branch does not land`);
-    return {};
-  }
-  const pr = landed(spec, said, app, review);
+  const pr = landed(run, review);
   if (pr === undefined) return {};
-  stepsFiled(spec, [...review.steps.values()].flat());
+  stepsFiled(spec, review.steps);
   const checked = readOrStop("done-check", () => doneCheck(spec, app));
   return { landed: pr, missed: typeof checked === "object" ? checked.missed : undefined };
 }

@@ -203,8 +203,8 @@ function rebasedOnto(onto: string): string | undefined {
   return files === "" ? unrebased(onto, firstLine(rebased)) : conflicted(onto, files);
 }
 
-function trailed({ onto, slice }: Slicing): void {
-  const trailers = gitRead(["log", "--format=%x01%(trailers:key=Slice,valueonly,separator=%x2C)", `${onto}..HEAD`], PAST_ONTO_UNREAD);
+export function sliceTrailed(onto: string, slice: string): void {
+  const trailers = gitRead(["log", "--format=%x01%(trailers:key=Slice,valueonly,separator=%x2C)", `${onto}..HEAD`], `the commits past ${onto} could not be read, so none was given its \`Slice: ${slice}\` trailer`);
   const commits = trailers.split("\x01").slice(1);
   if (commits.every((values) => values.trim().split(",").includes(slice))) return;
   gitRead(["-c", "trailer.ifexists=addIfDifferent", "rebase", "--quiet", "--exec", `git commit --quiet --amend --no-edit --no-verify --allow-empty --trailer 'Slice: ${slice}'`, onto], `the \`Slice: ${slice}\` trailer could not be added to every commit past ${onto}`);
@@ -221,7 +221,7 @@ function landable(slicing: Slicing, outcome: "built" | "partial", left: string):
     const conflict = fastForwards(onto) ? undefined : rebasedOnto(onto);
     if (conflict !== undefined) return conflict;
     if (pastOnto(onto) === "0") return nothingBuilt(outcome, onto);
-    trailed(slicing);
+    sliceTrailed(slicing.onto, slicing.slice);
     const red = checkedBy(FAST_CHECK);
     if (red !== undefined) return repaired(red);
     if (fastForwards(onto)) return undefined;

@@ -1,6 +1,6 @@
 import { capped, LIST_CAP, NO_EM_DASH, TICKET_CAP } from "./brief.ts";
-import { DONE_CHECK_HEADING, missesOf } from "./done-checker.ts";
-import { commentOnTicket, commentsRead, gh, gitRead, mark, OWNER, readOrStop, STUCK } from "./post.ts";
+import { lastDoneCheck, missesOf } from "./done-checker.ts";
+import { commentOnTicket, gh, gitRead, mark, OWNER, readOrStop, STUCK } from "./post.ts";
 import { briefOf, MOST_BUILDERS, type Progress, progressOn, specBranch } from "./scheduler.ts";
 import { SLICING, SPEC } from "./spelled.ts";
 import { opened, type Spent } from "./stage.ts";
@@ -209,7 +209,7 @@ function sliced(spec: string) {
       if (!asked.labels.has(SPEC)) return stoppedAt("notSpec", `${said} is not a spec, so nothing sliced it`);
       const { progress } = progressOn(spec);
       const cut: Cut = progress.fixPass && !progress.slices.some(({ fix }) => fix) ? "fix" : progress.slices.length === 0 ? "first" : "replan";
-      const findings = progress.fixPass ? missesOf(commentsRead(spec, `the comments on #${spec} could not be read, so no model was spent`, gh).filter((comment) => comment.startsWith(DONE_CHECK_HEADING)).at(-1) ?? "") : undefined;
+      const findings = progress.fixPass ? missesOf(lastDoneCheck(spec, `the comments on #${spec} could not be read, so no model was spent`) ?? "") : undefined;
       return { carrying: { progress, handed: { cut, slices: slicesSoFar(progress), built: builtSoFar(spec), findings } }, tried: progress.fixPass };
     },
   });

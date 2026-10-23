@@ -2,7 +2,8 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DIFF_CAP, LIST_CAP, TAIL_CAP } from "./brief.ts";
 import { specWith } from "./done-checker.part.ts";
-import { onTheCode, onTheSpec, SLICE_CAP } from "./finish.ts";
+import { BRIEFS_CAP, onTheCode, onTheSpec, SLICE_CAP } from "./finish.ts";
+import { FINDINGS_CAP } from "./slicer.ts";
 import { authored, BIN, execute, ghArgv, git, key, plant, type Said, scratch, script } from "./scenarios.ts";
 import { PAUSED } from "./spelled.ts";
 import { declareStage, HANDED_ON } from "./stages.ts";
@@ -15,6 +16,7 @@ const FILED_NOTE = "https://github.com/collod873/claude-workflow/issues/975";
 export interface Slice {
   id?: string;
   files: Record<string, string>;
+  message?: string;
 }
 
 export function finishing({
@@ -40,6 +42,7 @@ export function finishing({
   const approvals = join(root, "approvals");
   const checks = join(root, "checks");
   const marks = join(root, "marks");
+  const origin = join(root, "origin.git");
   const { setup, calls } = ghArgv(join(root, "gh-argv"));
   git(root, "init", "--quiet", "--initial-branch=main", session);
   git(session, "config", "user.email", "builder@test");
@@ -47,13 +50,14 @@ export function finishing({
   plant(session, "README.md", "what the spec stands on\n");
   git(session, "add", ".");
   git(session, "commit", "--quiet", "-m", "what the spec stands on");
-  git(session, "remote", "add", "origin", session);
+  git(root, "init", "--quiet", "--bare", origin);
+  git(session, "remote", "add", "origin", origin);
   git(session, "update-ref", "refs/remotes/origin/main", "HEAD");
   git(session, "checkout", "--quiet", "-b", "spec/974");
-  for (const { id, files } of slices) {
+  for (const { id, files, message } of slices) {
     for (const [path, text] of Object.entries(files)) plant(session, path, text);
     git(session, "add", ".");
-    git(session, "commit", "--quiet", "-m", id === undefined ? "Build what no slice names" : `Build slice ${id}\n\nSlice: ${id}`);
+    git(session, "commit", "--quiet", "-m", id === undefined ? "Build what no slice names" : `${message ?? `Build slice ${id}`}\n\nSlice: ${id}`);
   }
   plant(root, "issue.json", JSON.stringify({ title: "A spec worth finishing", body: specWith(sentences), labels: labels.map((name) => ({ name })) }));
   plant(root, "labels-at-land", (labelsAtLand ?? labels).map((label) => `${label}\n`).join(""));
@@ -111,6 +115,7 @@ export function finishing({
     calls,
     tokenOf: (made: (args: string[]) => boolean) => calls().flatMap((args, at) => (made(args) ? [readFileSync(join(tokens, String(at + 1)), "utf8")] : [])),
     log: (...args: string[]) => git(session, "log", ...args),
+    pushed: () => git(origin, "log", "--format=%s", "spec/974"),
     run: (...args: string[]) =>
       execute(join(BIN, "finish"), session, { PATH: `${bin}:${process.env.PATH}`, MACHINE_BIN: bin, GH_TOKEN: "job-token", QUIET_GH_TOKEN: "job-token", ...(appKeyed ? { APP_KEY_FILE: keyFile } : {}) }, args.length === 0 ? ["974"] : args),
   };
@@ -125,16 +130,16 @@ declareStage({
     {
       name: "reviewer on the code standard",
       file: "src/finish.ts",
-      cap: LIST_CAP + DIFF_CAP + TAIL_CAP + 2 * SLICE_CAP + 2 * HANDED_ON,
-      slots: [...SLOTTED, "red"],
-      build: (filled) => onTheCode(changesOf(filled), { spec: "", red: filled.red ?? "", commitlint: true }),
+      cap: LIST_CAP + DIFF_CAP + TAIL_CAP + FINDINGS_CAP + 2 * SLICE_CAP + 2 * HANDED_ON,
+      slots: [...SLOTTED, "red", "findings"],
+      build: (filled) => onTheCode(changesOf(filled), { spec: "", red: filled.red ?? "", commitlint: true, findings: filled.findings ?? "" }),
     },
     {
       name: "reviewer on the spec",
       file: "src/finish.ts",
-      cap: SPEC_CAP + LIST_CAP + DIFF_CAP + 2 * SLICE_CAP + 2 * HANDED_ON,
-      slots: [...SLOTTED, "title", "body"],
-      build: (filled) => onTheSpec(changesOf(filled), { spec: "", title: filled.title ?? "", body: filled.body ?? "", commitlint: true }),
+      cap: SPEC_CAP + LIST_CAP + DIFF_CAP + BRIEFS_CAP + FINDINGS_CAP + 2 * HANDED_ON,
+      slots: ["commits", "diff", "stat", "title", "body", "briefs", "findings"],
+      build: (filled) => onTheSpec(changesOf(filled), { spec: "", title: filled.title ?? "", body: filled.body ?? "", commitlint: true, briefs: filled.briefs ?? "", findings: filled.findings ?? "" }),
     },
   ],
   scenarios: [

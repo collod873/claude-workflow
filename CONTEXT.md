@@ -123,8 +123,9 @@ _Avoid_: fixer, mechanic, fresh eyes, repair agent
 A fresh agent with the builder's access, in the builder's run: it reads the ticket, commit messages
 and diff, fixes what it finds or approves, and lands it with `bin/land`, which hands back what it
 refuses. Nothing goes back to the builder (ADR-0012). It files owner steps as `owner-step` notes
-and what it lets through as research does. A spec gets two in series at its finish, one on the code
-standard and one on the spec, each split per slice on a big diff.
+and what it lets through as research does. A spec gets two in series at its finish: one on the spec over
+the whole branch, handed each slice's brief, then one on the code standard, last so it holds what the
+first wrote, split per slice only on a very big diff.
 _Avoid_: review job, judge, second builder
 
 **Closer**:
