@@ -261,6 +261,22 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
     expect(handed()[1]).toContain("no commits past main");
   });
 
+  it("hands a `code` answer whose only commit past main is main's merge commit amended back red, naming it, and never reviews it, where #1467's would have landed without its work (#1493)", () => {
+    const mergedMain = [
+      "side=$(git commit-tree -p main -m \"Land #1473\" \"$(git rev-parse 'main^{tree}')\")",
+      "git update-ref refs/heads/main \"$(git commit-tree -p main -p \"$side\" -m \"Merge pull request #1473\" \"$(git rev-parse 'main^{tree}')\")\"",
+      "git reset --quiet --hard main",
+    ].join("\n");
+    const amended = `if [ "$CALL" = 1 ]; then\n${mergedMain}\n${FIXES}git commit --quiet --amend -am \"Merge pull request #1473\"\nfi\n`;
+    const { run, landed, handed, log } = fixing({ claude: `${SPENT_BY_THE_THIRD_ROUND}${amended}`, stageMinutes: "1" });
+
+    expect(run().status).toBe(1);
+    expect(landed()).toEqual([]);
+    expect(handed().filter((prompt) => prompt.includes("## Fix it or approve it"))).toEqual([]);
+    expect(handed()[1]).toContain(`${log("-1", "--format=%h")} Merge pull request #1473`);
+    expect(handed()[1]).toContain("add its work as plain commits on top of main");
+  });
+
   it("rewrites past `## Done when` when a builder corrects the body around it, and posts why (#942)", () => {
     const { body } = fixing();
     const corrected = `${body.replace("The builder clears a red ticket", "The builder clears a ticket red at any stage")}\n## Out of scope\n\n- The post door.\n`;
