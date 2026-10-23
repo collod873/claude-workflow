@@ -160,19 +160,24 @@ for (( round = 1; ; round++ )); do
   fi
   { printf -- '--- gh pr merge %s ---\n' "$branch"; cat "$err"; } >>"$log"
   refusal=$(head -n 1 "$err")
-  state=$(gh pr view "$branch" --json mergeStateStatus --jq .mergeStateStatus 2>>"$log") || state=unread
+  if grep -qE 'Base branch was modified|Something went wrong while executing your query' "$err"; then
+    state=RACED
+  else
+    state=$(gh pr view "$branch" --json mergeStateStatus --jq .mergeStateStatus 2>>"$log") || state=unread
+  fi
   case $state in
-    BEHIND | UNKNOWN)
+    RACED | UNKNOWN)
       if (( round >= ${LAND_ROUNDS:-3} )); then
         printf 'land: %s did not merge in %s rounds of rebase and push: %s; it is left open\n' "$url" "$round" "$refusal" >&2
         exit 1
       fi
-      [[ $state == UNKNOWN ]] && sleep "${LAND_PAUSE_SECONDS:-2}"
+      sleep "${LAND_PAUSE_SECONDS:-2}"
       call "git fetch" git fetch --quiet origin "$default_branch"
       onto_default_branch
       ;;
     DIRTY)
-      gh pr close "$branch" --delete-branch >/dev/null
+      call "gh pr close" gh pr close "$branch"
+      call "git push --delete" git push --quiet origin --delete "$branch"
       printf 'land: %s conflicts with %s; closed it, so land again to rebase\n' "$url" "$default_branch" >&2
       exit 1
       ;;
