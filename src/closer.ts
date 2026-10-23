@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { BUCKETS, builtState, cellsOf } from "./buckets.ts";
 import { faultsClosed, LABELLED_WAITING, splitClosed, splitInto } from "./builder.ts";
 import { commentOnTicket, commentsRead, FAULT_FROM, gh, ghAs, ghRead, git, gitRead, MACHINE_REPO, markWith, opened, readOrStop, unread, WAITING } from "./post.ts";
 import { exitFor, type Stop, stoppedAt } from "./stops.ts";
@@ -101,9 +102,7 @@ function close(closed: string | undefined): undefined {
   return undefined;
 }
 
-const BUCKETS = "docs/buckets.md";
 const ROW = /^Row: "([^"\n]+)"/m;
-const BUILT_BY = (ticket: string) => new RegExp(`\\bbuilt \\d{4}-\\d{2}-\\d{2} \\(#${ticket}\\)`);
 
 const named = (ticket: string, row: string, why: string) => `; #${ticket} names the row ${JSON.stringify(row)}, ${why}`;
 
@@ -112,7 +111,7 @@ function rowMoved(table: string, row: string, state: string): string | undefined
   const at = lines.findIndex((line) => line.startsWith(`| ${row} |`));
   const line = lines[at];
   if (line === undefined || !/ \|$/.test(line)) return undefined;
-  lines[at] = `${line.slice(0, -2)}; ${state} |`;
+  lines[at] = `| ${[...cellsOf(line).slice(0, -1), state].join(" | ")} |`;
   return lines.join("\n");
 }
 
@@ -138,8 +137,8 @@ function rowLanded(ticket: string, row: string): { said: string; failed?: true }
   const main = gitRead(["rev-parse", "origin/main"], `main could not be read, so the row #${ticket} names is not moved`);
   const read = git(["show", `${main}:${BUCKETS}`]);
   if (read.status !== 0) return { said: named(ticket, row, `and main has no ${BUCKETS}, so no row moved`) };
-  if (read.stdout.split("\n").some((line) => line.startsWith(`| ${row} |`) && BUILT_BY(ticket).test(line))) return { said: named(ticket, row, `which already says #${ticket} built it, so no row moved again`) };
-  const table = rowMoved(read.stdout, row, `built ${new Date().toISOString().slice(0, 10)} (#${ticket}), unmeasured`);
+  if (read.stdout.split("\n").some((line) => line.startsWith(`| ${row} |`) && cellsOf(line).at(-1) === builtState(ticket))) return { said: named(ticket, row, `which already says #${ticket} built it, so no row moved again`) };
+  const table = rowMoved(read.stdout, row, builtState(ticket));
   if (table === undefined) return unmoved(`which ${BUCKETS} on main lacks, so no row moved`);
   const blob = git(["hash-object", "-w", "--stdin"], table);
   const tree = blob.status === 0 ? treeWith(`${main}^{tree}`, BUCKETS.split("/"), blob.stdout.trim()) : undefined;
@@ -157,7 +156,7 @@ function rowMovedFor(ticket: string, body: string): string {
   const row = ROW.exec(why(body))?.[1];
   if (row === undefined) return "";
   const move = rowLanded(ticket, row);
-  if (move.failed) commentOnTicket(ticket, `The closer could not move the row ${JSON.stringify(row)} in ${BUCKETS}, so it still needs \`built <date> (#${ticket})\` in its State: ${move.said.slice(2)}\n\nRun: ${thisRun}`, gh);
+  if (move.failed) commentOnTicket(ticket, `The closer could not move the row ${JSON.stringify(row)} in ${BUCKETS}, so its State still needs to read \`${builtState(ticket)}\`: ${move.said.slice(2)}\n\nRun: ${thisRun}`, gh);
   return move.said;
 }
 
