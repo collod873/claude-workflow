@@ -247,15 +247,6 @@ export function opened(path: string, line: string, gh: Gh, repo = "{owner}/{repo
   }
 }
 
-export function underOwnerSpec(ticket: string, line: string, gh: Gh, repo?: string): Admission {
-  const spec = opened(`${ticket}/parent`, line, gh, repo);
-  if (spec === "missing") return "the App opened it under no spec";
-  if (!heldOf(spec.labels).has(SPEC)) return "the App opened it under an issue not labelled `spec`";
-  if (spec.user?.login !== OWNER) return "the App opened it under a spec the owner did not open";
-  if (spec.state !== "open") return "the App opened it under a spec that is not open";
-  return undefined;
-}
-
 export interface Asked {
   title: string;
   body: string;
