@@ -147,7 +147,7 @@ _Avoid_: splitter, decomposer, to-tickets, planner
 
 **Run names**:
 The `run-name` the caller file carries, so every run under it names what it does: the event and
-its issue, a comment, a dispatch's rerun or probe, as `.github/caller.yml` spells each.
+its issue, a dispatch's rerun or probe, as `.github/caller.yml` spells each.
 _Avoid_: run title, display name
 
 **Done check**:
@@ -155,7 +155,8 @@ The stage that tries each of a spec's "I'll know it works when I can ___" senten
 system once the spec has landed, and closes the spec once every one held or was put to the
 owner. A miss leaves the spec open for the scheduler's one **fix pass**; a second miss marks it
 `stuck`. A sentence put to the owner holds nothing open: the closing comment says what the owner
-could try for it, and a miss seen live later is a new ticket.
+could try for it, and a miss seen live later is a new ticket. The owner's replies since the last
+done check reach the next one, the fix pass's; a reply alone runs no done check.
 _Avoid_: audit, acceptance test, verification
 
 **Integration branch**:

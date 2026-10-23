@@ -70,8 +70,7 @@ describe("a repo's tickets build through one caller file that holds only trigger
     expect(rest).toEqual({});
     expect(typeof runName).toBe("string");
     expect(typeof name).toBe("string");
-    expect(Object.keys(on).sort()).toEqual(["issue_comment", "issues", "workflow_dispatch"]);
-    expect(on.issue_comment).toEqual({ types: ["created"] });
+    expect(Object.keys(on).sort()).toEqual(["issues", "workflow_dispatch"]);
     expect(Object.values(jobs)).toEqual(CALLED.map((file) => ({ uses: `collod873/claude-workflow/.github/workflows/${file}@main`, secrets: "inherit" })));
   });
 
@@ -426,13 +425,7 @@ describe("a repo's specs and research notes run through the same caller file, on
     expect(specs({ event: "issues", action: "unlabeled", sender: MACHINE })).toEqual([]);
   });
 
-  it("runs the done check again on the owner's comment, once the last done check put a sentence to him", () => {
-    expect(specs({ event: "issue_comment", action: "created", outputs: { asked: { asked: "" } } })).toEqual(["asked"]);
-    expect(specs({ event: "issue_comment", action: "created", outputs: { asked: { asked: "true" } } })).toEqual(["asked", "check"]);
-    expect(specs({ event: "issue_comment", action: "created", sender: MACHINE })).toEqual([]);
-  });
-
-  it("starts nothing on a ticket's events, and tickets.yml nothing on a comment", () => {
+  it("starts nothing on a ticket's events", () => {
     for (const fired of [
       { event: "issues", action: "reopened" },
       { event: "issues", action: "unlabeled", sender: MACHINE },
@@ -440,7 +433,6 @@ describe("a repo's specs and research notes run through the same caller file, on
     ]) {
       expect(specs(fired), JSON.stringify(fired)).toEqual([]);
     }
-    expect(jobsRun({ event: "issue_comment", action: "created" })).toEqual([]);
   });
 
   it("readies the tree's pinned Node before anything installs, in every job whose stage may run the done check, and tells that stage the caller file it runs under", () => {

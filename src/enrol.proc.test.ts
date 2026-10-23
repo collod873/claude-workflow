@@ -130,7 +130,7 @@ describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#11
   });
 });
 
-const STALE = CALLER.replace("    types: [created]\n", "");
+const STALE = CALLER.replace("labeled, unlabeled, closed]", "labeled, unlabeled]");
 const HELD_FOR_CHECK = [{ type: "pull_request" }, { type: "required_status_checks", parameters: { required_status_checks: [{ context: "check" }] } }];
 
 describe("bin/enrol keeps an enrolled repo current with the owner's own login (#1155)", () => {

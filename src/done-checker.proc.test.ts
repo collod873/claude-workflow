@@ -1,11 +1,11 @@
-import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { execute, heard, holds, plant, type Said, scratch, script, starts, wellFormedSpec, workflowJobs, type WorkflowStep } from "./scenarios.ts";
-import { HELD, MACHINE, OWNER, STUCK } from "./spelled.ts";
-import { DONE_CHECK_POSTED, doneChecking, specWith } from "./done-checker.part.ts";
+import { heard, type Said, workflowJobs } from "./scenarios.ts";
+import { HELD, OWNER } from "./spelled.ts";
+import { DONE_CHECK_POSTED, doneChecking, specWith, TRYING_SESSION } from "./done-checker.part.ts";
+import { OUT_OF_TIME, REPLIES_CAP } from "./done-checker.ts";
 
 const READ_COMMENTS = "api --paginate repos/{owner}/{repo}/issues/974/comments";
 const SENTENCES = ["file a spec and see its first wave show up under it", "open any ticket it filed and see my own words copied over", "see the spec close itself once every sentence held"];
@@ -67,7 +67,7 @@ describe("bin/done-check closes the spec when every sentence held or was put to 
     const [comment = ""] = checked.comments();
     expect(comment).toContain(`2. **Put to the owner**: ${SENTENCES[1]}\n   open a ticket it filed on your phone`);
     expect(comment).toContain(`3. **Put to the owner**: ${SENTENCES[2]}\n   watch the next red run re-run`);
-    expect(comment).toContain("Closed with sentence 2, 3 put to the owner: each says what the owner could try, and a miss seen live is filed as a new ticket.");
+    expect(comment).toContain("Closed with sentence 2, 3 put to the owner: each says what the owner could try, and the owner files a miss he sees live as a new ticket.");
     expect(checked.marked()).toEqual(["974 checking"]);
   });
 });
@@ -136,6 +136,14 @@ describe("bin/done-check reads the owner's reply to a sentence it put to him (#1
     expect(checked.closes()).toHaveLength(1);
   });
 
+  it("keeps the owner's newest words when his replies run past their cap", () => {
+    const said: Said[] = [`## Done check\n\n3. **Put to the owner**: ${SENTENCES[2]}\n   open it on your phone`, { author: OWNER, type: "User", body: "x".repeat(REPLIES_CAP) }, { author: OWNER, type: "User", body: "sentence 3 held on my phone" }];
+    const checked = doneChecking({ body: specWith(SENTENCES), tries: SENTENCES.map((_, at) => ({ sentence: at + 1, outcome: "held", tried: "the owner said so" })), said });
+
+    expect(checked.run().status).toBe(0);
+    expect(checked.handed()).toContain("sentence 3 held on my phone");
+  });
+
   it("hands no replies when no done check ran before", () => {
     const checked = doneChecking({ body: specWith(SENTENCES), tries: SENTENCES.map((_, at) => ({ sentence: at + 1, outcome: "held", tried: "saw it" })), said: [{ author: OWNER, type: "User", body: "an aside" }] });
 
@@ -144,72 +152,16 @@ describe("bin/done-check reads the owner's reply to a sentence it put to him (#1
   });
 });
 
-describe("specs.yml runs the done check again on the owner's reply to a sentence it put to him (#1038)", () => {
-  type Job = { if?: string; needs?: string; steps: WorkflowStep[] };
-  function workflow(): { on: object; asked: Job; check: Job } {
-    const { on } = parse(readFileSync(join(import.meta.dirname, "..", ".github", "workflows", "machine.yml"), "utf8")) as { on: object };
-    const { asked, check } = workflowJobs("specs.yml") as Record<string, Job>;
-    if (asked === undefined || check === undefined) throw new Error("specs.yml carries no asked and check jobs");
-    return { on, asked, check };
-  }
+describe("an owner's comment runs no done check of its own: his replies reach the spec's next done check, the fix pass's (ADR-0013)", () => {
+  it("leaves the caller file deaf to comments, specs.yml with no job on one, and bin/done-check with no --asked", () => {
+    const { on } = parse(readFileSync(join(import.meta.dirname, "..", ".github", "caller.yml"), "utf8")) as { on: object };
 
-  function lastAsked(comments: string[]): string | undefined {
-    const checked = doneChecking({ said: comments });
-    const ran = checked.run("974", "--asked");
-    if (ran.status !== 0) throw new Error(ran.stderr);
-    expect(ran.stderr).toBe("");
-    expect(checked.calls()).toEqual([READ_COMMENTS]);
-    expect(checked.marked()).toEqual([]);
-    return ran.stdout.match(/^(true|false)\n$/)?.[1];
-  }
-
-  it("starts on the owner's comment on a spec, and on no one else's", async () => {
-    const { on } = workflow();
-    const asks = (labels: string[], sender = OWNER) => starts("specs.yml", "asked", { labels, sender, action: "created", event: "issue_comment" });
-
-    expect(on).toMatchObject({ issue_comment: { types: ["created"] } });
-    expect(await asks(["spec"])).toBe(true);
-    expect(await asks(["spec"], MACHINE)).toBe(false);
-    expect(await asks(["spec"], "stranger")).toBe(false);
-    expect(await asks(["ticket"])).toBe(false);
-  });
-
-  it("does not start on the owner's comment once the last done check put a sentence to him and called stuck (#1043)", async () => {
-    const calledOwner = `## Done check\n\n1. **Did not hold**: one\n   saw it fail\n2. **Put to the owner**: two\n   open it on your phone\n\nSentence 1 missed again after the fix wave, so the spec is marked \`${STUCK}\`: one. Why: saw it fail\n`;
-
-    expect(lastAsked([calledOwner, "an aside"])).toBe("true");
-    for (const held of HELD) expect(await starts("specs.yml", "asked", { labels: ["spec", held], sender: OWNER, action: "created", event: "issue_comment" }), held).toBe(false);
-  });
-
-  it("runs bin/done-check on the spec only when the last ## Done check put a sentence to the owner", () => {
-    const putToOwner = "## Done check\n\n1. **Held**: one\n   saw it\n2. **Put to the owner**: two\n   open it on your phone\n";
-    const allTried = "## Done check\n\n1. **Held**: one\n   saw it\n2. **Did not hold**: two\n   saw it fail\n";
-
-    expect(lastAsked([putToOwner, "an aside"])).toBe("true");
-    expect(lastAsked([putToOwner, allTried, "an aside"])).toBe("false");
-    expect(lastAsked(["## Wave check\n\n- Sentence 2, **Waits for the end**: two"])).toBe("false");
-    expect(lastAsked([`${putToOwner}\nClosed with sentence 2 put to the owner: each says what the owner could try, and a miss seen live is filed as a new ticket.\n`, "an aside"])).toBe("false");
-    expect(lastAsked([])).toBe("false");
-    const { asked, check } = workflow();
-    const reading = asked.steps.find((one) => one.id === "asked")?.run ?? "";
-    expect(reading).toContain("bin/done-check ${{ github.event.issue.number }} --asked");
-    for (const spelling of ["## Done check", "fix-wave", "Put to the owner", "$SPEC", "|"]) expect(reading, spelling).not.toContain(spelling);
-    expect(check.needs).toBe("asked");
-    expect(holds(check.if ?? "", { needs: { asked: { result: "success", outputs: { asked: "true" } } } })).toBe(true);
-    expect(holds(check.if ?? "", { needs: { asked: { result: "success", outputs: { asked: "false" } } } })).toBe(false);
-    const checked = check.steps.find((step) => step.run?.includes("bin/done-check"));
-    expect(checked?.run).toContain('bin/done-check" ${{ github.event.issue.number }}');
-    expect(checked?.env?.GH_TOKEN).toBe("${{ steps.app.outputs.token }}");
-  });
-});
-
-describe("bin/done-check --asked answers whether the last ## Done check put a sentence to the owner, through the read-or-stop (#1118)", () => {
-  it("ends red at unread, printing nothing and marking nothing, when the spec's comments cannot be read", () => {
-    const checked = doneChecking({ gh: "[[ $1 == api ]] && { printf 'HTTP 401: Bad credentials\\n' >&2; exit 1; }" });
-
-    expect(checked.run("974", "--asked")).toEqual({ status: 1, stdout: "", stderr: "done-check: #974 could not read its comments, so nothing was asked\n" });
-    expect(checked.calls()).toEqual([READ_COMMENTS]);
-    expect(checked.marked()).toEqual([]);
+    expect(Object.keys(on)).not.toContain("issue_comment");
+    expect(Object.keys(workflowJobs("specs.yml"))).not.toContain("asked");
+    expect(Object.keys(workflowJobs("specs.yml"))).not.toContain("check");
+    for (const args of [["974", "--asked"], ["974", "1"], ["--asked"]]) {
+      expect(doneChecking().run(...args), args.join(" ")).toEqual({ status: 2, stdout: "", stderr: "done-check: usage: done-check <issue number>\n" });
+    }
   });
 
   it("ends red at unread naming the comments read, marking nothing and hiring no model, when a check cannot read the spec's comments (#1123)", () => {
@@ -218,11 +170,27 @@ describe("bin/done-check --asked answers whether the last ## Done check put a se
     expect(checked.run("974")).toEqual({ status: 1, stdout: "", stderr: "done-check: #974 could not read its comments, so nothing was tried\n" });
     expect(checked.marked()).toEqual([]);
   });
+});
 
-  it("refuses --asked beside anything else, naming its usage", () => {
-    for (const args of [["974", "--asked", "1"], ["--asked"], ["974", "--wave", "1"], ["974", "--wave", "1", "--asked"]]) {
-      expect(doneChecking().run(...args), args.join(" ")).toEqual({ status: 2, stdout: "", stderr: "done-check: usage: done-check <issue number> [--asked]\n" });
-    }
+describe("bin/done-check, out of time, answers with what it tried, so a landed spec is never left with its sentences untried (#1023)", () => {
+  it("resumes the session that ran past its cap, tells it to answer now, and posts its tries", () => {
+    const tries = SENTENCES.map((_, at) => ({ sentence: at + 1, outcome: at === 2 ? "missed" : "held", tried: at === 2 ? "ran out of time before trying it" : "saw it" }));
+    const checked = doneChecking({ body: specWith(SENTENCES), tries, triesPastCap: true });
+
+    expect(heard(checked.run())).toEqual({ status: 0, stderr: "", lines: [`done-check: #974 did not hold sentence 3, so it stays open: ${DONE_CHECK_POSTED}`] });
+    expect(checked.hired()[checked.hired().indexOf("--resume") + 1]).toBe(TRYING_SESSION);
+    expect(checked.handed()).toBe(OUT_OF_TIME);
+    expect(checked.comments()[0]).toContain(`3. **Did not hold**: ${SENTENCES[2]}\n   ran out of time before trying it`);
+  });
+});
+
+describe("bin/done-check numbers the sentences for the model as it counts them, so each try pairs with its own sentence (#1023)", () => {
+  it("hands the sentences numbered, a plain line under one folded into it rather than counted", () => {
+    const body = specWith(SENTENCES).replace(`- [ ] ${SENTENCES[0]}\n`, `- [ ] ${SENTENCES[0]}\n  - on the phone too\n`);
+    const checked = doneChecking({ body, tries: SENTENCES.map((_, at) => ({ sentence: at + 1, outcome: "held", tried: "saw it" })) });
+
+    expect(checked.run().status).toBe(0);
+    expect(checked.handed()).toContain(`## The sentences to try\n\n1. ${SENTENCES[0]} - on the phone too\n2. ${SENTENCES[1]}\n3. ${SENTENCES[2]}`);
   });
 });
 
@@ -305,7 +273,7 @@ describe("bin/done-check tries a caller's spec on that repo's own checkout, read
     expect(heard(checked.run())).toEqual({ status: 0, stderr: "", lines: [`done-check: #974 held every sentence and is closed: ${DONE_CHECK_POSTED}`] });
     expect(existsSync(join(checked.root, "readied"))).toBe(true);
     expect(checked.handed()).toContain("the running system is this checkout of the repo, readied by its contract's setup");
-    expect(checked.handed()).not.toContain("For this repo the running system is its own Actions runs");
+    expect(checked.handed()).not.toContain("For this repo the running system is the landed code in this checkout");
   });
 
   it("ends red when the tree's setup fails, hiring, posting and closing nothing", () => {
@@ -318,11 +286,12 @@ describe("bin/done-check tries a caller's spec on that repo's own checkout, read
     expectNothingDone(checked);
   });
 
-  it("tries this repo's own spec on its Actions runs, as before", () => {
+  it("tries this repo's own spec on the landed code in its checkout, putting to the owner what only a live run can show", () => {
     const checked = doneChecking({ contract: READIED });
 
     expect(checked.run().status).toBe(0);
-    expect(checked.handed()).toContain("For this repo the running system is its own Actions runs");
+    expect(checked.handed()).toContain("For this repo the running system is the landed code in this checkout");
+    expect(checked.handed()).toContain("What only a live run can show goes to the owner.");
   });
 });
 
