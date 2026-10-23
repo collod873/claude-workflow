@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { type AppKey, freshAppToken } from "./app-token.ts";
 import { capped, handedDiff, LIST_CAP, NO_EM_DASH, sameFiles, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
 import { commentOnTicket, FOLLOW_UP_OF, gh, gitRead, heldOn, labelsHeld, machineBin, mark, post, REVIEW_LET_THROUGH } from "./post.ts";
 import { CHECKING } from "./spelled.ts";
@@ -89,7 +90,7 @@ function triedAgainLater(ticket: string, refusal: string): number {
   return 1;
 }
 
-export function reviewedAndLanded(ticket: string, body: string, alongside: string): number {
+export function reviewedAndLanded(ticket: string, body: string, alongside: string, app: AppKey | undefined): number {
   mark(ticket, CHECKING);
   const commits = gitRead(["log", "--reverse", "--format=- %s%n%n%b", "origin/main..HEAD"], "the commits past main could not be read, so nothing is reviewed");
   const diff = gitRead(["diff", "origin/main...HEAD"], "the diff from main could not be read, so nothing is reviewed");
@@ -107,6 +108,7 @@ export function reviewedAndLanded(ticket: string, body: string, alongside: strin
     if (answer?.outcome === "stuck") return calledOwner(ticket, "reviewer", answer.reason);
     committed(reviewedBy(ticket), "fix");
     const changed = head() !== before;
+    if (app !== undefined) freshAppToken(app, gh, `so #${ticket} is not landed`);
     const held = heldOn(labelsHeld(ticket, gh));
     if (held !== undefined) {
       console.log(`review: #${ticket} is labelled ${held}, so it does not land; its branch is kept for its next run`);

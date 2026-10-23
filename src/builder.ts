@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { admission, doesNotBuild } from "./admit.ts";
+import { type AppKey, takenAppKey } from "./app-token.ts";
 import { capped, LIST_CAP, NO_EM_DASH, onDisk, sameFiles, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
 import { FULL_CHECK } from "./checks.ts";
 import { BUILDER_SPLIT, commentOnTicket, commentsRead, faultOf, FOLLOW_UP_OF, FOREIGN, followUpBody, gh, ghRead, git, gitRead, MACHINE_REPO, mark, NOTHING_MARKED, OWNER, post, postRefusals, readOrStop, rewriteTicket, FILED_IN, STUCK, ticketBranch, unread, WAITING } from "./post.ts";
@@ -308,7 +309,7 @@ function owned(ticket: string, body: string) {
   return { carrying: { onTicket: commentsRead(ticket, `the comments on #${ticket} could not be read, ${NOTHING_MARKED}`, gh), alongside: onTheSameFiles(ticket, body) } };
 }
 
-function ownTicket(ticket: string): number {
+function ownTicket(ticket: string, app: AppKey | undefined): number {
   const owning = opened({
     stage: "fix",
     issue: ticket,
@@ -345,7 +346,7 @@ function ownTicket(ticket: string): number {
     body = round.body ?? body;
     committed(builtBy(ticket), "feat");
     const { red } = round.red === undefined ? judged() : round;
-    if (red === undefined) return reviewedAndLanded(ticket, body, owning.carried.alongside);
+    if (red === undefined) return reviewedAndLanded(ticket, body, owning.carried.alongside, app);
     input = red;
   }
 }
@@ -353,6 +354,7 @@ function ownTicket(ticket: string): number {
 if (import.meta.main) {
   const [ticket] = process.argv.slice(2);
   if (ticket === undefined) throw new Error("no ticket number in the arguments");
-  const ended = readOrStop("fix", () => ownTicket(ticket));
+  const app = takenAppKey();
+  const ended = readOrStop("fix", () => ownTicket(ticket, app));
   process.exit(typeof ended === "number" ? ended : 1);
 }

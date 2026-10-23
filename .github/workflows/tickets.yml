@@ -162,11 +162,21 @@ jobs:
           key: builder-${{ steps.start.outputs.branch }}-${{ github.run_id }}
           restore-keys: builder-${{ steps.start.outputs.branch }}-
 
+      - id: app-key
+        if: steps.start.outcome == 'success'
+        env:
+          CLIENT_ID: ${{ vars.CORE_APP_CLIENT_ID }}
+          KEY: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+        run: |
+          umask 077
+          jq -n --arg clientId "$CLIENT_ID" --arg key "$KEY" '{$clientId, $key}' >"$RUNNER_TEMP/app-key.json"
+
       - id: fix
         if: steps.start.outcome == 'success'
         timeout-minutes: 170
         working-directory: tree
         env:
+          APP_KEY_FILE: ${{ runner.temp }}/app-key.json
           GH_TOKEN: ${{ steps.app.outputs.token }}
           QUIET_GH_TOKEN: ${{ steps.app.outputs.token }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

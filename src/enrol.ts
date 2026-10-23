@@ -1,8 +1,8 @@
 import { spawnSync } from "node:child_process";
-import { createSign } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { isMap, isScalar, type Node, parse, parseDocument } from "yaml";
+import { appJwt } from "./app-token.ts";
 import { FAST_CHECK, FULL_CHECK } from "./checks.ts";
 import { ENROLLED_CALLER } from "./post.ts";
 import { LABELS, MACHINE } from "./spelled.ts";
@@ -16,7 +16,6 @@ const CALLER = `${WORKFLOWS}/${ENROLLED_CALLER}`;
 const CHECK = FAST_CHECK;
 const BRANCH = "enrol/caller";
 const KEY = "CORE_APP_PRIVATE_KEY";
-const JWT_LIFE = 540;
 const APP = MACHINE.replace(/\[bot\]$/, "");
 const NOT_FOUND = /\(HTTP 404\)/;
 const FORBIDDEN = /\(HTTP 403\)/;
@@ -179,13 +178,9 @@ function pcGaps(path: string, text: string): string[] {
   });
 }
 
-const url64 = (text: string) => Buffer.from(text).toString("base64url");
-
 function appToken(clientId: string, key: string): string {
-  const now = Math.floor(Date.now() / 1000);
-  const unsigned = `${url64(JSON.stringify({ alg: "RS256", typ: "JWT" }))}.${url64(JSON.stringify({ iat: now - 60, exp: now + JWT_LIFE, iss: clientId }))}`;
   try {
-    return `${unsigned}.${createSign("RSA-SHA256").update(unsigned).sign(key, "base64url")}`;
+    return appJwt({ clientId, key });
   } catch {
     throw new Refused(`the ${KEY} in the environment is not a private key the App can sign with`);
   }

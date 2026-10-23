@@ -1,3 +1,4 @@
+import { generateKeyPairSync } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -256,6 +257,28 @@ describe("a repo's tickets build through one caller file that holds only trigger
     expect(result.status, result.stderr).toBe(0);
     expect(landed().map((line) => line.split(" ").slice(1).join(" "))).toEqual(["--ticket 828 --approved it builds the Why"]);
     expect(closed()).toEqual(["828 9828"]);
+  });
+
+  it("hands the builder the App's key in a file its own step writes, never in the env of the step the model runs under, so bin/land and bin/close run on a token minted just before them (#1504)", () => {
+    const { build } = workflowJobs("tickets.yml");
+    const steps = build?.steps ?? [];
+    const fix = steps.find(({ id }) => id === "fix");
+    const keyed = steps.find(({ id }) => id === "app-key");
+    const temp = scratch("runner-temp-");
+    const key = generateKeyPairSync("rsa", { modulusLength: 2048, privateKeyEncoding: { type: "pkcs8", format: "pem" }, publicKeyEncoding: { type: "spki", format: "pem" } }).privateKey;
+    const actions: Record<string, string> = { "secrets.CORE_APP_PRIVATE_KEY": key, "vars.CORE_APP_CLIENT_ID": "Iv23liAppClient", "runner.temp": temp };
+    const resolved = (value: unknown) => String(value).replace(/\$\{\{ ([\w.]+) \}\}/g, (_, name: string) => actions[name] ?? "");
+    const ownEnv = Object.fromEntries(Object.entries(keyed?.env ?? {}).map(([name, value]) => [name, resolved(value)]));
+
+    expect(steps.indexOf(keyed ?? {})).toBe(steps.indexOf(fix ?? {}) - 1);
+    expect(keyed?.if).toBe(fix?.if);
+    expect(Object.values(fix?.env ?? {}).filter((value) => /CORE_APP_PRIVATE_KEY|CORE_APP_CLIENT_ID/.test(String(value)))).toEqual([]);
+    expect(execute("bash", temp, { RUNNER_TEMP: temp, ...ownEnv }, ["-e", "-c", keyed?.run ?? ""]).status).toBe(0);
+    const { run, ranWith } = fixing({ claude: "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n", appKeyFile: resolved(fix?.env?.APP_KEY_FILE) });
+    const result = run();
+    expect(result.status, result.stderr).toBe(0);
+    expect(ranWith("land").map((dump) => /^GH_TOKEN=(.*)$/m.exec(dump)?.[1])).toEqual([expect.stringMatching(/^minted-\d+$/)]);
+    for (const model of ranWith("claude")) expect(model).not.toContain(key.split("\n")[1]);
   });
 
   it("saves the builder's session from its build, red or green, which GitHub otherwise gives a read-only cache on an issue (#1180)", () => {
