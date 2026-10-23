@@ -106,7 +106,7 @@ export function checkedBy(check: string): string | undefined {
   return [output, log === undefined ? "" : (onDisk(resolve(log)) ?? "")].join("\n");
 }
 
-export const buildIt = (unit: "ticket" | "slice") => [
+export const buildIt = (unit: typeof TICKET | "slice") => [
   "## Build it",
   `Build what the ${unit}'s Why asks for until its \`## Done when\` holds. Call the Skill tool with \`tdd\` and follow it to the end.`,
   "Commit your work, each message saying why, with no em dash and no closing keyword such as `Fixes #12`: `bin/land` refuses them.",
@@ -137,7 +137,7 @@ export function handedOn({ ticket, body, capture, woken, alongside, commitlint, 
     ...(woken === undefined ? [] : ["## How its split ended", "Build what a piece closed unbuilt left, or rule it out:", capped(woken, LIST_CAP)]),
     ...sameFiles(alongside),
     ...filedIn(capture),
-    ...buildIt("ticket"),
+    ...buildIt(TICKET),
     ...linted(commitlint),
     "## Your answer",
     "Answer one outcome:",
