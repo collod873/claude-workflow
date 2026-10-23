@@ -365,13 +365,26 @@ describe("bin/land refuses what must not reach main (#681)", () => {
     expect(commented).toBeLessThan(calls().findIndex(merged));
   });
 
-  it.each([[["--ticket"]], [["--ticket", "eleven"]], [["811"]], [["--ticket", "811", "--approved"]], [["--ticket", "811", "--approved", ""]], [["--approved", "it builds the Why"]]])("lands nothing and says its usage given %j, since only --ticket and a number name a ticket, and only a ticket takes an approve reason, one that says something", (args) => {
+  it("lands a spec's integration branch from spec/<number>, its PR titled as the spec and saying it builds it, with the reviewers' approve reason commented before it merges (ADR-0013)", () => {
+    const REASON = "it builds the spec; the slices share one migration, which I let through";
+    const { head, run, calls, merged } = sessionAheadOfMain(1);
+
+    const result = run(["--spec", "974", "--approved", REASON]);
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(calls()).toContainEqual(["pr", "create", "--base", "main", "--head", "spec/974", "--title", TICKET_TITLE, "--body", "Builds #974\n\n- change 1"]);
+    expect(calls().filter((call) => call[0] === "pr" && call[1] === "comment")).toEqual([["pr", "comment", PR, "--body", `The reviewers approved #974: ${REASON}`]]);
+    expect(calls().filter(merged)).toEqual([["pr", "merge", "spec/974", "--merge", "--match-head-commit", head]]);
+    expect(result.stdout).toBe(`Landed ${PR}\n`);
+  });
+
+  it.each([[["--ticket"]], [["--ticket", "eleven"]], [["811"]], [["--ticket", "811", "--approved"]], [["--ticket", "811", "--approved", ""]], [["--approved", "it builds the Why"]], [["--spec"]], [["--spec", "974", "--ticket", "811"]], [["--spec", "974", "--approved", ""]]])("lands nothing and says its usage given %j, since only --ticket or --spec and a number name what lands, and only they take an approve reason, one that says something", (args) => {
     const { remote, run, calls } = landSession();
 
     const result = run(args);
 
     expect(result.status).toBe(2);
-    expect(result.stderr).toMatch(/^land: usage: land \[--ticket <number> \[--approved <reason>\]\]/);
+    expect(result.stderr).toMatch(/^land: usage: land \[--ticket <number> \| --spec <number> \[--approved <reason>\]\]/);
     expect(git(remote, "for-each-ref", "--format=%(refname)")).toBe("refs/heads/main");
     expect(calls()).toEqual([]);
   });
