@@ -112,6 +112,28 @@ describe("bin/admit lets research's follow-up in when its note is a research not
   });
 });
 
+describe("bin/admit lets what a reviewer let through in when the ticket it reviewed builds (#1491)", () => {
+  const LET_THROUGH = ticketWhy("Follow-up of #765: its reviewer let this through.");
+  const REVIEWED = { number: "765", opener: "collod873", labels: ["ticket"], state: "closed" };
+
+  it("admits a reviewer's follow-up under no spec whose reviewed ticket the owner opened", () => {
+    const { run, comments } = admitting({ opener: APP, body: LET_THROUGH, note: REVIEWED });
+
+    expect(run().stdout).toBe("admitted=true\n");
+    expect(comments()).toEqual([]);
+  });
+
+  it.each([
+    ["whose reviewed ticket the App opened under no spec", LET_THROUGH, { ...REVIEWED, opener: APP }, "#765"],
+    ["naming a ticket filed after it", ticketWhy("Follow-up of #900: its reviewer let this through."), { ...REVIEWED, number: "900" }, "no spec"],
+  ])("refuses a reviewer's follow-up %s", (_, body, note, why) => {
+    const { run, comments } = admitting({ opener: APP, body, note });
+
+    expect(run().stdout).toBe("admitted=false\n");
+    expect(comments()[0]).toContain(why);
+  });
+});
+
 describe("bin/admit lets the App's ticket in only under an open spec the owner opened, or as a follow-up the builder wrote (#1022)", () => {
 
   it.each([
@@ -129,7 +151,7 @@ describe("bin/admit lets the App's ticket in only under an open spec the owner o
   it.each([
     ["only quotes a follow-up line", ticketWhy("> Follow-up of #865: its builder split it, since it does not fit one build.")],
     ["has a follow-up line the builder does not write", ticketWhy("Follow-up of #865: its notes.")],
-    ["is a review follow-up, which nothing files since one run builds, reviews and lands a ticket (#1445)", ticketWhy("Follow-up of #865: its review found this after its builder's repair.")],
+    ["has the review follow-up line no stage writes since one run builds, reviews and lands a ticket (#1445)", ticketWhy("Follow-up of #865: its review found this after its builder's repair.")],
   ])("refuses a ticket the App opened under no spec whose Why %s", (_, body) => {
     const { run, comments } = admitting({ opener: APP, body });
 

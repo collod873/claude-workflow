@@ -22,7 +22,7 @@ export function admitting({ opener = OWNER, body = FIXED_TICKET, parent = undefi
   const root = scratch("admit-");
   const { setup, calls } = ghArgv(join(root, "gh-argv"));
   const elsewhere = origin === undefined ? [] : openedCases(join(root, "origin"), origin.opener, origin.body ?? FIXED_TICKET, origin.parent, origin.ticket).map((line) => line.replace('*"issues/', `*"repos/${origin.repo}/issues/`));
-  const research = note === undefined ? [] : [`  *"api"*"issues/${note.number}") printf '%s' '${JSON.stringify({ number: Number(note.number), user: { login: note.opener }, state: note.state, labels: note.labels.map((name) => ({ name })) })}' ;;`];
+  const research = note === undefined ? [] : [`  *"api"*"issues/${note.number}/parent") printf 'gh: Not Found (HTTP 404)\\n' >&2; exit 1 ;;`, `  *"api"*"issues/${note.number}") printf '%s' '${JSON.stringify({ number: Number(note.number), user: { login: note.opener }, state: note.state, labels: note.labels.map((name) => ({ name })) })}' ;;`];
   const cases = unread ? ["  *\"api\"*) printf 'gh: Bad credentials (HTTP 401)\\n' >&2; exit 1 ;;"] : [...elsewhere, ...research, ...openedCases(root, opener, body, parent)];
   script(join(root, "bin", "gh"), [setup, 'case "$*" in', ...cases, "  *\"issue comment\"*) printf 'https://github.com/collod873/claude-workflow/issues/811#issuecomment-1\\n' ;;", "esac", ""].join("\n"));
   return {

@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { BUILDER_SESSION, CHECK_PASSES, CHECK_RED, FULL_CHECK_RED_ONCE, fixing, SPENT_BY_THE_THIRD_ROUND } from "./builder.part.ts";
-import { onPath } from "./scenarios.ts";
+import { createdIssues, onPath } from "./scenarios.ts";
 import { HELD } from "./spelled.ts";
 
 const FIXES = "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n";
@@ -611,6 +611,42 @@ describe("a fresh reviewer reads each green build, fixes or approves it, and bin
     expect(filed()[0]).toContain("Left to the owner by the run that built #811, which closed.");
     expect(calls().find((args) => args[1] === "create")).toEqual(expect.arrayContaining(["owner-step", STEP.title]));
     expect(closed()).toEqual(["811 9811"]);
+  });
+
+  describe("files each fault the reviewer lets through, as research files its follow-ups, where Lumaria#1325's two UTC faults sat only in a merged PR's comment (#1491)", () => {
+    const FIX = { fault: "The trial balance's as-of cutoff falls at UTC midnight, 8pm Eastern.", title: "Cut the trial balance off at the business's midnight", done: ["The trial balance at 9pm on Oct 31 counts a payment posted at 8:30pm."] };
+    const ASK = "Whether the period statement sums the business's month though ADR 0097 says UTC; my pick is yes.";
+    const letThrough = (extra: Parameters<typeof fixing>[0] = {}) => fixing({ claude: FIXES, review: { outcome: "approve", reason: "it builds the Why; it lets through the UTC cutoff", fixes: [FIX], asks: [ASK] }, ...extra });
+    const created = (scenario: ReturnType<typeof fixing>) => createdIssues(scenario.calls());
+
+    it("tells the reviewer to fix a small same-cause fault the Done when does not name, then files each fix it names as a ticket naming the reviewed ticket and its calls as one note naming the owner, and still lands and closes", () => {
+      const scenario = letThrough();
+
+      expect(scenario.run().status).toBe(0);
+      expect(scenario.handed()[1]).toContain("A fault of the same cause in the code you read is yours to fix too when the fix is small, though the `## Done when` does not name it; a bigger one you name in `fixes` or `asks`.");
+      const [ticket, note] = created(scenario);
+      expect(ticket?.title).toBe(FIX.title);
+      expect(ticket?.labels).toEqual(["ticket"]);
+      expect(ticket?.body).toContain("Follow-up of #811: its reviewer let this through.");
+      expect(ticket?.body).toContain(`> ${FIX.fault}`);
+      expect(ticket?.body).toContain(`## Done when\n\n- ${FIX.done[0]}`);
+      expect(note?.labels).toEqual(["note"]);
+      expect(note?.body).toContain(`@collod873 #811's reviewer leaves these to you:\n\n- ${ASK}`);
+      expect(scenario.closed()).toEqual(["811 9811"]);
+    });
+
+    it("still lands and closes when a filing is refused, and comments the refusal on the ticket", () => {
+      const scenario = letThrough({ unreadable: '*"issue create"*"--label ticket"*' });
+
+      const result = scenario.run();
+
+      expect(result.status, result.stderr).toBe(0);
+      expect(scenario.closed()).toEqual(["811 9811"]);
+      expect(created(scenario).map(({ labels }) => labels)).toContainEqual(["note"]);
+      const comment = scenario.ticketComments().find((said) => said?.includes(FIX.title));
+      expect(comment).toContain("could not be filed");
+      expect(comment).toContain("Bad credentials");
+    });
   });
 
   it("lands nothing, and ends green keeping the branch, when the ticket is held by the time its review ends", () => {

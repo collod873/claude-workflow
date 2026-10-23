@@ -494,6 +494,9 @@ export function ghArgv(dir: string): { setup: string; calls: () => string[][] } 
   };
 }
 
+export const createdIssues = (calls: string[][]) =>
+  calls.filter((args) => args[0] === "issue" && args[1] === "create").map((args) => ({ title: args[args.indexOf("--title") + 1], body: args[args.indexOf("--body") + 1], labels: args.flatMap((arg, at) => (args[at - 1] === "--label" ? [arg] : [])) }));
+
 const CONSENT_ONLY_WHY = 'The owner, in session: "a plan carrying its own intent, spoken plainly, at length, right where it was proposed".';
 
 export const FIXED_TICKET = [

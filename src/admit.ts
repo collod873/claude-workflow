@@ -1,9 +1,9 @@
-import { type Admission, commentOnTicket, FAULT_FROM, gh, heldOf, type Opened, opened, OWNER, readOrStop, RESEARCH, RESEARCH_FROM, SPLIT_FROM, underOwnerSpec, unread } from "./post.ts";
+import { type Admission, commentOnTicket, FAULT_FROM, gh, heldOf, type Opened, opened, OWNER, readOrStop, RESEARCH, RESEARCH_FROM, REVIEW_FROM, SPLIT_FROM, underOwnerSpec, unread } from "./post.ts";
 import { exitFor } from "./stops.ts";
 import { why } from "./ticket-shape.ts";
 
 export const doesNotBuild = (ticket: string, refused: string) =>
-  `#${ticket} does not build, since its checks would run as shell with the App's token and ${refused}. A ticket the App opens builds only as the builder's follow-up, as research's follow-up from a research note the owner opened, as a machine fault its builder filed from a ticket that builds in its own repo, or under an open spec the owner opened.`;
+  `#${ticket} does not build, since its checks would run as shell with the App's token and ${refused}. A ticket the App opens builds only as the builder's follow-up, as research's follow-up from a research note the owner opened, as what a reviewer let through on a ticket that builds, as a machine fault its builder filed from a ticket that builds in its own repo, or under an open spec the owner opened.`;
 
 const ownersOrFollowUp = ({ user, body }: Opened): boolean => {
   const said = why(body ?? "");
@@ -22,6 +22,11 @@ export function admission(ticket: string, so: string): Admission {
   const asked = opened(ticket, line, gh);
   if (asked === "missing") return unread(line);
   if (ownersOrFollowUp(asked) || researchFollowUp(asked, `the research note of #${ticket} could not be read, ${so}`)) return undefined;
+  const [, reviewed] = REVIEW_FROM.exec(why(asked.body ?? "")) ?? [];
+  if (reviewed !== undefined && Number(reviewed) < Number(ticket)) {
+    const refused = admission(reviewed, so);
+    return refused === undefined ? undefined : `the App filed it as what the reviewer of #${reviewed} let through, where ${refused}`;
+  }
   const [, repo, origin] = FAULT_FROM.exec(why(asked.body ?? "")) ?? [];
   if (repo === undefined || origin === undefined) return underOwnerSpec(ticket, `the parent of #${ticket} could not be read, ${so}`, gh);
   return faultAdmission(repo, origin, so);

@@ -45,7 +45,7 @@ function branchedSession(session: string, who: string, onMain: Record<string, st
 export function fixing({
   body = FIXED_TICKET,
   answer = { outcome: "code", reason: "the export was never renamed" } as { outcome: string; reason: string; body?: string; tickets?: unknown[]; steps?: unknown[] },
-  review = { outcome: "approve", reason: "it builds the Why" } as { outcome: string; reason: string; steps?: unknown[] },
+  review = { outcome: "approve", reason: "it builds the Why" } as { outcome: string; reason: string; steps?: unknown[]; fixes?: unknown[]; asks?: string[] },
   reviewer = "",
   land = "",
   onTicket = [] as Said[],

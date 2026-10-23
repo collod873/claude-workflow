@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { handedOn, NOTE_CAP, OUT_OF_TIME } from "./researcher.ts";
-import { BIN, execute, issueStage, stubbedMark, wellFormedNote } from "./scenarios.ts";
+import { BIN, createdIssues, execute, issueStage, stubbedMark, wellFormedNote } from "./scenarios.ts";
 import { PAUSED, STUCK } from "./spelled.ts";
 import { declareStage, HANDED_ON } from "./stages.ts";
 
@@ -24,7 +24,7 @@ export function researching({
   return {
     ...stage,
     marked,
-    filed: () => stage.argv().filter((args) => args[0] === "issue" && args[1] === "create").map((args) => ({ title: args[args.indexOf("--title") + 1], body: args[args.indexOf("--body") + 1], labels: args.flatMap((arg, at) => (args[at - 1] === "--label" ? [arg] : [])) })),
+    filed: () => createdIssues(stage.argv()),
     run: (...args: string[]) => execute(join(BIN, "research"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}`, RESEARCH_SOURCES: sources, STAGE_MINUTES: readsPastCap ? "40" : "" }, args.length > 0 ? args : ["902"]),
   };
 }

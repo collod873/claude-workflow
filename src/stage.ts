@@ -2,9 +2,9 @@ import { spawnSync } from "node:child_process";
 import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { NO_EM_DASH, onDisk } from "./brief.ts";
-import { type Asked, askedIssue, commentOnTicket, gh, ghRead, git, gitRead, heldOn, mark, OWNER, STUCK, unread, type MarkedLabel } from "./post.ts";
+import { type Asked, askedIssue, commentOnTicket, followUpBody, gh, ghRead, git, gitRead, heldOn, mark, OWNER, post, STUCK, unread, type MarkedLabel } from "./post.ts";
 import type { Stop } from "./stops.ts";
-import { quoted } from "./ticket-shape.ts";
+import { DONE_SENTENCES, quoted } from "./ticket-shape.ts";
 
 const STREAM = ["--output-format", "stream-json", "--verbose"];
 const TIMED_OUT = 124;
@@ -191,6 +191,41 @@ export const OWNER_STEPS = {
 export interface OwnerStep {
   title: string;
   why: string;
+}
+
+const MOST_FIXES = 3;
+
+export const FOLLOW_UPS = {
+  fixes: {
+    type: "array",
+    maxItems: MOST_FIXES,
+    items: {
+      type: "object",
+      properties: {
+        fault: { type: "string", pattern: NO_EM_DASH },
+        title: { type: "string", pattern: NO_EM_DASH },
+        done: { type: "array", minItems: 1, items: { type: "string", pattern: NO_EM_DASH } },
+      },
+      required: ["fault", "title", "done"],
+      additionalProperties: false,
+    },
+  },
+  asks: { type: "array", items: { type: "string", pattern: NO_EM_DASH } },
+};
+
+export interface Fix {
+  fault: string;
+  title: string;
+  done: string[];
+}
+
+export const FIXES_ASKED = `up to ${MOST_FIXES} faults with one sure fix: \`fault\` with evidence, \`title\`, \`done\` as ${DONE_SENTENCES}; each is a ticket`;
+
+export function followedUp(found: string, fixes: Fix[], asks: string[], call: { title: string; by: string }): { named: string; refusals: string[]; said: string }[] {
+  const tickets = fixes.slice(0, MOST_FIXES).map(({ fault, title, done }) => ({ named: title, ...post({ kind: "ticket", title, text: followUpBody([found, "", `> ${fault}`], done) }, gh) }));
+  if (asks.length === 0) return tickets;
+  const text = ["## Why", "", `@${OWNER} ${call.by} leaves these to you:`, "", ...asks.map((ask) => `- ${ask}`), ""].join("\n");
+  return [...tickets, { named: call.title, ...post({ kind: "note", title: call.title, text }, gh) }];
 }
 
 export const linted = (commitlint: boolean | undefined) =>
