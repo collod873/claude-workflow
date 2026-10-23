@@ -107,7 +107,6 @@ const BUILD_IT = [
   "## Build it",
   "Build what the ticket's Why asks for until its `## Done when` holds. Call the Skill tool with `tdd` and follow it to the end.",
   "Commit your work, each message saying why, with no em dash and no closing keyword such as `Fixes #12`: `bin/land` refuses them.",
-  `Run \`${FULL_CHECK}\` last: it runs every step of \`${CONTRACT}\`, so running a step apart only repeats it.`,
 ];
 
 const NAMED_FILE = /(?<![\w./-])(?:[\w.-]+\/)*([\w-][\w.-]*\.(?:tsx?|[cm]?js|jsx|json|md|ya?ml|py|sh|sql|toml|css|html))\b/g;
