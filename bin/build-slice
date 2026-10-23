@@ -1,0 +1,4 @@
+#!/bin/bash
+set -uo pipefail
+
+exec node "$(cd "${BASH_SOURCE[0]%/*}/../src" && pwd)/slice-builder.ts" "$@"
