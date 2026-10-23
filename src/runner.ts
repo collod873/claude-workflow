@@ -20,8 +20,10 @@ const WAIT_SECONDS = Number(process.env.RUNNER_WAIT_SECONDS ?? "60");
 const PROC = process.env.RUNNER_PROC ?? "/proc";
 const UNITS = "/etc/systemd/system";
 const SLICE = "pc-runners.slice";
-const PC_RUNNERS_MEMORY_GB = 20;
-const RUNNER_MEMORY_GB = 10;
+const PC_RUNNERS_MEMORY_GB = 28;
+const RUNNER_MEMORY_GB = 12;
+const LISTENER_MEMORY_MB = 256;
+const EQUAL_CPU_WEIGHT = 100;
 const CHECK_SLOTS = 2;
 const CHECK_SLOTS_DIR = `${HOME}/check-slots`;
 const PC_RUNNERS_CPUS = 8;
@@ -33,14 +35,27 @@ const cpus = Number(spawnSync("nproc", { encoding: "utf8" }).stdout);
 const firstCpu = Math.max(0, cpus - PC_RUNNERS_CPUS);
 const quickCpus = firstCpu > 0 ? `0-${firstCpu - 1}` : `0-${cpus - 1}`;
 const sliceOf = (memoryGb: number, allowed: string) => ["[Slice]", `MemoryMax=${memoryGb}G`, "MemorySwapMax=0", `AllowedCPUs=${allowed}`, ""].join("\n");
-const cpusOf = (at: number) => {
-  const start = Math.min(cpus - 1, firstCpu + (at % Math.max(1, PC_RUNNERS_CPUS / RUNNER_CPUS)) * RUNNER_CPUS);
+const halves = Array.from({ length: Math.max(1, PC_RUNNERS_CPUS / RUNNER_CPUS) }, (_, at) => {
+  const start = Math.min(cpus - 1, firstCpu + at * RUNNER_CPUS);
   return `${start}-${Math.min(cpus - 1, start + RUNNER_CPUS - 1)}`;
+});
+const unitsOf = (repo: string) => `actions.runner.${repo.replace("/", "-")}.`;
+const placing = (repo: string, names: string[]) => {
+  const neighbours = run("systemctl", ["show", "--property", "Id,Slice,AllowedCPUs", "actions.runner.*"])
+    .split("\n\n")
+    .map((unit) => unit.split("\n"))
+    .filter((unit) => unit.includes(`Slice=${SLICE}`) && !unit.some((line) => line.startsWith(`Id=${unitsOf(repo)}`)));
+  const held = halves.map((half) => ({ half, count: neighbours.filter((unit) => unit.includes(`AllowedCPUs=${half}`)).length }));
+  return names.map((name) => {
+    const emptiest = held.reduce((least, half) => (half.count < least.count ? half : least));
+    emptiest.count += 1;
+    return { name, allowed: emptiest.half };
+  });
 };
 const ONE_JOB = "ACTIONS_RUNNER_INPUT_ONCE=true";
-const confinementIn = (slice: string, memoryGb: number, allowed: string) => (unit: string) =>
-  ["[Service]", `Slice=${slice}`, `MemoryMax=${memoryGb}G`, "MemorySwapMax=0", `AllowedCPUs=${allowed}`, "OOMPolicy=continue", "KillMode=mixed", `Environment=${ONE_JOB}`, "Restart=always", "RestartSec=2", `ExecCondition=/usr/bin/systemctl is-enabled --quiet ${unit}`, ""].join("\n");
-const confinement = (at: number) => confinementIn(SLICE, RUNNER_MEMORY_GB, cpusOf(at));
+const confinementIn = (slice: string, memoryGb: number, allowed: string, kept: string[] = []) => (unit: string) =>
+  ["[Service]", `Slice=${slice}`, `MemoryMax=${memoryGb}G`, ...kept, "MemorySwapMax=0", `AllowedCPUs=${allowed}`, `CPUWeight=${EQUAL_CPU_WEIGHT}`, "OOMPolicy=continue", "KillMode=mixed", `Environment=${ONE_JOB}`, "Restart=always", "RestartSec=2", `ExecCondition=/usr/bin/systemctl is-enabled --quiet ${unit}`, ""].join("\n");
+const confinement = (allowed: string) => confinementIn(SLICE, RUNNER_MEMORY_GB, allowed, [`MemoryMin=${LISTENER_MEMORY_MB}M`]);
 const quickConfinement = confinementIn(QUICK_SLICE, QUICK_RUNNER_MEMORY_GB, quickCpus);
 const EARLYOOM = "/etc/default/earlyoom";
 const earlyoom = 'EARLYOOM_ARGS="-r 3600 -m 10,5 -s 10,5"\n';
@@ -130,7 +145,7 @@ function provisionGh(): void {
 
 const dirOf = (repo: string, name: string) => `${HOME}/runners/${repo.replace("/", "-")}/${name}`;
 const tempOf = (repo: string, name: string) => `${HOME}/tmp/${createHash("sha256").update(`${repo}/${name}`).digest("hex").slice(0, 8)}`;
-const unitOf = (repo: string, name: string) => `actions.runner.${repo.replace("/", "-")}.${name}.service`;
+const unitOf = (repo: string, name: string) => `${unitsOf(repo)}${name}.service`;
 
 function install(repo: string, name: string, labels: string): void {
   const dir = dirOf(repo, name);
@@ -259,7 +274,7 @@ function toPc(repo: string, asked: number | undefined): string {
   for (const name of quickMissing) install(repo, name, QUICK_LABEL);
   for (const { id } of runners.filter((runner) => !labelled(runner, QUICK_LABEL))) gh(["api", "-X", "POST", `repos/${repo}/actions/runners/${id}/labels`, "-f", `labels[]=${QUICK_LABEL}`]);
   const settled = [
-    ...names.map((name, at) => ({ name, as: settle(repo, name, confinement(at), registered.get(name) === true && running(repo, name)) })),
+    ...placing(repo, names).map(({ name, allowed }) => ({ name, as: settle(repo, name, confinement(allowed), registered.get(name) === true && running(repo, name)) })),
     ...quickNames.map((name) => ({ name, as: settle(repo, name, quickConfinement, quickRegistered.get(name) === true && running(repo, name)) })),
   ];
   const named = (as: string) => settled.filter((runner) => runner.as === as).map(({ name }) => name);
