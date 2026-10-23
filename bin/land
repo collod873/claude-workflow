@@ -167,12 +167,13 @@ for (( round = 1; ; round++ )); do
   fi
   case $state in
     RACED | UNKNOWN)
+      sleep "${LAND_PAUSE_SECONDS:-2}"
+      call "git fetch" git fetch --quiet origin "$default_branch"
+      git merge-base --is-ancestor HEAD "origin/$default_branch" && break
       if (( round >= ${LAND_ROUNDS:-3} )); then
         printf 'land: %s did not merge in %s rounds of rebase and push: %s; it is left open\n' "$url" "$round" "$refusal" >&2
         exit 1
       fi
-      sleep "${LAND_PAUSE_SECONDS:-2}"
-      call "git fetch" git fetch --quiet origin "$default_branch"
       onto_default_branch
       ;;
     DIRTY)

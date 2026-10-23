@@ -195,6 +195,18 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
     ]);
   });
 
+  it("lands without trying again when GitHub merged the PR but answered with its transient error (#1503)", () => {
+    const { remote, session, run, calls, merged, checked } = sessionAheadOfMain(1, { merges: ["mergedErred"], rounds: "1" });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toBe(`Landed ${PR}\n`);
+    expect(calls().filter(merged)).toHaveLength(1);
+    expect(checked()).toEqual(["--full --covered"]);
+    expect(git(session, "rev-parse", "HEAD")).toBe(git(remote, "rev-parse", "main"));
+  });
+
   it.each<[string, { merges: Merge[]; views?: string[]; rounds?: string }, string, number]>([
     ["once its rounds of rebase and push are spent", { merges: ["raced"], rounds: "2" }, `land: ${PR} did not merge in 2 rounds of rebase and push: ${MAIN_RACED}; it is left open\n`, 2],
     ["once its rounds are spent on GitHub's transient error", { merges: ["erred"], rounds: "2" }, `land: ${PR} did not merge in 2 rounds of rebase and push: ${GITHUB_ERRED}; it is left open\n`, 2],

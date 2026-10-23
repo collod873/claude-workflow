@@ -386,7 +386,7 @@ export const GITHUB_ERRED = "GraphQL: Something went wrong while executing your 
 
 const REFUSALS = { refused: MERGE_REFUSAL, raced: MAIN_RACED, erred: GITHUB_ERRED };
 
-export type Merge = "merged" | keyof typeof REFUSALS;
+export type Merge = "merged" | "mergedErred" | keyof typeof REFUSALS;
 
 export const TICKET_TITLE = "Build what the ticket asks";
 
@@ -445,9 +445,10 @@ export function landSession({
         '  "pr merge")',
         `    n=${counted("merge")}; touch ${JSON.stringify(state)}/merge-$n`,
         "    (( n > ${#merges[@]} )) && n=${#merges[@]}",
-        "    if [[ ${merges[n - 1]} == merged ]]; then",
+        "    if [[ ${merges[n - 1]} == merged* ]]; then",
         "      for (( at = 1; at <= $#; at++ )); do [[ ${!at} == --match-head-commit ]] && { next=$(( at + 1 )); sha=${!next}; }; done",
         `      git -C "$remote" update-ref refs/heads/${defaultBranch} "$(git -C "$remote" commit-tree "$sha^{tree}" -p ${defaultBranch} -p "$sha" -m merged)"`,
+        `      [[ \${merges[n - 1]} == mergedErred ]] && { printf '%s\\n' '${GITHUB_ERRED}' >&2; exit 1; }`,
         "    else",
         ...Object.entries(REFUSALS).map(([merge, refusal]) => `      [[ \${merges[n - 1]} == ${merge} ]] && printf '%s\\n' '${refusal}' >&2`),
         ...(mainMovesOnRefusal ? [`      git -C "$remote" update-ref refs/heads/${defaultBranch} "$(git -C "$remote" commit-tree "${defaultBranch}^{tree}" -p ${defaultBranch} -m "another session landed")"`] : []),
