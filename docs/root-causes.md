@@ -23,7 +23,7 @@ stalled, 998 on one ticket. Before it: Lumaria#902 Waves 12 to 16
 | Root cause | Symptoms | Countermeasure | State |
 |---|---|---|---|
 | A held state nothing wakes: a ticket parked on the owner, a failed closer or branch update, a conflicting PR, a required check that never starts | 998 of #1086's 1339 min on #1108, `checking` after a refused push until the owner re-ran it; two thirds of a Spec's wall time (#1232); Lumaria#1283's builder hit its 45 min cap running the full check itself (2026-10-23) | every held state has an event that wakes it, a clock only as a last resort (ADR-0009); the builder never parks on the owner (ADR-0005) | built (#1371, #1489) |
-| The Wave barrier: a ticket nothing depends on waits for the slowest | 9 h 40 min of tail over seven Waves (#1249); #1086's Wave 4 held 6.5 min for #1106 | the slicer writes dependencies as edges; a ticket with none starts at once; the wave check stays a cadence | unruled |
+| The Wave barrier: a ticket nothing depends on waits for the slowest | 9 h 40 min of tail over seven Waves (#1249); #1086's Wave 4 held 6.5 min for #1106 | no waves: each slice is cut at its last responsible moment on the spec's integration branch and built once what blocks it merges (ADR-0013) | ruled (ADR-0013) |
 | One tree judged more than once | 1.7 full checks per ticket (#1267); in #1086 four branch-updated trees re-ran CI (589 s) and review; landing #1326, two `.md` files, ran the whole suite (274 s) | a test runs only when a file it read changed, in every repo | built (agent-hooks#105) |
 | Structure drift: code written twice, a shared piece never cut first | 21 findings, 0 bugs (#1229, #1230, #1231); in #1086 the tenant time zone written three times before #1098 merged them | the slicer cuts the shared piece first; every stage loads `coding-standards` | built (#1234) |
 | A held sentence is never tried again until the done check | all three done-check misses had held earlier and broke unseen, one for 58 h; 169 of 289 min of Waves 12-16 were the rework | every wave check also tries every sentence that held at an earlier wave or done check | built |
@@ -49,4 +49,4 @@ stalled, 998 on one ticket. Before it: Lumaria#902 Waves 12 to 16
 Build what is ruled, then measure it all on one Spec, so the measurement covers one machine
 version (#1377): file the Lumaria kit Spec, measure it at its done check as
 [spec-1086-2026-10.md](research/spec-1086-2026-10.md) was, move each `built` row, then read #1335
-against it. Waiting on Collin: the Wave barrier and no gate running the app.
+against it. Waiting on Collin: no gate running the app.
