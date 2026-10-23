@@ -54,8 +54,11 @@ const PROGRESS = new RegExp(`${PROGRESS_OPEN}(.*)${PROGRESS_CLOSE}`, "s");
 export const specBranch = (spec: string) => `${SPEC_PREFIX}${spec}`;
 const sliceBranch = (spec: string, id: string) => `slice/${spec}-${id}`;
 
+const bullets = (lines: string[]) => lines.map((line) => `- ${line.trim()}`).join("\n");
+
 export function briefOf(slice: Slice, specBody: string): string {
-  return [`# ${slice.title.trim()}`, "## Why", slice.why.trim(), "## Done when", slice.done.map((sentence) => `- ${sentence.trim()}`).join("\n"), "## Out of Scope", filedOutOfScope(specBody), ""].join("\n\n");
+  const decisions = slice.decisions.length === 0 ? [] : ["## Implementation and Testing Decisions", bullets(slice.decisions)];
+  return [`# ${slice.title.trim()}`, "## Why", slice.why.trim(), ...decisions, "## Done when", bullets(slice.done), "## Out of Scope", filedOutOfScope(specBody), ""].join("\n\n");
 }
 
 export const tipMoved = (spec: string) =>

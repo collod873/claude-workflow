@@ -30,7 +30,7 @@ export interface Comment {
   body: string;
 }
 
-export const sliceOf = (id: string, blockedBy: string[] = []): Slice => ({ id, title: `Build ${id}`, why: `The spec asks for "${id}".`, done: [`${id} holds.`], blockedBy });
+export const sliceOf = (id: string, blockedBy: string[] = []): Slice => ({ id, title: `Build ${id}`, why: `The spec asks for "${id}".`, decisions: [], done: [`${id} holds.`], blockedBy, leftOf: [] });
 
 export const PAUSES = "printf 'paused\\n' >>\"$ROOT/labels\"";
 

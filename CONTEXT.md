@@ -165,7 +165,8 @@ of its commits carries a `Slice: <id>` trailer.
 _Avoid_: spec branch
 
 **Slice**:
-One tracer-bullet unit of a spec, cut at its last responsible moment; never a ticket.
+One unit of a spec, cut at its last responsible moment: a seam, the shared code other slices plug
+into, or after the seams one tracer bullet through the spec; never a ticket.
 _Avoid_: piece, task
 
 **Frontier**:

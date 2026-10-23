@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { git } from "./scenarios.ts";
 import { LANDED, MAIN_MOVES, PAUSES, machineComment, scheduling, sliceOf, SPEC_ISSUE } from "./scheduler.part.ts";
@@ -184,5 +185,14 @@ describe("bin/schedule runs a spec from its first cut to its landing, one slice 
 
     expect(run.run()).toMatchObject({ status: 0, stdout: `schedule: #${SPEC_ISSUE} is marked paused, so nothing was hired\n` });
     expect(run.order()).toEqual([]);
+  });
+
+  it("briefs each builder with the spec's decisions its slice follows, beside the spec's Out of Scope, since a builder never reads the spec", () => {
+    const run = scheduling({ cuts: [[{ ...sliceOf("seam"), decisions: ["Reuse the ticket machinery where it already fits."] }], []] });
+
+    expect(run.run().status).toBe(0);
+    const brief = readFileSync(optionOf(run.built("seam"), "--brief") ?? "", "utf8");
+    expect(brief).toContain("## Implementation and Testing Decisions\n\n- Reuse the ticket machinery where it already fits.");
+    expect(brief).toContain("## Out of Scope\n\nThe slicer and the done check.");
   });
 });

@@ -50,7 +50,7 @@ export function slicing({
 
 const SLICER_CAP = SPEC_CAP + BUILT_CAP + SLICES_CAP + FINDINGS_CAP + 4 * HANDED_ON;
 const filledSpec = (filled: Record<string, string>) => [filled.title ?? "", filled.body ?? ""] as const;
-export const ANSWERED = { slices: [{ id: "seam", title: "Cut the seam", why: 'The spec asks: "a spec is filed once".', done: ["The seam holds."], blockedBy: [] }] };
+export const ANSWERED = { slices: [{ id: "seam", title: "Cut the seam", why: 'The spec asks: "a spec is filed once".', decisions: [], done: ["The seam holds."], blockedBy: [], leftOf: [] }] };
 
 declareStage({
   part: { name: "bin/slice", file: "bin/slice", stops: "https://github.com/collod873/claude-workflow/issues/674", printsData: true },
@@ -60,21 +60,28 @@ declareStage({
       file: "src/slicer.ts",
       cap: SLICER_CAP,
       slots: ["title", "body"],
-      build: (filled) => handedOn(...filledSpec(filled), { slices: "", built: "", fixStarts: false }),
+      build: (filled) => handedOn(...filledSpec(filled), { cut: "first", slices: "", built: "" }),
     },
     {
       name: "slicer re-plan",
       file: "src/slicer.ts",
       cap: SLICER_CAP,
       slots: ["title", "body", "built", "slices"],
-      build: (filled) => handedOn(...filledSpec(filled), { slices: filled.slices ?? "- `seam` (merged): Cut the seam.", built: filled.built ?? "", fixStarts: false }),
+      build: (filled) => handedOn(...filledSpec(filled), { cut: "replan", slices: filled.slices ?? "- `seam` (merged): Cut the seam.", built: filled.built ?? "" }),
     },
     {
       name: "slicer fix pass",
       file: "src/slicer.ts",
       cap: SLICER_CAP,
       slots: ["title", "body", "built", "slices", "findings"],
-      build: (filled) => handedOn(...filledSpec(filled), { slices: filled.slices ?? "", built: filled.built ?? "", findings: filled.findings ?? "", fixStarts: true }),
+      build: (filled) => handedOn(...filledSpec(filled), { cut: "fix", slices: filled.slices ?? "", built: filled.built ?? "", findings: filled.findings ?? "" }),
+    },
+    {
+      name: "slicer fix pass re-plan",
+      file: "src/slicer.ts",
+      cap: SLICER_CAP,
+      slots: ["title", "body", "built", "slices", "findings"],
+      build: (filled) => handedOn(...filledSpec(filled), { cut: "replan", slices: filled.slices ?? "- `mend` (merged, fix pass): Mend it.", built: filled.built ?? "", findings: filled.findings ?? "" }),
     },
     {
       name: "slicer sent back",
