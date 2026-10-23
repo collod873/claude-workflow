@@ -83,7 +83,7 @@ export function handedOn(title: string, body: string, handed: Handed): string {
     capped(handed.slices, SLICES_CAP) || "(none)",
     ...(handed.findings === undefined ? [] : ["## The done check's findings", capped(handed.findings, FINDINGS_CAP)]),
     "## Your answer",
-    `\`slices\`: each new slice. \`id\`, kebab-case and unique within the spec, never one used before. \`title\`. \`why\`, what the slice is for in the spec, quoting in "..." or a \`> \` line the spec's words it serves. \`done\`, ${DONE_SENTENCES}, each one its builder can show on the branch. \`blockedBy\`, the ids of the slices it needs merged first, from this answer or the slices so far. Code adds the spec's Out of Scope to each slice's brief, which must fit the builder's brief cap of ${TICKET_CAP} bytes: split a slice that does not. ${ENDED}`,
+    `\`slices\`: each new slice. \`id\`, kebab-case and unique within the spec, never one used before. \`title\`. \`why\`, what the slice is for in the spec, quoting in "..." or a \`> \` line the spec's words it serves. \`done\`, ${DONE_SENTENCES}, each one its builder can show on the branch. \`blockedBy\`, the ids of the slices it needs merged first, from this answer or the slices so far. Code adds the spec's Out of Scope to each slice's brief, which must fit the builder's brief cap of ${TICKET_CAP} bytes: split a slice that does not.${handed.fixStarts ? "" : ` ${ENDED}`}`,
     "",
   ].join("\n\n");
 }

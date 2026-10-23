@@ -47,7 +47,7 @@ describe("bin/slice answers the scheduler with the spec's next slices, never fil
     expect(handed).toContain("- `reader` (hired): Build reader. Blocked by `seam`.\n  Done when: reader holds.");
   });
 
-  it("hands the fix pass's first slicer the newest done check's findings, marks its try, and sends back a cut with no slice", () => {
+  it("hands the fix pass's first slicer the newest done check's findings, asks it for at least one slice and never for none, marks its try, and sends back a cut with no slice", () => {
     const sliced = slicing({ comments: [machineComment(1, "## Done check\n\nAn older run."), progressed([tracked("seam", "merged")], true), machineComment(4, FINDINGS)], answers: [{ slices: [] }, { slices: [slice("mend")] }] });
 
     const ran = sliced.run();
@@ -58,6 +58,8 @@ describe("bin/slice answers the scheduler with the spec's next slices, never fil
     expect(first).toContain("This is the spec's one fix pass");
     expect(first).toContain(FINDINGS);
     expect(first).not.toContain("An older run.");
+    expect(first).toContain("Cut at least one.");
+    expect(first).not.toContain("Answer no slice");
     expect(again).toContain("the fix pass carries no slice");
     expect(sliced.marked()).toEqual([`${SPEC_ISSUE} slicing --try before the model`]);
   });
