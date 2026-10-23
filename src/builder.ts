@@ -57,7 +57,7 @@ export const splitClosed = (ticket: string) => `Every ticket #${ticket} was spli
 export const LABELLED_WAITING = `labelled \`${WAITING}\``;
 export const waitsOnFault = (ticket: string, filed: string[]) => `The builder of #${ticket} found the machine at fault and filed ${filed.join(", ")}. #${ticket} waits on it, ${LABELLED_WAITING}, and the closer wakes it once every one of them closes:`;
 export const faultsClosed = (ticket: string) => `Every machine fault #${ticket} waits on has closed:`;
-export const FILED = /\/issues\/(\d+)\s*$/;
+const FILED = /\/issues\/(\d+)\s*$/;
 
 interface Handed {
   ticket: string;

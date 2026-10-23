@@ -13,18 +13,18 @@ const STATE_BLUE = "1d76db";
 export const LABELS = [
   { name: "ticket", kind: "kind", colour: KIND_GREY, description: "A ticket the machine builds" },
   { name: "bug", kind: "kind", colour: KIND_GREY, description: "A fault proven by a log, test or Signal; the machine builds the fix" },
-  { name: "spec", kind: "kind", colour: KIND_GREY, description: "A spec: the whole statement of a big job, sliced into tickets, never built itself" },
+  { name: "spec", kind: "kind", colour: KIND_GREY, description: "A spec: the whole statement of a big job, cut into slices that land once from its integration branch" },
   { name: "note", kind: "kind", colour: KIND_GREY, description: "Filed to be kept, never built" },
   { name: "research", kind: "kind", colour: KIND_GREY, description: "A note the machine answers and closes when filed" },
   { name: "owner-step", kind: "kind", colour: KIND_GREY, description: "A note naming a step only the owner can take; nothing builds or researches it" },
-  { name: "building", kind: "state", colour: STATE_BLUE, description: "The builder is writing the ticket's code, or a spec's wave is building" },
+  { name: "building", kind: "state", colour: STATE_BLUE, description: "The builder is writing the ticket's code, or a spec's slices are building" },
   { name: "checking", kind: "state", colour: STATE_BLUE, description: "The reviewer reads the green build and lands it, or the done check tries a spec's sentences" },
-  { name: "slicing", kind: "state", colour: STATE_BLUE, description: "The slicer is writing the next wave" },
+  { name: "slicing", kind: "state", colour: STATE_BLUE, description: "The slicer is cutting a spec's next slices" },
   { name: "researching", kind: "state", colour: STATE_BLUE, description: "The researcher is answering this note" },
   { name: "waiting", kind: "parked", colour: "fbca04", description: "Waits for other tickets before it builds" },
   { name: "paused", kind: "held", colour: "0e8a16", description: "The owner paused it; the machine never adds or removes it" },
   { name: "stuck", kind: "held", colour: "b60205", description: "The machine stopped and needs the owner; the machine never removes it" },
-  { name: "try-", kind: "try", colour: "f66a0a", description: "A builder run after a failure, or a spec's fix wave" },
+  { name: "try-", kind: "try", colour: "f66a0a", description: "A builder run after a failure, or a spec's fix pass" },
 ] as const satisfies readonly Label[];
 
 export type LabelName = (typeof LABELS)[number]["name"];

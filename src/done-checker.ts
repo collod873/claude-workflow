@@ -69,7 +69,7 @@ const isTry = (given: unknown): given is Try => {
   return typeof one?.sentence === "number" && typeof one.tried === "string" && typeof one.outcome === "string" && one.outcome in OUTCOMES;
 };
 
-const DONE_CHECK_HEADING = "## Done check";
+export const DONE_CHECK_HEADING = "## Done check";
 
 const posted = (tried: [number, string, Try][], after: string[] = []) =>
   [DONE_CHECK_HEADING, "", ...tried.map(([number, sentence, one]) => `${number}. **${OUTCOMES[one.outcome]}**: ${sentence}\n   ${one.tried}`), ...after.flatMap((line) => ["", line]), ""].join("\n");
@@ -77,20 +77,6 @@ const posted = (tried: [number, string, Try][], after: string[] = []) =>
 const listing = (missed: [number, string, Try][], between: string) => missed.map(([number]) => number).join(between);
 const CLOSED_WITH = "Closed with sentence";
 const closedWith = (putToOwner: [number, string, Try][]) => `${CLOSED_WITH} ${listing(putToOwner, ", ")} put to the owner: each says what the owner could try, and a miss seen live is filed as a new ticket.`;
-
-export const WAVE_CHECK_HEADING = "## Wave check";
-const waveLine = (number: number | string, outcome: string) => `- Sentence ${number}, **${outcome}**`;
-const givenIn = (outcome: string) => {
-  const line = new RegExp(`^${waveLine("(\\d+)", outcome).replaceAll("*", "\\*")}`, "gm");
-  return (waveCheck: string) => new Set([...waveCheck.matchAll(line)].map(([, number]) => Number(number)));
-};
-export const missedIn = givenIn(OUTCOMES.missed);
-const heldAtWave = givenIn(OUTCOMES.held);
-const HELD_AT_DONE = new RegExp(`^(\\d+)\\. \\*\\*${OUTCOMES.held}\\*\\*:`, "gm");
-const heldAtDone = (doneCheck: string) => new Set([...doneCheck.matchAll(HELD_AT_DONE)].map(([, number]) => Number(number)));
-
-export const heldBefore = (comments: string[]): number[] =>
-  [...new Set(comments.flatMap((comment) => [...(comment.startsWith(WAVE_CHECK_HEADING) ? heldAtWave(comment) : comment.startsWith(DONE_CHECK_HEADING) ? heldAtDone(comment) : [])]))].sort((one, other) => one - other);
 
 interface Read {
   issue: string;

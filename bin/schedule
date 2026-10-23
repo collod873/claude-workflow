@@ -1,0 +1,20 @@
+#!/bin/bash
+set -uo pipefail
+
+usage="schedule: usage: schedule <spec number>"
+
+if [[ ${1:-} == "--help" ]]; then
+  printf '%s\n' "$usage"
+  exit 0
+fi
+
+spec=${1:-}
+if [[ $# -ne 1 || ! $spec =~ ^[0-9]+$ ]]; then
+  printf '%s\n' "$usage" >&2
+  exit 2
+fi
+
+src="$(cd "${BASH_SOURCE[0]%/*}/../src" && pwd)"
+top=$(git rev-parse --show-toplevel) || exit 1
+cd "$top" || exit 1
+exec node "$src/scheduler.ts" "$spec"

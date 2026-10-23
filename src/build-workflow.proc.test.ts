@@ -273,7 +273,11 @@ const everyJob = (): Job[] =>
     .flatMap((file) => Object.values((parse(readFileSync(join(WORKFLOWS, file), "utf8")) as { jobs: Record<string, Partial<Job>> }).jobs))
     .flatMap(({ steps, ...job }) => (steps === undefined ? [] : [{ ...job, steps: expanded(steps) }]));
 const spendsModel = (step: Step) => step.env?.CLAUDE_CODE_OAUTH_TOKEN !== undefined;
-const transcriptOf = (run: string) => (/(^|\s|\/)bin\/([\w-]+)/.exec(run.split("\n").slice(1).join("\n"))?.[2] ?? "fix");
+const FIRST_HIRED: Record<string, string> = { schedule: "slice" };
+const transcriptOf = (run: string) => {
+  const bin = /(^|\s|\/)bin\/([\w-]+)/.exec(run.split("\n").slice(1).join("\n"))?.[2] ?? "fix";
+  return FIRST_HIRED[bin] ?? bin;
+};
 const SAID = { type: "assistant", message: { content: [{ type: "text", text: "reading the brief" }] } };
 
 const modelJobs = () => everyJob().filter(({ steps }) => steps.some(spendsModel));
@@ -492,14 +496,12 @@ const CALLERS = [
   { file: "tickets.yml", job: "strip", names: "github.event.issue.number" },
   { file: "tickets.yml", job: "close", names: "github.event.issue.number" },
   { file: "specs.yml", job: "research", names: "github.event.issue.number" },
-  { file: "specs.yml", job: "slice", names: "github.event.issue.number" },
-  { file: "specs.yml", job: "reslice", names: "steps.ended.outputs.spec" },
-  { file: "specs.yml", job: "resume", names: "steps.resumed.outputs.spec" },
+  { file: "specs.yml", job: "spec", names: "github.event.issue.number" },
   { file: "specs.yml", job: "check", names: "github.event.issue.number" },
 ];
 const callsOwner = (step: Step) => step.uses === "./.github/actions/call-owner";
 
-describe("a build, close, research, slice, reslice, done check or strip run that ends red leaves its issue and run through one shared step, which bin/rerun reads once the run completes, so a wake that ends red runs again (#1057, #1067, #1178, #1445)", () => {
+describe("a build, close, research, spec, done check or strip run that ends red leaves its issue and run through one shared step, which bin/rerun reads once the run completes, so a wake that ends red runs again (#1057, #1067, #1178, #1445)", () => {
   const [owned] = (parse(readFileSync(CALLER, "utf8")) as { runs: { steps: Step[] } }).runs.steps;
   const calls = (labels: string, run: string) => {
     const root = scratch("called-");
@@ -551,15 +553,6 @@ describe("a build, close, research, slice, reslice, done check or strip run that
       if (logs !== -1) expect(job.steps.indexOf(calling ?? {})).toBeLessThan(logs);
     });
   }
-
-  it("the reslice job marks nothing when its run ends red before it names its spec", () => {
-    const job = namedJob((parse(readFileSync(join(WORKFLOWS, "specs.yml"), "utf8")) as { jobs: Record<string, Job> }).jobs, "reslice", "specs.yml");
-    const calling = job.steps.find(callsOwner);
-    const unnamed = { ...allSkipped(job.steps), ended: { outcome: "failure", conclusion: "failure", outputs: { spec: "" } } };
-
-    expect(calling).toBeDefined();
-    expect(holds(calling?.if ?? "false", { steps: unnamed, failed: true })).toBe(false);
-  });
 });
 
 describe("tickets.yml says in its logs when a mark fails, so a ticket whose labels lag shows why (#1081)", () => {

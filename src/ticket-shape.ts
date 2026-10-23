@@ -11,7 +11,6 @@ const NAMED = {
   furtherNotes: "Further Notes",
   sentences: "I'll know it works when I can",
   record: "Decisions record",
-  reliesOn: "Decisions it relies on",
   waitsOn: "Waits on",
   followUps: "Follow-ups",
 } as const;
@@ -53,7 +52,7 @@ export const IDEA_SHAPE = "something Collin floated, kept for him to decide.";
 export const LOOK_INTO_SHAPE = "a question Collin wants answered before deciding; a research agent answers it.";
 export const OWNER_SHAPE = `a step only Collin can take before shipped work can run, such as a dashboard setting, a key or a sign-in. Its ## ${NAMED.why} says what to do, where, and what waits on it.`;
 export const SPEC_SHAPE = [
-  "he asked for a spec in his own words: the whole statement of a big job, sliced into tickets and never built itself.",
+  "he asked for a spec in his own words: the whole statement of a big job, which the machine cuts into slices and lands as one.",
   `  ## ${NAMED.problem} quoting the owner, ## ${NAMED.solution}, ## ${NAMED.stories} numbered, ## ${NAMED.decisions} naming no file paths,`,
   `  ## ${NAMED.testing}, ## ${NAMED.outOfScope}, ## ${NAMED.furtherNotes}, and last ## ${NAMED.sentences}, as '- [ ]' items`,
 ].join("\n");
@@ -87,26 +86,9 @@ export const waitsOn = (body: string): string[] => [...new Set(Array.from(sectio
 
 export const doneWhen = (body: string): string => section(body.replaceAll(/\r\n?/g, "\n"), DONE_WHEN).trim();
 
-export const outOfScope = (body: string): string => section(body.replaceAll(/\r\n?/g, "\n"), OUT_OF_SCOPE).trim();
-
 const blankLinesTrimmed = (text: string): string => text.replace(/^(?:[ \t]*\r?\n)+/, "").replace(/(?:\r?\n[ \t]*)+$/, "");
 
 export const filedOutOfScope = (body: string): string => blankLinesTrimmed(section(body, OUT_OF_SCOPE));
-
-export interface Passage {
-  text: string;
-  after: string;
-}
-
-export function filedPassages(body: string): Passage[] {
-  const pieces = section(body, PROBLEM_STATEMENT).split(/(\r?\n(?:[ \t]*\r?\n)+)/);
-  const passages: Passage[] = [];
-  for (let at = 0; at < pieces.length; at += 2) {
-    const text = pieces[at] ?? "";
-    if (text.trim() !== "") passages.push({ text: blankLinesTrimmed(text), after: pieces[at + 1] ?? "" });
-  }
-  return passages;
-}
 
 export interface Recorded {
   owner: string;
@@ -127,58 +109,6 @@ export function filedRecord(body: string): Recorded {
   if (standing !== undefined) return { owner: standing.owner, record: blankLinesTrimmed(standing.inner) };
   const named = lifted(body, NAMES_SHARED, NEXT_SUBHEADING);
   return named === undefined ? { owner: body, record: "" } : { owner: named.owner, record: blankLinesTrimmed(named.whole) };
-}
-
-export function spliced({ owner, record }: Recorded): string {
-  const kept = record.trim();
-  if (kept === "") return owner;
-  const at = SENTENCES.exec(owner)?.index ?? owner.length;
-  return `${owner.slice(0, at)}## ${NAMED.record}\n\n${kept}\n\n${owner.slice(at)}`;
-}
-
-export const PICKS = "### Picks";
-export const SHIPPED_NAMES = "### Shipped names";
-export const ENTRY_FORM = "`- **name**:`";
-export const RELIES_ON = `## ${NAMED.reliesOn}`;
-const ENTRY_NAME = /^- \*\*(.+?)\*\*:/;
-const ENTRY_BULLET = /^-[ \t]/;
-const SUBHEADING = /^###?[ \t]/;
-
-export interface Entry {
-  name: string | undefined;
-  bullet: string;
-  pick: boolean;
-}
-
-export function recordEntries(record: string): Entry[] {
-  const entries: { lines: string[]; pick: boolean }[] = [];
-  let under: boolean | undefined;
-  let open = false;
-  for (const line of record.split("\n")) {
-    if (SUBHEADING.test(line)) {
-      under = line.trimEnd() === PICKS ? true : line.trimEnd() === SHIPPED_NAMES ? false : undefined;
-      open = false;
-    } else if (ENTRY_BULLET.test(line)) {
-      open = under !== undefined;
-      if (under !== undefined) entries.push({ lines: [line], pick: under });
-    } else if (open) entries[entries.length - 1]?.lines.push(line);
-  }
-  return entries.map(({ lines, pick }) => ({ name: ENTRY_NAME.exec(lines[0] ?? "")?.[1], bullet: blankLinesTrimmed(lines.join("\n")), pick }));
-}
-
-function entryRefusals(record: string): string[] {
-  const entries = recordEntries(record);
-  const unnamed = entries.filter(({ name }) => name === undefined).map(({ bullet }) => `the record carries a bullet with no ${ENTRY_FORM}, so no ticket can cite it: ${JSON.stringify(quoted(bullet.split("\n")[0] ?? ""))}`);
-  const names = entries.flatMap(({ name }) => (name === undefined ? [] : [name]));
-  const twice = [...new Set(names.filter((name, at) => names.indexOf(name) !== at))].map((name) => `the record names ${JSON.stringify(name)} on two bullets, so a ticket citing it is ambiguous`);
-  return [...unnamed, ...twice];
-}
-
-export function recordRefusals(recorded: Recorded, cap: Cap = SPEC_CAPPED): string[] {
-  const headed = NEXT_HEADING.test(recorded.record) ? ["the record carries a '## ' heading, which would end it: head its parts with '### '"] : [];
-  const bytes = Buffer.byteLength(spliced(recorded));
-  const over = bytes > cap.bytes ? [`the spec would be ${bytes} bytes, over the ${cap.named} of ${cap.bytes}: the record must lose at least ${bytes - cap.bytes} bytes`] : [];
-  return [...headed, ...entryRefusals(recorded.record), ...over];
 }
 
 export const whyChanged = (read: string, written: string): string[] => (why(written) === why(read) ? [] : ["the rewrite changes '## Why', the owner's words, which stay byte-identical"]);
@@ -230,13 +160,6 @@ function builtRefusals(body: string, why: WhyAsked): string[] {
 }
 
 export const SPEC_CAP = 64 * 1024;
-
-export interface Cap {
-  bytes: number;
-  named: string;
-}
-
-export const SPEC_CAPPED: Cap = { bytes: SPEC_CAP, named: "spec cap" };
 
 export interface Sentence {
   said: string;

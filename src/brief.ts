@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 
 export const onDisk = (path: string): string | undefined => (existsSync(path) ? readFileSync(path, "utf8") : undefined);
 
-export function cutTo(text: string, limit: number): string {
+function cutTo(text: string, limit: number): string {
   let kept = "";
   for (const char of text) {
     if (Buffer.byteLength(kept) + Buffer.byteLength(char) > limit) break;
