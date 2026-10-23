@@ -6,7 +6,7 @@ import { admission, doesNotBuild } from "./admit.ts";
 import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
 import { capped, LIST_CAP, NO_EM_DASH, onDisk, sameFiles, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
 import { FULL_CHECK } from "./checks.ts";
-import { BUILDER_SPLIT, commentOnTicket, commentsRead, faultOf, FOLLOW_UP_OF, FOREIGN, followUpBody, gh, ghRead, git, gitRead, MACHINE_REPO, mark, NOTHING_MARKED, OWNER, post, postRefusals, readOrStop, rewriteTicket, FILED_IN, STUCK, ticketBranch, unread, WAITING } from "./post.ts";
+import { BUILDER_SPLIT, commentOnTicket, commentsRead, ENROLLED_CALLER, faultOf, firstStepOf, FOLLOW_UP_OF, FOREIGN, followUpBody, gh, ghRead, git, gitRead, MACHINE_REPO, mark, MISSING, NOTHING_MARKED, OWNER, post, postRefusals, readOrStop, rewriteTicket, FILED_IN, STUCK, ticketBranch, unread, WAITING } from "./post.ts";
 import { reviewedAndLanded } from "./reviewer.ts";
 import { calledOwner, committed, commitlinted, CONTRACT, linted, opened, setupRefusal, type Spent, treePathed } from "./stage.ts";
 import { BUILDING, TICKET } from "./spelled.ts";
@@ -16,8 +16,9 @@ import { DONE_SENTENCES, doneWhen, quoted, why, whyChanged } from "./ticket-shap
 const ANSWER = {
   type: "object",
   properties: {
-    outcome: { enum: ["code", "split", "done", "close", "stuck", "machine"] },
+    outcome: { enum: ["code", "split", "done", "close", "stuck", "machine", "owned"] },
     reason: { type: "string", pattern: NO_EM_DASH },
+    repo: { type: "string", pattern: `^${OWNER}/[\\w.-]+$` },
     body: { type: "string", pattern: NO_EM_DASH },
     tickets: {
       type: "array",
@@ -44,8 +45,9 @@ interface Piece {
 }
 
 interface Answer {
-  outcome: "code" | "split" | "done" | "close" | "stuck" | "machine";
+  outcome: "code" | "split" | "done" | "close" | "stuck" | "machine" | "owned";
   reason: string;
+  repo?: string;
   body?: string;
   tickets?: Piece[];
 }
@@ -55,8 +57,12 @@ const stoppedAt = stopsOf({ unadmitted: "Build refused: the ticket's checks woul
 export const splitInto = (ticket: string) => `@${OWNER} the builder split #${ticket} into`;
 export const splitClosed = (ticket: string) => `Every ticket #${ticket} was split into has closed:`;
 export const LABELLED_WAITING = `labelled \`${WAITING}\``;
-export const waitsOnFault = (ticket: string, filed: string[]) => `The builder of #${ticket} found the machine at fault and filed ${filed.join(", ")}. #${ticket} waits on it, ${LABELLED_WAITING}, and the closer wakes it once every one of them closes:`;
-export const faultsClosed = (ticket: string) => `Every machine fault #${ticket} waits on has closed:`;
+const wokenByTheCloser = (ticket: string) => `#${ticket} waits on it, ${LABELLED_WAITING}, and the closer wakes it once every one of them closes:`;
+export const waitsOnFault = (ticket: string, filed: string[]) => `The builder of #${ticket} found the machine at fault and filed ${filed.join(", ")}. ${wokenByTheCloser(ticket)}`;
+const handedStep = (ticket: string, repo: string, filed: string[]) => `The builder of #${ticket} handed its first step to ${repo} and filed ${filed.join(", ")}.`;
+export const waitsOnStep = (ticket: string, repo: string, filed: string[]) => `${handedStep(ticket, repo, filed)} ${wokenByTheCloser(ticket)}`;
+const waitsUnheard = (ticket: string, repo: string, filed: string[]) => `${handedStep(ticket, repo, filed)} #${ticket} waits on it, ${LABELLED_WAITING}. @${OWNER} ${repo} carries no caller file, so nothing hears it close: take \`${WAITING}\` off #${ticket} once every one of them closes:`;
+export const filedClosed = (ticket: string) => `Every ticket the builder of #${ticket} filed and waits on has closed:`;
 const FILED = /\/issues\/(\d+)\s*$/;
 
 interface Handed {
@@ -147,6 +153,7 @@ export function handedOn({ ticket, body, capture, woken, alongside, commitlint, 
     "- `close`: the ticket should not exist as written, and nothing should replace it, as for a gate you cannot make pass, since a gate is proven first.",
     "- `stuck`: you cannot build it, even rewritten; `reason` says why, and the ticket is marked `stuck`.",
     machineAtFault(foreign),
+    `- \`owned\`: its first step belongs in the one other repo that owns that kind of fix, such as \`${OWNER}/design-kit\` for a kit primitive or \`${OWNER}/agent-skills\` for a skill or shared tool: name it as \`repo\`, change nothing here for it, and file that step as \`tickets\`; this ticket waits on them and builds once they close.`,
     "`reason`: one paragraph for the owner; a `code` answer's goes to its reviewer, who files each gap, wait or step for the owner it names.",
     "",
   ].join("\n\n");
@@ -233,21 +240,42 @@ function rewritten(ticket: string, body: string, answer: Answer): Round {
   return { body: answer.body };
 }
 
-const faultBody = (ticket: string, { why: fault, done }: Piece): string =>
-  followUpBody([faultOf(`${process.env.GH_REPO ?? ""}#${ticket}`), "", `> ${fault}`], done);
+interface Handing {
+  repo: string;
+  filedFrom: (origin: string) => string;
+  parked: (filed: string[]) => string;
+  unfiled: string;
+}
 
-const inMachineRepo = (args: string[]) => gh([...args, "--repo", MACHINE_REPO]);
-
-function filedForMachine(ticket: string, answer: Answer): Round {
-  const postings = (answer.tickets ?? []).map((piece) => ({ title: piece.title, text: faultBody(ticket, piece) }));
-  const refused = postings.length === 0 ? ["a `machine` answer from a tree that is not the machine's files the machine's fault as one ticket or more in `tickets`"] : postings.flatMap((posting) => postRefusals({ kind: "ticket", ...posting }).map((refusal) => `${posting.title}: ${refusal}`));
-  if (refused.length > 0) return { red: ["Your `machine` answer was refused, and nothing was filed:", ...refused.map((refusal) => `- ${refusal}`)].join("\n") };
-  const filed = postings.map((posting) => post({ kind: "ticket", ...posting }, inMachineRepo).said.trim());
-  if (filed.some((said) => !FILED.test(said))) return { ended: calledOwner(ticket, "builder", `it found the machine at fault and filed ${filed.filter((said) => FILED.test(said)).length} of ${filed.length} tickets in ${MACHINE_REPO}`) };
-  commentOnTicket(ticket, `${waitsOnFault(ticket, filed)} ${answer.reason}`, gh);
+function filedToWaitOn(ticket: string, answer: Answer, { repo, filedFrom, parked, unfiled }: Handing): Round {
+  const origin = filedFrom(`${process.env.GH_REPO ?? ""}#${ticket}`);
+  const postings = (answer.tickets ?? []).map(({ title, why: step, done }) => ({ title, text: followUpBody([origin, "", `> ${step}`], done) }));
+  const refused = postings.length === 0 ? [unfiled] : postings.flatMap((posting) => postRefusals({ kind: "ticket", ...posting }).map((refusal) => `${posting.title}: ${refusal}`));
+  if (refused.length > 0) return { red: [`Your \`${answer.outcome}\` answer was refused, and nothing was filed:`, ...refused.map((refusal) => `- ${refusal}`)].join("\n") };
+  const inRepo = (args: string[]) => gh([...args, "--repo", repo]);
+  const filed = postings.map((posting) => post({ kind: "ticket", ...posting }, inRepo).said.trim());
+  if (filed.some((said) => !FILED.test(said))) return { ended: calledOwner(ticket, "builder", `it filed ${filed.filter((said) => FILED.test(said)).length} of ${filed.length} tickets in ${repo} to wait on`) };
+  commentOnTicket(ticket, `${parked(filed)} ${answer.reason}`, gh);
   mark(ticket, WAITING);
-  console.log(`fix: #${ticket} waits on the machine's fault, filed as ${filed.join(", ")}`);
+  console.log(`fix: #${ticket} waits on ${filed.join(", ")}, filed in ${repo}`);
   return { ended: 0 };
+}
+
+const filedForMachine = (ticket: string, answer: Answer): Round =>
+  filedToWaitOn(ticket, answer, { repo: MACHINE_REPO, filedFrom: faultOf, parked: (filed) => waitsOnFault(ticket, filed), unfiled: "a `machine` answer from a tree that is not the machine's files the machine's fault as one ticket or more in `tickets`" });
+
+function heardIn(repo: string): boolean {
+  const got = gh(["--missing-answers", "api", `repos/${repo}/contents/.github/workflows/${ENROLLED_CALLER}`, "--silent"]);
+  if (got.status === 0) return true;
+  return MISSING.test(got.stderr) ? false : unread(`whether ${repo} carries a caller file could not be read, ${NOTHING_MARKED}`);
+}
+
+function handedToItsRepo(ticket: string, answer: Answer): Round {
+  const { repo } = answer;
+  if (repo === undefined) return { red: "Your `owned` answer was refused, and nothing was filed: it names the repo that owns its first step as `repo`." };
+  if (repo === process.env.GH_REPO) return { red: `Your \`owned\` answer was refused, and nothing was filed: ${repo} is this ticket's own repo, so build its first step here.` };
+  const parked = heardIn(repo) ? waitsOnStep : waitsUnheard;
+  return filedToWaitOn(ticket, answer, { repo, filedFrom: firstStepOf, parked: (filed) => parked(ticket, repo, filed), unfiled: "an `owned` answer files its first step as one ticket or more in `tickets`" });
 }
 
 function landedOnMain(ticket: string, reason: string, before: string): Round {
@@ -265,6 +293,7 @@ function outcomeOf(ticket: string, body: string, answer: Answer | undefined, mai
   if (answer.outcome === "stuck") return { ended: calledOwner(ticket, "builder", answer.reason) };
   if (answer.outcome === "split") return split(ticket, body, answer);
   if (answer.outcome === "machine" && FOREIGN) return filedForMachine(ticket, answer);
+  if (answer.outcome === "owned") return handedToItsRepo(ticket, answer);
   if (answer.outcome === "machine") return landedOnMain(ticket, answer.reason, mainBefore);
   return rewritten(ticket, body, answer);
 }

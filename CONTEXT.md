@@ -113,8 +113,8 @@ _Avoid_: precondition, validation, check
 **Builder**:
 The agent that builds a ticket until its full check is green, then hands it to the reviewer. A
 later run resumes its session or logs why not. It fixes the code, the ticket only in a `code`
-answer, or the machine, splits or closes it, done if main holds it, else unbuilt; stopped, it marks
-`stuck`. A spec's slice gets a **slice builder** instead (`bin/build-slice`): fast check only, its
+answer, or the machine, hands a first step to its owning repo, splits or closes it, done if main
+holds it, else unbuilt; stopped, it marks `stuck`. A spec's slice gets a **slice builder** instead (`bin/build-slice`): fast check only, its
 own Postgres, port and temp dir, done when its branch fast-forwards the integration branch, or
 `partial`, saying what is left.
 _Avoid_: fixer, mechanic, fresh eyes, repair agent
@@ -242,6 +242,14 @@ to complete and stands down if the run has moved past it, so two hand-offs act o
 lacking the input refuses the dispatch: logged, not red.
 _Avoid_: self-heard rerun, rerun workflow
 
+**Owning repo**:
+The one repo a kind of fix belongs in: this one for the machine, `design-kit` for a kit primitive,
+`agent-skills` for a skill or shared tool. A builder whose ticket's first step belongs there answers
+`owned`: it files that step there as a ticket and its own ticket waits on it. The closer wakes it
+from that repo's close run, so the owning repo carries the caller file; one that lacks it gets the
+owner called on the waiting ticket instead.
+_Avoid_: upstream, other repo, dependency
+
 **Probe**:
 A script or prompt `bin/probe --in <repo>` runs in the builder's environment, with no ticket or
 GitHub token; nothing runs after it.
@@ -256,7 +264,7 @@ _Avoid_: flake, glitch
 
 **Resume**:
 Setting a held issue going again. Taking `waiting` off a ticket resumes its build; the closer takes it
-off once every piece of its split, fault it filed and issue its `## Waits on` names has closed. Taking `paused`
+off once every piece of its split, fault or first step it filed and issue its `## Waits on` names has closed. Taking `paused`
 or `stuck` off a ticket that then holds neither builds it again on the branch its last run kept,
 its builder resuming its session. Taking either off an open spec that then holds neither runs its
 scheduler again from its integration branch and progress comment.

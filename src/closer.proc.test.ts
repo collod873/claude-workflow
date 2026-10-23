@@ -1,9 +1,9 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { waitsOnFault } from "./builder.ts";
+import { waitsOnFault, waitsOnStep } from "./builder.ts";
 import { closing, type FaultOrigin } from "./closer.part.ts";
-import { faultOf } from "./post.ts";
+import { faultOf, firstStepOf } from "./post.ts";
 import { git, holds, workflowJobs } from "./scenarios.ts";
 
 describe("bin/close <ticket> <pr> closes a ticket once bin/land merged its PR, since its reviewer and the full check already judged it (#931, ADR-0012)", () => {
@@ -241,6 +241,25 @@ describe("bin/close wakes a foreign ticket waiting on a machine fault its builde
     expect(result.status, result.stderr).toBe(0);
     expect(woken(calls())).toBeGreaterThanOrEqual(0);
     expect(calls()[told(calls())]).toContain("#812 merged, #813 closed unbuilt");
+  });
+});
+
+describe("bin/close wakes a ticket waiting on a first step its builder handed to the repo that owns it, in that repo's close run, where Lumaria#1382 sat stuck until the owner filed design-kit#191", () => {
+  const step = (filed: string) => `https://github.com/collod873/design-kit/issues/${filed}`;
+  const parked = `${waitsOnStep("1382", "collod873/design-kit", [step("191")])} the kit's map needs coordinates`;
+  const stepBody = ["## Why", "", firstStepOf("collod873/Lumaria#1382"), "", "> The kit's map needs coordinates.", "", "## Done when", "", "- It draws from a place ID.", ""].join("\n");
+  const origin: FaultOrigin = { repo: "collod873/Lumaria", ticket: "1382", labels: ["ticket", "waiting"], said: [parked], filed: { "191": "CLOSED COMPLETED" } };
+
+  it("wakes it in its own repo once the step closes in the owning repo", () => {
+    const { run, calls, repos } = closing({ ticket: "191", closedIssue: "191", closedIn: "collod873/design-kit", ticketBody: stepBody, faultOrigin: origin });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    const woken = calls().findIndex((call) => call.trimEnd() === "issue\nedit\n1382\n--remove-label\nwaiting");
+    expect(woken).toBeGreaterThanOrEqual(0);
+    expect(repos()[woken]).toBe("collod873/Lumaria");
+    expect(result.stdout).toContain("collod873/Lumaria#1382 builds now");
   });
 });
 

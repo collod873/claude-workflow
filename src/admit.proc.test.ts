@@ -56,16 +56,17 @@ describe("bin/admit lets a ticket into its build before anything marks it (#1022
     expect(comments()[0]).toContain("collod873/Lumaria#931");
   });
 
-  it("admits a machine fault the App filed from a split piece, which builds in its own repo with no spec above it (Lumaria #1090)", () => {
-    for (const body of [SPLIT_PIECE]) {
-      const { run, comments } = admitting({ opener: APP, body: FAULT, origin: fromLumaria(APP, undefined, body) });
+  it.each([
+    ["a machine fault the App filed from a split piece, which builds in its own repo with no spec above it (Lumaria #1090)", FAULT, fromLumaria(APP, undefined, SPLIT_PIECE)],
+    ["a first step the App filed in the repo that owns it from a ticket the owner opened, so the step builds there", FAULT.replace("as the machine's fault.", "as its first step."), fromLumaria("collod873", undefined)],
+  ])("admits %s", (_, body, origin) => {
+    const { run, comments } = admitting({ opener: APP, body, origin });
 
-      const result = run();
+    const result = run();
 
-      expect(result.status, result.stderr).toBe(0);
-      expect(result.stdout).toBe("admitted=true\n");
-      expect(comments()).toEqual([]);
-    }
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toBe("admitted=true\n");
+    expect(comments()).toEqual([]);
   });
 
   it("refuses a machine fault whose origin ticket was itself opened by the App under no spec, naming the origin (#1203)", () => {

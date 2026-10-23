@@ -418,12 +418,12 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
 
   it("files a machine fault found in a foreign tree as a ticket in the machine's repo, and parks its own ticket waiting on it, where Lumaria #828 landed a fix into Lumaria's main (#1143)", () => {
     const reason = "the machine's check has no database";
-    const { run, calls, filed, ticketComments, marked, landed, closes, handed } = fixing({ calledFrom: CALLER, answer: { outcome: "machine", reason, tickets: [FAULT] }, claude: FIXES });
+    const { run, createdIn, filed, ticketComments, marked, landed, closes, handed } = fixing({ calledFrom: CALLER, answer: { outcome: "machine", reason, tickets: [FAULT] }, claude: FIXES });
 
     const result = run();
 
     expect(result.status, result.stderr).toBe(0);
-    expect(calls().filter((args) => args[1] === "create").map((args) => args.slice(args.indexOf("--repo"), args.indexOf("--repo") + 2))).toEqual([["--repo", "collod873/claude-workflow"]]);
+    expect(createdIn()).toEqual(["collod873/claude-workflow"]);
     expect(filed()).toHaveLength(1);
     expect(filed()[0]).toMatch(/^## Why\n\nFiled by the builder of collod873\/Lumaria#811, which waits on it/);
     expect(filed()[0]).toContain(`> ${FAULT.why}`);
@@ -433,6 +433,43 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
     expect(landed()).toEqual([]);
     expect(closes()).toEqual([]);
     expect(handed()).toHaveLength(1);
+  });
+
+  const KIT_STEP = { title: "Draw the address map from the place ID alone", why: "The kit's address map needs coordinates, so Lumaria cannot stop storing them.", done: ["The address map draws from a place ID with no coordinates."] };
+
+  it("hands a first step another repo owns to that repo as a ticket, and parks its own ticket waiting on it, where Lumaria#1382 and #1393 sat stuck until the owner filed design-kit#191 and #193", () => {
+    const reason = "the kit's map needs coordinates, so the fix starts in design-kit";
+    const { run, createdIn, filed, ticketComments, marked, landed, handed } = fixing({ calledFrom: CALLER, answer: { outcome: "owned", repo: "collod873/design-kit", reason, tickets: [KIT_STEP] }, claude: FIXES });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(createdIn()).toEqual(["collod873/design-kit"]);
+    expect(filed()[0]).toMatch(/^## Why\n\nFiled by the builder of collod873\/Lumaria#811, which waits on it, as its first step\.\n\n> The kit's address map/);
+    expect(ticketComments().at(-1)).toMatch(new RegExp(`^The builder of #811 handed its first step to collod873/design-kit and filed https://github.com/collod873/design-kit/issues/901\\. #811 waits on it, labelled \`waiting\`, and the closer wakes it once every one of them closes: ${reason}`));
+    expect(marked()).toEqual(["811 building", "811 waiting"]);
+    expect(landed()).toEqual([]);
+    expect(handed()).toHaveLength(1);
+  });
+
+  it("calls the owner on a first step handed to a repo with no caller file, since nothing there hears it close", () => {
+    const { run, ticketComments, marked } = fixing({ calledFrom: CALLER, answer: { outcome: "owned", repo: "collod873/design-kit", reason: "the fix starts in design-kit", tickets: [KIT_STEP] }, claude: FIXES, unheardIn: "collod873/design-kit" });
+
+    expect(run().status).toBe(0);
+    expect(ticketComments().at(-1)).toMatch(/^The builder of #811 handed its first step to collod873\/design-kit and filed https:\/\/github.com\/collod873\/design-kit\/issues\/901\. #811 waits on it, labelled `waiting`\. @collod873 collod873\/design-kit carries no caller file, so nothing hears it close: take `waiting` off #811 once every one of them closes:/);
+    expect(marked()).toEqual(["811 building", "811 waiting"]);
+  });
+
+  it("hands back a first step named for its own repo, or for no repo, filing nothing", () => {
+    const own = fixing({ calledFrom: CALLER, answer: { outcome: "owned", repo: "collod873/Lumaria", reason: "the fix starts here", tickets: [KIT_STEP] }, claude: SPENT_BY_THE_THIRD_ROUND, stageMinutes: "1" });
+    const none = fixing({ calledFrom: CALLER, answer: { outcome: "owned", reason: "the fix starts elsewhere", tickets: [KIT_STEP] }, claude: SPENT_BY_THE_THIRD_ROUND, stageMinutes: "1" });
+
+    expect(own.run().status).toBe(1);
+    expect(own.filed()).toEqual([]);
+    expect(own.handed()[1]).toContain("collod873/Lumaria is this ticket's own repo");
+    expect(none.run().status).toBe(1);
+    expect(none.filed()).toEqual([]);
+    expect(none.handed()[1]).toContain("names the repo that owns its first step as `repo`");
   });
 
   it("tells a builder in a foreign tree to file a machine fault here, not to land it on the tree's main (#1143)", () => {

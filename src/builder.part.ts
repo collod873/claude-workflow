@@ -44,7 +44,7 @@ function branchedSession(session: string, who: string, onMain: Record<string, st
 
 export function fixing({
   body = FIXED_TICKET,
-  answer = { outcome: "code", reason: "the export was never renamed" } as { outcome: string; reason: string; body?: string; tickets?: unknown[]; steps?: unknown[] },
+  answer = { outcome: "code", reason: "the export was never renamed" } as { outcome: string; reason: string; body?: string; repo?: string; tickets?: unknown[]; steps?: unknown[] },
   review = { outcome: "approve", reason: "it builds the Why", risks: [] } as { outcome: string; reason: string; steps?: unknown[]; fixes?: unknown[]; risks?: unknown[] },
   reviewer = "",
   land = "",
@@ -71,6 +71,7 @@ export function fixing({
   repo = "collod873/Lumaria",
   openTickets = [] as { number: number; title: string; body: string }[],
   appKeyFile = undefined as string | undefined,
+  unheardIn = undefined as string | undefined,
 } = {}) {
   const root = scratch("builder-");
   const session = join(root, "session");
@@ -121,9 +122,10 @@ export function fixing({
       `  *"api"*"issues/${ticket}/comments"*) cat "${join(root, "on-ticket.json")}" ;;`,
       "  *\"api\"*\"repos/{owner}/{repo}/installation\"*) printf '4242\\n' ;;",
       "  *\"api\"*\"app/installations/4242/access_tokens\"*) printf 'minted-%s\\n' \"$n\" ;;",
+      ...(unheardIn === undefined ? [] : [`  *"api repos/${unheardIn}/contents/.github/workflows/machine.yml"*) printf 'gh: Not Found (HTTP 404)\\n' >&2; exit 1 ;;`]),
       ...openedCases(root, opener, body, parent, ticket),
       `  *"issue list"*) cat "${join(root, "open-tickets.json")}" ;;`,
-      `  *"issue create"*) n=$(( $(cat "${join(root, "created")}" 2>/dev/null || echo 900) + 1 )); printf '%s\\n' "$n" >"${join(root, "created")}"; printf 'https://github.com/collod873/claude-workflow/issues/%s\\n' "$n" ;;`,
+      `  *"issue create"*) n=$(( $(cat "${join(root, "created")}" 2>/dev/null || echo 900) + 1 )); printf '%s\\n' "$n" >"${join(root, "created")}"; repo=collod873/claude-workflow; prev=; for arg in "$@"; do [ "$prev" = --repo ] && repo=$arg; prev=$arg; done; printf 'https://github.com/%s/issues/%s\\n' "$repo" "$n" ;;`,
       `  *"issue view"*"title,body,labels"*) cat "${join(root, "ticket.json")}" ;;`,
       `  *"issue view"*"body,title"*) printf 'Build what the ticket asks\\001%s' "$(cat "${join(root, "ticket-body")}")" ;;`,
       `  *"issue view"*"labels"*"--jq"*) cat "${join(root, "labels")}" ;;`,
@@ -176,6 +178,7 @@ export function fixing({
     edits: () => calls().filter((args) => args[0] === "issue" && args[1] === "edit" && args.includes("--body")).map(bodyOf),
     labelled: () => calls().filter((args) => args[0] === "issue" && args[1] === "edit" && !args.includes("--body")).map((args) => args.slice(2).join(" ")),
     filed: () => calls().filter((args) => args[0] === "issue" && args[1] === "create").map(bodyOf),
+    createdIn: () => calls().filter((args) => args[0] === "issue" && args[1] === "create").map((args) => args[args.indexOf("--repo") + 1]),
     closes: () => calls().filter((args) => (args[0] === "issue" || args[0] === "pr") && args[1] === "close"),
     keptSession: (under = "builder") => {
       const file = join(home, ".claude", under, ticket);

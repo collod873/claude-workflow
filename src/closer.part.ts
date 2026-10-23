@@ -50,6 +50,7 @@ export function closing({
   closedIssue,
   statusRefused = false,
   rootCauses,
+  closedIn = "collod873/claude-workflow",
 }: {
   ticket?: string;
   ticketBody?: string;
@@ -64,6 +65,7 @@ export function closing({
   closedIssue?: string;
   statusRefused?: boolean;
   rootCauses?: string;
+  closedIn?: string;
 } = {}) {
   const root = scratch("closer-");
   const session = join(root, "session");
@@ -147,7 +149,8 @@ export function closing({
           GH_TOKEN: "app",
           QUIET_GH_TOKEN: "quiet",
           GITHUB_SERVER_URL: "https://github.com",
-          GITHUB_REPOSITORY: "collod873/claude-workflow",
+          GITHUB_REPOSITORY: closedIn,
+          GH_REPO: closedIn,
           GITHUB_RUN_ID: CLOSE_RUN_ID,
           GH_RETRY_SECONDS: "0",
           ...(calledFrom === undefined ? {} : { CALLED_FROM: calledFrom }),

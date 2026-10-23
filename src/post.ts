@@ -111,13 +111,15 @@ export const REVIEW_LET_THROUGH = ": its reviewer let this through.";
 export const REVIEW_FROM = followUpFrom(REVIEW_LET_THROUGH);
 const FAULT_OF = "Filed by the builder of ";
 const FAULT_WAITS = ", which waits on it, as the machine's fault";
+const STEP_WAITS = ", which waits on it, as its first step";
 export const faultOf = (origin: string) => `${FAULT_OF}${origin}${FAULT_WAITS}.`;
+export const firstStepOf = (origin: string) => `${FAULT_OF}${origin}${STEP_WAITS}.`;
 export const MACHINE_REPO = `${OWNER}/claude-workflow`;
 const callerRepo = /^([^/]+\/[^/]+)\//.exec(process.env.CALLED_FROM ?? "")?.[1];
 export const FOREIGN = callerRepo !== undefined && callerRepo !== MACHINE_REPO;
 export const ENROLLED_CALLER = "machine.yml";
 export const CALLER_FILE = /\/([^/@]+)@/.exec(process.env.CALLED_FROM ?? "")?.[1] ?? ENROLLED_CALLER;
-export const FAULT_FROM = new RegExp(`^${FAULT_OF}(${OWNER}/[\\w.-]+)#(\\d+)${FAULT_WAITS}\\.`, "m");
+export const FAULT_FROM = new RegExp(`^${FAULT_OF}(${OWNER}/[\\w.-]+)#(\\d+)(?:${FAULT_WAITS}|${STEP_WAITS})\\.`, "m");
 export function followUpBody(whyLines: string[], done: string[]): string {
   return ["## Why", "", ...whyLines, "", "## Done when", "", ...done.map((sentence) => `- ${sentence}`), ""].join("\n");
 }
