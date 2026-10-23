@@ -70,6 +70,7 @@ export function fixing({
   ticket = "811",
   repo = "collod873/Lumaria",
   openTickets = [] as { number: number; title: string; body: string }[],
+  appKeyFile = undefined as string | undefined,
 } = {}) {
   const root = scratch("builder-");
   const session = join(root, "session");
@@ -84,14 +85,17 @@ export function fixing({
   const ranIn = join(root, "ran-in");
   const opens = join(root, "pr-opens");
   const caps = join(root, "caps");
+  const envs = join(root, "envs");
   const { setup, calls } = ghArgv(argvDir);
   mkdirSync(spent, { recursive: true });
   mkdirSync(hires, { recursive: true });
+  mkdirSync(envs, { recursive: true });
+  const envKept = (who: string) => `{ env; printf -- '--- github headers\\n'; git config --get-all http.https://github.com/.extraheader; ${appKeyFile === undefined ? "" : `cat "${appKeyFile}" 2>/dev/null; `}} >"${envs}/${who}-$(ls "${envs}" | wc -l)"\ntrue\n`;
   script(join(root, "bin", "check"), `printf 'check %s\\n' "$PWD" >>"${ranIn}"\n${check}`);
-  script(join(machine, "mark"), `printf '%s\\n' "$*" >>"${marks}"\n${refusedMark(markRefusal)}`);
-  script(join(machine, "land"), `printf '%s %s\\n' "$(git rev-parse HEAD)" "$*" >>"${lands}"\n${land}\nprintf 'Landed https://github.com/%s/pull/9${ticket}\\n' "\${GH_REPO:-collod873/claude-workflow}"\n`);
+  script(join(machine, "mark"), `printf '%s\\n' "$*" >>"${marks}"\n${envKept("mark")}${refusedMark(markRefusal)}`);
+  script(join(machine, "land"), `printf '%s %s\\n' "$(git rev-parse HEAD)" "$*" >>"${lands}"\n${envKept("land")}${land}\nprintf 'Landed https://github.com/%s/pull/9${ticket}\\n' "\${GH_REPO:-collod873/claude-workflow}"\n`);
   script(join(root, "bin", "timeout"), `printf '%s\\n' "$2" >>"${caps}"\nshift 2\nexec "$@"\n`);
-  script(join(machine, "close"), `printf '%s\\n' "$*" >>"${closes}"\n`);
+  script(join(machine, "close"), `printf '%s\\n' "$*" >>"${closes}"\n${envKept("close")}`);
   branchedSession(session, "builder", { "src/ticket-shape.ts": "export const shaped = 1;\n", ...onMain, ...(contract === undefined ? {} : { ".claude/contract.json": contract }) }, { "src/ticket-shape.test.ts": AUTHORED_TEST }, `ticket/${ticket}`);
   git(session, "commit", "--quiet", "--allow-empty", "-m", `Build #${ticket} against its failing tests`);
   for (const [path, text] of Object.entries(leftover)) plant(session, path, text);
@@ -114,6 +118,8 @@ export function fixing({
       'case "$*" in',
       ...(unreadable === undefined ? [] : [`  ${unreadable}) printf 'gh: Bad credentials (HTTP 401)\\n' >&2; exit 1 ;;`]),
       `  *"api"*"issues/${ticket}/comments"*) cat "${join(root, "on-ticket.json")}" ;;`,
+      "  *\"api\"*\"repos/{owner}/{repo}/installation\"*) printf '4242\\n' ;;",
+      "  *\"api\"*\"app/installations/4242/access_tokens\"*) printf 'minted-%s\\n' \"$n\" ;;",
       ...openedCases(root, opener, body, parent, ticket),
       `  *"issue list"*) cat "${join(root, "open-tickets.json")}" ;;`,
       `  *"issue create"*) n=$(( $(cat "${join(root, "created")}" 2>/dev/null || echo 900) + 1 )); printf '%s\\n' "$n" >"${join(root, "created")}"; printf 'https://github.com/collod873/claude-workflow/issues/%s\\n' "$n" ;;`,
@@ -137,6 +143,7 @@ export function fixing({
       `CALL=$(( $(ls "${spent}" | wc -l) + 1 ))`,
       `printf 'claude %s\\n' "$PWD" >>"${ranIn}"`,
       `printf '%s\\0' "$@" >"${hires}/$CALL"`,
+      envKept("claude"),
       `cat >"${spent}/$CALL"`,
       `if grep -q '"approve"' "${hires}/$CALL"; then`,
       reviewer,
@@ -160,6 +167,7 @@ export function fixing({
     landed: () => listed(lands),
     closed: () => listed(closes),
     capped: () => listed(caps),
+    ranWith: (who: string) => readdirSync(envs).filter((name) => name.startsWith(`${who}-`)).sort((one, other) => Number(one.split("-")[1]) - Number(other.split("-")[1])).map((name) => readFileSync(join(envs, name), "utf8")),
     calls,
     ranIn: () => [...new Set(listed(ranIn))],
     ticketComments: () => calls().filter((args) => args[0] === "issue" && args[1] === "comment").map(bodyOf),
@@ -174,7 +182,7 @@ export function fixing({
     captured: (name: string) => join(root, "captures", name),
     log: (...args: string[]) => git(session, "log", ...args),
     run: (...args: string[]) =>
-      execute(join(BIN, "fix"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}`, HOME: home, MACHINE_BIN: machine, SESSION_CAPTURES: join(root, "captures"), STAGE_MINUTES: stageMinutes, ...(calledFrom === undefined ? {} : { CALLED_FROM: calledFrom, GH_REPO: repo }), ...(Object.keys(treePath).length === 0 ? {} : { TREE_PATH: join(root, "tree-bin") }) }, args.length === 0 ? [ticket] : args),
+      execute(join(BIN, "fix"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}`, HOME: home, MACHINE_BIN: machine, SESSION_CAPTURES: join(root, "captures"), STAGE_MINUTES: stageMinutes, ...(calledFrom === undefined ? {} : { CALLED_FROM: calledFrom, GH_REPO: repo }), ...(appKeyFile === undefined ? {} : { APP_KEY_FILE: appKeyFile, GH_TOKEN: "job-token", QUIET_GH_TOKEN: "job-token" }), ...(Object.keys(treePath).length === 0 ? {} : { TREE_PATH: join(root, "tree-bin") }) }, args.length === 0 ? [ticket] : args),
   };
 }
 

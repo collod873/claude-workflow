@@ -1,8 +1,9 @@
-import { readdirSync, readFileSync, realpathSync } from "node:fs";
+import { createVerify, generateKeyPairSync } from "node:crypto";
+import { readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { BUILDER_SESSION, CHECK_PASSES, CHECK_RED, FULL_CHECK_RED_ONCE, fixing, SPENT_BY_THE_THIRD_ROUND } from "./builder.part.ts";
-import { createdIssues, onPath } from "./scenarios.ts";
+import { createdIssues, git, onPath, scratch } from "./scenarios.ts";
 import { HELD } from "./spelled.ts";
 
 const FIXES = "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n";
@@ -12,6 +13,22 @@ const FIXES_EACH_ROUND = "printf 'export const shaped = %s;\\n' \"$((CALL + 1))\
 const MOVES_MAIN = 'git update-ref refs/heads/main "$(git commit-tree -p main -m "Land the reviewer fix #811 needed" "$(git rev-parse "main^{tree}")")"\n';
 const FILED_IN_SESSION = "## Why\n\nThe owner: \"read what I said\".\n\nSession: `ca2517b0-5e2d-46e7-a894-7fc3a4b978b2` · [sessions](https://github.com/collod873/transcripts/blob/main/issues/claude-workflow-811.md)\n\n## Done when\n\n- The builder reads it.\n";
 const FIXED_TICKET_NAMING = (files: string) => `## Why\n\nThe owner: "the fault sits in ${files}".\n\n## Done when\n\n- The builder clears a red ticket.\n`;
+const APP_CLIENT_ID = "Iv23liAppClient";
+const appKeyed = () => {
+  const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048, privateKeyEncoding: { type: "pkcs8", format: "pem" }, publicKeyEncoding: { type: "spki", format: "pem" } });
+  const file = join(scratch("app-key-"), "app-key.json");
+  writeFileSync(file, JSON.stringify({ clientId: APP_CLIENT_ID, key: privateKey }));
+  return { file, privateKey, publicKey };
+};
+const envOf = (dump: string | undefined, name: string) => new RegExp(`^${name}=(.*)$`, "m").exec(dump ?? "")?.[1];
+const githubHeaders = (dump: string | undefined) => {
+  const held = (dump ?? "").split("--- github headers\n")[1]?.trimEnd().split("\n").filter((line) => line.startsWith("AUTHORIZATION") || line === "") ?? [];
+  return held.slice(held.lastIndexOf("") + 1);
+};
+const claimsSignedBy = (jwt: string, publicKey: string) => {
+  const [head = "", claims = "", signature = ""] = jwt.split(".");
+  return createVerify("RSA-SHA256").update(`${head}.${claims}`).verify(publicKey, signature, "base64url") ? (JSON.parse(Buffer.from(claims, "base64url").toString("utf8")) as { iss?: string }) : undefined;
+};
 const untouched = ({ marked, handed, calls }: ReturnType<typeof fixing>) => {
   expect(marked()).toEqual([]);
   expect(handed()).toEqual([]);
@@ -569,6 +586,55 @@ describe("a fresh reviewer reads each green build, fixes or approves it, and bin
     expect(hired()[2]).toContain(BUILDER_SESSION);
     expect(landed()).toHaveLength(2);
     expect(closed()).toEqual(["811 9811"]);
+  });
+
+  it("lands and closes on an App token minted before each bin/land, signed by a key the builder took off disk before any model ran, where Lumaria#1332's push failed on credentials past its job's first hour (#1504)", () => {
+    const { file, privateKey, publicKey } = appKeyed();
+    const { run, session, ranWith, calls } = fixing({ claude: FIXES, reviewer: REVIEWER_FIXES, land: LAND_REFUSES_ONCE, appKeyFile: file });
+    git(session, "config", "http.https://github.com/.extraheader", "AUTHORIZATION: basic job-token");
+
+    const result = run();
+    expect(result.status, result.stderr).toBe(0);
+    const [refused, landed] = ranWith("land");
+    const [closed] = ranWith("close");
+    const token = envOf(landed, "GH_TOKEN");
+    expect(token).toMatch(/^minted-\d+$/);
+    expect(envOf(refused, "GH_TOKEN")).toMatch(/^minted-\d+$/);
+    expect(envOf(refused, "GH_TOKEN")).not.toBe(token);
+    expect(githubHeaders(landed)).toEqual([`AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`]);
+    expect([envOf(closed, "GH_TOKEN"), envOf(closed, "QUIET_GH_TOKEN")]).toEqual([token, token]);
+    const bearers = calls().flatMap((args) => args.filter((arg) => arg.startsWith("Authorization: Bearer ")).map((arg) => arg.slice("Authorization: Bearer ".length)));
+    expect(bearers.length).toBeGreaterThan(0);
+    for (const jwt of bearers) expect(claimsSignedBy(jwt, publicKey)?.iss).toBe(APP_CLIENT_ID);
+    const models = ranWith("claude");
+    expect(models).toHaveLength(3);
+    for (const model of models) {
+      expect(model).not.toContain(privateKey.split("\n")[1]);
+      expect(model).not.toContain(APP_CLIENT_ID);
+    }
+  });
+
+  it("marks checking and calls the owner on an App token minted after the model that ran before each, so a reviewer answering stuck past the job's first hour still reaches the owner (#1504)", () => {
+    const { run, ranWith, marked } = fixing({ claude: FIXES, review: { outcome: "stuck", reason: "the diff builds a different Why" }, appKeyFile: appKeyed().file });
+
+    const result = run();
+
+    expect(marked()).toEqual(["811 building", "811 checking", "811 stuck"]);
+    const [building, checking, stuck] = ranWith("mark").map((dump) => envOf(dump, "GH_TOKEN"));
+    expect(building).toBe("job-token");
+    expect(checking).toMatch(/^minted-\d+$/);
+    expect(stuck).toMatch(/^minted-\d+$/);
+    expect(stuck, result.stderr).not.toBe(checking);
+  });
+
+  it("ends red at unread, landing nothing, when no fresh App token can be minted after the builder ran (#1504)", () => {
+    const { run, landed } = fixing({ claude: FIXES, appKeyFile: appKeyed().file, unreadable: '*"access_tokens"*' });
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("a fresh App token could not be minted");
+    expect(landed()).toEqual([]);
   });
 
   it("calls the owner when bin/land refuses twice in a row and the reviewer changes nothing", () => {
