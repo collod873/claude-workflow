@@ -13,7 +13,7 @@ const ALWAYS_REFUSES = `printf '%s\\n' '${REFUSAL}' >&2\nexit 1`;
 
 const SLICED = (slices: { id: string; title: string; fix?: boolean }[], fixPass = false) =>
   `## Spec run\n\n<!-- progress: ${JSON.stringify({ fixPass, slices: slices.map(({ id, title, fix = false }) => ({ id, title, why: `${title} is why ${id} was cut`, done: [`${id} shows on the branch`], blockedBy: [], state: "merged", tries: 1, fix })) })} -->`;
-const MISSED = "## Done check\n\n1. **Missed**: see each slice's file on main\n   found no zone file on main";
+const MISSED = "## Done check\n\n1. **Did not hold**: see each slice's file on main\n   found no zone file on main";
 
 describe("bin/finish reviews a spec's integration branch on the spec, then on the code standard, lands it once and runs the done check (ADR-0013)", () => {
   it("hires one reviewer on the spec over the whole branch, then runs the full check, then one on the code standard reading the first's fix, lands with bin/land --spec, and prints landed and missed last", () => {
@@ -232,7 +232,7 @@ describe("bin/finish splits the review on the code standard per slice, by the co
 });
 
 describe("bin/finish hands bin/land's refusal back to the last reviewer, as a ticket's review does (ADR-0012)", () => {
-  it("resumes the reviewer on the code standard with what bin/land said, lands what it fixed, and comments its new reason in place of its old one", () => {
+  it("resumes the reviewer on the code standard with what bin/land said, lands what it fixed, and comments its new reason after the review it gave first", () => {
     const finished = finishing({ land: REFUSES_ONCE, reviewer: '  [ "$CALL" = 3 ] && printf \'export const zone = 3;\\n\' >src/zone.ts' });
 
     expect(finished.run().status).toBe(0);
@@ -240,7 +240,7 @@ describe("bin/finish hands bin/land's refusal back to the last reviewer, as a ti
     expect(third[third.indexOf("--resume") + 1]).toBe("review-2");
     expect(finished.handed()[2]).toContain(REFUSAL);
     expect(finished.landed()).toHaveLength(2);
-    expect(finished.approved()).toEqual(["On the spec: reason 1\n\nOn the code standard: reason 2", "On the spec: reason 1\n\nOn the code standard: reason 3"]);
+    expect(finished.approved()).toEqual(["On the spec: reason 1\n\nOn the code standard: reason 2", "On the spec: reason 1\n\nOn the code standard: reason 2\n\nAfter `bin/land` refused it: reason 3"]);
   });
 
   it("lands nothing more once the spec is marked paused while bin/land's refusal was fixed", () => {
@@ -334,10 +334,4 @@ describe("every risk a spec's reviewer names ends somewhere, as a ticket's revie
     expect(approved).toContain(`- needs nothing: ${NEEDS_NOTHING.risk} ${NEEDS_NOTHING.why}`);
   });
 
-  it("posts the reviewers' reasons and then what the last one changed for bin/land, once bin/land refused", () => {
-    const finished = finishing({ land: REFUSES_ONCE });
-
-    expect(finished.run().status).toBe(0);
-    expect(finished.approved()).toEqual(["On the code standard: reason 1\n\nOn the spec: reason 2", "On the code standard: reason 1\n\nOn the spec: reason 2\n\nAfter `bin/land` refused it: reason 3"]);
-  });
 });

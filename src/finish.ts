@@ -156,6 +156,7 @@ interface Reviewer {
   seat: string;
   on: string;
   slice?: string;
+  stepped: boolean;
 }
 
 interface Finished {
@@ -214,7 +215,7 @@ function answered({ spec, said, app, left }: Run, reviewer: Reviewer, input: str
   committed(commit, "fix");
   if (reviewer.slice !== undefined && reviewer.slice !== UNSLICED && git(["merge-base", "--is-ancestor", before, "HEAD"]).status === 0) sliceTrailed(before, reviewer.slice);
   pushedForRerun(spec);
-  left.set(reviewer.seat, approved);
+  left.set(reviewer.seat, reviewer.stepped ? approved : { ...approved, steps: [] });
   return approved;
 }
 
@@ -261,6 +262,7 @@ function reviews(run: Run, { title, body }: { title: string; body: string }): Re
     seat,
     on: `On the ${on}${slice === undefined ? "" : `, ${sliceNamed(slice)}`}`,
     slice,
+    stepped: answers === ANSWER,
   });
   const onSpec = reviewer(`${spec}-spec`, "spec", ANSWER);
   const approved = told(run, onSpec, onTheSpec(wholeBranch(), { spec, title, body, commitlint, briefs: briefsOf(progress), findings }), `Review #${spec} on the spec`);
