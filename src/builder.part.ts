@@ -92,7 +92,7 @@ export function fixing({
   mkdirSync(envs, { recursive: true });
   const envKept = (who: string) => `{ env; printf -- '--- github headers\\n'; git config --get-all http.https://github.com/.extraheader; ${appKeyFile === undefined ? "" : `cat "${appKeyFile}" 2>/dev/null; `}} >"${envs}/${who}-$(ls "${envs}" | wc -l)"\ntrue\n`;
   script(join(root, "bin", "check"), `printf 'check %s\\n' "$PWD" >>"${ranIn}"\n${check}`);
-  script(join(machine, "mark"), `printf '%s\\n' "$*" >>"${marks}"\n${refusedMark(markRefusal)}`);
+  script(join(machine, "mark"), `printf '%s\\n' "$*" >>"${marks}"\n${envKept("mark")}${refusedMark(markRefusal)}`);
   script(join(machine, "land"), `printf '%s %s\\n' "$(git rev-parse HEAD)" "$*" >>"${lands}"\n${envKept("land")}${land}\nprintf 'Landed https://github.com/%s/pull/9${ticket}\\n' "\${GH_REPO:-collod873/claude-workflow}"\n`);
   script(join(root, "bin", "timeout"), `printf '%s\\n' "$2" >>"${caps}"\nshift 2\nexec "$@"\n`);
   script(join(machine, "close"), `printf '%s\\n' "$*" >>"${closes}"\n${envKept("close")}`);

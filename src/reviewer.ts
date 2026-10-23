@@ -104,11 +104,11 @@ export function reviewedAndLanded(ticket: string, body: string, alongside: strin
     const spent = spend(input, session);
     session = spent.session ?? session;
     if (spent.refusal !== undefined) return triedAgainLater(ticket, spent.refusal);
+    if (app !== undefined) freshAppToken(app, gh, `so the review of #${ticket} is not acted on`);
     const answer = spent.answer as Answer | undefined;
     if (answer?.outcome === "stuck") return calledOwner(ticket, "reviewer", answer.reason);
     committed(reviewedBy(ticket), "fix");
     const changed = head() !== before;
-    if (app !== undefined) freshAppToken(app, gh, `so #${ticket} is not landed`);
     const held = heldOn(labelsHeld(ticket, gh));
     if (held !== undefined) {
       console.log(`review: #${ticket} is labelled ${held}, so it does not land; its branch is kept for its next run`);

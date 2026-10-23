@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { admission, doesNotBuild } from "./admit.ts";
-import { type AppKey, takenAppKey } from "./app-token.ts";
+import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
 import { capped, LIST_CAP, NO_EM_DASH, onDisk, sameFiles, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
 import { FULL_CHECK } from "./checks.ts";
 import { BUILDER_SPLIT, commentOnTicket, commentsRead, faultOf, FOLLOW_UP_OF, FOREIGN, followUpBody, gh, ghRead, git, gitRead, MACHINE_REPO, mark, NOTHING_MARKED, OWNER, post, postRefusals, readOrStop, rewriteTicket, FILED_IN, STUCK, ticketBranch, unread, WAITING } from "./post.ts";
@@ -339,6 +339,7 @@ function ownTicket(ticket: string, app: AppKey | undefined): number {
     const spent = spentOn(ticket, spend, input, session, opening);
     session = spent.session ?? session;
     keepSession(ticket, session);
+    if (app !== undefined) freshAppToken(app, gh, `so the build of #${ticket} is not acted on`);
     if (spent.refusal !== undefined) return calledOwner(ticket, "builder", spent.refusal);
     const answer = spent.answer as Answer | undefined;
     const round = outcomeOf(ticket, body, answer, mainBefore);

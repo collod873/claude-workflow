@@ -614,7 +614,20 @@ describe("a fresh reviewer reads each green build, fixes or approves it, and bin
     }
   });
 
-  it("ends red at unread, landing nothing, when no fresh App token can be minted before bin/land (#1504)", () => {
+  it("marks checking and calls the owner on an App token minted after the model that ran before each, so a reviewer answering stuck past the job's first hour still reaches the owner (#1504)", () => {
+    const { run, ranWith, marked } = fixing({ claude: FIXES, review: { outcome: "stuck", reason: "the diff builds a different Why" }, appKeyFile: appKeyed().file });
+
+    const result = run();
+
+    expect(marked()).toEqual(["811 building", "811 checking", "811 stuck"]);
+    const [building, checking, stuck] = ranWith("mark").map((dump) => envOf(dump, "GH_TOKEN"));
+    expect(building).toBe("job-token");
+    expect(checking).toMatch(/^minted-\d+$/);
+    expect(stuck).toMatch(/^minted-\d+$/);
+    expect(stuck, result.stderr).not.toBe(checking);
+  });
+
+  it("ends red at unread, landing nothing, when no fresh App token can be minted after the builder ran (#1504)", () => {
     const { run, landed } = fixing({ claude: FIXES, appKeyFile: appKeyed().file, unreadable: '*"access_tokens"*' });
 
     const result = run();

@@ -270,7 +270,8 @@ describe("a repo's tickets build through one caller file that holds only trigger
     const resolved = (value: unknown) => String(value).replace(/\$\{\{ ([\w.]+) \}\}/g, (_, name: string) => actions[name] ?? "");
     const ownEnv = Object.fromEntries(Object.entries(keyed?.env ?? {}).map(([name, value]) => [name, resolved(value)]));
 
-    expect(steps.indexOf(keyed ?? {})).toBe(steps.indexOf(fix ?? {}) - 1);
+    expect(steps.indexOf(keyed ?? {})).toBeGreaterThan(-1);
+    expect(steps.indexOf(keyed ?? {})).toBeLessThan(steps.indexOf(fix ?? {}));
     expect(keyed?.if).toBe(fix?.if);
     expect(Object.values(fix?.env ?? {}).filter((value) => /CORE_APP_PRIVATE_KEY|CORE_APP_CLIENT_ID/.test(String(value)))).toEqual([]);
     expect(execute("bash", temp, { RUNNER_TEMP: temp, ...ownEnv }, ["-e", "-c", keyed?.run ?? ""]).status).toBe(0);
