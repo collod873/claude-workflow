@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { admission, doesNotBuild } from "./admit.ts";
 import { capped, LIST_CAP, NO_EM_DASH, onDisk, sameFiles, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
 import { FULL_CHECK } from "./checks.ts";
-import { BUILDER_SPLIT, commentOnTicket, commentsRead, faultOf, FOLLOW_UP_OF, FOREIGN, followUpBody, gh, ghRead, git, gitRead, MACHINE_REPO, mark, NOTHING_MARKED, OWNER, post, postRefusals, readOrStop, rewriteTicket, FILED_IN, STUCK, ticketBranch, WAITING } from "./post.ts";
+import { BUILDER_SPLIT, commentOnTicket, commentsRead, faultOf, FOLLOW_UP_OF, FOREIGN, followUpBody, gh, ghRead, git, gitRead, MACHINE_REPO, mark, NOTHING_MARKED, OWNER, post, postRefusals, readOrStop, rewriteTicket, FILED_IN, STUCK, ticketBranch, unread, WAITING } from "./post.ts";
 import { reviewedAndLanded } from "./reviewer.ts";
 import { calledOwner, committed, commitlinted, CONTRACT, linted, opened, setupRefusal, type Spent, treePathed } from "./stage.ts";
 import { BUILDING, TICKET } from "./spelled.ts";
@@ -277,6 +277,12 @@ function spentOn(ticket: string, spend: Spend, input: string, session: string | 
 
 const PAST_MAIN_UNREAD = "the commits past main could not be read, so nothing is reviewed";
 
+function cleanMergeOf(parents: string): string | undefined {
+  const merged = git(["merge-tree", "--write-tree", ...parents.split(" ")]);
+  if (merged.status === 1) return undefined;
+  return merged.status === 0 ? merged.stdout.split("\n")[0] : unread(PAST_MAIN_UNREAD);
+}
+
 function mergesCarryingWork(): string[] {
   const merges = gitRead(["log", "--merges", "--format=%h%x09%T%x09%P%x09%s", "origin/main..HEAD"], PAST_MAIN_UNREAD);
   return merges === ""
@@ -284,10 +290,7 @@ function mergesCarryingWork(): string[] {
     : merges
         .split("\n")
         .map((line) => line.split("\t"))
-        .filter(([, tree = "", parents = ""]) => {
-          const cleanMerge = git(["merge-tree", "--write-tree", ...parents.split(" ")]);
-          return cleanMerge.status !== 0 || cleanMerge.stdout.split("\n")[0] !== tree;
-        })
+        .filter(([, tree = "", parents = ""]) => cleanMergeOf(parents) !== tree)
         .map(([short = "", , , subject = ""]) => `${short} ${subject}`);
 }
 
