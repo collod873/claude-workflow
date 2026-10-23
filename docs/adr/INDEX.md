@@ -12,3 +12,4 @@
 - [ADR-0010](0010-the-machine-keeps-changing-while-a-spec-runs-and-a-measurement-counts-one-machine-version.md): The machine keeps changing while a spec runs, and a measurement counts one machine version
 - [ADR-0011](0011-every-stage-runs-as-the-owners-own-session-does.md): Every stage runs as the owner's own session does
 - [ADR-0012](0012-a-ticket-builds-reviews-and-lands-in-one-run.md): A ticket builds, reviews and lands in one run
+- [ADR-0013](0013-a-spec-is-cut-into-slices-at-their-last-responsible-moment-and-lands-once-from-its-integration-branch.md): A spec is cut into slices at their last responsible moment and lands once from its integration branch

@@ -206,16 +206,12 @@ _Avoid_: dry run, size test, fake cap
 **Trial room line**:
 In a size trial, the room line the slicer reads before its first answer gives the room under the
 spec cap, not the trial cap; only the size refusal, its sent-back prompt and its round log lines use
-the trial cap. Told the trial cap up front, a slicer cuts its record to fit before it answers, and no
-round comes back, so the trial shows nothing of a slicer that misjudges its room. Told the spec cap,
-its first answer goes over the trial cap the way a real over-cap slice goes over the spec cap.
+the trial cap.
 _Avoid_: trial room, dry room line
 
 **Trial cap a check sets**:
 The trial cap the checker's size trial command carries: the owner's bytes plus half the record's
-bytes, both counted from the spec's current body. A cap a few hundred bytes under the spec's size
-let the slicer's own folding of the last wave fit without a round back, so the over-cap sentence was
-never seen; half the record cannot hold a record the slicer only trims.
+bytes, both counted from the spec's current body.
 _Avoid_: trial size, check cap
 
 **Record at the hand-off**:
@@ -274,6 +270,22 @@ again at the next wave check or at the end marks the spec `stuck`. A sentence no
 main could have shown yet it gives `unexercised`, listed as **Not tried yet** with what would have
 to happen for it to be seen; that is never a miss, and the next wave check tries it again.
 _Avoid_: wave review, checkpoint, interim check
+
+**Integration branch**:
+The one branch a spec builds on; every slice fast-forwards it, and it lands once (ADR-0013).
+_Avoid_: spec branch
+
+**Slice**:
+One tracer-bullet unit of a spec, cut at its last responsible moment; never a ticket.
+_Avoid_: piece, task
+
+**Frontier**:
+The slices whose blockers have all merged; only these get a builder.
+_Avoid_: ready queue
+
+**Scheduler**:
+The code that runs a spec, hiring each fresh slicer and builder; it holds no model context.
+_Avoid_: orchestrator
 
 **Ticket**:
 The unit the machine builds: an issue labelled `ticket` carrying `## Why` in the owner's words,
