@@ -825,7 +825,7 @@ const runnerId = (name: string) => [...name].reduce((sum, char) => sum + char.ch
 export const pcRunner = (name: string, status = "online", busy = false, labels = ["pc", "pc-quick"]) => ({ id: runnerId(name), name, status, busy, labels: ["self-hosted", ...labels].map((label) => ({ name: label })) });
 export const quickRunners = () => Array.from({ length: QUICK_RUNNER_COUNT }, (_, at) => pcRunner(`${PC_HOST}-quick-${at + 1}`, "online", false, ["pc-quick"]));
 
-export function switching({ isPrivate = true, runners = [] as object[], variable = "", quickVariable = "", startsOnline = true, slowToStart = [] as string[], stoppedByHand = [] as string[], manyJobs = [] as string[], userExists = true } = {}) {
+export function switching({ isPrivate = true, runners = [] as object[], variable = "", quickVariable = "", startsOnline = true, slowToStart = [] as string[], stoppedByHand = [] as string[], manyJobs = [] as string[], userExists = true, neighbours = [] as { unit: string; slice: string; cpus: string }[] } = {}) {
   const root = scratch("runner-");
   const at = (name: string) => join(root, name);
   writeFileSync(at("runners.json"), JSON.stringify({ runners }));
@@ -877,7 +877,8 @@ export function switching({ isPrivate = true, runners = [] as object[], variable
     writeFileSync(at(`proc/${pid}/environ`), `HOME=/home/ghrunner\0${environ}\0`);
   }
   const manyJobsUnits = manyJobs.map((name) => `actions.runner.${PC_REPO.replace("/", "-")}.${name}.service`).join(" ");
-  script(at("bin/systemctl"), `if [[ $1 == show ]]; then [[ " ${manyJobsUnits} " == *" \${@: -1} "* ]] && echo 2 || echo 1; exit 0; fi\nfor name in ${stoppedByHand.join(" ")}; do [[ \${@: -1} == *".$name.service" ]] && exit 3; done\nexit 0\n`);
+  writeFileSync(at("units"), neighbours.map(({ unit, slice, cpus }) => `Id=${unit}\nSlice=${slice}\nAllowedCPUs=${cpus}\n`).join("\n"));
+  script(at("bin/systemctl"), `if [[ $* == "show --property Id,Slice,AllowedCPUs actions.runner.*" ]]; then cat "${at("units")}"; exit 0; fi\nif [[ $1 == show ]]; then [[ " ${manyJobsUnits} " == *" \${@: -1} "* ]] && echo 2 || echo 1; exit 0; fi\nfor name in ${stoppedByHand.join(" ")}; do [[ \${@: -1} == *".$name.service" ]] && exit 3; done\nexit 0\n`);
   script(at("bin/curl"), "printf '%s\\n' '[{\"version\":\"v25.1.0\",\"lts\":false},{\"version\":\"v24.11.0\",\"lts\":\"Krypton\"}]'\n");
   script(at("bin/sleep"), "");
   script(at("bin/nproc"), "printf '16\\n'\n");

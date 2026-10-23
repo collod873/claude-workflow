@@ -225,16 +225,32 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
     expect(sudo().slice(before).filter((call) => call.includes("restart earlyoom"))).toEqual([]);
   });
 
-  it("holds every PC runner's jobs together under a 20 GB cap with no swap on the PC's last 8 CPUs, and each runner to 10 GB on 4 of them, so a build sizes its workers to 4 and a runaway job is killed rather than slowed", () => {
+  it("holds every PC runner's jobs together under a 28 GB cap with no swap on the PC's last 8 CPUs, and each runner to 12 GB on 4 of them at an equal CPU share with its first 256 MB kept from its neighbours, so a build sizes its workers to 4, a job with more threads takes no more CPU than its neighbour, an idle runner's listener still reaches GitHub, and a runaway job is killed rather than slowed", () => {
     const { run, sudo, placed } = switching();
 
     run("pc");
 
-    expect(placed("/etc/systemd/system/pc-runners.slice").split("\n")).toEqual(expect.arrayContaining(["MemoryMax=20G", "MemorySwapMax=0", "AllowedCPUs=8-15"]));
+    expect(placed("/etc/systemd/system/pc-runners.slice").split("\n")).toEqual(expect.arrayContaining(["MemoryMax=28G", "MemorySwapMax=0", "AllowedCPUs=8-15"]));
     for (const [n, cpus] of [[1, "8-11"], [2, "12-15"]] as const) {
-      expect(placed(`/etc/systemd/system/actions.runner.collod873-Lumaria.${HOST}-${n}.service.d/pc-runner.conf`).split("\n")).toEqual(expect.arrayContaining(["Slice=pc-runners.slice", "MemoryMax=10G", "MemorySwapMax=0", `AllowedCPUs=${cpus}`, "OOMPolicy=continue"]));
+      expect(placed(`/etc/systemd/system/actions.runner.collod873-Lumaria.${HOST}-${n}.service.d/pc-runner.conf`).split("\n")).toEqual(expect.arrayContaining(["Slice=pc-runners.slice", "MemoryMax=12G", "MemoryMin=256M", "MemorySwapMax=0", `AllowedCPUs=${cpus}`, "CPUWeight=100", "OOMPolicy=continue"]));
     }
     expect(sudo()).toContain("bash -c systemctl daemon-reload");
+  });
+
+  it("puts a repo's PC runners on the 4 CPUs fewer of other repos' PC runners hold, so every repo's first runner does not land on the same 4 (#1487)", () => {
+    const { run, placed } = switching({
+      neighbours: [
+        { unit: `actions.runner.collod873-design-kit.${HOST}-1.service`, slice: "pc-runners.slice", cpus: "8-11" },
+        { unit: `actions.runner.collod873-workout-tracker.${HOST}-1.service`, slice: "pc-runners.slice", cpus: "8-11" },
+        { unit: `actions.runner.collod873-chess.${HOST}-1.service`, slice: "pc-runners.slice", cpus: "8-11" },
+        { unit: `actions.runner.collod873-chess.${HOST}-quick-1.service`, slice: "pc-quick-runners.slice", cpus: "12-15" },
+        { unit: `actions.runner.collod873-Lumaria.${HOST}-1.service`, slice: "pc-runners.slice", cpus: "12-15" },
+      ],
+    });
+
+    run("pc");
+
+    for (const n of [1, 2]) expect(placed(`/etc/systemd/system/actions.runner.collod873-Lumaria.${HOST}-${n}.service.d/pc-runner.conf`).split("\n")).toContain("AllowedCPUs=12-15");
   });
 
   it("installs quick runners beside the build runners, labelled pc-quick alone, under their own cap outside the build runners' 20 GB, 1 GB each and their eight together exactly the slice's 8 GB, and points the repo's quick jobs at them", () => {
