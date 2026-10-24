@@ -47,6 +47,6 @@ export default {
   project: ["src/**/*.{js,mjs,ts}"],
   includeEntryExports: true,
   vitest: false,
-  eslint: { config: ["eslint.config.js"] },
+  eslint: { config: ["eslint.config.mjs"] },
   include: ["files", "exports", "nsExports", "types", "nsTypes", "duplicates", "unresolved"],
 };

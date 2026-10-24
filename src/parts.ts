@@ -16,7 +16,7 @@ const FIXED: Part[] = [
   },
   {
     name: "lint step",
-    file: "eslint.config.js",
+    file: ".claude/contract.json",
     stops: "https://github.com/collod873/claude-workflow/issues/360",
   },
   {

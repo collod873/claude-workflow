@@ -1,0 +1,28 @@
+{
+ "source": "collod873/agent-hooks@9dbb0097510611e946d132772f44e81a553b6baa",
+ "layer": "typescript",
+ "files": {
+  "run": "44dac9ce948395b33941a8654ddacc72940911c84111ae2adf0dc49383ea59fb",
+  "typescript/files.mjs": "94b0c88dd1414d592b04a5a82ed238032c4831d99e173fe6b80c8007568edd29",
+  "typescript/index.mjs": "ea02a9dd8a0e2db6b523c794dc2346c5a7b5674654f3223d06213f61f397aa2e",
+  "typescript/plugin.mjs": "9f077de475649cc810fdf231b7b4199c02dca3b63a6e38562d27ab4032d6d116",
+  "typescript/rules/config-predicts-environment.mjs": "f729a2d4a03946559237ca594f5142945d7a9b6b5b0ef65de803bcea54c82140",
+  "typescript/rules/import-bans.mjs": "2760f1ac8c9f5dd843e4cda00608b103f3205ba539085cae6e88c8534fb5ccc1",
+  "typescript/rules/import-sources.mjs": "24354ebaf12258ae105ef0849753d746545b5a0eeb5c7e8675b558015cd0452f",
+  "typescript/rules/no-boundary-mock.mjs": "5c0e0a1147f8561487a13a3c8f15786a7efcf48eae5957871001aa95f3604d5c",
+  "typescript/rules/no-mkdtemp-sync.mjs": "b5630d9ee2aab820ce75c003dd83cd7c53fdff626bb458bc483830d91b9b80da",
+  "typescript/rules/no-sole-classname-assertion.mjs": "7017b086e7e6e778de0e9aa9963c792058c015056fe8d740e06118e63fe53c5e",
+  "typescript/rules/no-top-level-global-write.mjs": "80c42849d5ad28eed06de930fe27046a4685f77c2743b00288e0a6c99e1901a2",
+  "typescript/rules/require-use-client.mjs": "328c7a34396fc84b0700ed92a5a264157a961d49bfbabca4e73f3b180687ce30",
+  "typescript/run": "347eb9509322383c03d0892a4e42a1229084e16d49d90c66691691dc725fa830",
+  "typescript/run.mjs": "e17b640be280cc4a5c1ae4bd12ac4e67dc5581ed8712533bdabe5dcd5c8f75b4",
+  "typescript/stages.mjs": "59e1a7d4fb048a8539e1aa814eca0761bfdb03fb4685d533a795ddf2142c61bf",
+  "typescript/verify.mjs": "de2cdecb80e20c57fef32058f18ccd17c22ef5ee444e4f85e5c4626a720f095b"
+ },
+ "tools": {
+  "@eslint/js": "10.0.1",
+  "eslint": "10.13.0",
+  "globals": "17.13.0",
+  "typescript-eslint": "8.72.0"
+ }
+}
