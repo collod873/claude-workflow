@@ -19,7 +19,7 @@ describe("every risk the ticket's reviewer names ends somewhere: fixed here, a t
     expect(schema.properties.risks?.items?.required).toEqual(expect.arrayContaining(["risk", "ends", "why"]));
     expect(schema.properties.risks?.items?.properties.ends?.enum).toEqual(["fixed", "nothing"]);
     const review = scenario.handed()[1] ?? "";
-    expect(review).toContain("each fault you find is yours to fix on this branch with the smallest change that does it");
+    expect(review).toContain("each fault you find is yours to fix on this branch, kept small");
     expect(review).toContain("The owner hears from your review through `steps` alone.");
     expect(review).toContain("Your review is done once each fault, cost or risk you saw sits in `fixes` or `risks`");
   });
