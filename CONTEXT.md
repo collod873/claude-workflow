@@ -125,7 +125,9 @@ and diff, fixes what it finds or approves, and lands it with `bin/land`, which h
 refuses. Nothing goes back to the builder (ADR-0012). It files owner steps as `owner-step` notes
 and what it lets through as research does. A spec gets two in series at its finish: one on the spec over
 the whole branch, handed each slice's brief, then one on the code standard, last so it holds what the
-first wrote, split per slice only on a very big diff.
+first wrote. Only a diff over 200 KB splits it into **packs**: whole slices packed into as few as fit
+under that cap, one reviewer each, at most three at once, each in its own tree on `review/<N>-code-<k>`
+and rebased onto the integration branch as it answers.
 _Avoid_: review job, judge, second builder
 
 **Closer**:

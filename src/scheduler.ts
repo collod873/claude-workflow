@@ -227,28 +227,26 @@ function building(spec: string, tracked: Tracked, dir: string, brief: string, lo
   });
 }
 
-function worktree(spec: string, id: string, root: string): string {
-  const dir = join(root, id);
+export function worktree(spec: string, branch: string, dir: string): string {
   if (existsSync(dir)) return dir;
-  removed(spec, id, root);
-  gitRead(["worktree", "add", "--quiet", "-b", sliceBranch(spec, id), dir, specBranch(spec)], `a worktree for ${sliceBranch(spec, id)} could not be made`);
+  removed(branch, dir);
+  gitRead(["worktree", "add", "--quiet", "-b", branch, dir, specBranch(spec)], `a worktree for ${branch} could not be made`);
   return dir;
 }
 
-function removed(spec: string, id: string, root: string): void {
-  const dir = join(root, id);
+export function removed(branch: string, dir: string): void {
   git(["worktree", "remove", "--force", dir]);
   rmSync(dir, { recursive: true, force: true });
   git(["worktree", "prune"]);
-  git(["branch", "--quiet", "-D", sliceBranch(spec, id)]);
+  git(["branch", "--quiet", "-D", branch]);
 }
 
-function fastForwarded(spec: string, id: string): boolean {
-  const ancestor = git(["merge-base", "--is-ancestor", specBranch(spec), sliceBranch(spec, id)]);
+export function fastForwarded(spec: string, branch: string): boolean {
+  const ancestor = git(["merge-base", "--is-ancestor", specBranch(spec), branch]);
   if (ancestor.status === 1) return false;
-  if (ancestor.status !== 0) unread(`${sliceBranch(spec, id)} could not be read against ${specBranch(spec)}`);
+  if (ancestor.status !== 0) unread(`${branch} could not be read against ${specBranch(spec)}`);
   cleaned();
-  gitRead(["merge", "--quiet", "--ff-only", sliceBranch(spec, id)], `${specBranch(spec)} would not fast-forward to ${sliceBranch(spec, id)}`);
+  gitRead(["merge", "--quiet", "--ff-only", branch], `${specBranch(spec)} would not fast-forward to ${branch}`);
   pushed(spec);
   return true;
 }
@@ -317,7 +315,7 @@ async function scheduled(spec: string, app: AppKey | undefined): Promise<Stop | 
     if (app !== undefined) freshAppToken(app, gh, `so the spec run of #${spec} does not act after ${what}`);
   };
   const hire = (tracked: Tracked, how: Hiring) => {
-    const dir = worktree(spec, tracked.id, root);
+    const dir = worktree(spec, sliceBranch(spec, tracked.id), join(root, tracked.id));
     const brief = join(root, `${tracked.id}.md`);
     writeFileSync(brief, briefOf(tracked, asked.body));
     tracked.state = "hired";
@@ -401,15 +399,15 @@ async function scheduled(spec: string, app: AppKey | undefined): Promise<Stop | 
       tracked.stopped = built.reason;
       tracked.outOfTime = built.outcome === "outOfTime";
       tracked.state = built.outcome !== "stuck" && tracked.tries < MOST_TRIES ? "cut" : "out";
-      if (tracked.state === "out") removed(spec, tracked.id, root);
+      if (tracked.state === "out") removed(sliceBranch(spec, tracked.id), join(root, tracked.id));
     } else if (built.outcome === "done") {
       tracked.state = "merged";
-      removed(spec, tracked.id, root);
+      removed(sliceBranch(spec, tracked.id), join(root, tracked.id));
       plan = true;
-    } else if (fastForwarded(spec, tracked.id)) {
+    } else if (fastForwarded(spec, sliceBranch(spec, tracked.id))) {
       tracked.state = "merged";
       tracked.left = built.outcome === "partial" ? capped(built.left ?? "", LEFT_CAP) : undefined;
-      removed(spec, tracked.id, root);
+      removed(sliceBranch(spec, tracked.id), join(root, tracked.id));
       plan = true;
     } else {
       hire(tracked, { resume: tracked.session, answer: { outcome: built.outcome, reason: built.reason, ...(built.left === undefined ? {} : { left: built.left }) } });
