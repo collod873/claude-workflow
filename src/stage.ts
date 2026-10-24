@@ -287,8 +287,11 @@ export interface Fix {
   done: string[];
 }
 
-export function followedUp(found: string, fixes: Fix[], asks: string[], call: { title: string; by: string }): { named: string; refusals: string[]; said: string }[] {
-  const tickets = fixes.slice(0, MOST_FIXES).map(({ fault, title, done }) => ({ named: title, ...post({ kind: "ticket", title, text: followUpBody([found, "", `> ${fault}`], done) }, gh) }));
+export const fixesFiled = (found: string, fixes: Fix[]): { named: string; refusals: string[]; said: string }[] =>
+  fixes.slice(0, MOST_FIXES).map(({ fault, title, done }) => ({ named: title, ...post({ kind: "ticket", title, text: followUpBody([found, "", `> ${fault}`], done) }, gh) }));
+
+export function followedUp(found: string, fixes: Fix[], asks: string[], call: { title: string; by: string }): ReturnType<typeof fixesFiled> {
+  const tickets = fixesFiled(found, fixes);
   if (asks.length === 0) return tickets;
   const text = ["## Why", "", `@${OWNER} ${call.by} leaves these to you:`, "", ...asks.map((ask) => `- ${ask}`), ""].join("\n");
   return [...tickets, { named: call.title, ...post({ kind: "note", title: call.title, text }, gh) }];

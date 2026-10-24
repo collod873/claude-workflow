@@ -64,7 +64,7 @@ export function handedOn({ brief, onto, commitlint }: { brief: string; onto: str
   return [
     capped(brief.trimEnd(), TICKET_CAP),
     "## Build it",
-    "Make the slice's `## Done when` hold, building what its Why asks. Call the Skill tool with `tdd` first, then work through it to its end. Commit as you go; a message says why, and carries neither an em dash nor a word that closes an issue, like `Fixes #12`.",
+    "Ship the slice's Why whole on every path you touch, in the smallest diff; `## Done when` is its floor. Settle open choices yourself as its senior engineer. Call the Skill tool with `tdd`, to its end. Commit as you go: a why per message, no em dash, no `Fixes #12`.",
     ...(commitlint ? ["Commitlint runs here: each message is `type: subject`, a conventional type, lower-case."] : []),
     "## Your answer",
     `- \`built\`: the machine commits what you did not, rebases onto \`${onto}\`, runs \`${FAST_CHECK}\` and hands back each red or conflict until this branch fast-forwards \`${onto}\` green.`,

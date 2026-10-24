@@ -3,10 +3,10 @@ import { type AppKey, freshAppToken } from "./app-token.ts";
 import { capped, DIFF_CAP, diffOverCap, LIST_CAP, NO_EM_DASH, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
 import { commentOnTicket, FOLLOW_UP_OF, gh, gitRead, heldOn, labelsHeld, machineBin, mark, post, REVIEW_LET_THROUGH } from "./post.ts";
 import { CHECKING } from "./spelled.ts";
-import { calledOwner, committed, commitlinted, type Fix, FOLLOW_UPS, followedUp, head, hire, MOST_FIXES, type OwnerStep, OWNER_STEPS } from "./stage.ts";
+import { calledOwner, committed, commitlinted, type Fix, fixesFiled, FOLLOW_UPS, head, hire, MOST_FIXES, type OwnerStep, OWNER_STEPS } from "./stage.ts";
 import { quoted } from "./ticket-shape.ts";
 
-const ENDS = { fixed: "fixed here", owner: "asked of the owner", nothing: "needs nothing" } as const;
+const ENDS = { fixed: "fixed here", nothing: "needs nothing" } as const;
 
 export const ROUTED = {
   fixes: FOLLOW_UPS.fixes,
@@ -74,10 +74,9 @@ export function firstTimeNamed(): (said: string) => boolean {
   };
 }
 
-export function routedFiled(found: string, routed: Routed[], call: { title: string; by: string }): ReturnType<typeof followedUp> {
+export function routedFiled(found: string, routed: Routed[]): ReturnType<typeof fixesFiled> {
   const unfiled = firstTimeNamed();
-  const asks = routed.flatMap(({ risks = [] }) => risks.filter(({ ends }) => ends === "owner").map(({ risk, why }) => `${risk} ${why}`)).filter(firstTimeNamed());
-  return [...routed.flatMap(({ fixes = [] }) => followedUp(found, fixes.filter(({ title }) => unfiled(title)), [], call)), ...followedUp(found, [], asks, call)];
+  return routed.flatMap(({ fixes = [] }) => fixesFiled(found, fixes.filter(({ title }) => unfiled(title))));
 }
 
 export const approvedOn = (reviewed: string[], later: string[], routed: Routed[]) => [...reviewed, ...later, ...routedOn(routed)].join("\n\n");
@@ -134,13 +133,13 @@ export function handedOn({ ticket, body, commits, diff, stat, alongside, said, c
     ...alongsideSection(alongside),
     ...(commitlint ? ["This repo runs commitlint on every commit, yours too: write each message as a conventional `type: subject`, such as `fix: keep the zone`, the subject lower-case."] : []),
     "## Fix it or approve it",
-    "Before judging it, call the Skill tool with `coding-standards` for the code standard and `testing` for the test standard. Where the diff misses the Why or its `## Done when`, or breaks what it touches, repair it yourself on this branch, since no builder sees it again. A new or changed test that fails one of the `testing` skill's checks is yours to fix. A fault of the same cause in the code you read is yours to fix too when the fix is small, though the `## Done when` does not name it; a bigger one you name in `fixes` or `risks`.",
+    "Before judging it, call the Skill tool with `coding-standards` for the code standard and `testing` for the test standard. You are the last engineer on this code before it ships, so each fault you find is yours to fix on this branch, kept small: a gap in the Why or its `## Done when`, a break in what it touches, a new or changed test that fails one of the `testing` skill's checks, a fault of the same cause in the code you read. Settle every open choice yourself, the way a senior engineer the owner hired would.",
     "Commit each change you make with its reason as the message; `bin/land` refuses an em dash or a closing keyword such as `Fixes #12`. Answer one outcome:",
     "- `approve`: it builds the Why, with whatever you fixed; `bin/land` then runs the full check and merges it, and anything it refuses comes back to you.",
     "- `stuck`: the work has a gap only the owner can close, and you cannot fix it; give the why in `reason`, and the ticket goes `stuck`.",
     "`steps`: each step only the owner can take before this work runs, such as a dashboard setting or a key, read from the finished work; each one named is filed as an `owner-step` note once it lands, and the ticket still closes.",
-    `\`fixes\`: of the faults you saw and let through, up to ${MOST_FIXES} with one sure fix each: \`fault\` with its evidence, \`title\`, and \`done\` naming the sentences that hold after the fix; each is filed as a ticket once it lands.`,
-    "`risks`: each other fault, cost or risk you saw, `risk` saying what it is and `ends` where it goes: `fixed` here, `why` saying how; `owner`, a call only the owner can make, `why` giving your pick, filed as one note to the owner once it lands; or `nothing`, `why` saying why it needs nothing.",
+    `\`fixes\`: up to ${MOST_FIXES} faults this branch cannot carry, in another repo or in code this work leaves untouched and too big to fix here, each with one sure fix: \`fault\` with its evidence, \`title\`, and \`done\` naming the sentences that hold after the fix; each is filed as a ticket once it lands.`,
+    "`risks`: each other fault, cost or risk you saw, `risk` saying what it is and `ends` where it went: `fixed` here, `why` saying how; or `nothing`, `why` saying why it can stand. The owner hears from your review through `steps` alone.",
     "Your review is done once each fault, cost or risk you saw sits in `fixes` or `risks`; leave both empty only when you saw none. Each answer adds to what you named before, so after the first name only what is new or has changed its end.",
     "`reason`: one paragraph for the owner on what the ticket built. An `approve`'s `reason` is commented on the ticket's PR before it merges, followed by each of your `fixes` and `risks` and where it ends.",
     "",
@@ -154,7 +153,7 @@ export const ownerStepFiled = (left: string) => (step: OwnerStep) => ({ named: `
 function filedOnceLanded(ticket: string, answer: Gathered): string {
   const filed = [
     ...answer.steps.map(ownerStepFiled(`Left to the owner by the run that built #${ticket}, which closed.`)),
-    ...routedFiled(`${FOLLOW_UP_OF}${ticket}${REVIEW_LET_THROUGH}`, [answer], { title: `Your call after #${ticket}'s review`, by: `#${ticket}'s reviewer` }),
+    ...routedFiled(`${FOLLOW_UP_OF}${ticket}${REVIEW_LET_THROUGH}`, [answer]),
   ];
   const refused = filed.filter(({ refusals }) => refusals.length > 0);
   if (refused.length > 0) commentOnTicket(ticket, [`What the reviewer of #${ticket} left that could not be filed:`, "", ...refused.map(({ named, refusals }) => `- ${named} (${quoted(refusals[0] ?? "")})`), ""].join("\n"), gh);

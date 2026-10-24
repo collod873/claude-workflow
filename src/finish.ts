@@ -96,8 +96,8 @@ export function onTheCode(changes: Changes, { spec, red, commitlint, findings }:
     "Answer one outcome:",
     "- `approve`: the code meets the standard, with whatever you fixed; once every reviewer approves, `bin/land` runs the full check and merges the spec, and what it refuses comes back to the last reviewer on the code standard.",
     "- `stuck`: a fault you cannot fix stands, and only the owner can settle it; `reason` says why, and the spec is marked `stuck`.",
-    `\`fixes\`: at most ${MOST_FIXES} faults you leave for a later build, each with one sure fix: \`fault\` and its evidence, \`title\`, and \`done\` stating what holds once it is fixed. Each becomes a ticket built after the spec lands.`,
-    "`risks`: every other fault, cost or risk you saw, as `risk`, with `ends`: `fixed` here by you, `why` saying how; `owner`, a decision that is the owner's alone, `why` with your pick, gathered into one note to the owner once the spec lands; `nothing`, `why` saying why it can stand.",
+    `\`fixes\`: at most ${MOST_FIXES} faults outside this repo or too big for this branch, each with one sure fix: \`fault\` and its evidence, \`title\`, and \`done\` stating what holds once it is fixed. Each becomes a ticket built after the spec lands.`,
+    "`risks`: every other fault, cost or risk you saw, as `risk`, with `ends`: `fixed` here by you, `why` saying how; `nothing`, `why` saying why it can stand. Where the code leaves a choice open, you make it, as a senior engineer would, and fix it here.",
     "The review is done once every fault, cost or risk you saw is in `fixes` or `risks`, and both are empty only when you saw none. What you name stays filed across your answers, so a later answer holds only what is new to it or whose end has moved.",
     "`reason`: one paragraph for the owner on how the code holds to the standard. It is commented on the spec's PR before it merges, with every one of your `fixes` and `risks` and its end.",
     "",
@@ -143,8 +143,8 @@ export function onTheSpec(changes: Changes, { spec, title, body, commitlint, bri
     "- `approve`: the branch builds what the spec asks, with whatever you fixed; the reviewers on the code standard read it next, then `bin/land` runs the full check and merges it.",
     "- `stuck`: the spec has a gap you cannot fix, one only the owner can close; `reason` says why, and the spec is marked `stuck`.",
     "`steps`: what the owner alone must do before the spec's work can run, like setting a dashboard value or adding a key, judged from what was built; each one named becomes an `owner-step` note once the spec lands.",
-    `\`fixes\`: each fault you leave for a later build, at most ${MOST_FIXES}, each with one sure fix: \`fault\` and the evidence for it, \`title\`, and \`done\`, the sentences that will be true after the fix; each becomes a ticket the machine builds after the spec lands.`,
-    "`risks`: any other fault, cost or risk you found, as `risk`, with `ends` naming its end: `fixed` by you here, `why` telling how; `owner`, which only the owner can decide, `why` holding your pick, every reviewer's gathered into one note to the owner once the spec lands; `nothing`, `why` telling why it can stand.",
+    `\`fixes\`: each fault that belongs in another repo, or in code the spec never touched and is too big to fix here, at most ${MOST_FIXES}, each with one sure fix: \`fault\` and the evidence for it, \`title\`, and \`done\`, the sentences that will be true after the fix; each becomes a ticket the machine builds after the spec lands.`,
+    "`risks`: any other fault, cost or risk you found, as `risk`, with `ends` naming its end: `fixed` by you here, `why` telling how; `nothing`, `why` telling why it can stand. Each choice the spec leaves open is yours to make as its senior engineer; build your pick here. Only `steps` reach the owner.",
     "You are done reviewing when each fault, cost or risk you found sits in `fixes` or `risks`; both stay empty only when you found none. Nothing named in an earlier answer is dropped: a later one names only the findings it adds and those whose end it changes.",
     "`reason`: a paragraph telling the owner what the spec built. Every reviewer's `approve` `reason` is commented on the spec's PR before it merges, and below them each of your `fixes` and `risks` with its end.",
     "",
@@ -416,7 +416,7 @@ function landed(run: Run, { last }: Reviewed): Promise<string | undefined> {
 function leftFiled(spec: string, approved: Approved[]): void {
   const unfiled = firstTimeNamed();
   const once = approved.flatMap(({ steps }) => steps).filter(({ title }) => unfiled(title));
-  const filed = [...once.map(ownerStepFiled(`Left to the owner by the run that landed spec #${spec}.`)), ...routedFiled(`${FOLLOW_UP_OF}${spec}${REVIEW_LET_THROUGH}`, approved, { title: `Your call after spec #${spec}'s review`, by: `the review of spec #${spec}` })];
+  const filed = [...once.map(ownerStepFiled(`Left to the owner by the run that landed spec #${spec}.`)), ...routedFiled(`${FOLLOW_UP_OF}${spec}${REVIEW_LET_THROUGH}`, approved)];
   const refused = filed.filter(({ refusals }) => refusals.length > 0);
   if (refused.length > 0) commentOnTicket(spec, [`What the reviewers of #${spec} left that could not be filed:`, "", ...refused.map(({ named, refusals }) => `- ${named} (${quoted(refusals[0] ?? "")})`), ""].join("\n"), gh);
 }
