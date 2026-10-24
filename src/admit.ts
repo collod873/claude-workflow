@@ -1,4 +1,5 @@
-import { type Admission, commentOnTicket, FAULT_FROM, gh, type Gh, heldOf, type Opened, opened, OWNER, readOrStop, RESEARCH, RESEARCH_FROM, REVIEW_FROM, SPLIT_FROM, STEP_WAITS, unread } from "./post.ts";
+import { type Admission, commentOnTicket, commentsRead, FAULT_FROM, gh, type Gh, ghAs, heldOf, type Opened, opened, OWNER, readOrStop, RESEARCH, RESEARCH_FROM, REVIEW_FROM, SPLIT_FROM, STEP_WAITS, unread } from "./post.ts";
+import { dedashed } from "./em-dash.ts";
 import { exitFor } from "./stops.ts";
 import { why } from "./ticket-shape.ts";
 
@@ -49,20 +50,25 @@ function admitted(repo: string, ticket: string, so: string, reads: number, missi
 
 export const admission = (ticket: string, so: string): Admission => admitted(HERE, ticket, so, MOST_READS, unread).refused;
 
+function toldOnce(ticket: string, text: string, inRepo: Gh, at: string): void {
+  const said = commentsRead(ticket, `the comments on ${at} could not be read, so nothing was admitted`, inRepo);
+  if (said.includes(dedashed(text))) return;
+  const [unsaid] = commentOnTicket(ticket, text, inRepo).refusals;
+  if (unsaid !== undefined) console.error(`admit: the refusal was not posted on ${at}: ${unsaid}`);
+}
+
 function waitingTold(ticket: string, said: string, refused: string): void {
   const [, repo, origin, kind] = FAULT_FROM.exec(said) ?? [];
   if (repo === undefined || origin === undefined) return;
   const step = `${process.env.GH_REPO ?? ""}#${ticket}`;
-  const inOrigin: Gh = (args) => gh([...args, "--repo", repo]);
-  const [unsaid] = commentOnTicket(origin, `@${OWNER} #${origin} waits on ${step}, ${handedAs(kind)}, which does not build, since ${refused}. Build or close ${step} by hand, or #${origin} waits for good.`, inOrigin).refusals;
-  if (unsaid !== undefined) console.error(`admit: ${repo}#${origin} waits on refused #${ticket} and was not told: ${unsaid}`);
+  const text = `@${OWNER} #${origin} waits on ${step}, ${handedAs(kind)}, which does not build, since ${refused}. Build or close ${step} by hand, or #${origin} waits for good.`;
+  toldOnce(origin, text, ghAs({ ...process.env, GH_REPO: repo }), `${repo}#${origin}`);
 }
 
 function admit(ticket: string): undefined {
   const { refused, said } = admitted(HERE, ticket, "so nothing was admitted", MOST_READS, unread);
   if (refused !== undefined) {
-    const [unsaid] = commentOnTicket(ticket, doesNotBuild(ticket, refused), gh).refusals;
-    if (unsaid !== undefined) console.error(`admit: #${ticket} was refused and not told why: ${unsaid}`);
+    toldOnce(ticket, doesNotBuild(ticket, refused), gh, `#${ticket}`);
     waitingTold(ticket, said, refused);
     console.log("admitted=false");
     return undefined;

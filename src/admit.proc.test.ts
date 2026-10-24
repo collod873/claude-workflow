@@ -150,7 +150,6 @@ describe("bin/admit follows a first step's origin in its own repo by the whole c
   const RESEARCHED = { number: "900", opener: "collod873", labels: ["note", "research"], state: "closed", repo: LUMARIA };
   const LET_THROUGH = ticketWhy("Follow-up of #900: its reviewer let this through.");
   const FOUND = ticketWhy("Follow-up of #900: its research found this.");
-  const toldOn = (calls: string[][], repo: string, ticket: string) => calls.filter((args) => args[0] === "issue" && args[1] === "comment" && args[2] === ticket && args[args.indexOf("--repo") + 1] === repo).map((args) => args[args.indexOf("--body") + 1]);
 
   it.each([
     ["a reviewer's follow-up of a ticket the owner opened there", LET_THROUGH, REVIEWED],
@@ -175,13 +174,26 @@ describe("bin/admit follows a first step's origin in its own repo by the whole c
   });
 
   it("calls the owner on the ticket that waits on a refused first step, naming the step", () => {
-    const { run, calls } = admitting({ opener: APP, body: STEP, origin: fromLumaria(APP, undefined) });
+    const { run, commentsOn } = admitting({ opener: APP, body: STEP, origin: fromLumaria(APP, undefined) });
 
     expect(run().stdout).toBe("admitted=false\n");
-    const told = toldOn(calls(), LUMARIA, "931");
+    const told = commentsOn(LUMARIA, "931");
     expect(told).toHaveLength(1);
     expect(told[0]).toContain("@collod873");
     expect(told[0]).toContain("collod873/design-kit#811, its first step,");
+  });
+
+  it("posts neither the refusal nor the owner's call again when admit refuses the same step on a later label change", () => {
+    const refusedStep = { opener: APP, body: STEP, origin: fromLumaria(APP, undefined) };
+    const first = admitting(refusedStep);
+    first.run();
+    const again = admitting({ ...refusedStep, told: { "811": first.commentsOn("collod873/design-kit", "811"), "931": first.commentsOn(LUMARIA, "931") } });
+
+    const result = again.run();
+
+    expect(result.stdout, result.stderr).toBe("admitted=false\n");
+    expect(first.comments()).toHaveLength(2);
+    expect(again.comments()).toEqual([]);
   });
 
   it("refuses a first step whose origin names it back as its own origin, after a bounded number of reads", () => {
@@ -191,6 +203,6 @@ describe("bin/admit follows a first step's origin in its own repo by the whole c
 
     expect(result.stdout, result.stderr).toBe("admitted=false\n");
     expect(comments()[0]).toContain("without reaching one the owner opened");
-    expect(calls().filter((args) => args.includes("api")).length).toBeLessThanOrEqual(8);
+    expect(calls().filter((args) => args.some((arg) => /issues\/\d+$/.test(arg))).length).toBeLessThanOrEqual(8);
   });
 });
