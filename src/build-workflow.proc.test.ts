@@ -17,7 +17,7 @@ type Stage = (typeof STAGES)[number];
 
 interface Step {
   id?: string;
-  if?: string;
+  if?: string | undefined;
   run?: string;
   uses?: string;
   with?: Record<string, unknown>;
@@ -27,7 +27,7 @@ interface Step {
 }
 
 interface Job {
-  if?: string;
+  if?: string | undefined;
   concurrency?: { group?: string };
   outputs?: Record<string, string>;
   needs?: string | string[];

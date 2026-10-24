@@ -51,7 +51,7 @@ const env = { ...Object.fromEntries(Object.entries(process.env).filter(([name]) 
 
 export interface WorkflowStep {
   id?: string;
-  if?: string;
+  if?: string | undefined;
   uses?: string;
   run?: string;
   with?: Record<string, unknown>;
@@ -60,7 +60,7 @@ export interface WorkflowStep {
 }
 
 interface WorkflowJob {
-  if?: string;
+  if?: string | undefined;
   outputs?: Record<string, string>;
   env?: Record<string, unknown>;
   needs?: string | string[];
@@ -74,7 +74,7 @@ interface WorkflowJob {
 
 export interface IssueEvent {
   event?: string;
-  labels?: string[];
+  labels?: string[] | undefined;
   sender?: string;
   action?: string;
   label?: string;
@@ -180,7 +180,7 @@ export function holds(
     inputs = {},
     state = "open",
   }: {
-    labels?: string[];
+    labels?: string[] | undefined;
     steps?: Record<string, StepOutcome>;
     needs?: Record<string, { result: string; outputs?: Record<string, string> }>;
     failed?: boolean;

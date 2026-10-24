@@ -24,8 +24,8 @@ import { type Stop, stoppedAt } from "./stops.ts";
 export interface Posting {
   kind: string;
   text: string;
-  title?: string;
-  sessionId?: string;
+  title?: string | undefined;
+  sessionId?: string | undefined;
   labels?: LabelName[];
 }
 

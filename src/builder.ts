@@ -69,8 +69,8 @@ const FILED = /\/issues\/(\d+)\s*$/;
 interface Handed {
   ticket: string;
   body: string;
-  capture?: string;
-  woken?: string;
+  capture?: string | undefined;
+  woken?: string | undefined;
   alongside?: string;
   commitlint?: boolean;
   foreign?: boolean;

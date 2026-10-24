@@ -166,7 +166,7 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
 
   it("lets the stages mark, hold and file only labels the set holds, so a name typed outside it fails typecheck (#1100)", () => {
     const copy = scratch("spelled-typed-");
-    for (const kept of ["src", "tsconfig.json", "package.json", "vitest.config.ts"]) cpSync(join(BIN, "..", kept), join(copy, kept), { recursive: true });
+    for (const kept of ["src", "shared", "tsconfig.json", "package.json", "vitest.config.ts"]) cpSync(join(BIN, "..", kept), join(copy, kept), { recursive: true });
     symlinkSync(join(BIN, "..", "node_modules"), join(copy, "node_modules"));
     plant(
       copy,
@@ -194,7 +194,7 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
 
   it("fails typecheck when a label constant is set to another label the set holds (#1103)", () => {
     const copy = scratch("spelled-swapped-");
-    for (const kept of ["src", "tsconfig.json", "package.json", "vitest.config.ts"]) cpSync(join(BIN, "..", kept), join(copy, kept), { recursive: true });
+    for (const kept of ["src", "shared", "tsconfig.json", "package.json", "vitest.config.ts"]) cpSync(join(BIN, "..", kept), join(copy, kept), { recursive: true });
     symlinkSync(join(BIN, "..", "node_modules"), join(copy, "node_modules"));
     const spelledAt = join(copy, "src", "spelled.ts");
     const kept = readFileSync(spelledAt, "utf8");

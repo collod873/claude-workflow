@@ -9,7 +9,7 @@ interface Origin {
   ticket: string;
   opener: string;
   parent: Parent;
-  body?: string;
+  body?: string | undefined;
 }
 
 interface Note {
@@ -18,7 +18,7 @@ interface Note {
   labels: string[];
   state: string;
   repo?: string;
-  body?: string;
+  body?: string | undefined;
 }
 
 const HERE = "collod873/design-kit";

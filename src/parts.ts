@@ -11,7 +11,7 @@ export interface Part {
 const FIXED: Part[] = [
   {
     name: "typecheck step",
-    file: "tsconfig.json",
+    file: ".claude/contract.json",
     stops: "https://github.com/collod873/claude-workflow/actions/runs/33346638810",
   },
   {

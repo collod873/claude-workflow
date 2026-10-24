@@ -78,7 +78,7 @@ export interface Spent {
   stdout: string;
   refusal?: string;
   timedOut?: boolean;
-  session?: string;
+  session?: string | undefined;
   answer?: unknown;
 }
 

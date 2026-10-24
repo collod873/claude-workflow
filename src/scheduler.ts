@@ -30,15 +30,15 @@ interface Tracked extends Slice {
   state: SliceState;
   tries: number;
   fix: boolean;
-  session?: string;
-  left?: string;
-  stopped?: string;
+  session?: string | undefined;
+  left?: string | undefined;
+  stopped?: string | undefined;
   outOfTime?: boolean;
 }
 
 export interface Progress {
   fixPass: boolean;
-  landed?: string;
+  landed?: string | undefined;
   slices: Tracked[];
 }
 
@@ -46,8 +46,8 @@ interface Built {
   id: string;
   outcome: "built" | "partial" | "done" | "stuck" | "stopped" | "outOfTime";
   reason: string;
-  left?: string;
-  session?: string;
+  left?: string | undefined;
+  session?: string | undefined;
 }
 
 const PROGRESS_HEADING = "## Spec run";
@@ -77,7 +77,7 @@ function progressComment(progress: Progress): string {
 }
 
 interface Found {
-  url?: string;
+  url?: string | undefined;
   progress: Progress;
 }
 
@@ -203,7 +203,7 @@ function builtOf(id: string, status: number | null, signal: string | null, line:
 }
 
 interface Hiring {
-  resume?: string;
+  resume?: string | undefined;
   told?: string;
   outOfTime?: boolean;
   answer?: { outcome: string; reason: string; left?: string };
@@ -256,7 +256,7 @@ const frontier = (progress: Progress): Tracked[] =>
 
 interface Finished {
   status: number | null;
-  landed?: string;
+  landed?: string | undefined;
   missed: string;
 }
 

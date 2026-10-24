@@ -1,19 +1,4 @@
 {
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "ES2022",
-    "moduleResolution": "Bundler",
-    "allowImportingTsExtensions": true,
-    "lib": ["ES2022"],
-    "types": ["node"],
-    "strict": true,
-    "noImplicitReturns": true,
-    "noUncheckedIndexedAccess": true,
-    "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
-    "skipLibCheck": true,
-    "resolveJsonModule": true,
-    "noEmit": true
-  },
+  "extends": "./shared/typescript/node.json",
   "include": ["src/**/*.ts", "*.ts"]
 }
