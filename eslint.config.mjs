@@ -1,4 +1,4 @@
-import { typescript } from "./lint/typescript/index.mjs";
+import { typescript } from "./shared/typescript/index.mjs";
 
 export default [
   ...typescript({ root: import.meta.dirname }),

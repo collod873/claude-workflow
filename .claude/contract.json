@@ -7,7 +7,7 @@
       "why": "A type error is the cheapest failure to catch and the one a stage meets most while it works."
     },
     "lint": {
-      "run": "lint/run",
+      "run": "shared/run",
       "why": "Typed rules read the whole program, so a change in one file can raise a finding in another: the full check lints every file, and turn end only lints what changed."
     },
     "unused": {

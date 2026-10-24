@@ -7,6 +7,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 STAMP = "STAMP.json"
+VERBS = ("run", "typecheck")
 CACHES = {"node_modules", "__pycache__", ".ruff_cache", ".eslintcache"}
 
 
@@ -17,9 +18,9 @@ def digest(path: Path) -> str:
 def drift(stamp: dict) -> list[str]:
     present = {str(path.relative_to(HERE)) for path in HERE.rglob("*") if path.is_file() and path.name != STAMP
                and not CACHES & set(path.parts)}
-    found = [f"lint/{name} is missing" for name in sorted(set(stamp["files"]) - present)]
-    found += [f"lint/{name} is not part of {stamp['source']}" for name in sorted(present - set(stamp["files"]))]
-    found += [f"lint/{name} was edited here" for name in sorted(present & set(stamp["files"]))
+    found = [f"shared/{name} is missing" for name in sorted(set(stamp["files"]) - present)]
+    found += [f"shared/{name} is not part of {stamp['source']}" for name in sorted(present - set(stamp["files"]))]
+    found += [f"shared/{name} was edited here" for name in sorted(present & set(stamp["files"]))
               if digest(HERE / name) != stamp["files"][name]]
     return found
 
@@ -29,9 +30,13 @@ def main() -> int:
     found = drift(stamp)
     if found:
         print("\n".join(f"✗ {line}" for line in found))
-        print(f"✗ lint/ is synced from {stamp['source']} and takes no local edits; fix it there, or run lint-sync install")
+        print(f"✗ shared/ is synced from {stamp['source']} and takes no local edits; fix it there, or run lint-sync install")
         return 1
-    return subprocess.run([str(HERE / stamp["layer"] / "run")], check=False).returncode
+    verb = sys.argv[1] if len(sys.argv) > 1 else "run"
+    if verb not in VERBS:
+        print(f"✗ shared/run takes {' or '.join(v for v in VERBS if v != 'run')} or nothing, not {verb}")
+        return 2
+    return subprocess.run([str(HERE / stamp["layer"] / verb), *sys.argv[2:]], check=False).returncode
 
 
 if __name__ == "__main__":

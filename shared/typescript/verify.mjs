@@ -37,7 +37,7 @@ function changesParser(block) {
 export function structuralRefusals(blocks) {
   const sharedBlocks = blocks.filter((block) => SHARED_BLOCKS.has(block));
   if (sharedBlocks.length === 0) {
-    return ["eslint.config.mjs does not spread the shared layer from lint/"];
+    return ["eslint.config.mjs does not spread the shared layer from shared/"];
   }
   const firstOwn = blocks.findIndex((block) => !SHARED_BLOCKS.has(block));
   const own = firstOwn === -1 ? [] : blocks.slice(firstOwn);
