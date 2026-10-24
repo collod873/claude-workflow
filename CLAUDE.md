@@ -5,26 +5,9 @@ stuck." Every session here serves that line.
 
 ## Fixing the machine
 
-A symptom the machine hit, such as a stuck ticket, a red run or a wrong verdict, reaches a
-countermeasure only through `docs/root-causes.md`:
-
-1. Open `docs/root-causes.md` and name the row holding the symptom's root cause. Done when you
-   can quote that row, or have read every row and none holds it.
-2. No row holds it: add the row with the symptom as its evidence, and bring the row to Collin
-   instead of a countermeasure.
-3. A row holds it and its symptoms recur after three countermeasures: it is whack-a-mole, so
-   bring Collin reshape or scrap.
-4. Otherwise build that row's countermeasure at the root cause, before any gate.
-5. In the same change, rewrite the row's cells to hold the symptom and its new state, replacing
-   what they said rather than adding to it: git keeps the old text, the commit message the why,
-   and a ruling later work must follow goes to Collin as an ADR. A ticket's PR
-   leaves `docs/root-causes.md` alone, since every ticket branching together would edit that one
-   table: the session filing the ticket lands the evidence first, the ticket's Why names its row as
-   `Row: "<root cause>"`, and the closer sets that row's State to `built (#<ticket>)` on main once
-   the PR merges.
-
-Unsticking one ticket by hand, with a rerun or a label, is operating the machine, not changing
-it, and needs no row.
+Say what broke in `CONTEXT.md` words: the symptom, its root cause, the countermeasure that stops it
+recurring. A root cause still recurring after three countermeasures is whack-a-mole: bring Collin
+reshape or scrap. `docs/root-causes.md` is what an audit Collin runs found; only that audit edits it.
 
 ## Changing code
 

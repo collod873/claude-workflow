@@ -1,8 +1,8 @@
 # Root causes
 
-The machine's symptoms, grouped by root cause. Each cell is rewritten, never appended to; what a
-row said before is in `git log -p docs/root-causes.md` and `git log -p docs/buckets.md`, and the
-why of each move is in its commit message.
+The machine's symptoms, grouped by root cause, as the last audit Collin ran found them. Only an
+audit edits this table, rewriting each cell rather than appending to it; what a row said before is
+in `git log -p docs/root-causes.md` and `git log -p docs/buckets.md`.
 
 - **Root cause**: why the symptoms happen, one line.
 - **Symptoms**: the strongest measured symptoms of that root cause, with links; a newer
@@ -12,8 +12,7 @@ why of each move is in its commit message.
 - **State**: `unruled`, `ruled`, `built` or `measured`, then the issues or ADRs that carry it in
   brackets, e.g. `built (#1462)`.
 
-A root cause a measured Spec shows no recurrence of is deleted. `src/root-causes.ts` holds every
-cell to 300 characters and the State to its four words.
+A root cause a measured Spec shows no recurrence of is deleted.
 
 Last measured: Lumaria#1086 from filing to its done check, 2026-10-14
 ([spec-1086-2026-10.md](research/spec-1086-2026-10.md)): 1339 min for 9 tickets, 1142 of them

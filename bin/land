@@ -143,14 +143,7 @@ tree_pathed() {
 
 judged="judged by land on the commit before the push (ADR-0008)"
 for (( round = 1; ; round++ )); do
-  changed=$(git diff --name-only "origin/$default_branch" HEAD)
-  if [[ $changed == docs/root-causes.md ]]; then
-    if ! node "$src/root-causes.ts" >&2; then
-      printf 'land: docs/root-causes.md is out of shape, so nothing was pushed; rewrite what it names and land again\n' >&2
-      exit 1
-    fi
-    judged="docs/root-causes.md alone changed from $default_branch, judged by its root-causes step alone (#1382)"
-  elif ! tree_pathed check --full --covered >"$err" 2>&1; then
+  if ! tree_pathed check --full --covered >"$err" 2>&1; then
     { printf -- '--- check --full --covered ---\n'; cat "$err"; } >>"$log"
     if ! tree_pathed check --full --publish >&2; then
       printf 'land: the full check went red on the commit, so nothing was pushed; fix what it names and land again\n' >&2

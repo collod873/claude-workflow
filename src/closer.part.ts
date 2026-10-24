@@ -48,8 +48,6 @@ export function closing({
   foreign = false,
   faultOrigin,
   closedIssue,
-  statusRefused = false,
-  rootCauses,
   closedIn = "collod873/claude-workflow",
 }: {
   ticket?: string;
@@ -63,8 +61,6 @@ export function closing({
   foreign?: boolean;
   faultOrigin?: FaultOrigin;
   closedIssue?: string;
-  statusRefused?: boolean;
-  rootCauses?: string;
   closedIn?: string;
 } = {}) {
   const root = scratch("closer-");
@@ -80,7 +76,6 @@ export function closing({
   git(session, "config", "user.email", "closer@test");
   git(session, "config", "user.name", "closer");
   plant(session, "src/built.ts", "export const built = 1;\n");
-  if (rootCauses !== undefined) plant(session, "docs/root-causes.md", rootCauses);
   git(session, "add", ".");
   git(session, "commit", "--quiet", "-m", "base");
   const origin = join(root, "origin.git");
@@ -118,7 +113,6 @@ export function closing({
       ticketBody,
       "BODY",
       "    ;;",
-      ...(statusRefused ? ["  *\"api -X POST repos/{owner}/{repo}/statuses/\"*) printf 'gh: Server Error (HTTP 502)\\n' >&2; exit 1 ;;"] : []),
       "  *) exit 0 ;;",
       "esac",
       "",
@@ -132,11 +126,6 @@ export function closing({
   const lines = (file: string) => (existsSync(file) ? readFileSync(file, "utf8").trimEnd().split("\n") : []);
   return {
     session,
-    landed: () =>
-      git(session, "--git-dir", origin, "for-each-ref", "--format=%(refname)", "refs/heads/land/")
-        .split("\n")
-        .filter((ref) => ref !== "")
-        .map((ref) => ({ head: git(session, "--git-dir", origin, "rev-parse", ref), parents: git(session, "--git-dir", origin, "rev-list", "--parents", "-n", "1", ref).split(" ").slice(1), rootCauses: git(session, "--git-dir", origin, "show", `${ref}:docs/root-causes.md`), changed: git(session, "--git-dir", origin, "diff", "--name-only", `${ref}^`, ref) })),
     calls: () => readdirSync(callsDir).sort((a, b) => Number(a) - Number(b)).map((file) => readFileSync(join(callsDir, file), "utf8")),
     repos: () => readdirSync(reposDir).sort((a, b) => Number(a) - Number(b)).map((file) => readFileSync(join(reposDir, file), "utf8")),
     tokens: () => readdirSync(tokensDir).sort((a, b) => Number(a) - Number(b)).map((file) => readFileSync(join(tokensDir, file), "utf8")),

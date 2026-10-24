@@ -5,7 +5,6 @@ import { agedLogs, git, GITHUB_ERRED, landSession, LANDED_PR as PR, MAIN_RACED, 
 
 const JUDGED_CHECK = "description=judged by land on the commit before the push (ADR-0008)";
 const DASH = "\u2014";
-const TABLE = (state: string) => ["| Root cause | Symptoms | Countermeasure | State |", "|---|---|---|---|", `| a row | its evidence | its prevention | ${state} |`, ""].join("\n");
 
 const sessionAheadOfMain = (commits: number, options: Omit<Parameters<typeof landSession>[0], "messages"> = {}) => landSession({ messages: Array.from({ length: commits }, (_, n) => `change ${n + 1}`), ...options });
 
@@ -101,35 +100,6 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
     expect(checked()).toEqual(["--full --covered", "--full --publish"]);
     expect(git(remote, "for-each-ref", "--format=%(refname)")).toBe("refs/heads/main");
     expect(calls()).toEqual([]);
-  });
-
-  it("lands a change to docs/root-causes.md alone judged by its root-causes step alone, so the closer's row move lands through it (#1382)", () => {
-    const { run, calls, checked, head, merged, posted } = sessionAheadOfMain(1, { covered: false, changes: { "docs/root-causes.md": TABLE("built (#812)") } });
-
-    const result = run();
-
-    expect(result.status, result.stderr).toBe(0);
-    expect(checked()).toEqual([]);
-    expect(calls().filter(posted).map((call) => call.at(-1))).toEqual(["description=docs/root-causes.md alone changed from main, judged by its root-causes step alone (#1382)"]);
-    expect(calls().filter(merged)).toEqual([["pr", "merge", `land/${head.slice(0, 12)}`, "--merge", "--match-head-commit", head]]);
-  });
-
-  it("pushes nothing when docs/root-causes.md alone changed and a State is appended to instead of rewritten", () => {
-    const { run, calls, remote } = sessionAheadOfMain(1, { covered: false, changes: { "docs/root-causes.md": TABLE("ruled by Collin; built (#812)") } });
-
-    const result = run();
-
-    expect(result.status).toBe(1);
-    expect(result.stderr).toBe('docs/root-causes.md row "a row" has the State "ruled by Collin; built (#812)", not unruled, ruled, built or measured with its issues in brackets\nland: docs/root-causes.md is out of shape, so nothing was pushed; rewrite what it names and land again\n');
-    expect(git(remote, "for-each-ref", "--format=%(refname)")).toBe("refs/heads/main");
-    expect(calls()).toEqual([]);
-  });
-
-  it("still runs the full check when docs/root-causes.md changes beside another file", () => {
-    const { run, checked } = sessionAheadOfMain(1, { covered: false, changes: { "docs/root-causes.md": TABLE("built (#812)"), "tool": "changed\n" } });
-
-    expect(run().status).toBe(0);
-    expect(checked()).toEqual(["--full --covered", "--full --publish"]);
   });
 
   it("brings the main checkout, detached as the session launcher leaves it, up to the merged main when landing from a session worktree (#1309)", () => {
