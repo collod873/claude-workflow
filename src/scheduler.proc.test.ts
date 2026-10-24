@@ -182,7 +182,7 @@ describe("bin/schedule runs a spec from its first cut to its landing, one slice 
 
   it("picks a rerun up from its progress comment and the integration branch on origin: merged slices stay merged, an interrupted one builds again from fresh", () => {
     const merged = { ...sliceOf("seam"), state: "merged", tries: 1, fix: false, session: "session-seam-1" };
-    const building = { ...sliceOf("reader", ["seam"]), state: "hired", tries: 1, fix: false, session: "session-reader-1" };
+    const building = { ...sliceOf("reader", ["seam"]), state: "hired", tries: 0, fix: false, session: "session-reader-1" };
     const progress = `## Spec run\n\n<!-- progress: ${JSON.stringify({ fixPass: false, slices: [merged, building] })} -->\n`;
     const run = scheduling({ onSpec: ["Build seam"], comments: [machineComment(7, progress)] });
 
@@ -192,6 +192,17 @@ describe("bin/schedule runs a spec from its first cut to its landing, one slice 
     expect(run.seen("reader")).toContain("Build seam");
     expect(run.comments().filter(({ body }) => body.startsWith("## Spec run"))).toHaveLength(1);
     expect(run.progress()?.slices.find(({ id }) => id === "reader")).toMatchObject({ state: "merged", tries: 1 });
+  });
+
+  it("counts a slice's tries as the builds that came back, so a rerun that finds it hired, even in a hire that only lands its answer again, neither adds a try nor gives one back", () => {
+    const relanding = { ...sliceOf("wall"), state: "hired", tries: 1, fix: false, session: "session-wall-1", stopped: "wall hit a wall" };
+    const progress = `## Spec run\n\n<!-- progress: ${JSON.stringify({ fixPass: false, slices: [relanding] })} -->\n`;
+    const run = scheduling({ comments: [machineComment(7, progress)], plans: { wall: [{ outcome: "stopped" }, { outcome: "stopped" }] } });
+
+    expect(run.run().status).toBe(1);
+    expect(run.built("wall")).toBeDefined();
+    expect(run.built("wall", 2)).toBeUndefined();
+    expect(run.progress()?.slices[0]).toMatchObject({ state: "out", tries: 2 });
   });
 
   it("mints a fresh App token after each model run, so a run past its first hour still pushes, and hands each builder and bin/finish an App key of its own", () => {

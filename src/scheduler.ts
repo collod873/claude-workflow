@@ -297,7 +297,6 @@ async function scheduled(spec: string, app: AppKey | undefined): Promise<Stop | 
   const { progress } = found;
   for (const tracked of progress.slices.filter(({ state }) => state === "hired")) {
     tracked.state = "cut";
-    tracked.tries -= 1;
     tracked.session = undefined;
   }
   readied(spec);
@@ -305,7 +304,7 @@ async function scheduled(spec: string, app: AppKey | undefined): Promise<Stop | 
   const root = join(underGit("spec-worktrees"), spec);
   mkdirSync(root, { recursive: true });
   const logs = underGit("machine-logs");
-  const running = new Map<string, Promise<Built>>();
+  const running = new Map<string, Promise<Built & { tried: boolean }>>();
   const fresh = (what: string) => {
     if (app !== undefined) freshAppToken(app, gh, `so the spec run of #${spec} does not act after ${what}`);
   };
@@ -314,7 +313,11 @@ async function scheduled(spec: string, app: AppKey | undefined): Promise<Stop | 
     const brief = join(root, `${tracked.id}.md`);
     writeFileSync(brief, briefOf(tracked, asked.body));
     tracked.state = "hired";
-    running.set(tracked.id, building(spec, tracked, dir, brief, join(logs, `build-slice-${spec}-${tracked.id}.out`), keyed(join(root, `${tracked.id}-app-key.json`), app), how));
+    const tried = how.answer === undefined;
+    running.set(
+      tracked.id,
+      building(spec, tracked, dir, brief, join(logs, `build-slice-${spec}-${tracked.id}.out`), keyed(join(root, `${tracked.id}-app-key.json`), app), how).then((built) => ({ ...built, tried })),
+    );
   };
   const stoodDown = (after: string) => {
     const held = heldOn(labelsHeld(spec, gh));
@@ -342,10 +345,7 @@ async function scheduled(spec: string, app: AppKey | undefined): Promise<Stop | 
     }
     if (held === undefined && !slicerStopped) {
       const hiring = frontier(progress).slice(0, MOST_BUILDERS - running.size);
-      for (const tracked of hiring) {
-        tracked.tries += 1;
-        hire(tracked, retried(spec, tracked));
-      }
+      for (const tracked of hiring) hire(tracked, retried(spec, tracked));
       if (running.size > 0 && !markedBuilding) {
         mark(spec, BUILDING);
         markedBuilding = true;
@@ -383,6 +383,7 @@ async function scheduled(spec: string, app: AppKey | undefined): Promise<Stop | 
     fresh(`the builder of ${built.id}`);
     const tracked = progress.slices.find(({ id }) => id === built.id);
     if (tracked === undefined) continue;
+    if (built.tried) tracked.tries += 1;
     tracked.session = built.session ?? tracked.session;
     if (built.outcome === "stopped" || built.outcome === "outOfTime" || built.outcome === "stuck") {
       tracked.stopped = built.reason;
