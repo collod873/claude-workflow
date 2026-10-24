@@ -5,7 +5,7 @@ import { briefOf, MOST_BUILDERS, type Progress, progressOn, specBranch } from ".
 import { SLICING, SPEC } from "./spelled.ts";
 import { opened, type Spent } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
-import { DONE_SENTENCES, quoted, SPEC_CAP, ticketRefusals } from "./ticket-shape.ts";
+import { quoted, SPEC_CAP, ticketRefusals } from "./ticket-shape.ts";
 
 const stoppedAt = stopsOf({
   notSpec: "Slice refused: the issue is not labelled `spec`",
@@ -75,7 +75,7 @@ const CUTS: Record<Cut, { lead: string; findings: string[]; end: string }> = {
     end: "Cut at least one. Answer no slice only when main already does the whole spec: the spec then stops for its owner.",
   },
   replan: {
-    lead: `The spec has slices already. Read the integration branch as built, in the repo you are in, and the slices still in flight, then cut each slice now at its last responsible moment: every name and file it needs is on the branch or settled by a slice in flight. A slice already cut stands, so cut none twice. What a partial slice left, marked \`${NOT_CUT_AGAIN}\`, is yours to cut now, as one slice or more naming it in \`leftOf\`. An \`out\` slice's builder stopped twice, so the spec waits on its owner: block no new slice on it.`,
+    lead: `The spec has slices already. Read the integration branch as built, in the repo you are in, and the slices still in flight, then cut each slice now at its last responsible moment: every name and file it needs is on the branch or settled by a slice in flight. A slice already cut stands, so cut none twice. What a partial slice left, marked \`${NOT_CUT_AGAIN}\`, is yours to cut now, as one slice or more naming it in \`leftOf\`. An \`out\` slice is one whose builder answered \`stuck\`, or stopped on both its tries; it waits on the owner, so block no new slice on it.`,
     findings: [FIXING],
     end: "Answer no slice when nothing is left to cut: once every slice has merged, the spec runs its full check, two reviewers, `bin/land` and its done check.",
   },
@@ -90,7 +90,7 @@ const fields = [
   "`id`: kebab-case and unique within the spec, never one used before.",
   '`why`: what the slice is for in the spec, quoting in straight "..." quotes or a `> ` line the spec\'s words it serves.',
   "`decisions`: each of the spec's Implementation or Testing Decisions this slice must follow, in the spec's words.",
-  `\`done\`: ${DONE_SENTENCES}, each one its builder can show on the branch; at least one.`,
+  "`done`: the sentences true once the slice is built, each one its builder can show on the branch; at least one.",
   "`blockedBy`: the ids of the slices it needs merged first, from this answer or the slices so far.",
   `\`leftOf\`: the ids of the slices marked \`${NOT_CUT_AGAIN}\` whose leftover this slice cuts again, and empty for every other slice.`,
 ];

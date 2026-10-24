@@ -29,7 +29,7 @@ describe("bin/finish reviews a spec's integration branch on the spec, then on th
     expect(spec).toContain("- [ ] see the spec land on main");
     expect(spec).toContain("+export const zone = 1;");
     expect(code).toMatch(/^# Hold spec #974 to the code standard before it lands/);
-    expect(code).toContain("call the Skill tool with `coding-standards` for the code standard and `testing`");
+    expect(code).toContain("call the Skill tool with `coding-standards` and then with `testing`");
     expect(code).toContain("+export const zone = 2;");
     expect(code).not.toContain("## Its full check is red");
     expect(tried).toMatch(/^Try each sentence/);
@@ -117,7 +117,7 @@ describe("bin/finish reviews a spec's integration branch on the spec, then on th
     expect(finished.run().status).toBe(0);
     const [spec = "", code = ""] = finished.handed();
     for (const prompt of [spec, code]) {
-      expect(prompt).toContain("This is the spec's one fix pass");
+      expect(prompt).toContain("the spec's one fix pass");
       expect(prompt).toContain("found no zone file on main");
       expect(prompt).not.toContain("Builders built this spec slice by slice");
     }

@@ -5,13 +5,13 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
-import { capped, LIST_CAP, NO_EM_DASH, onDisk, TICKET_CAP } from "./brief.ts";
-import { buildIt, checkedBy, spentOn, stillRed } from "./builder.ts";
+import { capped, LIST_CAP, NO_EM_DASH, onDisk, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
+import { checkedBy, type Red, spentOn } from "./builder.ts";
 import { FAST_CHECK } from "./checks.ts";
 import { LEFT_CAP } from "./scheduler.ts";
 import { SLICE_ID } from "./slicer.ts";
 import { gh, git, gitRead, Stopped, unread } from "./post.ts";
-import { commitlinted, committed, CONTRACT, hire, linted, setupRefusal } from "./stage.ts";
+import { commitlinted, committed, CONTRACT, hire, setupRefusal } from "./stage.ts";
 
 const USAGE = "build-slice: usage: build-slice --spec <N> --slice <id> --brief <file> --onto <integration ref> [--resume <session>] [--told <text> | --out-of-time | --answer <its answer's JSON, to land again>]";
 
@@ -63,19 +63,21 @@ export const OUT_OF_TIME = "Your time on this slice is up. Build nothing more: c
 export function handedOn({ brief, onto, commitlint }: { brief: string; onto: string; commitlint: boolean }): string {
   return [
     capped(brief.trimEnd(), TICKET_CAP),
-    ...buildIt("slice"),
-    ...linted(commitlint),
+    "## Build it",
+    "Make the slice's `## Done when` hold, building what its Why asks. Call the Skill tool with `tdd` first, then work through it to its end. Commit as you go; a message says why, and carries neither an em dash nor a word that closes an issue, like `Fixes #12`.",
+    ...(commitlint ? ["Commitlint runs here: each message is `type: subject`, a conventional type, lower-case."] : []),
     "## Your answer",
     `- \`built\`: the machine commits what you did not, rebases onto \`${onto}\`, runs \`${FAST_CHECK}\` and hands back each red or conflict until this branch fast-forwards \`${onto}\` green.`,
     "- `partial`: too big for one build; commit what holds, with `left` naming each `## Done when` sentence not yet holding, for the slicer to cut again. Same check.",
     `- \`done\`: \`${onto}\` already does what it asks, as when another slice built it; nothing lands, no one is called.`,
-    "- `stuck`: you cannot build it; `reason` says why, and the spec stops for its owner.",
+    "- `stuck`: you cannot build it; `reason` says why. The slice goes out while the other slices build on, and the spec stops for its owner only once nothing else can move.",
     "`reason`: why, in one paragraph.",
     "",
   ].join("\n\n");
 }
 
-export const repaired = (output: string) => stillRed(FAST_CHECK, output);
+export const repaired = ({ verdict, failed }: Red) =>
+  [`\`${FAST_CHECK}\` is red on this branch: \`${verdict}\`. Each red step's output, cut to its last lines:`, tailOf(failed, TAIL_CAP), "Make it pass, and answer again.", ""].join("\n\n");
 
 export const conflicted = (onto: string, files: string) =>
   [`\`${onto}\` moved, and rebasing this branch onto it stopped on a conflict in:`, capped(files, LIST_CAP), `Run \`git rebase ${onto}\`, resolve each conflict keeping what both sides meant, and answer again.`, ""].join("\n\n");

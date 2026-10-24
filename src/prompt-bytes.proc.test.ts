@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { capped } from "./brief.ts";
-import { uncapped, unlaunched, unmeasured, type Prompt } from "./prompt-bytes.ts";
+import { echoed, OWN_WORDS, uncapped, unlaunched, unmeasured, type Prompt } from "./prompt-bytes.ts";
 import { scratch } from "./scenarios.ts";
 
 const FILLER = 200;
@@ -51,5 +51,26 @@ describe("the prompts step sizes every prompt and refuses one it cannot bound (#
     expect(unlaunched(copy)).toEqual([
       "src/judge.ts starts claude itself; hire through src/stage.ts so it gets the owner's hooks, a transcript and a time cap",
     ]);
+  });
+});
+
+describe("the prompts step refuses two stages' prompts that say the same words, so no stage's wording drifts with another's (#1459)", () => {
+  const said = (name: string, file: string, words: string): Prompt => ({ name, file, cap: FILLER, slots: [], build: () => words });
+  const RULE = "Commit what you change, each message saying why.";
+
+  it("names the first run of eight words a stage's prompt shares with another stage's, whether imported or pasted", () => {
+    expect(echoed([said("builder", "src/builder.ts", `## Commit\n${RULE}`), said("reviewer", "src/reviewer.ts", `Fix it.\nThen: ${RULE}`)])).toEqual([
+      `the builder and reviewer prompts both say "Commit what you change, each message saying why."; ${OWN_WORDS}`,
+    ]);
+  });
+
+  it("lets one stage's prompts share their words, and lets stages share a run of seven words or one broken across lines", () => {
+    expect(
+      echoed([
+        said("builder", "src/builder.ts", RULE),
+        said("repair", "src/builder.ts", RULE),
+        said("reviewer", "src/reviewer.ts", "Commit what you change, each message saying\nwhy."),
+      ]),
+    ).toEqual([]);
   });
 });

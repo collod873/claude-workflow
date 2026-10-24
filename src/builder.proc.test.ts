@@ -179,7 +179,7 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
     expect(disableAllHooks).toBe(false);
   });
 
-  it("hands a red check back to the same session with the log its verdict names, then marks the ticket checking and lands it", () => {
+  it("hands a red check back to the same session with the red step's part of the log its verdict names and that log's path, never the steps that passed beside it, then marks the ticket checking and lands it", () => {
     const { run, handed, hired, landed, marked } = fixing({ claude: FIXES_EACH_ROUND, check: FULL_CHECK_RED_ONCE });
 
     const result = run();
@@ -187,6 +187,9 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
     expect(result.status, result.stderr).toBe(0);
     expect(handed()).toHaveLength(3);
     expect(handed()[1]).toContain("OTHER-TEST-BROKE in src/stops.test.ts");
+    expect(handed()[1]).toContain(".git/check/logs/check-full-red.log");
+    expect(handed()[1]).not.toContain("PASSING-STEP-LINE");
+    expect(handed()[1]).not.toContain("TYPECHECK-FINE");
     expect(hired()[1]).toContain(BUILDER_SESSION);
     expect(landed()).toHaveLength(1);
     expect(marked()).toEqual(["811 building", "811 checking"]);

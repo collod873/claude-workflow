@@ -201,7 +201,11 @@ _Avoid_: idea, bug, backlog item, memo
 One agent process in a pipeline run, with no memory of other stages. Not an Actions job or step: a
 stage is a context boundary and they are not. Each stage declares its part row, prompt caps and
 quiet-output scenarios in its own part file, `src/<stage>.part.ts`, and its own stops in its own
-code; every growth limit finds them by scanning, so no two stages share a list.
+code; every growth limit finds them by scanning, so no two stages share a list. Its prompt is in its
+**own words**: written for its job in its own module, sharing no prose with another stage's, and
+pointing at a skill for any rule a skill holds; the prompts step refuses two stages' prompts that
+say the same eight words, imported or pasted, while shared code (schemas, caps, filing, the check
+runner) stays shared.
 _Avoid_: phase, pass, step, job
 
 **Stage opening**:

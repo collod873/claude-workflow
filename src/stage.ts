@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { NO_EM_DASH, onDisk } from "./brief.ts";
 import { type Asked, askedIssue, commentOnTicket, followUpBody, gh, ghRead, git, gitRead, heldOn, mark, OWNER, post, STUCK, unread, type MarkedLabel } from "./post.ts";
 import type { Stop } from "./stops.ts";
-import { DONE_SENTENCES, quoted } from "./ticket-shape.ts";
+import { quoted } from "./ticket-shape.ts";
 
 const STREAM = ["--output-format", "stream-json", "--verbose"];
 const TIMED_OUT = 124;
@@ -195,7 +195,7 @@ export interface OwnerStep {
   why: string;
 }
 
-const MOST_FIXES = 3;
+export const MOST_FIXES = 3;
 
 export const FOLLOW_UPS = {
   fixes: {
@@ -221,17 +221,12 @@ export interface Fix {
   done: string[];
 }
 
-export const FIXES_ASKED = `up to ${MOST_FIXES} faults with one sure fix: \`fault\` with evidence, \`title\`, \`done\` as ${DONE_SENTENCES}; each is a ticket`;
-
 export function followedUp(found: string, fixes: Fix[], asks: string[], call: { title: string; by: string }): { named: string; refusals: string[]; said: string }[] {
   const tickets = fixes.slice(0, MOST_FIXES).map(({ fault, title, done }) => ({ named: title, ...post({ kind: "ticket", title, text: followUpBody([found, "", `> ${fault}`], done) }, gh) }));
   if (asks.length === 0) return tickets;
   const text = ["## Why", "", `@${OWNER} ${call.by} leaves these to you:`, "", ...asks.map((ask) => `- ${ask}`), ""].join("\n");
   return [...tickets, { named: call.title, ...post({ kind: "note", title: call.title, text }, gh) }];
 }
-
-export const linted = (commitlint: boolean | undefined) =>
-  commitlint === true ? ["This repo runs commitlint on every commit: write each message as `type: subject`, the type `feat`, `fix` or another conventional one, the subject lower-case, as the machine's own are."] : [];
 
 const COMMITLINT = /^(\.commitlintrc(\.\w+)?|commitlint\.config\.[cm]?[jt]s)$/;
 const COMMITLINT_KEY = /"commitlint"\s*:/;

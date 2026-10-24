@@ -1,9 +1,9 @@
 import { spawnSync } from "node:child_process";
 import { type AppKey, freshAppToken } from "./app-token.ts";
-import { capped, handedDiff, LIST_CAP, NO_EM_DASH, sameFiles, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
+import { capped, DIFF_CAP, diffOverCap, LIST_CAP, NO_EM_DASH, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
 import { commentOnTicket, FOLLOW_UP_OF, gh, gitRead, heldOn, labelsHeld, machineBin, mark, post, REVIEW_LET_THROUGH } from "./post.ts";
 import { CHECKING } from "./spelled.ts";
-import { calledOwner, committed, commitlinted, FIXES_ASKED, type Fix, FOLLOW_UPS, followedUp, head, hire, linted, type OwnerStep, OWNER_STEPS } from "./stage.ts";
+import { calledOwner, committed, commitlinted, type Fix, FOLLOW_UPS, followedUp, head, hire, MOST_FIXES, type OwnerStep, OWNER_STEPS } from "./stage.ts";
 import { quoted } from "./ticket-shape.ts";
 
 const ENDS = { fixed: "fixed here", owner: "asked of the owner", nothing: "needs nothing" } as const;
@@ -108,12 +108,15 @@ interface Handed {
   commitlint: boolean;
 }
 
-export const reviewedChange = (commits: string, diff: string, stat: string) => ["## Commits", capped(commits, LIST_CAP), "## Diff from main", handedDiff(diff, stat)];
-export const TESTS_ARE_YOURS = "A new or changed test that would stay green on the bug it guards, or go red on a refactor that keeps the behavior, is yours to fix.";
-export const STANDARDS_LOADED = "Before judging it, call the Skill tool with `coding-standards` for the code standard and `testing` for the test standard.";
-export const COMMIT_WHY = "Commit what you change, each message saying why, with no em dash and no closing keyword such as `Fixes #12`.";
-export const stuckAsked = (unit: "ticket" | "spec") => `- \`stuck\`: the work has a gap you cannot fix, one only the owner can close; \`reason\` says why, and the ${unit} is marked \`stuck\`.`;
-export const STEPS_ASKED = "`steps`: each step only the owner can take before this work runs, such as a dashboard setting or a key, read from the finished work; name every one in each answer";
+function diffHanded(diff: string, stat: string): string {
+  const over = diffOverCap(diff, stat);
+  return over === undefined
+    ? diff
+    : [`The diff runs ${over.bytes} bytes, past the ${DIFF_CAP} you can be handed, so it reaches you as its \`git diff --stat\` and a list of changed files; read the rest in the repo as you need it.`, over.stat, "Every file changed:", over.files].join("\n\n");
+}
+
+const alongsideSection = (alongside: string) =>
+  alongside === "" ? [] : ["## Open tickets on the same files", "Each shares a file with this ticket, and may already own a fault you would otherwise file:", capped(alongside, LIST_CAP)];
 
 const builderSaid = (said: string) =>
   said.trim() === "" ? [] : ["## What its builder said", "The builder's closing notes, which reach the owner only through your answer: put each gap, wait, owner step or fault they name in `steps`, `fixes` or `risks`, as you would one you found.", capped(said, LIST_CAP)];
@@ -123,17 +126,20 @@ export function handedOn({ ticket, body, commits, diff, stat, alongside, said, c
     `# Review #${ticket} before it lands`,
     "A builder built the ticket below on this branch, and its full check is green. You did not build it: read the ticket, its commit messages and the diff as its reviewer.",
     capped(body, TICKET_CAP),
-    ...reviewedChange(commits, diff, stat),
+    "## Commits",
+    capped(commits, LIST_CAP),
+    "## Diff from main",
+    diffHanded(diff, stat),
     ...builderSaid(said),
-    ...sameFiles(alongside),
-    ...linted(commitlint),
+    ...alongsideSection(alongside),
+    ...(commitlint ? ["This repo runs commitlint on every commit, yours too: write each message as a conventional `type: subject`, such as `fix: keep the zone`, the subject lower-case."] : []),
     "## Fix it or approve it",
-    `Where the diff misses the Why or its \`## Done when\`, or breaks what it touches, fix it here yourself: nothing goes back to the builder. ${TESTS_ARE_YOURS} A fault of the same cause in the code you read is yours to fix too when the fix is small, though the \`## Done when\` does not name it; a bigger one you name in \`fixes\` or \`risks\`. ${STANDARDS_LOADED}`,
-    `${COMMIT_WHY} Answer one outcome:`,
+    "Before judging it, call the Skill tool with `coding-standards` for the code standard and `testing` for the test standard. Where the diff misses the Why or its `## Done when`, or breaks what it touches, repair it yourself on this branch, since no builder sees it again. A new or changed test that fails one of the `testing` skill's checks is yours to fix. A fault of the same cause in the code you read is yours to fix too when the fix is small, though the `## Done when` does not name it; a bigger one you name in `fixes` or `risks`.",
+    "Commit each change you make with its reason as the message; `bin/land` refuses an em dash or a closing keyword such as `Fixes #12`. Answer one outcome:",
     "- `approve`: it builds the Why, with whatever you fixed; `bin/land` then runs the full check and merges it, and anything it refuses comes back to you.",
-    stuckAsked("ticket"),
-    `${STEPS_ASKED}, since each one named is filed as an \`owner-step\` note once it lands, and the ticket still closes.`,
-    `\`fixes\`: of the faults you saw and let through, ${FIXES_ASKED} filed once it lands.`,
+    "- `stuck`: the work has a gap only the owner can close, and you cannot fix it; give the why in `reason`, and the ticket goes `stuck`.",
+    "`steps`: each step only the owner can take before this work runs, such as a dashboard setting or a key, read from the finished work; each one named is filed as an `owner-step` note once it lands, and the ticket still closes.",
+    `\`fixes\`: of the faults you saw and let through, up to ${MOST_FIXES} with one sure fix each: \`fault\` with its evidence, \`title\`, and \`done\` naming the sentences that hold after the fix; each is filed as a ticket once it lands.`,
     "`risks`: each other fault, cost or risk you saw, `risk` saying what it is and `ends` where it goes: `fixed` here, `why` saying how; `owner`, a call only the owner can make, `why` giving your pick, filed as one note to the owner once it lands; or `nothing`, `why` saying why it needs nothing.",
     "Your review is done once each fault, cost or risk you saw sits in `fixes` or `risks`; leave both empty only when you saw none. Each answer adds to what you named before, so after the first name only what is new or has changed its end.",
     "`reason`: one paragraph for the owner on what the ticket built. An `approve`'s `reason` is commented on the ticket's PR before it merges, followed by each of your `fixes` and `risks` and where it ends.",
@@ -162,7 +168,7 @@ export function landing(named: ["--ticket" | "--spec", string], reason: string):
   return { refused: tailOf(`${landed.stdout}${landed.stderr}`.trim(), TAIL_CAP) || `bin/land ended ${landed.status} and said nothing` };
 }
 
-export const landRefused = (refused: string) => ["`bin/land` refused to land it. Its output:", refused, "Fix what it names, commit, and answer again."].join("\n\n");
+const landRefused = (refused: string) => ["`bin/land` refused to land it. Its output:", refused, "Fix what it names, commit, and answer again."].join("\n\n");
 
 function triedAgainLater(ticket: string, refusal: string): number {
   console.error(`review: #${ticket} was not reviewed, as ${refusal}; its run ends red, so the machine re-runs it`);

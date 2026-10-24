@@ -135,7 +135,7 @@ declareStage({
       file: "src/finish.ts",
       cap: LIST_CAP + DIFF_CAP + TAIL_CAP + FINDINGS_CAP + 2 * SLICE_CAP + 2 * HANDED_ON,
       slots: [...SLOTTED, "red", "findings"],
-      build: (filled) => onTheCode(changesOf(filled), { spec: "", red: filled.red ?? "", commitlint: true, findings: filled.findings ?? "" }),
+      build: (filled) => onTheCode(changesOf(filled), { spec: "", red: { verdict: "", failed: filled.red ?? "" }, commitlint: true, findings: filled.findings ?? "" }),
     },
     {
       name: "reviewer on the spec",

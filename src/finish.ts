@@ -1,13 +1,14 @@
 import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
-import { capped, NO_EM_DASH, TAIL_CAP, tailOf } from "./brief.ts";
-import { CHECK, checkedBy } from "./builder.ts";
+import { capped, DIFF_CAP, diffOverCap, LIST_CAP, NO_EM_DASH, TAIL_CAP, tailOf } from "./brief.ts";
+import { checkedBy, type Red } from "./builder.ts";
+import { PUBLISHED_CHECK } from "./checks.ts";
 import { doneCheck, lastDoneCheck, missesOf } from "./done-checker.ts";
 import { askedIssue, commentOnTicket, FOLLOW_UP_OF, gh, ghRead, git, gitRead, heldOn, labelsHeld, mark, OWNER, readOrStop, REVIEW_LET_THROUGH, STUCK, unread } from "./post.ts";
-import { afterRefused, approvedOn, COMMIT_WHY, firstTimeNamed, gathered, landing, landRefused, ownerStepFiled, reviewedChange, type Routed, ROUTED, ROUTED_REQUIRED, routedFiled, STANDARDS_LOADED, STEPS_ASKED, stuckAsked, TESTS_ARE_YOURS } from "./reviewer.ts";
+import { afterRefused, approvedOn, firstTimeNamed, gathered, landing, ownerStepFiled, type Routed, ROUTED, ROUTED_REQUIRED, routedFiled } from "./reviewer.ts";
 import { landedOn, type Progress, progressOn, specBranch } from "./scheduler.ts";
 import { sliceTrailed } from "./slice-builder.ts";
 import { FINDINGS_CAP } from "./slicer.ts";
-import { committed, commitlinted, head, hire, linted, type OwnerStep, OWNER_STEPS, type Spent } from "./stage.ts";
+import { committed, commitlinted, head, hire, MOST_FIXES, type OwnerStep, OWNER_STEPS, type Spent } from "./stage.ts";
 import { SPEC } from "./spelled.ts";
 import { stopsOf } from "./stops.ts";
 import { quoted, SPEC_CAP } from "./ticket-shape.ts";
@@ -53,23 +54,18 @@ const alone = (changes: Changes) => {
         `The diff is over ${ONE_REVIEWER_CAP} bytes, so each slice has its own reviewer on the code standard, and you review what ${slice} built: the commits and diff below are its alone, one patch per commit. Read the rest of the branch too for code that copies what this slice wrote, such as a helper, a type or a query written twice, and make it one.`,
       ];
 };
-const NEWEST_FIRST = "Its commits are listed newest first, each with its id: `git show <id>` reads one, and `git log origin/main..HEAD` reads any the list cuts.";
-const FIX_PASS =
-  "The spec landed on main, and its done check found sentences that did not hold; its findings are under `## The done check's findings`. This is the spec's one fix pass: its integration branch is fresh off main and holds only the fix, built slice by slice, so the rest of the spec is on main already.";
-const foundBy = (findings: string | undefined) => (findings === undefined ? [] : ["## The done check's findings", capped(findings, FINDINGS_CAP)]);
-const answerAsked = [
-  "Answer one outcome:",
-  "- `approve`: it holds, with whatever you fixed; once every reviewer approves, `bin/land` runs the full check and merges it, and anything it refuses comes back to the last reviewer.",
-  stuckAsked("spec"),
-  `${STEPS_ASKED}, since each one named is filed as an \`owner-step\` note once the spec lands.`,
-  "`fixes`: each fault you leave for a later build, at most three, each with one sure fix: `fault` with its evidence, `title`, and `done` as the sentences true once it is fixed; each becomes a ticket the machine builds after the spec lands.",
-  "`risks`: any other fault, cost or risk you found, as `risk`, with `ends` naming its end: `fixed` by you here, `why` telling how; `owner`, which only the owner can decide, `why` holding your pick, every reviewer's gathered into one note to the owner once the spec lands; `nothing`, `why` telling why it can stand.",
-  "You are done reviewing when each fault, cost or risk you found sits in `fixes` or `risks`; both stay empty only when you found none. Each answer adds to what you named before, so after the first name only what is new or has changed its end.",
-  "`reason`: one paragraph for the owner on what the spec built. Every reviewer's `approve` `reason` is commented on the spec's PR before it merges, and below them each of your `fixes` and `risks` with its end.",
-];
+const codeDiff = ({ diff, stat }: Changes) => {
+  const over = diffOverCap(diff, stat);
+  return over === undefined
+    ? diff
+    : [`At ${over.bytes} bytes this diff is over the ${DIFF_CAP} handed, so here are its \`git diff --stat\` and the files it changes; read each file in the repo.`, over.stat, over.files].join("\n\n");
+};
 
-export function onTheCode(changes: Changes, { spec, red, commitlint, findings }: { spec: string; red?: string; commitlint: boolean; findings?: string }): string {
-  const built = findings === undefined ? "Builders built this spec slice by slice on its integration branch, and a reviewer on the spec has read it and fixed what it missed." : `${FIX_PASS} A reviewer on the spec has read it.`;
+export function onTheCode(changes: Changes, { spec, red, commitlint, findings }: { spec: string; red?: Red; commitlint: boolean; findings?: string }): string {
+  const built =
+    findings === undefined
+      ? "Builders built this spec slice by slice on its integration branch, and a reviewer on the spec has read it and fixed what it missed."
+      : "This branch is the spec's one fix pass: once the spec landed on main, some sentences failed its done check, and this integration branch, cut fresh off main, holds only their fix. A reviewer on the spec has read it.";
   return [
     `# Hold spec #${spec} to the code standard before it lands`,
     `${built} You did not build it: read its commit messages and diff as its reviewer on the code standard.`,
@@ -78,27 +74,43 @@ export function onTheCode(changes: Changes, { spec, red, commitlint, findings }:
       ? []
       : [
           "## Its full check is red",
-          `\`${CHECK}\` went red on this branch once the reviewer on the spec was done. The red may sit in any slice's code, and it is yours wherever it sits: make it pass, since the check runs again when you answer and holds you until it passes. The end of its output:`,
-          tailOf(red, TAIL_CAP),
+          `\`${PUBLISHED_CHECK}\` went red on this branch once the reviewer on the spec was done: \`${red.verdict}\`. The red may sit in any slice's code, and it is yours wherever it sits: make it pass, since the check runs again when you answer and holds you until it passes. The end of each red step's part of its log:`,
+          tailOf(red.failed, TAIL_CAP),
         ]),
-    ...foundBy(findings),
-    NEWEST_FIRST,
-    ...reviewedChange(changes.commits, changes.diff, changes.stat),
-    ...linted(commitlint),
+    ...(findings === undefined ? [] : ["## What the done check found", capped(findings, FINDINGS_CAP)]),
+    "## Commits, newest first",
+    "`git show <id>` reads one; `git log origin/main..HEAD` reads those cut here.",
+    capped(changes.commits, LIST_CAP),
+    "## The diff",
+    codeDiff(changes),
+    ...(commitlint ? ["Commitlint runs on this repo: write each commit message as `type: subject`, a conventional type, the subject lower-case."] : []),
     "## Fix it",
-    `${STANDARDS_LOADED} Where the code breaks the code standard, fix it here yourself: nothing goes back to a builder, and nothing after you but \`bin/land\`'s full check reads it. Done when every file the diff changes meets every rule of \`coding-standards\`, and every new or changed test passes all three of the \`testing\` skill's checks. ${TESTS_ARE_YOURS}`,
-    COMMIT_WHY,
+    "First call the Skill tool with `coding-standards` and then with `testing`: they hold the code standard and the test standard you judge by. Where the code breaks either, fix it here yourself: nothing goes back to a builder, and nothing after you but `bin/land`'s full check reads it. Done when every file the diff changes meets every rule of `coding-standards`, and every new or changed test passes the `testing` skill's checks.",
+    "Commit each fix with a message saying why, free of em dashes and of closing keywords such as `Fixes #12`.",
     "## Your answer",
-    ...answerAsked.filter((line) => !line.startsWith(STEPS_ASKED)),
+    "Answer one outcome:",
+    "- `approve`: the code meets the standard, with whatever you fixed; once every reviewer approves, `bin/land` runs the full check and merges the spec, and what it refuses comes back to the last reviewer on the code standard.",
+    "- `stuck`: a fault you cannot fix stands, and only the owner can settle it; `reason` says why, and the spec is marked `stuck`.",
+    `\`fixes\`: at most ${MOST_FIXES} faults you leave for a later build, each with one sure fix: \`fault\` and its evidence, \`title\`, and \`done\` stating what holds once it is fixed. Each becomes a ticket built after the spec lands.`,
+    "`risks`: every other fault, cost or risk you saw, as `risk`, with `ends`: `fixed` here by you, `why` saying how; `owner`, a decision that is the owner's alone, `why` with your pick, gathered into one note to the owner once the spec lands; `nothing`, `why` saying why it can stand.",
+    "The review is done once every fault, cost or risk you saw is in `fixes` or `risks`, and both are empty only when you saw none. What you name stays filed across your answers, so a later answer holds only what is new to it or whose end has moved.",
+    "`reason`: one paragraph for the owner on how the code holds to the standard. It is commented on the spec's PR before it merges, with every one of your `fixes` and `risks` and its end.",
     "",
   ].join("\n\n");
 }
+
+const specDiff = ({ diff, stat }: Changes) => {
+  const over = diffOverCap(diff, stat);
+  return over === undefined
+    ? diff
+    : [`The diff is ${over.bytes} bytes, over ${DIFF_CAP}, so only its \`git diff --stat\` and its files are handed; read in the repo what you need of it.`, over.stat, "Every file changed:", over.files].join("\n\n");
+};
 
 export function onTheSpec(changes: Changes, { spec, title, body, commitlint, briefs, findings }: { spec: string; title: string; body: string; commitlint: boolean; briefs: string; findings?: string }): string {
   const built =
     findings === undefined
       ? "Builders built the spec below slice by slice on its integration branch, each slice to its brief under `## Its slices`. You did not build it: read the spec, the briefs, its commit messages and its diff, over the whole branch, as its reviewer on the spec."
-      : `${FIX_PASS} You did not build the fix: read the spec, the fix's slices under \`## Its slices\`, its commit messages and its diff as its reviewer on the spec, and judge whether it makes those sentences hold.`;
+      : "The spec landed on main, and some of its sentences failed the done check; the findings are under `## The done check's findings`. This is the spec's one fix pass: its integration branch is fresh off main and holds only the fix, built slice by slice, so the rest of the spec is on main already. You did not build the fix: read the spec, the fix's slices under `## Its slices`, its commit messages and its diff as its reviewer on the spec, and judge whether it makes those sentences hold.";
   const fix =
     findings === undefined
       ? "Where the branch misses what the spec asks, builds what it rules out of scope, or leaves a sentence under `## I'll know it works when I can` with nothing built that would show it, fix it here yourself: nothing goes back to a builder. Once it lands, a fresh done check tries each of those sentences."
@@ -111,21 +123,33 @@ export function onTheSpec(changes: Changes, { spec, title, body, commitlint, bri
     "## Its slices",
     "Each slice the slicer cut, with the brief its builder built to:",
     capped(briefs, BRIEFS_CAP) || "(none on record)",
-    ...foundBy(findings),
-    NEWEST_FIRST,
-    ...reviewedChange(changes.commits, changes.diff, changes.stat),
-    ...linted(commitlint),
+    ...(findings === undefined ? [] : ["## The done check's findings", capped(findings, FINDINGS_CAP)]),
+    "Its commits are listed newest first, each with its id: `git show <id>` reads one, and `git log origin/main..HEAD` reads any the list cuts.",
+    "## Commits",
+    capped(changes.commits, LIST_CAP),
+    "## Diff from main",
+    specDiff(changes),
+    ...(commitlint ? ["commitlint checks each commit here: a message reads `type: subject`, with a conventional type such as `fix` or `feat` and a lower-case subject."] : []),
     "## Fix it",
     fix,
-    COMMIT_WHY,
+    "Every change you make goes in a commit whose message gives the reason, using neither an em dash nor an issue-closing word like `Closes #12`.",
     "## Your answer",
-    ...answerAsked,
+    "Answer one outcome:",
+    "- `approve`: the branch builds what the spec asks, with whatever you fixed; the reviewers on the code standard read it next, then `bin/land` runs the full check and merges it.",
+    "- `stuck`: the spec has a gap you cannot fix, one only the owner can close; `reason` says why, and the spec is marked `stuck`.",
+    "`steps`: what the owner alone must do before the spec's work can run, like setting a dashboard value or adding a key, judged from what was built; each one named becomes an `owner-step` note once the spec lands.",
+    `\`fixes\`: each fault you leave for a later build, at most ${MOST_FIXES}, each with one sure fix: \`fault\` and the evidence for it, \`title\`, and \`done\`, the sentences that will be true after the fix; each becomes a ticket the machine builds after the spec lands.`,
+    "`risks`: any other fault, cost or risk you found, as `risk`, with `ends` naming its end: `fixed` by you here, `why` telling how; `owner`, which only the owner can decide, `why` holding your pick, every reviewer's gathered into one note to the owner once the spec lands; `nothing`, `why` telling why it can stand.",
+    "You are done reviewing when each fault, cost or risk you found sits in `fixes` or `risks`; both stay empty only when you found none. Nothing named in an earlier answer is dropped: a later one names only the findings it adds and those whose end it changes.",
+    "`reason`: a paragraph telling the owner what the spec built. Every reviewer's `approve` `reason` is commented on the spec's PR before it merges, and below them each of your `fixes` and `risks` with its end.",
     "",
   ].join("\n\n");
 }
 
 const WHOLE_BRANCH = "This refusal covers the whole integration branch, not only your slice: it is yours wherever it sits.";
-const stillRedOnReview = (red: string) => ["The full check still ends red after your answer; the last of its output:", tailOf(red, TAIL_CAP), "Make it pass, commit, and answer again.", ""].join("\n\n");
+const stillRedOnReview = ({ verdict, failed }: Red) =>
+  [`The full check still ends red after your answer: \`${verdict}\`. The end of each red step's part of its log:`, tailOf(failed, TAIL_CAP), "Make it pass, commit, and answer again.", ""].join("\n\n");
+const landRefused = (refused: string) => ["`bin/land` refused to land the spec. What it said:", refused, "Fix what it names, commit, and answer again."].join("\n\n");
 
 const briefsOf = (progress: Progress) =>
   progress.slices
@@ -242,8 +266,8 @@ function rounds<Done>(run: Run, reviewer: Reviewer, { failed, stop, commit, kept
 
 const greened = (run: Run, reviewer: Reviewer, commit: string) =>
   rounds(run, reviewer, { failed: "stayed red on its full check", stop: "unchecked", commit, kept: (approved) => run.later.push(`After its full check went red: ${approved.reason}`) }, () => {
-    const red = checkedBy(CHECK);
-    return red === undefined ? { done: true } : { refused: red, told: stillRedOnReview(red) };
+    const red = checkedBy(PUBLISHED_CHECK);
+    return red === undefined ? { done: true } : { refused: red.verdict, told: stillRedOnReview(red) };
   });
 
 function told(run: Run, reviewer: Reviewer, input: string, commit: string): Approved | undefined {
@@ -266,7 +290,7 @@ function reviews(run: Run, { title, body }: { title: string; body: string }, pro
   const onSpec = reviewer(`${spec}-spec`, "spec", ANSWER);
   const approved = told(run, onSpec, onTheSpec(wholeBranch(), { spec, title, body, commitlint, briefs: briefsOf(progress), findings }), `Review #${spec} on the spec`);
   if (approved === undefined) return undefined;
-  let red = checkedBy(CHECK);
+  let red = checkedBy(PUBLISHED_CHECK);
   const parts = onTheCodeInParts();
   let last = onSpec;
   for (const [at, changes] of parts.entries()) {

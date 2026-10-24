@@ -68,7 +68,7 @@ describe("a fresh builder builds one slice of a spec in its own worktree until i
 
     const repair = handedBackOnce(builder);
 
-    expect(repair).toContain("`check` is still red");
+    expect(repair).toContain("`check` is red on this branch");
     expect(repair).toContain("OTHER-TEST-BROKE in src/zone.test.ts");
     const [, again = []] = builder.hired();
     expect(again[again.indexOf("--resume") + 1]).toBe(SLICE_SESSION);
@@ -263,7 +263,7 @@ describe("a slice's builder resumes where it was stopped", () => {
 
     expect(result.status, result.stderr).toBe(0);
     expect(handed()).toHaveLength(1);
-    expect(handed()[0]).toContain("`check` is still red");
+    expect(handed()[0]).toContain("`check` is red on this branch");
     const [argv = []] = hired();
     expect(argv[argv.indexOf("--resume") + 1]).toBe("sess-earlier");
     expect(ending(result.stdout)).toMatchObject({ outcome: "partial", left });
