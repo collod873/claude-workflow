@@ -187,7 +187,7 @@ function ownDatabase(container: string): string | undefined {
 }
 
 function isolated({ spec, slice }: Slicing, port: number): string | undefined {
-  const own = mkdtempSync(join(process.env.RUNNER_TEMP || tmpdir(), `${named("slice", spec, slice)}-`));
+  const own = mkdtempSync(join(tmpdir(), "slice-"));
   onLeaving(() => rmSync(own, { recursive: true, force: true }));
   process.env.TMPDIR = own;
   process.env.PORT = String(port);

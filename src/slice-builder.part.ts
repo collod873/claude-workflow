@@ -32,10 +32,11 @@ export function slicing({
   const tree = join(root, slice);
   const home = join(root, "home");
   const temp = join(root, "tmp");
+  const runnerTemp = join(root, "runners", "collod873-Lumaria", "desktop-7vv7k71-6", "_work", "_temp");
   const kept = (what: string) => join(root, `${what}-${slice}`);
   const at = (what: string) => `${root}/${what}-$(basename "$PWD")`;
   const { setup, calls } = ghArgv(join(root, "gh-argv"));
-  for (const dir of [kept("claude-calls"), kept("claude-argv"), kept("envs"), temp]) mkdirSync(dir, { recursive: true });
+  for (const dir of [kept("claude-calls"), kept("claude-argv"), kept("envs"), temp, runnerTemp]) mkdirSync(dir, { recursive: true });
   const envKept = (who: string) => `env >"${at("envs")}/${who}-$(ls "${at("envs")}" | grep -c "^${who}-")"\n`;
   if (!existsSync(repo)) {
     mkdirSync(repo, { recursive: true });
@@ -86,7 +87,7 @@ export function slicing({
     readdirSync(dir)
       .sort((one, other) => Number(one) - Number(other))
       .map((call) => readFileSync(join(dir, call), "utf8"));
-  const env = { PATH: `${join(root, "bin")}:${process.env.PATH}`, HOME: home, TMPDIR: temp, RUNNER_TEMP: temp, GITHUB_RUN_ID: "7001", GITHUB_RUN_ATTEMPT: "1", GITHUB_REPOSITORY: "collod873/Lumaria", RUNNER_NAME: "GitHub Actions 7", STAGE_MINUTES: stageMinutes, ...(appKeyFile === undefined ? {} : { APP_KEY_FILE: appKeyFile, GH_TOKEN: "job-token", QUIET_GH_TOKEN: "job-token" }) };
+  const env = { PATH: `${join(root, "bin")}:${process.env.PATH}`, HOME: home, TMPDIR: temp, RUNNER_TEMP: runnerTemp, GITHUB_RUN_ID: "7001", GITHUB_RUN_ATTEMPT: "1", GITHUB_REPOSITORY: "collod873/Lumaria", RUNNER_NAME: "GitHub Actions 7", STAGE_MINUTES: stageMinutes, ...(appKeyFile === undefined ? {} : { APP_KEY_FILE: appKeyFile, GH_TOKEN: "job-token", QUIET_GH_TOKEN: "job-token" }) };
   const argv = (extra: string[]) => ["--spec", SPEC, "--slice", slice, "--brief", join(root, `brief-${slice}.md`), "--onto", ONTO, ...extra];
   return {
     tree,
