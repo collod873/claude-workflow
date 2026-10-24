@@ -142,3 +142,55 @@ describe("bin/admit lets the App's ticket in only as a follow-up a stage wrote (
     expect(comments()[0]).toContain(NO_FOLLOW_UP);
   });
 });
+
+describe("bin/admit follows a first step's origin in its own repo by the whole chain a ticket there builds by", () => {
+  const STEP = FAULT.replace("as the machine's fault.", "as its first step.");
+  const LUMARIA = "collod873/Lumaria";
+  const REVIEWED = { number: "900", opener: "collod873", labels: ["ticket"], state: "closed", repo: LUMARIA };
+  const RESEARCHED = { number: "900", opener: "collod873", labels: ["note", "research"], state: "closed", repo: LUMARIA };
+  const LET_THROUGH = ticketWhy("Follow-up of #900: its reviewer let this through.");
+  const FOUND = ticketWhy("Follow-up of #900: its research found this.");
+  const toldOn = (calls: string[][], repo: string, ticket: string) => calls.filter((args) => args[0] === "issue" && args[1] === "comment" && args[2] === ticket && args[args.indexOf("--repo") + 1] === repo).map((args) => args[args.indexOf("--body") + 1]);
+
+  it.each([
+    ["a reviewer's follow-up of a ticket the owner opened there", LET_THROUGH, REVIEWED],
+    ["research's follow-up from a research note the owner opened there", FOUND, RESEARCHED],
+    ["a reviewer's follow-up of a split piece there", LET_THROUGH, { ...REVIEWED, opener: APP, body: SPLIT_PIECE }],
+  ])("admits a first step whose origin is %s", (_, originBody, note) => {
+    const { run, comments } = admitting({ opener: APP, body: STEP, origin: fromLumaria(APP, undefined, originBody), note });
+
+    const result = run();
+
+    expect(result.stdout, result.stderr).toBe("admitted=true\n");
+    expect(comments()).toEqual([]);
+  });
+
+  it("refuses a first step whose origin is a reviewer's follow-up of a ticket the App opened there as no follow-up, naming the whole chain", () => {
+    const { run, comments } = admitting({ opener: APP, body: STEP, origin: fromLumaria(APP, undefined, LET_THROUGH), note: { ...REVIEWED, opener: APP } });
+
+    expect(run().stdout).toBe("admitted=false\n");
+    expect(comments()[0]).toContain("the first step of collod873/Lumaria#931");
+    expect(comments()[0]).toContain("collod873/Lumaria#900");
+    expect(comments()[0]).toContain(NO_FOLLOW_UP);
+  });
+
+  it("calls the owner on the ticket that waits on a refused first step, naming the step", () => {
+    const { run, calls } = admitting({ opener: APP, body: STEP, origin: fromLumaria(APP, undefined) });
+
+    expect(run().stdout).toBe("admitted=false\n");
+    const told = toldOn(calls(), LUMARIA, "931");
+    expect(told).toHaveLength(1);
+    expect(told[0]).toContain("@collod873");
+    expect(told[0]).toContain("collod873/design-kit#811, its first step,");
+  });
+
+  it("refuses a first step whose origin names it back as its own origin, after a bounded number of reads", () => {
+    const { run, calls, comments } = admitting({ opener: APP, body: STEP, origin: fromLumaria(APP, undefined, STEP.replace("collod873/Lumaria#931", "collod873/design-kit#811")) });
+
+    const result = run();
+
+    expect(result.stdout, result.stderr).toBe("admitted=false\n");
+    expect(comments()[0]).toContain("without reaching one the owner opened");
+    expect(calls().filter((args) => args.includes("api")).length).toBeLessThanOrEqual(8);
+  });
+});
