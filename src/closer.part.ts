@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, symlinkSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { BIN, execute, git, plant, refusedMark, scratch, script } from "./scenarios.ts";
 import { MACHINE } from "./spelled.ts";
@@ -123,7 +123,6 @@ export function closing({
     if (markRefusal === undefined) symlinkSync(join(BIN, "mark"), join(session, "bin", "mark"));
     else script(join(session, "bin", "mark"), refusedMark(markRefusal));
   }
-  const lines = (file: string) => (existsSync(file) ? readFileSync(file, "utf8").trimEnd().split("\n") : []);
   return {
     session,
     calls: () => readdirSync(callsDir).sort((a, b) => Number(a) - Number(b)).map((file) => readFileSync(join(callsDir, file), "utf8")),

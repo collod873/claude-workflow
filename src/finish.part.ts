@@ -12,6 +12,7 @@ import { SPEC_CAP } from "./ticket-shape.ts";
 const FINISHED_PR = "https://github.com/collod873/claude-workflow/pull/9974";
 const POSTED = "https://github.com/collod873/claude-workflow/issues/974#issuecomment-1";
 const FILED_NOTE = "https://github.com/collod873/claude-workflow/issues/975";
+const APPROVED: object = { outcome: "approve", reason: "reason $CALL" };
 
 export interface Slice {
   id?: string;
@@ -26,7 +27,7 @@ export function finishing({
   sentences = ["see the spec land on main"],
   tries = [{ sentence: 1, outcome: "held", tried: "saw it on main" }] as { sentence: number; outcome: string; tried: string }[],
   reviewer = "",
-  answer = { outcome: "approve", reason: "reason $CALL" } as object,
+  answer = APPROVED,
   answerFrom = undefined as { call: number; answer: object } | undefined,
   check = "printf 'check: ok\\n'\n",
   land = "",

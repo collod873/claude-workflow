@@ -74,7 +74,7 @@ function timedWorkflows(repo: string): string[] {
   return globSync(WORKFLOWS, { cwd: repo })
     .sort()
     .filter((file) => {
-      const on: unknown = parse(readFileSync(join(repo, file), "utf8"))?.on;
+      const on = (parse(readFileSync(join(repo, file), "utf8")) as { on?: unknown } | null)?.on;
       const triggers = typeof on === "string" ? [on] : Array.isArray(on) ? on : Object.keys(on ?? {});
       return triggers.includes("schedule");
     })

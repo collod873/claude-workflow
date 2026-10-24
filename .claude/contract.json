@@ -7,10 +7,8 @@
       "why": "A type error is the cheapest failure to catch and the one a stage meets most while it works."
     },
     "lint": {
-      "run": "node_modules/.bin/eslint --config eslint.config.js",
-      "each": "node_modules/.bin/eslint --config eslint.config.js --no-warn-ignored --no-error-on-unmatched-pattern <files>",
-      "files": "\\.[cm]?[jt]s$",
-      "why": "Every rule in eslint.config.js reads one file at a time, so the changed files alone are the whole lint of a change."
+      "run": "lint/run",
+      "why": "Typed rules read the whole program, so a change in one file can raise a finding in another: the full check lints every file, and turn end only lints what changed."
     },
     "unused": {
       "run": "node_modules/.bin/knip --config knip.config.ts --no-config-hints",

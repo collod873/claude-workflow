@@ -6,13 +6,12 @@ import { parse } from "yaml";
 import { fixing } from "./builder.part.ts";
 import { rerunning } from "./rerun.part.ts";
 import { execute, heldBy, holds, labelledAs, labelledStep, onPath, scratch, script, workflowJobs, type WorkflowStep } from "./scenarios.ts";
-import { HELD, MACHINE, OWNER } from "./spelled.ts";
+import { MACHINE, OWNER } from "./spelled.ts";
 import { ENROLLED_CALLER } from "./post.ts";
 
 const REPO = join(import.meta.dirname, "..");
 const CALLER = join(REPO, ".github", "caller.yml");
 const WORKFLOWS = join(REPO, ".github", "workflows");
-const TICKETS = join(WORKFLOWS, "tickets.yml");
 const APP = "${{ steps.app.outputs.token }}";
 const PINNED = join(REPO, ".github", "actions", "pinned", "action.yml");
 const DATABASE = join(REPO, ".github", "actions", "database", "action.yml");
@@ -26,7 +25,6 @@ interface Caller {
 
 const CALLED = ["tickets.yml", "specs.yml"];
 
-type WorkflowJob = ReturnType<typeof workflowJobs>[string];
 const caller = () => parse(readFileSync(CALLER, "utf8")) as Caller;
 
 interface Fired {

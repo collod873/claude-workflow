@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { parse } from "yaml";
 const ENROLLED_REVIEW = "tickets / review";
 import { MACHINE } from "./spelled.ts";
 import { bare, checkJobRule, ci, CI_ON_EVERY_PR, DEPLOY, ENROLLED as REPO, enrolling, home, HOME, key, PC_RUNS_ON } from "./scenarios.ts";

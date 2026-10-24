@@ -22,6 +22,7 @@ interface Note {
 }
 
 const HERE = "collod873/design-kit";
+const NOTHING_TOLD: Readonly<Record<string, string[]>> = {};
 
 function noteCases(root: string, { number, opener, labels, state, repo, body }: Note): string[] {
   const issue = repo === undefined ? "issues/" : `repos/${repo}/issues/`;
@@ -29,7 +30,7 @@ function noteCases(root: string, { number, opener, labels, state, repo, body }: 
   return [`  *"api"*"${issue}${number}/parent") printf 'gh: Not Found (HTTP 404)\\n' >&2; exit 1 ;;`, `  *"api"*"${issue}${number}") cat "${join(root, "note.json")}" ;;`];
 }
 
-export function admitting({ opener = OWNER, body = FIXED_TICKET, parent = undefined as Parent, unread = false, origin = undefined as Origin | undefined, note = undefined as Note | undefined, told = {} as Record<string, string[]> } = {}) {
+export function admitting({ opener = OWNER, body = FIXED_TICKET, parent = undefined as Parent, unread = false, origin = undefined as Origin | undefined, note = undefined as Note | undefined, told = NOTHING_TOLD } = {}) {
   const root = scratch("admit-");
   const { setup, calls } = ghArgv(join(root, "gh-argv"));
   const elsewhere = origin === undefined ? [] : openedCases(join(root, "origin"), origin.opener, origin.body ?? FIXED_TICKET, origin.parent, origin.ticket).map((line) => line.replace('*"issues/', `*"repos/${origin.repo}/issues/`));

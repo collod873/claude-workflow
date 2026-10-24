@@ -18,7 +18,8 @@ function probed(gh: string) {
   const marks = steps.filter((step) => /(^|[\s(])bin\/mark 0 "\$checking"/.test(step.run ?? ""));
   expect(marks).toHaveLength(1);
   const [step] = marks as [WorkflowStep];
-  expect(step.env).toMatchObject({ GH_TOKEN: expect.any(String), GH_REPO: expect.any(String) });
+  expect(typeof step.env?.GH_TOKEN).toBe("string");
+  expect(typeof step.env?.GH_REPO).toBe("string");
   const root = scratch("mark-probe-");
   script(join(root, "bin", "gh"), gh);
   copyMark(root);

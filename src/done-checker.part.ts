@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { handedOn, OUT_OF_TIME, REPLIES_CAP } from "./done-checker.ts";
-import { authored, BIN, execute, issueStage, plant, type Said, script, stubbedMark, wellFormedSpec } from "./scenarios.ts";
+import { authored, BIN, execute, issueStage, plant, type Said, stubbedMark, wellFormedSpec } from "./scenarios.ts";
 import { PAUSED, STUCK } from "./spelled.ts";
 import { declareStage, HANDED_ON } from "./stages.ts";
 import { SPEC_CAP } from "./ticket-shape.ts";

@@ -1,5 +1,5 @@
 import { execFile, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
@@ -373,14 +373,6 @@ function namedJob(jobs: Record<string, Job>, name: string, where: string): Job {
 const outcome = (value: string): StepOutcome => ({ outcome: value, conclusion: value, outputs: {} });
 const allSkipped = (steps: Step[]): Record<string, StepOutcome> => Object.fromEntries(steps.flatMap((step) => (step.id === undefined ? [] : [[step.id, outcome("skipped")]])));
 
-function holdsAlone(condition: string, steps: Step[], scope: { failed?: boolean; cancelled?: boolean }): boolean {
-  try {
-    return holds(condition, { ...scope, steps: allSkipped(steps) });
-  } catch {
-    return false;
-  }
-}
-
 const BARE_EXPRESSIONS = /\$\{\{[^}]*\}\}/g;
 
 function ranStep(step: Step, cwd: string, env: Record<string, string>): { status: number | null; stdout: string; stderr: string; output: Record<string, string> } {
@@ -400,7 +392,7 @@ describe("every step that runs gh names its repo, since gh otherwise reads it fr
     for (const { job, step } of calls) {
       const repo = { ...job.env, ...step.env }.GH_REPO;
       if (repo !== undefined) {
-        expect(String(repo), step.run).toContain("github.repository");
+        expect(repo, step.run).toEqual(expect.stringContaining("github.repository"));
         continue;
       }
       const checkout = job.steps.findIndex(ownCheckout);
@@ -544,7 +536,7 @@ describe("a build, close, research, spec, done check or strip run that ends red 
     it(`${caller.file}'s ${caller.job} job runs the shared owner call naming its issue and run when it ends red, and not when it ends green`, () => {
       expect(calling, `a step in ${caller.file} using ./.github/actions/call-owner`).toBeDefined();
       expect(String(calling?.with?.issue)).toContain(caller.names);
-      expect(String(calling?.with?.run ?? "")).toMatch(/\S/);
+      expect(calling?.with?.run).toEqual(expect.stringMatching(/\S/));
       expect(holds(calling?.if ?? "success()", { steps: named, failed: true })).toBe(true);
       expect(holds(calling?.if ?? "success()", { steps: named, cancelled: true })).toBe(true);
       expect(holds(calling?.if ?? "success()", { steps: named })).toBe(false);

@@ -1,9 +1,9 @@
 import { createVerify, generateKeyPairSync } from "node:crypto";
-import { readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { BUILDER_SESSION, CHECK_PASSES, CHECK_RED, FULL_CHECK_RED_ONCE, fixing, SPENT_BY_THE_THIRD_ROUND } from "./builder.part.ts";
-import { git, onPath, scratch } from "./scenarios.ts";
+import { git, scratch } from "./scenarios.ts";
 import { HELD } from "./spelled.ts";
 
 const FIXES = "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n";
@@ -287,7 +287,7 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
       "git update-ref refs/heads/main \"$(git commit-tree -p main -p \"$side\" -m \"Merge pull request #1473\" \"$(git rev-parse 'main^{tree}')\")\"",
       "git reset --quiet --hard main",
     ].join("\n");
-    const amended = `if [ "$CALL" = 1 ]; then\n${mergedMain}\n${FIXES}git commit --quiet --amend -am \"Merge pull request #1473\"\nfi\n`;
+    const amended = `if [ "$CALL" = 1 ]; then\n${mergedMain}\n${FIXES}git commit --quiet --amend -am "Merge pull request #1473"\nfi\n`;
     const { run, landed, handed, log } = fixing({ claude: `${SPENT_BY_THE_THIRD_ROUND}${amended}`, stageMinutes: "1" });
 
     expect(run().status).toBe(1);

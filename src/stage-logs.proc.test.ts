@@ -1,7 +1,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import { parse } from "yaml";
 import { script, scratch } from "./scenarios.ts";
 
@@ -125,20 +125,7 @@ describe("a stage job on a runner shared with other jobs waits only for its own 
     const runnerTemp = join(root, "runner one", "_work", "_temp");
     const theirs = capturing(join(root, "runner two", "_work", "_temp", "agent-hooks"), 60);
     const ours = capturing(join(runnerTemp, "agent-hooks"), 2);
-    try {
-      const began = Date.now();
-      const flushed = spawnSync("bash", ["-e", "-c", stepWithId("stage-logs", "transcripts-flush").run ?? ""], {
-        cwd: root,
-        env: { ...process.env, HOME: join(root, "home"), RUNNER_TEMP: runnerTemp },
-        encoding: "utf8",
-        timeout: 20_000,
-      });
-      const waited = Date.now() - began;
-
-      expect(flushed.status, flushed.stderr).toBe(0);
-      expect(waited).toBeGreaterThanOrEqual(1_500);
-      expect(waited).toBeLessThan(15_000);
-    } finally {
+    onTestFinished(() => {
       for (const capture of [theirs, ours]) {
         try {
           process.kill(-(capture.pid ?? 0));
@@ -146,6 +133,18 @@ describe("a stage job on a runner shared with other jobs waits only for its own 
           if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
         }
       }
-    }
+    });
+    const began = Date.now();
+    const flushed = spawnSync("bash", ["-e", "-c", stepWithId("stage-logs", "transcripts-flush").run ?? ""], {
+      cwd: root,
+      env: { ...process.env, HOME: join(root, "home"), RUNNER_TEMP: runnerTemp },
+      encoding: "utf8",
+      timeout: 20_000,
+    });
+    const waited = Date.now() - began;
+
+    expect(flushed.status, flushed.stderr).toBe(0);
+    expect(waited).toBeGreaterThanOrEqual(1_500);
+    expect(waited).toBeLessThan(15_000);
   });
 });
