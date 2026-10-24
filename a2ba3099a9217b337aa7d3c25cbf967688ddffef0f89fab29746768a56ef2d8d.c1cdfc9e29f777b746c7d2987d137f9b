@@ -1,0 +1,1 @@
+{"step": "root-causes", "seconds": 0.06, "head": "9cc9999a70ae471b1d590c97113b5da6a2dbb6b0", "host": "DESKTOP-7VV7K71", "at": 1792801331, "inputs": [["look", ""], ["read", "docs/root-causes.md"], ["read", "package.json"], ["read", "src/package.json"], ["read", "src/root-causes.ts"]], "digest": "c1cdfc9e29f777b746c7d2987d137f9bf676ccc7b0127cca6e9584cd1cef7c8b"}
