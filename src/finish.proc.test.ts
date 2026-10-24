@@ -332,6 +332,16 @@ describe("every risk a spec's reviewer names ends somewhere, as a ticket's revie
   const OWNERS = { risk: "Storm alerts text every zone at once.", ends: "owner", why: "Whether to stagger them; my pick is no." };
   const NEEDS_NOTHING = { risk: "The zone list loads before the map.", ends: "nothing", why: "Both render in the same frame." };
 
+  it("keeps the fixes and risks a reviewer named before bin/land refused, though its answer after names none", () => {
+    const finished = finishing({ land: REFUSES_ONCE, answer: { outcome: "approve", reason: "reason $CALL", fixes: [FIX], risks: [NEEDS_NOTHING] }, answerFrom: { call: 3, answer: { outcome: "approve", reason: "reason $CALL", fixes: [], risks: [] } } });
+
+    expect(finished.run().status).toBe(0);
+    expect(createdIssues(finished.calls()).map(({ title }) => title)).toEqual([FIX.title]);
+    const [, afterRefusal = ""] = finished.approved();
+    expect(afterRefusal).toContain("After `bin/land` refused it: reason 3");
+    expect(afterRefusal).toContain(`- needs nothing: ${NEEDS_NOTHING.risk} ${NEEDS_NOTHING.why}`);
+  });
+
   it("asks each reviewer for its risks, files each fix and owner's call once in all though both name it, once the spec lands, and posts each risk with where it ends", () => {
     const finished = finishing({ answer: { outcome: "approve", reason: "reason $CALL", fixes: [FIX], risks: [OWNERS, NEEDS_NOTHING] } });
 

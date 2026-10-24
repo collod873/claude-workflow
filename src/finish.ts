@@ -3,7 +3,7 @@ import { capped, NO_EM_DASH, TAIL_CAP, tailOf } from "./brief.ts";
 import { CHECK, checkedBy } from "./builder.ts";
 import { doneCheck, lastDoneCheck, missesOf } from "./done-checker.ts";
 import { askedIssue, commentOnTicket, FOLLOW_UP_OF, gh, ghRead, git, gitRead, heldOn, labelsHeld, mark, OWNER, readOrStop, REVIEW_LET_THROUGH, STUCK, unread } from "./post.ts";
-import { approvedOn, COMMIT_WHY, firstTimeNamed, landing, landRefused, ownerStepFiled, reviewedChange, type Routed, ROUTED, ROUTED_REQUIRED, routedFiled, STANDARDS_LOADED, STEPS_ASKED, stuckAsked, TESTS_ARE_YOURS } from "./reviewer.ts";
+import { afterRefused, approvedOn, COMMIT_WHY, firstTimeNamed, gathered, landing, landRefused, ownerStepFiled, reviewedChange, type Routed, ROUTED, ROUTED_REQUIRED, routedFiled, STANDARDS_LOADED, STEPS_ASKED, stuckAsked, TESTS_ARE_YOURS } from "./reviewer.ts";
 import { type Progress, progressOn, specBranch } from "./scheduler.ts";
 import { sliceTrailed } from "./slice-builder.ts";
 import { FINDINGS_CAP } from "./slicer.ts";
@@ -61,10 +61,10 @@ const answerAsked = [
   "Answer one outcome:",
   "- `approve`: it holds, with whatever you fixed; once every reviewer approves, `bin/land` runs the full check and merges it, and anything it refuses comes back to the last reviewer.",
   stuckAsked("spec"),
-  `${STEPS_ASKED}, since those of your last answer are each filed as an \`owner-step\` note once the spec lands.`,
+  `${STEPS_ASKED}, since each one named is filed as an \`owner-step\` note once the spec lands.`,
   "`fixes`: each fault you leave for a later build, at most three, each with one sure fix: `fault` with its evidence, `title`, and `done` as the sentences true once it is fixed; each becomes a ticket the machine builds after the spec lands.",
   "`risks`: any other fault, cost or risk you found, as `risk`, with `ends` naming its end: `fixed` by you here, `why` telling how; `owner`, which only the owner can decide, `why` holding your pick, every reviewer's gathered into one note to the owner once the spec lands; `nothing`, `why` telling why it can stand.",
-  "You are done reviewing when each fault, cost or risk you found sits in `fixes` or `risks`; both stay empty only when you found none. Your last answer is the one filed, so it names them all.",
+  "You are done reviewing when each fault, cost or risk you found sits in `fixes` or `risks`; both stay empty only when you found none. Each answer adds to what you named before, so after the first name only what is new or has changed its end.",
   "`reason`: one paragraph for the owner on what the spec built. Every reviewer's `approve` `reason` is commented on the spec's PR before it merges, and below them each of your `fixes` and `risks` with its end.",
 ];
 
@@ -215,7 +215,7 @@ function answered({ spec, said, app, left }: Run, reviewer: Reviewer, input: str
   committed(commit, "fix");
   if (reviewer.slice !== undefined && reviewer.slice !== UNSLICED && git(["merge-base", "--is-ancestor", before, "HEAD"]).status === 0) sliceTrailed(before, reviewer.slice);
   pushedForRerun(spec);
-  left.set(reviewer.seat, reviewer.stepped ? approved : { ...approved, steps: [] });
+  left.set(reviewer.seat, { ...approved, ...gathered(left.get(reviewer.seat), reviewer.stepped ? approved : { ...approved, steps: [] }) });
   return approved;
 }
 
@@ -241,7 +241,7 @@ function rounds<Done>(run: Run, reviewer: Reviewer, { failed, stop, commit, kept
 }
 
 const greened = (run: Run, reviewer: Reviewer, commit: string) =>
-  rounds(run, reviewer, { failed: "stayed red on its full check", stop: "unchecked", commit, kept: (approved) => run.reasons.set(reviewer.seat, `${reviewer.on}: ${approved.reason}`) }, () => {
+  rounds(run, reviewer, { failed: "stayed red on its full check", stop: "unchecked", commit, kept: (approved) => run.later.push(`After its full check went red: ${approved.reason}`) }, () => {
     const red = checkedBy(CHECK);
     return red === undefined ? { done: true } : { refused: red, told: stillRedOnReview(red) };
   });
@@ -283,7 +283,7 @@ function reviews(run: Run, { title, body }: { title: string; body: string }): Re
 
 function landed(run: Run, { last, whole }: Reviewed): string | undefined {
   const { spec, said, reasons, later, left } = run;
-  return rounds(run, last, { failed: "did not land", stop: "unlanded", commit: `Fix what bin/land refused for #${spec}`, kept: (approved) => later.push(approved.reason) }, (): Round<string | undefined> => {
+  return rounds(run, last, { failed: "did not land", stop: "unlanded", commit: `Fix what bin/land refused for #${spec}`, kept: (approved) => later.push(afterRefused(approved.reason)) }, (): Round<string | undefined> => {
     const held = heldOn(labelsHeld(spec, gh));
     if (held !== undefined) {
       console.log(`${said} is marked ${held}, so its reviewed branch does not land`);

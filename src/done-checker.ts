@@ -85,14 +85,18 @@ export const lastDoneCheck = (issue: string, line: string) => commentsRead(issue
 const posted = (tried: [number, string, Try][], after: string[] = []) =>
   [DONE_CHECK_HEADING, "", ...tried.map(([number, sentence, one]) => `${number}. **${OUTCOMES[one.outcome]}**: ${sentence}\n   ${one.tried}`), ...after.flatMap((line) => ["", line]), ""].join("\n");
 
-const TRY_STARTS = /^\d+\. \*\*/;
+const TRY_STARTS = new RegExp(`^(\\d+)\\. \\*\\*(?:${[...new Set(Object.values(OUTCOMES))].join("|")})\\*\\*: `);
 const MISSED_TRY = new RegExp(`^\\d+\\. \\*\\*${OUTCOMES.missed}\\*\\*: `);
 
 export function missesOf(comment: string): string {
   const items: string[] = [];
+  let numbered = 0;
   for (const line of comment.split("\n")) {
-    if (TRY_STARTS.test(line)) items.push(line);
-    else if (items.length > 0) items[items.length - 1] += `\n${line}`;
+    const number = Number(TRY_STARTS.exec(line)?.[1] ?? 0);
+    if (number > numbered) {
+      numbered = number;
+      items.push(line);
+    } else if (items.length > 0) items[items.length - 1] += `\n${line}`;
   }
   return items.filter((item) => MISSED_TRY.test(item)).map((item) => item.trimEnd()).join("\n");
 }

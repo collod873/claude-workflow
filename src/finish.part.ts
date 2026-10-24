@@ -27,6 +27,7 @@ export function finishing({
   tries = [{ sentence: 1, outcome: "held", tried: "saw it on main" }] as { sentence: number; outcome: string; tried: string }[],
   reviewer = "",
   answer = { outcome: "approve", reason: "reason $CALL" } as object,
+  answerFrom = undefined as { call: number; answer: object } | undefined,
   check = "printf 'check: ok\\n'\n",
   land = "",
   said = [] as Said[],
@@ -74,7 +75,9 @@ export function finishing({
       `  cat <<'TRIES'\n${answering({ tries })}TRIES`,
       "else",
       reviewer,
-      `  cat <<ANSWER\n${answering(answer)}ANSWER`,
+      ...(answerFrom === undefined
+        ? [`  cat <<ANSWER\n${answering(answer)}ANSWER`]
+        : [`  if [ "$CALL" -ge ${answerFrom.call} ]; then`, `  cat <<ANSWER\n${answering(answerFrom.answer)}ANSWER`, "  else", `  cat <<ANSWER\n${answering(answer)}ANSWER`, "  fi"]),
       "fi",
       "",
     ].join("\n"),

@@ -89,7 +89,9 @@ export function progressOn(spec: string): Found {
       .filter(({ author, body }) => author === MACHINE && body.startsWith(PROGRESS_HEADING))
       .at(-1);
     const json = PROGRESS.exec(written?.body ?? "")?.[1];
-    return { url: written?.url, progress: json === undefined ? { fixPass: false, slices: [] } : (JSON.parse(json) as Progress) };
+    if (json === undefined) return { url: written?.url, progress: { fixPass: false, slices: [] } };
+    const saved = JSON.parse(json) as Progress;
+    return { url: written?.url, progress: { ...saved, slices: saved.slices.map((slice) => ({ ...slice, decisions: slice.decisions ?? [], leftOf: slice.leftOf ?? [] })) } };
   } catch {
     return unread(line);
   }

@@ -103,8 +103,16 @@ describe("bin/slice answers the scheduler with the spec's next slices, never fil
     expect(sentBack).toContain("slice 1, `again`, cuts again what `clock` left, which `today` already cuts again");
   });
 
-  it("hands the fix pass only the done check's misses, each whole, however long the sentences that held run", () => {
-    const miss = `2. **Did not hold**: open a ticket it filed\n   the brief lost the Out of Scope at ${"collect.ts:79 ".repeat(40).trimEnd()}`;
+  it("reads a progress comment written before slices carried decisions and leftOf", () => {
+    const { decisions: _decisions, leftOf: _leftOf, ...unrecorded } = tracked("seam", "merged");
+    const sliced = slicing({ comments: [progressed([unrecorded])], answers: [{ slices: [slice("reader", ["seam"])] }] });
+
+    expect(sliced.run().status).toBe(0);
+    expect(sliced.handed()[0]).toContain("- `seam` (merged): Build seam.");
+  });
+
+  it("hands the fix pass only the done check's misses, each whole, however long the sentences that held run or whatever numbered list a try holds", () => {
+    const miss = `2. **Did not hold**: open a ticket it filed\n   I tried:\n1. **Ran** bin/slice on the spec\n2. **Read** the brief\nthe brief lost the Out of Scope at ${"collect.ts:79 ".repeat(40).trimEnd()}`;
     const check = `## Done check\n\n1. **Held**: ${"a long sentence that held ".repeat(400)}\n   saw it\n${miss}\n3. **Put to the owner**: try it on the phone\n   open it on your phone\n`;
     const sliced = slicing({ comments: [progressed([tracked("seam", "merged")], true), machineComment(4, check)], answers: [{ slices: [slice("mend")] }] });
 

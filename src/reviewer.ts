@@ -80,7 +80,20 @@ export function routedFiled(found: string, routed: Routed[], call: { title: stri
   return [...routed.flatMap(({ fixes = [] }) => followedUp(found, fixes.filter(({ title }) => unfiled(title)), [], call)), ...followedUp(found, [], asks, call)];
 }
 
-export const approvedOn = (reviewed: string[], later: string[], routed: Routed[]) => [...reviewed, ...later.map((reason) => `After \`bin/land\` refused it: ${reason}`), ...routedOn(routed)].join("\n\n");
+export const approvedOn = (reviewed: string[], later: string[], routed: Routed[]) => [...reviewed, ...later, ...routedOn(routed)].join("\n\n");
+export const afterRefused = (reason: string) => `After \`bin/land\` refused it: ${reason}`;
+
+const latestBy = <Named>(named: (one: Named) => string, ...rounds: (Named[] | undefined)[]) => [...new Map(rounds.flatMap((round) => round ?? []).map((one) => [named(one).trim().toLowerCase(), one])).values()];
+
+export interface Gathered extends Routed {
+  steps: OwnerStep[];
+}
+
+export const gathered = (earlier: Gathered | undefined, later: Routed & { steps?: OwnerStep[] }): Gathered => ({
+  fixes: latestBy(({ title }) => title, earlier?.fixes, later.fixes),
+  risks: latestBy(({ risk }) => risk, earlier?.risks, later.risks),
+  steps: latestBy(({ title }) => title, earlier?.steps, later.steps),
+});
 
 const LANDED = /^Landed \S+\/pull\/(\d+)/m;
 
@@ -119,10 +132,10 @@ export function handedOn({ ticket, body, commits, diff, stat, alongside, said, c
     `${COMMIT_WHY} Answer one outcome:`,
     "- `approve`: it builds the Why, with whatever you fixed; `bin/land` then runs the full check and merges it, and anything it refuses comes back to you.",
     stuckAsked("ticket"),
-    `${STEPS_ASKED}, since those of the answer that lands are each filed as an \`owner-step\` note, and the ticket still closes.`,
+    `${STEPS_ASKED}, since each one named is filed as an \`owner-step\` note once it lands, and the ticket still closes.`,
     `\`fixes\`: of the faults you saw and let through, ${FIXES_ASKED} filed once it lands.`,
-    "`risks`: each other fault, cost or risk you saw, `risk` saying what it is and `ends` where it goes: `fixed` here, `why` saying how; `owner`, a call only the owner can make, `why` giving your pick, those of the answer that lands filed as one note to the owner; or `nothing`, `why` saying why it needs nothing.",
-    "Your review is done once each fault, cost or risk you saw sits in `fixes` or `risks`; leave both empty only when you saw none. Name every one in each answer, since those of the answer that lands are the ones filed.",
+    "`risks`: each other fault, cost or risk you saw, `risk` saying what it is and `ends` where it goes: `fixed` here, `why` saying how; `owner`, a call only the owner can make, `why` giving your pick, filed as one note to the owner once it lands; or `nothing`, `why` saying why it needs nothing.",
+    "Your review is done once each fault, cost or risk you saw sits in `fixes` or `risks`; leave both empty only when you saw none. Each answer adds to what you named before, so after the first name only what is new or has changed its end.",
     "`reason`: one paragraph for the owner on what the ticket built. An `approve`'s `reason` is commented on the ticket's PR before it merges, followed by each of your `fixes` and `risks` and where it ends.",
     "",
   ].join("\n\n");
@@ -132,9 +145,9 @@ const reviewedBy = (ticket: string) => `Review #${ticket} as its reviewer`;
 
 export const ownerStepFiled = (left: string) => (step: OwnerStep) => ({ named: `${step.title}: ${step.why}`, ...post({ kind: "owner", title: step.title, text: `## Why\n\n${step.why}\n\n${left}\n` }, gh) });
 
-function filedOnceLanded(ticket: string, answer: Answer): string {
+function filedOnceLanded(ticket: string, answer: Gathered): string {
   const filed = [
-    ...(answer.steps ?? []).map(ownerStepFiled(`Left to the owner by the run that built #${ticket}, which closed.`)),
+    ...answer.steps.map(ownerStepFiled(`Left to the owner by the run that built #${ticket}, which closed.`)),
     ...routedFiled(`${FOLLOW_UP_OF}${ticket}${REVIEW_LET_THROUGH}`, [answer], { title: `Your call after #${ticket}'s review`, by: `#${ticket}'s reviewer` }),
   ];
   const refused = filed.filter(({ refusals }) => refusals.length > 0);
@@ -164,6 +177,7 @@ export function reviewedAndLanded(ticket: string, { body, alongside, said }: { b
   const spend = hire("review", ticket, { name: "reviewer", model: "opus", answers: ANSWER });
   let input = handedOn({ ticket, body, commits, diff, stat, alongside, said, commitlint: commitlinted() });
   const reasons: string[] = [];
+  let named: Gathered | undefined;
   let session: string | undefined;
   let idle = false;
   for (;;) {
@@ -181,10 +195,13 @@ export function reviewedAndLanded(ticket: string, { body, alongside, said }: { b
       console.log(`review: #${ticket} is labelled ${held}, so it does not land; its branch is kept for its next run`);
       return 0;
     }
-    if (answer !== undefined) reasons.push(answer.reason);
-    const landed = answer === undefined ? { refused: "You gave no outcome. Answer one." } : landing(["--ticket", ticket], approvedOn(reasons.slice(0, 1), reasons.slice(1), [answer]));
+    if (answer !== undefined) {
+      reasons.push(answer.reason);
+      named = gathered(named, answer);
+    }
+    const landed = named === undefined ? { refused: "You gave no outcome. Answer one." } : landing(["--ticket", ticket], approvedOn(reasons.slice(0, 1), reasons.slice(1).map(afterRefused), [named]));
     if ("pr" in landed) {
-      const filed = answer === undefined ? "" : filedOnceLanded(ticket, answer);
+      const filed = named === undefined ? "" : filedOnceLanded(ticket, named);
       console.log(`review: #${ticket} landed as PR #${landed.pr}${filed}`);
       return spawnSync(machineBin("close"), [ticket, landed.pr], { stdio: "inherit" }).status ?? 1;
     }
