@@ -22,11 +22,6 @@
       "fast": true,
       "why": "A clone spans files, so it is found over the whole of src, and found mid-session rather than a PR round later."
     },
-    "root-causes": {
-      "run": "node src/root-causes.ts",
-      "fast": true,
-      "why": "A cell appended to every move grows into a log nobody reads, so each cell is held to its cap while the session writing it can still rewrite it."
-    },
     "written-twice": {
       "run": "node src/written-twice.ts",
       "fast": true,

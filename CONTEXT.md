@@ -10,7 +10,7 @@ A way the machine broke, linked as an issue, PR or failed run. Every part names 
 _Avoid_: failure
 
 **Root cause**:
-What one change would stop a set of symptoms: a row in `docs/root-causes.md`.
+What one change would stop a set of symptoms.
 _Avoid_: bucket, theme
 
 **Countermeasure**:

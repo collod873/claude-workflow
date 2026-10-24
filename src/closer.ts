@@ -1,8 +1,3 @@
-import { spawnSync } from "node:child_process";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { ROOT_CAUSES, builtState, cellsOf } from "./root-causes.ts";
 import { filedClosed, LABELLED_WAITING, splitClosed, splitInto } from "./builder.ts";
 import { commentOnTicket, commentsRead, FAULT_FROM, gh, ghAs, ghRead, git, gitRead, markWith, opened, readOrStop, unread, WAITING } from "./post.ts";
 import { exitFor, type Stop, stoppedAt } from "./stops.ts";
@@ -28,7 +23,6 @@ const record = ({ ticket, pr }: Built): string => `#${ticket} is done: PR #${pr}
 
 const recorded = (said: string) => (said === "" ? "" : `; record ${said}`);
 
-const firstLine = (got: { stdout: string; stderr: string }) => (got.stderr || got.stdout).trim().split("\n")[0] || "no reason given";
 
 const ended = (ticket: string, held: string) => ticketState(ticket, `so #${held} is not woken`);
 const stillWaits = (ticket: string, open: string[]) => `; #${ticket} still waits for ${open.map((waited) => `#${waited}`).join(", ")}`;
@@ -103,64 +97,6 @@ function close(closed: string | undefined): undefined {
   return undefined;
 }
 
-const ROW = /^Row: "([^"\n]+)"/m;
-
-const named = (ticket: string, row: string, why: string) => `; #${ticket} names the row ${JSON.stringify(row)}, ${why}`;
-
-function rowMoved(table: string, row: string, state: string): string | undefined {
-  const lines = table.split("\n");
-  const at = lines.findIndex((line) => line.startsWith(`| ${row} |`));
-  const line = lines[at];
-  if (line === undefined || !/ \|$/.test(line)) return undefined;
-  lines[at] = `| ${[...cellsOf(line).slice(0, -1), state].join(" | ")} |`;
-  return lines.join("\n");
-}
-
-function treeWith(base: string, path: string[], blob: string): string | undefined {
-  const [name, ...rest] = path;
-  if (name === undefined) return undefined;
-  const listed = git(["ls-tree", base]);
-  if (listed.status !== 0) return undefined;
-  const entries = listed.stdout.split("\n").filter((entry) => entry !== "");
-  const kept = entries.find((entry) => entry.endsWith(`\t${name}`));
-  const sha = rest.length === 0 ? blob : kept === undefined ? undefined : treeWith(kept.split(/\s/)[2] ?? "", rest, blob);
-  if (sha === undefined || kept === undefined) return undefined;
-  const made = git(["mktree"], entries.map((entry) => (entry === kept ? `${kept.split(/\s/).slice(0, 2).join(" ")} ${sha}\t${name}` : entry)).join("\n") + "\n");
-  return made.status === 0 ? made.stdout.trim() : undefined;
-}
-
-const LAND = join(import.meta.dirname, "..", "bin", "land");
-
-function rowLanded(ticket: string, row: string): { said: string; failed?: true } {
-  const unmoved = (why: string) => ({ said: named(ticket, row, why), failed: true as const });
-  const fetched = git(["fetch", "--quiet", "origin", "main"]);
-  if (fetched.status !== 0) return unmoved(`and main could not be fetched, so no row moved: ${firstLine(fetched)}`);
-  const main = gitRead(["rev-parse", "origin/main"], `main could not be read, so the row #${ticket} names is not moved`);
-  const read = git(["show", `${main}:${ROOT_CAUSES}`]);
-  if (read.status !== 0) return { said: named(ticket, row, `and main has no ${ROOT_CAUSES}, so no row moved`) };
-  if (read.stdout.split("\n").some((line) => line.startsWith(`| ${row} |`) && cellsOf(line).at(-1) === builtState(ticket))) return { said: named(ticket, row, `which already says #${ticket} built it, so no row moved again`) };
-  const table = rowMoved(read.stdout, row, builtState(ticket));
-  if (table === undefined) return unmoved(`which ${ROOT_CAUSES} on main lacks, so no row moved`);
-  const blob = git(["hash-object", "-w", "--stdin"], table);
-  const tree = blob.status === 0 ? treeWith(`${main}^{tree}`, ROOT_CAUSES.split("/"), blob.stdout.trim()) : undefined;
-  const commit = tree === undefined ? undefined : git(["commit-tree", tree, "-p", main, "-m", `Move the row "${row}" now #${ticket} has merged`]);
-  if (commit === undefined || commit.status !== 0) return unmoved("and its move could not be written, so no row moved");
-  const at = mkdtempSync(join(tmpdir(), "row-move-"));
-  const added = git(["worktree", "add", "--quiet", "--detach", at, commit.stdout.trim()]);
-  if (added.status !== 0) return unmoved(`and no worktree could hold its move: ${firstLine(added)}`);
-  const landed = spawnSync(LAND, [], { cwd: at, encoding: "utf8" });
-  git(["worktree", "remove", "--force", at]);
-  return landed.status === 0 ? { said: `; moved the row ${JSON.stringify(row)} on main` } : unmoved(`and bin/land did not land its move: ${firstLine(landed)}`);
-}
-
-function rowMovedFor(ticket: string, body: string): string {
-  const row = ROW.exec(why(body))?.[1];
-  if (row === undefined) return "";
-  const move = rowLanded(ticket, row);
-  if (move.failed) commentOnTicket(ticket, `The closer could not move the row ${JSON.stringify(row)} in ${ROOT_CAUSES}, so its State still needs to read \`${builtState(ticket)}\`: ${move.said.slice(2)}\n\nRun: ${thisRun}`, gh);
-  return move.said;
-}
-
 function closeMerged(merge: Built): Stop | undefined {
   const { ticket, pr } = merge;
   const asked = gh(["issue", "view", ticket, "--json", "body", "--jq", ".body"]);
@@ -174,7 +110,7 @@ function closeMerged(merge: Built): Stop | undefined {
     if (state.startsWith("CLOSED")) quietGh(["issue", "reopen", ticket]);
     if (quietGh(["issue", "close", ticket, "--reason", "completed"]).status !== 0) return stoppedAt("unrecorded", `close: #${ticket} is done but could not be closed${recorded(posted.said)}`);
   }
-  console.log(`close: #${ticket} closed as completed, its PR merged${recorded(posted.said)}${rowMovedFor(ticket, asked.stdout)}`);
+  console.log(`close: #${ticket} closed as completed, its PR merged${recorded(posted.said)}`);
   return undefined;
 }
 
