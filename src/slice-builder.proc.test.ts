@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { CHECK_PASSES, CHECK_RED } from "./builder.part.ts";
 import { BRIEF, BUILDS, ONTO, SLICE, SLICE_SESSION, SPEC, slicing } from "./slice-builder.part.ts";
 import { BIN, execute, scratch } from "./scenarios.ts";
+import { OUT_OF_TIME } from "./slice-builder.ts";
 
 const ending = (stdout: string) => JSON.parse(stdout.trim().split("\n").at(-1) ?? "") as { outcome: string; left: string; reason: string; session: string };
 const envOf = (dump: string | undefined, name: string) => new RegExp(`^${name}=(.*)$`, "m").exec(dump ?? "")?.[1];
@@ -20,6 +21,7 @@ const CHECK_RED_ONCE = [
   "",
 ].join("\n");
 const DATABASE_STEP = '{ "steps": { "lint": { "run": "true" }, "integration": { "run": "true", "needs": ["DATABASE_URL"] } } }\n';
+const TIMES_OUT_ON_CALL = (call: number) => `[ "$CALL" = ${call} ] && { printf '{"type":"system","session_id":"${SLICE_SESSION}"}\\n'; exit 124; }\n`;
 const CONTAINER = `database-collod873-Lumaria-GitHub-Actions-7-${SPEC}-${SLICE}`;
 
 const handedBackOnce = (builder: ReturnType<typeof slicing>) => {
@@ -66,21 +68,34 @@ describe("a fresh builder builds one slice of a spec in its own worktree until i
 
     const repair = handedBackOnce(builder);
 
-    expect(repair).toContain("`check` is still red");
+    expect(repair).toContain("`check` is red on this branch");
     expect(repair).toContain("OTHER-TEST-BROKE in src/zone.test.ts");
     const [, again = []] = builder.hired();
     expect(again[again.indexOf("--resume") + 1]).toBe(SLICE_SESSION);
     expect(builder.checked()).toEqual(["check", "check"]);
   });
 
-  it("ends stuck, exit 1, when the fast check stays red to the stage's time cap", () => {
-    const { run } = slicing({ check: CHECK_RED, claude: `${BUILDS}[ "$CALL" -ge 3 ] && exit 124\n`, stageMinutes: "1" });
+  it("at its time cap tells the builder to hand back what holds, and ends on the partial it gives", () => {
+    const left = "Invoices still show times in UTC.";
+    const { run, handed, log } = slicing({ stageMinutes: "6", claude: `${TIMES_OUT_ON_CALL(1)}${BUILDS}`, answers: [undefined, { outcome: "partial", reason: "the zone shows on jobs only", left }] });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(handed()[1]).toBe(OUT_OF_TIME);
+    expect(ending(result.stdout)).toMatchObject({ outcome: "partial", left });
+    expect(fastForwards(log, ONTO)).toBe(true);
+  });
+
+  it("ends out of time, exit 1, when its builder gives no answer even in the minutes kept for its hand-back", () => {
+    const { run, handed } = slicing({ stageMinutes: "6", claude: TIMES_OUT_ON_CALL(1) + TIMES_OUT_ON_CALL(2) });
 
     const result = run();
 
     expect(result.status).toBe(1);
-    expect(ending(result.stdout)).toMatchObject({ outcome: "stuck", session: SLICE_SESSION });
-    expect(ending(result.stdout).reason).toContain("ran past its 1 minute cap");
+    expect(handed()).toHaveLength(2);
+    expect(ending(result.stdout)).toMatchObject({ outcome: "outOfTime", session: SLICE_SESSION });
+    expect(ending(result.stdout).reason).toContain("ran past its 6 minute cap");
   });
 
   it("rebases onto the integration branch's tip itself when another slice landed while it built, asking the builder nothing more", () => {
@@ -121,13 +136,64 @@ describe("a fresh builder builds one slice of a spec in its own worktree until i
     expect(handedBackOnce(builder)).toBe("You gave no outcome. Answer one.");
   });
 
-  it("hands `built` on a branch with no commits past the integration branch back as nothing built", () => {
-    const { run, handed } = slicing({ claude: ":\n", answers: [{ outcome: "built", reason: "done" }, { outcome: "stuck", reason: "the branch already does it" }] });
+  it("hands `built` or `partial` on a branch with no commits past the integration branch back as nothing built, pointing at `done`", () => {
+    for (const outcome of ["built", "partial"]) {
+      const { run, handed } = slicing({ claude: ":\n", answers: [{ outcome, reason: "done", ...(outcome === "partial" ? { left: "Invoices." } : {}) }, { outcome: "stuck", reason: "the branch already does it" }] });
+
+      expect(run().status).toBe(1);
+      expect(handed()[1]).toBe(`You answered \`${outcome}\`, and this branch has no commits past \`${ONTO}\`: build the slice, or answer \`done\` if \`${ONTO}\` already does what it asks.`);
+    }
+  });
+
+  it("ends done, exit 0, running no check, when its builder finds the integration branch already does what the slice asks", () => {
+    const { run, checked } = slicing({ claude: ":\n", answers: [{ outcome: "done", reason: "another slice already shows the zone" }] });
 
     const result = run();
 
+    expect(result.status, result.stderr).toBe(0);
+    expect(ending(result.stdout)).toEqual({ outcome: "done", left: "", reason: "another slice already shows the zone", session: SLICE_SESSION });
+    expect(checked()).toEqual([]);
+  });
+
+  it("hands `done` on a branch with commits past the integration branch back, so built work is never thrown away", () => {
+    const { run, handed } = slicing({ answers: [{ outcome: "done", reason: "already there" }, { outcome: "built", reason: "a job time shows in the tenant's zone" }] });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(handed()[1]).toContain(`You answered \`done\`, and this branch has commits past \`${ONTO}\``);
+    expect(ending(result.stdout).outcome).toBe("built");
+  });
+
+  it("hands a `partial` with no `left` back to name what is left", () => {
+    const left = "Invoices still show times in UTC.";
+    const { run, handed } = slicing({ answers: [{ outcome: "partial", reason: "the zone shows on jobs only" }, { outcome: "partial", reason: "the zone shows on jobs only", left }] });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(handed()[1]).toContain("You answered `partial` with no `left`");
+    expect(ending(result.stdout)).toMatchObject({ outcome: "partial", left });
+  });
+
+  it("keeps a partial's `left` when the builder answers `built` after a red hand-back, and ends partial", () => {
+    const left = "Invoices still show times in UTC.";
+    const builder = slicing({ check: CHECK_RED_ONCE, answers: [{ outcome: "partial", reason: "the zone shows on jobs only", left }, { outcome: "built", reason: "the check passes" }] });
+
+    const result = builder.run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(ending(result.stdout)).toMatchObject({ outcome: "partial", left });
+  });
+
+  it("ends stopped with the line it stopped on, never a stop key, when it stops before hiring", () => {
+    const { run, hired } = slicing();
+
+    const result = run("--brief", "/nowhere/brief.md");
+
     expect(result.status).toBe(1);
-    expect(handed()[1]).toContain(`You answered \`built\`, and this branch has no commits past \`${ONTO}\``);
+    expect(ending(result.stdout)).toMatchObject({ outcome: "stopped", reason: "the brief /nowhere/brief.md could not be read, so no builder was hired" });
+    expect(hired()).toEqual([]);
   });
 
   it("ends partial with what is left, exit 0, once what it built passes the fast check and fast-forwards the integration branch", () => {
@@ -173,6 +239,43 @@ describe("a slice's builder resumes where it was stopped", () => {
     const [argv = []] = hired();
     expect(argv[argv.indexOf("--resume") + 1]).toBe("sess-earlier");
     expect(handed()[0]).toBe(told);
+  });
+
+  it("lands the answer it is given again with no model turn when the integration branch moved after it", () => {
+    const { run, handed, log } = slicing({ elsewhere: { "src/other.ts": "export const other = 1;\n" } });
+    log("commit", "--quiet", "--allow-empty", "-m", "Show the tenant's time zone");
+    log("update-ref", `refs/heads/${ONTO}`, "elsewhere");
+
+    const result = run("--resume", "sess-earlier", "--answer", JSON.stringify({ outcome: "built", reason: "a job time shows in the tenant's zone" }));
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(handed()).toEqual([]);
+    expect(fastForwards(log, ONTO)).toBe(true);
+    expect(ending(result.stdout)).toMatchObject({ outcome: "built", reason: "a job time shows in the tenant's zone" });
+  });
+
+  it("hires the session it is given only when landing its answer again turns the check red, keeping the answer's `left`", () => {
+    const left = "Invoices still show times in UTC.";
+    const { run, handed, hired, log } = slicing({ check: CHECK_RED_ONCE });
+    log("commit", "--quiet", "--allow-empty", "-m", "Show the tenant's time zone");
+
+    const result = run("--resume", "sess-earlier", "--answer", JSON.stringify({ outcome: "partial", reason: "the zone shows on jobs only", left }));
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(handed()).toHaveLength(1);
+    expect(handed()[0]).toContain("`check` is red on this branch");
+    const [argv = []] = hired();
+    expect(argv[argv.indexOf("--resume") + 1]).toBe("sess-earlier");
+    expect(ending(result.stdout)).toMatchObject({ outcome: "partial", left });
+  });
+
+  it("resumes the session it is given told to hand back what holds when its last run ran out of time", () => {
+    const { run, hired, handed } = slicing();
+
+    expect(run("--resume", "sess-earlier", "--out-of-time").status).toBe(0);
+    const [argv = []] = hired();
+    expect(argv[argv.indexOf("--resume") + 1]).toBe("sess-earlier");
+    expect(handed()[0]).toBe(OUT_OF_TIME);
   });
 
   it("hands a fresh builder the brief beside what it is told when no session is given", () => {

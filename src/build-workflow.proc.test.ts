@@ -497,7 +497,6 @@ const CALLERS = [
   { file: "tickets.yml", job: "close", names: "github.event.issue.number" },
   { file: "specs.yml", job: "research", names: "github.event.issue.number" },
   { file: "specs.yml", job: "spec", names: "github.event.issue.number" },
-  { file: "specs.yml", job: "check", names: "github.event.issue.number" },
 ];
 const callsOwner = (step: Step) => step.uses === "./.github/actions/call-owner";
 

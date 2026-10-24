@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { handedOn, repaired } from "./builder.ts";
 import { handedOn as reviewing } from "./reviewer.ts";
 import { DIFF_CAP, LIST_CAP, TAIL_CAP, TICKET_CAP } from "./brief.ts";
-import { authored, BIN, execute, FIXED_TICKET, ghArgv, git, gitRefusing, openedCases, type Parent, plant, refusedMark, type Said, scratch, script } from "./scenarios.ts";
+import { authored, BIN, execute, FIXED_TICKET, ghArgv, git, gitRefusing, nulSplit, openedCases, type Parent, plant, refusedMark, type Said, scratch, script } from "./scenarios.ts";
 import { OWNER } from "./spelled.ts";
 import { declareStage, HANDED_ON } from "./stages.ts";
 
@@ -14,7 +14,7 @@ export const FULL_CHECK_RED_ONCE = [
   `if [ -f ../checked ]; then ${CHECK_PASSES.trim()}; exit 0; fi`,
   "touch ../checked",
   "mkdir -p .git/check/logs",
-  "printf -- '--- test ---\\nOTHER-TEST-BROKE in src/stops.test.ts\\n' >.git/check/logs/check-full-red.log",
+  "{ printf -- '--- typecheck ok after 1.0s: tsc\\nTYPECHECK-FINE\\n\\n--- test red after 2.0s: vitest run\\nOTHER-TEST-BROKE in src/stops.test.ts\\n\\n--- clones ok after 1.0s: jscpd\\n'; yes PASSING-STEP-LINE | head -n 600; } >.git/check/logs/check-full-red.log",
   "printf 'check: red test src/stops.test.ts:4; log %s/.git/check/logs/check-full-red.log\\n' \"$PWD\"",
   "exit 1",
   "",
@@ -44,8 +44,8 @@ function branchedSession(session: string, who: string, onMain: Record<string, st
 
 export function fixing({
   body = FIXED_TICKET,
-  answer = { outcome: "code", reason: "the export was never renamed" } as { outcome: string; reason: string; body?: string; tickets?: unknown[]; steps?: unknown[] },
-  review = { outcome: "approve", reason: "it builds the Why" } as { outcome: string; reason: string; steps?: unknown[]; fixes?: unknown[]; asks?: string[] },
+  answer = { outcome: "code", reason: "the export was never renamed" } as { outcome: string; reason: string; body?: string; repo?: string; tickets?: unknown[]; steps?: unknown[] },
+  review = { outcome: "approve", reason: "it builds the Why", risks: [] } as { outcome: string; reason: string; steps?: unknown[]; fixes?: unknown[]; risks?: unknown[] },
   reviewer = "",
   land = "",
   onTicket = [] as Said[],
@@ -71,6 +71,7 @@ export function fixing({
   repo = "collod873/Lumaria",
   openTickets = [] as { number: number; title: string; body: string }[],
   appKeyFile = undefined as string | undefined,
+  unheardIn = undefined as string | undefined,
 } = {}) {
   const root = scratch("builder-");
   const session = join(root, "session");
@@ -79,6 +80,7 @@ export function fixing({
   const hires = join(root, "claude-argv");
   const marks = join(root, "mark-calls");
   const lands = join(root, "land-calls");
+  const approvals = join(root, "approvals");
   const closes = join(root, "close-calls");
   const argvDir = join(root, "gh-argv");
   const machine = join(root, "machine", "bin");
@@ -93,7 +95,7 @@ export function fixing({
   const envKept = (who: string) => `{ env; printf -- '--- github headers\\n'; git config --get-all http.https://github.com/.extraheader; ${appKeyFile === undefined ? "" : `cat "${appKeyFile}" 2>/dev/null; `}} >"${envs}/${who}-$(ls "${envs}" | wc -l)"\ntrue\n`;
   script(join(root, "bin", "check"), `printf 'check %s\\n' "$PWD" >>"${ranIn}"\n${check}`);
   script(join(machine, "mark"), `printf '%s\\n' "$*" >>"${marks}"\n${envKept("mark")}${refusedMark(markRefusal)}`);
-  script(join(machine, "land"), `printf '%s %s\\n' "$(git rev-parse HEAD)" "$*" >>"${lands}"\n${envKept("land")}${land}\nprintf 'Landed https://github.com/%s/pull/9${ticket}\\n' "\${GH_REPO:-collod873/claude-workflow}"\n`);
+  script(join(machine, "land"), `printf '%s %s\\n' "$(git rev-parse HEAD)" "$(printf '%s' "$*" | tr '\\n' ' ')" >>"${lands}"\nprintf '%s\\0' "$4" >>"${approvals}"\n${envKept("land")}${land}\nprintf 'Landed https://github.com/%s/pull/9${ticket}\\n' "\${GH_REPO:-collod873/claude-workflow}"\n`);
   script(join(root, "bin", "timeout"), `printf '%s\\n' "$2" >>"${caps}"\nshift 2\nexec "$@"\n`);
   script(join(machine, "close"), `printf '%s\\n' "$*" >>"${closes}"\n${envKept("close")}`);
   branchedSession(session, "builder", { "src/ticket-shape.ts": "export const shaped = 1;\n", ...onMain, ...(contract === undefined ? {} : { ".claude/contract.json": contract }) }, { "src/ticket-shape.test.ts": AUTHORED_TEST }, `ticket/${ticket}`);
@@ -120,9 +122,10 @@ export function fixing({
       `  *"api"*"issues/${ticket}/comments"*) cat "${join(root, "on-ticket.json")}" ;;`,
       "  *\"api\"*\"repos/{owner}/{repo}/installation\"*) printf '4242\\n' ;;",
       "  *\"api\"*\"app/installations/4242/access_tokens\"*) printf 'minted-%s\\n' \"$n\" ;;",
+      ...(unheardIn === undefined ? [] : [`  *"api repos/${unheardIn}/contents/.github/workflows/machine.yml"*) printf 'gh: Not Found (HTTP 404)\\n' >&2; exit 1 ;;`]),
       ...openedCases(root, opener, body, parent, ticket),
       `  *"issue list"*) cat "${join(root, "open-tickets.json")}" ;;`,
-      `  *"issue create"*) n=$(( $(cat "${join(root, "created")}" 2>/dev/null || echo 900) + 1 )); printf '%s\\n' "$n" >"${join(root, "created")}"; printf 'https://github.com/collod873/claude-workflow/issues/%s\\n' "$n" ;;`,
+      `  *"issue create"*) n=$(( $(cat "${join(root, "created")}" 2>/dev/null || echo 900) + 1 )); printf '%s\\n' "$n" >"${join(root, "created")}"; repo=collod873/claude-workflow; prev=; for arg in "$@"; do [ "$prev" = --repo ] && repo=$arg; prev=$arg; done; printf 'https://github.com/%s/issues/%s\\n' "$repo" "$n" ;;`,
       `  *"issue view"*"title,body,labels"*) cat "${join(root, "ticket.json")}" ;;`,
       `  *"issue view"*"body,title"*) printf 'Build what the ticket asks\\001%s' "$(cat "${join(root, "ticket-body")}")" ;;`,
       `  *"issue view"*"labels"*"--jq"*) cat "${join(root, "labels")}" ;;`,
@@ -165,6 +168,7 @@ export function fixing({
     hired: () => numbered(hires).map((argv) => argv.split("\0").filter((part) => part !== "")),
     marked: () => listed(marks),
     landed: () => listed(lands),
+    approved: () => nulSplit(approvals),
     closed: () => listed(closes),
     capped: () => listed(caps),
     ranWith: (who: string) => readdirSync(envs).filter((name) => name.startsWith(`${who}-`)).sort((one, other) => Number(one.split("-")[1]) - Number(other.split("-")[1])).map((name) => readFileSync(join(envs, name), "utf8")),
@@ -174,6 +178,7 @@ export function fixing({
     edits: () => calls().filter((args) => args[0] === "issue" && args[1] === "edit" && args.includes("--body")).map(bodyOf),
     labelled: () => calls().filter((args) => args[0] === "issue" && args[1] === "edit" && !args.includes("--body")).map((args) => args.slice(2).join(" ")),
     filed: () => calls().filter((args) => args[0] === "issue" && args[1] === "create").map(bodyOf),
+    createdIn: () => calls().filter((args) => args[0] === "issue" && args[1] === "create").map((args) => args[args.indexOf("--repo") + 1]),
     closes: () => calls().filter((args) => (args[0] === "issue" || args[0] === "pr") && args[1] === "close"),
     keptSession: (under = "builder") => {
       const file = join(home, ".claude", under, ticket);
@@ -200,15 +205,15 @@ declareStage({
       name: "repair",
       file: "src/builder.ts",
       cap: TAIL_CAP + HANDED_ON,
-      slots: ["output"],
-      build: (filled) => repaired(filled.output ?? ""),
+      slots: ["failed"],
+      build: (filled) => repaired({ verdict: "", failed: filled.failed ?? "" }),
     },
     {
       name: "reviewer",
       file: "src/reviewer.ts",
-      cap: TICKET_CAP + 2 * LIST_CAP + DIFF_CAP + HANDED_ON,
-      slots: ["body", "commits", "diff", "stat", "alongside"],
-      build: (filled) => reviewing({ ticket: "", body: filled.body ?? "", commits: filled.commits ?? "", diff: filled.diff ?? "", stat: filled.stat ?? "", alongside: filled.alongside ?? "", commitlint: true }),
+      cap: TICKET_CAP + 3 * LIST_CAP + DIFF_CAP + HANDED_ON,
+      slots: ["body", "commits", "diff", "stat", "alongside", "said"],
+      build: (filled) => reviewing({ ticket: "", body: filled.body ?? "", commits: filled.commits ?? "", diff: filled.diff ?? "", stat: filled.stat ?? "", alongside: filled.alongside ?? "", said: filled.said ?? "", commitlint: true }),
     },
   ],
   scenarios: [

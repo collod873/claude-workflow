@@ -225,12 +225,15 @@ describe("bin/file-issue --help keeps a build's Done when to its own repo (#1467
   });
 });
 
-describe("the builder's split and bin/file-issue --help read one Done when phrase, not hand copies (#1004)", () => {
+describe("the builder's split and bin/file-issue --help ask for a Done when as what is true once built, never a count of sentences (#1004)", () => {
+  it("has bin/file-issue --help say a build's Done when in its one phrase", () => {
+    expect(BUILD_SHAPE).toContain(DONE_SENTENCES);
+  });
+
   it.each([
     ["bin/file-issue --help, for a build", BUILD_SHAPE],
     ["the builder's split", builderBrief({ ticket: "1", body: body() })],
-  ])("%s", (_, text) => {
-    expect(text).toContain(DONE_SENTENCES);
-    expect(text.replace(DONE_SENTENCES, "")).not.toMatch(/\d+ to \d+/);
+  ])("%s names no count of sentences", (_, text) => {
+    expect(text).not.toMatch(/\d+ to \d+/);
   });
 });

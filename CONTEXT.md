@@ -113,8 +113,8 @@ _Avoid_: precondition, validation, check
 **Builder**:
 The agent that builds a ticket until its full check is green, then hands it to the reviewer. A
 later run resumes its session or logs why not. It fixes the code, the ticket only in a `code`
-answer, or the machine, splits or closes it, done if main holds it, else unbuilt; stopped, it marks
-`stuck`. A spec's slice gets a **slice builder** instead (`bin/build-slice`): fast check only, its
+answer, or the machine, hands a first step to its owning repo, splits or closes it, done if main
+holds it, else unbuilt; stopped, it marks `stuck`. A spec's slice gets a **slice builder** instead (`bin/build-slice`): fast check only, its
 own Postgres, port and temp dir, done when its branch fast-forwards the integration branch, or
 `partial`, saying what is left.
 _Avoid_: fixer, mechanic, fresh eyes, repair agent
@@ -123,8 +123,9 @@ _Avoid_: fixer, mechanic, fresh eyes, repair agent
 A fresh agent with the builder's access, in the builder's run: it reads the ticket, commit messages
 and diff, fixes what it finds or approves, and lands it with `bin/land`, which hands back what it
 refuses. Nothing goes back to the builder (ADR-0012). It files owner steps as `owner-step` notes
-and what it lets through as research does. A spec gets two in series at its finish, one on the code
-standard and one on the spec, each split per slice on a big diff.
+and what it lets through as research does. A spec gets two in series at its finish: one on the spec over
+the whole branch, handed each slice's brief, then one on the code standard, last so it holds what the
+first wrote, split per slice only on a very big diff.
 _Avoid_: review job, judge, second builder
 
 **Closer**:
@@ -147,7 +148,7 @@ _Avoid_: splitter, decomposer, to-tickets, planner
 
 **Run names**:
 The `run-name` the caller file carries, so every run under it names what it does: the event and
-its issue, a comment, a dispatch's rerun or probe, as `.github/caller.yml` spells each.
+its issue, a dispatch's rerun or probe, as `.github/caller.yml` spells each.
 _Avoid_: run title, display name
 
 **Done check**:
@@ -155,7 +156,8 @@ The stage that tries each of a spec's "I'll know it works when I can ___" senten
 system once the spec has landed, and closes the spec once every one held or was put to the
 owner. A miss leaves the spec open for the scheduler's one **fix pass**; a second miss marks it
 `stuck`. A sentence put to the owner holds nothing open: the closing comment says what the owner
-could try for it, and a miss seen live later is a new ticket.
+could try for it, and a miss seen live later is a new ticket. The owner's replies since the last
+done check reach the next one, the fix pass's; a reply alone runs no done check.
 _Avoid_: audit, acceptance test, verification
 
 **Integration branch**:
@@ -165,7 +167,8 @@ of its commits carries a `Slice: <id>` trailer.
 _Avoid_: spec branch
 
 **Slice**:
-One tracer-bullet unit of a spec, cut at its last responsible moment; never a ticket.
+One unit of a spec, cut at its last responsible moment: a seam, the shared code other slices plug
+into, or after the seams one tracer bullet through the spec; never a ticket.
 _Avoid_: piece, task
 
 **Frontier**:
@@ -175,8 +178,9 @@ _Avoid_: ready queue
 **Scheduler**:
 `bin/schedule`, the code that runs a spec, hiring each fresh slicer and slice builder, at most
 three at once, then `bin/finish` (full check, two reviewers, `bin/land`, done check); it holds no
-model context. Its state is the integration branch and the `## Spec run` progress comment it alone
-writes, so a rerun resumes from them.
+model context. Its state is the integration branch and the `## Spec run` progress comment it
+writes, where `bin/finish` stamps the landing alone, so a rerun resumes from them: straight to the
+done check once the spec has landed and its done check has not finished.
 _Avoid_: orchestrator
 
 **Ticket**:
@@ -197,7 +201,11 @@ _Avoid_: idea, bug, backlog item, memo
 One agent process in a pipeline run, with no memory of other stages. Not an Actions job or step: a
 stage is a context boundary and they are not. Each stage declares its part row, prompt caps and
 quiet-output scenarios in its own part file, `src/<stage>.part.ts`, and its own stops in its own
-code; every growth limit finds them by scanning, so no two stages share a list.
+code; every growth limit finds them by scanning, so no two stages share a list. Its prompt is in its
+**own words**: written for its job in its own module, sharing no prose with another stage's, and
+pointing at a skill for any rule a skill holds; the prompts step refuses two stages' prompts that
+say the same eight words, imported or pasted, while shared code (schemas, caps, filing, the check
+runner) stays shared.
 _Avoid_: phase, pass, step, job
 
 **Stage opening**:
@@ -239,6 +247,14 @@ to complete and stands down if the run has moved past it, so two hand-offs act o
 lacking the input refuses the dispatch: logged, not red.
 _Avoid_: self-heard rerun, rerun workflow
 
+**Owning repo**:
+The one repo a kind of fix belongs in: this one for the machine, `design-kit` for a kit primitive,
+`agent-skills` for a skill or shared tool. A builder whose ticket's first step belongs there answers
+`owned`: it files that step there as a ticket and its own ticket waits on it. The closer wakes it
+from that repo's close run, so the owning repo carries the caller file; one that lacks it gets the
+owner called on the waiting ticket instead.
+_Avoid_: upstream, other repo, dependency
+
 **Probe**:
 A script or prompt `bin/probe --in <repo>` runs in the builder's environment, with no ticket or
 GitHub token; nothing runs after it.
@@ -253,7 +269,7 @@ _Avoid_: flake, glitch
 
 **Resume**:
 Setting a held issue going again. Taking `waiting` off a ticket resumes its build; the closer takes it
-off once every piece of its split, fault it filed and issue its `## Waits on` names has closed. Taking `paused`
+off once every piece of its split, fault or first step it filed and issue its `## Waits on` names has closed. Taking `paused`
 or `stuck` off a ticket that then holds neither builds it again on the branch its last run kept,
 its builder resuming its session. Taking either off an open spec that then holds neither runs its
 scheduler again from its integration branch and progress comment.

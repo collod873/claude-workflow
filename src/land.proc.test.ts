@@ -162,7 +162,7 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
   });
 
   it("rebases, re-pushes the same branch and merges again when GitHub refuses the merge because main moved after the push, \"Base branch was modified\" (#1503)", () => {
-    const { remote, session, head, branch, run, calls, merged, posted } = sessionAheadOfMain(1, { merges: ["raced", "merged"], mainMovesOnRefusal: true });
+    const { remote, session, head, branch, run, calls, merged, posted } = sessionAheadOfMain(1, { merges: ["raced", "merged"], mainMovesOnRefusal: {} });
 
     const result = run();
 
@@ -225,18 +225,49 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
     expect(git(session, "rev-parse", "HEAD")).toBe(head);
   });
 
-  it("closes the PR, deletes its branch on origin, and leaves the local ticket branch checked out where it was when GitHub refuses the merge over a conflict with main (#1503)", () => {
-    const { remote, session, head, run, calls } = sessionAheadOfMain(1, { merges: ["refused"], views: ["DIRTY"] });
+  it("rebases onto the main it fetches, re-pushes the same branch and merges, closing nothing, when GitHub refuses the merge over a conflict with a main that moved after the push (Lumaria#1332)", () => {
+    const { remote, session, head, run, calls, merged } = sessionAheadOfMain(1, { merges: ["refused", "merged"], views: ["DIRTY"], mainMovesOnRefusal: { "theirs.txt": "theirs\n" }, changes: { "mine.txt": "mine\n" } });
+    git(session, "checkout", "--quiet", "-b", "ticket/811");
+
+    const result = run(["--ticket", "811"]);
+
+    expect(result.status, result.stderr).toBe(0);
+    const rebased = git(remote, "rev-parse", "main^2");
+    expect(git(remote, "log", "-1", "--format=%s", "main^2^")).toBe("another session landed");
+    expect(calls().filter(merged)).toEqual([
+      ["pr", "merge", "ticket/811", "--merge", "--match-head-commit", head],
+      ["pr", "merge", "ticket/811", "--merge", "--match-head-commit", rebased],
+    ]);
+    expect(calls().some((call) => call[1] === "close")).toBe(false);
+    expect(result.stdout).toBe(`Landed ${PR}\n`);
+  });
+
+  it("names the conflicted files and leaves the PR open and the ticket branch checked out where it was, never main, when main moved after the push into a real conflict (Lumaria#1332)", () => {
+    const { remote, session, head, run, calls } = sessionAheadOfMain(1, { merges: ["refused"], views: ["DIRTY"], mainMovesOnRefusal: { "shared.txt": "theirs\n" }, changes: { "shared.txt": "mine\n" } });
     git(session, "checkout", "--quiet", "-b", "ticket/811");
 
     const result = run(["--ticket", "811"]);
 
     expect(result.status).toBe(1);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toBe(`land: ${PR} conflicts with main; closed it, so land again to rebase\n`);
-    expect(calls().filter((call) => call[1] === "close").map((call) => call.slice(0, 3))).toEqual([["pr", "close", "ticket/811"]]);
-    expect(git(remote, "for-each-ref", "--format=%(refname)")).toBe("refs/heads/main");
+    expect(result.stderr).toBe(`land: HEAD does not rebase cleanly onto origin/main, conflicting in shared.txt, so nothing landed; ${PR} is left open and this checkout is left on ticket/811 as it was: run git rebase origin/main and resolve them\n`);
+    expect(calls().some((call) => call[1] === "close")).toBe(false);
+    expect(git(remote, "rev-parse", "ticket/811")).toBe(head);
     expect(git(session, "symbolic-ref", "--short", "HEAD")).toBe("ticket/811");
+    expect(git(session, "rev-parse", "HEAD")).toBe(head);
+    expect(git(session, "status", "--porcelain")).toBe("");
+  });
+
+  it("closes a session's land PR and deletes its branch on origin, keeping the session's checkout where it was, when main moved after the push into a real conflict, since the next landing opens its own PR under a new head", () => {
+    const { remote, session, head, branch, run, calls } = sessionAheadOfMain(1, { merges: ["refused"], views: ["DIRTY"], mainMovesOnRefusal: { "shared.txt": "theirs\n" }, changes: { "shared.txt": "mine\n" } });
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toBe(`land: HEAD does not rebase cleanly onto origin/main, conflicting in shared.txt, so nothing landed; ${PR} is closed, since the next landing opens its own, and this checkout is left on main as it was: run git rebase origin/main and resolve them\n`);
+    expect(calls().filter((call) => call[1] === "close")).toEqual([["pr", "close", PR]]);
+    expect(git(remote, "for-each-ref", "--format=%(refname)", `refs/heads/${branch}`)).toBe("");
+    expect(git(session, "symbolic-ref", "--short", "HEAD")).toBe("main");
     expect(git(session, "rev-parse", "HEAD")).toBe(head);
   });
 
@@ -252,7 +283,7 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
 
     expect(result.status).toBe(1);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toMatch(/^land: [^\n]*git rebase origin\/main[^\n]*\n$/);
+    expect(result.stderr).toBe("land: HEAD does not rebase cleanly onto origin/main, conflicting in shared.txt, so nothing landed; this checkout is left on main as it was: run git rebase origin/main and resolve them\n");
     expect(git(session, "rev-parse", "HEAD")).toBe(head);
     expect(git(session, "status", "--porcelain")).toBe("");
     expect(existsSync(join(session, ".git", "rebase-merge"))).toBe(false);

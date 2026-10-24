@@ -1,7 +1,7 @@
 import { capped, NO_EM_DASH } from "./brief.ts";
 import { commentOnTicket, FOLLOW_UP_OF, gh, readOrStop, RESEARCH, RESEARCH_FOUND } from "./post.ts";
 import { RESEARCHING } from "./spelled.ts";
-import { FIXES_ASKED, type Fix, FOLLOW_UPS, followedUp, opened } from "./stage.ts";
+import { type Fix, FOLLOW_UPS, followedUp, MOST_FIXES, opened } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { quoted } from "./ticket-shape.ts";
 
@@ -41,7 +41,7 @@ export function handedOn(title: string, body: string, sources?: string): string 
     capped(`# ${title}\n\n${body}`, NOTE_CAP),
     "## Your findings",
     "`findings`: Markdown the owner reads once. The answer first, then what it rests on with a link or repo path for each source, then what stays unknown.",
-    `\`fixes\`: ${FIXES_ASKED}.`,
+    `\`fixes\`: up to ${MOST_FIXES} faults you found, each with one sure fix: \`fault\` with evidence, \`title\`, \`done\` as what holds once fixed. Each is a ticket.`,
     "`asks`: choices left to the owner, with your pick.",
     "",
   ].join("\n\n");

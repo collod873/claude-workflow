@@ -2,8 +2,9 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DIFF_CAP, LIST_CAP, TAIL_CAP } from "./brief.ts";
 import { specWith } from "./done-checker.part.ts";
-import { onTheCode, onTheSpec, SLICE_CAP } from "./finish.ts";
-import { authored, BIN, execute, ghArgv, git, key, plant, type Said, scratch, script } from "./scenarios.ts";
+import { BRIEFS_CAP, onTheCode, onTheSpec, SLICE_CAP } from "./finish.ts";
+import { FINDINGS_CAP } from "./slicer.ts";
+import { authored, BIN, execute, ghArgv, git, key, nulSplit, plant, type Said, scratch, script } from "./scenarios.ts";
 import { PAUSED } from "./spelled.ts";
 import { declareStage, HANDED_ON } from "./stages.ts";
 import { SPEC_CAP } from "./ticket-shape.ts";
@@ -15,6 +16,7 @@ const FILED_NOTE = "https://github.com/collod873/claude-workflow/issues/975";
 export interface Slice {
   id?: string;
   files: Record<string, string>;
+  message?: string;
 }
 
 export function finishing({
@@ -25,6 +27,7 @@ export function finishing({
   tries = [{ sentence: 1, outcome: "held", tried: "saw it on main" }] as { sentence: number; outcome: string; tried: string }[],
   reviewer = "",
   answer = { outcome: "approve", reason: "reason $CALL" } as object,
+  answerFrom = undefined as { call: number; answer: object } | undefined,
   check = "printf 'check: ok\\n'\n",
   land = "",
   said = [] as Said[],
@@ -40,6 +43,7 @@ export function finishing({
   const approvals = join(root, "approvals");
   const checks = join(root, "checks");
   const marks = join(root, "marks");
+  const origin = join(root, "origin.git");
   const { setup, calls } = ghArgv(join(root, "gh-argv"));
   git(root, "init", "--quiet", "--initial-branch=main", session);
   git(session, "config", "user.email", "builder@test");
@@ -47,13 +51,14 @@ export function finishing({
   plant(session, "README.md", "what the spec stands on\n");
   git(session, "add", ".");
   git(session, "commit", "--quiet", "-m", "what the spec stands on");
-  git(session, "remote", "add", "origin", session);
+  git(root, "init", "--quiet", "--bare", origin);
+  git(session, "remote", "add", "origin", origin);
   git(session, "update-ref", "refs/remotes/origin/main", "HEAD");
   git(session, "checkout", "--quiet", "-b", "spec/974");
-  for (const { id, files } of slices) {
+  for (const { id, files, message } of slices) {
     for (const [path, text] of Object.entries(files)) plant(session, path, text);
     git(session, "add", ".");
-    git(session, "commit", "--quiet", "-m", id === undefined ? "Build what no slice names" : `Build slice ${id}\n\nSlice: ${id}`);
+    git(session, "commit", "--quiet", "-m", id === undefined ? "Build what no slice names" : `${message ?? `Build slice ${id}`}\n\nSlice: ${id}`);
   }
   plant(root, "issue.json", JSON.stringify({ title: "A spec worth finishing", body: specWith(sentences), labels: labels.map((name) => ({ name })) }));
   plant(root, "labels-at-land", (labelsAtLand ?? labels).map((label) => `${label}\n`).join(""));
@@ -70,7 +75,9 @@ export function finishing({
       `  cat <<'TRIES'\n${answering({ tries })}TRIES`,
       "else",
       reviewer,
-      `  cat <<ANSWER\n${answering(answer)}ANSWER`,
+      ...(answerFrom === undefined
+        ? [`  cat <<ANSWER\n${answering(answer)}ANSWER`]
+        : [`  if [ "$CALL" -ge ${answerFrom.call} ]; then`, `  cat <<ANSWER\n${answering(answerFrom.answer)}ANSWER`, "  else", `  cat <<ANSWER\n${answering(answer)}ANSWER`, "  fi"]),
       "fi",
       "",
     ].join("\n"),
@@ -105,12 +112,13 @@ export function finishing({
     handed: () => numbered(prompts),
     hired: () => numbered(hires).map((argv) => argv.split("\0").filter((part) => part !== "")),
     landed: () => listed(lands).map((line) => line.split(" ")),
-    approved: () => (existsSync(approvals) ? readFileSync(approvals, "utf8").split("\0").filter((reason) => reason !== "") : []),
+    approved: () => nulSplit(approvals),
     checked: () => listed(checks),
     marked: () => listed(marks),
     calls,
     tokenOf: (made: (args: string[]) => boolean) => calls().flatMap((args, at) => (made(args) ? [readFileSync(join(tokens, String(at + 1)), "utf8")] : [])),
     log: (...args: string[]) => git(session, "log", ...args),
+    pushed: () => git(origin, "log", "--format=%s", "spec/974"),
     run: (...args: string[]) =>
       execute(join(BIN, "finish"), session, { PATH: `${bin}:${process.env.PATH}`, MACHINE_BIN: bin, GH_TOKEN: "job-token", QUIET_GH_TOKEN: "job-token", ...(appKeyed ? { APP_KEY_FILE: keyFile } : {}) }, args.length === 0 ? ["974"] : args),
   };
@@ -125,16 +133,16 @@ declareStage({
     {
       name: "reviewer on the code standard",
       file: "src/finish.ts",
-      cap: LIST_CAP + DIFF_CAP + TAIL_CAP + 2 * SLICE_CAP + 2 * HANDED_ON,
-      slots: [...SLOTTED, "red"],
-      build: (filled) => onTheCode(changesOf(filled), { spec: "", red: filled.red ?? "", commitlint: true }),
+      cap: LIST_CAP + DIFF_CAP + TAIL_CAP + FINDINGS_CAP + 2 * SLICE_CAP + 2 * HANDED_ON,
+      slots: [...SLOTTED, "red", "findings"],
+      build: (filled) => onTheCode(changesOf(filled), { spec: "", red: { verdict: "", failed: filled.red ?? "" }, commitlint: true, findings: filled.findings ?? "" }),
     },
     {
       name: "reviewer on the spec",
       file: "src/finish.ts",
-      cap: SPEC_CAP + LIST_CAP + DIFF_CAP + 2 * SLICE_CAP + 2 * HANDED_ON,
-      slots: [...SLOTTED, "title", "body"],
-      build: (filled) => onTheSpec(changesOf(filled), { spec: "", title: filled.title ?? "", body: filled.body ?? "", commitlint: true }),
+      cap: SPEC_CAP + LIST_CAP + DIFF_CAP + BRIEFS_CAP + FINDINGS_CAP + 2 * HANDED_ON,
+      slots: ["commits", "diff", "stat", "title", "body", "briefs", "findings"],
+      build: (filled) => onTheSpec(changesOf(filled), { spec: "", title: filled.title ?? "", body: filled.body ?? "", commitlint: true, briefs: filled.briefs ?? "", findings: filled.findings ?? "" }),
     },
   ],
   scenarios: [

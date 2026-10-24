@@ -65,14 +65,24 @@ onto_default_branch() {
   if [[ -n $(git rev-list "origin/$default_branch..HEAD") ]] && ! git merge-base --is-ancestor "origin/$default_branch" HEAD; then
     if ! git rebase --quiet "origin/$default_branch" >/dev/null 2>"$err"; then
       { printf -- '--- git rebase origin/%s ---\n' "$default_branch"; cat "$err"; } >>"$log"
+      conflicted=$(git diff --name-only --diff-filter=U | paste -sd, - | sed 's/,/, /g')
       git rebase --abort >/dev/null 2>&1 # quiet: the rebase's own error is already in the log
-      printf 'land: HEAD does not rebase cleanly onto origin/%s, so nothing landed; run git rebase origin/%s, resolve it, and land again\n' "$default_branch" "$default_branch" >&2
+      checkout=$(git symbolic-ref --quiet --short HEAD || git rev-parse --short HEAD)
+      pr_left=${url:+$url is left open and }
+      if [[ -n $url && $branch == land/* ]]; then
+        call "gh pr close" gh pr close "$url"
+        call "git push --delete" git push --quiet origin --delete "$branch"
+        pr_left="$url is closed, since the next landing opens its own, and "
+      fi
+      printf 'land: HEAD does not rebase cleanly onto origin/%s%s, so nothing landed; %sthis checkout is left on %s as it was: run git rebase origin/%s and resolve them\n' \
+        "$default_branch" "${conflicted:+, conflicting in $conflicted}" "$pr_left" "$checkout" "$default_branch" >&2
       exit 1
     fi
     head=$(git rev-parse HEAD)
   fi
 }
 
+url=
 onto_default_branch
 
 posted() {
@@ -131,7 +141,6 @@ tree_pathed() {
   PATH="${TREE_PATH:+$TREE_PATH:}$PATH" "$@"
 }
 
-url=
 judged="judged by land on the commit before the push (ADR-0008)"
 for (( round = 1; ; round++ )); do
   changed=$(git diff --name-only "origin/$default_branch" HEAD)
@@ -175,7 +184,7 @@ for (( round = 1; ; round++ )); do
     state=$(gh pr view "$branch" --json mergeStateStatus --jq .mergeStateStatus 2>>"$log") || state=unread
   fi
   case $state in
-    RACED | UNKNOWN)
+    RACED | UNKNOWN | DIRTY)
       sleep "${LAND_PAUSE_SECONDS:-2}"
       call "git fetch" git fetch --quiet origin "$default_branch"
       git merge-base --is-ancestor HEAD "origin/$default_branch" && break
@@ -184,12 +193,6 @@ for (( round = 1; ; round++ )); do
         exit 1
       fi
       onto_default_branch
-      ;;
-    DIRTY)
-      call "gh pr close" gh pr close "$branch"
-      call "git push --delete" git push --quiet origin --delete "$branch"
-      printf 'land: %s conflicts with %s; closed it, so land again to rebase\n' "$url" "$default_branch" >&2
-      exit 1
       ;;
     *)
       printf 'land: GitHub refused to merge %s: %s; it is left open\n' "$url" "$refusal" >&2
