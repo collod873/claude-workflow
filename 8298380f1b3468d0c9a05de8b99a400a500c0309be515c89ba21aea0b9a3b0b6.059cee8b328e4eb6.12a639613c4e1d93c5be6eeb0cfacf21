@@ -1,0 +1,1 @@
+{"step": "test", "test": "src/stops.test.ts", "seconds": 0.0, "head": "d3dea0ea8d8cae247b05efd40b2edb643352b25b", "host": "runnervmtai0g", "at": 1792882564, "inputs": [["look", "src/__snapshots__/stops.test.ts.snap"], ["read", "src/stops.test.ts"], ["read", "vitest.config.ts"]], "digest": "12a639613c4e1d93c5be6eeb0cfacf2179907aedd3115fe615f4cd88395bac6d"}
