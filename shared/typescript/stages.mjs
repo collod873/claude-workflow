@@ -8,10 +8,14 @@ export function packageBin(name, bin) {
   return join(dirname(require.resolve(`${name}/package.json`)), bin);
 }
 
-export function stage(title, command, args, root) {
-  const result = spawnSync(command, args, { cwd: root, stdio: "inherit" });
+export function stage(title, command, args, root, env = {}, verb = "lint") {
+  const result = spawnSync(command, args, {
+    cwd: root,
+    stdio: "inherit",
+    env: { ...process.env, ...env },
+  });
   if (result.error) throw result.error;
-  if (result.status !== 0) console.error(`lint: ${title} failed`);
+  if (result.status !== 0) console.error(`${verb}: ${title} failed`);
   return result.status === 0;
 }
 
@@ -25,10 +29,15 @@ export function eslintStage(root, files) {
   );
 }
 
-export function refused(layer, refusals) {
-  for (const refusal of refusals) console.error(`lint: refused, ${refusal}`);
+export function refused(layer, refusals, verb = "lint") {
+  for (const refusal of refusals) console.error(`${verb}: refused, ${refusal}`);
   if (refusals.length > 0) {
-    console.error(`lint: the ${layer} layer is shared; change it in agent-hooks, not here`);
+    console.error(`${verb}: the ${layer} layer is shared; change it in agent-hooks, not here`);
   }
   return refusals.length > 0;
+}
+
+export function tscStage(root, config) {
+  const tsc = packageBin("typescript-native", "bin/tsc");
+  return stage("tsc", process.execPath, [tsc, "-p", config], root, {}, "typecheck");
 }
