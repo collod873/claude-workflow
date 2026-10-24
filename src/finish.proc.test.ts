@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { finishing, type Slice } from "./finish.part.ts";
-import { createdIssues, heard, schemaIn } from "./scenarios.ts";
+import { createdIssues, git, heard, schemaIn } from "./scenarios.ts";
 import { HELD, OWNER } from "./spelled.ts";
 
 const SENTENCES = ["see the spec land on main", "see each slice's file on main"];
@@ -11,8 +11,8 @@ const REFUSAL = "land: the full check went red on the commit, so nothing was pus
 const REFUSES_ONCE = `[ -f ../refused ] || { touch ../refused; printf '%s\\n' '${REFUSAL}' >&2; exit 1; }`;
 const ALWAYS_REFUSES = `printf '%s\\n' '${REFUSAL}' >&2\nexit 1`;
 
-const SLICED = (slices: { id: string; title: string; fix?: boolean }[], fixPass = false) =>
-  `## Spec run\n\n<!-- progress: ${JSON.stringify({ fixPass, slices: slices.map(({ id, title, fix = false }) => ({ id, title, why: `${title} is why ${id} was cut`, done: [`${id} shows on the branch`], blockedBy: [], state: "merged", tries: 1, fix })) })} -->`;
+const SLICED = (slices: { id: string; title: string; fix?: boolean }[], fixPass = false, landed?: string) =>
+  `## Spec run\n\n<!-- progress: ${JSON.stringify({ fixPass, landed, slices: slices.map(({ id, title, fix = false }) => ({ id, title, why: `${title} is why ${id} was cut`, done: [`${id} shows on the branch`], blockedBy: [], state: "merged", tries: 1, fix })) })} -->`;
 const MISSED = "## Done check\n\n1. **Did not hold**: see each slice's file on main\n   found no zone file on main";
 
 describe("bin/finish reviews a spec's integration branch on the spec, then on the code standard, lands it once and runs the done check (ADR-0013)", () => {
@@ -82,6 +82,33 @@ describe("bin/finish reviews a spec's integration branch on the spec, then on th
     const called = finished.calls().filter((args) => args[1] === "comment").map((args) => args[args.indexOf("--body") + 1] ?? "");
     expect(called.filter((body) => body.startsWith(`@${OWNER} the done check of #974 stopped and needs you: the done checker gave no try for sentence 2.`))).toHaveLength(1);
     expect(finished.calls().filter((args) => args[1] === "close")).toEqual([]);
+  });
+
+  it("stamps the spec's landing on its progress comment before the done check runs, so a run stopped after landing is found landed by its rerun", () => {
+    const finished = finishing({ said: [SLICED([{ id: "tenant-time-zone", title: "Store each tenant's time zone" }])] });
+
+    expect(finished.run().status).toBe(0);
+    const bodies = finished.calls().filter((args) => args[1] === "comment").map((args) => args[args.indexOf("--body") + 1] ?? "");
+    const stamped = bodies.findIndex((body) => body.startsWith("## Spec run") && body.includes('"landed":"9974"'));
+    expect(stamped).toBeGreaterThanOrEqual(0);
+    expect(stamped).toBeLessThan(bodies.findIndex((body) => body.startsWith("## Done check")));
+  });
+
+  it("runs the done check alone on a checkout of main, reviewing and landing nothing, when the progress comment records the spec landed and its done check unfinished", () => {
+    const finished = finishing({ said: [SLICED([{ id: "tenant-time-zone", title: "Store each tenant's time zone" }], false, "9974")] });
+    git(finished.session, "update-ref", "refs/remotes/origin/main", git(finished.session, "commit-tree", "HEAD^{tree}", "-p", "origin/main", "-p", "HEAD", "-m", "Merge the spec"));
+
+    const ran = heard(finished.run());
+
+    expect(finished.landed()).toEqual([]);
+    expect(ran.status, ran.stderr).toBe(0);
+    expect(ran.lines.slice(-2)).toEqual(["landed=9974", "missed="]);
+    const [tried, ...more] = finished.handed();
+    expect(tried).toMatch(/^Try each sentence/);
+    expect(more).toEqual([]);
+    expect(finished.log("-1", "--format=%s")).toBe("Merge the spec");
+    expect(git(finished.session, "symbolic-ref", "--short", "HEAD")).toBe("spec/974");
+    expect(finished.calls().filter((args) => args[1] === "close")).toEqual([["issue", "close", "974", "--reason", "completed"]]);
   });
 
   it("tells both reviewers of the fix pass that the spec landed and this branch holds only the fix, with the done check's findings and the fix pass's slices alone", () => {
@@ -321,7 +348,7 @@ describe("bin/finish acts on a fresh App token after each model run, since a spe
     expect(finished.run().status).toBe(0);
     const [[landedOn = ""] = []] = finished.landed();
     expect(landedOn).toMatch(/^minted-\d+$/);
-    const [postedOn = ""] = finished.tokenOf((args) => args[0] === "issue" && args[1] === "comment");
+    const [postedOn = ""] = finished.tokenOf((args) => args[0] === "issue" && args[1] === "comment" && args[args.indexOf("--body") + 1]?.startsWith("## Done check") === true);
     expect(postedOn).toMatch(/^minted-\d+$/);
     expect(postedOn).not.toBe(landedOn);
   });

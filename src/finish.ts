@@ -4,7 +4,7 @@ import { CHECK, checkedBy } from "./builder.ts";
 import { doneCheck, lastDoneCheck, missesOf } from "./done-checker.ts";
 import { askedIssue, commentOnTicket, FOLLOW_UP_OF, gh, ghRead, git, gitRead, heldOn, labelsHeld, mark, OWNER, readOrStop, REVIEW_LET_THROUGH, STUCK, unread } from "./post.ts";
 import { afterRefused, approvedOn, COMMIT_WHY, firstTimeNamed, gathered, landing, landRefused, ownerStepFiled, reviewedChange, type Routed, ROUTED, ROUTED_REQUIRED, routedFiled, STANDARDS_LOADED, STEPS_ASKED, stuckAsked, TESTS_ARE_YOURS } from "./reviewer.ts";
-import { type Progress, progressOn, specBranch } from "./scheduler.ts";
+import { landedOn, type Progress, progressOn, specBranch } from "./scheduler.ts";
 import { sliceTrailed } from "./slice-builder.ts";
 import { FINDINGS_CAP } from "./slicer.ts";
 import { committed, commitlinted, head, hire, linted, type OwnerStep, OWNER_STEPS, type Spent } from "./stage.ts";
@@ -252,10 +252,9 @@ function told(run: Run, reviewer: Reviewer, input: string, commit: string): Appr
   return approved;
 }
 
-function reviews(run: Run, { title, body }: { title: string; body: string }): Reviewed | undefined {
+function reviews(run: Run, { title, body }: { title: string; body: string }, progress: Progress): Reviewed | undefined {
   const { spec } = run;
   const commitlint = commitlinted();
-  const { progress } = progressOn(spec);
   const findings = progress.fixPass ? missesOf(lastDoneCheck(spec, `the comments on #${spec} could not be read, so nothing was reviewed`) ?? "") : undefined;
   const reviewer = (seat: string, on: "spec" | "code standard", answers: object, slice?: string): Reviewer => ({
     spend: hire("finish", seat, { name: `reviewer on the ${on}`, model: "opus", answers }),
@@ -316,16 +315,26 @@ function finished(spec: string, app: AppKey | undefined): Finished {
     console.log(`${said} is marked ${held}, ${unchanged}`);
     return {};
   }
+  const found = progressOn(spec);
+  if (found.progress.landed !== undefined) {
+    gitRead(["checkout", "--quiet", "-B", specBranch(spec), "origin/main"], `${specBranch(spec)} could not be checked out at origin/main, so its done check was not run`);
+    return checkedAfter(spec, found.progress.landed, app);
+  }
   if (gitRead(["rev-list", "--count", PAST_MAIN], UNREAD) === "0") {
     stoppedAt("unfinishable", `${said} holds nothing past main on its integration branch, ${unchanged}`);
     return {};
   }
   const run: Run = { spec, said, app, reasons: new Map(), later: [], left: new Map() };
-  const review = reviews(run, asked);
+  const review = reviews(run, asked, found.progress);
   if (review === undefined) return {};
   const pr = landed(run, review);
   if (pr === undefined) return {};
+  landedOn(spec, found, pr);
   leftFiled(spec, [...run.left.values()]);
+  return checkedAfter(spec, pr, app);
+}
+
+function checkedAfter(spec: string, pr: string, app: AppKey | undefined): Finished {
   const checked = readOrStop("done-check", () => doneCheck(spec, app));
   return { landed: pr, missed: typeof checked === "object" ? checked.missed : undefined };
 }

@@ -178,8 +178,9 @@ _Avoid_: ready queue
 **Scheduler**:
 `bin/schedule`, the code that runs a spec, hiring each fresh slicer and slice builder, at most
 three at once, then `bin/finish` (full check, two reviewers, `bin/land`, done check); it holds no
-model context. Its state is the integration branch and the `## Spec run` progress comment it alone
-writes, so a rerun resumes from them.
+model context. Its state is the integration branch and the `## Spec run` progress comment it
+writes, where `bin/finish` stamps the landing alone, so a rerun resumes from them: straight to the
+done check once the spec has landed and its done check has not finished.
 _Avoid_: orchestrator
 
 **Ticket**:

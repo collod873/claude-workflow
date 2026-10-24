@@ -14,6 +14,7 @@ const stoppedAt = stopsOf({
   unsliced: "Schedule: the slicer ended red or gave no slices, so nothing more is hired",
   unmoved: "Schedule: no slice can move and none is left to build, so the spec is marked `stuck`",
   unfinished: "Schedule: bin/finish ended red, so the spec did not land",
+  unchecked: "Schedule: bin/finish ended red after the spec landed, before its done check finished, so a rerun goes straight to the done check",
   missedTwice: "Schedule: the done check missed after the spec's one fix pass, so the spec is marked `stuck`",
 });
 type Stop = ReturnType<typeof stoppedAt>;
@@ -36,6 +37,7 @@ interface Tracked extends Slice {
 
 export interface Progress {
   fixPass: boolean;
+  landed?: string;
   slices: Tracked[];
 }
 
@@ -103,6 +105,11 @@ function posted(spec: string, found: Found): void {
   const [refusal] = written.refusals;
   if (refusal !== undefined) unread(`the progress comment on #${spec} would not post: ${quoted(refusal)}`);
   found.url ??= written.said;
+}
+
+export function landedOn(spec: string, found: Found, pr: string): void {
+  found.progress.landed = pr;
+  posted(spec, found);
 }
 
 function pushed(spec: string): void {
@@ -264,7 +271,7 @@ function finished(spec: string, root: string, logs: string, app: AppKey | undefi
   closeSync(out);
   const said = readFileSync(log).subarray(from).toString("utf8");
   const given = (key: string) => new RegExp(`^${key}=(.*)$`, "m").exec(said)?.[1]?.trim();
-  return { status: ran.status, landed: given("landed"), missed: given("missed") ?? "" };
+  return { status: ran.status, landed: given("landed") || undefined, missed: given("missed") ?? "" };
 }
 
 function calledOwner(spec: string, stop: Stop, why: string): Stop {
@@ -324,8 +331,9 @@ async function scheduled(spec: string, app: AppKey | undefined): Promise<Stop | 
     if (held !== undefined) console.log(`${said} is marked ${held}, so ${after}`);
     return held !== undefined;
   };
-  let plan = true;
-  let cutNothing = false;
+  const landedUnchecked = progress.landed !== undefined;
+  let plan = !landedUnchecked;
+  let cutNothing = landedUnchecked;
   let slicerStopped = false;
   let markedBuilding = false;
   for (;;) {
@@ -365,9 +373,12 @@ async function scheduled(spec: string, app: AppKey | undefined): Promise<Stop | 
       const ended = finished(spec, root, logs, app);
       fresh("bin/finish");
       if (ended.status !== 0) {
-        if (stoodDown("bin/finish stood down and the spec did not land")) return undefined;
+        const unchecked = ended.landed === undefined ? undefined : `the spec landed as #${ended.landed}, with its done check unfinished`;
+        if (stoodDown(unchecked === undefined ? "bin/finish stood down and the spec did not land" : `it stood down after ${unchecked}`)) return undefined;
+        if (unchecked !== undefined) return stoppedAt("unchecked", `${said} ended red, bin/finish ${spec} ended ${String(ended.status)} after ${unchecked}, so a rerun goes straight to the done check`);
         return stoppedAt("unfinished", `${said} ended red, bin/finish ${spec} ended ${String(ended.status)}`);
       }
+      progress.landed = undefined;
       if (ended.missed === "") {
         console.log(`${said} landed as #${ended.landed ?? "?"}, and its done check found every sentence held or put to the owner`);
         return undefined;

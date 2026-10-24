@@ -169,6 +169,33 @@ describe("bin/schedule runs a spec from its first cut to its landing, one slice 
     expect(run.order()).not.toContain(`mark ${SPEC_ISSUE} stuck`);
   });
 
+  it("says the spec landed when its done check stands down marked stuck, rather than that the spec did not land", () => {
+    const run = scheduling({ cuts: [[sliceOf("seam")], []], finishes: [{ status: 1, then: "printf 'stuck\\n' >>\"$ROOT/labels\"" }] });
+
+    expect(run.run()).toMatchObject({ status: 0, stdout: `schedule: #${SPEC_ISSUE} is marked stuck, so it stood down after the spec landed as #${LANDED}, with its done check unfinished\n` });
+  });
+
+  it("says the spec landed when bin/finish ends red after landing it", () => {
+    const run = scheduling({ cuts: [[sliceOf("seam")], []], finishes: [{ status: 1 }] });
+
+    const ended = run.run();
+
+    expect(ended.status).toBe(1);
+    expect(ended.stderr).toContain(`schedule: #${SPEC_ISSUE} ended red, bin/finish ${SPEC_ISSUE} ended 1 after the spec landed as #${LANDED}, with its done check unfinished, so a rerun goes straight to the done check`);
+  });
+
+  it("goes straight to bin/finish, hiring no slicer and no builder, when its progress comment records the spec landed with its done check unfinished, and clears that record once the done check misses and the fix pass begins", () => {
+    const merged = { ...sliceOf("seam"), state: "merged", tries: 1, fix: false, session: "session-seam-1" };
+    const progress = `## Spec run\n\n<!-- progress: ${JSON.stringify({ fixPass: false, landed: LANDED, slices: [merged] })} -->\n`;
+    const run = scheduling({ comments: [machineComment(7, progress)], cuts: [[sliceOf("mend")], []], finishes: [{ missed: "2" }, { landed: "1601" }] });
+
+    expect(run.run()).toMatchObject({ status: 0, stdout: `schedule: #${SPEC_ISSUE} landed as #1601, and its done check found every sentence held or put to the owner\n` });
+    expect(run.order().slice(0, 2)).toEqual([`finish ${SPEC_ISSUE}`, `slice ${SPEC_ISSUE}`]);
+    expect(run.built("seam")).toBeUndefined();
+    expect(run.progress()).toMatchObject({ fixPass: true, slices: [{ id: "seam" }, { id: "mend", fix: true, state: "merged" }] });
+    expect(run.progress()?.landed).toBeUndefined();
+  });
+
   it("marks the spec stuck and calls the owner when the done check misses again after its one fix pass", () => {
     const run = scheduling({ cuts: [[sliceOf("seam")], [], [sliceOf("mend")], []], finishes: [{ missed: "2" }, { missed: "2" }] });
 
