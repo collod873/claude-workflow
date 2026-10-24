@@ -2,7 +2,7 @@ import { generateKeyPairSync } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { CHECK_PASSES, CHECK_RED } from "./builder.part.ts";
+import { CHECK_PASSES } from "./builder.part.ts";
 import { BRIEF, BUILDS, ONTO, SLICE, SLICE_SESSION, SPEC, slicing } from "./slice-builder.part.ts";
 import { BIN, execute, scratch } from "./scenarios.ts";
 import { OUT_OF_TIME } from "./slice-builder.ts";

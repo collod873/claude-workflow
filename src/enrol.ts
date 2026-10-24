@@ -29,7 +29,8 @@ const CALLER_ONLY = "--caller";
 const LINE_LIMIT = 200;
 const SHOWN = 4;
 const MOST_SHOWN = 5;
-const PC_RUNS_ON = String(flowOf(readFileSync(join(ROOT, TICKETS), "utf8"))?.jobs?.build?.["runs-on"] ?? "");
+const BUILD_RUNS_ON = flowOf(readFileSync(join(ROOT, TICKETS), "utf8"))?.jobs?.build?.["runs-on"];
+const PC_RUNS_ON = typeof BUILD_RUNS_ON === "string" ? BUILD_RUNS_ON : "";
 const ON_MAIN = { ref_name: { include: ["~DEFAULT_BRANCH"], exclude: [] } };
 const PC_SWITCH = /vars\.(\w+)/.exec(PC_RUNS_ON)?.[1] ?? "";
 const THROUGH_PR: Rule[] = [
@@ -166,7 +167,7 @@ function pcGaps(path: string, text: string): string[] {
   return Object.entries(flow.jobs ?? {}).flatMap(([id, job]) => {
     if (job === null || job.uses !== undefined) return [];
     const runsOn = typeof job["runs-on"] === "string" ? job["runs-on"] : (JSON.stringify(job["runs-on"]) ?? "nothing");
-    const skipsSlots = runsCi && isCheck(id, job) && !(job.steps ?? []).some(({ run }) => new RegExp(`\\b${FULL_CHECK}\\b`).test(String(run ?? "")));
+    const skipsSlots = runsCi && isCheck(id, job) && !(job.steps ?? []).some(({ run }) => new RegExp(`\\b${FULL_CHECK}\\b`).test(typeof run === "string" ? run : ""));
     const pinned = Object.entries(job.services ?? {}).flatMap(([service, held]) =>
       (held?.ports ?? []).map(String).flatMap((port) => (port.includes(":") ? [`- ${file}'s ${id} job pins host port ${port.split(":").at(-2)} for ${service}, which two PC runners cannot share`] : [])),
     );

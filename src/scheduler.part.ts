@@ -83,7 +83,7 @@ const ORDER = (root: string) => `printf '%s\\n' "$*" >>"${join(root, "order")}"`
 
 export function scheduling({
   cuts = [] as (Slice[] | "red")[],
-  plans = {} as Record<string, Attempt[]>,
+  plans = {},
   finishes = [] as Finish[],
   labels = ["spec"],
   comments = [] as Comment[],

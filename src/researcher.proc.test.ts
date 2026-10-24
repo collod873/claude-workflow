@@ -27,7 +27,7 @@ describe("bin/research answers a research note on the note and closes it, with n
   });
 
   it("hires a model with the web and an open shell, so a note that counts is answered by a script (#945)", () => {
-    const { run, hired, handed } = researching();
+    const { run, hired } = researching();
 
     expect(run().status).toBe(0);
     expect(hired()).not.toContain("--tools");

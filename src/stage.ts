@@ -25,7 +25,7 @@ function events(stdout: string): unknown[] {
     .filter((line) => line.trim() !== "")
     .flatMap((line) => {
       try {
-        return [JSON.parse(line)];
+        return [JSON.parse(line) as unknown];
       } catch {
         return [];
       }
@@ -227,7 +227,7 @@ export interface Opened<Carried> {
   spend: (input: string, resume?: string) => Spent;
 }
 
-export function opened<Carried, Own extends string>({ stage, issue, state, tried, hire: hiring, stoppedAt, ready }: Opening<Carried, Own>): Opened<Carried> | Own | undefined {
+export function opened<Carried, Own extends string>({ stage, issue, state, tried, hire: hiring, ready }: Opening<Carried, Own>): Opened<Carried> | Own | undefined {
   const said = `${stage}: #${issue}`;
   const unchanged = "so no label changed and no model was hired";
   const asked = askedIssue(ghRead(["issue", "view", issue, "--json", "title,body,labels"], `#${issue} could not be read, ${unchanged}`)) ?? unread(`#${issue} could not be read, ${unchanged}`);

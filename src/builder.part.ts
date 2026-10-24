@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { handedOn, repaired } from "./builder.ts";
 import { handedOn as reviewing } from "./reviewer.ts";
 import { DIFF_CAP, LIST_CAP, TAIL_CAP, TICKET_CAP } from "./brief.ts";
-import { authored, BIN, execute, FIXED_TICKET, ghArgv, git, gitRefusing, nulSplit, openedCases, type Parent, plant, refusedMark, type Said, scratch, script } from "./scenarios.ts";
+import { authored, BIN, execute, FIXED_TICKET, ghArgv, git, gitRefusing, NO_FILES, nulSplit, openedCases, type Parent, plant, refusedMark, type Said, scratch, script } from "./scenarios.ts";
 import { OWNER } from "./spelled.ts";
 import { declareStage, HANDED_ON } from "./stages.ts";
 
@@ -19,6 +19,26 @@ export const FULL_CHECK_RED_ONCE = [
   "exit 1",
   "",
 ].join("\n");
+
+interface BuildAnswer {
+  outcome: string;
+  reason: string;
+  body?: string;
+  repo?: string;
+  tickets?: unknown[];
+  steps?: unknown[];
+}
+
+interface ReviewAnswer {
+  outcome: string;
+  reason: string;
+  steps?: unknown[];
+  fixes?: unknown[];
+  risks?: unknown[];
+}
+
+const NEVER_RENAMED: BuildAnswer = { outcome: "code", reason: "the export was never renamed" };
+const BUILDS_THE_WHY: ReviewAnswer = { outcome: "approve", reason: "it builds the Why", risks: [] };
 
 const AUTHORED_TEST = 'import { it } from "vitest";\nit("names the behaviour the criterion asks for", () => {});\n';
 
@@ -44,26 +64,26 @@ function branchedSession(session: string, who: string, onMain: Record<string, st
 
 export function fixing({
   body = FIXED_TICKET,
-  answer = { outcome: "code", reason: "the export was never renamed" } as { outcome: string; reason: string; body?: string; repo?: string; tickets?: unknown[]; steps?: unknown[] },
-  review = { outcome: "approve", reason: "it builds the Why", risks: [] } as { outcome: string; reason: string; steps?: unknown[]; fixes?: unknown[]; risks?: unknown[] },
+  answer = NEVER_RENAMED,
+  review = BUILDS_THE_WHY,
   reviewer = "",
   land = "",
   onTicket = [] as Said[],
-  leftover = {} as Record<string, string>,
+  leftover = NO_FILES,
   claude = "",
   npx = "exit 0\n",
   check = CHECK_PASSES,
   contract = undefined as string | undefined,
-  onMain = {} as Record<string, string>,
+  onMain = NO_FILES,
   savedSession = undefined as string | undefined,
-  captures = {} as Record<string, string>,
+  captures = NO_FILES,
   opener = OWNER,
   parent = undefined as Parent,
   labels = ["ticket"],
   markRefusal = undefined as string | undefined,
   unreadable = undefined as string | undefined,
   gitUnreadable = undefined as string | undefined,
-  treePath = {} as Record<string, string>,
+  treePath = NO_FILES,
   nodeLauncher = false,
   calledFrom = undefined as string | undefined,
   stageMinutes = "",
@@ -85,7 +105,6 @@ export function fixing({
   const argvDir = join(root, "gh-argv");
   const machine = join(root, "machine", "bin");
   const ranIn = join(root, "ran-in");
-  const opens = join(root, "pr-opens");
   const caps = join(root, "caps");
   const envs = join(root, "envs");
   const { setup, calls } = ghArgv(argvDir);

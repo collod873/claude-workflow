@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { waitsOnFault, waitsOnStep } from "./builder.ts";
 import { closing, type FaultOrigin } from "./closer.part.ts";
 import { faultOf, firstStepOf } from "./post.ts";
-import { git, holds, workflowJobs } from "./scenarios.ts";
+import { holds, workflowJobs } from "./scenarios.ts";
 
 describe("bin/close <ticket> <pr> closes a ticket once bin/land merged its PR, since its reviewer and the full check already judged it (#931, ADR-0012)", () => {
   it("closes the ticket as completed, naming in its closing record the PR that merged", () => {

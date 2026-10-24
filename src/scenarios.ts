@@ -195,36 +195,166 @@ export function holds(
     state?: string;
   },
 ): boolean {
+  const github = {
+    event_name: event,
+    event: { action, label: { name: label }, issue: { state, body, labels: labels.map((name) => ({ name })) }, sender: { login: sender }, inputs },
+    head_ref: head,
+    repository_owner: OWNER,
+  };
   const bare = condition.replace(/^\s*\$\{\{|\}\}\s*$/g, "");
-  const source = (/\b(success|failure|always|cancelled)\(\)/.test(bare) ? bare : `success() && (${bare})`)
-    .replace(/github\.event_name/g, JSON.stringify(event))
-    .replace(/github\.event\.action/g, JSON.stringify(action))
-    .replace(/github\.event\.label\.name/g, JSON.stringify(label))
-    .replace(/github\.event\.issue\.state/g, JSON.stringify(state))
-    .replace(/github\.event\.sender\.login/g, JSON.stringify(sender))
-    .replace(/github\.head_ref/g, JSON.stringify(head))
-    .replace(/contains\(\s*github\.event\.issue\.body\s*,\s*('[^']*')\s*\)/g, `${JSON.stringify(body)}.includes($1)`)
-    .replace(/github\.repository_owner/g, JSON.stringify(OWNER))
-    .replace(/contains\(\s*github\.event\.issue\.labels\.\*\.name\s*,\s*('[^']*')\s*\)/g, "labels.includes($1)")
-    .replace(/steps\.([\w-]+)\.(outcome|conclusion)/g, 'steps["$1"].$2')
-    .replace(/steps\.([\w-]+)\.outputs\.([\w-]+)/g, '(steps["$1"].outputs ?? {})["$2"]')
-    .replace(/contains\(\s*needs\.\*\.result\s*,\s*('[^']*')\s*\)/g, "Object.values(needs).some(({ result }) => result === $1)")
-    .replace(/needs\.([\w-]+)\.result/g, 'needs["$1"].result')
-    .replace(/needs\.([\w-]+)\.outputs\.([\w-]+)/g, '(needs["$1"].outputs ?? {})["$2"]')
-    .replace(/\b(github\.event\.)?inputs\.([\w-]+)/g, 'inputs["$2"]');
-  const evaluate = new Function("labels", "steps", "needs", "inputs", "startsWith", "success", "failure", "always", "cancelled", `return Boolean(${source});`) as (...scope: unknown[]) => boolean;
-  return evaluate(
-    labels,
-    steps,
-    needs,
-    inputs,
-    (text: string, start: string) => text.startsWith(start),
-    () => !failed && !cancelled,
-    () => failed && !cancelled,
-    () => true,
-    () => cancelled,
+  const statused = /\b(success|failure|always|cancelled)\(\)/.test(bare) ? bare : `success() && (${bare})`;
+  return Boolean(
+    evaluated(statused, {
+      contexts: { github, steps, needs, inputs },
+      functions: {
+        success: () => !failed && !cancelled,
+        failure: () => failed && !cancelled,
+        always: () => true,
+        cancelled: () => cancelled,
+        startsWith: (text, start) => typeof text === "string" && typeof start === "string" && text.startsWith(start),
+        contains: (search, item) => (search instanceof Each ? search.items.includes(item) : typeof search === "string" && typeof item === "string" && search.includes(item)),
+      },
+    }),
   );
 }
+
+class Each {
+  readonly items: unknown[];
+
+  constructor(items: unknown[]) {
+    this.items = items;
+  }
+}
+
+interface Scope {
+  contexts: Record<string, unknown>;
+  functions: Record<string, (...args: unknown[]) => boolean>;
+}
+
+const EXPRESSION_TOKEN = /\s*(?:'((?:[^']|'')*)'|([A-Za-z_][\w-]*)|(==|!=|&&|\|\||[!().,*[\]]))/y;
+
+function tokensOf(source: string): string[] {
+  const tokens: string[] = [];
+  EXPRESSION_TOKEN.lastIndex = 0;
+  while (source.slice(EXPRESSION_TOKEN.lastIndex).trim() !== "") {
+    const at = EXPRESSION_TOKEN.lastIndex;
+    const found = EXPRESSION_TOKEN.exec(source);
+    if (found === null) throw new SyntaxError(`no expression token at ${at} in ${source}`);
+    tokens.push(found[1] === undefined ? (found[2] ?? found[3] ?? "") : `'${found[1]}`);
+  }
+  return tokens;
+}
+
+function member(value: unknown, key: string): unknown {
+  if (value instanceof Each) return new Each(value.items.map((item) => member(item, key)));
+  if (typeof value !== "object" || value === null) return undefined;
+  if (key === "*") return new Each(Object.values(value));
+  return (value as Record<string, unknown>)[key];
+}
+
+type Lazy = () => unknown;
+
+const LITERALS: Record<string, unknown> = { true: true, false: false, null: null };
+
+function evaluated(source: string, { contexts, functions }: Scope): unknown {
+  const tokens = tokensOf(source);
+  let at = 0;
+  const peek = () => tokens[at];
+  const take = (expected?: string): string => {
+    const token = tokens[at++];
+    if (token === undefined || (expected !== undefined && token !== expected)) throw new SyntaxError(`expected ${expected ?? "a token"} at token ${at} in ${source}`);
+    return token;
+  };
+  const either = (): Lazy => {
+    let value = both();
+    while (peek() === "||") {
+      take();
+      const [left, right] = [value, both()];
+      value = () => left() || right();
+    }
+    return value;
+  };
+  const both = (): Lazy => {
+    let value = equality();
+    while (peek() === "&&") {
+      take();
+      const [left, right] = [value, equality()];
+      value = () => left() && right();
+    }
+    return value;
+  };
+  const equality = (): Lazy => {
+    let value = unary();
+    while (peek() === "==" || peek() === "!=") {
+      const equal = take() === "==";
+      const [left, right] = [value, unary()];
+      value = () => (left() == right()) === equal;
+    }
+    return value;
+  };
+  const unary = (): Lazy => {
+    if (peek() !== "!") return postfix();
+    take();
+    const operand = unary();
+    return () => !operand();
+  };
+  const postfix = (): Lazy => {
+    let value = primary();
+    for (;;) {
+      const object = value;
+      if (peek() === ".") {
+        take();
+        const key = take();
+        value = () => member(object(), key);
+      } else if (peek() === "[") {
+        take();
+        const key = either();
+        take("]");
+        value = () => {
+          const named = key();
+          return member(object(), typeof named === "string" ? named : JSON.stringify(named));
+        };
+      } else return value;
+    }
+  };
+  const primary = (): Lazy => {
+    const token = take();
+    if (token === "(") {
+      const value = either();
+      take(")");
+      return value;
+    }
+    if (token.startsWith("'")) {
+      const text = token.slice(1).replaceAll("''", "'");
+      return () => text;
+    }
+    if (peek() === "(") return called(token);
+    if (token in LITERALS) return () => LITERALS[token];
+    return () => {
+      if (!(token in contexts)) throw new ReferenceError(`${token} is not a context this scenario knows, in ${source}`);
+      return contexts[token];
+    };
+  };
+  const called = (name: string): Lazy => {
+    take("(");
+    const args: Lazy[] = [];
+    while (peek() !== ")") {
+      args.push(either());
+      if (peek() === ",") take();
+    }
+    take(")");
+    return () => {
+      const run = functions[name];
+      if (run === undefined) throw new ReferenceError(`${name}() is not a function this scenario knows, in ${source}`);
+      return run(...args.map((arg) => arg()));
+    };
+  };
+  const value = either();
+  if (at !== tokens.length) throw new SyntaxError(`unexpected ${tokens[at] ?? ""} in ${source}`);
+  return value();
+}
+
+export const NO_FILES: Readonly<Record<string, string>> = {};
 
 export function scratch(prefix: string): string {
   const dir = mkdtempSync(join(tmpdir(), prefix));
@@ -519,8 +649,6 @@ export const schemaIn = (argv: string[]) => JSON.parse(argv[argv.indexOf("--json
 
 export const createdIssues = (calls: string[][]) =>
   calls.filter((args) => args[0] === "issue" && args[1] === "create").map((args) => ({ title: args[args.indexOf("--title") + 1], body: args[args.indexOf("--body") + 1], labels: args.flatMap((arg, at) => (args[at - 1] === "--label" ? [arg] : [])) }));
-
-const CONSENT_ONLY_WHY = 'The owner, in session: "a plan carrying its own intent, spoken plainly, at length, right where it was proposed".';
 
 export const FIXED_TICKET = [
   "## Why",

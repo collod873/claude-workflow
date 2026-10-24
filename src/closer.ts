@@ -1,5 +1,5 @@
 import { filedClosed, LABELLED_WAITING, splitClosed, splitInto } from "./builder.ts";
-import { commentOnTicket, commentsRead, FAULT_FROM, gh, ghAs, ghRead, git, gitRead, markWith, opened, readOrStop, unread, WAITING } from "./post.ts";
+import { commentOnTicket, commentsRead, FAULT_FROM, gh, ghAs, ghRead, markWith, opened, readOrStop, unread, WAITING } from "./post.ts";
 import { exitFor, type Stop, stoppedAt } from "./stops.ts";
 import { quoted, waitsOn, why } from "./ticket-shape.ts";
 
@@ -98,7 +98,7 @@ function close(closed: string | undefined): undefined {
 }
 
 function closeMerged(merge: Built): Stop | undefined {
-  const { ticket, pr } = merge;
+  const { ticket } = merge;
   const asked = gh(["issue", "view", ticket, "--json", "body", "--jq", ".body"]);
   if (asked.status !== 0) return stoppedAt("unread", `close: ticket ${ticket} could not be read, so nothing judged it`);
   const posted = commentOnTicket(ticket, record(merge), gh);

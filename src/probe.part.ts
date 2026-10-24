@@ -1,13 +1,13 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { asked, PROBE_CAP, probeOutput, probeRunName, type Probe } from "./probe.ts";
-import { BIN, execute, ghArgv, git, plant, scratch, script } from "./scenarios.ts";
+import { BIN, execute, ghArgv, git, NO_FILES, plant, scratch, script } from "./scenarios.ts";
 import { declareStage, HANDED_ON } from "./stages.ts";
 
 export const PROBE_RUN = "4417";
 const PROBE_URL = `https://github.com/collod873/Lumaria/actions/runs/${PROBE_RUN}`;
 
-export function probing({ contract = undefined as string | undefined, said = "the check fits its budget", claudeEnds = 0, concluded = "success", listed = true, keptOutput = true, treePath = {} as Record<string, string> } = {}) {
+export function probing({ contract = undefined as string | undefined, said = "the check fits its budget", claudeEnds = 0, concluded = "success", listed = true, keptOutput = true, treePath = NO_FILES } = {}) {
   const root = scratch("probe-");
   const tree = join(root, "tree");
   const hires = join(root, "claude-argv");
