@@ -1,14 +1,17 @@
 import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
-import { capped, DIFF_CAP, diffOverCap, LIST_CAP, NO_EM_DASH, TAIL_CAP, tailOf } from "./brief.ts";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { capped, DIFF_CAP, diffOverCap, LIST_CAP, NO_EM_DASH, onDisk, TAIL_CAP, tailOf } from "./brief.ts";
 import { checkedBy, type Red } from "./builder.ts";
 import { PUBLISHED_CHECK } from "./checks.ts";
 import { doneCheck, lastDoneCheck, missesOf } from "./done-checker.ts";
 import { askedIssue, commentOnTicket, FOLLOW_UP_OF, gh, ghRead, git, gitRead, heldOn, labelsHeld, mark, OWNER, readOrStop, REVIEW_LET_THROUGH, STUCK, unread } from "./post.ts";
 import { afterRefused, approvedOn, firstTimeNamed, gathered, landing, ownerStepFiled, type Routed, ROUTED, ROUTED_REQUIRED, routedFiled } from "./reviewer.ts";
-import { landedOn, type Progress, progressOn, specBranch } from "./scheduler.ts";
-import { sliceTrailed } from "./slice-builder.ts";
+import { fastForwarded, landedOn, MOST_BUILDERS, type Progress, progressOn, removed, specBranch, worktree } from "./scheduler.ts";
+import { fastForwards, rebaseStopped, sliceTrailed } from "./slice-builder.ts";
 import { FINDINGS_CAP } from "./slicer.ts";
-import { committed, commitlinted, head, hire, MOST_FIXES, type OwnerStep, OWNER_STEPS, type Spent } from "./stage.ts";
+import { committed, commitlinted, CONTRACT, head, hireIn, MOST_FIXES, type OwnerStep, OWNER_STEPS, setupRefusedIn, type Spent } from "./stage.ts";
 import { SPEC } from "./spelled.ts";
 import { stopsOf } from "./stops.ts";
 import { quoted, SPEC_CAP } from "./ticket-shape.ts";
@@ -18,6 +21,8 @@ const stoppedAt = stopsOf({
   unlanded: "Finish: `bin/land` refused the integration branch, and two rounds in a row of its last reviewer changed nothing",
   unchecked: "Finish: the full check stayed red, and two rounds in a row of the reviewer handed it changed nothing",
   reviewerStuck: "Finish: a reviewer answered `stuck`, so the spec is marked `stuck` and the owner is called",
+  unmerged: "Finish: a pack's reviewer left its commits conflicting with the integration branch, and two rounds in a row of it changed nothing",
+  unready: "Finish: a pack's tree would not set up, so its reviewer on the code standard was not hired",
 });
 
 const PAST_MAIN = "origin/main..HEAD";
@@ -38,22 +43,22 @@ const { steps: _stepsOnTheSpecAlone, ...unstepped } = ANSWER.properties;
 const CODE_ANSWER = { ...ANSWER, properties: unstepped };
 
 export interface Changes {
-  slice?: string;
+  slices?: string[];
   commits: string;
   diff: string;
   stat: string;
 }
 
 const UNSLICED = "";
-const sliceNamed = (slice: string | undefined) => (slice === undefined ? undefined : slice === UNSLICED ? "the commits naming no slice" : `slice \`${capped(slice, SLICE_CAP)}\``);
-const alone = (changes: Changes) => {
-  const slice = sliceNamed(changes.slice);
-  return slice === undefined
+const sliceNamed = (slice: string) => (slice === UNSLICED ? "the commits naming no slice" : `slice \`${capped(slice, SLICE_CAP)}\``);
+const slicesNamed = (slices: string[]) => capped(new Intl.ListFormat("en").format(slices.map(sliceNamed)), LIST_CAP);
+const alone = ({ slices }: Changes) =>
+  slices === undefined
     ? []
     : [
-        `The diff is over ${ONE_REVIEWER_CAP} bytes, so each slice has its own reviewer on the code standard, and you review what ${slice} built: the commits and diff below are its alone, one patch per commit. Read the rest of the branch too for code that copies what this slice wrote, such as a helper, a type or a query written twice, and make it one.`,
+        `The diff is over ${ONE_REVIEWER_CAP} bytes, so the review on the code standard is packed into whole slices under that cap, each pack with its own reviewer, and you review what ${slicesNamed(slices)} built: the commits and diff below are ${slices.length === 1 ? "its" : "theirs"} alone, one patch per commit. Read the rest of the branch too for code that copies what ${slices.length === 1 ? "this slice" : "these slices"} wrote, such as a helper, a type or a query written twice, and make it one.`,
+        "The other packs' reviewers work at the same time, each in its own tree on its own branch, and your commits are rebased onto the integration branch once you answer; a conflict comes back to you.",
       ];
-};
 const codeDiff = ({ diff, stat }: Changes) => {
   const over = diffOverCap(diff, stat);
   return over === undefined
@@ -161,26 +166,48 @@ const shown = (shas: string[], ...args: string[]) => gitRead(["show", ...args, .
 
 const wholeBranch = (): Changes => ({ commits: gitRead(["log", COMMITS, PAST_MAIN], UNREAD), diff: gitRead(["diff", FROM_MAIN], UNREAD), stat: gitRead(["diff", "--stat", FROM_MAIN], UNREAD) });
 
-function onTheCodeInParts(): Changes[] {
+function onTheCodeInPacks(): Changes[] {
   const whole = wholeBranch();
   if (Buffer.byteLength(whole.diff) <= ONE_REVIEWER_CAP) return [whole];
+  const branchOrder: string[] = [];
   const bySlice = new Map<string, string[]>();
   for (const line of gitRead(["log", "--reverse", "--format=%H%x00%(trailers:key=Slice,valueonly,separator=%x00)", PAST_MAIN], UNREAD).split("\n")) {
     const [sha = "", slice = UNSLICED] = line.split("\0");
+    branchOrder.push(sha);
     bySlice.set(slice, [...(bySlice.get(slice) ?? []), sha]);
   }
-  return [...bySlice]
+  const sized = [...bySlice]
     .sort(([one], [other]) => Number(one === UNSLICED) - Number(other === UNSLICED))
-    .map(([slice, shas]) => ({ slice, commits: shown([...shas].reverse(), "--no-patch", COMMITS), diff: shown(shas, "--format="), stat: shown(shas, "--format=", "--stat") }));
+    .map(([slice, shas]) => {
+      const diff = shown(shas, "--format=");
+      return { slice, shas, diff, bytes: Buffer.byteLength(diff) };
+    });
+  const packs: { held: typeof sized; bytes: number }[] = [];
+  for (const one of [...sized].sort((bigger, smaller) => smaller.bytes - bigger.bytes)) {
+    const room = packs.find(({ bytes }) => bytes + one.bytes <= ONE_REVIEWER_CAP);
+    if (room === undefined) packs.push({ held: [one], bytes: one.bytes });
+    else {
+      room.held.push(one);
+      room.bytes += one.bytes;
+    }
+  }
+  return packs.map(({ held }) => {
+    const slices = sized.filter((one) => held.includes(one));
+    const shas = new Set(slices.flatMap((one) => one.shas));
+    const inOrder = branchOrder.filter((sha) => shas.has(sha));
+    return { slices: slices.map(({ slice }) => slice), commits: shown([...inOrder].reverse(), "--no-patch", COMMITS), diff: slices.map(({ diff }) => diff).join(""), stat: shown(inOrder, "--format=", "--stat") };
+  });
 }
 
 interface Reviewer {
-  spend: (input: string, resume?: string) => Spent;
+  spend: (input: string, resume?: string) => Promise<Spent>;
   session?: string;
   seat: string;
   on: string;
-  slice?: string;
+  slices: string[];
   stepped: boolean;
+  tree: string;
+  branch?: string;
 }
 
 interface Finished {
@@ -195,7 +222,6 @@ interface Approved extends Routed {
 
 interface Reviewed {
   last: Reviewer;
-  whole: boolean;
 }
 
 interface Run {
@@ -205,6 +231,7 @@ interface Run {
   reasons: Map<string, string>;
   later: string[];
   left: Map<string, Approved>;
+  trees: { root?: string; made: Reviewer[] };
 }
 
 function reviewed(spec: string, said: string, spent: Spent, app: AppKey | undefined): Approved | undefined {
@@ -230,32 +257,61 @@ function reviewed(spec: string, said: string, spent: Spent, app: AppKey | undefi
 
 const pushedForRerun = (spec: string) => gitRead(["push", "--quiet", "--force", "origin", `HEAD:refs/heads/${specBranch(spec)}`], `${specBranch(spec)} would not push, so a rerun would lose its reviewers' fixes`);
 
-function answered({ spec, said, app, left }: Run, reviewer: Reviewer, input: string, commit: string): Approved | undefined {
-  const before = head();
-  const spent = reviewer.spend(input, reviewer.session);
+function inTree<Done>(tree: string, act: () => Done): Done {
+  const home = process.cwd();
+  process.chdir(tree);
+  try {
+    return act();
+  } finally {
+    process.chdir(home);
+  }
+}
+
+async function answered({ spec, said, app, left }: Run, reviewer: Reviewer, input: string, commit: string): Promise<Approved | undefined> {
+  const before = inTree(reviewer.tree, head);
+  const spent = await reviewer.spend(input, reviewer.session);
   reviewer.session = spent.session ?? reviewer.session;
   const approved = reviewed(spec, said, spent, app);
   if (approved === undefined) return undefined;
-  committed(commit, "fix");
-  if (reviewer.slice !== undefined && reviewer.slice !== UNSLICED && git(["merge-base", "--is-ancestor", before, "HEAD"]).status === 0) sliceTrailed(before, reviewer.slice);
-  pushedForRerun(spec);
+  inTree(reviewer.tree, () => {
+    committed(commit, "fix");
+    const sliced = reviewer.slices.filter((slice) => slice !== UNSLICED);
+    if (sliced.length > 0 && git(["merge-base", "--is-ancestor", before, "HEAD"]).status === 0) sliceTrailed(before, sliced);
+  });
+  if (reviewer.branch === undefined) pushedForRerun(spec);
   left.set(reviewer.seat, { ...approved, ...gathered(left.get(reviewer.seat), reviewer.stepped ? approved : { ...approved, steps: [] }) });
   return approved;
 }
 
 type Round<Done> = { done: Done } | { refused: string; told: string };
 
-function rounds<Done>(run: Run, reviewer: Reviewer, { failed, stop, commit, kept }: { failed: string; stop: "unlanded" | "unchecked"; commit: string; kept: (approved: Approved) => void }, attempt: () => Round<Done>): Done | undefined {
+const packUnrebased = (onto: string, { files, said }: { files: string; said: string }) =>
+  [
+    files === "" ? `Your commits would not rebase onto \`${onto}\`, which took another pack's commits while you worked. Git said:` : `Your commits would not rebase onto \`${onto}\`, which took another pack's commits while you worked. The files they conflict in:`,
+    capped(files || said, LIST_CAP),
+    `Run \`git rebase ${onto}\` in this tree, resolve each conflict keeping what both sides meant, finish the rebase, and answer again.`,
+    "",
+  ].join("\n\n");
+
+function broughtBack(spec: string, { tree, branch }: Reviewer): Round<never> | undefined {
+  if (branch === undefined) return undefined;
+  const onto = specBranch(spec);
+  const stopped = inTree(tree, () => (fastForwards(onto) ? undefined : rebaseStopped(onto)));
+  if (stopped !== undefined) return { refused: `${branch} would not rebase onto ${onto}`, told: packUnrebased(onto, stopped) };
+  if (!fastForwarded(spec, branch)) unread(`${onto} would not fast-forward to ${branch} though it was rebased onto it`);
+  return undefined;
+}
+
+async function rounds<Done>(run: Run, reviewer: Reviewer, { failed, stop, commit, kept }: { failed: string; stop: "unlanded" | "unchecked" | "unmerged"; commit: string; kept: (approved: Approved) => void }, attempt: () => Round<Done>): Promise<Done | undefined> {
   let idle = false;
-  const later: string[] = [];
   for (;;) {
-    const tried = attempt();
+    const tried = broughtBack(run.spec, reviewer) ?? attempt();
     if ("done" in tried) return tried.done;
-    const before = head();
-    const approved = answered(run, reviewer, tried.told, commit);
+    const before = inTree(reviewer.tree, head);
+    const approved = await answered(run, reviewer, tried.told, commit);
     if (approved === undefined) return undefined;
     kept(approved);
-    const changed = head() !== before;
+    const changed = inTree(reviewer.tree, head) !== before;
     if (!changed && idle) {
       stoppedAt(stop, `${run.said} ${failed}, and two rounds in a row of its reviewer changed nothing: ${quoted(tried.refused.split("\n").at(-1) ?? "")}`);
       return undefined;
@@ -270,41 +326,80 @@ const greened = (run: Run, reviewer: Reviewer, commit: string) =>
     return red === undefined ? { done: true } : { refused: red.verdict, told: stillRedOnReview(red) };
   });
 
-function told(run: Run, reviewer: Reviewer, input: string, commit: string): Approved | undefined {
-  const approved = answered(run, reviewer, input, commit);
-  if (approved !== undefined) run.reasons.set(reviewer.seat, `${reviewer.on}: ${approved.reason}`);
-  return approved;
+const merged = (run: Run, reviewer: Reviewer, commit: string) => rounds(run, reviewer, { failed: "left a pack's commits conflicting with its integration branch", stop: "unmerged", commit, kept: () => undefined }, () => ({ done: true }));
+
+async function treeMade(run: Run, reviewer: Reviewer): Promise<boolean> {
+  const { spec, said, trees } = run;
+  if (reviewer.branch === undefined) return true;
+  worktree(spec, reviewer.branch, reviewer.tree);
+  trees.made.push(reviewer);
+  const unready = await setupRefusedIn(reviewer.tree, onDisk(join(reviewer.tree, CONTRACT)) ?? "");
+  if (unready === undefined) return true;
+  stoppedAt("unready", `${said} ended red, the tree for ${reviewer.branch} would not set up: ${unready}`);
+  return false;
 }
 
-function reviews(run: Run, { title, body }: { title: string; body: string }, progress: Progress): Reviewed | undefined {
+function treesRemoved({ trees: { root, made } }: Run): void {
+  for (const { tree, branch } of made) if (branch !== undefined) removed(branch, tree);
+  if (root !== undefined) rmSync(root, { recursive: true, force: true });
+}
+
+async function atMost<Done>(most: number, jobs: (() => Promise<Done | undefined>)[]): Promise<Done[] | undefined> {
+  const done: Done[] = [];
+  let next = 0;
+  let stopped = false;
+  const taken = async () => {
+    for (let job = jobs[next]; job !== undefined && !stopped; job = jobs[next]) {
+      const at = next++;
+      const ended = await job();
+      if (ended === undefined) stopped = true;
+      else done[at] = ended;
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(most, jobs.length) }, taken));
+  return stopped ? undefined : done;
+}
+
+async function reviews(run: Run, { title, body }: { title: string; body: string }, progress: Progress): Promise<Reviewed | undefined> {
   const { spec } = run;
+  const top = process.cwd();
   const commitlint = commitlinted();
   const findings = progress.fixPass ? missesOf(lastDoneCheck(spec, `the comments on #${spec} could not be read, so nothing was reviewed`) ?? "") : undefined;
-  const reviewer = (seat: string, on: "spec" | "code standard", answers: object, slice?: string): Reviewer => ({
-    spend: hire("finish", seat, { name: `reviewer on the ${on}`, model: "opus", answers }),
+  const reviewer = (seat: string, on: "spec" | "code standard", answers: object, { tree = top, slices }: { tree?: string; slices?: string[] } = {}): Reviewer => ({
+    spend: hireIn(tree, "finish", seat, { name: `reviewer on the ${on}`, model: "opus", answers }),
     seat,
-    on: `On the ${on}${slice === undefined ? "" : `, ${sliceNamed(slice)}`}`,
-    slice,
+    on: `On the ${on}${slices === undefined ? "" : `, ${slicesNamed(slices)}`}`,
+    slices: slices ?? [],
     stepped: answers === ANSWER,
+    tree,
+    ...(tree === top ? {} : { branch: `review/${seat}` }),
   });
   const onSpec = reviewer(`${spec}-spec`, "spec", ANSWER);
-  const approved = told(run, onSpec, onTheSpec(wholeBranch(), { spec, title, body, commitlint, briefs: briefsOf(progress), findings }), `Review #${spec} on the spec`);
+  const approved = await answered(run, onSpec, onTheSpec(wholeBranch(), { spec, title, body, commitlint, briefs: briefsOf(progress), findings }), `Review #${spec} on the spec`);
   if (approved === undefined) return undefined;
-  let red = checkedBy(PUBLISHED_CHECK);
-  const parts = onTheCodeInParts();
-  let last = onSpec;
-  for (const [at, changes] of parts.entries()) {
-    const onCode = reviewer(`${spec}-code-${at + 1}`, "code standard", CODE_ANSWER, changes.slice);
-    const commit = `Review #${spec} on the code standard`;
-    if (told(run, onCode, onTheCode(changes, { spec, red, commitlint, findings }), commit) === undefined) return undefined;
-    if (red !== undefined && greened(run, onCode, commit) === undefined) return undefined;
-    red = undefined;
-    last = onCode;
-  }
-  return { last, whole: parts.length === 1 };
+  run.reasons.set(onSpec.seat, `${onSpec.on}: ${approved.reason}`);
+  const red = checkedBy(PUBLISHED_CHECK);
+  const packs = onTheCodeInPacks();
+  const root = packs.length === 1 ? undefined : mkdtempSync(join(tmpdir(), "spec-review-"));
+  run.trees.root = root;
+  const commit = `Review #${spec} on the code standard`;
+  const packed = await atMost(
+    MOST_BUILDERS,
+    packs.map((changes, at) => async () => {
+      const ofPack = reviewer(`${spec}-code-${at + 1}`, "code standard", CODE_ANSWER, root === undefined ? {} : { tree: join(root, String(at + 1)), slices: changes.slices });
+      if (!(await treeMade(run, ofPack))) return undefined;
+      const answer = await answered(run, ofPack, onTheCode(changes, { spec, red: at === 0 ? red : undefined, commitlint, findings }), commit);
+      return answer !== undefined && (await merged(run, ofPack, commit)) === true ? { ofPack, answer } : undefined;
+    }),
+  );
+  const [first, ...rest] = packed ?? [];
+  if (first === undefined) return undefined;
+  for (const { ofPack, answer } of [first, ...rest]) run.reasons.set(ofPack.seat, `${ofPack.on}: ${answer.reason}`);
+  if (red !== undefined && (await greened(run, first.ofPack, commit)) === undefined) return undefined;
+  return { last: (rest.at(-1) ?? first).ofPack };
 }
 
-function landed(run: Run, { last, whole }: Reviewed): string | undefined {
+function landed(run: Run, { last }: Reviewed): Promise<string | undefined> {
   const { spec, said, reasons, later, left } = run;
   return rounds(run, last, { failed: "did not land", stop: "unlanded", commit: `Fix what bin/land refused for #${spec}`, kept: (approved) => later.push(afterRefused(approved.reason)) }, (): Round<string | undefined> => {
     const held = heldOn(labelsHeld(spec, gh));
@@ -314,7 +409,7 @@ function landed(run: Run, { last, whole }: Reviewed): string | undefined {
     }
     const attempt = landing(["--spec", spec], approvedOn([...reasons.values()], later, [...left.values()]));
     if ("pr" in attempt) return { done: attempt.pr };
-    return { refused: attempt.refused, told: whole ? landRefused(attempt.refused) : [WHOLE_BRANCH, landRefused(attempt.refused)].join("\n\n") };
+    return { refused: attempt.refused, told: last.branch === undefined ? landRefused(attempt.refused) : [WHOLE_BRANCH, landRefused(attempt.refused)].join("\n\n") };
   });
 }
 
@@ -326,7 +421,7 @@ function leftFiled(spec: string, approved: Approved[]): void {
   if (refused.length > 0) commentOnTicket(spec, [`What the reviewers of #${spec} left that could not be filed:`, "", ...refused.map(({ named, refusals }) => `- ${named} (${quoted(refusals[0] ?? "")})`), ""].join("\n"), gh);
 }
 
-function finished(spec: string, app: AppKey | undefined): Finished {
+async function finished(spec: string, app: AppKey | undefined): Promise<Finished> {
   const said = `finish: #${spec}`;
   const unchanged = "so nothing was reviewed or landed";
   const asked = askedIssue(ghRead(["issue", "view", spec, "--json", "title,body,labels"], `#${spec} could not be read, ${unchanged}`)) ?? unread(`#${spec} could not be read, ${unchanged}`);
@@ -348,10 +443,15 @@ function finished(spec: string, app: AppKey | undefined): Finished {
     stoppedAt("unfinishable", `${said} holds nothing past main on its integration branch, ${unchanged}`);
     return {};
   }
-  const run: Run = { spec, said, app, reasons: new Map(), later: [], left: new Map() };
-  const review = reviews(run, asked, found.progress);
-  if (review === undefined) return {};
-  const pr = landed(run, review);
+  const run: Run = { spec, said, app, reasons: new Map(), later: [], left: new Map(), trees: { made: [] } };
+  const pr = await (async () => {
+    try {
+      const review = await reviews(run, asked, found.progress);
+      return review === undefined ? undefined : await landed(run, review);
+    } finally {
+      treesRemoved(run);
+    }
+  })();
   if (pr === undefined) return {};
   landedOn(spec, found, pr);
   leftFiled(spec, [...run.left.values()]);
@@ -366,7 +466,11 @@ function checkedAfter(spec: string, pr: string, app: AppKey | undefined): Finish
 if (import.meta.main) {
   const [spec] = process.argv.slice(2);
   if (spec === undefined) throw new Error("no spec number in the arguments");
-  const ended = readOrStop("finish", () => finished(spec, takenAppKey()));
+  const ended = await finished(spec, takenAppKey()).catch((error: unknown) =>
+    readOrStop("finish", () => {
+      throw error;
+    }),
+  );
   const { landed: pr = "", missed } = typeof ended === "object" ? ended : {};
   console.log(`landed=${pr}\nmissed=${(missed ?? []).join(",")}`);
   process.exit(pr !== "" && missed !== undefined ? 0 : 1);

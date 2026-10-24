@@ -38,6 +38,7 @@ export function finishing({
   const bin = join(root, "bin");
   const prompts = join(root, "prompts");
   const hires = join(root, "hires");
+  const wheres = join(root, "wheres");
   const tokens = join(root, "tokens");
   const lands = join(root, "lands");
   const approvals = join(root, "approvals");
@@ -67,10 +68,16 @@ export function finishing({
   script(
     join(bin, "claude"),
     [
-      `mkdir -p "${prompts}" "${hires}"`,
+      `mkdir -p "${prompts}" "${hires}" "${wheres}"`,
+      `exec 9>"${join(root, "claude.lock")}"`,
+      "flock 9",
       `CALL=$(( $(ls "${prompts}" | wc -l) + 1 ))`,
       `printf '%s\\0' "$@" >"${hires}/$CALL"`,
       `cat >"${prompts}/$CALL"`,
+      `pwd >"${wheres}/$CALL"`,
+      "flock -u 9",
+      `ROOT="${root}"`,
+      `PROMPT="${prompts}/$CALL"`,
       `if grep -q '^Try each sentence' "${prompts}/$CALL"; then`,
       `  cat <<'TRIES'\n${answering({ tries })}TRIES`,
       "else",
@@ -108,8 +115,10 @@ export function finishing({
   const listed = (file: string) => (existsSync(file) ? readFileSync(file, "utf8").trimEnd().split("\n") : []);
   const numbered = (dir: string) => (existsSync(dir) ? readdirSync(dir).map((_, at) => readFileSync(join(dir, String(at + 1)), "utf8")) : []);
   return {
+    root,
     session,
     handed: () => numbered(prompts),
+    wheres: () => numbered(wheres).map((where) => where.trim()),
     hired: () => numbered(hires).map((argv) => argv.split("\0").filter((part) => part !== "")),
     landed: () => listed(lands).map((line) => line.split(" ")),
     approved: () => nulSplit(approvals),
@@ -125,7 +134,7 @@ export function finishing({
 }
 
 const SLOTTED = ["slice", "commits", "diff", "stat"];
-const changesOf = (filled: Record<string, string>) => ({ slice: filled.slice ?? "", commits: filled.commits ?? "", diff: filled.diff ?? "", stat: filled.stat ?? "" });
+const changesOf = (filled: Record<string, string>) => ({ slices: [filled.slice ?? ""], commits: filled.commits ?? "", diff: filled.diff ?? "", stat: filled.stat ?? "" });
 
 declareStage({
   part: { name: "bin/finish", file: "bin/finish", stops: "https://github.com/collod873/claude-workflow/issues/1509", lines: 3, printsData: true },

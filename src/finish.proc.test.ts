@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { finishing, type Slice } from "./finish.part.ts";
 import { createdIssues, git, heard, schemaIn } from "./scenarios.ts";
@@ -213,12 +215,22 @@ describe("bin/finish takes a reviewer's stuck and owner steps, as a ticket's rev
   });
 });
 
-describe("bin/finish splits the review on the code standard per slice, by the commits' Slice trailers, only when the diff is over its cap", () => {
+describe("bin/finish packs the review on the code standard into whole slices under its cap, by the commits' Slice trailers, only when the diff is over that cap, and runs three packs at once", () => {
   const sliced = (lines: number): Slice[] => [
     { id: "zone", files: { "src/zone.ts": big("zone", lines) } },
     { files: { "src/loose.ts": big("loose", lines) } },
     { id: "clock", files: { "src/clock.ts": big("clock", lines) } },
   ];
+  const packed: Slice[] = [
+    { id: "wide", files: { "src/wide.ts": big("wide", 6000) } },
+    { id: "zone", files: { "src/zone.ts": big("zone", 1500) } },
+    { files: { "src/loose.ts": big("loose", 1000) } },
+    { id: "clock", files: { "src/clock.ts": big("clock", 1500) } },
+  ];
+  const ON_CODE = "grep -q '^# Hold spec #974 to the code standard' \"$PROMPT\"";
+  const onCode = (handed: string[]) => handed.filter((prompt) => prompt.startsWith("# Hold spec #974 to the code standard"));
+  const reviewing = (prompt: string) => ["wide", "zone", "clock", "loose"].filter((name) => prompt.includes(`src/${name}.ts`));
+  const zonePack = (handed: string[]) => handed.findIndex((prompt) => onCode([prompt]).length === 1 && prompt.includes("src/zone.ts"));
 
   it("hires one reviewer on the code standard for a diff under its cap, though the diff is too big to hand whole", () => {
     const finished = finishing({ slices: sliced(400) });
@@ -227,47 +239,79 @@ describe("bin/finish splits the review on the code standard per slice, by the co
     expect(finished.handed()).toHaveLength(3);
   });
 
-  it("hires one reviewer on the spec, then one per slice on the code standard, the commits naming no slice last, each given its commit ids and told to look for copies across the branch", () => {
-    const finished = finishing({ slices: sliced(2400) });
+  it("packs whole slices into as few reviewers as fit under the cap, a slice over it alone, each given its commit ids and told to look for copies across the branch", () => {
+    const finished = finishing({ slices: packed });
 
     expect(finished.run().status).toBe(0);
     const handed = finished.handed();
-    expect(handed).toHaveLength(5);
     expect(handed[0]).toMatch(/^# Hold spec #974 to what it asks/);
-    const reviewed = handed.slice(1, 4).map((prompt) => ["zone", "clock", "loose"].filter((name) => prompt.includes(`src/${name}.ts`)));
-    expect(reviewed).toEqual([["zone"], ["clock"], ["loose"]]);
-    expect(handed[1]).toContain("you review what slice `zone` built");
-    expect(handed[1]).toContain(`- ${finished.log("-1", "--format=%h", "--grep", "Build slice zone")} Build slice zone`);
-    expect(handed[1]).toContain("copies what this slice wrote");
-    expect(handed[3]).toContain("you review what the commits naming no slice built");
-    expect(finished.approved()[0]).toMatch(/^On the spec: reason 1\n\nOn the code standard, slice `zone`: reason 2\n\n/);
+    const code = onCode(handed);
+    expect(code.map(reviewing).sort()).toEqual([["wide"], ["zone", "clock", "loose"]]);
+    const many = finished.handed()[zonePack(handed)] ?? "";
+    expect(many).toContain("you review what slice `zone`, slice `clock`, and the commits naming no slice built");
+    expect(many).toContain(`- ${finished.log("-1", "--format=%h", "--grep", "Build slice clock")} Build slice clock`);
+    expect(many).toContain("copies what these slices wrote");
+    expect(finished.approved()[0]).toMatch(/^On the spec: reason 1\n\nOn the code standard, slice `wide`: reason \d\n\nOn the code standard, slice `zone`, slice `clock`, and the commits naming no slice: reason \d/);
   });
 
-  it("hands a red full check to the first slice's reviewer alone, saying the red may sit in any slice", () => {
-    const finished = finishing({ slices: sliced(2400), check: `[ -f ../checked ] && { printf 'check: ok\\n'; exit 0; }\ntouch ../checked\n${RED_CHECK}` });
+  it("runs at most three reviewers on the code standard at once", () => {
+    const wide = (id: string): Slice => ({ id, files: { [`src/${id}.ts`]: big(id, 6000) } });
+    const finished = finishing({ slices: ["north", "south", "east", "west"].map(wide), reviewer: `  ${ON_CODE} && { printf '+\\n' >>"$ROOT/spans"; sleep 1; printf -- '-\\n' >>"$ROOT/spans"; }` });
 
     expect(finished.run().status).toBe(0);
-    const [, zone = "", clock = ""] = finished.handed();
-    expect(zone).toContain("ZONE-TEST-BROKE");
-    expect(zone).toContain("may sit in any slice's code");
-    expect(clock).not.toContain("ZONE-TEST-BROKE");
+    const spans = readFileSync(join(finished.root, "spans"), "utf8").trimEnd().split("\n");
+    const running = spans.reduce<number[]>((counts, span) => [...counts, (counts.at(-1) ?? 0) + (span === "+" ? 1 : -1)], []);
+    expect(Math.max(...running)).toBe(3);
   });
 
-  it("adds the slice's trailer by code to every commit its reviewer on the code standard made, asking nothing of it", () => {
-    const finished = finishing({ slices: sliced(2400), reviewer: '  [ "$CALL" = 2 ] && printf \'export const zoneFixed = 1;\\n\' >>src/zone.ts && git commit --quiet -am "Inline the zone helper"' });
+  it("brings each pack's fix back onto the integration branch and its origin, trailed with every slice its pack holds", () => {
+    const finished = finishing({ slices: packed, reviewer: `  ${ON_CODE} && grep -q 'src/zone.ts' "$PROMPT" && printf 'export const zoneFixed = 1;\\n' >>src/zone.ts && git commit --quiet -am "Inline the zone helper"` });
 
     expect(finished.run().status).toBe(0);
-    expect(finished.log("--format=%(trailers:key=Slice,valueonly)", "-1", "--grep", "Inline the zone helper")).toBe("zone");
+    expect(finished.log("--format=%(trailers:key=Slice,valueonly,separator=%x2C)", "-1", "--grep", "Inline the zone helper")).toBe("zone,clock");
+    expect(finished.pushed()).toContain("Inline the zone helper");
     expect(finished.handed().some((prompt) => prompt.includes("End each message with the line"))).toBe(false);
   });
 
-  it("hands bin/land's refusal to the last reviewer on the code standard, saying it covers the whole branch", () => {
-    const finished = finishing({ slices: sliced(2400), land: REFUSES_ONCE });
+  it("hands a conflict back to the reviewer whose pack came back second, and lands what it resolved", () => {
+    const finished = finishing({
+      slices: packed,
+      reviewer: [
+        "  if grep -q 'would not rebase' \"$PROMPT\"; then git rebase --quiet spec/974 >/dev/null 2>&1; printf 'both\\n' >README.md; git add README.md; GIT_EDITOR=true git rebase --continue >/dev/null 2>&1",
+        `  elif ${ON_CODE} && grep -q 'src/wide.ts' "$PROMPT"; then printf 'wide\\n' >README.md && git commit --quiet -am "Wide fix"`,
+        `  elif ${ON_CODE}; then until git log --format=%s spec/974 | grep -q 'Wide fix'; do sleep 0.1; done; printf 'zone\\n' >README.md && git commit --quiet -am "Zone fix"; fi`,
+      ].join("\n"),
+    });
 
     expect(finished.run().status).toBe(0);
-    const resumed = finished.hired()[4] ?? [];
-    expect(resumed[resumed.indexOf("--resume") + 1]).toBe("review-4");
-    expect(finished.handed()[4]).toContain("covers the whole integration branch");
+    const told = finished.handed().findIndex((prompt) => prompt.includes("would not rebase"));
+    expect(finished.handed()[told]).toContain("README.md");
+    const zone = zonePack(finished.handed());
+    const resumed = finished.hired()[told] ?? [];
+    expect(resumed[resumed.indexOf("--resume") + 1]).toBe(`review-${zone + 1}`);
+    expect(git(finished.session, "show", "spec/974:README.md")).toBe("both");
+    expect(finished.log("--format=%s", "-3")).toContain("Zone fix");
+  });
+
+  it("hands a red full check to the first pack's reviewer alone, saying the red may sit in any slice", () => {
+    const finished = finishing({ slices: sliced(2400), check: `[ -f ../checked ] && { printf 'check: ok\\n'; exit 0; }\ntouch ../checked\n${RED_CHECK}` });
+
+    expect(finished.run().status).toBe(0);
+    const reds = onCode(finished.handed()).filter((prompt) => prompt.includes("ZONE-TEST-BROKE"));
+    expect(reds).toHaveLength(1);
+    expect(reds[0]).toContain("may sit in any slice's code");
+  });
+
+  it("hands bin/land's refusal to the last pack's reviewer, in its own tree, saying it covers the whole branch", () => {
+    const finished = finishing({ slices: packed, land: REFUSES_ONCE });
+
+    expect(finished.run().status).toBe(0);
+    const told = finished.handed().findIndex((prompt) => prompt.includes("covers the whole integration branch"));
+    const resumed = finished.hired()[told] ?? [];
+    const last = zonePack(finished.handed());
+    expect(resumed[resumed.indexOf("--resume") + 1]).toBe(`review-${last + 1}`);
+    expect(finished.wheres()[told]).toBe(finished.wheres()[last]);
+    expect(finished.wheres()[told]).not.toBe(finished.wheres()[0]);
   });
 });
 

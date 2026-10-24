@@ -195,21 +195,29 @@ function isolated({ spec, slice }: Slicing, port: number): string | undefined {
   return ownDatabase(named("database", process.env.GITHUB_REPOSITORY ?? "", process.env.RUNNER_NAME ?? "", spec, slice));
 }
 
-const fastForwards = (onto: string) => git(["merge-base", "--is-ancestor", onto, "HEAD"]).status === 0;
+export const fastForwards = (onto: string) => git(["merge-base", "--is-ancestor", onto, "HEAD"]).status === 0;
 
-function rebasedOnto(onto: string): string | undefined {
+export function rebaseStopped(onto: string): { files: string; said: string } | undefined {
   const rebased = git(["rebase", "--quiet", onto]);
   if (rebased.status === 0) return undefined;
   const files = git(["diff", "--name-only", "--diff-filter=U"]).stdout.trim();
   git(["rebase", "--abort"]);
-  return files === "" ? unrebased(onto, firstLine(rebased)) : conflicted(onto, files);
+  return { files, said: firstLine(rebased) };
 }
 
-export function sliceTrailed(onto: string, slice: string): void {
-  const trailers = gitRead(["log", "--format=%x01%(trailers:key=Slice,valueonly,separator=%x2C)", `${onto}..HEAD`], `the commits past ${onto} could not be read, so none was given its \`Slice: ${slice}\` trailer`);
+function rebasedOnto(onto: string): string | undefined {
+  const stopped = rebaseStopped(onto);
+  if (stopped === undefined) return undefined;
+  return stopped.files === "" ? unrebased(onto, stopped.said) : conflicted(onto, stopped.files);
+}
+
+export function sliceTrailed(onto: string, slices: string[]): void {
+  const named = slices.map((slice) => `\`Slice: ${slice}\``).join(", ");
+  const trailers = gitRead(["log", "--format=%x01%(trailers:key=Slice,valueonly,separator=%x2C)", `${onto}..HEAD`], `the commits past ${onto} could not be read, so none was given its ${named} trailer`);
   const commits = trailers.split("\x01").slice(1);
-  if (commits.every((values) => values.trim().split(",").includes(slice))) return;
-  gitRead(["-c", "trailer.ifexists=addIfDifferent", "rebase", "--quiet", "--exec", `git commit --quiet --amend --no-edit --no-verify --allow-empty --trailer 'Slice: ${slice}'`, onto], `the \`Slice: ${slice}\` trailer could not be added to every commit past ${onto}`);
+  if (commits.every((values) => slices.every((slice) => values.trim().split(",").includes(slice)))) return;
+  const added = slices.map((slice) => `--trailer 'Slice: ${slice}'`).join(" ");
+  gitRead(["-c", "trailer.ifexists=addIfDifferent", "rebase", "--quiet", "--exec", `git commit --quiet --amend --no-edit --no-verify --allow-empty ${added}`, onto], `the ${named} trailer could not be added to every commit past ${onto}`);
 }
 
 const pastOnto = (onto: string) => gitRead(["rev-list", "--count", `${onto}..HEAD`], PAST_ONTO_UNREAD);
@@ -223,7 +231,7 @@ function landable(slicing: Slicing, outcome: "built" | "partial", left: string):
     const conflict = fastForwards(onto) ? undefined : rebasedOnto(onto);
     if (conflict !== undefined) return conflict;
     if (pastOnto(onto) === "0") return nothingBuilt(outcome, onto);
-    sliceTrailed(slicing.onto, slicing.slice);
+    sliceTrailed(slicing.onto, [slicing.slice]);
     const red = checkedBy(FAST_CHECK);
     if (red !== undefined) return repaired(red);
     if (fastForwards(onto)) return undefined;

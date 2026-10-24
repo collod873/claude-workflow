@@ -1,6 +1,7 @@
-import { spawnSync } from "node:child_process";
+import { execFile, spawn, spawnSync } from "node:child_process";
 import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { setTimeout } from "node:timers/promises";
 import { NO_EM_DASH, onDisk } from "./brief.ts";
 import { type Asked, askedIssue, commentOnTicket, followUpBody, gh, ghRead, git, gitRead, heldOn, mark, OWNER, post, STUCK, unread, type MarkedLabel } from "./post.ts";
 import type { Stop } from "./stops.ts";
@@ -85,15 +86,43 @@ export const treePathed = (env: NodeJS.ProcessEnv = process.env): NodeJS.Process
 
 export const CONTRACT = join(".claude", "contract.json");
 
-export function setupRefusal(contract: string): string | undefined {
+const setupOf = (contract: string) => {
   const { setup } = JSON.parse(contract || "{}") as { setup?: string };
-  if (setup === undefined || setup.trim() === "") return undefined;
-  const readied = spawnSync("bash", ["-c", setup], { env: treePathed(), encoding: "utf8", maxBuffer: Infinity });
-  if (readied.status === 0) return undefined;
-  return `${readied.stderr}${readied.stdout}`.trim().split("\n").at(-1) || `it ended ${readied.status}`;
+  return setup === undefined || setup.trim() === "" ? undefined : setup;
+};
+
+const unready = ({ status, stdout, stderr }: { status: number | null; stdout: string; stderr: string }) => (status === 0 ? undefined : `${stderr}${stdout}`.trim().split("\n").at(-1) || `it ended ${status}`);
+
+export function setupRefusal(contract: string): string | undefined {
+  const setup = setupOf(contract);
+  return setup === undefined ? undefined : unready(spawnSync("bash", ["-c", setup], { env: treePathed(), encoding: "utf8", maxBuffer: Infinity }));
 }
 
-export function hired(hire: Hire): (input: string, resume?: string) => Spent {
+export function setupRefusedIn(tree: string, contract: string): Promise<string | undefined> {
+  const setup = setupOf(contract);
+  if (setup === undefined) return Promise.resolve(undefined);
+  return new Promise((resolve) => {
+    execFile("bash", ["-c", setup], { cwd: tree, env: treePathed(), encoding: "utf8", maxBuffer: Infinity }, (error, stdout, stderr) => {
+      resolve(unready({ status: error === null ? 0 : typeof error.code === "number" ? error.code : null, stdout, stderr }));
+    });
+  });
+}
+
+interface Launch {
+  argv: [string, ...string[]];
+  input: string;
+  streamed: number;
+  waitFirst: boolean;
+}
+
+interface Exited {
+  status: number | null;
+  stderr: string;
+}
+
+type Spending = (input: string, resume?: string) => Generator<Launch, Spent, Exited>;
+
+function spending(hire: Hire): Spending {
   const minutes = Number(process.env.STAGE_MINUTES);
   const budget = minutes * 60_000;
   let used = 0;
@@ -102,38 +131,64 @@ export function hired(hire: Hire): (input: string, resume?: string) => Spent {
   const writeUpKept = (hire.writeUp?.minutes ?? 0) * 60_000;
   const handed = `${hire.transcript.replace(/\.jsonl$/, "")}.handed.md`;
   rmSync(handed, { force: true });
-  const attempt = (input: string, resume?: string, kept = writeUpKept) => {
+  function* attempt(input: string, resume?: string, kept = writeUpKept, waitFirst = false): Generator<Launch, Exited & { stdout: string }, Exited> {
     appendFileSync(handed, `${input}\n\n`);
     const from = existsSync(hire.transcript) ? statSync(hire.transcript).size : 0;
     const streamed = openSync(hire.transcript, "a");
-    const [command, ...args] = capped([...argv, ...(resume === undefined ? [] : ["--resume", resume]), ...STREAM], minutes, budget - used - kept);
     const started = Date.now();
-    const spent = spawnSync(command, args, { input, env: treePathed(), stdio: ["pipe", streamed, "pipe"], encoding: "utf8", maxBuffer: Infinity });
+    const exited = yield { argv: capped([...argv, ...(resume === undefined ? [] : ["--resume", resume]), ...STREAM], minutes, budget - used - kept), input, streamed, waitFirst };
     used += Date.now() - started;
     closeSync(streamed);
-    const stdout = readFileSync(hire.transcript).subarray(from).toString("utf8");
-    return { stdout, status: spent.status, stderr: String(spent.stderr ?? "") };
-  };
-  const refusalFor = (got: { stdout: string; status: number | null; stderr: string }): string | undefined => {
+    return { ...exited, stdout: readFileSync(hire.transcript).subarray(from).toString("utf8") };
+  }
+  const refusalFor = (got: Exited & { stdout: string }): string | undefined => {
     if (got.status === TIMED_OUT && minutes > 0) return `the ${hire.name} ran past its ${minutes} minute cap`;
     if (got.status !== 0) return `the ${hire.name} ended ${got.status}: ${quoted(String(got.stderr || got.stdout).trim().split("\n")[0] ?? "")}`;
     return undefined;
   };
-  return (input, resume) => {
-    let got = attempt(input, resume);
+  return function* (input, resume) {
+    let got = yield* attempt(input, resume);
     let refusal = refusalFor(got);
     if (refusal !== undefined && got.status !== TIMED_OUT) {
-      spawnSync("sleep", [RETRY_WAIT_SECONDS]);
-      got = attempt(input, resume);
+      got = yield* attempt(input, resume, writeUpKept, true);
       refusal = refusalFor(got);
     }
     const reading = sessionOf(got.stdout);
     if (got.status === TIMED_OUT && minutes > 0 && hire.writeUp !== undefined && reading !== undefined) {
-      got = attempt(hire.writeUp.told, reading, 0);
+      got = yield* attempt(hire.writeUp.told, reading, 0);
       refusal = refusalFor(got);
     }
     if (refusal === undefined) return { stdout: got.stdout, session: sessionOf(got.stdout), answer: answerIn(got.stdout) };
     return got.status === TIMED_OUT && minutes > 0 ? { stdout: got.stdout, refusal, timedOut: true, session: sessionOf(got.stdout) ?? reading } : { stdout: got.stdout, refusal };
+  };
+}
+
+function launchedHere({ argv: [command, ...args], input, streamed, waitFirst }: Launch): Exited {
+  if (waitFirst) spawnSync("sleep", [RETRY_WAIT_SECONDS]);
+  const spent = spawnSync(command, args, { input, env: treePathed(), stdio: ["pipe", streamed, "pipe"], encoding: "utf8", maxBuffer: Infinity });
+  return { status: spent.status, stderr: String(spent.stderr ?? "") };
+}
+
+const launchedIn =
+  (tree: string) =>
+  async ({ argv: [command, ...args], input, streamed, waitFirst }: Launch): Promise<Exited> => {
+    if (waitFirst) await setTimeout(Number(RETRY_WAIT_SECONDS) * 1000);
+    return new Promise((resolve) => {
+      const child = spawn(command, args, { cwd: tree, env: treePathed(), stdio: ["pipe", streamed, "pipe"] });
+      let stderr = "";
+      child.stderr?.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
+      child.stdin?.on("error", () => undefined);
+      child.on("error", (error) => resolve({ status: null, stderr: error.message }));
+      child.on("close", (status) => resolve({ status, stderr }));
+      child.stdin?.end(input);
+    });
+  };
+
+export function hired(hire: Hire): (input: string, resume?: string) => Spent {
+  const spend = spending(hire);
+  return (input, resume) => {
+    const steps = spend(input, resume);
+    for (let step = steps.next(); ; step = steps.next(launchedHere(step.value))) if (step.done === true) return step.value;
   };
 }
 
@@ -143,7 +198,18 @@ export function machineLogs(): string {
   return logs;
 }
 
-export const hire = (stage: string, key: string, hiring: Omit<Hire, "transcript">) => hired({ ...hiring, transcript: join(machineLogs(), `${stage}-${key}.jsonl`) });
+const transcriptOf = (stage: string, key: string) => join(machineLogs(), `${stage}-${key}.jsonl`);
+
+export const hire = (stage: string, key: string, hiring: Omit<Hire, "transcript">) => hired({ ...hiring, transcript: transcriptOf(stage, key) });
+
+export function hireIn(tree: string, stage: string, key: string, hiring: Omit<Hire, "transcript">): (input: string, resume?: string) => Promise<Spent> {
+  const spend = spending({ ...hiring, transcript: transcriptOf(stage, key) });
+  const launched = launchedIn(tree);
+  return async (input, resume) => {
+    const steps = spend(input, resume);
+    for (let step = steps.next(); ; step = steps.next(await launched(step.value))) if (step.done === true) return step.value;
+  };
+}
 
 interface Opening<Carried, Own extends string> {
   stage: string;
