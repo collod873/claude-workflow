@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
 import { capped, LIST_CAP } from "./brief.ts";
@@ -308,7 +309,7 @@ async function scheduled(spec: string, app: AppKey | undefined): Promise<Stop | 
   }
   readied(spec);
   posted(spec, found);
-  const root = join(underGit("spec-worktrees"), spec);
+  const root = join(mkdtempSync(join(tmpdir(), "spec-worktrees-")), spec);
   mkdirSync(root, { recursive: true });
   const logs = underGit("machine-logs");
   const running = new Map<string, Promise<Built & { tried: boolean }>>();
