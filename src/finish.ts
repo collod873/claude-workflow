@@ -43,7 +43,7 @@ const { steps: _stepsOnTheSpecAlone, ...unstepped } = ANSWER.properties;
 const CODE_ANSWER = { ...ANSWER, properties: unstepped };
 
 export interface Changes {
-  slices?: string[];
+  slices?: string[] | undefined;
   commits: string;
   diff: string;
   stat: string;
@@ -66,7 +66,7 @@ const codeDiff = ({ diff, stat }: Changes) => {
     : [`At ${over.bytes} bytes this diff is over the ${DIFF_CAP} handed, so here are its \`git diff --stat\` and the files it changes; read each file in the repo.`, over.stat, over.files].join("\n\n");
 };
 
-export function onTheCode(changes: Changes, { spec, red, commitlint, findings }: { spec: string; red?: Red; commitlint: boolean; findings?: string }): string {
+export function onTheCode(changes: Changes, { spec, red, commitlint, findings }: { spec: string; red?: Red | undefined; commitlint: boolean; findings?: string | undefined }): string {
   const built =
     findings === undefined
       ? "Builders built this spec slice by slice on its integration branch, and a reviewer on the spec has read it and fixed what it missed."
@@ -111,7 +111,7 @@ const specDiff = ({ diff, stat }: Changes) => {
     : [`The diff is ${over.bytes} bytes, over ${DIFF_CAP}, so only its \`git diff --stat\` and its files are handed; read in the repo what you need of it.`, over.stat, "Every file changed:", over.files].join("\n\n");
 };
 
-export function onTheSpec(changes: Changes, { spec, title, body, commitlint, briefs, findings }: { spec: string; title: string; body: string; commitlint: boolean; briefs: string; findings?: string }): string {
+export function onTheSpec(changes: Changes, { spec, title, body, commitlint, briefs, findings }: { spec: string; title: string; body: string; commitlint: boolean; briefs: string; findings?: string | undefined }): string {
   const built =
     findings === undefined
       ? "Builders built the spec below slice by slice on its integration branch, each slice to its brief under `## Its slices`. You did not build it: read the spec, the briefs, its commit messages and its diff, over the whole branch, as its reviewer on the spec."
@@ -201,7 +201,7 @@ function onTheCodeInPacks(): Changes[] {
 
 interface Reviewer {
   spend: (input: string, resume?: string) => Promise<Spent>;
-  session?: string;
+  session?: string | undefined;
   seat: string;
   on: string;
   slices: string[];
@@ -211,8 +211,8 @@ interface Reviewer {
 }
 
 interface Finished {
-  landed?: string;
-  missed?: number[];
+  landed?: string | undefined;
+  missed?: number[] | undefined;
 }
 
 interface Approved extends Routed {
@@ -231,7 +231,7 @@ interface Run {
   reasons: Map<string, string>;
   later: string[];
   left: Map<string, Approved>;
-  trees: { root?: string; made: Reviewer[] };
+  trees: { root?: string | undefined; made: Reviewer[] };
 }
 
 function reviewed(spec: string, said: string, spent: Spent, app: AppKey | undefined): Approved | undefined {
@@ -365,7 +365,7 @@ async function reviews(run: Run, { title, body }: { title: string; body: string 
   const top = process.cwd();
   const commitlint = commitlinted();
   const findings = progress.fixPass ? missesOf(lastDoneCheck(spec, `the comments on #${spec} could not be read, so nothing was reviewed`) ?? "") : undefined;
-  const reviewer = (seat: string, on: "spec" | "code standard", answers: object, { tree = top, slices }: { tree?: string; slices?: string[] } = {}): Reviewer => ({
+  const reviewer = (seat: string, on: "spec" | "code standard", answers: object, { tree = top, slices }: { tree?: string; slices?: string[] | undefined } = {}): Reviewer => ({
     spend: hireIn(tree, "finish", seat, { name: `reviewer on the ${on}`, model: "opus", answers }),
     seat,
     on: `On the ${on}${slices === undefined ? "" : `, ${slicesNamed(slices)}`}`,

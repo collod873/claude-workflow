@@ -2,7 +2,7 @@
   "setup": "[ -e node_modules ] || npm ci",
   "steps": {
     "typecheck": {
-      "run": "node_modules/.bin/tsc --noEmit --pretty false -p tsconfig.json",
+      "run": "shared/run typecheck",
       "fast": true,
       "why": "A type error is the cheapest failure to catch and the one a stage meets most while it works."
     },

@@ -57,7 +57,7 @@ export interface Handed {
   cut: Cut;
   slices: string;
   built: string;
-  findings?: string;
+  findings?: string | undefined;
 }
 
 const WATCHED = "Read the repo as you need. No one is watching and no one will answer a question: where the spec is silent, choose, and say what you chose in the slice's `why`.";

@@ -34,8 +34,8 @@ interface Risk {
 }
 
 export interface Routed {
-  fixes?: Fix[];
-  risks?: Risk[];
+  fixes?: Fix[] | undefined;
+  risks?: Risk[] | undefined;
 }
 
 const ANSWER = {

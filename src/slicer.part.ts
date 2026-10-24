@@ -17,7 +17,7 @@ export function slicing({
   comments = [] as Comment[],
   built = [] as string[],
   gh = "",
-}: { labels?: string[]; body?: string; answers?: object[]; comments?: Comment[]; built?: string[]; gh?: string } = {}) {
+}: { labels?: string[] | undefined; body?: string; answers?: object[]; comments?: Comment[]; built?: string[]; gh?: string } = {}) {
   const root = scratch("slice-");
   const { session } = cloned(root, "Start");
   git(session, "checkout", "--quiet", "-b", `spec/${SPEC_ISSUE}`);
