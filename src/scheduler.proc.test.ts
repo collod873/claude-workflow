@@ -32,6 +32,15 @@ describe("bin/schedule runs a spec from its first cut to its landing, one slice 
     expect(run.seen("seam")).toContain(`branch=slice/${SPEC_ISSUE}-seam`);
   });
 
+  it("builds each slice in a worktree outside the repo's .git, since Vite serves no file under a .git path and every DOM test there fails to load (Lumaria#1439)", () => {
+    const run = scheduling({ cuts: [[sliceOf("seam")], []] });
+
+    expect(run.run().status).toBe(0);
+    const dir = /^dir=(.*)$/m.exec(run.seen("seam"))?.[1] ?? "";
+    expect(dir).toMatch(new RegExp(`/spec-worktrees-[^/]+/${SPEC_ISSUE}/seam$`));
+    expect(dir).not.toContain("/.git/");
+  });
+
   it("keeps one progress comment on the spec, edited in place, with a row per slice and every slice's state in its progress JSON", () => {
     const run = scheduling({ cuts: [[sliceOf("seam"), sliceOf("reader", ["seam"])], []], plans: { reader: [{ outcome: "partial" }] } });
 
