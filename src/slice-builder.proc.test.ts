@@ -355,6 +355,13 @@ describe("three builders run at once in one runner job, each with its own Postgr
     expect(envOf(ranWith("claude")[0], "DATABASE_URL")).toBeUndefined();
   });
 
+  it("hands its builder a temp dir of fixed length under the job's own TMPDIR, never the long RUNNER_TEMP, so tsx can listen on a Unix socket there and the tree's setup passes (Lumaria#1439)", () => {
+    const builder = slicing({ slice: "notify-customer-box-on-booking-reschedule-and-reassign" });
+
+    expect(builder.run().status).toBe(0);
+    expect(isolationOf(builder).temp).toMatch(new RegExp(`^${builder.temp}/slice-[A-Za-z0-9]{6}$`));
+  });
+
   it("builds three slices at once on one integration branch, each on its own temp dir, port, container and session file, and leaves no temp dir behind", () => {
     const root = scratch("slice-builder-");
     const builders = ["tenant-time-zone", "invoice-time-zone", "report-time-zone"].map((slice) => slicing({ root, slice, contract: DATABASE_STEP }));
@@ -370,7 +377,7 @@ describe("three builders run at once in one runner job, each with its own Postgr
     expect(new Set(seen.map(({ temp }) => temp)).size).toBe(3);
     expect(new Set(seen.map(({ port }) => port)).size).toBe(3);
     for (const { temp, port } of seen) {
-      expect(temp).toMatch(new RegExp(`^${first.temp}/slice-${SPEC}-[a-z-]+-`));
+      expect(temp).toMatch(new RegExp(`^${first.temp}/slice-`));
       expect(Number(port)).toBeGreaterThan(1023);
     }
     expect(new Set(builders.map((builder) => builder.dockered().at(-1))).size).toBe(3);
