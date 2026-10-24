@@ -120,8 +120,13 @@ function sharedRules(settled) {
       }),
       scoped("no-test-utils-import", "no-test-utils-import", production),
     ]),
-    ...optional(settled.boundaryMocks, ({ modules, home, files = SOURCES }) => [
-      scoped("no-boundary-mock", "no-boundary-mock", { files, ignores: [home] }, { modules, home }),
+    ...optional(settled.boundaryMocks, ({ modules, home, files = SOURCES, ignores = [] }) => [
+      scoped(
+        "no-boundary-mock",
+        "no-boundary-mock",
+        { files, ignores: [home, ...ignores].filter(Boolean) },
+        { modules, home },
+      ),
     ]),
     ...optional(settled.sandbox, ({ files, helper, ignores = [] }) => [
       scoped(

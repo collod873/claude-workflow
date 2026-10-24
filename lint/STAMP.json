@@ -1,10 +1,10 @@
 {
- "source": "collod873/agent-hooks@9dbb0097510611e946d132772f44e81a553b6baa",
+ "source": "collod873/agent-hooks@ee8eec8c0b75db40652cf00d7ee422d4c610f34c",
  "layer": "typescript",
  "files": {
   "run": "44dac9ce948395b33941a8654ddacc72940911c84111ae2adf0dc49383ea59fb",
   "typescript/files.mjs": "94b0c88dd1414d592b04a5a82ed238032c4831d99e173fe6b80c8007568edd29",
-  "typescript/index.mjs": "ea02a9dd8a0e2db6b523c794dc2346c5a7b5674654f3223d06213f61f397aa2e",
+  "typescript/index.mjs": "564370bbb64cf44e50de9773d055bc526fc0e593a646aa62c93f898410084424",
   "typescript/plugin.mjs": "9f077de475649cc810fdf231b7b4199c02dca3b63a6e38562d27ab4032d6d116",
   "typescript/rules/config-predicts-environment.mjs": "f729a2d4a03946559237ca594f5142945d7a9b6b5b0ef65de803bcea54c82140",
   "typescript/rules/import-bans.mjs": "2760f1ac8c9f5dd843e4cda00608b103f3205ba539085cae6e88c8534fb5ccc1",
