@@ -29,7 +29,7 @@ export function eslintStage(root, files) {
       "--max-warnings",
       "0",
       "--concurrency",
-      "4",
+      "2",
       ...targets,
     ],
     root,

@@ -1,5 +1,5 @@
 {
- "source": "collod873/agent-hooks@8b71a66e5aad862856df395c8e3d079cfb2a410b",
+ "source": "collod873/agent-hooks@7e52e44a450ce7c61f15bd090ce31fa419fbf5f7",
  "layer": "typescript",
  "files": {
   "ci.yml": "29154dbd9325c6fb2d4210f0d48b2275ee6f066d99ae43b59f8b752468e468ae",
@@ -22,7 +22,7 @@
   "typescript/run.mjs": "e17b640be280cc4a5c1ae4bd12ac4e67dc5581ed8712533bdabe5dcd5c8f75b4",
   "typescript/setup": "efbc5bf33e8de96614cbe47a3c0ca12dae0077dec59843ed72569af1311c9d09",
   "typescript/setup.mjs": "c9797f2b260ef3cbf95be3f4950de4d0aa742127ffadeba7c66ecf320829fde7",
-  "typescript/stages.mjs": "eb4dbc07a51dd754e6b6ab069956e5c440225864ed297f0f6cb961592a9e5d28",
+  "typescript/stages.mjs": "b6c6d88f0f7b0de2a568689b6d5095b51cf2f0e57273f5618439cb9755c3e117",
   "typescript/tools.mjs": "6017f6a2208773bf7245638f65451b07fb8a09165e7475d8c82040cd4b876125",
   "typescript/tsconfig-guard.mjs": "bdbece0f250b8ce1e79532392c7b7556b29b98cdbab99fdc17475acc54866391",
   "typescript/tsconfig.base.json": "cbc394788f18ca8975d4047a94d340e7d74b0c965e948f2c853234acb34e6638",
