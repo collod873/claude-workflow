@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -23,7 +23,7 @@ export function stage(title, command, args, root, env = {}, verb = "lint") {
 
 export function eslintStage(root, files) {
   const targets = files.length > 0 ? ["--no-warn-ignored", ...files] : ["."];
-  return stage(
+  return stageAsync(
     "eslint",
     process.execPath,
     [
@@ -53,7 +53,7 @@ export async function oxlintStage(root, files, eslint) {
   );
   const typed = candidates.filter((_, index) => !ignored[index]);
   if (typed.length === 0) return true;
-  return stage(
+  return stageAsync(
     "oxlint",
     packageBin("oxlint", "bin/oxlint"),
     ["--type-aware", "--deny-warnings", "-c", OXLINT_CONFIG, ...typed],
@@ -73,4 +73,19 @@ export function refused(layer, refusals, verb = "lint") {
 export function tscStage(root, config) {
   const tsc = packageBin("typescript-native", "bin/tsc");
   return stage("tsc", process.execPath, [tsc, "-p", config], root, {}, "typecheck");
+}
+
+export function stageAsync(title, command, args, root, env = {}, verb = "lint") {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { cwd: root, env: { ...process.env, ...env } });
+    const out = [];
+    child.stdout.on("data", (chunk) => out.push(chunk));
+    child.stderr.on("data", (chunk) => out.push(chunk));
+    child.on("error", reject);
+    child.on("close", (status) => {
+      process.stderr.write(Buffer.concat(out));
+      if (status !== 0) console.error(`${verb}: ${title} failed`);
+      resolve(status === 0);
+    });
+  });
 }
