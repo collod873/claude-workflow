@@ -8,7 +8,7 @@ permissions: {}
 jobs:
   wake:
     if: ${{ github.event_name == 'issues' && ((github.event.action == 'labeled' && (github.event.sender.login == github.repository_owner || github.event.sender.login == 'collod873-machine[bot]')) || (github.event.action == 'unlabeled' && github.event.sender.login == github.repository_owner)) }}
-    runs-on: ${{ vars.QUICK_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
     env:
       GH_REPO: ${{ github.repository }}
@@ -286,7 +286,7 @@ jobs:
   dispatch-rerun:
     needs: [wake, spec, research]
     if: ${{ always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) }}
-    runs-on: ${{ vars.QUICK_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
     env:
       GH_REPO: ${{ github.repository }}

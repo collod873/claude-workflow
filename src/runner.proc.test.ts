@@ -2,16 +2,15 @@ import { spawn } from "node:child_process";
 import { chmodSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { execute, holds, PC_HOST as HOST, PC_REPO as REPO, PC_RUNNER_COUNT, PC_RUNS_ON, pcRunner, QUICK_RUNNER_COUNT, quickRunners, QUICK_RUNS_ON, scratch, script, switching, workflowJobs } from "./scenarios.ts";
-import { MACHINE } from "./spelled.ts";
+import { execute, PC_HOST as HOST, PC_REPO as REPO, PC_RUNNER_COUNT, PC_RUNS_ON, pcRunner, scratch, script, switching, workflowJobs } from "./scenarios.ts";
 
 const SOCKET_PATH_MAX = 107;
 
 describe("bin/runner moves a private repo's jobs between this PC and GitHub's runners", () => {
   it("sends a repo's next jobs to the PC once its PC runners are online, installing none it already has", () => {
-    const { run, variable, sudo } = switching({ runners: [...Array.from({ length: PC_RUNNER_COUNT }, (_, at) => pcRunner(`${HOST}-${at + 1}`)), ...quickRunners()] });
+    const { run, variable, sudo } = switching({ runners: [...Array.from({ length: PC_RUNNER_COUNT }, (_, at) => pcRunner(`${HOST}-${at + 1}`))] });
 
-    expect(run("pc")).toEqual({ status: 0, stdout: `runner: ${REPO} runs on this PC from its next job, 2 PC runners online, 8 quick runners online\n`, stderr: "" });
+    expect(run("pc")).toEqual({ status: 0, stdout: `runner: ${REPO} runs on this PC from its next job, ${PC_RUNNER_COUNT} PC runners online\n`, stderr: "" });
     expect(variable()).toBe("pc");
     expect(sudo().filter((call) => call.includes("config.sh"))).toEqual([]);
   });
@@ -22,18 +21,20 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
     const result = run("pc");
 
     expect(result.stderr).toBe("");
-    expect(result.stdout).toBe(`runner: ${REPO} runs on this PC from its next job, 2 PC runners online, 8 quick runners online, 10 installed\n`);
+    expect(result.stdout).toBe(`runner: ${REPO} runs on this PC from its next job, 4 PC runners online, 4 installed\n`);
     expect(variable()).toBe("pc");
     const calls = sudo();
     expect(calls[0]).toMatch(/useradd .*--groups docker ghrunner$/);
     expect(calls.join("\n")).toMatch(/node-v\d+\.\d+\.\d+-linux-x64\.tar\.xz/);
     for (let n = 1; n <= PC_RUNNER_COUNT; n += 1) {
       const dir = `/home/ghrunner/runners/collod873-Lumaria/${HOST}-${n}`;
-      expect(calls.some((call) => call.includes(`cd ${dir} &&`) && call.includes(`--name '${HOST}-${n}' --labels pc`))).toBe(true);
+      expect(calls.some((call) => call.includes(`cd ${dir} &&`) && call.includes(`--name '${HOST}-${n}' --labels pc >`))).toBe(true);
       expect(calls.some((call) => call.includes(`cd ${dir} &&`) && call.includes("svc.sh install ghrunner"))).toBe(true);
     }
     const dir = `/home/ghrunner/runners/collod873-Lumaria/${HOST}-2`;
-    expect(placed(`${dir}/.env`).split("\n")).toEqual(expect.arrayContaining([`HOME=${dir}/home`, `ACTIONS_RUNNER_HOOK_JOB_STARTED=${dir}/clear.sh`, `ACTIONS_RUNNER_HOOK_JOB_COMPLETED=${dir}/clear.sh`, "CHECK_SLOTS=2", "CHECK_SLOTS_DIR=/home/ghrunner/check-slots"]));
+    const env = placed(`${dir}/.env`).split("\n");
+    expect(env).toEqual(expect.arrayContaining([`HOME=${dir}/home`, `ACTIONS_RUNNER_HOOK_JOB_STARTED=${dir}/clear.sh`, `ACTIONS_RUNNER_HOOK_JOB_COMPLETED=${dir}/clear.sh`]));
+    expect(env.filter((line) => line.startsWith("CHECK_SLOTS")), "a runner's checks wait in the machine's one check line beside the owner's").toEqual([]);
   });
 
   it("gives each PC runner its own temp folder short enough that a socket a job opens under it fits Linux's 107 characters, however long the repo's name", () => {
@@ -50,22 +51,22 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
   });
 
   it("installs only the PC runners a repo lacks, so a repo with two asked for four gains the other two", () => {
-    const { run, sudo } = switching({ runners: [pcRunner(`${HOST}-1`), pcRunner(`${HOST}-2`), ...quickRunners()] });
+    const { run, sudo } = switching({ runners: [pcRunner(`${HOST}-1`), pcRunner(`${HOST}-2`)] });
 
     expect(run("pc", "4").stdout).toContain(", 2 installed");
     expect(sudo().filter((call) => call.includes("config.sh")).map((call) => /--name '([^']+)'/.exec(call)?.[1])).toEqual([3, 4].map((n) => `${HOST}-${n}`));
   });
 
   it("keeps only as many PC runners as asked, turning the rest off for good and letting a mid-job one finish first", () => {
-    const { run, sudo } = switching({ runners: [...Array.from({ length: 6 }, (_, at) => pcRunner(`${HOST}-${at + 1}`, "online", at === 2)), ...quickRunners()] });
+    const { run, sudo } = switching({ runners: [...Array.from({ length: 6 }, (_, at) => pcRunner(`${HOST}-${at + 1}`, "online", at === 2))] });
     const unit = (n: number) => `actions.runner.collod873-Lumaria.${HOST}-${n}.service`;
 
     const result = run("pc", "1");
 
-    expect(result.stdout).toBe(`runner: ${REPO} runs on this PC from its next job, 1 PC runners online, 8 quick runners online, 5 turned off, 1 once its job ends\n`);
+    expect(result.stdout).toBe(`runner: ${REPO} runs on this PC from its next job, 1 PC runners online, 5 turned off, 1 once its job ends\n`);
     const calls = sudo();
     expect(calls.filter((call) => call.includes("systemctl disable"))).toEqual([2, 3, 4, 5, 6].map((n) => `bash -c systemctl disable --quiet ${n === 3 ? "" : "--now "}${unit(n)}`));
-    expect(calls.filter((call) => call.includes("svc.sh start") && !call.includes("-quick-"))).toHaveLength(1);
+    expect(calls.filter((call) => call.includes("svc.sh start"))).toHaveLength(1);
     expect(calls.some((call) => call.includes(`systemctl enable --quiet ${unit(1)}`))).toBe(true);
   });
 
@@ -77,7 +78,7 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
     run("pc");
 
     const again = sudo().slice(before);
-    expect(again.filter((call) => call.includes("svc.sh start"))).toHaveLength(PC_RUNNER_COUNT + QUICK_RUNNER_COUNT);
+    expect(again.filter((call) => call.includes("svc.sh start"))).toHaveLength(PC_RUNNER_COUNT);
     expect(again.filter((call) => call.includes("svc.sh stop"))).toEqual([]);
   });
 
@@ -118,13 +119,13 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
   });
 
   it("gives a mid-job PC runner its new setup at its job's end, by starting its service for one job at a time, so no job is killed and no one runs this again", () => {
-    const { run, sudo, placed } = switching({ runners: [pcRunner(`${HOST}-1`, "online", true), pcRunner(`${HOST}-2`), ...quickRunners()] });
+    const { run, sudo, placed } = switching({ runners: [pcRunner(`${HOST}-1`, "online", true), pcRunner(`${HOST}-2`)] });
     const unit = `actions.runner.collod873-Lumaria.${HOST}-1.service`;
     const dropIn = `/etc/systemd/system/${unit}.d/pc-runner.conf`;
 
     const result = run("pc");
 
-    expect(result.stdout).toBe(`runner: ${REPO} runs on this PC from its next job, 2 PC runners online, 8 quick runners online; ${HOST}-1 take the new setup when their job ends\n`);
+    expect(result.stdout).toBe(`runner: ${REPO} runs on this PC from its next job, 2 PC runners online; ${HOST}-1 take the new setup when their job ends\n`);
     expect(sudo().filter((call) => call.includes(`${HOST}-1 && `) && call.includes("svc.sh"))).toEqual([]);
     const placedAt = sudo().findIndex((call) => call.includes(`mv ${dropIn}.next`));
     const reloadedAt = sudo().findIndex((call) => call.includes("daemon-reload") && call.includes(`enable --quiet ${unit}`));
@@ -140,7 +141,7 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
     run("pc");
     const before = sudo().length;
 
-    expect(run("pc").stdout).toBe(`runner: ${REPO} runs on this PC from its next job, 2 PC runners online, 8 quick runners online\n`);
+    expect(run("pc").stdout).toBe(`runner: ${REPO} runs on this PC from its next job, 2 PC runners online\n`);
     expect(sudo().slice(before).filter((call) => call.includes(`${HOST}-1`) && /svc\.sh|systemctl/.test(call))).toEqual([]);
   });
 
@@ -151,7 +152,7 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
     jobStarted(`${HOST}-2`);
     const before = sudo().length;
 
-    expect(run("pc", "1").stdout).toBe(`runner: ${REPO} runs on this PC from its next job, 1 PC runners online, 8 quick runners online, 1 turned off, 1 once its job ends\n`);
+    expect(run("pc", "1").stdout).toBe(`runner: ${REPO} runs on this PC from its next job, 1 PC runners online, 3 turned off, 1 once its job ends\n`);
     const calls = sudo().slice(before);
     expect(calls).toContain(`bash -c systemctl disable --quiet ${unit}`);
     expect(calls.filter((call) => call.includes(`${HOST}-2 && `) && call.includes("svc.sh"))).toEqual([]);
@@ -159,9 +160,9 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
   });
 
   it("names a PC runner turned off mid-job whose service predates one job at a time as taking jobs until stopped", () => {
-    const { run } = switching({ runners: [pcRunner(`${HOST}-1`), pcRunner(`${HOST}-2`, "online", true), ...quickRunners()], manyJobs: [`${HOST}-2`] });
+    const { run } = switching({ runners: [pcRunner(`${HOST}-1`), pcRunner(`${HOST}-2`, "online", true)], manyJobs: [`${HOST}-2`] });
 
-    expect(run("pc", "1").stdout).toBe(`runner: ${REPO} runs on this PC from its next job, 1 PC runners online, 8 quick runners online, 1 turned off; ${HOST}-2 take jobs until stopped: run this again once they finish\n`);
+    expect(run("pc", "1").stdout).toBe(`runner: ${REPO} runs on this PC from its next job, 1 PC runners online, 1 turned off; ${HOST}-2 take jobs until stopped: run this again once they finish\n`);
   });
 
   it("leaves a mid-job PC runner whose service predates one job at a time on its old setup, rather than kill the job under it, and says it waits on this running again", () => {
@@ -178,22 +179,22 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
   });
 
   it("gives a runner stopped by hand its new setup at once, though GitHub still shows it mid-job", () => {
-    const { run, placed } = switching({ runners: [pcRunner(`${HOST}-1`, "online", true), pcRunner(`${HOST}-2`), ...quickRunners()], stoppedByHand: [`${HOST}-1`] });
+    const { run, placed } = switching({ runners: [pcRunner(`${HOST}-1`, "online", true), pcRunner(`${HOST}-2`)], stoppedByHand: [`${HOST}-1`] });
 
-    expect(run("pc").stdout).toBe(`runner: ${REPO} runs on this PC from its next job, 2 PC runners online, 8 quick runners online\n`);
-    expect(placed(`/etc/systemd/system/actions.runner.collod873-Lumaria.${HOST}-1.service.d/pc-runner.conf`)).toContain("Slice=pc-runners.slice");
+    expect(run("pc").stdout).toBe(`runner: ${REPO} runs on this PC from its next job, 2 PC runners online\n`);
+    expect(placed(`/etc/systemd/system/actions.runner.collod873-Lumaria.${HOST}-1.service.d/pc-runner.conf`)).toContain("Restart=always");
   });
 
   it("counts a repo's PC runners online only once every one asked for is up, and says how many are still starting", () => {
-    const { run } = switching({ runners: [...[1, 2, 3, 4].map((n) => pcRunner(`${HOST}-${n}`, "offline")), ...quickRunners()], slowToStart: [`${HOST}-3`, `${HOST}-4`] });
+    const { run } = switching({ runners: [...[1, 2, 3, 4].map((n) => pcRunner(`${HOST}-${n}`, "offline"))], slowToStart: [`${HOST}-3`, `${HOST}-4`] });
 
-    expect(run("pc", "4").stdout).toBe(`runner: ${REPO} runs on this PC from its next job, 2 of 4 PC runners online, the rest still starting, 8 quick runners online\n`);
+    expect(run("pc", "4").stdout).toBe(`runner: ${REPO} runs on this PC from its next job, 2 of 4 PC runners online, the rest still starting\n`);
   });
 
   it("keeps as many PC runners as are already online when no count is given, so a repo on four is not cut back to the default", () => {
-    const { run, sudo } = switching({ runners: [...[1, 2, 3, 4].map((n) => pcRunner(`${HOST}-${n}`)), ...quickRunners()] });
+    const { run, sudo } = switching({ runners: [...[1, 2, 3, 4].map((n) => pcRunner(`${HOST}-${n}`))] });
 
-    expect(run("pc").stdout).toBe(`runner: ${REPO} runs on this PC from its next job, 4 PC runners online, 8 quick runners online\n`);
+    expect(run("pc").stdout).toBe(`runner: ${REPO} runs on this PC from its next job, 4 PC runners online\n`);
     expect(sudo().filter((call) => call.includes("systemctl disable"))).toEqual([]);
   });
 
@@ -225,66 +226,23 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
     expect(sudo().slice(before).filter((call) => call.includes("restart earlyoom"))).toEqual([]);
   });
 
-  it("holds every PC runner's jobs together under a 28 GB cap with no swap on the PC's last 8 CPUs, and each runner to 12 GB on 4 of them at an equal CPU share with its first 256 MB kept from its neighbours, so a build sizes its workers to 4, a job with more threads takes no more CPU than its neighbour, an idle runner's listener still reaches GitHub, and a runaway job is killed rather than slowed", () => {
-    const { run, sudo, placed } = switching();
+  it("caps no PC runner's memory or CPU, so a check holding the machine's one check slot runs as the owner's does, on every core", () => {
+    const { run, placed } = switching();
 
     run("pc");
 
-    expect(placed("/etc/systemd/system/pc-runners.slice").split("\n")).toEqual(expect.arrayContaining(["MemoryMax=28G", "MemorySwapMax=0", "AllowedCPUs=8-15"]));
-    for (const [n, cpus] of [[1, "8-11"], [2, "12-15"]] as const) {
-      expect(placed(`/etc/systemd/system/actions.runner.collod873-Lumaria.${HOST}-${n}.service.d/pc-runner.conf`).split("\n")).toEqual(expect.arrayContaining(["Slice=pc-runners.slice", "MemoryMax=12G", "MemoryMin=256M", "MemorySwapMax=0", `AllowedCPUs=${cpus}`, "CPUWeight=100", "OOMPolicy=continue"]));
-    }
-    expect(sudo()).toContain("bash -c systemctl daemon-reload");
+    expect(() => placed("/etc/systemd/system/pc-runners.slice")).toThrow();
+    const dropIn = placed(`/etc/systemd/system/actions.runner.collod873-Lumaria.${HOST}-1.service.d/pc-runner.conf`).split("\n");
+    expect(dropIn.filter((line) => /^(Slice|AllowedCPUs|CPUWeight|MemoryMax|MemoryMin|MemorySwapMax)=/.test(line))).toEqual([]);
   });
 
-  it("puts a repo's PC runners on the 4 CPUs fewer of other repos' PC runners hold, so every repo's first runner does not land on the same 4 (#1487)", () => {
-    const { run, placed } = switching({
-      neighbours: [
-        { unit: `actions.runner.collod873-design-kit.${HOST}-1.service`, slice: "pc-runners.slice", cpus: "8-11" },
-        { unit: `actions.runner.collod873-workout-tracker.${HOST}-1.service`, slice: "pc-runners.slice", cpus: "8-11" },
-        { unit: `actions.runner.collod873-chess.${HOST}-1.service`, slice: "pc-runners.slice", cpus: "8-11" },
-        { unit: `actions.runner.collod873-chess.${HOST}-quick-1.service`, slice: "pc-quick-runners.slice", cpus: "12-15" },
-        { unit: `actions.runner.collod873-Lumaria.${HOST}-1.service`, slice: "pc-runners.slice", cpus: "12-15" },
-      ],
-    });
+  it("turns off the quick runners the quick lane left, so a repo keeps only its PC runners", () => {
+    const quick = [1, 2].map((n) => pcRunner(`${HOST}-quick-${n}`, "online", false, ["pc-quick"]));
+    const { run, sudo } = switching({ runners: [...Array.from({ length: PC_RUNNER_COUNT }, (_, at) => pcRunner(`${HOST}-${at + 1}`)), ...quick] });
 
-    run("pc");
-
-    for (const n of [1, 2]) expect(placed(`/etc/systemd/system/actions.runner.collod873-Lumaria.${HOST}-${n}.service.d/pc-runner.conf`).split("\n")).toContain("AllowedCPUs=12-15");
-  });
-
-  it("installs quick runners beside the build runners, labelled pc-quick alone, under their own cap outside the build runners' 20 GB, 1 GB each and their eight together exactly the slice's 8 GB, and points the repo's quick jobs at them", () => {
-    const { run, sudo, placed, quickVariable } = switching({ userExists: false });
-
-    expect(run("pc").status).toBe(0);
-
-    const configs = sudo().filter((call) => call.includes("config.sh"));
-    for (let n = 1; n <= QUICK_RUNNER_COUNT; n += 1) expect(configs.some((call) => call.includes(`--name '${HOST}-quick-${n}' --labels pc-quick `))).toBe(true);
-    expect(placed("/etc/systemd/system/pc-quick-runners.slice").split("\n")).toEqual(expect.arrayContaining(["MemoryMax=8G", "MemorySwapMax=0", "AllowedCPUs=0-7"]));
-    expect(placed(`/etc/systemd/system/actions.runner.collod873-Lumaria.${HOST}-quick-1.service.d/pc-runner.conf`).split("\n")).toEqual(expect.arrayContaining(["Slice=pc-quick-runners.slice", "MemoryMax=1G", "MemorySwapMax=0", "AllowedCPUs=0-7"]));
-    expect(quickVariable()).toBe("pc-quick");
-  });
-
-  it("labels every build runner pc-quick as well, so a quick job still runs when no quick runner is online, and never a build on a quick runner", () => {
-    const { run, sudo, gh } = switching({ userExists: false, runners: [pcRunner(`${HOST}-1`, "online", false, ["pc"]), pcRunner("imac-1", "offline", false, ["pc"])] });
-
-    expect(run("pc", "2").status).toBe(0);
-
-    expect(sudo().some((call) => call.includes(`--name '${HOST}-2' --labels pc,pc-quick `))).toBe(true);
-    const labelled = gh().filter((call) => call.includes("/labels"));
-    expect(labelled).toEqual([`${HOST}-1`, "imac-1"].map((name) => `api -X POST repos/${REPO}/actions/runners/${pcRunner(name).id}/labels -f labels[]=pc-quick`));
-  });
-
-  it("with no quick runner online, still points quick jobs at the quick label, which an online build runner then carries, and says the build runners take them for now", () => {
-    const quick = Array.from({ length: QUICK_RUNNER_COUNT }, (_, at) => `${HOST}-quick-${at + 1}`);
-    const { run, runners, quickVariable } = switching({ runners: [pcRunner(`${HOST}-1`, "online", false, ["pc"]), pcRunner(`${HOST}-2`, "online", false, ["pc"])], slowToStart: quick });
-
-    const result = run("pc");
-
-    expect(result.stdout).toBe(`runner: ${REPO} runs on this PC from its next job, 2 PC runners online, 0 of 8 quick runners online, so its build runners take its quick jobs until one is, 8 installed\n`);
-    expect(quickVariable()).toBe("pc-quick");
-    const takers = runners().filter(({ status, labels }) => status === "online" && labels.some(({ name }) => name === "pc-quick"));
-    expect(takers.map(({ name }) => name)).toEqual([`${HOST}-1`, `${HOST}-2`]);
+    expect(run("pc").stdout).toBe(`runner: ${REPO} runs on this PC from its next job, 4 PC runners online, 2 turned off\n`);
+    expect(sudo().filter((call) => call.includes("systemctl disable"))).toEqual([1, 2].map((n) => `bash -c systemctl disable --quiet --now actions.runner.collod873-Lumaria.${HOST}-quick-${n}.service`));
+    expect(sudo().filter((call) => call.includes("config.sh"))).toEqual([]);
   });
 
   it("leaves a repo where it was when no PC runner comes online, so no job queues for a PC that never takes it", () => {
@@ -308,12 +266,11 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
     expect(sudo()).toEqual([]);
   });
 
-  it("sends a repo's next jobs back to GitHub's runners, quick ones too, and says so when they already go there", () => {
-    const { run, variable, quickVariable } = switching({ variable: "pc", quickVariable: "pc-quick" });
+  it("sends a repo's next jobs back to GitHub's runners, and says so when they already go there", () => {
+    const { run, variable } = switching({ variable: "pc" });
 
     expect(run("github").stdout).toMatch(/^runner: collod873\/Lumaria runs on GitHub's runners from its next job/);
     expect(variable()).toBeUndefined();
-    expect(quickVariable()).toBeUndefined();
     expect(run("github").stdout).toBe(`runner: ${REPO} already runs on GitHub's runners, 0 PC runners stopped\n`);
   });
 
@@ -329,37 +286,15 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
   it("says where a repo's jobs run without changing it", () => {
     const { run, gh } = switching({ variable: "pc", runners: [pcRunner(`${HOST}-1`), pcRunner(`${HOST}-2`, "offline")] });
 
-    expect(run().stdout).toBe(`runner: ${REPO} runs on this PC, 1 of 2 PC runners online, 0 of 0 quick runners\n`);
+    expect(run().stdout).toBe(`runner: ${REPO} runs on this PC, 1 of 2 PC runners online\n`);
     expect(gh().filter((call) => /variable (set|delete)/.test(call))).toEqual([]);
   });
 });
 
-describe("the machine's jobs run where the repo's switch says, a quick job never queued behind a build", () => {
-  const BUILDS: Record<string, string[]> = { "tickets.yml": ["build", "probe"], "specs.yml": ["spec", "research", "check"] };
-  const HEAVY = ["./.github/actions/pinned", "./.github/actions/database", "bin/fix", "--full", "bin/schedule", "bin/research", "bin/probe"];
-
-  it("runs the jobs that build, check or hand a model a shell on the build runners, and every other on the quick lane, which falls back to the build runners and then to GitHub's", () => {
-    for (const [file, builds] of Object.entries(BUILDS)) {
-      for (const [name, job] of Object.entries(workflowJobs(file))) {
-        expect(job["runs-on"], `${file} ${name}`).toBe(builds.includes(name) ? PC_RUNS_ON : QUICK_RUNS_ON);
-        if (builds.includes(name)) continue;
-        const ran = job.steps.map(({ uses, run }) => `${uses ?? ""} ${run ?? ""}`).join("\n");
-        for (const heavy of HEAVY) expect(ran, `${file} ${name} is quick, so it never runs ${heavy}`).not.toContain(heavy);
-      }
-    }
-  });
-
-  it("starts no job on a build runner for a label the App adds or takes off unless it needs a quick gate, so a label read never holds the build lane (#1462)", () => {
-    for (const file of Object.keys(BUILDS)) {
-      const jobs = workflowJobs(file);
-      for (const [name, job] of Object.entries(jobs)) {
-        const needs = [job.needs ?? []].flat();
-        if (needs.some((need) => jobs[need]?.["runs-on"] === QUICK_RUNS_ON)) continue;
-        const succeeded = Object.fromEntries(needs.map((need) => [need, { result: "success" }]));
-        for (const action of ["labeled", "unlabeled"]) {
-          if (holds(job.if ?? "success()", { sender: MACHINE, action, label: "building", needs: succeeded })) expect(job["runs-on"], `${file} ${name} on the App's ${action}`).toBe(QUICK_RUNS_ON);
-        }
-      }
+describe("the machine's jobs run where the repo's switch says", () => {
+  it("runs every job of the machine's workflows on the repo's runners, the PC's when it is switched there", () => {
+    for (const file of ["tickets.yml", "specs.yml", "enrol.yml"]) {
+      for (const [name, job] of Object.entries(workflowJobs(file))) expect(job["runs-on"], `${file} ${name}`).toBe(PC_RUNS_ON);
     }
   });
 });

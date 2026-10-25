@@ -8,7 +8,7 @@ permissions: {}
 
 jobs:
   enrol:
-    runs-on: ${{ vars.QUICK_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
     env:
       GH_REPO: ${{ github.repository }}

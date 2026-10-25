@@ -68,12 +68,10 @@ labels nothing marks (ADR-0012). This repo's `Enrol` workflow re-enrols them on 
 _Avoid_: onboard, install, register
 
 **PC runner**:
-A `pc` runner, where a private repo's `CI_RUNNER` sends jobs, else GitHub's.
-_Avoid_: local runner
-
-**Quick lane**:
-Jobs building nothing, sent by `QUICK_RUNNER` to `pc-quick` runners.
-_Avoid_: fast lane
+A `pc` runner, where a private repo's `CI_RUNNER` sends every job, else GitHub's. It caps neither memory
+nor CPU: its full checks take turns in the machine's one check slot, as the owner's do, so each gets
+every core.
+_Avoid_: local runner, quick lane
 
 **Worker**:
 A part of the machine whose worth is the work it does: a step, a script, a stage.
