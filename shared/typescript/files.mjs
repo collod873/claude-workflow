@@ -14,8 +14,32 @@ export function listedFiles(root) {
   return [...names].filter((name) => existsSync(join(root, name))).sort();
 }
 
+const matched = new WeakMap();
+
+function literalPrefix(glob) {
+  const wild = glob.search(/[*?[{!]/);
+  return wild === -1 ? glob : glob.slice(0, wild);
+}
+
+function matchingOne(files, glob) {
+  if (!matched.has(files)) matched.set(files, new Map());
+  const byGlob = matched.get(files);
+  if (!byGlob.has(glob)) {
+    const prefix = literalPrefix(glob);
+    byGlob.set(
+      glob,
+      new Set(
+        files.filter(
+          (file) =>
+            file.startsWith(prefix) && (matchesGlob(file, glob) || matchesGlob(file, `${glob}/**`)),
+        ),
+      ),
+    );
+  }
+  return byGlob.get(glob);
+}
+
 export function matching(files, globs) {
-  return files.filter((file) =>
-    globs.some((glob) => matchesGlob(file, glob) || matchesGlob(file, `${glob}/**`)),
-  );
+  const sets = globs.map((glob) => matchingOne(files, glob));
+  return files.filter((file) => sets.some((set) => set.has(file)));
 }
