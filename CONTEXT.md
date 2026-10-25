@@ -68,9 +68,9 @@ labels nothing marks (ADR-0012). This repo's `Enrol` workflow re-enrols them on 
 _Avoid_: onboard, install, register
 
 **PC runner**:
-A `pc` runner, where a private repo's `CI_RUNNER` sends every job, else GitHub's. A repo's PC runners
-share one 28 GB cap and no CPU pinning; full checks take turns in the machine's one check slot, so each
-gets every core.
+A `pc` runner, where a private repo's `CI_RUNNER` sends every job, else GitHub's. It caps neither memory
+nor CPU: its full checks take turns in the machine's one check slot and cap their own memory, as the
+owner's do, so each gets every core.
 _Avoid_: local runner, quick lane
 
 **Worker**:

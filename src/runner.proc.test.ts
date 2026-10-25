@@ -182,7 +182,7 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
     const { run, placed } = switching({ runners: [pcRunner(`${HOST}-1`, "online", true), pcRunner(`${HOST}-2`)], stoppedByHand: [`${HOST}-1`] });
 
     expect(run("pc").stdout).toBe(`runner: ${REPO} runs on this PC from its next job, 2 PC runners online\n`);
-    expect(placed(`/etc/systemd/system/actions.runner.collod873-Lumaria.${HOST}-1.service.d/pc-runner.conf`)).toContain("Slice=pc-runners.slice");
+    expect(placed(`/etc/systemd/system/actions.runner.collod873-Lumaria.${HOST}-1.service.d/pc-runner.conf`)).toContain("Restart=always");
   });
 
   it("counts a repo's PC runners online only once every one asked for is up, and says how many are still starting", () => {
@@ -226,17 +226,16 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
     expect(sudo().slice(before).filter((call) => call.includes("restart earlyoom"))).toEqual([]);
   });
 
-  it("holds every PC runner's jobs together under one 28 GB cap with no swap and pins no CPU, so a check holding the machine's one check slot gets every core and a runaway job is killed rather than slowed", () => {
+  it("caps no PC runner's memory or CPU and lets its checks cap themselves as the owner's do, so a check gets every core and the machine's share whoever runs it", () => {
     const { run, sudo, placed } = switching();
 
     run("pc");
 
-    const slice = placed("/etc/systemd/system/pc-runners.slice").split("\n");
-    expect(slice).toEqual(expect.arrayContaining(["MemoryMax=28G", "MemorySwapMax=0"]));
+    expect(() => placed("/etc/systemd/system/pc-runners.slice")).toThrow();
     const dropIn = placed(`/etc/systemd/system/actions.runner.collod873-Lumaria.${HOST}-1.service.d/pc-runner.conf`).split("\n");
-    expect(dropIn).toEqual(expect.arrayContaining(["Slice=pc-runners.slice", "OOMPolicy=continue"]));
-    expect([...slice, ...dropIn].filter((line) => /^(AllowedCPUs|CPUWeight|MemoryMax|MemoryMin)=/.test(line) && line !== "MemoryMax=28G")).toEqual([]);
-    expect(sudo()).toContain("bash -c systemctl daemon-reload");
+    expect(dropIn.filter((line) => /^(Slice|AllowedCPUs|CPUWeight|MemoryMax|MemoryMin|MemorySwapMax)=/.test(line))).toEqual([]);
+    expect(sudo()).toContain("bash -c loginctl enable-linger ghrunner");
+    expect(placed(`/home/ghrunner/runners/collod873-Lumaria/${HOST}-1/.env`).split("\n")).toContain("XDG_RUNTIME_DIR=/run/user/1001");
   });
 
   it("turns off the quick runners the quick lane left, so a repo keeps only its PC runners", () => {
