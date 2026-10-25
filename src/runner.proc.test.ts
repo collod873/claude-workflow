@@ -226,16 +226,14 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
     expect(sudo().slice(before).filter((call) => call.includes("restart earlyoom"))).toEqual([]);
   });
 
-  it("caps no PC runner's memory or CPU and lets its checks cap themselves as the owner's do, so a check gets every core and the machine's share whoever runs it", () => {
-    const { run, sudo, placed } = switching();
+  it("caps no PC runner's memory or CPU, so a check holding the machine's one check slot runs as the owner's does, on every core", () => {
+    const { run, placed } = switching();
 
     run("pc");
 
     expect(() => placed("/etc/systemd/system/pc-runners.slice")).toThrow();
     const dropIn = placed(`/etc/systemd/system/actions.runner.collod873-Lumaria.${HOST}-1.service.d/pc-runner.conf`).split("\n");
     expect(dropIn.filter((line) => /^(Slice|AllowedCPUs|CPUWeight|MemoryMax|MemoryMin|MemorySwapMax)=/.test(line))).toEqual([]);
-    expect(sudo()).toContain("bash -c loginctl enable-linger ghrunner");
-    expect(placed(`/home/ghrunner/runners/collod873-Lumaria/${HOST}-1/.env`).split("\n")).toContain("XDG_RUNTIME_DIR=/run/user/1001");
   });
 
   it("turns off the quick runners the quick lane left, so a repo keeps only its PC runners", () => {

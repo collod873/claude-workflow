@@ -1021,7 +1021,7 @@ export function switching({ isPrivate = true, runners = [] as object[], variable
       "",
     ].join("\n"),
   );
-  script(at("bin/id"), `[[ $1 == -u ]] && { printf '1001\\n'; exit 0; }\nexit ${userExists ? 0 : 1}\n`);
+  script(at("bin/id"), `exit ${userExists ? 0 : 1}\n`);
   for (const [pid, environ] of [["1", "ACTIONS_RUNNER_INPUT_ONCE=true"], ["2", "LANG=C.UTF-8"]]) {
     mkdirSync(at(`proc/${pid}`), { recursive: true });
     writeFileSync(at(`proc/${pid}/environ`), `HOME=/home/ghrunner\0${environ}\0`);

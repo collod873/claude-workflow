@@ -129,10 +129,6 @@ const staged = (file: Placing) => ({ ...file, changed: file.as(`cat >${file.path
 
 const place = (file: Placing & { changed: boolean }) => file.as(file.changed ? `mv ${file.path}.next ${file.path}` : `rm ${file.path}.next`);
 
-function provisionUserManager(): void {
-  asRoot(`loginctl enable-linger ${USER}`);
-}
-
 function provisionEarlyoom(): void {
   asRoot("command -v earlyoom >/dev/null || apt-get install --yes earlyoom >/dev/null");
   const file = staged({ as: asRoot, path: EARLYOOM, text: earlyoom, mode: "644" });
@@ -159,7 +155,7 @@ function settle(repo: string, name: string, busy: boolean): "started" | "running
   asRunnerUser(`mkdir -p ${dir}/home ${temp} ${dir}/toolcache`);
   asRoot(`mkdir -p ${dropIns}`);
   const clear = `${dir}/clear.sh`;
-  const env = [`HOME=${dir}/home`, `TMPDIR=${temp}`, `RUNNER_TOOL_CACHE=${dir}/toolcache`, `AGENT_TOOLSDIRECTORY=${dir}/toolcache`, `ACTIONS_RUNNER_HOOK_JOB_STARTED=${clear}`, `ACTIONS_RUNNER_HOOK_JOB_COMPLETED=${clear}`, `XDG_RUNTIME_DIR=/run/user/${run("id", ["-u", USER]).trim()}`, "PIPELINE_JOB_OOMSCOREADJ=0", "LANG=C.UTF-8", ""].join("\n");
+  const env = [`HOME=${dir}/home`, `TMPDIR=${temp}`, `RUNNER_TOOL_CACHE=${dir}/toolcache`, `AGENT_TOOLSDIRECTORY=${dir}/toolcache`, `ACTIONS_RUNNER_HOOK_JOB_STARTED=${clear}`, `ACTIONS_RUNNER_HOOK_JOB_COMPLETED=${clear}`, "PIPELINE_JOB_OOMSCOREADJ=0", "LANG=C.UTF-8", ""].join("\n");
   const files = [
     staged({ as: asRunnerUser, path: clear, text: clearing(repo, name, unitOf(repo, name)), mode: "755" }),
     staged({ as: asRunnerUser, path: `${dir}/.env`, text: env, mode: "644" }),
@@ -221,7 +217,6 @@ function toPc(repo: string, asked: number | undefined): string {
   provisionUser();
   provisionNode();
   provisionGh();
-  provisionUserManager();
   provisionEarlyoom();
   for (const name of missing) install(repo, name, LABEL);
   const settled = names.map((name) => ({ name, as: settle(repo, name, registered.get(name) === true && running(repo, name)) }));

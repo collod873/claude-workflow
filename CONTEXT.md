@@ -69,8 +69,8 @@ _Avoid_: onboard, install, register
 
 **PC runner**:
 A `pc` runner, where a private repo's `CI_RUNNER` sends every job, else GitHub's. It caps neither memory
-nor CPU: its full checks take turns in the machine's one check slot and cap their own memory, as the
-owner's do, so each gets every core.
+nor CPU: its full checks take turns in the machine's one check slot, as the owner's do, so each gets
+every core.
 _Avoid_: local runner, quick lane
 
 **Worker**:
