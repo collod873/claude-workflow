@@ -65,10 +65,11 @@ const quoted = (text: string) => `'${text.replace(/'/g, "'\\''")}'`;
 
 type Runner = { id: number; name: string; status: string; busy: boolean; labels: { name: string }[] };
 
+const onPc = (runner: Runner) => runner.labels.some(({ name }) => name === LABEL);
+
 function onRepo(repo: string) {
   const runners = () => (JSON.parse(gh(["api", `repos/${repo}/actions/runners`])) as { runners: Runner[] }).runners;
-  const pcRunners = () => runners().filter((runner) => runner.labels.some(({ name }) => name === LABEL));
-  const online = () => pcRunners().filter(({ status }) => status === "online").length;
+  const pcRunners = () => runners().filter(onPc);
   const read = (variable: string) => {
     try {
       return gh(["variable", "get", variable, "-R", repo]).trim();
@@ -79,7 +80,7 @@ function onRepo(repo: string) {
   };
   const current = (): Mode => (read(VARIABLE) === LABEL ? "pc" : "github");
   const isPrivate = () => (JSON.parse(gh(["api", `repos/${repo}`])) as { private: boolean }).private;
-  return { runners, pcRunners, online, current, isPrivate };
+  return { runners, pcRunners, current, isPrivate };
 }
 
 function provisionUser(): void {
@@ -215,12 +216,13 @@ function toPc(repo: string, asked: number | undefined): string {
   const on = onRepo(repo);
   if (!on.isPrivate()) throw new Refused(`${repo} is public, so a PC runner would run strangers' PRs on this PC; it stays on GitHub's runners`);
   const host = hostname().toLowerCase();
-  const runners = on.pcRunners();
+  const all = on.runners();
+  const runners = all.filter(onPc);
   const wanted = asked ?? (runners.filter(({ name, status }) => name.startsWith(`${host}-`) && status === "online").length || PC_RUNNERS);
   const registered = new Map(runners.map(({ name, busy }) => [name, busy]));
   const names = Array.from({ length: wanted }, (_, at) => `${host}-${at + 1}`);
   const missing = names.filter((name) => !registered.has(name));
-  const extra = on.runners().filter(({ name }) => name.startsWith(`${host}-`) && !names.includes(name));
+  const extra = all.filter(({ name }) => name.startsWith(`${host}-`) && !names.includes(name));
   provisionUser();
   provisionNode();
   provisionGh();
@@ -252,7 +254,8 @@ function toGithub(repo: string): string {
 
 function where(repo: string): string {
   const on = onRepo(repo);
-  return `${repo} runs on ${on.current() === "pc" ? "this PC" : "GitHub's runners"}, ${on.online()} of ${on.pcRunners().length} PC runners online`;
+  const pc = on.pcRunners();
+  return `${repo} runs on ${on.current() === "pc" ? "this PC" : "GitHub's runners"}, ${pc.filter(({ status }) => status === "online").length} of ${pc.length} PC runners online`;
 }
 
 function runner(repo: string, mode: string | undefined, count: string | undefined): number {
