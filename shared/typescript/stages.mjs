@@ -1,6 +1,8 @@
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { listedFiles } from "./files.mjs";
 
 const require = createRequire(import.meta.url);
 
@@ -28,11 +30,35 @@ export function eslintStage(root, files) {
       packageBin("eslint", "bin/eslint.js"),
       "--max-warnings",
       "0",
-      "--concurrency",
-      "2",
+      "--cache",
+      "--cache-strategy",
+      "content",
+      "--cache-location",
+      "node_modules/.cache/eslint/",
       ...targets,
     ],
     root,
+  );
+}
+
+const OXLINT_CONFIG = join(dirname(fileURLToPath(import.meta.url)), "oxlint.json");
+
+export async function oxlintStage(root, files, eslint) {
+  const candidates = (files.length > 0 ? files : listedFiles(root)).filter((file) =>
+    /\.[cm]?tsx?$/.test(file),
+  );
+  const engine = eslint ?? new (await import("eslint")).ESLint({ cwd: root });
+  const ignored = await Promise.all(
+    candidates.map((file) => engine.isPathIgnored(join(root, file))),
+  );
+  const typed = candidates.filter((_, index) => !ignored[index]);
+  if (typed.length === 0) return true;
+  return stage(
+    "oxlint",
+    packageBin("oxlint", "bin/oxlint"),
+    ["--type-aware", "--deny-warnings", "-c", OXLINT_CONFIG, ...typed],
+    root,
+    { OXLINT_TSGOLINT_PATH: packageBin("oxlint-tsgolint", "bin/tsgolint.js") },
   );
 }
 

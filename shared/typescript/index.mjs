@@ -57,35 +57,22 @@ function settle(options) {
   };
 }
 
-function projectService({ defaultProject }) {
-  return defaultProject.length > 0 ? { allowDefaultProject: defaultProject } : true;
-}
-
 function presets(settled) {
   return [
     { name: "ignores", ignores: [...ALWAYS_IGNORED, ...settled.ignores] },
-    { name: "sources", files: SOURCES, languageOptions: { globals: globals.node } },
+    {
+      name: "sources",
+      files: SOURCES,
+      languageOptions: { globals: globals.node },
+    },
     { ...js.configs.recommended, name: "eslint-recommended" },
-    ...tseslint.configs.recommendedTypeChecked,
-    {
-      name: "type-information",
-      languageOptions: {
-        parserOptions: { projectService: projectService(settled), tsconfigRootDir: settled.root },
-      },
-    },
-    {
-      name: "loose-typing-allowed",
-      rules: Object.fromEntries(
-        ["assignment", "return", "call", "member-access", "argument"].map((kind) => [
-          `@typescript-eslint/no-unsafe-${kind}`,
-          "off",
-        ]),
-      ),
-    },
-    { ...tseslint.configs.disableTypeChecked, name: "javascript-untyped", files: JAVASCRIPT },
+    ...tseslint.configs.recommended,
     {
       name: "linter-options",
-      linterOptions: { noInlineConfig: true, reportUnusedDisableDirectives: "error" },
+      linterOptions: {
+        noInlineConfig: true,
+        reportUnusedDisableDirectives: "error",
+      },
     },
     {
       name: "unused-vars",
