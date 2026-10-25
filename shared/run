@@ -7,7 +7,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 STAMP = "STAMP.json"
-VERBS = ("run", "typecheck")
+VERBS = ("run", "typecheck", "setup", "licenses", "notices", "unused")
 CACHES = {"node_modules", "__pycache__", ".ruff_cache", ".eslintcache"}
 
 
