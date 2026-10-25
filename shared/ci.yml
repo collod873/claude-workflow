@@ -2,6 +2,11 @@ name: CI
 
 on:
   workflow_dispatch:
+    inputs:
+      fresh:
+        description: Rerun every step, covered or not, to time a whole check
+        type: boolean
+        default: false
   pull_request:
   push:
     branches: [main]
@@ -144,7 +149,9 @@ jobs:
       - id: check
         name: Check
         if: steps.probe.outputs.due == 'true'
-        run: ~/bin/check --full --publish
+        env:
+          FRESH: ${{ inputs.fresh }}
+        run: ~/bin/check --full --publish $([ "$FRESH" = true ] && echo --fresh)
 
       - name: Remove Postgres
         if: always() && env.DATABASE_CONTAINER != ''

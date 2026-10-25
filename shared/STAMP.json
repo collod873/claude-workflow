@@ -1,8 +1,8 @@
 {
- "source": "collod873/agent-hooks@80916115a81e4eee510723c66b69700b2c4c1014",
+ "source": "collod873/agent-hooks@6ec6dfe8e86585c793ab446365cb076d16b535c6",
  "layer": "typescript",
  "files": {
-  "ci.yml": "29154dbd9325c6fb2d4210f0d48b2275ee6f066d99ae43b59f8b752468e468ae",
+  "ci.yml": "e3b00ad4f65aaff33a01a4833202107d7d2cf9d444d1be6e86b3b87a81d2257c",
   "run": "2536f41972fda324e77d75abf46fe256401a1462c62387e7f7e66ba56a3240d1",
   "typescript/files.mjs": "94b0c88dd1414d592b04a5a82ed238032c4831d99e173fe6b80c8007568edd29",
   "typescript/index.mjs": "3f85b9c89df8587ebd20a9273cb2279845241c77889a4bae24cdeb7070c320bd",
