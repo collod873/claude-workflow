@@ -4,10 +4,7 @@ import { hostname } from "node:os";
 
 const VARIABLE = "CI_RUNNER";
 const LABEL = "pc";
-const PC_RUNNERS = 2;
-const QUICK_VARIABLE = "QUICK_RUNNER";
-const QUICK_LABEL = "pc-quick";
-const QUICK_RUNNERS = 8;
+const PC_RUNNERS = 4;
 const USER = "ghrunner";
 const HOME = `/home/${USER}`;
 const NODE = `${HOME}/node`;
@@ -21,42 +18,11 @@ const PROC = process.env.RUNNER_PROC ?? "/proc";
 const UNITS = "/etc/systemd/system";
 const SLICE = "pc-runners.slice";
 const PC_RUNNERS_MEMORY_GB = 28;
-const RUNNER_MEMORY_GB = 12;
-const LISTENER_MEMORY_MB = 256;
-const EQUAL_CPU_WEIGHT = 100;
-const CHECK_SLOTS = 2;
-const CHECK_SLOTS_DIR = `${HOME}/check-slots`;
-const PC_RUNNERS_CPUS = 8;
-const RUNNER_CPUS = 4;
-const QUICK_SLICE = "pc-quick-runners.slice";
-const QUICK_RUNNER_MEMORY_GB = 1;
-const QUICK_RUNNERS_MEMORY_GB = QUICK_RUNNERS * QUICK_RUNNER_MEMORY_GB;
-const cpus = Number(spawnSync("nproc", { encoding: "utf8" }).stdout);
-const firstCpu = Math.max(0, cpus - PC_RUNNERS_CPUS);
-const quickCpus = firstCpu > 0 ? `0-${firstCpu - 1}` : `0-${cpus - 1}`;
-const sliceOf = (memoryGb: number, allowed: string) => ["[Slice]", `MemoryMax=${memoryGb}G`, "MemorySwapMax=0", `AllowedCPUs=${allowed}`, ""].join("\n");
-const halves = Array.from({ length: Math.max(1, PC_RUNNERS_CPUS / RUNNER_CPUS) }, (_, at) => {
-  const start = Math.min(cpus - 1, firstCpu + at * RUNNER_CPUS);
-  return `${start}-${Math.min(cpus - 1, start + RUNNER_CPUS - 1)}`;
-});
+const slice = ["[Slice]", `MemoryMax=${PC_RUNNERS_MEMORY_GB}G`, "MemorySwapMax=0", ""].join("\n");
 const unitsOf = (repo: string) => `actions.runner.${repo.replace("/", "-")}.`;
-const placing = (repo: string, names: string[]) => {
-  const neighbours = run("systemctl", ["show", "--property", "Id,Slice,AllowedCPUs", "actions.runner.*"])
-    .split("\n\n")
-    .map((unit) => unit.split("\n"))
-    .filter((unit) => unit.includes(`Slice=${SLICE}`) && !unit.some((line) => line.startsWith(`Id=${unitsOf(repo)}`)));
-  const held = halves.map((half) => ({ half, count: neighbours.filter((unit) => unit.includes(`AllowedCPUs=${half}`)).length }));
-  return names.map((name) => {
-    const emptiest = held.reduce((least, half) => (half.count < least.count ? half : least));
-    emptiest.count += 1;
-    return { name, allowed: emptiest.half };
-  });
-};
 const ONE_JOB = "ACTIONS_RUNNER_INPUT_ONCE=true";
-const confinementIn = (slice: string, memoryGb: number, allowed: string, kept: string[] = []) => (unit: string) =>
-  ["[Service]", `Slice=${slice}`, `MemoryMax=${memoryGb}G`, ...kept, "MemorySwapMax=0", `AllowedCPUs=${allowed}`, `CPUWeight=${EQUAL_CPU_WEIGHT}`, "OOMPolicy=continue", "KillMode=mixed", `Environment=${ONE_JOB}`, "Restart=always", "RestartSec=2", `ExecCondition=/usr/bin/systemctl is-enabled --quiet ${unit}`, ""].join("\n");
-const confinement = (allowed: string) => confinementIn(SLICE, RUNNER_MEMORY_GB, allowed, [`MemoryMin=${LISTENER_MEMORY_MB}M`]);
-const quickConfinement = confinementIn(QUICK_SLICE, QUICK_RUNNER_MEMORY_GB, quickCpus);
+const confinement = (unit: string) =>
+  ["[Service]", `Slice=${SLICE}`, "OOMPolicy=continue", "KillMode=mixed", `Environment=${ONE_JOB}`, "Restart=always", "RestartSec=2", `ExecCondition=/usr/bin/systemctl is-enabled --quiet ${unit}`, ""].join("\n");
 const EARLYOOM = "/etc/default/earlyoom";
 const earlyoom = 'EARLYOOM_ARGS="-r 3600 -m 10,5 -s 10,5"\n';
 const NOT_FOUND = /\(HTTP 404\)|not found/i;
@@ -99,12 +65,9 @@ const quoted = (text: string) => `'${text.replace(/'/g, "'\\''")}'`;
 
 type Runner = { id: number; name: string; status: string; busy: boolean; labels: { name: string }[] };
 
-const labelled = (runner: Runner, label: string) => runner.labels.some(({ name }) => name === label);
-
 function onRepo(repo: string) {
   const runners = () => (JSON.parse(gh(["api", `repos/${repo}/actions/runners`])) as { runners: Runner[] }).runners;
-  const pcRunners = () => runners().filter((runner) => labelled(runner, LABEL));
-  const quickRunners = () => runners().filter((runner) => labelled(runner, QUICK_LABEL) && !labelled(runner, LABEL));
+  const pcRunners = () => runners().filter((runner) => runner.labels.some(({ name }) => name === LABEL));
   const online = () => pcRunners().filter(({ status }) => status === "online").length;
   const read = (variable: string) => {
     try {
@@ -115,9 +78,8 @@ function onRepo(repo: string) {
     }
   };
   const current = (): Mode => (read(VARIABLE) === LABEL ? "pc" : "github");
-  const quickSet = () => read(QUICK_VARIABLE) === QUICK_LABEL;
   const isPrivate = () => (JSON.parse(gh(["api", `repos/${repo}`])) as { private: boolean }).private;
-  return { pcRunners, quickRunners, online, current, quickSet, isPrivate };
+  return { runners, pcRunners, online, current, isPrivate };
 }
 
 function provisionUser(): void {
@@ -169,13 +131,10 @@ const staged = (file: Placing) => ({ ...file, changed: file.as(`cat >${file.path
 
 const place = (file: Placing & { changed: boolean }) => file.as(file.changed ? `mv ${file.path}.next ${file.path}` : `rm ${file.path}.next`);
 
-function provisionSlices(): void {
-  const files = [
-    staged({ as: asRoot, path: `${UNITS}/${SLICE}`, text: sliceOf(PC_RUNNERS_MEMORY_GB, `${firstCpu}-${cpus - 1}`), mode: "644" }),
-    staged({ as: asRoot, path: `${UNITS}/${QUICK_SLICE}`, text: sliceOf(QUICK_RUNNERS_MEMORY_GB, quickCpus), mode: "644" }),
-  ];
-  for (const file of files) place(file);
-  if (files.some((file) => file.changed)) asRoot("systemctl daemon-reload");
+function provisionSlice(): void {
+  const file = staged({ as: asRoot, path: `${UNITS}/${SLICE}`, text: slice, mode: "644" });
+  place(file);
+  if (file.changed) asRoot("systemctl daemon-reload");
 }
 
 function provisionEarlyoom(): void {
@@ -197,19 +156,19 @@ function takesOneJob(repo: string, name: string): boolean {
   }
 }
 
-function settle(repo: string, name: string, confined: (unit: string) => string, busy: boolean): "started" | "running" | "at-job-end" | "mid-job" {
+function settle(repo: string, name: string, busy: boolean): "started" | "running" | "at-job-end" | "mid-job" {
   const dir = dirOf(repo, name);
   const dropIns = `${UNITS}/${unitOf(repo, name)}.d`;
   const temp = tempOf(repo, name);
-  asRunnerUser(`mkdir -p ${dir}/home ${temp} ${dir}/toolcache ${CHECK_SLOTS_DIR}`);
+  asRunnerUser(`mkdir -p ${dir}/home ${temp} ${dir}/toolcache`);
   asRoot(`mkdir -p ${dropIns}`);
   const clear = `${dir}/clear.sh`;
-  const env = [`HOME=${dir}/home`, `TMPDIR=${temp}`, `RUNNER_TOOL_CACHE=${dir}/toolcache`, `AGENT_TOOLSDIRECTORY=${dir}/toolcache`, `ACTIONS_RUNNER_HOOK_JOB_STARTED=${clear}`, `ACTIONS_RUNNER_HOOK_JOB_COMPLETED=${clear}`, `CHECK_SLOTS=${CHECK_SLOTS}`, `CHECK_SLOTS_DIR=${CHECK_SLOTS_DIR}`, "PIPELINE_JOB_OOMSCOREADJ=0", "LANG=C.UTF-8", ""].join("\n");
+  const env = [`HOME=${dir}/home`, `TMPDIR=${temp}`, `RUNNER_TOOL_CACHE=${dir}/toolcache`, `AGENT_TOOLSDIRECTORY=${dir}/toolcache`, `ACTIONS_RUNNER_HOOK_JOB_STARTED=${clear}`, `ACTIONS_RUNNER_HOOK_JOB_COMPLETED=${clear}`, "PIPELINE_JOB_OOMSCOREADJ=0", "LANG=C.UTF-8", ""].join("\n");
   const files = [
     staged({ as: asRunnerUser, path: clear, text: clearing(repo, name, unitOf(repo, name)), mode: "755" }),
     staged({ as: asRunnerUser, path: `${dir}/.env`, text: env, mode: "644" }),
     staged({ as: asRunnerUser, path: `${dir}/.path`, text: `${PATH}\n`, mode: "644" }),
-    staged({ as: asRoot, path: `${dropIns}/pc-runner.conf`, text: confined(unitOf(repo, name)), mode: "644" }),
+    staged({ as: asRoot, path: `${dropIns}/pc-runner.conf`, text: confinement(unitOf(repo, name)), mode: "644" }),
   ];
   const changed = files.some((file) => file.changed);
   if (busy && !changed) {
@@ -261,22 +220,14 @@ function toPc(repo: string, asked: number | undefined): string {
   const registered = new Map(runners.map(({ name, busy }) => [name, busy]));
   const names = Array.from({ length: wanted }, (_, at) => `${host}-${at + 1}`);
   const missing = names.filter((name) => !registered.has(name));
-  const extra = runners.filter(({ name }) => name.startsWith(`${host}-`) && !names.includes(name));
-  const quickRegistered = new Map(on.quickRunners().map(({ name, busy }) => [name, busy]));
-  const quickNames = Array.from({ length: QUICK_RUNNERS }, (_, at) => `${host}-quick-${at + 1}`);
-  const quickMissing = quickNames.filter((name) => !quickRegistered.has(name));
+  const extra = on.runners().filter(({ name }) => name.startsWith(`${host}-`) && !names.includes(name));
   provisionUser();
   provisionNode();
   provisionGh();
-  provisionSlices();
+  provisionSlice();
   provisionEarlyoom();
-  for (const name of missing) install(repo, name, `${LABEL},${QUICK_LABEL}`);
-  for (const name of quickMissing) install(repo, name, QUICK_LABEL);
-  for (const { id } of runners.filter((runner) => !labelled(runner, QUICK_LABEL))) gh(["api", "-X", "POST", `repos/${repo}/actions/runners/${id}/labels`, "-f", `labels[]=${QUICK_LABEL}`]);
-  const settled = [
-    ...placing(repo, names).map(({ name, allowed }) => ({ name, as: settle(repo, name, confinement(allowed), registered.get(name) === true && running(repo, name)) })),
-    ...quickNames.map((name) => ({ name, as: settle(repo, name, quickConfinement, quickRegistered.get(name) === true && running(repo, name)) })),
-  ];
+  for (const name of missing) install(repo, name, LABEL);
+  const settled = names.map((name) => ({ name, as: settle(repo, name, registered.get(name) === true && running(repo, name)) }));
   const named = (as: string) => settled.filter((runner) => runner.as === as).map(({ name }) => name);
   const atJobEnd = named("at-job-end");
   const midJob = named("mid-job");
@@ -284,29 +235,24 @@ function toPc(repo: string, asked: number | undefined): string {
   const count = waitOnline(() => on.pcRunners().filter(({ name, status }) => names.includes(name) && status === "online").length, wanted);
   if (count === 0) throw new Refused(`no PC runner of ${repo} came online within ${WAIT_SECONDS}s, so it stays where it was: start them with \`sudo systemctl start 'actions.runner.*'\``);
   if (on.current() !== "pc") gh(["variable", "set", VARIABLE, "-R", repo, "--body", LABEL]);
-  const quick = waitOnline(() => on.quickRunners().filter(({ name, status }) => quickNames.includes(name) && status === "online").length, QUICK_RUNNERS);
-  if (!on.quickSet()) gh(["variable", "set", QUICK_VARIABLE, "-R", repo, "--body", QUICK_LABEL]);
-  const quickUp = quick > 0 ? `${quick} quick runners online` : `0 of ${QUICK_RUNNERS} quick runners online, so its build runners take its quick jobs until one is`;
-  const installed = missing.length + quickMissing.length > 0 ? `, ${missing.length + quickMissing.length} installed` : "";
+  const installed = missing.length > 0 ? `, ${missing.length} installed` : "";
   const settling = atJobEnd.length > 0 ? `; ${atJobEnd.join(", ")} take the new setup when their job ends` : "";
   const waiting = midJob.length > 0 ? `; ${midJob.join(", ")} kept their old setup mid-job, since it takes jobs until stopped: run this again once they finish` : "";
   const up = count < wanted ? `${count} of ${wanted} PC runners online, the rest still starting` : `${count} PC runners online`;
-  return `${repo} runs on this PC from its next job, ${up}, ${quickUp}${installed}${off}${settling}${waiting}`;
+  return `${repo} runs on this PC from its next job, ${up}${installed}${off}${settling}${waiting}`;
 }
 
 function toGithub(repo: string): string {
   const on = onRepo(repo);
   const already = on.current() === "github";
   if (!already) gh(["variable", "delete", VARIABLE, "-R", repo]);
-  if (on.quickSet()) gh(["variable", "delete", QUICK_VARIABLE, "-R", repo]);
-  const stopped = stopIdle(repo, [...on.pcRunners(), ...on.quickRunners()]);
+  const stopped = stopIdle(repo, on.runners());
   return already ? `${repo} already runs on GitHub's runners, ${stopped}` : `${repo} runs on GitHub's runners from its next job, ${stopped}; a job already queued for the PC waits until it is switched back`;
 }
 
 function where(repo: string): string {
   const on = onRepo(repo);
-  const quick = on.quickRunners();
-  return `${repo} runs on ${on.current() === "pc" ? "this PC" : "GitHub's runners"}, ${on.online()} of ${on.pcRunners().length} PC runners online, ${quick.filter(({ status }) => status === "online").length} of ${quick.length} quick runners`;
+  return `${repo} runs on ${on.current() === "pc" ? "this PC" : "GitHub's runners"}, ${on.online()} of ${on.pcRunners().length} PC runners online`;
 }
 
 function runner(repo: string, mode: string | undefined, count: string | undefined): number {

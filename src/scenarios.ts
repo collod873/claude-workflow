@@ -762,7 +762,6 @@ export function sessionExtras({
 
 export const ENROLLED = "collod873/Next";
 export const PC_RUNS_ON = "${{ vars.CI_RUNNER || 'ubuntu-latest' }}";
-export const QUICK_RUNS_ON = "${{ vars.QUICK_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}";
 export const CI_ON_EVERY_PR = ["name: Gate", "on:", "  pull_request:", "jobs:", "  check:", `    runs-on: ${PC_RUNS_ON}`, "    steps:", "      - run: check --full", ""].join("\n");
 export const checkJobRule = () => (/^ {2}check:\n((?: {4}.*\n)+?) {4}runs-on:/m.exec(readFileSync(join(import.meta.dirname, "..", ".github", "workflows", "check.yml"), "utf8"))?.[1] ?? "").trimEnd().split("\n");
 export const ci = () => CI_ON_EVERY_PR.replace("  check:\n", ["  check:", ...checkJobRule(), ""].join("\n"));
@@ -972,19 +971,16 @@ export function githubCall(refusals: string[], args = ["issue", "edit", "1202", 
 }
 export const PC_REPO = "collod873/Lumaria";
 export const PC_HOST = hostname().toLowerCase();
-export const PC_RUNNER_COUNT = 2;
-export const QUICK_RUNNER_COUNT = 8;
+export const PC_RUNNER_COUNT = 4;
 
 const runnerId = (name: string) => [...name].reduce((sum, char) => sum + char.charCodeAt(0), 0);
-export const pcRunner = (name: string, status = "online", busy = false, labels = ["pc", "pc-quick"]) => ({ id: runnerId(name), name, status, busy, labels: ["self-hosted", ...labels].map((label) => ({ name: label })) });
-export const quickRunners = () => Array.from({ length: QUICK_RUNNER_COUNT }, (_, at) => pcRunner(`${PC_HOST}-quick-${at + 1}`, "online", false, ["pc-quick"]));
+export const pcRunner = (name: string, status = "online", busy = false, labels = ["pc"]) => ({ id: runnerId(name), name, status, busy, labels: ["self-hosted", ...labels].map((label) => ({ name: label })) });
 
-export function switching({ isPrivate = true, runners = [] as object[], variable = "", quickVariable = "", startsOnline = true, slowToStart = [] as string[], stoppedByHand = [] as string[], manyJobs = [] as string[], userExists = true, neighbours = [] as { unit: string; slice: string; cpus: string }[] } = {}) {
+export function switching({ isPrivate = true, runners = [] as object[], variable = "", startsOnline = true, slowToStart = [] as string[], stoppedByHand = [] as string[], manyJobs = [] as string[], userExists = true } = {}) {
   const root = scratch("runner-");
   const at = (name: string) => join(root, name);
   writeFileSync(at("runners.json"), JSON.stringify({ runners }));
   if (variable !== "") writeFileSync(at("variable-CI_RUNNER"), variable);
-  if (quickVariable !== "") writeFileSync(at("variable-QUICK_RUNNER"), quickVariable);
   script(
     at("bin/gh"),
     [
@@ -1019,7 +1015,7 @@ export function switching({ isPrivate = true, runners = [] as object[], variable
       `[[ $* == *"${at("proc")}/"* ]] && exec "$@"`,
       "started='runners/[^/ ]+/([^ /]+) && .*svc\\.sh start'",
       `if ${startsOnline} && [[ $* =~ $started ]] && [[ " ${slowToStart.join(" ")} " != *" \${BASH_REMATCH[1]} "* ]]; then`,
-      `  jq -c --arg name "\${BASH_REMATCH[1]}" '.runners |= (map(select(.name != $name)) + [{id: ($name | explode | add), name: $name, status: "online", busy: false, labels: ([{name: "self-hosted"}] + (if ($name | test("-quick-")) then [{name: "pc-quick"}] else [{name: "pc"}, {name: "pc-quick"}] end))}])' "${at("runners.json")}" >"${at("runners.next")}"`,
+      `  jq -c --arg name "\${BASH_REMATCH[1]}" '.runners |= (map(select(.name != $name)) + [{id: ($name | explode | add), name: $name, status: "online", busy: false, labels: [{name: "self-hosted"}, {name: "pc"}]}])' "${at("runners.json")}" >"${at("runners.next")}"`,
       `  mv "${at("runners.next")}" "${at("runners.json")}"`,
       "fi",
       "",
@@ -1031,17 +1027,14 @@ export function switching({ isPrivate = true, runners = [] as object[], variable
     writeFileSync(at(`proc/${pid}/environ`), `HOME=/home/ghrunner\0${environ}\0`);
   }
   const manyJobsUnits = manyJobs.map((name) => `actions.runner.${PC_REPO.replace("/", "-")}.${name}.service`).join(" ");
-  writeFileSync(at("units"), neighbours.map(({ unit, slice, cpus }) => `Id=${unit}\nSlice=${slice}\nAllowedCPUs=${cpus}\n`).join("\n"));
-  script(at("bin/systemctl"), `if [[ $* == "show --property Id,Slice,AllowedCPUs actions.runner.*" ]]; then cat "${at("units")}"; exit 0; fi\nif [[ $1 == show ]]; then [[ " ${manyJobsUnits} " == *" \${@: -1} "* ]] && echo 2 || echo 1; exit 0; fi\nfor name in ${stoppedByHand.join(" ")}; do [[ \${@: -1} == *".$name.service" ]] && exit 3; done\nexit 0\n`);
+  script(at("bin/systemctl"), `if [[ $1 == show ]]; then [[ " ${manyJobsUnits} " == *" \${@: -1} "* ]] && echo 2 || echo 1; exit 0; fi\nfor name in ${stoppedByHand.join(" ")}; do [[ \${@: -1} == *".$name.service" ]] && exit 3; done\nexit 0\n`);
   script(at("bin/curl"), "printf '%s\\n' '[{\"version\":\"v25.1.0\",\"lts\":false},{\"version\":\"v24.11.0\",\"lts\":\"Krypton\"}]'\n");
   script(at("bin/sleep"), "");
-  script(at("bin/nproc"), "printf '16\\n'\n");
   const lines = (name: string) => (existsSync(at(name)) ? readFileSync(at(name), "utf8").trim().split("\n") : []);
   return {
     run: (...args: string[]) => execute(join(BIN, "runner"), root, { PATH: `${at("bin")}:${process.env.PATH}`, RUNNER_WAIT_SECONDS: "0", RUNNER_PROC: at("proc") }, [PC_REPO, ...args]),
     variable: () => (existsSync(at("variable-CI_RUNNER")) ? readFileSync(at("variable-CI_RUNNER"), "utf8") : undefined),
     runners: () => (JSON.parse(readFileSync(at("runners.json"), "utf8")) as { runners: { name: string; status: string; labels: { name: string }[] }[] }).runners,
-    quickVariable: () => (existsSync(at("variable-QUICK_RUNNER")) ? readFileSync(at("variable-QUICK_RUNNER"), "utf8") : undefined),
     sudo: () => lines("sudo-calls"),
     gh: () => lines("gh-calls"),
     jobStarted: (name: string) => writeFileSync(at("runners.json"), JSON.stringify({ runners: (JSON.parse(readFileSync(at("runners.json"), "utf8")) as { runners: { name: string }[] }).runners.map((runner) => ({ ...runner, busy: runner.name === name })) })),
