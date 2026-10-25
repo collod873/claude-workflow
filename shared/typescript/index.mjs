@@ -73,6 +73,15 @@ function presets(settled) {
         parserOptions: { projectService: projectService(settled), tsconfigRootDir: settled.root },
       },
     },
+    {
+      name: "loose-typing-allowed",
+      rules: Object.fromEntries(
+        ["assignment", "return", "call", "member-access", "argument"].map((kind) => [
+          `@typescript-eslint/no-unsafe-${kind}`,
+          "off",
+        ]),
+      ),
+    },
     { ...tseslint.configs.disableTypeChecked, name: "javascript-untyped", files: JAVASCRIPT },
     {
       name: "linter-options",
