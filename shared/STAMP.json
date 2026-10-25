@@ -1,9 +1,9 @@
 {
- "source": "collod873/agent-hooks@168f6e4e45b7b8d649d6ce6c6fd93d0f798b4f0e",
+ "source": "collod873/agent-hooks@9c5a41947aeb70e45eecac9542017802548bbb5d",
  "layer": "typescript",
  "files": {
   "ci.yml": "29154dbd9325c6fb2d4210f0d48b2275ee6f066d99ae43b59f8b752468e468ae",
-  "run": "061fb1463946cbefeedf34427f497d2d4312ebe68d01ebe9712c927a954dd2ba",
+  "run": "2536f41972fda324e77d75abf46fe256401a1462c62387e7f7e66ba56a3240d1",
   "typescript/files.mjs": "94b0c88dd1414d592b04a5a82ed238032c4831d99e173fe6b80c8007568edd29",
   "typescript/index.mjs": "5a0500abefbc9e3eb460e1f7d386c826f37a244208a15792a3d60cb90cda83fb",
   "typescript/knip.base.d.mts": "0d59f036962b278fc0bec872969eea08bf899384ac80c36297102ddb5583dc1b",
@@ -30,7 +30,8 @@
   "typescript/typecheck.mjs": "52acd3f61290604355608d690b33636051a9ebaec8cd2f2084f890bbbd2a0a63",
   "typescript/unused": "a5bd5916965b9e5fb8e61463c4c7ed52296ed55ee4643d972d67579c2a91e4be",
   "typescript/unused.mjs": "fa012a0c9bf915e5f6d5fc9d8fb10a4e4c5aefd7ef7f33d529cea249f0d3e2e6",
-  "typescript/verify.mjs": "b775afb3cd95ab67ad1c5a3175af2ca39c3b6114d0fe18262dcceab42722a0c9"
+  "typescript/verify.mjs": "b775afb3cd95ab67ad1c5a3175af2ca39c3b6114d0fe18262dcceab42722a0c9",
+  "typescript/vitest.mjs": "8e73f1ab0dd25ae6dd4d83f0797a09561eb33e1e6dc5437f182ea342b90e8ab6"
  },
  "tools": {
   "@eslint/js": "10.0.1",
@@ -39,6 +40,7 @@
   "knip": "6.43.0",
   "typescript": "6.0.3",
   "typescript-eslint": "8.72.0",
-  "typescript-native": "npm:typescript@7.0.2"
+  "typescript-native": "npm:typescript@7.0.2",
+  "vitest": "5.0.5"
  }
 }
