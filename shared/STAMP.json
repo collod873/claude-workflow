@@ -1,11 +1,11 @@
 {
- "source": "collod873/agent-hooks@9c5a41947aeb70e45eecac9542017802548bbb5d",
+ "source": "collod873/agent-hooks@8b71a66e5aad862856df395c8e3d079cfb2a410b",
  "layer": "typescript",
  "files": {
   "ci.yml": "29154dbd9325c6fb2d4210f0d48b2275ee6f066d99ae43b59f8b752468e468ae",
   "run": "2536f41972fda324e77d75abf46fe256401a1462c62387e7f7e66ba56a3240d1",
   "typescript/files.mjs": "94b0c88dd1414d592b04a5a82ed238032c4831d99e173fe6b80c8007568edd29",
-  "typescript/index.mjs": "5a0500abefbc9e3eb460e1f7d386c826f37a244208a15792a3d60cb90cda83fb",
+  "typescript/index.mjs": "4f27df9bc626fa583ae511772a0a4e3d9894b8d77de372207d445f9f796af522",
   "typescript/knip.base.d.mts": "0d59f036962b278fc0bec872969eea08bf899384ac80c36297102ddb5583dc1b",
   "typescript/knip.base.mjs": "c1f41b311346b57281798d47b1548bc677c6a3b81c419fbfb360089e4c10c8b3",
   "typescript/node.json": "d09d82902169f4272754dfab63a99bfaecb6be95521369f33e67e33f7822f7d9",
@@ -22,7 +22,7 @@
   "typescript/run.mjs": "e17b640be280cc4a5c1ae4bd12ac4e67dc5581ed8712533bdabe5dcd5c8f75b4",
   "typescript/setup": "efbc5bf33e8de96614cbe47a3c0ca12dae0077dec59843ed72569af1311c9d09",
   "typescript/setup.mjs": "c9797f2b260ef3cbf95be3f4950de4d0aa742127ffadeba7c66ecf320829fde7",
-  "typescript/stages.mjs": "4cb8139bec09836555ba7f0f1134755015ea88ddd7a1a34eb61b5df280920b5c",
+  "typescript/stages.mjs": "eb4dbc07a51dd754e6b6ab069956e5c440225864ed297f0f6cb961592a9e5d28",
   "typescript/tools.mjs": "6017f6a2208773bf7245638f65451b07fb8a09165e7475d8c82040cd4b876125",
   "typescript/tsconfig-guard.mjs": "bdbece0f250b8ce1e79532392c7b7556b29b98cdbab99fdc17475acc54866391",
   "typescript/tsconfig.base.json": "cbc394788f18ca8975d4047a94d340e7d74b0c965e948f2c853234acb34e6638",

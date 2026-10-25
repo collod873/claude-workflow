@@ -24,7 +24,14 @@ export function eslintStage(root, files) {
   return stage(
     "eslint",
     process.execPath,
-    [packageBin("eslint", "bin/eslint.js"), "--max-warnings", "0", ...targets],
+    [
+      packageBin("eslint", "bin/eslint.js"),
+      "--max-warnings",
+      "0",
+      "--concurrency",
+      "4",
+      ...targets,
+    ],
     root,
   );
 }
