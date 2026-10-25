@@ -1,5 +1,5 @@
 {
-  "setup": "[ -e node_modules ] || npm ci",
+  "setup": "shared/run setup",
   "steps": {
     "typecheck": {
       "run": "shared/run typecheck",
@@ -14,11 +14,6 @@
       "run": "node_modules/.bin/knip --config knip.config.ts --no-config-hints",
       "fast": true,
       "why": "knip counts its entries from the registered parts, so code only a test reaches is refused while the session that wrote it can still wire it or delete it."
-    },
-    "clones": {
-      "run": "node_modules/.bin/jscpd src --exitCode 1 --reporters console --min-tokens 50 --min-lines 5 --format typescript,javascript",
-      "fast": true,
-      "why": "A clone spans files, so it is found over the whole of src, and found mid-session rather than a PR round later."
     },
     "written-twice": {
       "run": "node src/written-twice.ts",
