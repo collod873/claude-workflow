@@ -14,15 +14,16 @@ export const testDefaults = Object.freeze({
 
 const REGISTRY_TOUCHING = ["vi.mock(", "vi.resetModules("];
 
-function touchingModuleRegistry(include, exclude) {
+function needingIsolation(include, exclude, isolateImporting) {
+  const markers = [...REGISTRY_TOUCHING, ...isolateImporting.map((module) => `"${module}"`)];
   return globSync(include, { exclude }).filter((file) => {
     const source = readFileSync(file, "utf8");
-    return REGISTRY_TOUCHING.some((call) => source.includes(call));
+    return markers.some((marker) => source.includes(marker));
   });
 }
 
-export function sharedAndIsolated(name, test, resolve = {}) {
-  const isolated = touchingModuleRegistry(test.include, test.exclude);
+export function sharedAndIsolated(name, test, resolve = {}, isolateImporting = []) {
+  const isolated = needingIsolation(test.include, test.exclude, isolateImporting);
   return [
     { resolve, test: { ...test, name, isolate: false, exclude: [...test.exclude, ...isolated] } },
     { resolve, test: { ...test, name: `${name}-isolated`, isolate: true, include: isolated } },
