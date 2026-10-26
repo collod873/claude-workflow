@@ -26,6 +26,15 @@ export function sharedAndIsolated(name, test, resolve = {}, isolateImporting = [
   const isolated = needingIsolation(test.include, test.exclude, isolateImporting);
   return [
     { resolve, test: { ...test, name, isolate: false, exclude: [...test.exclude, ...isolated] } },
-    { resolve, test: { ...test, name: `${name}-isolated`, isolate: true, include: isolated } },
+    {
+      resolve,
+      test: {
+        ...test,
+        name: `${name}-isolated`,
+        pool: "vmThreads",
+        isolate: true,
+        include: isolated,
+      },
+    },
   ];
 }
