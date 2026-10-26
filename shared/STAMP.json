@@ -1,5 +1,5 @@
 {
- "source": "collod873/agent-hooks@a33aaa6e49eae4af0056530975f9633902cad041",
+ "source": "collod873/agent-hooks@41b86dc2b8f7e80c83ace1298110be38bdf6fd2d",
  "layer": "typescript",
  "files": {
   "ci.yml": "e3b00ad4f65aaff33a01a4833202107d7d2cf9d444d1be6e86b3b87a81d2257c",
@@ -32,7 +32,7 @@
   "typescript/unused": "a5bd5916965b9e5fb8e61463c4c7ed52296ed55ee4643d972d67579c2a91e4be",
   "typescript/unused.mjs": "fa012a0c9bf915e5f6d5fc9d8fb10a4e4c5aefd7ef7f33d529cea249f0d3e2e6",
   "typescript/verify.mjs": "b775afb3cd95ab67ad1c5a3175af2ca39c3b6114d0fe18262dcceab42722a0c9",
-  "typescript/vitest.mjs": "8e73f1ab0dd25ae6dd4d83f0797a09561eb33e1e6dc5437f182ea342b90e8ab6"
+  "typescript/vitest.mjs": "42a5af79fdbac958a95d7513b601bc1182b082aa47ca0166156cd7b3ad61feeb"
  },
  "tools": {
   "@eslint/js": "10.0.1",
