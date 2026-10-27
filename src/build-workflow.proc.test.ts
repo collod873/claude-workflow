@@ -306,6 +306,30 @@ describe("every job that spends a model is watched as it goes, read after it end
     }
   });
 
+  it("a stage's Claude keeps its temp files in the runner's own TMPDIR, whatever folder the owner's claude-config names, since the runner's user cannot write in his home (Lumaria#1535)", () => {
+    const fetching = modelJobs()
+      .flatMap(({ steps }) => steps)
+      .find((step) => /CLAUDE_CONFIG_DIR=.*GITHUB_ENV/.test(step.run ?? ""));
+    const runnerTemp = scratch("runner-temp-");
+    const ownTemp = scratch("own-temp-");
+    const bin = join(runnerTemp, "bin");
+    mkdirSync(bin);
+    mkdirSync(join(runnerTemp, "agent-hooks"));
+    writeFileSync(join(runnerTemp, "agent-hooks", "hookcheck.py"), "");
+    writeFileSync(
+      join(bin, "git"),
+      `#!/bin/sh\nfor last; do :; done\nmkdir -p "$last"\nprintf '%s' '{"env":{"CLAUDE_CODE_TMPDIR":"/home/collin/.cache/claude-tmp","EFFORT":"low"},"hooks":{}}' >"$last/settings.json"\n`,
+      { mode: 0o755 },
+    );
+
+    const fetched = ranStep(fetching ?? {}, runnerTemp, { PATH: `${bin}:${process.env.PATH}`, RUNNER_TEMP: runnerTemp, TMPDIR: ownTemp, HOME: join(runnerTemp, "home"), GITHUB_ENV: join(runnerTemp, "github-env") });
+
+    expect(fetched.status, fetched.stderr).toBe(0);
+    const { env } = JSON.parse(readFileSync(join(runnerTemp, "claude-config", "settings.json"), "utf8")) as { env: Record<string, string> };
+    expect(env.CLAUDE_CODE_TMPDIR).toBe(ownTemp);
+    expect(env.EFFORT).toBe("low");
+  });
+
   it("every job files its stages' captures into the transcripts repo whatever ended it, with a write token minted only after the model is done", () => {
     for (const { steps } of modelJobs()) {
       const minted = steps.findIndex((step) => step.with?.repositories === "transcripts" && step.with["permission-contents"] !== "read");
