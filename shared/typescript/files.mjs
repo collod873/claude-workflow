@@ -4,6 +4,9 @@ import { join, matchesGlob } from "node:path";
 
 export const LINTABLE = /\.(?:[cm]?[jt]s|[jt]sx)$/;
 
+export const configShaped = (file) =>
+  /\.(?:[cm]?js|json)$/.test(file) || (/\.[cm]?ts$/.test(file) && !file.startsWith("src/"));
+
 export function listedFiles(root) {
   const output = execFileSync(
     "git",
