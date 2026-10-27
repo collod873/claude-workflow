@@ -153,6 +153,31 @@ jobs:
           FRESH: ${{ inputs.fresh }}
         run: ~/bin/check --full --publish $([ "$FRESH" = true ] && echo --fresh)
 
+      - name: Keep this run's check row for the transcripts (agent-hooks#258)
+        if: always() && steps.check.outcome != 'skipped'
+        env:
+          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python3 - "${HOOK_LOG_DIR:-$HOME/.claude/logs}" "$RUNNER_TEMP/check-logs" "${HEAD:0:12}" <<'PY'
+          import json, sys
+          from pathlib import Path
+          logs, kept, head = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]
+          kept.mkdir(parents=True, exist_ok=True)
+          for ledger in logs.glob("check-*.jsonl"):
+              rows = [line for line in ledger.read_text(errors="replace").splitlines()
+                      if (row := json.loads(line)).get("mode") == "full" and row.get("head") == head]
+              if rows:
+                  (kept / ledger.name).write_text("\n".join(rows) + "\n")
+          PY
+
+      - uses: actions/upload-artifact@v7
+        if: always() && steps.check.outcome != 'skipped'
+        with:
+          name: check-logs
+          path: ${{ runner.temp }}/check-logs
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Remove Postgres
         if: always() && env.DATABASE_CONTAINER != ''
         run: docker rm --force "$DATABASE_CONTAINER" >/dev/null
