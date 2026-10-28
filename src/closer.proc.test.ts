@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { waitsOnFault, waitsOnStep } from "./builder.ts";
+import { waitsOnFault, waitsOnOpen, waitsOnStep } from "./builder.ts";
 import { closing, type FaultOrigin } from "./closer.part.ts";
 import { faultOf, firstStepOf } from "./post.ts";
 import { holds, workflowJobs } from "./scenarios.ts";
@@ -260,5 +260,25 @@ describe("bin/close wakes a ticket waiting on a first step its builder handed to
     expect(woken).toBeGreaterThanOrEqual(0);
     expect(repos()[woken]).toBe("collod873/Lumaria");
     expect(result.stdout).toContain("collod873/Lumaria#1382 builds now");
+  });
+});
+
+describe("bin/close wakes a ticket its builder parked waiting on an open ticket it depends on, where Mezzanine #1596 sat stuck six hours after #1592 merged (#1546)", () => {
+  const said = `${waitsOnOpen("1596", ["#1592"])} see #1546`;
+  const woken = (calls: string[]) => calls.findIndex((call) => call.trimEnd() === "issue\nedit\n1596\n--remove-label\nwaiting");
+
+  it("takes `waiting` off, as the App so its build starts, once the ticket it depends on closes", () => {
+    const { calls, tokens, run } = closing({ ticket: "1592", closedIssue: "1592", splitFrom: { parent: "1596", labels: "waiting\n", said, siblings: { "1592": "CLOSED COMPLETED" } } });
+
+    expect(run().status).toBe(0);
+    expect(woken(calls())).toBeGreaterThanOrEqual(0);
+    expect(tokens()[woken(calls())]).toBe("app");
+  });
+
+  it("leaves it waiting while a ticket it depends on is still open", () => {
+    const { calls, run } = closing({ ticket: "1592", closedIssue: "1592", splitFrom: { parent: "1596", labels: "waiting\n", said: `${waitsOnOpen("1596", ["#1592", "#1593"])} see #1546`, siblings: { "1592": "CLOSED COMPLETED", "1593": "OPEN " } } });
+
+    expect(run().status).toBe(0);
+    expect(woken(calls())).toBe(-1);
   });
 });

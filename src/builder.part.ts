@@ -27,6 +27,7 @@ interface BuildAnswer {
   repo?: string;
   tickets?: unknown[];
   steps?: unknown[];
+  on?: number[];
 }
 
 interface ReviewAnswer {
@@ -142,6 +143,8 @@ export function fixing({
       "  *\"api\"*\"repos/{owner}/{repo}/installation\"*) printf '4242\\n' ;;",
       "  *\"api\"*\"app/installations/4242/access_tokens\"*) printf 'minted-%s\\n' \"$n\" ;;",
       ...(unheardIn === undefined ? [] : [`  *"api repos/${unheardIn}/contents/.github/workflows/machine.yml"*) printf 'gh: Not Found (HTTP 404)\\n' >&2; exit 1 ;;`]),
+      `  *"issue view 1592 --json state --jq .state"*) printf 'OPEN\\n' ;;`,
+      `  *"issue view"*"--json state --jq .state"*) printf 'CLOSED\\n' ;;`,
       ...openedCases(root, opener, body, parent, ticket),
       `  *"issue list"*) cat "${join(root, "open-tickets.json")}" ;;`,
       `  *"issue create"*) n=$(( $(cat "${join(root, "created")}" 2>/dev/null || echo 900) + 1 )); printf '%s\\n' "$n" >"${join(root, "created")}"; repo=collod873/claude-workflow; prev=; for arg in "$@"; do [ "$prev" = --repo ] && repo=$arg; prev=$arg; done; printf 'https://github.com/%s/issues/%s\\n' "$repo" "$n" ;;`,
