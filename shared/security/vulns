@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+import datetime
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from tools import ToolUnavailable, tool
+
+EXCEPTIONS_FILE = "vulns.exceptions.json"
+PNPM_LOCK = "pnpm-lock.yaml"
+LOCKFILES = (PNPM_LOCK, "requirements.txt")
+
+
+def vuln_findings(report: dict, production: set[tuple[str, str]] | None, exceptions: dict, today: str) -> list[str]:
+    findings, standing = [], set()
+    for advisory, exception in exceptions.items():
+        if not isinstance(exception, dict) or not exception.get("reason") or not exception.get("until"):
+            findings.append(f"{EXCEPTIONS_FILE}: {advisory} needs a reason and an until")
+        elif re.fullmatch(r"\d{4}-\d{2}-\d{2}", exception["until"]) and exception["until"] < today:
+            findings.append(f"{EXCEPTIONS_FILE}: {advisory} expired {exception['until']}")
+        else:
+            standing.add(advisory)
+    for result in report.get("results", []):
+        npm = Path(result["source"]["path"]).name == PNPM_LOCK
+        for found in result.get("packages", []):
+            name, version = found["package"]["name"], found["package"]["version"]
+            if npm and production is not None and (name, version) not in production:
+                continue
+            for group in found.get("groups", []):
+                if standing & set(group["ids"]):
+                    continue
+                findings.append(f"{name}@{version}: {group['ids'][0]} (severity {group.get('max_severity') or '?'})")
+    return findings
+
+
+def npm_production(root: Path) -> set[tuple[str, str]]:
+    listed = subprocess.run(["pnpm", "licenses", "list", "--prod", "--json"], cwd=root, capture_output=True,
+                            text=True, check=False)
+    if listed.returncode:
+        raise RuntimeError(f"pnpm licenses list failed: {listed.stderr.strip()}")
+    return {(package["name"], version) for packages in json.loads(listed.stdout or "{}").values()
+            for package in packages for version in package["versions"]}
+
+
+def main() -> int:
+    root = Path.cwd()
+    lockfiles = [name for name in LOCKFILES if (root / name).is_file()]
+    if not lockfiles:
+        print(f"✗ vulns: no lockfile here ({' or '.join(LOCKFILES)}), so nothing was scanned")
+        return 1
+    try:
+        osv = tool("osv-scanner")
+    except ToolUnavailable as unavailable:
+        print(f"✗ vulns: {unavailable}")
+        return 1
+    scanned = subprocess.run([str(osv), "scan", "source", "--format", "json",
+                              *(arg for name in lockfiles for arg in ("--lockfile", name))],
+                             cwd=root, capture_output=True, text=True, check=False)
+    if scanned.returncode not in (0, 1):
+        print(f"✗ vulns: osv-scanner failed: {scanned.stderr.strip()[-400:]}")
+        return 1
+    report = json.loads(scanned.stdout or "{}")
+    npm_flagged = any(Path(result["source"]["path"]).name == PNPM_LOCK and result.get("packages")
+                      for result in report.get("results", []))
+    production = npm_production(root) if npm_flagged else None
+    exceptions_path = root / EXCEPTIONS_FILE
+    exceptions = json.loads(exceptions_path.read_text()) if exceptions_path.is_file() else {}
+    findings = vuln_findings(report, production, exceptions,
+                             datetime.date.today().isoformat())
+    for finding in findings:
+        print(f"✗ {finding}")
+    if findings:
+        print(f"✗ vulns: upgrade each package, or vet the advisory in {EXCEPTIONS_FILE} with a reason and an until")
+        return 1
+    print(f"✓ vulns: no known advisory in the production dependencies of {', '.join(lockfiles)}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
