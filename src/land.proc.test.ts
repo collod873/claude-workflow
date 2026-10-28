@@ -312,7 +312,6 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
 describe("bin/land refuses what must not reach main (#681)", () => {
   it.each([
     ["an em dash", `Refuse a thing\n\nbecause ${DASH} it matters`, (commit: string) => `land: commit ${commit} carries an em dash in its message, so nothing landed; reword it\n`],
-    ["a closing keyword before a ticket number", "Fix the thing\n\nCloses #812", (commit: string) => `land: commit ${commit} carries a closing keyword before #812, so nothing landed; reword it\n`],
   ])("lands nothing and names the commit whose message carries %s", (_, message, said) => {
     const { remote, session, run, calls } = landSession({ messages: ["a clean change", message, "another clean change"] });
     const refused = git(session, "rev-parse", "--short=7", "HEAD~1");
@@ -324,6 +323,26 @@ describe("bin/land refuses what must not reach main (#681)", () => {
     expect(result.stderr).toBe(said(refused));
     expect(git(remote, "for-each-ref", "--format=%(refname)")).toBe("refs/heads/main");
     expect(calls()).toEqual([]);
+  });
+
+  it("lands a session's commit that closes an issue by keyword, since its merge already passed the full check", () => {
+    const { run, calls, merged } = landSession({ messages: ["Fix the thing\n\nCloses #812"] });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(calls().filter(merged)).toHaveLength(1);
+  });
+
+  it("lands nothing from a spec whose commit closes the spec by keyword, since only its done check closes it (ADR-0013)", () => {
+    const { remote, session, run, calls } = landSession({ messages: ["a clean change", "Finish it\n\nCloses #974"] });
+
+    const result = run(["--spec", "974"]);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toBe(`land: commit ${git(session, "rev-parse", "--short=7", "HEAD")} closes spec #974 by keyword, so nothing landed; only its done check closes it: reword it\n`);
+    expect(git(remote, "for-each-ref", "--format=%(refname)")).toBe("refs/heads/main");
+    expect(calls().some(([command, action]) => command === "pr" && action === "create")).toBe(false);
   });
 
   it.each([
@@ -343,13 +362,13 @@ describe("bin/land refuses what must not reach main (#681)", () => {
     expect(calls()).toEqual([]);
   });
 
-  it("lands a ticket's build from the ticket's own branch, its PR titled as the ticket and saying it builds it, when the reviewer names the ticket (ADR-0012)", () => {
+  it("lands a ticket's build from the ticket's own branch, its PR titled as the ticket and closing it on merge, when the reviewer names the ticket (ADR-0012)", () => {
     const { head, run, calls, merged } = sessionAheadOfMain(1);
 
     const result = run(["--ticket", "811"]);
 
     expect(result.status, result.stderr).toBe(0);
-    expect(calls()).toContainEqual(["pr", "create", "--base", "main", "--head", "ticket/811", "--title", TICKET_TITLE, "--body", "Builds #811\n\n- change 1"]);
+    expect(calls()).toContainEqual(["pr", "create", "--base", "main", "--head", "ticket/811", "--title", TICKET_TITLE, "--body", "Closes #811\n\n- change 1"]);
     expect(calls().filter(merged)).toEqual([["pr", "merge", "ticket/811", "--merge", "--match-head-commit", head]]);
     expect(result.stdout).toBe(`Landed ${PR}\n`);
   });

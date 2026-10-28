@@ -144,7 +144,7 @@ function onTheSameFiles(ticket: string, body: string): string {
 const machineAtFault = (foreign: boolean | undefined) =>
   foreign === true
     ? `- \`machine\`: the machine is at fault; it lives in ${MACHINE_REPO}, not this tree, so change nothing here for it: file the fault as \`tickets\`, and this ticket waits on them.`
-    : "- `machine`: the machine is at fault; fix it in a worktree off `origin/main`, commit naming this ticket, and `bin/land` it first.";
+    : "- `machine`: the machine is at fault; fix it in a worktree off `origin/main`, commit naming this ticket as `Refs #<number>`, never after a closing word like `Fixes`, since that closes it before its own build lands, and `bin/land` it first.";
 
 export function handedOn({ ticket, body, capture, woken, alongside, commitlint, foreign }: Handed): string {
   return [

@@ -35,7 +35,6 @@ export function freshAppToken(app: AppKey, gh: Gh, line: string): void {
   const token = asApp(["-X", "POST", `app/installations/${installation}/access_tokens`, "--jq", ".token"]);
   Object.assign(process.env, {
     GH_TOKEN: token,
-    QUIET_GH_TOKEN: token,
     GIT_CONFIG_COUNT: "2",
     GIT_CONFIG_KEY_0: GITHUB_HEADER,
     GIT_CONFIG_VALUE_0: "",

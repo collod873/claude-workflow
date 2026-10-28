@@ -192,7 +192,7 @@ describe("a repo's tickets build through one caller file that holds only trigger
       expect(machine?.with?.path, name).toBeUndefined();
       for (const step of steps.slice(2).filter((later) => later.uses?.startsWith("actions/checkout@") === true)) expect(step.with, name).toMatchObject({ path: "tree", token: APP });
       for (const step of steps.filter((later) => later.env !== undefined)) {
-        for (const token of ["GH_TOKEN", "QUIET_GH_TOKEN"]) if (step.env?.[token] !== undefined) expect(step.env[token], `${name} ${step.id ?? ""}`).toBe(APP);
+        if (step.env?.GH_TOKEN !== undefined) expect(step.env.GH_TOKEN, `${name} ${step.id ?? ""}`).toBe(APP);
       }
       const minters = new Set(steps.filter((step) => step.uses?.startsWith("actions/create-github-app-token@") === true).map(({ id }) => id));
       for (const step of steps.filter((later) => later.uses?.startsWith("./.github/actions/call-owner") === true)) {
@@ -235,14 +235,13 @@ describe("a repo's tickets build through one caller file that holds only trigger
     const repo = resolved(job?.env?.GH_REPO);
     const calledFrom = resolved(fix?.env?.CALLED_FROM);
     expect({ repo, calledFrom }).toEqual({ repo: lumaria["github.repository"], calledFrom: lumaria["github.workflow_ref"] });
-    const { run, landed, closed } = fixing({ ticket: "828", claude: "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n", contract, check, repo, calledFrom });
+    const { run, landed } = fixing({ ticket: "828", claude: "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n", contract, check, repo, calledFrom });
     const result = run("828");
     expect(result.status, result.stderr).toBe(0);
     expect(landed().map((line) => line.split(" ").slice(1).join(" "))).toEqual(["--ticket 828 --approved it builds the Why"]);
-    expect(closed()).toEqual(["828 9828"]);
   });
 
-  it("hands the builder the App's key in a file its own step writes, never in the env of the step the model runs under, so bin/land and bin/close run on a token minted just before them (#1504)", () => {
+  it("hands the builder the App's key in a file its own step writes, never in the env of the step the model runs under, so bin/land runs on a token minted just before it (#1504)", () => {
     const { build } = workflowJobs("tickets.yml");
     const steps = build?.steps ?? [];
     const fix = steps.find(({ id }) => id === "fix");

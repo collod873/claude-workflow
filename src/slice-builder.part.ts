@@ -87,7 +87,7 @@ export function slicing({
     readdirSync(dir)
       .sort((one, other) => Number(one) - Number(other))
       .map((call) => readFileSync(join(dir, call), "utf8"));
-  const env = { PATH: `${join(root, "bin")}:${process.env.PATH}`, HOME: home, TMPDIR: temp, RUNNER_TEMP: runnerTemp, GITHUB_RUN_ID: "7001", GITHUB_RUN_ATTEMPT: "1", GITHUB_REPOSITORY: "collod873/Lumaria", RUNNER_NAME: "GitHub Actions 7", STAGE_MINUTES: stageMinutes, ...(appKeyFile === undefined ? {} : { APP_KEY_FILE: appKeyFile, GH_TOKEN: "job-token", QUIET_GH_TOKEN: "job-token" }) };
+  const env = { PATH: `${join(root, "bin")}:${process.env.PATH}`, HOME: home, TMPDIR: temp, RUNNER_TEMP: runnerTemp, GITHUB_RUN_ID: "7001", GITHUB_RUN_ATTEMPT: "1", GITHUB_REPOSITORY: "collod873/Lumaria", RUNNER_NAME: "GitHub Actions 7", STAGE_MINUTES: stageMinutes, ...(appKeyFile === undefined ? {} : { APP_KEY_FILE: appKeyFile, GH_TOKEN: "job-token" }) };
   const argv = (extra: string[]) => ["--spec", SPEC, "--slice", slice, "--brief", join(root, `brief-${slice}.md`), "--onto", ONTO, ...extra];
   return {
     tree,
