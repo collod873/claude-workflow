@@ -66,7 +66,7 @@ describe("bin/slice answers the scheduler with the spec's next slices, never fil
     expect(JSON.parse(ran.stdout)).toEqual({ slices: [slice("mend")] });
     const [first = "", again = ""] = sliced.handed();
     expect(first).toContain("This is the spec's one fix pass");
-    expect(first).toContain("Each finding below says what the done check saw fail");
+    expect(first).toContain("Make each sentence hold whole");
     expect(first).toContain(MISSED);
     expect(first).not.toContain("An older run.");
     expect(first).toContain("Cut at least one.");

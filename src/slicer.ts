@@ -72,7 +72,7 @@ const CUTS: Record<Cut, { lead: string; findings: string[]; end: string }> = {
   first: {
     lead: "Cut this filed spec's first slices. Cut the seams first: the shared code other slices plug into, named in the words of the repo's `CONTEXT.md` where it has one. Then cut each other slice you can already plan without guessing at a name or a file a seam will settle; leave the rest for a later slicer, who reads them off the branch as built.",
     findings: [],
-    end: "Cut at least one. Answer no slice only when main already does the whole spec: the spec then stops for its owner.",
+    end: "Cut the spec whole: every story and every sentence it asks for lives in some slice's `done`, now or once a later slicer cuts it, or in a `why` as what you ruled out and the spec line that rules it out. Answer no slice only when main already does the whole spec: the spec then stops for its owner.",
   },
   replan: {
     lead: `The spec has slices already. Read the integration branch as built, in the repo you are in, and the slices still in flight, then cut each slice now at its last responsible moment: every name and file it needs is on the branch or settled by a slice in flight. A slice already cut stands, so cut none twice. What a partial slice left, marked \`${NOT_CUT_AGAIN}\`, is yours to cut now, as one slice or more naming it in \`leftOf\`. An \`out\` slice is one whose builder answered \`stuck\`, or stopped on both its tries; it waits on the owner, so block no new slice on it.`,
@@ -80,7 +80,7 @@ const CUTS: Record<Cut, { lead: string; findings: string[]; end: string }> = {
     end: "Answer no slice when nothing is left to cut: once every slice has merged, the spec runs its full check, two reviewers, `bin/land` and its done check.",
   },
   fix: {
-    lead: "The spec landed and its done check found sentences that did not hold. This is the spec's one fix pass, on a fresh integration branch off main. Each finding below says what the done check saw fail: find its cause in the code and confirm it before you look for another, then cut the fewest slices that make those sentences hold.",
+    lead: "The spec landed and its done check found sentences that did not hold. This is the spec's one fix pass, on a fresh integration branch off main. Each finding below is one place the done check saw a sentence break. Make each sentence hold whole: find in the code every place it reaches, the stored copies of the same data included, and cut the slices that make all of them hold.",
     findings: [],
     end: "Cut at least one.",
   },

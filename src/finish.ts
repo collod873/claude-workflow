@@ -118,8 +118,8 @@ export function onTheSpec(changes: Changes, { spec, title, body, commitlint, bri
       : "The spec landed on main, and some of its sentences failed the done check; the findings are under `## The done check's findings`. This is the spec's one fix pass: its integration branch is fresh off main and holds only the fix, built slice by slice, so the rest of the spec is on main already. You did not build the fix: read the spec, the fix's slices under `## Its slices`, its commit messages and its diff as its reviewer on the spec, and judge whether it makes those sentences hold.";
   const fix =
     findings === undefined
-      ? "Where the branch misses what the spec asks, builds what it rules out of scope, or leaves a sentence under `## I'll know it works when I can` with nothing built that would show it, fix it here yourself: nothing goes back to a builder. Once it lands, a fresh done check tries each of those sentences."
-      : "Where the fix leaves a finding's sentence unmet, builds what the spec rules out of scope, or breaks what already landed, fix it here yourself: nothing goes back to a builder. Once it lands, a fresh done check tries each sentence again.";
+      ? "Where the branch misses what the spec asks, builds what it rules out of scope, or leaves any story or any sentence under `## I'll know it works when I can` short of whole, build the rest here yourself: nothing goes back to a builder. Once it lands, a fresh done check tries each of those sentences."
+      : "Where the fix leaves a finding's sentence short of whole anywhere it reaches, builds what the spec rules out of scope, or breaks what already landed, fix it here yourself: nothing goes back to a builder. Once it lands, a fresh done check tries each sentence again.";
   return [
     `# Hold spec #${spec} to what it asks before it lands`,
     `${built} A reviewer on the code standard reads the branch after you, your fixes with it.`,
