@@ -275,6 +275,6 @@ Setting a held issue going again. Taking `waiting` off a ticket resumes its buil
 off once every piece of its split, fault or first step it filed and issue its `## Waits on` names has closed. Taking `paused`
 or `stuck` off a ticket that then holds neither builds it again on the branch its last run kept,
 its builder resuming its session. Taking either off an open spec that then holds neither runs its
-scheduler again from its integration branch and progress comment.
+scheduler again from its integration branch and progress comment, resuming each out slice's builder with the reason it stopped.
 _Avoid_: unpause, restart, unblock
 

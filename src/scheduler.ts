@@ -305,6 +305,7 @@ async function scheduled(spec: string, app: AppKey | undefined): Promise<Stop | 
     tracked.state = "cut";
     tracked.session = undefined;
   }
+  for (const tracked of progress.slices.filter(({ state }) => state === "out")) tracked.state = "cut";
   readied(spec);
   posted(spec, found);
   const root = join(mkdtempSync(join(tmpdir(), "spec-worktrees-")), spec);
