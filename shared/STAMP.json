@@ -1,12 +1,12 @@
 {
- "source": "collod873/agent-hooks@04759bb0660ab1b650a6043897280a0a462a920f",
+ "source": "collod873/agent-hooks@46edb483a99d3dd7812eb7e4741755b85dfa49a6",
  "layer": "typescript",
  "files": {
   "ci.yml": "d5460d1ee05f9a35793ac6d7b399100e60219e7875b7be75bd935fb0b31afab5",
   "run": "6508cd65d739f035f30a91a0b2a1b3b88fc433cf01d1c284f3a9ad65c956fc99",
-  "security/secrets": "ae685e8aba86755c4ecb65f396d7d75eff01c4207c29c5f0b74cc16e4086274b",
+  "security/secrets": "3b00a79873d45ecd49280cfdd0ee43be53dd4b1dc7d19dfa435b776d6b337650",
   "security/tools.py": "3cf205dc74550decbd04f9d35f9ceda812d50bcee14400cc642b1817049e6de0",
-  "security/vulns": "3f127601a35eb75994b3931efa3ad3de10a7fab9749250077fd97d74cc64b46d",
+  "security/vulns": "29cee5f5b55ec9db25862c74e5baf317d41848bf460b0728136b9c1fc79b0989",
   "typescript/files.mjs": "5dfaf9f2e8953bfdf8f7a702585c420e7aad7dee0aeafed1defaf0181fd9995e",
   "typescript/index.mjs": "3f85b9c89df8587ebd20a9273cb2279845241c77889a4bae24cdeb7070c320bd",
   "typescript/knip.base.d.mts": "0d59f036962b278fc0bec872969eea08bf899384ac80c36297102ddb5583dc1b",

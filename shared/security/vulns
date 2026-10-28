@@ -12,9 +12,16 @@ from tools import ToolUnavailable, tool
 EXCEPTIONS_FILE = "vulns.exceptions.json"
 PNPM_LOCK = "pnpm-lock.yaml"
 LOCKFILES = (PNPM_LOCK, "requirements.txt")
+PRODUCTION_LISTING = Path(__file__).resolve().parent.parent / "next" / "licenses.mjs"
 
 
-def vuln_findings(report: dict, production: set[tuple[str, str]] | None, exceptions: dict, today: str) -> list[str]:
+def synced_pins(root: Path) -> frozenset[str]:
+    stamp = root / "shared" / "STAMP.json"
+    return frozenset(json.loads(stamp.read_text()).get("tools", {})) if stamp.is_file() else frozenset()
+
+
+def vuln_findings(report: dict, production: set[tuple[str, str]] | None, exceptions: dict, today: str,
+                  pinned: frozenset[str] = frozenset()) -> list[str]:
     findings, standing = [], set()
     for advisory, exception in exceptions.items():
         if not isinstance(exception, dict) or not exception.get("reason") or not exception.get("until"):
@@ -32,15 +39,16 @@ def vuln_findings(report: dict, production: set[tuple[str, str]] | None, excepti
             for group in found.get("groups", []):
                 if standing & set(group["ids"]):
                     continue
-                findings.append(f"{name}@{version}: {group['ids'][0]} (severity {group.get('max_severity') or '?'})")
+                where = "; pinned by agent-hooks, so bump it in its shared/*/tools.json, not here" if name in pinned else ""
+                findings.append(f"{name}@{version}: {group['ids'][0]} (severity {group.get('max_severity') or '?'}){where}")
     return findings
 
 
 def npm_production(root: Path) -> set[tuple[str, str]]:
-    listed = subprocess.run(["pnpm", "licenses", "list", "--prod", "--json"], cwd=root, capture_output=True,
+    listed = subprocess.run(["node", str(PRODUCTION_LISTING), "--production"], cwd=root, capture_output=True,
                             text=True, check=False)
     if listed.returncode:
-        raise RuntimeError(f"pnpm licenses list failed: {listed.stderr.strip()}")
+        raise RuntimeError(f"the next layer's production listing failed: {listed.stderr.strip()[-400:]}")
     return {(package["name"], version) for packages in json.loads(listed.stdout or "{}").values()
             for package in packages for version in package["versions"]}
 
@@ -69,7 +77,7 @@ def main() -> int:
     exceptions_path = root / EXCEPTIONS_FILE
     exceptions = json.loads(exceptions_path.read_text()) if exceptions_path.is_file() else {}
     findings = vuln_findings(report, production, exceptions,
-                             datetime.date.today().isoformat())
+                             datetime.date.today().isoformat(), synced_pins(root))
     for finding in findings:
         print(f"✗ {finding}")
     if findings:
