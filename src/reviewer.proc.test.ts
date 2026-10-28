@@ -40,7 +40,6 @@ describe("every risk the ticket's reviewer names ends somewhere: fixed here, a t
     expect(approved).toContain(`- filed as the ticket "${FIX.title}" once it lands: ${FIX.fault}`);
     expect(approved).toContain(`- needs nothing: ${NEEDS_NOTHING.risk} ${NEEDS_NOTHING.why}`);
     expect(approved).toContain(`- fixed here: ${FIXED_HERE.risk} ${FIXED_HERE.why}`);
-    expect(scenario.closed()).toEqual(["811 9811"]);
   });
 
   it("posts the reason alone when the reviewer saw no risk", () => {
@@ -57,7 +56,6 @@ describe("every risk the ticket's reviewer names ends somewhere: fixed here, a t
     const result = scenario.run();
 
     expect(result.status, result.stderr).toBe(0);
-    expect(scenario.closed()).toEqual(["811 9811"]);
     const comment = scenario.ticketComments().find((said) => said?.includes(FIX.title));
     expect(comment).toContain("could not be filed");
     expect(comment).toContain("Bad credentials");

@@ -130,7 +130,7 @@ export function finishing({
     log: (...args: string[]) => git(session, "log", ...args),
     pushed: () => git(origin, "log", "--format=%s", "spec/974"),
     run: (...args: string[]) =>
-      execute(join(BIN, "finish"), session, { PATH: `${bin}:${process.env.PATH}`, MACHINE_BIN: bin, GH_TOKEN: "job-token", QUIET_GH_TOKEN: "job-token", ...(appKeyed ? { APP_KEY_FILE: keyFile } : {}) }, args.length === 0 ? ["974"] : args),
+      execute(join(BIN, "finish"), session, { PATH: `${bin}:${process.env.PATH}`, MACHINE_BIN: bin, GH_TOKEN: "job-token", ...(appKeyed ? { APP_KEY_FILE: keyFile } : {}) }, args.length === 0 ? ["974"] : args),
   };
 }
 

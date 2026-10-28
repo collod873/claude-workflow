@@ -94,11 +94,12 @@ if [[ -z $(git rev-list "origin/$default_branch..HEAD") ]]; then
   exit 0
 fi
 
-closing_keyword='\b(close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)\b:?[ \t]+#[0-9]+'
+closing_keyword='\b(close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)\b:?[ \t]+#'"$spec"'\b'
 
 src="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../src" && pwd)"
 for commit in $(git rev-list "origin/$default_branch..HEAD"); do
-  git log -1 --format=%B "$commit" | node "$src/em-dash.ts"
+  message=$(git log -1 --format=%B "$commit")
+  node "$src/em-dash.ts" <<<"$message"
   case $? in
     0) ;;
     1)
@@ -111,9 +112,8 @@ for commit in $(git rev-list "origin/$default_branch..HEAD"); do
       ;;
   esac
 
-  matched=$(git log -1 --format=%B "$commit" | grep -ioE "$closing_keyword" | head -1)
-  if [[ -n $matched ]]; then
-    printf 'land: commit %s carries a closing keyword before #%s, so nothing landed; reword it\n' "$(git rev-parse --short=7 "$commit")" "${matched##*#}" >&2
+  if [[ -n $spec ]] && grep -qiE "$closing_keyword" <<<"$message"; then
+    printf 'land: commit %s closes spec #%s by keyword, so nothing landed; only its done check closes it: reword it\n' "$(git rev-parse --short=7 "$commit")" "$spec" >&2
     exit 1
   fi
 done
@@ -131,7 +131,7 @@ if [[ -n $issue ]]; then
   fi
   call "gh issue view" gh issue view "$issue" --json title --jq .title
   title=$said
-  body="Builds #$issue"$'\n\n'
+  [[ -n $ticket ]] && body="Closes #$ticket"$'\n\n' || body="Builds #$spec"$'\n\n'
 else
   branch="land/${head:0:12}"
   title=

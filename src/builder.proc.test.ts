@@ -37,7 +37,7 @@ const untouched = ({ marked, handed, calls }: ReturnType<typeof fixing>) => {
 
 describe("the builder owns its ticket from build to land in one run (#898, ADR-0012)", () => {
   it("starts on a tree a red stage left dirty, and commits what is there with its fix, where #894 refused before any model", () => {
-    const { run, handed, landed, closed, log } = fixing({ leftover: { "src/builder-turn.test.ts": "import { it } from \"vitest\";\n" }, claude: FIXES });
+    const { run, handed, landed, log } = fixing({ leftover: { "src/builder-turn.test.ts": "import { it } from \"vitest\";\n" }, claude: FIXES });
 
     const result = run();
 
@@ -45,11 +45,10 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
     expect(handed()).toHaveLength(2);
     expect(log("-1", "--name-only", "--format=%s").split("\n").filter((line) => line !== "")).toEqual(["Build #811 as its builder", "src/builder-turn.test.ts", "src/ticket-shape.ts"]);
     expect(landed()).toEqual([`${log("-1", "--format=%H")} --ticket 811 --approved it builds the Why`]);
-    expect(closed()).toEqual(["811 9811"]);
   });
 
-  it("builds a ticket marked building, commits it as a build, and once green hands it to review, lands it and closes it with the PR bin/land names (#931)", () => {
-    const { run, handed, marked, landed, closed, log } = fixing({ claude: FIXES });
+  it("builds a ticket marked building, commits it as a build, and once green hands it to review and lands it (#931)", () => {
+    const { run, handed, marked, landed, log } = fixing({ claude: FIXES });
 
     const result = run("811");
 
@@ -59,7 +58,6 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
     expect(marked()).toEqual(["811 building", "811 checking"]);
     expect(log("-1", "--format=%s")).toBe("Build #811 as its builder");
     expect(landed()).toEqual([`${log("-1", "--format=%H")} --ticket 811 --approved it builds the Why`]);
-    expect(closed()).toEqual(["811 9811"]);
   });
 
   it("opens a build pointing at `tdd`, leaving `check --full` to the machine outside its cap, carrying no build loop of its own, none of the contract's steps and none of the lines that never fired (#1477, Lumaria#1283)", () => {
@@ -614,26 +612,24 @@ describe("a fresh reviewer reads each green build, fixes or approves it, and bin
   });
 
   it("commits what the reviewer fixes as a review, and lands that head", () => {
-    const { run, log, landed, closed } = fixing({ claude: FIXES, reviewer: REVIEWER_FIXES });
+    const { run, log, landed } = fixing({ claude: FIXES, reviewer: REVIEWER_FIXES });
 
     expect(run().status).toBe(0);
     expect(log("-2", "--format=%s").split("\n")).toEqual(["Review #811 as its reviewer", "Build #811 as its builder"]);
     expect(landed()).toEqual([`${log("-1", "--format=%H")} --ticket 811 --approved it builds the Why`]);
-    expect(closed()).toEqual(["811 9811"]);
   });
 
-  it("calls the owner by name when the reviewer answers stuck, and lands and closes nothing", () => {
-    const { run, marked, ticketComments, landed, closed } = fixing({ claude: FIXES, review: { outcome: "stuck", reason: "the diff builds a different Why" } });
+  it("calls the owner by name when the reviewer answers stuck, and lands nothing", () => {
+    const { run, marked, ticketComments, landed } = fixing({ claude: FIXES, review: { outcome: "stuck", reason: "the diff builds a different Why" } });
 
     expect(run().status).toBe(1);
     expect(marked()).toEqual(["811 building", "811 checking", "811 stuck"]);
     expect(ticketComments().at(-1)).toBe("@collod873 the reviewer of #811 stopped and needs you: the diff builds a different Why");
     expect(landed()).toEqual([]);
-    expect(closed()).toEqual([]);
   });
 
   it("hands what bin/land refuses back to the reviewer's own session, never the builder, and lands once it passes", () => {
-    const { run, handed, hired, landed, closed } = fixing({ claude: FIXES, reviewer: REVIEWER_FIXES, land: LAND_REFUSES_ONCE });
+    const { run, handed, hired, landed } = fixing({ claude: FIXES, reviewer: REVIEWER_FIXES, land: LAND_REFUSES_ONCE });
 
     expect(run().status).toBe(0);
     expect(handed()).toHaveLength(3);
@@ -642,10 +638,9 @@ describe("a fresh reviewer reads each green build, fixes or approves it, and bin
     expect(hired()[2]?.join(" ")).toContain('"approve"');
     expect(hired()[2]).toContain(BUILDER_SESSION);
     expect(landed()).toHaveLength(2);
-    expect(closed()).toEqual(["811 9811"]);
   });
 
-  it("lands and closes on an App token minted before each bin/land, signed by a key the builder took off disk before any model ran, where Lumaria#1332's push failed on credentials past its job's first hour (#1504)", () => {
+  it("lands on an App token minted before each bin/land, signed by a key the builder took off disk before any model ran, where Lumaria#1332's push failed on credentials past its job's first hour (#1504)", () => {
     const { file, privateKey, publicKey } = appKeyed();
     const { run, session, ranWith, calls } = fixing({ claude: FIXES, reviewer: REVIEWER_FIXES, land: LAND_REFUSES_ONCE, appKeyFile: file });
     git(session, "config", "http.https://github.com/.extraheader", "AUTHORIZATION: basic job-token");
@@ -653,13 +648,11 @@ describe("a fresh reviewer reads each green build, fixes or approves it, and bin
     const result = run();
     expect(result.status, result.stderr).toBe(0);
     const [refused, landed] = ranWith("land");
-    const [closed] = ranWith("close");
     const token = envOf(landed, "GH_TOKEN");
     expect(token).toMatch(/^minted-\d+$/);
     expect(envOf(refused, "GH_TOKEN")).toMatch(/^minted-\d+$/);
     expect(envOf(refused, "GH_TOKEN")).not.toBe(token);
     expect(githubHeaders(landed)).toEqual([`AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`]);
-    expect([envOf(closed, "GH_TOKEN"), envOf(closed, "QUIET_GH_TOKEN")]).toEqual([token, token]);
     const bearers = calls().flatMap((args) => args.filter((arg) => arg.startsWith("Authorization: Bearer ")).map((arg) => arg.slice("Authorization: Bearer ".length)));
     expect(bearers.length).toBeGreaterThan(0);
     for (const jwt of bearers) expect(claimsSignedBy(jwt, publicKey)?.iss).toBe(APP_CLIENT_ID);
@@ -695,12 +688,11 @@ describe("a fresh reviewer reads each green build, fixes or approves it, and bin
   });
 
   it("calls the owner when bin/land refuses twice in a row and the reviewer changes nothing", () => {
-    const { run, marked, ticketComments, closed } = fixing({ claude: FIXES, land: "printf 'land: the full check is red\\n' >&2\nexit 1\n" });
+    const { run, marked, ticketComments } = fixing({ claude: FIXES, land: "printf 'land: the full check is red\\n' >&2\nexit 1\n" });
 
     expect(run().status).toBe(1);
     expect(marked().at(-1)).toBe("811 stuck");
     expect(ticketComments().at(-1)).toMatch(/^@collod873 the reviewer of #811 stopped and needs you: two rounds in a row changed nothing: .*the full check is red/);
-    expect(closed()).toEqual([]);
   });
 
   it("counts a round its reviewer changed nothing in as idle though bin/land rebased the branch onto a main that moved", () => {
@@ -738,8 +730,8 @@ describe("a fresh reviewer reads each green build, fixes or approves it, and bin
     expect(capped(), "the builder's round and the reviewer's two, in seconds").toEqual(["3", "3", "3"]);
   });
 
-  it("files each step the reviewer names as an owner-step note once it lands, and still closes the ticket, never asking the builder for one, where #1441 and #1442 filed one step twice (ADR-0005, #1453)", () => {
-    const { run, filed, calls, closed, hired } = fixing({ claude: FIXES, review: { outcome: "approve", reason: "it builds the Why", steps: [STEP] } });
+  it("files each step the reviewer names as an owner-step note once it lands, never asking the builder for one, where #1441 and #1442 filed one step twice (ADR-0005, #1453)", () => {
+    const { run, filed, calls, hired } = fixing({ claude: FIXES, review: { outcome: "approve", reason: "it builds the Why", steps: [STEP] } });
 
     expect(run().status).toBe(0);
     const builder = hired()[0] ?? [];
@@ -749,18 +741,16 @@ describe("a fresh reviewer reads each green build, fixes or approves it, and bin
     expect(filed()[0]).toContain(STEP.why);
     expect(filed()[0]).toContain("Left to the owner by the run that built #811, which closed.");
     expect(calls().find((args) => args[1] === "create")).toEqual(expect.arrayContaining(["owner-step", STEP.title]));
-    expect(closed()).toEqual(["811 9811"]);
   });
 
   it("lands nothing, and ends green keeping the branch, when the ticket is held by the time its review ends", () => {
-    const { run, landed, closed } = fixing({ claude: FIXES, reviewer: "printf 'paused\\n' >>../labels\n" });
+    const { run, landed } = fixing({ claude: FIXES, reviewer: "printf 'paused\\n' >>../labels\n" });
 
     const result = run();
 
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain("review: #811 is labelled paused, so it does not land");
     expect(landed()).toEqual([]);
-    expect(closed()).toEqual([]);
   });
 
   it("ends red at unread, landing nothing, when the ticket's labels cannot be read at review", () => {

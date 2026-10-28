@@ -129,8 +129,11 @@ and rebased onto the integration branch as it answers.
 _Avoid_: review job, judge, second builder
 
 **Closer**:
-`bin/close`: given a ticket and its merged PR, it closes the ticket; given a closed issue, it takes
-`waiting` off each ticket that waited on it. It holds no queue and merges nothing.
+`bin/close`: given a closed issue, it takes `waiting` off each ticket that waited on it. It closes,
+queues and merges nothing: a ticket closes on its PR's `Closes #N`, which `bin/land --ticket`
+writes, and a session's commit may close an issue the same way, since `bin/land` merges only past
+the full check. A spec closes only on its done check, so `bin/land --spec` refuses a commit that
+closes it by keyword.
 _Avoid_: merger, queue, landing job
 
 ### The work

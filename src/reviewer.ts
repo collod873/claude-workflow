@@ -208,7 +208,7 @@ export function reviewedAndLanded(ticket: string, { body, alongside, said }: { b
     if ("pr" in landed) {
       const filed = named === undefined ? "" : filedOnceLanded(ticket, named);
       console.log(`review: #${ticket} landed as PR #${landed.pr}${filed}`);
-      return spawnSync(machineBin("close"), [ticket, landed.pr], { stdio: "inherit" }).status ?? 1;
+      return 0;
     }
     if (!changed && idle) return calledOwner(ticket, "reviewer", `two rounds in a row changed nothing: ${quoted(landed.refused.split("\n").at(-1) ?? "")}`);
     idle = !changed;

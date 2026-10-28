@@ -1,28 +1,14 @@
 import { filedClosed, LABELLED_WAITING, splitClosed, splitInto, dependsOn } from "./builder.ts";
-import { commentOnTicket, commentsRead, FAULT_FROM, gh, ghAs, ghRead, markWith, opened, readOrStop, unread, WAITING } from "./post.ts";
-import { exitFor, type Stop, stoppedAt } from "./stops.ts";
+import { commentOnTicket, commentsRead, FAULT_FROM, gh, ghAs, ghRead, opened, readOrStop, unread, WAITING } from "./post.ts";
+import { exitFor } from "./stops.ts";
 import { quoted, waitsOn, why } from "./ticket-shape.ts";
 
 const NAMED = /^(?:[ ,]*#\d+)+/;
-
-const quietly = { ...process.env, GH_TOKEN: process.env.QUIET_GH_TOKEN };
-const quietGh = ghAs(quietly);
-const mark = markWith(quietly);
 
 const ticketState = (ticket: string, line: string) => ghRead(["issue", "view", ticket, "--json", "state,stateReason", "--jq", '.state + " " + .stateReason'], `the state of #${ticket} could not be read, ${line}`);
 
 const { GITHUB_SERVER_URL: server, GITHUB_REPOSITORY: repository, GITHUB_RUN_ID: runId } = process.env;
 const thisRun = server && repository && runId ? `${server}/${repository}/actions/runs/${runId}` : "a run outside Actions";
-
-interface Built {
-  ticket: string;
-  pr: string;
-}
-
-const record = ({ ticket, pr }: Built): string => `#${ticket} is done: PR #${pr} merged`;
-
-const recorded = (said: string) => (said === "" ? "" : `; record ${said}`);
-
 
 const ended = (ticket: string, held: string) => ticketState(ticket, `so #${held} is not woken`);
 const stillWaits = (ticket: string, open: string[]) => `; #${ticket} still waits for ${open.map((waited) => `#${waited}`).join(", ")}`;
@@ -100,24 +86,6 @@ function close(closed: string | undefined): undefined {
   return undefined;
 }
 
-function closeMerged(merge: Built): Stop | undefined {
-  const { ticket } = merge;
-  const asked = gh(["issue", "view", ticket, "--json", "body", "--jq", ".body"]);
-  if (asked.status !== 0) return stoppedAt("unread", `close: ticket ${ticket} could not be read, so nothing judged it`);
-  const posted = commentOnTicket(ticket, record(merge), gh);
-  const [refusal] = posted.refusals;
-  if (refusal !== undefined) return stoppedAt("unrecorded", `close: #${ticket} got no closing record: ${quoted(refusal)}`);
-  const state = ticketState(ticket, "so it is not closed");
-  mark(ticket, "--closed");
-  if (state !== "CLOSED COMPLETED") {
-    if (state.startsWith("CLOSED")) quietGh(["issue", "reopen", ticket]);
-    if (quietGh(["issue", "close", ticket, "--reason", "completed"]).status !== 0) return stoppedAt("unrecorded", `close: #${ticket} is done but could not be closed${recorded(posted.said)}`);
-  }
-  console.log(`close: #${ticket} closed as completed, its PR merged${recorded(posted.said)}`);
-  return undefined;
-}
-
 if (import.meta.main) {
-  const [closed, pr] = process.argv.slice(2);
-  process.exit(exitFor(readOrStop("close", () => (closed !== undefined && pr !== undefined ? closeMerged({ ticket: closed, pr }) : close(closed)))));
+  process.exit(exitFor(readOrStop("close", () => close(process.argv[2]))));
 }
