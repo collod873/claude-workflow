@@ -39,6 +39,7 @@ interface Tracked extends Slice {
 export interface Progress {
   fixPass: boolean;
   landed?: string | undefined;
+  firstLanding?: string | undefined;
   slices: Tracked[];
 }
 
@@ -385,6 +386,7 @@ async function scheduled(spec: string, app: AppKey | undefined): Promise<Stop | 
       }
       if (progress.fixPass) return calledOwner(spec, "missedTwice", `the done check missed sentence ${ended.missed} after its one fix pass`);
       progress.fixPass = true;
+      progress.firstLanding = ended.landed;
       plan = true;
       posted(spec, found);
       continue;

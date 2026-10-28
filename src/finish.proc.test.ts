@@ -370,6 +370,18 @@ describe("bin/finish stands down on a held spec, so a pause holds the landing to
     expect(finished.landed()).toEqual([]);
   });
 
+  it("runs the done check alone on main when a fix pass found its work already there, so the spec closes on its first landing (Lumaria#1661)", () => {
+    const fixed = SLICED([{ id: "timesheet-week", title: "Timesheets render again", fix: true }], true).replace('"fixPass":true', '"fixPass":true,"firstLanding":"9974"');
+    const finished = finishing({ slices: [], said: [fixed] });
+
+    const ran = heard(finished.run());
+
+    expect(ran.status, ran.stderr).toBe(0);
+    expect(ran.lines.slice(-2)).toEqual(["landed=9974", "missed="]);
+    expect(finished.landed()).toEqual([]);
+    expect(finished.handed().map((prompt) => prompt.slice(0, 17))).toEqual(["Try each sentence"]);
+  });
+
   it("refuses an integration branch holding nothing past main, hiring nothing", () => {
     const finished = finishing({ slices: [] });
 

@@ -203,6 +203,7 @@ describe("bin/schedule runs a spec from its first cut to its landing, one slice 
     expect(run.built("seam")).toBeUndefined();
     expect(run.progress()).toMatchObject({ fixPass: true, slices: [{ id: "seam" }, { id: "mend", fix: true, state: "merged" }] });
     expect(run.progress()?.landed).toBeUndefined();
+    expect(run.progress()?.firstLanding).toBe(LANDED);
   });
 
   it("marks the spec stuck and calls the owner when the done check misses again after its one fix pass", () => {

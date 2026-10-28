@@ -160,7 +160,7 @@ system once the spec has landed, and closes the spec once every one held or was 
 owner. A miss leaves the spec open for the scheduler's one **fix pass**; a second miss marks it
 `stuck`. A sentence put to the owner holds nothing open: the closing comment says what the owner
 could try for it, and a miss seen live later is a new ticket. The owner's replies since the last
-done check reach the next one, the fix pass's; a reply alone runs no done check.
+done check reach the next one, the fix pass's; a reply alone runs no done check. A fix pass whose work is already on main lands nothing, and its done check runs on main against the spec's first landing.
 _Avoid_: audit, acceptance test, verification
 
 **Integration branch**:
