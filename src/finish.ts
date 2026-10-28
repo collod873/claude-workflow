@@ -435,11 +435,13 @@ async function finished(spec: string, app: AppKey | undefined): Promise<Finished
     return {};
   }
   const found = progressOn(spec);
-  if (found.progress.landed !== undefined) {
+  const checkedOnMain = (pr: string) => {
     gitRead(["checkout", "--quiet", "-B", specBranch(spec), "origin/main"], `${specBranch(spec)} could not be checked out at origin/main, so its done check was not run`);
-    return checkedAfter(spec, found.progress.landed, app);
-  }
+    return checkedAfter(spec, pr, app);
+  };
+  if (found.progress.landed !== undefined) return checkedOnMain(found.progress.landed);
   if (gitRead(["rev-list", "--count", PAST_MAIN], UNREAD) === "0") {
+    if (found.progress.firstLanding !== undefined) return checkedOnMain(found.progress.firstLanding);
     stoppedAt("unfinishable", `${said} holds nothing past main on its integration branch, ${unchanged}`);
     return {};
   }
