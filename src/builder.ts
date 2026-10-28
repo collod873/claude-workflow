@@ -17,7 +17,8 @@ import { doneWhen, quoted, why, whyChanged } from "./ticket-shape.ts";
 const ANSWER = {
   type: "object",
   properties: {
-    outcome: { enum: ["code", "split", "done", "close", "stuck", "machine", "owned"] },
+    outcome: { enum: ["code", "split", "done", "close", "stuck", "machine", "owned", "waits"] },
+    on: { type: "array", items: { type: "integer" } },
     reason: { type: "string", pattern: NO_EM_DASH },
     repo: { type: "string", pattern: `^${OWNER}/[\\w.-]+$` },
     body: { type: "string", pattern: NO_EM_DASH },
@@ -46,7 +47,8 @@ interface Piece {
 }
 
 interface Answer {
-  outcome: "code" | "split" | "done" | "close" | "stuck" | "machine" | "owned";
+  outcome: "code" | "split" | "done" | "close" | "stuck" | "machine" | "owned" | "waits";
+  on?: number[];
   reason: string;
   repo?: string;
   body?: string;
@@ -59,6 +61,8 @@ export const splitInto = (ticket: string) => `@${OWNER} the builder split #${tic
 export const splitClosed = (ticket: string) => `Every ticket #${ticket} was split into has closed:`;
 export const LABELLED_WAITING = `labelled \`${WAITING}\``;
 const wokenByTheCloser = (ticket: string) => `#${ticket} waits on it, ${LABELLED_WAITING}, and the closer wakes it once every one of them closes:`;
+export const dependsOn = (ticket: string) => `The builder of #${ticket} found it depends on`;
+export const waitsOnOpen = (ticket: string, open: string[]) => `${dependsOn(ticket)} ${open.join(", ")}, still open. ${wokenByTheCloser(ticket)}`;
 export const waitsOnFault = (ticket: string, filed: string[]) => `The builder of #${ticket} found the machine at fault and filed ${filed.join(", ")}. ${wokenByTheCloser(ticket)}`;
 const handedStep = (ticket: string, repo: string, filed: string[]) => `The builder of #${ticket} handed its first step to ${repo} and filed ${filed.join(", ")}.`;
 export const waitsOnStep = (ticket: string, repo: string, filed: string[]) => `${handedStep(ticket, repo, filed)} ${wokenByTheCloser(ticket)}`;
@@ -160,7 +164,8 @@ export function handedOn({ ticket, body, capture, woken, alongside, commitlint, 
     "- `split`: too big for one build; file `tickets` that build at once, each with `done` as the sentences true once it is built. What must wait for them stays as `body`, Why byte-identical, and builds once they merge.",
     "- `done`: main already does what it asks, as when an earlier run landed it and its close failed; it closes completed, and no one is called.",
     "- `close`: the ticket should not exist as written, and nothing should replace it, as for a gate you cannot make pass, since a gate is proven first.",
-    "- `stuck`: you cannot build it, even rewritten; `reason` says why, and the ticket is marked `stuck`.",
+    "- `waits`: it depends on other open tickets here, as one another builder is still building: name them as `on`; it is marked `waiting` and builds once they all close.",
+    "- `stuck`: only the owner can unblock it, even rewritten; `reason` says why, and the ticket is marked `stuck`.",
     machineAtFault(foreign),
     `- \`owned\`: its first step belongs in the one other repo that owns that kind of fix, such as \`${OWNER}/design-kit\` for a kit primitive or \`${OWNER}/agent-skills\` for a skill or shared tool: name it as \`repo\`, change nothing here for it, and file that step as \`tickets\`; this ticket waits on them and builds once they close.`,
     "`reason`: one paragraph for the owner; a `code` answer's goes to its reviewer, who fixes each gap it names and files each step only the owner can take.",
@@ -239,6 +244,18 @@ function split(ticket: string, body: string, answer: Answer): Round {
   return { ended: 0 };
 }
 
+function waitedOn(ticket: string, answer: Answer): Round {
+  const on = [...new Set((answer.on ?? []).map(String))].filter((number) => number !== ticket);
+  if (on.length === 0) return { red: "Your `waits` answer was refused: it names the open tickets this one depends on as `on`." };
+  const closed = on.filter((number) => ghRead(["issue", "view", number, "--json", "state", "--jq", ".state"], `the state of #${number} could not be read, ${NOTHING_MARKED}`) !== "OPEN");
+  if (closed.length > 0) return { red: `Your \`waits\` answer was refused: ${closed.map((number) => `#${number}`).join(", ")} is closed already, so build on what it left.` };
+  const named = on.map((number) => `#${number}`);
+  commentOnTicket(ticket, `${waitsOnOpen(ticket, named)} ${answer.reason}`, gh);
+  mark(ticket, WAITING);
+  console.log(`fix: #${ticket} waits on ${named.join(", ")}`);
+  return { ended: 0 };
+}
+
 function rewritten(ticket: string, body: string, answer: Answer): Round {
   if (answer.body === undefined || answer.body.trim() === body.trim()) return {};
   const written = rewriteTicket(ticket, body, answer.body, gh);
@@ -301,6 +318,7 @@ function outcomeOf(ticket: string, body: string, answer: Answer | undefined, mai
   if (answer.outcome === "close") return { ended: closedAs(ticket, "not planned", `@${OWNER} the builder closed #${ticket} unbuilt and kept its branch: ${answer.reason}`) };
   if (answer.outcome === "stuck") return { ended: calledOwner(ticket, "builder", answer.reason) };
   if (answer.outcome === "split") return split(ticket, body, answer);
+  if (answer.outcome === "waits") return waitedOn(ticket, answer);
   if (answer.outcome === "machine" && FOREIGN) return filedForMachine(ticket, answer);
   if (answer.outcome === "owned") return handedToItsRepo(ticket, answer);
   if (answer.outcome === "machine") return landedOnMain(ticket, answer.reason, mainBefore);

@@ -273,6 +273,23 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
     expect(landed()).toEqual([]);
   });
 
+  it("parks `waiting` on an open ticket it depends on, not `stuck`, and says so, where Mezzanine #1596 sat stuck six hours after #1592 merged (#1546)", () => {
+    const { run, marked, ticketComments, landed } = fixing({ answer: { outcome: "waits", on: [1592], reason: "it builds on the parser #1592 adds" } });
+
+    expect(run().status).toBe(0);
+    expect(marked().at(-1)).toBe("811 waiting");
+    expect(ticketComments().at(-1)).toContain("found it depends on #1592, still open");
+    expect(landed()).toEqual([]);
+  });
+
+  it("refuses a `waits` answer on a ticket already closed, so it never waits for good", () => {
+    const { run, marked, handed } = fixing({ answer: { outcome: "waits", on: [1590], reason: "it builds on #1590" }, claude: SPENT_BY_THE_THIRD_ROUND, stageMinutes: "1" });
+
+    run();
+    expect(marked()).not.toContain("811 waiting");
+    expect(handed().join("\n")).toContain("#1590 is closed already");
+  });
+
   it("hands a `code` answer on a branch with no commits past main back as nothing to land (#1195)", () => {
     const { run, landed, handed } = fixing({ claude: `${SPENT_BY_THE_THIRD_ROUND}git reset --quiet --hard main\n`, stageMinutes: "1" });
 
