@@ -7,7 +7,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 STAMP = "STAMP.json"
-VERBS = ("run", "typecheck", "setup", "licenses", "notices", "unused", "test")
+VERBS = ("run", "typecheck", "setup", "licenses", "notices", "unused", "test", "secrets", "vulns")
+SECURITY_VERBS = {"secrets", "vulns"}
 CACHES = {"node_modules", "__pycache__", ".ruff_cache", ".eslintcache"}
 
 
@@ -36,7 +37,7 @@ def main() -> int:
     if verb not in VERBS:
         print(f"✗ shared/run takes {' or '.join(v for v in VERBS if v != 'run')} or nothing, not {verb}")
         return 2
-    return subprocess.run([str(HERE / stamp["layer"] / verb), *sys.argv[2:]], check=False).returncode
+    return subprocess.run([str(HERE / ("security" if verb in SECURITY_VERBS else stamp["layer"]) / verb), *sys.argv[2:]], check=False).returncode
 
 
 if __name__ == "__main__":
