@@ -6,6 +6,8 @@ inputs:
     required: true
   private-key:
     required: true
+  prod-database-url:
+    required: false
 
 runs:
   using: composite
@@ -20,9 +22,14 @@ runs:
 
     - id: stage-env
       shell: bash
+      env:
+        PROD_DATABASE_URL: ${{ inputs.prod-database-url }}
       run: |
         printf 'FEED=%s\n' "$GITHUB_ACTION_PATH/feed.jq" >>"$GITHUB_ENV"
         printf 'HOOK_LOG_DIR=%s\n' "$RUNNER_TEMP/hook-logs" >>"$GITHUB_ENV"
+        if [[ -n $PROD_DATABASE_URL ]]; then
+          printf 'PROD_DATABASE_URL=%s\n' "$PROD_DATABASE_URL" >>"$GITHUB_ENV"
+        fi
 
     - id: skills-app
       continue-on-error: true
