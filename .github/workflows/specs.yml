@@ -115,6 +115,7 @@ jobs:
         with:
           client-id: ${{ vars.CORE_APP_CLIENT_ID }}
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          prod-database-url: ${{ secrets.PROD_DATABASE_URL }}
 
       - id: git-config
         working-directory: tree
@@ -233,6 +234,7 @@ jobs:
         with:
           client-id: ${{ vars.CORE_APP_CLIENT_ID }}
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          prod-database-url: ${{ secrets.PROD_DATABASE_URL }}
 
       - id: sources
         timeout-minutes: 6
