@@ -230,6 +230,19 @@ describe("bin/schedule runs a spec from its first cut to its landing, one slice 
     expect(run.progress()?.slices.find(({ id }) => id === "reader")).toMatchObject({ state: "merged", tries: 1 });
   });
 
+  it("resumes an out slice's builder with its reason when the owner takes stuck off, so a fixed cause lets the spec finish (Lumaria#1661)", () => {
+    const merged = { ...sliceOf("seam"), state: "merged", tries: 1, fix: false, session: "session-seam-1" };
+    const out = { ...sliceOf("wall"), state: "out", tries: 1, fix: false, session: "session-wall-1", stopped: "wall hit a wall" };
+    const progress = `## Spec run\n\n<!-- progress: ${JSON.stringify({ fixPass: true, slices: [merged, out] })} -->\n`;
+    const run = scheduling({ onSpec: ["Build seam"], comments: [machineComment(7, progress)], cuts: [[]] });
+
+    expect(run.run().status).toBe(0);
+    const again = run.built("wall");
+    expect(optionOf(again, "--resume")).toBe("session-wall-1");
+    expect(optionOf(again, "--told")).toContain("wall hit a wall");
+    expect(stateOf(run)).toEqual({ seam: "merged", wall: "merged" });
+  });
+
   it("counts a slice's tries as the builds that came back, so a rerun that finds it hired, even in a hire that only lands its answer again, neither adds a try nor gives one back", () => {
     const relanding = { ...sliceOf("wall"), state: "hired", tries: 1, fix: false, session: "session-wall-1", stopped: "wall hit a wall" };
     const progress = `## Spec run\n\n<!-- progress: ${JSON.stringify({ fixPass: false, slices: [relanding] })} -->\n`;
