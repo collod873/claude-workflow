@@ -81,7 +81,7 @@ runs:
         ln -s "$RUNNER_TEMP/agent-skills/skills" "$config/skills"
         mkdir -p "$HOME/.claude/projects"
         ln -s "$HOME/.claude/projects" "$config/projects"
-        jq 'del(.hooks) | .env.CLAUDE_CODE_TMPDIR = env.TMPDIR' "$config/settings.json" >"$RUNNER_TEMP/unregistered.json"
+        jq 'del(.hooks) | .env.CLAUDE_CODE_TMPDIR = env.TMPDIR | .env.CLAUDE_WORKFLOW_ROOT = env.GITHUB_WORKSPACE' "$config/settings.json" >"$RUNNER_TEMP/unregistered.json"
         mv "$RUNNER_TEMP/unregistered.json" "$config/settings.json"
         python3 "$RUNNER_TEMP/agent-hooks/hookcheck.py" --root "$RUNNER_TEMP/agent-hooks" --settings "$config/settings.json" --write-settings --graded
         printf 'CLAUDE_CONFIG_DIR=%s\n' "$config" >>"$GITHUB_ENV"
