@@ -26,11 +26,12 @@ function setup(root) {
     .update(manifest)
     .digest("hex");
   const keyPath = join(root, KEY);
-  if (existsSync(keyPath) && readFileSync(keyPath, "utf8") === wanted) return 0;
-  if (!ran(root, installer.install)) return 1;
+  if (!existsSync(keyPath) || readFileSync(keyPath, "utf8") !== wanted) {
+    if (!ran(root, installer.install)) return 1;
+    mkdirSync(join(root, "node_modules"), { recursive: true });
+    writeFileSync(keyPath, wanted);
+  }
   if (JSON.parse(manifest).scripts?.codegen && !ran(root, installer.codegen)) return 1;
-  mkdirSync(join(root, "node_modules"), { recursive: true });
-  writeFileSync(keyPath, wanted);
   return 0;
 }
 
