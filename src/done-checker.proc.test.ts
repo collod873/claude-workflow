@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { heard, type Said, workflowJobs } from "./scenarios.ts";
 import { HELD, OWNER } from "./spelled.ts";
-import { DONE_CHECK_POSTED, doneChecking, specWith, TRYING_SESSION } from "./done-checker.part.ts";
+import { BUG_FILED, DONE_CHECK_POSTED, doneChecking, specWith, TRYING_SESSION } from "./done-checker.part.ts";
 import { OUT_OF_TIME, REPLIES_CAP } from "./done-checker.ts";
 
 const SENTENCES = ["file a spec and see its first wave show up under it", "open any ticket it filed and see my own words copied over", "see the spec close itself once every sentence held"];
@@ -40,18 +40,28 @@ describe("bin/done-check tries a spec's sentences and closes it only when every 
   });
 });
 
-describe("bin/done-check leaves the spec open unless every sentence held (#1023)", () => {
-  it("posts the check and leaves the spec open when one sentence did not hold", () => {
+describe("bin/done-check files each sentence that did not hold as a bug and closes the spec, where #1689 sat stuck 78 min on a second check of the same code", () => {
+  it("files the miss as a bug quoting what the checker saw, with the sentence as its done, then closes the spec", () => {
     const tries = [
       { sentence: 1, outcome: "held", tried: "saw the first wave under it" },
-      { sentence: 2, outcome: "missed", tried: "opened a ticket it filed" },
+      { sentence: 2, outcome: "missed", tried: "opened a ticket it filed and its Why was empty" },
       { sentence: 3, outcome: "held", tried: "saw it close" },
     ];
     const checked = doneChecking({ body: specWith(SENTENCES), tries });
 
-    expect(heard(checked.run())).toEqual({ status: 0, stderr: "", lines: [`done-check: #974 did not hold sentence 2, so it stays open: ${DONE_CHECK_POSTED}`] });
-    expect(checked.comments()[0]).toContain(`2. **Did not hold**: ${SENTENCES[1]}\n   opened a ticket it filed`);
-    expect(checked.closes()).toEqual([]);
+    expect(heard(checked.run())).toEqual({
+      status: 0,
+      stderr: "",
+      lines: [`done-check: #974 did not hold sentence 2, filed as ${BUG_FILED}, and is closed: ${DONE_CHECK_POSTED}`],
+    });
+    const created = checked.created();
+    expect(created).toHaveLength(1);
+    const body = created[0]?.[created[0].indexOf("--body") + 1] ?? "";
+    expect(body).toContain("Follow-up of #974: its done check found this did not hold.");
+    expect(body).toContain("> opened a ticket it filed and its Why was empty");
+    expect(body).toContain(`## Done when\n\n- ${SENTENCES[1]}`);
+    expect(created[0]).toContain("bug");
+    expect(checked.closes()).toEqual([["issue", "close", "974", "--reason", "completed"]]);
   });
 });
 
@@ -128,25 +138,6 @@ describe("bin/done-check refuses before spending a model (#1023)", () => {
   });
 });
 
-describe("bin/done-check leaves a miss to the scheduler, which owns the one fix pass and the second miss (ADR-0013)", () => {
-  const missing = [
-    { sentence: 1, outcome: "held", tried: "saw the first wave under it" },
-    { sentence: 2, outcome: "missed", tried: "opened a ticket and found no Out of Scope" },
-    { sentence: 3, outcome: "owner", tried: "open the spec on your phone" },
-  ];
-
-  it("posts what it saw, so the fix pass's slicer reads the cause, and marks, closes and slices nothing, even on a second miss", () => {
-    const checked = doneChecking({ body: specWith(SENTENCES), tries: missing, said: ["## Done check\n\n2. **Did not hold**: the first miss\n\n<!-- fix-wave -->"] });
-
-    expect(heard(checked.run())).toEqual({ status: 0, stderr: "", lines: [`done-check: #974 did not hold sentence 2, so it stays open: ${DONE_CHECK_POSTED}`] });
-    expect(checked.comments()).toHaveLength(1);
-    expect(checked.comments()[0]).toContain(`2. **Did not hold**: ${SENTENCES[1]}\n   opened a ticket and found no Out of Scope`);
-    expect(checked.comments()[0]).not.toContain("Closed with sentence");
-    expect(checked.marked()).toEqual(["974 checking"]);
-    expect(checked.closes()).toEqual([]);
-  });
-});
-
 describe("bin/done-check reads the owner's reply to a sentence it put to him (#1038)", () => {
   it("hands the model the comments since the last ## Done check, and none from before it", () => {
     const said: Said[] = [
@@ -205,7 +196,7 @@ describe("bin/done-check, out of time, answers with what it tried, so a landed s
     const tries = SENTENCES.map((_, at) => ({ sentence: at + 1, outcome: at === 2 ? "missed" : "held", tried: at === 2 ? "ran out of time before trying it" : "saw it" }));
     const checked = doneChecking({ body: specWith(SENTENCES), tries, triesPastCap: true });
 
-    expect(heard(checked.run())).toEqual({ status: 0, stderr: "", lines: [`done-check: #974 did not hold sentence 3, so it stays open: ${DONE_CHECK_POSTED}`] });
+    expect(heard(checked.run())).toEqual({ status: 0, stderr: "", lines: [`done-check: #974 did not hold sentence 3, filed as ${BUG_FILED}, and is closed: ${DONE_CHECK_POSTED}`] });
     expect(checked.hired()[checked.hired().indexOf("--resume") + 1]).toBe(TRYING_SESSION);
     expect(checked.handed()).toBe(OUT_OF_TIME);
     expect(checked.comments()[0]).toContain(`3. **Did not hold**: ${SENTENCES[2]}\n   ran out of time before trying it`);
@@ -241,9 +232,9 @@ describe("bin/done-check settles a sentence about its own close by what this run
   it("posts the self sentence as held and names the other sentence's miss alone", () => {
     const checked = doneChecking({ body: specWith(SENTENCES), tries: selfTries("missed") });
 
-    expect(heard(checked.run())).toEqual({ status: 0, stderr: "", lines: [`done-check: #974 did not hold sentence 2, so it stays open: ${DONE_CHECK_POSTED}`] });
-    expect(checked.comments()[0]).toContain(`3. **Held**: ${SENTENCES[2]}\n   This run names each other sentence that did not hold, and why.`);
-    expect(checked.closes()).toEqual([]);
+    expect(heard(checked.run())).toEqual({ status: 0, stderr: "", lines: [`done-check: #974 did not hold sentence 2, filed as ${BUG_FILED}, and is closed: ${DONE_CHECK_POSTED}`] });
+    expect(checked.comments()[0]).toContain(`3. **Held**: ${SENTENCES[2]}\n   This run files each other sentence that did not hold as a bug, and closed the spec.`);
+    expect(checked.closes()).toHaveLength(1);
     expect(checked.marked()).toEqual(["974 checking"]);
   });
 

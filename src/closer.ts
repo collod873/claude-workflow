@@ -11,13 +11,14 @@ const { GITHUB_SERVER_URL: server, GITHUB_REPOSITORY: repository, GITHUB_RUN_ID:
 const thisRun = server && repository && runId ? `${server}/${repository}/actions/runs/${runId}` : "a run outside Actions";
 
 const ended = (ticket: string, held: string) => ticketState(ticket, `so #${held} is not woken`);
+const hasEnded = (state: string) => state.startsWith("CLOSED") || state.startsWith("MERGED");
 const stillWaits = (ticket: string, open: string[]) => `; #${ticket} still waits for ${open.map((waited) => `#${waited}`).join(", ")}`;
 
 function openWaitedOn(ticket: string, body: string, known: string[]): string[] {
-  return waitsOn(body).filter((waited) => waited !== ticket && !known.includes(waited) && !ended(waited, ticket).startsWith("CLOSED"));
+  return waitsOn(body).filter((waited) => waited !== ticket && !known.includes(waited) && !hasEnded(ended(waited, ticket)));
 }
 
-const howEnded = (states: { number: string; state: string }[]) => states.map(({ number, state }) => `#${number} ${state === "CLOSED COMPLETED" ? "merged" : "closed unbuilt"}`).join(", ");
+const howEnded = (states: { number: string; state: string }[]) => states.map(({ number, state }) => `#${number} ${state === "CLOSED COMPLETED" || state.startsWith("MERGED") ? "merged" : "closed unbuilt"}`).join(", ");
 
 const dependedOnClosed = (ticket: string) => `Every ticket #${ticket} depends on has closed:`;
 
@@ -25,7 +26,7 @@ function wokenFromSplit(parent: string, body: string, split: string, said = spli
   const pieces = ((NAMED.exec(split.slice(said.length).trimStart())?.[0] ?? "").match(/#\d+/g) ?? []).map((named) => named.slice(1));
   if (pieces.length === 0) return `; #${parent} waits, and no split record names what for`;
   const states = pieces.map((piece) => ({ piece, state: ended(piece, parent) }));
-  const open = [...states.filter(({ state }) => !state.startsWith("CLOSED")).map(({ piece }) => piece), ...openWaitedOn(parent, body, pieces)];
+  const open = [...states.filter(({ state }) => !hasEnded(state)).map(({ piece }) => piece), ...openWaitedOn(parent, body, pieces)];
   if (open.length > 0) return stillWaits(parent, open);
   const how = howEnded(states.map(({ piece, state }) => ({ number: piece, state })));
   commentOnTicket(parent, `${closedLine} ${how}. #${parent} builds now.\n\nRun: ${thisRun}`, gh);
@@ -54,7 +55,7 @@ function wokenAtFaultOrigin(fault: string, body: string): string {
   const filed = [...new Set(Array.from(parked.matchAll(filedHere(closedIn)), ([, number]) => number ?? ""))];
   if (!filed.includes(fault)) return "";
   const states = filed.map((number) => ({ number, state: ended(number, at) }));
-  const open = states.filter(({ state }) => !state.startsWith("CLOSED")).map(({ number }) => `#${number}`);
+  const open = states.filter(({ state }) => !hasEnded(state)).map(({ number }) => `#${number}`);
   if (open.length > 0) return `; ${at} still waits for ${open.join(", ")}`;
   const how = howEnded(states);
   commentOnTicket(origin, `${filedClosed(origin)} ${how}. #${origin} builds now.\n\nRun: ${thisRun}`, inOrigin);

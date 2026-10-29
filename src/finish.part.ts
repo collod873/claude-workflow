@@ -3,7 +3,6 @@ import { join } from "node:path";
 import { DIFF_CAP, LIST_CAP, TAIL_CAP } from "./brief.ts";
 import { specWith } from "./done-checker.part.ts";
 import { BRIEFS_CAP, onTheCode, onTheSpec, SLICE_CAP } from "./finish.ts";
-import { FINDINGS_CAP } from "./slicer.ts";
 import { authored, BIN, execute, ghArgv, git, key, nulSplit, plant, type Said, scratch, script } from "./scenarios.ts";
 import { PAUSED } from "./spelled.ts";
 import { declareStage, HANDED_ON } from "./stages.ts";
@@ -143,16 +142,16 @@ declareStage({
     {
       name: "reviewer on the code standard",
       file: "src/finish.ts",
-      cap: LIST_CAP + DIFF_CAP + TAIL_CAP + FINDINGS_CAP + 2 * SLICE_CAP + 2 * HANDED_ON,
-      slots: [...SLOTTED, "red", "findings"],
-      build: (filled) => onTheCode(changesOf(filled), { spec: "", red: { verdict: "", failed: filled.red ?? "" }, commitlint: true, findings: filled.findings ?? "" }),
+      cap: LIST_CAP + DIFF_CAP + TAIL_CAP + 2 * SLICE_CAP + 2 * HANDED_ON,
+      slots: [...SLOTTED, "red"],
+      build: (filled) => onTheCode(changesOf(filled), { spec: "", red: { verdict: "", failed: filled.red ?? "" }, commitlint: true }),
     },
     {
       name: "reviewer on the spec",
       file: "src/finish.ts",
-      cap: SPEC_CAP + LIST_CAP + DIFF_CAP + BRIEFS_CAP + FINDINGS_CAP + 2 * HANDED_ON,
-      slots: ["commits", "diff", "stat", "title", "body", "briefs", "findings"],
-      build: (filled) => onTheSpec(changesOf(filled), { spec: "", title: filled.title ?? "", body: filled.body ?? "", commitlint: true, briefs: filled.briefs ?? "", findings: filled.findings ?? "" }),
+      cap: SPEC_CAP + LIST_CAP + DIFF_CAP + BRIEFS_CAP + 2 * HANDED_ON,
+      slots: ["commits", "diff", "stat", "title", "body", "briefs"],
+      build: (filled) => onTheSpec(changesOf(filled), { spec: "", title: filled.title ?? "", body: filled.body ?? "", commitlint: true, briefs: filled.briefs ?? "" }),
     },
   ],
   scenarios: [

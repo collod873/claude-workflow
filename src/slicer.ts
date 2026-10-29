@@ -1,5 +1,4 @@
 import { capped, LIST_CAP, NO_EM_DASH, TICKET_CAP } from "./brief.ts";
-import { lastDoneCheck, missesOf } from "./done-checker.ts";
 import { commentOnTicket, gh, gitRead, mark, OWNER, readOrStop, STUCK } from "./post.ts";
 import { briefOf, MOST_BUILDERS, type Progress, progressOn, specBranch } from "./scheduler.ts";
 import { SLICING, SPEC } from "./spelled.ts";
@@ -16,7 +15,6 @@ const stoppedAt = stopsOf({
 const ROUNDS_BACK = 2;
 export const BUILT_CAP = 8 * 1024;
 export const SLICES_CAP = 16 * 1024;
-export const FINDINGS_CAP = SPEC_CAP;
 export const SLICE_ID = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
 export interface Slice {
@@ -51,13 +49,12 @@ const ANSWERS = {
   additionalProperties: false,
 };
 
-type Cut = "first" | "fix" | "replan";
+type Cut = "first" | "replan";
 
 export interface Handed {
   cut: Cut;
   slices: string;
   built: string;
-  findings?: string | undefined;
 }
 
 const WATCHED = "Read the repo as you need. No one is watching and no one will answer a question: where the spec is silent, choose, and say what you chose in the slice's `why`.";
@@ -66,23 +63,14 @@ const SLICING_IS = `Each slice after the seams is one tracer bullet through the 
 
 const NOT_CUT_AGAIN = "Not cut again yet";
 
-const FIXING = "The spec landed and these sentences did not hold; the slices marked `fix pass` are cut to make them hold.";
-
-const CUTS: Record<Cut, { lead: string; findings: string[]; end: string }> = {
+const CUTS: Record<Cut, { lead: string; end: string }> = {
   first: {
     lead: "Cut this filed spec's first slices. Cut the seams first: the shared code other slices plug into, named in the words of the repo's `CONTEXT.md` where it has one. Then cut each other slice you can already plan without guessing at a name or a file a seam will settle; leave the rest for a later slicer, who reads them off the branch as built.",
-    findings: [],
     end: "Cut the spec whole: every story and every sentence it asks for lives in some slice's `done`, now or once a later slicer cuts it, or in a `why` as what you ruled out and the spec line that rules it out. Answer no slice only when main already does the whole spec: the spec then stops for its owner.",
   },
   replan: {
     lead: `The spec has slices already. Read the integration branch as built, in the repo you are in, and the slices still in flight, then cut each slice now at its last responsible moment: every name and file it needs is on the branch or settled by a slice in flight. A slice already cut stands, so cut none twice. What a partial slice left, marked \`${NOT_CUT_AGAIN}\`, is yours to cut now, as one slice or more naming it in \`leftOf\`. An \`out\` slice is one whose builder answered \`stuck\`, or stopped on both its tries; it waits on the owner, so block no new slice on it.`,
-    findings: [FIXING],
     end: "Answer no slice when nothing is left to cut: once every slice has merged, the spec runs its full check, two reviewers, `bin/land` and its done check.",
-  },
-  fix: {
-    lead: "The spec landed and its done check found sentences that did not hold. This is the spec's one fix pass, on a fresh integration branch off main. Each finding below is one place the done check saw a sentence break. Make each sentence hold whole: find in the code every place it reaches, the stored copies of the same data included, and cut the slices that make all of them hold.",
-    findings: [],
-    end: "Cut at least one.",
   },
 };
 
@@ -106,7 +94,6 @@ export function handedOn(title: string, body: string, handed: Handed): string {
     capped(handed.built, BUILT_CAP) || "(nothing built yet)",
     "## The slices so far",
     capped(handed.slices, SLICES_CAP) || "(none)",
-    ...(handed.findings === undefined ? [] : ["## The done check's findings", ...cut.findings, capped(handed.findings, FINDINGS_CAP)]),
     "## Your answer",
     `\`slices\`: each new slice. Code checks each one as the brief its builder gets, \`why\` under \`## Why\` and \`done\` under \`## Done when\`, with the spec's Out of Scope added; that brief must fit the builder's brief cap of ${TICKET_CAP} bytes, so split a slice that does not.`,
     fields.map((field) => `- ${field}`).join("\n"),
@@ -124,12 +111,12 @@ const cutAgainAs = (progress: Progress, id: string) => progress.slices.filter(({
 
 function slicesSoFar(progress: Progress): string {
   return progress.slices
-    .map(({ id, title, state, fix, blockedBy, done, left }) => {
+    .map(({ id, title, state, blockedBy, done, left }) => {
       const after = blockedBy.length === 0 ? "" : ` Blocked by ${blockedBy.map(ticked).join(", ")}.`;
       const again = cutAgainAs(progress, id);
       const leftover = left === undefined ? "" : ` It left: ${left} ${again.length === 0 ? `${NOT_CUT_AGAIN}.` : `Cut again as ${again.map(ticked).join(", ")}.`}`;
       const doing = state === "merged" ? "" : `\n  Done when: ${done.join(" ")}`;
-      return `- \`${id}\` (${state}${fix ? ", fix pass" : ""}): ${title}.${after}${leftover}${doing}`;
+      return `- \`${id}\` (${state}): ${title}.${after}${leftover}${doing}`;
     })
     .join("\n");
 }
@@ -170,10 +157,9 @@ function leftRefusals(answer: Slice[], progress: Progress): string[] {
   return [...left, ...twice];
 }
 
-function sliceRefusals(answer: Slice[], progress: Progress, body: string, cut: Cut): string[] {
+function sliceRefusals(answer: Slice[], progress: Progress, body: string): string[] {
   const known = new Set(progress.slices.map(({ id }) => id));
   const given = answer.map(({ id }) => id);
-  const empty = cut === "fix" && answer.length === 0 ? ["the fix pass carries no slice, so nothing would make the missed sentences hold"] : [];
   const each = answer.flatMap((slice, at) => {
     const named = `slice ${at + 1}, \`${slice.id}\`,`;
     const id = !SLICE_ID.test(slice.id) ? [`${named} has an id that is not kebab-case`] : known.has(slice.id) ? [`${named} reuses the id of a slice already cut`] : given.indexOf(slice.id) !== at ? [`${named} has the id of an earlier slice in this answer`] : [];
@@ -183,7 +169,7 @@ function sliceRefusals(answer: Slice[], progress: Progress, body: string, cut: C
     const over = bytes > TICKET_CAP ? [`${named} would brief its builder in ${bytes} bytes, over the brief cap of ${TICKET_CAP}: split it`] : [];
     return [...id, ...blocked, ...over, ...ticketRefusals(brief).map((refusal) => `${named} ${refusal}`)];
   });
-  return [...empty, ...each, ...leftRefusals(answer, progress), ...blockedCycle(answer)];
+  return [...each, ...leftRefusals(answer, progress), ...blockedCycle(answer)];
 }
 
 function isAnswer(answer: unknown): answer is { slices: Slice[] } {
@@ -208,9 +194,8 @@ function sliced(spec: string) {
     ready: (asked) => {
       if (!asked.labels.has(SPEC)) return stoppedAt("notSpec", `${said} is not a spec, so nothing sliced it`);
       const { progress } = progressOn(spec);
-      const cut: Cut = progress.fixPass && !progress.slices.some(({ fix }) => fix) ? "fix" : progress.slices.length === 0 ? "first" : "replan";
-      const findings = progress.fixPass ? missesOf(lastDoneCheck(spec, `the comments on #${spec} could not be read, so no model was spent`) ?? "") : undefined;
-      return { carrying: { progress, handed: { cut, slices: slicesSoFar(progress), built: builtSoFar(spec), findings } }, tried: progress.fixPass };
+      const cut: Cut = progress.slices.length === 0 ? "first" : "replan";
+      return { carrying: { progress, handed: { cut, slices: slicesSoFar(progress), built: builtSoFar(spec) } } };
     },
   });
   if (typeof opening !== "object") return opening;
@@ -221,7 +206,7 @@ function sliced(spec: string) {
     if (!isAnswer(spent.answer)) return stoppedAt("modelRun", `${said} ended red, the slicer gave no slices`);
     const { slices } = spent.answer;
     if (handed.cut === "first" && slices.length === 0) return calledOwner(spec, "uncut", "its first cut carried no slice, so nothing of the spec would be built: main may already do all of it, or the spec may say too little to cut");
-    const refusals = sliceRefusals(slices, progress, asked.body, handed.cut);
+    const refusals = sliceRefusals(slices, progress, asked.body);
     if (refusals.length === 0) {
       console.error(`${said} cut ${slices.length} ${slices.length === 1 ? "slice" : "slices"}${slices.length === 0 ? "" : `: ${slices.map(({ id }) => id).join(", ")}`}`);
       console.log(JSON.stringify({ slices }));

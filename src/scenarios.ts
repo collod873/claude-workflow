@@ -144,8 +144,8 @@ export async function starts(file: string, gated: string, event: IssueEvent): Pr
   const gate = gateOf(file, gated);
   const { labels, ...rest } = event;
   if (!holds(jobs[gate]?.if ?? "true", rest)) return false;
-  const seen = `${file} ${gate} ${JSON.stringify([labels, rest.action, rest.label, rest.head, rest.state])}`;
-  const heard = HELD.get(seen) ?? labelledOutputs(labelledStep(file, gate), answeredOnce(), { ...rest, labels, sender: OWNER });
+  const seen = `${file} ${gate} ${JSON.stringify([labels, rest.sender, rest.action, rest.label, rest.head, rest.state])}`;
+  const heard = HELD.get(seen) ?? labelledOutputs(labelledStep(file, gate), answeredOnce(), { ...rest, labels });
   HELD.set(seen, heard);
   const { failed, outputs } = await heard;
   if (failed || Object.keys(outputs).length === 0) throw new Error(`the labelled step of ${file} ended red on ${JSON.stringify(labels)}`);
@@ -179,6 +179,7 @@ export function holds(
     event = "issues",
     inputs = {},
     state = "open",
+    merged = false,
   }: {
     labels?: string[] | undefined;
     steps?: Record<string, StepOutcome>;
@@ -193,11 +194,12 @@ export function holds(
     event?: string;
     inputs?: Record<string, string>;
     state?: string;
+    merged?: boolean;
   },
 ): boolean {
   const github = {
     event_name: event,
-    event: { action, label: { name: label }, issue: { state, body, labels: labels.map((name) => ({ name })) }, sender: { login: sender }, inputs },
+    event: { action, label: { name: label }, issue: { state, body, labels: labels.map((name) => ({ name })) }, pull_request: { merged }, sender: { login: sender }, inputs },
     head_ref: head,
     repository_owner: OWNER,
   };

@@ -13,9 +13,8 @@ const REFUSAL = "land: the full check went red on the commit, so nothing was pus
 const REFUSES_ONCE = `[ -f ../refused ] || { touch ../refused; printf '%s\\n' '${REFUSAL}' >&2; exit 1; }`;
 const ALWAYS_REFUSES = `printf '%s\\n' '${REFUSAL}' >&2\nexit 1`;
 
-const SLICED = (slices: { id: string; title: string; fix?: boolean }[], fixPass = false, landed?: string) =>
-  `## Spec run\n\n<!-- progress: ${JSON.stringify({ fixPass, landed, slices: slices.map(({ id, title, fix = false }) => ({ id, title, why: `${title} is why ${id} was cut`, done: [`${id} shows on the branch`], blockedBy: [], state: "merged", tries: 1, fix })) })} -->`;
-const MISSED = "## Done check\n\n1. **Did not hold**: see each slice's file on main\n   found no zone file on main";
+const SLICED = (slices: { id: string; title: string }[], landed?: string) =>
+  `## Spec run\n\n<!-- progress: ${JSON.stringify({ landed, slices: slices.map(({ id, title }) => ({ id, title, why: `${title} is why ${id} was cut`, done: [`${id} shows on the branch`], blockedBy: [], state: "merged", tries: 1 })) })} -->`;
 
 describe("bin/finish reviews a spec's integration branch on the spec, then on the code standard, lands it once and runs the done check (ADR-0013)", () => {
   it("hires one reviewer on the spec over the whole branch, then runs the full check, then one on the code standard reading the first's fix, lands with bin/land --spec, and prints landed and missed last", () => {
@@ -62,14 +61,14 @@ describe("bin/finish reviews a spec's integration branch on the spec, then on th
     expect(finished.approved()).toEqual(["On the spec: reason 1\n\nOn the code standard: reason 2"]);
   });
 
-  it("prints the sentences the done check missed and leaves the spec open for the scheduler's fix pass, still exiting 0 since it landed and the check ran", () => {
+  it("prints the sentences the done check missed and filed as bugs, with the spec closed, exiting 0 since it landed and the check ran", () => {
     const finished = finishing({ sentences: SENTENCES, tries: [{ sentence: 1, outcome: "held", tried: "saw it" }, { sentence: 2, outcome: "missed", tried: "found no zone file" }] });
 
     const ran = heard(finished.run());
 
     expect(ran.status, ran.stderr).toBe(0);
     expect(ran.lines.slice(-2)).toEqual(["landed=9974", "missed=2"]);
-    expect(finished.calls().filter((args) => args[1] === "close")).toEqual([]);
+    expect(finished.calls().filter((args) => args[1] === "close")).toEqual([["issue", "close", "974", "--reason", "completed"]]);
     expect(finished.marked()).toEqual(["974 checking"]);
   });
 
@@ -97,7 +96,7 @@ describe("bin/finish reviews a spec's integration branch on the spec, then on th
   });
 
   it("runs the done check alone on a checkout of main, reviewing and landing nothing, when the progress comment records the spec landed and its done check unfinished", () => {
-    const finished = finishing({ said: [SLICED([{ id: "tenant-time-zone", title: "Store each tenant's time zone" }], false, "9974")] });
+    const finished = finishing({ said: [SLICED([{ id: "tenant-time-zone", title: "Store each tenant's time zone" }], "9974")] });
     git(finished.session, "update-ref", "refs/remotes/origin/main", git(finished.session, "commit-tree", "HEAD^{tree}", "-p", "origin/main", "-p", "HEAD", "-m", "Merge the spec"));
 
     const ran = heard(finished.run());
@@ -111,20 +110,6 @@ describe("bin/finish reviews a spec's integration branch on the spec, then on th
     expect(finished.log("-1", "--format=%s")).toBe("Merge the spec");
     expect(git(finished.session, "symbolic-ref", "--short", "HEAD")).toBe("spec/974");
     expect(finished.calls().filter((args) => args[1] === "close")).toEqual([["issue", "close", "974", "--reason", "completed"]]);
-  });
-
-  it("tells both reviewers of the fix pass that the spec landed and this branch holds only the fix, with the done check's findings and the fix pass's slices alone", () => {
-    const finished = finishing({ said: [SLICED([{ id: "tenant-time-zone", title: "Store each tenant's time zone" }, { id: "zone-shown", title: "Show the zone file on main", fix: true }], true), MISSED] });
-
-    expect(finished.run().status).toBe(0);
-    const [spec = "", code = ""] = finished.handed();
-    for (const prompt of [spec, code]) {
-      expect(prompt).toContain("the spec's one fix pass");
-      expect(prompt).toContain("found no zone file on main");
-      expect(prompt).not.toContain("Builders built this spec slice by slice");
-    }
-    expect(spec).toContain("`zone-shown`: Show the zone file on main");
-    expect(spec).not.toContain("Store each tenant's time zone");
   });
 
   it("lists the newest commits when the commit list is over its cap, and says git log reads the rest", () => {
@@ -368,18 +353,6 @@ describe("bin/finish stands down on a held spec, so a pause holds the landing to
     expect(ran.lines).toEqual([`finish: #974 is marked ${held}, so its reviewed branch does not land`, "landed=", "missed="]);
     expect(finished.handed()).toHaveLength(2);
     expect(finished.landed()).toEqual([]);
-  });
-
-  it("runs the done check alone on main when a fix pass found its work already there, so the spec closes on its first landing (Lumaria#1661)", () => {
-    const fixed = SLICED([{ id: "timesheet-week", title: "Timesheets render again", fix: true }], true).replace('"fixPass":true', '"fixPass":true,"firstLanding":"9974"');
-    const finished = finishing({ slices: [], said: [fixed] });
-
-    const ran = heard(finished.run());
-
-    expect(ran.status, ran.stderr).toBe(0);
-    expect(ran.lines.slice(-2)).toEqual(["landed=9974", "missed="]);
-    expect(finished.landed()).toEqual([]);
-    expect(finished.handed().map((prompt) => prompt.slice(0, 17))).toEqual(["Try each sentence"]);
   });
 
   it("refuses an integration branch holding nothing past main, hiring nothing", () => {

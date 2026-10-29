@@ -5,9 +5,8 @@ import { ANSWERED, slicing, SLICING_SESSION } from "./slicer.part.ts";
 
 const QUOTED = 'The spec asks: "a spec is filed once".';
 const slice = (id: string, blockedBy: string[] = [], why = QUOTED, leftOf: string[] = []) => ({ id, title: `Build ${id}`, why, decisions: [], done: [`${id} holds.`], blockedBy, leftOf });
-const progressed = (slices: object[], fixPass = false) => machineComment(3, `## Spec run\n\n<!-- progress: ${JSON.stringify({ fixPass, slices })} -->\n`);
-const tracked = (id: string, state: string, extra: object = {}) => ({ ...slice(id), state, tries: 1, fix: false, ...extra });
-const MISSED = "2. **Did not hold**: open a ticket it filed\n   `bin/slice` still files tickets.";
+const progressed = (slices: object[]) => machineComment(3, `## Spec run\n\n<!-- progress: ${JSON.stringify({ slices })} -->\n`);
+const tracked = (id: string, state: string, extra: object = {}) => ({ ...slice(id), state, tries: 1, ...extra });
 
 describe("bin/slice answers the scheduler with the spec's next slices, never filing a ticket (#1509, ADR-0013)", () => {
   it("prints the slices as one JSON line on stdout, says one line on stderr, and marks the spec slicing before hiring opus with the slices schema", () => {
@@ -57,36 +56,6 @@ describe("bin/slice answers the scheduler with the spec's next slices, never fil
     expect(handed).toContain("- `reader` (hired): Build reader. Blocked by `seam`.\n  Done when: reader holds.");
   });
 
-  it("hands the fix pass's first slicer the newest done check's findings, asks it for at least one slice and never for none, marks its try, and sends back a cut with no slice", () => {
-    const sliced = slicing({ comments: [machineComment(1, "## Done check\n\nAn older run."), progressed([tracked("seam", "merged")], true), machineComment(4, `## Done check\n\n${MISSED}\n`)], answers: [{ slices: [] }, { slices: [slice("mend")] }] });
-
-    const ran = sliced.run();
-
-    expect(ran.status).toBe(0);
-    expect(JSON.parse(ran.stdout)).toEqual({ slices: [slice("mend")] });
-    const [first = "", again = ""] = sliced.handed();
-    expect(first).toContain("This is the spec's one fix pass");
-    expect(first).toContain("Make each sentence hold whole");
-    expect(first).toContain(MISSED);
-    expect(first).not.toContain("An older run.");
-    expect(first).toContain("Cut at least one.");
-    expect(first).not.toContain("Answer no slice");
-    expect(again).toContain("the fix pass carries no slice");
-    expect(sliced.marked()).toEqual([`${SPEC_ISSUE} slicing --try before the model`]);
-  });
-
-  it("hands a later slicer of the fix pass the re-plan rules beside the findings, never the fix pass's opening, and lets it answer none", () => {
-    const sliced = slicing({ comments: [progressed([tracked("seam", "merged"), tracked("mend", "hired", { fix: true })], true), machineComment(4, `## Done check\n\n${MISSED}\n`)], answers: [{ slices: [] }] });
-
-    expect(sliced.run()).toMatchObject({ status: 0, stdout: '{"slices":[]}\n' });
-    const [handed = ""] = sliced.handed();
-    expect(handed).toContain("cut each slice now at its last responsible moment");
-    expect(handed).toContain(MISSED);
-    expect(handed).toContain("- `mend` (hired, fix pass): Build mend.");
-    expect(handed).toContain("Answer no slice when nothing is left");
-    expect(handed).not.toContain("This is the spec's one fix pass");
-  });
-
   it("has each slicer cut again, once, what a partial slice left, naming it in leftOf, and sends back a cut that leaves it or cuts it twice", () => {
     const sliced = slicing({
       comments: [progressed([tracked("jobs", "merged", { left: "Invoices still show UTC." }), tracked("clock", "merged", { left: "The Today screen." }), tracked("today", "cut", { leftOf: ["clock"] })])],
@@ -109,18 +78,6 @@ describe("bin/slice answers the scheduler with the spec's next slices, never fil
 
     expect(sliced.run().status).toBe(0);
     expect(sliced.handed()[0]).toContain("- `seam` (merged): Build seam.");
-  });
-
-  it("hands the fix pass only the done check's misses, each whole, however long the sentences that held run or whatever numbered list a try holds", () => {
-    const miss = `2. **Did not hold**: open a ticket it filed\n   I tried:\n1. **Ran** bin/slice on the spec\n2. **Read** the brief\nthe brief lost the Out of Scope at ${"collect.ts:79 ".repeat(40).trimEnd()}`;
-    const check = `## Done check\n\n1. **Held**: ${"a long sentence that held ".repeat(400)}\n   saw it\n${miss}\n3. **Put to the owner**: try it on the phone\n   open it on your phone\n`;
-    const sliced = slicing({ comments: [progressed([tracked("seam", "merged")], true), machineComment(4, check)], answers: [{ slices: [slice("mend")] }] });
-
-    expect(sliced.run().status).toBe(0);
-    const [first = ""] = sliced.handed();
-    expect(first).toContain(`## The done check's findings\n\n${miss}\n\n## Your answer`);
-    expect(first).not.toContain("a long sentence that held");
-    expect(first).not.toContain("open it on your phone");
   });
 
   it("sends back, in the same session, slices whose ids clash or are not kebab-case, that wait on no slice or on each other, or whose brief would quote nothing or overrun the builder's brief cap", () => {

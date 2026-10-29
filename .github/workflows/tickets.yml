@@ -356,7 +356,7 @@ jobs:
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
 
   close:
-    if: ${{ github.event_name == 'issues' && github.event.action == 'closed' }}
+    if: ${{ github.event.action == 'closed' && (github.event_name == 'issues' || github.event.pull_request.merged) }}
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
     env:
@@ -391,19 +391,19 @@ jobs:
         working-directory: tree
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
-          CLOSED_ISSUE: ${{ github.event.issue.number }}
+          CLOSED_ISSUE: ${{ github.event.issue.number || github.event.pull_request.number }}
           CALLED_FROM: ${{ github.workflow_ref }}
         run: '"$GITHUB_WORKSPACE/bin/close" "$CLOSED_ISSUE"'
 
       - if: ${{ failure() || cancelled() }}
         uses: ./.github/actions/call-owner
         with:
-          issue: ${{ github.event.issue.number }}
+          issue: ${{ github.event.issue.number || github.event.pull_request.number }}
           run: the close run
           token: ${{ steps.app.outputs.token }}
 
   strip:
-    if: ${{ github.event.action == 'closed' }}
+    if: ${{ github.event_name == 'issues' && github.event.action == 'closed' }}
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
     env:

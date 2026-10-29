@@ -9,6 +9,8 @@ export const DONE_CHECK_POSTED = "https://github.com/collod873/claude-workflow/i
 
 export const TRYING_SESSION = "trying-session";
 
+export const BUG_FILED = "https://github.com/collod873/claude-workflow/issues/990";
+
 export function specWith(sentences: string[]): string {
   const [head] = wellFormedSpec.split("## I'll know it works when I can");
   return `${head}## I'll know it works when I can\n\n${sentences.map((sentence) => `- [ ] ${sentence}`).join("\n")}\n`;
@@ -25,7 +27,7 @@ export function doneChecking({
   calledFrom,
   triesPastCap = false,
 }: { labels?: string[] | undefined; body?: string; tries?: { sentence: number; outcome: string; tried: string }[]; gh?: string; said?: Said[]; markRefusal?: string; contract?: string; calledFrom?: string; triesPastCap?: boolean } = {}) {
-  const comments = '[[ $1 == api ]] && { cat "$(dirname "$0")/../comments.json"; exit 0; }';
+  const comments = `[[ $1 == api ]] && { cat "$(dirname "$0")/../comments.json"; exit 0; }\n[[ $1 == issue && $2 == create ]] && { echo ${BUG_FILED}; exit 0; }`;
   const cutOff = triesPastCap ? `case "$*" in *--resume*) ;; *) printf '%s\\n' '${JSON.stringify({ type: "system", session_id: TRYING_SESSION })}'; exit 124 ;; esac\n` : "";
   const { root, argv, ...stage } = issueStage("done-check-", { title: "A spec worth trying", body, labels: labels.map((name) => ({ name })) }, { tries }, DONE_CHECK_POSTED, `${gh}\n${comments}\n`, cutOff);
   plant(root, "comments.json", authored(said));
@@ -35,6 +37,7 @@ export function doneChecking({
     ...stage,
     root,
     closes: () => argv().filter((args) => args[1] === "close"),
+    created: () => argv().filter((args) => args[1] === "create"),
     marked,
     run: (...args: string[]) => execute(join(BIN, "done-check"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}`, STAGE_MINUTES: triesPastCap ? "40" : "", ...(calledFrom === undefined ? {} : { CALLED_FROM: calledFrom }) }, args.length > 0 ? args : ["974"]),
   };

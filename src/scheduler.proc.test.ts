@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { git } from "./scenarios.ts";
-import { LANDED, MAIN_MOVES, PAUSES, machineComment, scheduling, sliceOf, SPEC_ISSUE } from "./scheduler.part.ts";
+import { KIT_STEP, LANDED, MAIN_MOVES, PAUSES, machineComment, scheduling, sliceOf, SPEC_ISSUE } from "./scheduler.part.ts";
+import { waitsOnStep } from "./builder.ts";
 
 const SPEC_BRANCH = `spec/${SPEC_ISSUE}`;
 const optionOf = (argv: string[] | undefined, name: string) => (argv?.includes(name) ? argv[argv.indexOf(name) + 1] : undefined);
@@ -48,7 +49,7 @@ describe("bin/schedule runs a spec from its first cut to its landing, one slice 
     const progress = run.comments().filter(({ body }) => body.startsWith("## Spec run"));
     expect(progress).toHaveLength(1);
     expect(progress[0]?.body).toContain("| `reader` | Build reader | merged | 1 | the rest of reader |");
-    expect(run.progress()).toMatchObject({ fixPass: false, slices: [{ id: "seam", state: "merged", tries: 1 }, { id: "reader", state: "merged", left: "the rest of reader", session: "session-reader-1" }] });
+    expect(run.progress()).toMatchObject({ slices: [{ id: "seam", state: "merged", tries: 1 }, { id: "reader", state: "merged", left: "the rest of reader", session: "session-reader-1" }] });
   });
 
   it("hires at most three builders at once, each in its own process, and hires the next as one finishes", () => {
@@ -111,6 +112,33 @@ describe("bin/schedule runs a spec from its first cut to its landing, one slice 
     expect(run.finished()).toEqual([]);
   });
 
+  it("parks the spec waiting on what a slice handed to the repo that owns it, once nothing else can move, calling no owner, where Mezzanine#1689 sat stuck 52 min over two kit patterns", () => {
+    const run = scheduling({ cuts: [[sliceOf("signup"), sliceOf("free")], []], plans: { signup: [{ outcome: "owned" }] } });
+
+    const ended = run.run();
+
+    expect(ended.status, ended.stderr).toBe(0);
+    expect(stateOf(run)).toEqual({ signup: "handed", free: "merged" });
+    expect(run.order().at(-1)).toBe(`mark ${SPEC_ISSUE} waiting`);
+    expect(run.order()).not.toContain(`mark ${SPEC_ISSUE} stuck`);
+    expect(run.comments().at(-1)?.body).toContain(waitsOnStep(SPEC_ISSUE, "collod873/design-kit", [KIT_STEP]));
+    expect(run.finished()).toEqual([]);
+  });
+
+  it("builds a waiting slice again once everything it handed off has closed, and keeps it waiting while any is open", () => {
+    const waiting = { ...sliceOf("signup"), state: "handed", tries: 1, session: "session-signup-1", filed: [KIT_STEP] };
+    const progress = `## Spec run\n\n<!-- progress: ${JSON.stringify({ slices: [waiting] })} -->\n`;
+    const woken = scheduling({ comments: [machineComment(7, progress)], states: { [KIT_STEP]: "CLOSED" } });
+    const early = scheduling({ comments: [machineComment(7, progress)], states: { [KIT_STEP]: "OPEN" } });
+
+    expect(woken.run().status).toBe(0);
+    expect(woken.built("signup")).toBeDefined();
+    expect(stateOf(woken)).toEqual({ signup: "merged" });
+    expect(early.run().status).toBe(0);
+    expect(early.built("signup")).toBeUndefined();
+    expect(early.order().at(-1)).toBe(`mark ${SPEC_ISSUE} waiting`);
+  });
+
   it("puts a slice out at once when its builder answers stuck, resuming no one", () => {
     const run = scheduling({ cuts: [[sliceOf("wall")], []], plans: { wall: [{ outcome: "stuck" }] } });
 
@@ -160,15 +188,13 @@ describe("bin/schedule runs a spec from its first cut to its landing, one slice 
     expect(run.finished()).toEqual([]);
   });
 
-  it("spends one fix pass on a fresh integration branch off main when the done check misses, then lands", () => {
-    const run = scheduling({ cuts: [[sliceOf("seam")], [], [sliceOf("mend")], []], finishes: [{ missed: "2" }, { landed: "1601" }] });
+  it("ends once the spec lands and its done check files a miss as a bug, slicing nothing more and calling no owner, where #1689 sat stuck after a fix pass that fixed nothing", () => {
+    const run = scheduling({ cuts: [[sliceOf("seam")], []], finishes: [{ missed: "2" }] });
 
-    const ended = run.run();
-
-    expect(ended).toMatchObject({ status: 0, stdout: `schedule: #${SPEC_ISSUE} landed as #1601, and its done check found every sentence held or put to the owner\n` });
-    expect(run.sliced()[2]).toContain("past-main=0");
-    expect(run.finished()[1]).toContain(`branch=${SPEC_BRANCH}\nBuild mend\nMerge the spec\n`);
-    expect(run.progress()).toMatchObject({ fixPass: true, slices: [{ id: "seam", fix: false }, { id: "mend", fix: true, state: "merged" }] });
+    expect(run.run()).toMatchObject({ status: 0, stdout: `schedule: #${SPEC_ISSUE} landed as #${LANDED}, and its done check filed sentence 2 as bugs\n` });
+    expect(run.sliced()).toHaveLength(2);
+    expect(run.finished()).toHaveLength(1);
+    expect(run.order()).not.toContain(`mark ${SPEC_ISSUE} stuck`);
   });
 
   it("stands down green when bin/finish stands down on a spec paused before it landed, calling no owner", () => {
@@ -193,34 +219,20 @@ describe("bin/schedule runs a spec from its first cut to its landing, one slice 
     expect(ended.stderr).toContain(`schedule: #${SPEC_ISSUE} ended red, bin/finish ${SPEC_ISSUE} ended 1 after the spec landed as #${LANDED}, with its done check unfinished, so a rerun goes straight to the done check`);
   });
 
-  it("goes straight to bin/finish, hiring no slicer and no builder, when its progress comment records the spec landed with its done check unfinished, and clears that record once the done check misses and the fix pass begins", () => {
-    const merged = { ...sliceOf("seam"), state: "merged", tries: 1, fix: false, session: "session-seam-1" };
-    const progress = `## Spec run\n\n<!-- progress: ${JSON.stringify({ fixPass: false, landed: LANDED, slices: [merged] })} -->\n`;
-    const run = scheduling({ comments: [machineComment(7, progress)], cuts: [[sliceOf("mend")], []], finishes: [{ missed: "2" }, { landed: "1601" }] });
+  it("goes straight to bin/finish, hiring no slicer and no builder, when its progress comment records the spec landed with its done check unfinished, and clears that record once the done check runs", () => {
+    const merged = { ...sliceOf("seam"), state: "merged", tries: 1, session: "session-seam-1" };
+    const progress = `## Spec run\n\n<!-- progress: ${JSON.stringify({ landed: LANDED, slices: [merged] })} -->\n`;
+    const run = scheduling({ comments: [machineComment(7, progress)], finishes: [{ missed: "2" }] });
 
-    expect(run.run()).toMatchObject({ status: 0, stdout: `schedule: #${SPEC_ISSUE} landed as #1601, and its done check found every sentence held or put to the owner\n` });
-    expect(run.order().slice(0, 2)).toEqual([`finish ${SPEC_ISSUE}`, `slice ${SPEC_ISSUE}`]);
+    expect(run.run()).toMatchObject({ status: 0, stdout: `schedule: #${SPEC_ISSUE} landed as #${LANDED}, and its done check filed sentence 2 as bugs\n` });
+    expect(run.order()).toEqual([`finish ${SPEC_ISSUE}`]);
     expect(run.built("seam")).toBeUndefined();
-    expect(run.progress()).toMatchObject({ fixPass: true, slices: [{ id: "seam" }, { id: "mend", fix: true, state: "merged" }] });
-    expect(run.progress()?.landed).toBeUndefined();
-    expect(run.progress()?.firstLanding).toBe(LANDED);
-  });
-
-  it("marks the spec stuck and calls the owner when the done check misses again after its one fix pass", () => {
-    const run = scheduling({ cuts: [[sliceOf("seam")], [], [sliceOf("mend")], []], finishes: [{ missed: "2" }, { missed: "2" }] });
-
-    const ended = run.run();
-
-    expect(ended.status).toBe(1);
-    expect(run.order().at(-1)).toBe(`mark ${SPEC_ISSUE} stuck`);
-    expect(run.comments().at(-1)?.body).toContain("missed sentence 2 after its one fix pass");
-    expect(run.finished()).toHaveLength(2);
   });
 
   it("picks a rerun up from its progress comment and the integration branch on origin: merged slices stay merged, an interrupted one builds again from fresh", () => {
-    const merged = { ...sliceOf("seam"), state: "merged", tries: 1, fix: false, session: "session-seam-1" };
-    const building = { ...sliceOf("reader", ["seam"]), state: "hired", tries: 0, fix: false, session: "session-reader-1" };
-    const progress = `## Spec run\n\n<!-- progress: ${JSON.stringify({ fixPass: false, slices: [merged, building] })} -->\n`;
+    const merged = { ...sliceOf("seam"), state: "merged", tries: 1, session: "session-seam-1" };
+    const building = { ...sliceOf("reader", ["seam"]), state: "hired", tries: 0, session: "session-reader-1" };
+    const progress = `## Spec run\n\n<!-- progress: ${JSON.stringify({ slices: [merged, building] })} -->\n`;
     const run = scheduling({ onSpec: ["Build seam"], comments: [machineComment(7, progress)] });
 
     expect(run.run().status).toBe(0);
@@ -232,9 +244,9 @@ describe("bin/schedule runs a spec from its first cut to its landing, one slice 
   });
 
   it("resumes an out slice's builder with its reason when the owner takes stuck off, so a fixed cause lets the spec finish (Lumaria#1661)", () => {
-    const merged = { ...sliceOf("seam"), state: "merged", tries: 1, fix: false, session: "session-seam-1" };
-    const out = { ...sliceOf("wall"), state: "out", tries: 1, fix: false, session: "session-wall-1", stopped: "wall hit a wall" };
-    const progress = `## Spec run\n\n<!-- progress: ${JSON.stringify({ fixPass: true, slices: [merged, out] })} -->\n`;
+    const merged = { ...sliceOf("seam"), state: "merged", tries: 1, session: "session-seam-1" };
+    const out = { ...sliceOf("wall"), state: "out", tries: 1, session: "session-wall-1", stopped: "wall hit a wall" };
+    const progress = `## Spec run\n\n<!-- progress: ${JSON.stringify({ slices: [merged, out] })} -->\n`;
     const run = scheduling({ onSpec: ["Build seam"], comments: [machineComment(7, progress)], cuts: [[]] });
 
     expect(run.run().status).toBe(0);
@@ -245,8 +257,8 @@ describe("bin/schedule runs a spec from its first cut to its landing, one slice 
   });
 
   it("counts a slice's tries as the builds that came back, so a rerun that finds it hired, even in a hire that only lands its answer again, neither adds a try nor gives one back", () => {
-    const relanding = { ...sliceOf("wall"), state: "hired", tries: 1, fix: false, session: "session-wall-1", stopped: "wall hit a wall" };
-    const progress = `## Spec run\n\n<!-- progress: ${JSON.stringify({ fixPass: false, slices: [relanding] })} -->\n`;
+    const relanding = { ...sliceOf("wall"), state: "hired", tries: 1, session: "session-wall-1", stopped: "wall hit a wall" };
+    const progress = `## Spec run\n\n<!-- progress: ${JSON.stringify({ slices: [relanding] })} -->\n`;
     const run = scheduling({ comments: [machineComment(7, progress)], plans: { wall: [{ outcome: "stopped" }, { outcome: "stopped" }] } });
 
     expect(run.run().status).toBe(1);

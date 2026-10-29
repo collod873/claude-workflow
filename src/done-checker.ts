@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
 import { capped, NO_EM_DASH, onDisk, tailOf } from "./brief.ts";
-import { authoredOn, commentOnTicket, commentsRead, FOREIGN, gh, mark, OWNER, readOrStop, STUCK, type Asked } from "./post.ts";
+import { authoredOn, commentOnTicket, DONE_CHECK_MISSED, FOLLOW_UP_OF, followUpBody, FOREIGN, gh, mark, OWNER, post, readOrStop, STUCK, type Asked } from "./post.ts";
 import { CONTRACT, opened, setupRefusal, type Spent } from "./stage.ts";
 import { CHECKING, SPEC } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
@@ -56,7 +56,7 @@ const BROWSER =
   "Settle what a sentence rests on by calling the app's server directly, its routes and actions, which answers in a fraction of a second, and open a page only for what the page itself must show. Drive one page at a time with `ui-check` (`ui-check open <url>`, `goto`, `click`, `eval`, `screenshot`, `--device`). To try sentences that do not depend on each other side by side, or a flow `ui-check` cannot script, open them as pages of one Playwright script that requires `$(npm root -g)/playwright-core` and launches `channel: \"chrome\"`. Install no browser or driver of your own. `tools <words>` finds any other tool here.";
 const RUNNING_THERE = `Here the running system is this checkout of the repo, readied by its contract's setup, and its Actions runs and the issues and PRs they touched, read with \`gh\`.\n\n${BROWSER}`;
 const SELF =
-  " `self`, without trying it, for a sentence about the spec closing itself or the owner being told which sentence did not hold: this run is the one that closes the spec or names the miss, so the machine settles it from the other sentences.";
+  " `self`, without trying it, for a sentence about the spec closing itself or the owner being told which sentence did not hold: this run is the one that closes the spec and files each miss, so the machine settles it from the other sentences.";
 
 const numbered = (listed: Sentence[]) => listed.map(({ said }, at) => `${at + 1}. ${said}`).join("\n");
 
@@ -69,7 +69,7 @@ export function handedOn(title: string, body: string, { replies = "", foreign = 
     "## The sentences to try",
     capped(numbered(sentences(body)), SPEC_CAP),
     "## Your answer",
-    `\`tries\`: one item per sentence, \`sentence\` its number in that list. \`outcome\`: \`held\` when you saw it hold whole; \`missed\` when you saw any part of it fail that you could try here; \`owner\` for only the part the owner alone can try, since it needs the owner's phone, eyes or a real customer, or a key, account or live service this checkout lacks.${foreign ? "" : SELF} \`tried\`: what you did to try it and what you saw; for \`missed\`, also where it broke as far as you saw, since the spec's one fix pass starts from it; for \`owner\`, what is missing and what the owner should do to try it.`,
+    `\`tries\`: one item per sentence, \`sentence\` its number in that list. \`outcome\`: \`held\` when you saw it hold whole; \`missed\` when you saw any part of it fail that you could try here; \`owner\` for only the part the owner alone can try, since it needs the owner's phone, eyes or a real customer, or a key, account or live service this checkout lacks.${foreign ? "" : SELF} \`tried\`: what you did to try it and what you saw; for \`missed\`, also where it broke as far as you saw, since it becomes the bug that fixes it; for \`owner\`, what is missing and what the owner should do to try it.`,
     "",
   ].join("\n\n");
 }
@@ -80,26 +80,9 @@ const isTry = (given: unknown): given is Try => {
 };
 
 const DONE_CHECK_HEADING = "## Done check";
-export const lastDoneCheck = (issue: string, line: string) => commentsRead(issue, line, gh).filter((comment) => comment.startsWith(DONE_CHECK_HEADING)).at(-1);
 
 const posted = (tried: [number, string, Try][], after: string[] = []) =>
   [DONE_CHECK_HEADING, "", ...tried.map(([number, sentence, one]) => `${number}. **${OUTCOMES[one.outcome]}**: ${sentence}\n   ${one.tried}`), ...after.flatMap((line) => ["", line]), ""].join("\n");
-
-const TRY_STARTS = new RegExp(`^(\\d+)\\. \\*\\*(?:${[...new Set(Object.values(OUTCOMES))].join("|")})\\*\\*: `);
-const MISSED_TRY = new RegExp(`^\\d+\\. \\*\\*${OUTCOMES.missed}\\*\\*: `);
-
-export function missesOf(comment: string): string {
-  const items: string[] = [];
-  let numbered = 0;
-  for (const line of comment.split("\n")) {
-    const number = Number(TRY_STARTS.exec(line)?.[1] ?? 0);
-    if (number > numbered) {
-      numbered = number;
-      items.push(line);
-    } else if (items.length > 0) items[items.length - 1] += `\n${line}`;
-  }
-  return items.filter((item) => MISSED_TRY.test(item)).map((item) => item.trimEnd()).join("\n");
-}
 
 const listing = (missed: [number, string, Try][], between: string) => missed.map(([number]) => number).join(between);
 const closedWith = (putToOwner: [number, string, Try][]) => `Closed with sentence ${listing(putToOwner, ", ")} put to the owner: each says what the owner could try, and the owner files a miss he sees live as a new ticket.`;
@@ -169,7 +152,7 @@ function commented(spec: Read, text: string): { url: string } | Stop {
 }
 
 const SELF_SETTLED = {
-  missed: "This run names each other sentence that did not hold, and why.",
+  missed: "This run files each other sentence that did not hold as a bug, and closed the spec.",
   owner: "This run closed the spec, since every other sentence held or was put to the owner.",
   held: "This run closed the spec, since every other sentence held.",
 };
@@ -195,14 +178,18 @@ export function doneCheck(issue: string, app: AppKey | undefined): Checked | Sto
   const putToOwner = found.filter(([, , one]) => one.outcome === "owner");
   const comment = commented(spec, posted(found, missed.length > 0 || putToOwner.length === 0 ? [] : [closedWith(putToOwner)]));
   if (typeof comment === "string") return comment;
-  if (missed.length > 0) {
-    console.log(`${said} did not hold sentence ${listing(missed, ", ")}, so it stays open: ${comment.url}`);
-    return { missed: missed.map(([number]) => number) };
-  }
-  const held = putToOwner.length === 0 ? "held every sentence" : "held every sentence it could try, put the rest to the owner,";
+  const filed = missed.map(([number, sentence, one]) => ({ number, ...post({ kind: "bug", title: quoted(sentence), text: followUpBody([`${FOLLOW_UP_OF}${issue}${DONE_CHECK_MISSED}`, "", `> ${one.tried}`], [sentence]) }, gh) }));
+  const refused = filed.find(({ refusals }) => refusals.length > 0);
+  if (refused !== undefined) return calledOwner(spec, "unrecorded", `sentence ${refused.number} did not hold and would not file as a bug: ${quoted(refused.refusals[0] ?? "")}`, `Its comment is posted: file each miss as a bug and close #${issue} by hand.`);
+  const held =
+    missed.length > 0
+      ? `did not hold sentence ${listing(missed, ", ")}, filed as ${filed.map(({ said }) => said.trim()).join(", ")},`
+      : putToOwner.length === 0
+        ? "held every sentence"
+        : "held every sentence it could try, put the rest to the owner,";
   if (gh(["issue", "close", issue, "--reason", "completed"]).status !== 0) return calledOwner(spec, "unrecorded", `it ${held} but would not close: ${comment.url}`, `Its comment is posted, so nothing is left to try: close #${issue} by hand.`);
   console.log(`${said} ${held} and is closed: ${comment.url}`);
-  return { missed: [] };
+  return { missed: missed.map(([number]) => number) };
 }
 
 if (import.meta.main) {

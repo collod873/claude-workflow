@@ -9,9 +9,10 @@ import { declareStage, HANDED_ON } from "./stages.ts";
 
 export const SPEC_ISSUE = "968";
 export const LANDED = "1600";
+export const KIT_STEP = "https://github.com/collod873/design-kit/issues/301";
 
 export interface Attempt {
-  outcome?: "built" | "partial" | "done" | "stuck" | "stopped" | "outOfTime";
+  outcome?: "built" | "partial" | "done" | "stuck" | "stopped" | "outOfTime" | "owned";
   wait?: number;
   then?: string;
 }
@@ -55,6 +56,7 @@ const saved = (held) => fs.writeFileSync(join(root, "comments.json"), JSON.strin
 const labels = () => read("labels").split("\\n").filter(Boolean);
 if (all.includes("repos/{owner}/{repo}/installation")) said("4242");
 else if (all.includes("access_tokens")) { const n = Number(fs.existsSync(join(root, "minted")) ? read("minted") : "0") + 1; fs.writeFileSync(join(root, "minted"), String(n)); said("minted-" + n); }
+else if (args[0] === "issue" && args[1] === "view" && args[2].startsWith("https://")) said(JSON.parse(fs.existsSync(join(root, "states.json")) ? read("states.json") : "{}")[args[2]] ?? "OPEN");
 else if (args[0] === "issue" && args[1] === "view") said(args.includes("--jq") ? labels().join("\\n") : JSON.stringify({ title: "A spec worth building", body: read("body"), labels: labels().map((name) => ({ name })) }));
 else if (args[0] === "api" && args.includes("--paginate") && all.includes("/comments")) process.stdout.write(execFileSync("jq", ["-c", args[args.indexOf("--jq") + 1]], { input: JSON.stringify(comments()) }));
 else if (args[0] === "issue" && args[1] === "comment") { const held = comments(); const id = held.length + 1; const url = "https://github.com/collod873/claude-workflow/issues/" + args[2] + "#issuecomment-" + id; held.push({ id, html_url: url, user: { login: ${JSON.stringify(MACHINE)}, type: "Bot" }, body: args[args.indexOf("--body") + 1] }); saved(held); said(url); }
@@ -89,7 +91,8 @@ export function scheduling({
   comments = [] as Comment[],
   onSpec = [] as string[],
   appKeyed = false,
-}: { cuts?: (Slice[] | "red")[]; plans?: Record<string, Attempt[]>; finishes?: Finish[]; labels?: string[]; comments?: Comment[]; onSpec?: string[]; appKeyed?: boolean } = {}) {
+  states = {},
+}: { cuts?: (Slice[] | "red")[]; plans?: Record<string, Attempt[]>; finishes?: Finish[]; labels?: string[]; comments?: Comment[]; onSpec?: string[]; appKeyed?: boolean; states?: Record<string, string> } = {}) {
   const root = scratch("schedule-");
   const { remote, session } = cloned(root, "Start");
   if (onSpec.length > 0) {
@@ -101,6 +104,7 @@ export function scheduling({
   }
   const at = (name: string) => join(root, name);
   const issue = specIssue(root, { labels, comments });
+  plant(root, "states.json", JSON.stringify(states));
   cuts.forEach((cut, n) => plant(root, `cuts/${n + 1}`, cut === "red" ? "red" : `${JSON.stringify({ slices: cut })}\n`));
   for (const [id, attempts] of Object.entries(plans)) attempts.forEach((attempt, n) => plant(root, `plans/${id}/${n + 1}`, JSON.stringify(attempt)));
   finishes.forEach((finish, n) => plant(root, `finishes/${n + 1}`, JSON.stringify(finish)));
@@ -144,6 +148,7 @@ export function scheduling({
       '  built) printf \'{"outcome":"built","left":"","reason":"","session":"session-%s-%s"}\\n\' "$id" "$k" ;;',
       '  partial) printf \'{"outcome":"partial","left":"the rest of %s","reason":"","session":"session-%s-%s"}\\n\' "$id" "$id" "$k" ;;',
       '  done) printf \'{"outcome":"done","left":"","reason":"","session":"session-%s-%s"}\\n\' "$id" "$k" ;;',
+      `  owned) printf '{"outcome":"owned","left":"","reason":"%s needs a kit pattern","session":"session-%s-%s","filed":["${KIT_STEP}"]}\\n' "$id" "$id" "$k" ;;`,
       '  stuck|stopped|outOfTime) printf \'{"outcome":"%s","left":"","reason":"%s hit a wall","session":"session-%s-%s"}\\n\' "$outcome" "$id" "$id" "$k"; exit 1 ;;',
       "esac",
       "",

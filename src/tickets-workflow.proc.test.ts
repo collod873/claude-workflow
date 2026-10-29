@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { fixing } from "./builder.part.ts";
 import { rerunning } from "./rerun.part.ts";
-import { execute, heldBy, holds, labelledAs, labelledStep, onPath, scratch, script, workflowJobs, type WorkflowStep } from "./scenarios.ts";
+import { execute, heldBy, holds, labelledAs, labelledOutputs, labelledStep, onPath, scratch, script, workflowJobs, type WorkflowStep } from "./scenarios.ts";
 import { MACHINE, OWNER } from "./spelled.ts";
 import { ENROLLED_CALLER } from "./post.ts";
 
@@ -31,6 +31,7 @@ interface Fired {
   event: string;
   action?: string;
   sender?: string;
+  merged?: boolean;
   inputs?: Record<string, string>;
   red?: string[];
   stopped?: string[];
@@ -68,7 +69,7 @@ describe("a repo's tickets build through one caller file that holds only trigger
     expect(rest).toEqual({});
     expect(typeof runName).toBe("string");
     expect(typeof name).toBe("string");
-    expect(Object.keys(on).sort()).toEqual(["issues", "workflow_dispatch"]);
+    expect(Object.keys(on).sort()).toEqual(["issues", "pull_request", "workflow_dispatch"]);
     expect(Object.values(jobs)).toEqual(CALLED.map((file) => ({ uses: `collod873/claude-workflow/.github/workflows/${file}@main`, secrets: "inherit" })));
   });
 
@@ -81,6 +82,12 @@ describe("a repo's tickets build through one caller file that holds only trigger
     expect(jobsRun({ event: "issues", action: "opened", sender: MACHINE })).toEqual([]);
     expect(jobsRun({ event: "issues", action: "labeled", sender: "stranger" })).toEqual([]);
     expect(jobsRun({ event: "issues", action: "closed" })).toEqual(["close", "strip"]);
+  });
+
+  it("wakes what waited on a pull request once it merges, and runs nothing for one closed unmerged, where Mezzanine#1710 sat waiting on kit-sync PR #1711 after it merged", () => {
+    expect(jobsRun({ event: "pull_request", action: "closed", merged: true })).toEqual(["close"]);
+    expect(jobsRun({ event: "pull_request", action: "closed", merged: false })).toEqual([]);
+    expect(jobsRun({ event: "pull_request", action: "closed", merged: true }, "specs.yml")).toEqual([]);
   });
 
   it("names its run by no event it does not hear, so a ticket's PR or a CI run names no run that starts nothing (#1447)", () => {
@@ -419,17 +426,27 @@ describe("a repo's specs and research notes run through the same caller file, on
   it("resumes a spec or a research note the owner takes a label off (#1175, #1353, #1509)", () => {
     expect(specs({ event: "issues", action: "unlabeled", outputs: { wake: { research: "true" } } })).toEqual(["wake", "research"]);
     expect(specs({ event: "issues", action: "unlabeled", outputs: { wake: { spec: "true" } } })).toEqual(["wake", "spec"]);
-    expect(specs({ event: "issues", action: "unlabeled", sender: MACHINE })).toEqual([]);
+    expect(specs({ event: "issues", action: "unlabeled", sender: "stranger" })).toEqual([]);
+  });
+
+  it("resumes a spec the closer takes `waiting` off once what its slices handed off has closed, and no other label the machine takes off", async () => {
+    const wake = labelledStep("specs.yml", "wake");
+    const resumed = await labelledOutputs(wake, REPO, { action: "unlabeled", label: "waiting", sender: MACHINE, labels: ["spec"] });
+    const building = await labelledOutputs(wake, REPO, { action: "unlabeled", label: "building", sender: MACHINE, labels: ["spec"] });
+
+    expect(holds(workflowJobs("specs.yml").wake?.if ?? "", { action: "unlabeled", label: "waiting", sender: MACHINE })).toBe(true);
+    expect(resumed.outputs.spec).toBe("true");
+    expect(building.outputs.spec).toBe("false");
   });
 
   it("starts nothing on a ticket's events", () => {
     for (const fired of [
       { event: "issues", action: "reopened" },
-      { event: "issues", action: "unlabeled", sender: MACHINE },
       { event: "workflow_dispatch" },
     ]) {
       expect(specs(fired), JSON.stringify(fired)).toEqual([]);
     }
+    expect(specs({ event: "issues", action: "unlabeled", sender: MACHINE })).toEqual(["wake"]);
   });
 
   it("readies the tree's pinned Node before anything installs, in every job whose stage may run the done check, and tells that stage the caller file it runs under", () => {

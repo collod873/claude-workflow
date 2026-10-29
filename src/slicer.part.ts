@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { LIST_CAP } from "./brief.ts";
 import { BIN, cloned, execute, git, plant, scratch, script, stubbedMark, wellFormedSpec } from "./scenarios.ts";
 import { type Comment, specIssue, SPEC_ISSUE } from "./scheduler.part.ts";
-import { BUILT_CAP, FINDINGS_CAP, handedOn, sentBack, SLICES_CAP } from "./slicer.ts";
+import { BUILT_CAP, handedOn, sentBack, SLICES_CAP } from "./slicer.ts";
 import { PAUSED } from "./spelled.ts";
 import { declareStage, HANDED_ON } from "./stages.ts";
 import { SPEC_CAP } from "./ticket-shape.ts";
@@ -48,7 +48,7 @@ export function slicing({
   };
 }
 
-const SLICER_CAP = SPEC_CAP + BUILT_CAP + SLICES_CAP + FINDINGS_CAP + 4 * HANDED_ON;
+const SLICER_CAP = SPEC_CAP + BUILT_CAP + SLICES_CAP + 4 * HANDED_ON;
 const filledSpec = (filled: Record<string, string>) => [filled.title ?? "", filled.body ?? ""] as const;
 export const ANSWERED = { slices: [{ id: "seam", title: "Cut the seam", why: 'The spec asks: "a spec is filed once".', decisions: [], done: ["The seam holds."], blockedBy: [], leftOf: [] }] };
 
@@ -68,20 +68,6 @@ declareStage({
       cap: SLICER_CAP,
       slots: ["title", "body", "built", "slices"],
       build: (filled) => handedOn(...filledSpec(filled), { cut: "replan", slices: filled.slices ?? "- `seam` (merged): Cut the seam.", built: filled.built ?? "" }),
-    },
-    {
-      name: "slicer fix pass",
-      file: "src/slicer.ts",
-      cap: SLICER_CAP,
-      slots: ["title", "body", "built", "slices", "findings"],
-      build: (filled) => handedOn(...filledSpec(filled), { cut: "fix", slices: filled.slices ?? "", built: filled.built ?? "", findings: filled.findings ?? "" }),
-    },
-    {
-      name: "slicer fix pass re-plan",
-      file: "src/slicer.ts",
-      cap: SLICER_CAP,
-      slots: ["title", "body", "built", "slices", "findings"],
-      build: (filled) => handedOn(...filledSpec(filled), { cut: "replan", slices: filled.slices ?? "- `mend` (merged, fix pass): Mend it.", built: filled.built ?? "", findings: filled.findings ?? "" }),
     },
     {
       name: "slicer sent back",

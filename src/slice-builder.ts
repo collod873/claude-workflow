@@ -6,16 +6,16 @@ import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
 import { capped, LIST_CAP, NO_EM_DASH, onDisk, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
-import { checkedBy, type Red, spentOn } from "./builder.ts";
+import { checkedBy, filedInRepo, OWNED_ANSWER, ownedRefusal, type Piece, type Red, spentOn } from "./builder.ts";
 import { FAST_CHECK } from "./checks.ts";
 import { LEFT_CAP } from "./scheduler.ts";
 import { SLICE_ID } from "./slicer.ts";
-import { gh, git, gitRead, Stopped, unread } from "./post.ts";
+import { firstStepOf, gh, git, gitRead, Stopped, unread } from "./post.ts";
 import { commitlinted, committed, CONTRACT, hire, setupRefusal } from "./stage.ts";
 
 const USAGE = "build-slice: usage: build-slice --spec <N> --slice <id> --brief <file> --onto <integration ref> [--resume <session>] [--told <text> | --out-of-time | --answer <its answer's JSON, to land again>]";
 
-const OUTCOMES = ["built", "partial", "done", "stuck"] as const;
+const OUTCOMES = ["built", "partial", "done", "stuck", "owned"] as const;
 
 const ANSWER = {
   type: "object",
@@ -23,6 +23,7 @@ const ANSWER = {
     outcome: { enum: OUTCOMES },
     reason: { type: "string", pattern: NO_EM_DASH },
     left: { type: "string", pattern: NO_EM_DASH, maxLength: LEFT_CAP },
+    ...OWNED_ANSWER,
   },
   required: ["outcome", "reason"],
   additionalProperties: false,
@@ -32,6 +33,8 @@ interface Answer {
   outcome: (typeof OUTCOMES)[number];
   reason: string;
   left?: string;
+  repo?: string;
+  tickets?: Piece[];
 }
 
 interface Ending {
@@ -39,6 +42,7 @@ interface Ending {
   left: string;
   reason: string;
   session: string;
+  filed?: string[];
 }
 
 interface Slicing {
@@ -67,10 +71,11 @@ export function handedOn({ brief, onto, commitlint }: { brief: string; onto: str
     "Ship the slice's Why whole on every path you touch, in the smallest diff; `## Done when` is its floor. Settle open choices yourself as its senior engineer. Call the Skill tool with `tdd`, to its end. Commit as you go: a why per message, no em dash, no `Fixes #12`.",
     ...(commitlint ? ["Commitlint runs here: each message is `type: subject`, a conventional type, lower-case."] : []),
     "## Your answer",
-    `- \`built\`: the machine commits what you did not, rebases onto \`${onto}\`, runs \`${FAST_CHECK}\` and hands back each red or conflict until this branch fast-forwards \`${onto}\` green.`,
+    `- \`built\`: the machine commits the rest, rebases onto \`${onto}\`, runs \`${FAST_CHECK}\` and hands back each red or conflict until it fast-forwards \`${onto}\` green.`,
     "- `partial`: too big for one build; commit what holds, with `left` naming each `## Done when` sentence not yet holding, for the slicer to cut again. Same check.",
-    `- \`done\`: \`${onto}\` already does what it asks, as when another slice built it; nothing lands, no one is called.`,
-    "- `stuck`: you cannot build it; `reason` says why. The slice goes out while the other slices build on, and the spec stops for its owner only once nothing else can move.",
+    `- \`done\`: \`${onto}\` already does it; nothing lands.`,
+    "- `stuck`: no rewrite unblocks it, only the owner; `reason` says why.",
+    "- `owned`: only another repo can fix its first step, as with a missing kit pattern: name it as `repo` and file that step as `tickets`; it builds once they close.",
     "`reason`: why, in one paragraph.",
     "",
   ].join("\n\n");
@@ -238,6 +243,16 @@ function landable(slicing: Slicing, outcome: "built" | "partial", left: string):
   }
 }
 
+function handedToItsRepo({ spec }: Slicing, { repo, tickets }: Answer): { red: string } | { filed: string[] } | { stopped: string } {
+  const own = process.env.GITHUB_REPOSITORY;
+  const refused = ownedRefusal(repo, own, "spec");
+  if (refused !== undefined || repo === undefined) return { red: refused ?? "" };
+  const handed = filedInRepo(repo, firstStepOf(`${own ?? ""}#${spec}`), "owned", "an `owned` answer files its first step as one ticket or more in `tickets`", tickets);
+  if ("red" in handed) return handed;
+  if (!handed.all) return { stopped: `its builder filed ${handed.filed.length} of ${tickets?.length ?? 0} tickets in ${repo} to wait on` };
+  return { filed: handed.filed };
+}
+
 const ended = (outcome: Ending["outcome"], reason: string, session: string | undefined, left = ""): Ending => ({ outcome, left, reason, session: session ?? "" });
 
 function built(slicing: Slicing, app: AppKey | undefined): Ending {
@@ -263,6 +278,13 @@ function built(slicing: Slicing, app: AppKey | undefined): Ending {
       continue;
     }
     if (answer.outcome === "stuck") return ended("stuck", answer.reason, session);
+    if (answer.outcome === "owned") {
+      const handed = handedToItsRepo(slicing, answer);
+      if ("filed" in handed) return { ...ended("owned", answer.reason, session), filed: handed.filed };
+      if ("stopped" in handed) return ended("stopped", handed.stopped, session);
+      input = handed.red;
+      continue;
+    }
     const leftNow = answer.left?.trim() ?? "";
     if (leftNow !== "") left = leftNow;
     committed(`Build slice ${slice} of #${spec}`, "feat");
@@ -322,5 +344,5 @@ if (import.meta.main) {
     }
   })();
   console.log(JSON.stringify(ending));
-  process.exit(ending.outcome === "built" || ending.outcome === "partial" || ending.outcome === "done" ? 0 : 1);
+  process.exit(ending.outcome === "built" || ending.outcome === "partial" || ending.outcome === "done" || ending.outcome === "owned" ? 0 : 1);
 }
