@@ -179,6 +179,7 @@ export function holds(
     event = "issues",
     inputs = {},
     state = "open",
+    merged = false,
   }: {
     labels?: string[] | undefined;
     steps?: Record<string, StepOutcome>;
@@ -193,11 +194,12 @@ export function holds(
     event?: string;
     inputs?: Record<string, string>;
     state?: string;
+    merged?: boolean;
   },
 ): boolean {
   const github = {
     event_name: event,
-    event: { action, label: { name: label }, issue: { state, body, labels: labels.map((name) => ({ name })) }, sender: { login: sender }, inputs },
+    event: { action, label: { name: label }, issue: { state, body, labels: labels.map((name) => ({ name })) }, pull_request: { merged }, sender: { login: sender }, inputs },
     head_ref: head,
     repository_owner: OWNER,
   };

@@ -31,6 +31,7 @@ interface Fired {
   event: string;
   action?: string;
   sender?: string;
+  merged?: boolean;
   inputs?: Record<string, string>;
   red?: string[];
   stopped?: string[];
@@ -68,7 +69,7 @@ describe("a repo's tickets build through one caller file that holds only trigger
     expect(rest).toEqual({});
     expect(typeof runName).toBe("string");
     expect(typeof name).toBe("string");
-    expect(Object.keys(on).sort()).toEqual(["issues", "workflow_dispatch"]);
+    expect(Object.keys(on).sort()).toEqual(["issues", "pull_request", "workflow_dispatch"]);
     expect(Object.values(jobs)).toEqual(CALLED.map((file) => ({ uses: `collod873/claude-workflow/.github/workflows/${file}@main`, secrets: "inherit" })));
   });
 
@@ -81,6 +82,12 @@ describe("a repo's tickets build through one caller file that holds only trigger
     expect(jobsRun({ event: "issues", action: "opened", sender: MACHINE })).toEqual([]);
     expect(jobsRun({ event: "issues", action: "labeled", sender: "stranger" })).toEqual([]);
     expect(jobsRun({ event: "issues", action: "closed" })).toEqual(["close", "strip"]);
+  });
+
+  it("wakes what waited on a pull request once it merges, and runs nothing for one closed unmerged, where Mezzanine#1710 sat waiting on kit-sync PR #1711 after it merged", () => {
+    expect(jobsRun({ event: "pull_request", action: "closed", merged: true })).toEqual(["close"]);
+    expect(jobsRun({ event: "pull_request", action: "closed", merged: false })).toEqual([]);
+    expect(jobsRun({ event: "pull_request", action: "closed", merged: true }, "specs.yml")).toEqual([]);
   });
 
   it("names its run by no event it does not hear, so a ticket's PR or a CI run names no run that starts nothing (#1447)", () => {

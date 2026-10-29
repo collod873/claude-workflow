@@ -172,6 +172,16 @@ describe("bin/close wakes a ticket its builder parked waiting on an open ticket 
     expect(tokens()[woken(calls())]).toBe("app");
   });
 
+  it("wakes it once the pull request it depends on merges, naming it merged, where Mezzanine#1710 sat waiting two hours after kit-sync PR #1711 merged", () => {
+    const { calls, run } = closing({ closedIssue: "1711", splitFrom: { parent: "1710", labels: "waiting\n", said: `${waitsOnOpen("1710", ["#1711"])} see #1546`, siblings: { "1711": "MERGED " } } });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(calls().findIndex((call) => call.trimEnd() === "issue\nedit\n1710\n--remove-label\nwaiting")).toBeGreaterThanOrEqual(0);
+    expect(calls().find((call) => call.startsWith("issue\ncomment\n1710\n"))).toContain("#1711 merged");
+  });
+
   it("leaves it waiting while a ticket it depends on is still open", () => {
     const { calls, run } = closing({ closedIssue: "1592", splitFrom: { parent: "1596", labels: "waiting\n", said: `${waitsOnOpen("1596", ["#1592", "#1593"])} see #1546`, siblings: { "1592": "CLOSED COMPLETED", "1593": "OPEN " } } });
 
