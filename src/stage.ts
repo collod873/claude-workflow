@@ -3,7 +3,7 @@ import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readdirSync
 import { join } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import { NO_EM_DASH, onDisk } from "./brief.ts";
-import { type Asked, askedIssue, commentOnTicket, followUpBody, gh, ghRead, git, gitRead, heldOn, mark, OWNER, post, STUCK, unread, type MarkedLabel } from "./post.ts";
+import { type Asked, askedIssue, commentOnTicket, followUpBody, gh, ghRead, git, gitRead, heldOn, mark, OWNER, post, STUCK, unread, WAITING, type MarkedLabel } from "./post.ts";
 import type { Stop } from "./stops.ts";
 import { quoted } from "./ticket-shape.ts";
 
@@ -261,8 +261,6 @@ export interface OwnerStep {
   why: string;
 }
 
-export const ownerStepFiled = (left: string) => (step: OwnerStep) => ({ named: `${step.title}: ${step.why}`, ...post({ kind: "owner", title: step.title, text: `## Why\n\n${step.why}\n\n${left}\n` }, gh) });
-
 export const MOST_FIXES = 3;
 
 export const FOLLOW_UPS = {
@@ -275,6 +273,7 @@ export const FOLLOW_UPS = {
         fault: { type: "string", pattern: NO_EM_DASH },
         title: { type: "string", pattern: NO_EM_DASH },
         done: { type: "array", minItems: 1, items: { type: "string", pattern: NO_EM_DASH } },
+        after: { type: "string", pattern: NO_EM_DASH },
       },
       required: ["fault", "title", "done"],
       additionalProperties: false,
@@ -287,13 +286,32 @@ export interface Fix {
   fault: string;
   title: string;
   done: string[];
+  after?: string | undefined;
 }
 
-export const fixesFiled = (found: string, fixes: Fix[]): { named: string; refusals: string[]; said: string }[] =>
-  fixes.slice(0, MOST_FIXES).map(({ fault, title, done }) => ({ named: title, ...post({ kind: "ticket", title, text: followUpBody([found, "", `> ${fault}`], done) }, gh) }));
+export type Filed = { named: string; refusals: string[]; said: string };
 
-export function followedUp(found: string, fixes: Fix[], asks: string[], call: { title: string; by: string }): ReturnType<typeof fixesFiled> {
-  const tickets = fixesFiled(found, fixes);
+const stepKey = (title: string) => title.trim().toLowerCase();
+export const FILED = /\/issues\/(\d+)\s*$/;
+
+const ownerStepFiled = (left: string) => (step: OwnerStep): Filed => ({ named: `${step.title}: ${step.why}`, ...post({ kind: "owner", title: step.title, text: `## Why\n\n${step.why}\n\n${left}\n` }, gh) });
+
+function fixFiled(found: string, { fault, title, done, after }: Fix, notes: Map<string, Filed>): Filed {
+  const text = followUpBody([found, "", `> ${fault}`], done);
+  if (after === undefined || after.trim() === "") return { named: title, ...post({ kind: "ticket", title, text }, gh) };
+  const number = FILED.exec(notes.get(stepKey(after))?.said ?? "")?.[1];
+  if (number === undefined) return { named: title, refusals: [`it waits on the owner step "${after}", which was not filed`], said: "" };
+  return { named: title, ...post({ kind: "ticket", title, text: `${text}\n## Waits on\n\n- #${number}\n`, labels: [WAITING] }, gh) };
+}
+
+export function stepsAndFixesFiled(found: string, left: string, steps: OwnerStep[], fixes: Fix[]): Filed[] {
+  const notes = new Map(steps.map((step) => [stepKey(step.title), ownerStepFiled(left)(step)]));
+  return [...notes.values(), ...fixes.map((fix) => fixFiled(found, fix, notes))];
+}
+
+
+export function followedUp(found: string, fixes: Fix[], asks: string[], call: { title: string; by: string; steps: OwnerStep[]; left: string }): Filed[] {
+  const tickets = stepsAndFixesFiled(found, call.left, call.steps, fixes.slice(0, MOST_FIXES));
   if (asks.length === 0) return tickets;
   const text = ["## Why", "", `@${OWNER} ${call.by} leaves these to you:`, "", ...asks.map((ask) => `- ${ask}`), ""].join("\n");
   return [...tickets, { named: call.title, ...post({ kind: "note", title: call.title, text }, gh) }];

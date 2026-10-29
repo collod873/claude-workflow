@@ -10,7 +10,7 @@ import { askedIssue, commentOnTicket, FOLLOW_UP_OF, gh, ghRead, git, gitRead, he
 import { afterRefused, approvedOn, firstTimeNamed, gathered, landing, type Routed, ROUTED, ROUTED_REQUIRED, routedFiled } from "./reviewer.ts";
 import { fastForwarded, landedOn, MOST_BUILDERS, type Progress, progressOn, removed, specBranch, worktree } from "./scheduler.ts";
 import { fastForwards, rebaseStopped, sliceTrailed } from "./slice-builder.ts";
-import { committed, commitlinted, CONTRACT, head, hireIn, MOST_FIXES, type OwnerStep, ownerStepFiled, OWNER_STEPS, setupRefusedIn, type Spent } from "./stage.ts";
+import { committed, commitlinted, CONTRACT, head, hireIn, MOST_FIXES, type OwnerStep, OWNER_STEPS, setupRefusedIn, type Spent } from "./stage.ts";
 import { SPEC } from "./spelled.ts";
 import { stopsOf } from "./stops.ts";
 import { quoted, SPEC_CAP } from "./ticket-shape.ts";
@@ -132,7 +132,7 @@ export function onTheSpec(changes: Changes, { spec, title, body, commitlint, bri
     "Answer one outcome:",
     "- `approve`: the branch builds what the spec asks, with whatever you fixed; the reviewers on the code standard read it next, then `bin/land` runs the full check and merges it.",
     "- `stuck`: the spec has a gap you cannot fix, one only the owner can close; `reason` says why, and the spec is marked `stuck`.",
-    "`steps`: what the owner alone must do before the spec's work can run, like setting a dashboard value or adding a key, judged from what was built; each one named becomes an `owner-step` note once the spec lands. Name any fix waiting on a step in its `why`, outside `fixes`.",
+    "`steps`: what the owner alone must do before the spec's work can run, like setting a dashboard value or adding a key, judged from what was built; each one named becomes an `owner-step` note once the spec lands. A fix that cannot build until the owner takes a step gives that step's exact title in `after`, and builds once its note closes.",
     `\`fixes\`: each fault that belongs in another repo, or in code the spec never touched and is too big to fix here, at most ${MOST_FIXES}, each with one sure fix: \`fault\` and the evidence for it, \`title\`, and \`done\`, the sentences that will be true after the fix; each becomes a ticket the machine builds after the spec lands.`,
     "`risks`: any other fault, cost or risk you found, as `risk`, with `ends` naming its end: `fixed` by you here, `why` telling how; `nothing`, `why` telling why it can stand. Each choice the spec leaves open is yours to make as its senior engineer; build your pick here. Only `steps` reach the owner.",
     "You are done reviewing when each fault, cost or risk you found sits in `fixes` or `risks`; both stay empty only when you found none. Nothing named in an earlier answer is dropped: a later one names only the findings it adds and those whose end it changes.",
@@ -404,7 +404,7 @@ function landed(run: Run, { last }: Reviewed): Promise<string | undefined> {
 function leftFiled(spec: string, approved: Approved[]): void {
   const unfiled = firstTimeNamed();
   const once = approved.flatMap(({ steps }) => steps).filter(({ title }) => unfiled(title));
-  const filed = [...once.map(ownerStepFiled(`Left to the owner by the run that landed spec #${spec}.`)), ...routedFiled(`${FOLLOW_UP_OF}${spec}${REVIEW_LET_THROUGH}`, approved)];
+  const filed = routedFiled(`${FOLLOW_UP_OF}${spec}${REVIEW_LET_THROUGH}`, `Left to the owner by the run that landed spec #${spec}.`, once, approved);
   const refused = filed.filter(({ refusals }) => refusals.length > 0);
   if (refused.length > 0) commentOnTicket(spec, [`What the reviewers of #${spec} left that could not be filed:`, "", ...refused.map(({ named, refusals }) => `- ${named} (${quoted(refusals[0] ?? "")})`), ""].join("\n"), gh);
 }
