@@ -1,12 +1,12 @@
 {
- "source": "collod873/agent-hooks@93c46c42edd68313b221959e596efac4d0d43ad6",
+ "source": "collod873/agent-hooks@b7affbdeaebb267a0632bea08793df26c9db36f3",
  "layer": "typescript",
  "files": {
   "ci.yml": "bdf08e9c95c81f75c7dacf568092ef577decf32f36486c969f58af14ee147259",
   "run": "6508cd65d739f035f30a91a0b2a1b3b88fc433cf01d1c284f3a9ad65c956fc99",
   "security/secrets": "986e3f8ce1d4b6b2034a6add4219de01c41e6924cee8b2334c0d95769616c860",
   "security/tools.py": "3cf205dc74550decbd04f9d35f9ceda812d50bcee14400cc642b1817049e6de0",
-  "security/vulns": "29cee5f5b55ec9db25862c74e5baf317d41848bf460b0728136b9c1fc79b0989",
+  "security/vulns": "4609b89fde87677d98d865ff4f7bd4005328361f4e28d0ee98de305809c07639",
   "typescript/files.mjs": "5dfaf9f2e8953bfdf8f7a702585c420e7aad7dee0aeafed1defaf0181fd9995e",
   "typescript/index.mjs": "3f85b9c89df8587ebd20a9273cb2279845241c77889a4bae24cdeb7070c320bd",
   "typescript/knip.base.d.mts": "0d59f036962b278fc0bec872969eea08bf899384ac80c36297102ddb5583dc1b",
