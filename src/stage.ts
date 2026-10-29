@@ -311,7 +311,6 @@ export function stepsAndFixesFiled(found: string, left: string, steps: OwnerStep
   return [...notes.values(), ...fixes.map((fix) => fixFiled(found, fix, notes))];
 }
 
-export const NEEDS_STEP = "Give a fix that cannot run until one of your `steps` is taken that step's exact title as `after`: it is filed waiting on the step's note and builds once the owner closes it. Never fold the fix into the step's `why`.";
 
 export function followedUp(found: string, fixes: Fix[], asks: string[], call: { title: string; by: string; steps: OwnerStep[]; left: string }): Filed[] {
   const tickets = stepsAndFixesFiled(found, call.left, call.steps, fixes.slice(0, MOST_FIXES));
