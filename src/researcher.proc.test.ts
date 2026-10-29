@@ -138,6 +138,18 @@ describe("bin/research files what its findings call for, so a closed note leaves
     expect(note?.body).toContain(`@collod873 #902's research leaves these to you:\n\n- ${ask}`);
   });
 
+  it("files a step only the owner can take as an owner-step note naming the note, never as a ticket that builds, where #1759 built a fix waiting on a Stripe key", () => {
+    const step = { title: "Put the Stripe sandbox key on the runner", why: "The stripe-contract step calls Stripe for real; file it once the key is there." };
+    const answered = researching({ steps: [step] });
+
+    expect(answered.run().status).toBe(0);
+    const [note] = answered.filed();
+    expect(note?.title).toBe(step.title);
+    expect(note?.labels).toEqual(["note", "owner-step"]);
+    expect(note?.body).toContain(step.why);
+    expect(note?.body).toContain("#902");
+  });
+
   it("files no more than three fixes, however many the researcher gives", () => {
     const answered = researching({ fixes: [fix, fix, fix, fix] });
 
