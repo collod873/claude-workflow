@@ -13,7 +13,9 @@ export const SLICE_SESSION = "sess-slice";
 export const BRIEF = ["# Show each tenant's time zone", "", "## Why", "", 'The owner: "every job time reads in the tenant\'s own zone".', "", "## Done when", "", "- A job time shows in the tenant's zone.", "", "## Out of Scope", "", "- Changing a tenant's zone.", ""].join("\n");
 export const BUILDS = "printf 'export const zone = \"%s\";\\n' \"$CALL\" >src/zone.ts\ngit add --all\ngit commit --quiet -m \"Show the tenant's time zone\"\n";
 
-export type Answered = { outcome: string; reason: string; left?: string } | undefined;
+export type Answered = { outcome: string; reason: string; left?: string; repo?: string; tickets?: { title: string; why: string; done: string[] }[] } | undefined;
+
+export const KIT_FILED = "https://github.com/collod873/design-kit/issues/301";
 
 export function slicing({
   answers = [{ outcome: "built", reason: "a job time shows in the tenant's zone" }] as Answered[],
@@ -66,7 +68,7 @@ export function slicing({
   });
   script(join(root, "bin", "check"), `printf 'check%s\\n' "\${*:+ $*}" >>"${at("check-calls")}"\n${envKept("check")}${check}`);
   script(join(root, "bin", "docker"), `printf '%s\\n' "$*" >>"${at("docker-calls")}"\ncase $1 in\n  port) printf '127.0.0.1:49153\\n' ;;\n  ps) cat "${root}/containers" 2>/dev/null ;;\nesac\n`);
-  script(join(root, "bin", "gh"), [setup, 'case "$*" in', "  *\"repos/{owner}/{repo}/installation\"*) printf '4242\\n' ;;", "  *\"app/installations/4242/access_tokens\"*) printf 'minted-%s\\n' \"$n\" ;;", "esac", ""].join("\n"));
+  script(join(root, "bin", "gh"), [setup, 'case "$*" in', "  *\"repos/{owner}/{repo}/installation\"*) printf '4242\\n' ;;", "  *\"app/installations/4242/access_tokens\"*) printf 'minted-%s\\n' \"$n\" ;;", `  *"issue create"*) printf '%s\\n' '${KIT_FILED}' ;;`, "esac", ""].join("\n"));
   plant(root, `claude-${slice}.sh`, claude);
   script(
     join(root, "bin", "claude"),

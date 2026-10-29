@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { fixing } from "./builder.part.ts";
 import { rerunning } from "./rerun.part.ts";
-import { execute, heldBy, holds, labelledAs, labelledStep, onPath, scratch, script, workflowJobs, type WorkflowStep } from "./scenarios.ts";
+import { execute, heldBy, holds, labelledAs, labelledOutputs, labelledStep, onPath, scratch, script, workflowJobs, type WorkflowStep } from "./scenarios.ts";
 import { MACHINE, OWNER } from "./spelled.ts";
 import { ENROLLED_CALLER } from "./post.ts";
 
@@ -426,17 +426,27 @@ describe("a repo's specs and research notes run through the same caller file, on
   it("resumes a spec or a research note the owner takes a label off (#1175, #1353, #1509)", () => {
     expect(specs({ event: "issues", action: "unlabeled", outputs: { wake: { research: "true" } } })).toEqual(["wake", "research"]);
     expect(specs({ event: "issues", action: "unlabeled", outputs: { wake: { spec: "true" } } })).toEqual(["wake", "spec"]);
-    expect(specs({ event: "issues", action: "unlabeled", sender: MACHINE })).toEqual([]);
+    expect(specs({ event: "issues", action: "unlabeled", sender: "stranger" })).toEqual([]);
+  });
+
+  it("resumes a spec the closer takes `waiting` off once what its slices handed off has closed, and no other label the machine takes off", async () => {
+    const wake = labelledStep("specs.yml", "wake");
+    const resumed = await labelledOutputs(wake, REPO, { action: "unlabeled", label: "waiting", sender: MACHINE, labels: ["spec"] });
+    const building = await labelledOutputs(wake, REPO, { action: "unlabeled", label: "building", sender: MACHINE, labels: ["spec"] });
+
+    expect(holds(workflowJobs("specs.yml").wake?.if ?? "", { action: "unlabeled", label: "waiting", sender: MACHINE })).toBe(true);
+    expect(resumed.outputs.spec).toBe("true");
+    expect(building.outputs.spec).toBe("false");
   });
 
   it("starts nothing on a ticket's events", () => {
     for (const fired of [
       { event: "issues", action: "reopened" },
-      { event: "issues", action: "unlabeled", sender: MACHINE },
       { event: "workflow_dispatch" },
     ]) {
       expect(specs(fired), JSON.stringify(fired)).toEqual([]);
     }
+    expect(specs({ event: "issues", action: "unlabeled", sender: MACHINE })).toEqual(["wake"]);
   });
 
   it("readies the tree's pinned Node before anything installs, in every job whose stage may run the done check, and tells that stage the caller file it runs under", () => {

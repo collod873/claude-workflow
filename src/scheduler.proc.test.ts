@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { git } from "./scenarios.ts";
-import { LANDED, MAIN_MOVES, PAUSES, machineComment, scheduling, sliceOf, SPEC_ISSUE } from "./scheduler.part.ts";
+import { KIT_STEP, LANDED, MAIN_MOVES, PAUSES, machineComment, scheduling, sliceOf, SPEC_ISSUE } from "./scheduler.part.ts";
+import { waitsOnStep } from "./builder.ts";
 
 const SPEC_BRANCH = `spec/${SPEC_ISSUE}`;
 const optionOf = (argv: string[] | undefined, name: string) => (argv?.includes(name) ? argv[argv.indexOf(name) + 1] : undefined);
@@ -109,6 +110,33 @@ describe("bin/schedule runs a spec from its first cut to its landing, one slice 
     expect(run.order().indexOf(`mark ${SPEC_ISSUE} stuck`)).toBeGreaterThan(run.order().indexOf("build free built"));
     expect(run.comments().at(-1)?.body).toContain("@collod873");
     expect(run.finished()).toEqual([]);
+  });
+
+  it("parks the spec waiting on what a slice handed to the repo that owns it, once nothing else can move, calling no owner, where Mezzanine#1689 sat stuck 52 min over two kit patterns", () => {
+    const run = scheduling({ cuts: [[sliceOf("signup"), sliceOf("free")], []], plans: { signup: [{ outcome: "owned" }] } });
+
+    const ended = run.run();
+
+    expect(ended.status, ended.stderr).toBe(0);
+    expect(stateOf(run)).toEqual({ signup: "handed", free: "merged" });
+    expect(run.order().at(-1)).toBe(`mark ${SPEC_ISSUE} waiting`);
+    expect(run.order()).not.toContain(`mark ${SPEC_ISSUE} stuck`);
+    expect(run.comments().at(-1)?.body).toContain(waitsOnStep(SPEC_ISSUE, "collod873/design-kit", [KIT_STEP]));
+    expect(run.finished()).toEqual([]);
+  });
+
+  it("builds a waiting slice again once everything it handed off has closed, and keeps it waiting while any is open", () => {
+    const waiting = { ...sliceOf("signup"), state: "handed", tries: 1, session: "session-signup-1", filed: [KIT_STEP] };
+    const progress = `## Spec run\n\n<!-- progress: ${JSON.stringify({ slices: [waiting] })} -->\n`;
+    const woken = scheduling({ comments: [machineComment(7, progress)], states: { [KIT_STEP]: "CLOSED" } });
+    const early = scheduling({ comments: [machineComment(7, progress)], states: { [KIT_STEP]: "OPEN" } });
+
+    expect(woken.run().status).toBe(0);
+    expect(woken.built("signup")).toBeDefined();
+    expect(stateOf(woken)).toEqual({ signup: "merged" });
+    expect(early.run().status).toBe(0);
+    expect(early.built("signup")).toBeUndefined();
+    expect(early.order().at(-1)).toBe(`mark ${SPEC_ISSUE} waiting`);
   });
 
   it("puts a slice out at once when its builder answers stuck, resuming no one", () => {

@@ -3,7 +3,8 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { CHECK_PASSES } from "./builder.part.ts";
-import { BRIEF, BUILDS, ONTO, SLICE, SLICE_SESSION, SPEC, slicing } from "./slice-builder.part.ts";
+import { BRIEF, BUILDS, KIT_FILED, ONTO, SLICE, SLICE_SESSION, SPEC, slicing } from "./slice-builder.part.ts";
+import { firstStepOf } from "./post.ts";
 import { BIN, execute, scratch } from "./scenarios.ts";
 import { OUT_OF_TIME } from "./slice-builder.ts";
 
@@ -215,6 +216,32 @@ describe("a fresh builder builds one slice of a spec in its own worktree until i
     expect(result.status).toBe(1);
     expect(ending(result.stdout)).toEqual({ outcome: "stuck", left: "", reason: "the zone has no source", session: SLICE_SESSION });
     expect(checked()).toEqual([]);
+  });
+
+  it("hands a first step another repo owns to that repo as a ticket and ends owned, exit 0, naming what it filed, where Mezzanine#1689 stopped for its owner over two kit patterns its builder had already written out", () => {
+    const kitStep = { title: "Split AuthPage with an aside", why: "The sign-up page needs a testimonial beside the form.", done: ["AuthPage takes an aside."] };
+    const { run, calls, checked } = slicing({ claude: ":\n", answers: [{ outcome: "owned", repo: "collod873/design-kit", reason: "the kit AuthPage has no aside", tickets: [kitStep] }] });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(ending(result.stdout)).toMatchObject({ outcome: "owned", reason: "the kit AuthPage has no aside", filed: [KIT_FILED] });
+    const created = calls().filter((args) => args[1] === "create");
+    expect(created).toHaveLength(1);
+    expect(created[0]).toEqual(expect.arrayContaining(["--repo", "collod873/design-kit"]));
+    expect(created[0]?.[created[0].indexOf("--body") + 1]).toContain(firstStepOf(`collod873/Lumaria#${SPEC}`));
+    expect(checked()).toEqual([]);
+  });
+
+  it("sends back an owned answer naming its own repo, filing nothing", () => {
+    const { run, calls, handed } = slicing({
+      claude: ":\n",
+      answers: [{ outcome: "owned", repo: "collod873/Lumaria", reason: "the kit", tickets: [{ title: "t", why: "w", done: ["d"] }] }, { outcome: "stuck", reason: "gave up" }],
+    });
+
+    expect(run().status).toBe(1);
+    expect(handed()[1]).toContain("collod873/Lumaria is this spec's own repo");
+    expect(calls().filter((args) => args[1] === "create")).toEqual([]);
   });
 
   it("refuses a call missing what it needs, or naming a slice id that is not kebab-case, before it hires anything", () => {

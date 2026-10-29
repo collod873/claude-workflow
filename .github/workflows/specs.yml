@@ -7,7 +7,7 @@ permissions: {}
 
 jobs:
   wake:
-    if: ${{ github.event_name == 'issues' && ((github.event.action == 'labeled' && (github.event.sender.login == github.repository_owner || github.event.sender.login == 'collod873-machine[bot]')) || (github.event.action == 'unlabeled' && github.event.sender.login == github.repository_owner)) }}
+    if: ${{ github.event_name == 'issues' && ((github.event.action == 'labeled' && (github.event.sender.login == github.repository_owner || github.event.sender.login == 'collod873-machine[bot]')) || (github.event.action == 'unlabeled' && (github.event.sender.login == github.repository_owner || github.event.sender.login == 'collod873-machine[bot]'))) }}
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
     env:
@@ -42,11 +42,13 @@ jobs:
           research=$(bin/spelled RESEARCH)
           paused=$(bin/spelled PAUSED)
           stuck=$(bin/spelled STUCK)
-          jq -r --arg SPEC "$spec" --arg RESEARCH "$research" --arg PAUSED "$paused" --arg STUCK "$stuck" '
+          waiting=$(bin/spelled WAITING)
+          jq -r --arg MACHINE "$(bin/spelled MACHINE)" --arg SPEC "$spec" --arg RESEARCH "$research" --arg PAUSED "$paused" --arg STUCK "$stuck" --arg WAITING "$waiting" '
             (.issue.state != "closed") as $open
+            | (.sender.login == $MACHINE) as $machine
             | (any(.issue.labels[]?.name; IN($PAUSED, $STUCK)) | not) as $free
-            | "spec=\(any(.issue.labels[]?.name; . == $SPEC) and $open and $free and ((.action == "labeled" and .label.name == $SPEC) or (.action == "unlabeled" and (.label.name | IN($PAUSED, $STUCK)))))",
-              "research=\(any(.issue.labels[]?.name; . == $RESEARCH) and $open and ((.action == "labeled" and .label.name == $RESEARCH) or (.action == "unlabeled" and (.label.name | IN($PAUSED, $STUCK)) and $free)))"
+            | "spec=\(any(.issue.labels[]?.name; . == $SPEC) and $open and $free and ((.action == "labeled" and .label.name == $SPEC) or (.action == "unlabeled" and (.label.name | if $machine then . == $WAITING else IN($PAUSED, $STUCK, $WAITING) end))))",
+              "research=\(any(.issue.labels[]?.name; . == $RESEARCH) and $open and ((.action == "labeled" and .label.name == $RESEARCH) or (.action == "unlabeled" and (.label.name | IN($PAUSED, $STUCK)) and $free and ($machine | not))))"
           ' "$GITHUB_EVENT_PATH" | tee -a "$GITHUB_OUTPUT"
 
       - if: ${{ failure() || cancelled() }}
