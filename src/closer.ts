@@ -38,7 +38,20 @@ function wokenWaiting(ticket: string, body: string): string {
   const comments = commentsRead(ticket, `the comments on #${ticket} could not be read, so it is not woken`, gh);
   const parked = comments.filter((said) => said.includes(LABELLED_WAITING)).at(-1);
   if (parked?.startsWith(dependsOn(ticket)) === true) return wokenFromSplit(ticket, body, parked, dependsOn(ticket), dependedOnClosed(ticket));
-  return parked?.startsWith(splitInto(ticket)) === true ? wokenFromSplit(ticket, body, parked) : "";
+  if (parked?.startsWith(splitInto(ticket)) === true) return wokenFromSplit(ticket, body, parked);
+  return parked === undefined ? wokenFromWaitsOn(ticket, body) : "";
+}
+
+function wokenFromWaitsOn(ticket: string, body: string): string {
+  const waited = waitsOn(body).filter((number) => number !== ticket);
+  if (waited.length === 0) return "";
+  const states = waited.map((number) => ({ number, state: ended(number, ticket) }));
+  const open = states.filter(({ state }) => !hasEnded(state)).map(({ number }) => number);
+  if (open.length > 0) return stillWaits(ticket, open);
+  const how = howEnded(states);
+  commentOnTicket(ticket, `${dependedOnClosed(ticket)} ${how}. #${ticket} builds now.\n\nRun: ${thisRun}`, gh);
+  const woke = gh(["issue", "edit", ticket, "--remove-label", WAITING]);
+  return woke.status === 0 ? `; #${ticket} builds now, everything it waits on closed: ${how}` : `; #${ticket} could not be woken: ${quoted((woke.stderr || woke.stdout).trim().split("\n")[0] ?? "")}`;
 }
 
 const filedHere = (repo: string) => new RegExp(`https://github\\.com/${repo.replaceAll(".", "\\.")}/issues/(\\d+)`, "g");

@@ -81,6 +81,19 @@ describe("bin/close wakes a split ticket once every piece has closed, however ea
     expect(woken(freed.calls())).toBeGreaterThanOrEqual(0);
   });
 
+  it("wakes a follow-up filed waiting on an owner-step note, with no builder comment, once that note closes (#1565)", () => {
+    const body = ["## Why", "", '"one ticket"', "", "## Waits on", "", "- #1700", "", "## Done when", "", "- It lands.", ""].join("\n");
+    const held = closing({ closedIssue: "1699", splitFrom: { parent: "811", labels: "waiting\n", said: [], body, siblings: { "1700": "OPEN " } } });
+    const freed = closing({ closedIssue: "1700", splitFrom: { parent: "811", labels: "waiting\n", said: [], body, siblings: { "1700": "CLOSED COMPLETED" } } });
+
+    const result = held.run();
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("#811 still waits for #1700");
+    expect(woken(held.calls())).toBe(-1);
+    expect(freed.run().status).toBe(0);
+    expect(woken(freed.calls())).toBeGreaterThanOrEqual(0);
+  });
+
   it("leaves a split ticket waiting on a Machine fault filed after its split, though every piece has closed (#1262)", () => {
     const fault = "@collod873 the builder of #811 found the machine at fault and filed https://github.com/collod873/claude-workflow/issues/1223. #811 waits on it, labelled `waiting`: take the label off once it merges. see #1262";
     const held = closing({ closedIssue: "812", splitFrom: { parent: "811", labels: "waiting\n", said: [said, fault], siblings: { "812": "CLOSED COMPLETED", "813": "CLOSED COMPLETED" } } });

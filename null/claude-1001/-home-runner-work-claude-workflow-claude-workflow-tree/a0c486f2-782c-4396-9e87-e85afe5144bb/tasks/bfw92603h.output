@@ -1,0 +1,3 @@
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/closer.proc.test.ts > bin/close wakes a split ticket once every piece has closed, however each closed, and names how each ended (#1058) > wakes a follow-up filed waiting on an owner-step note, with no builder comment, once that note closes (#1565)
+      Tests  1 failed | 13 passed (14)
