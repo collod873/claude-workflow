@@ -14,7 +14,6 @@ export function researching({
   fixes = [],
   steps = [],
   asks = [],
-  steps = [],
   gh = "",
   sources = "",
   readsPastCap = false,

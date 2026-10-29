@@ -261,8 +261,6 @@ export interface OwnerStep {
   why: string;
 }
 
-export const ownerStepFiled = (left: string) => (step: OwnerStep) => ({ named: `${step.title}: ${step.why}`, ...post({ kind: "owner", title: step.title, text: `## Why\n\n${step.why}\n\n${left}\n` }, gh) });
-
 export const MOST_FIXES = 3;
 
 export const FOLLOW_UPS = {
