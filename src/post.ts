@@ -109,6 +109,7 @@ export const RESEARCH_FROM = followUpFrom(RESEARCH_FOUND);
 export const REVIEW_LET_THROUGH = ": its reviewer let this through.";
 export const REVIEW_FROM = followUpFrom(REVIEW_LET_THROUGH);
 export const DONE_CHECK_MISSED = ": its done check found this did not hold.";
+export const DONE_CHECK_FROM = followUpFrom(DONE_CHECK_MISSED);
 const FAULT_OF = "Filed by the builder of ";
 const FAULT_WAITS = ", which waits on it, as the machine's fault";
 export const STEP_WAITS = ", which waits on it, as its first step";

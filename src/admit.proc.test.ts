@@ -130,6 +130,25 @@ describe("bin/admit lets what a reviewer let through in when the ticket it revie
   });
 });
 
+describe("bin/admit lets a done check's miss in when the spec it checked builds (Mezzanine #1751)", () => {
+  const MISSED = ticketWhy("Follow-up of #745: its done check found this did not hold.");
+  const CHECKED = { number: "745", opener: "collod873", labels: ["spec"], state: "closed" };
+
+  it("admits a done check's follow-up whose spec the owner opened", () => {
+    const { run, comments } = admitting({ opener: APP, body: MISSED, note: CHECKED });
+
+    expect(run().stdout).toBe("admitted=true\n");
+    expect(comments()).toEqual([]);
+  });
+
+  it("refuses a done check's follow-up whose spec the App opened, naming the spec", () => {
+    const { run, comments } = admitting({ opener: APP, body: MISSED, note: { ...CHECKED, opener: APP } });
+
+    expect(run().stdout).toBe("admitted=false\n");
+    expect(comments()[0]).toContain("#745");
+  });
+});
+
 describe("bin/admit lets the App's ticket in only as a follow-up a stage wrote (#1022, #1509)", () => {
   it.each([
     ["only quotes a follow-up line", ticketWhy("> Follow-up of #865: its builder split it, since it does not fit one build.")],
