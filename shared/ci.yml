@@ -124,7 +124,7 @@ jobs:
           name="database-${GITHUB_REPOSITORY//[^A-Za-z0-9_.-]/-}-${RUNNER_NAME//[^A-Za-z0-9_.-]/-}"
           echo "DATABASE_CONTAINER=$name" >> "$GITHUB_ENV"
           docker ps --all --quiet --filter "name=^$name\$" | xargs --no-run-if-empty docker rm --force >/dev/null
-          docker run --quiet --detach --name "$name" --publish 127.0.0.1::5432 --env POSTGRES_USER=postgres --env POSTGRES_PASSWORD=postgres --env POSTGRES_DB="$DB_NAME" postgres:16 >/dev/null
+          docker run --quiet --detach --name "$name" --tmpfs /var/lib/postgresql/data --publish 127.0.0.1::5432 --env POSTGRES_USER=postgres --env POSTGRES_PASSWORD=postgres --env POSTGRES_DB="$DB_NAME" postgres:16 >/dev/null
           timeout 60 bash -c "until docker exec '$name' pg_isready --quiet --host 127.0.0.1 --username postgres --dbname '$DB_NAME'; do sleep 1; done"
           port=$(docker port "$name" 5432/tcp | head -n 1 | sed 's/.*://')
           echo "DATABASE_URL=postgres://app:app@localhost:$port/$DB_NAME" >> "$GITHUB_ENV"
