@@ -5,12 +5,11 @@ import { join } from "node:path";
 import { capped, DIFF_CAP, diffOverCap, LIST_CAP, NO_EM_DASH, onDisk, TAIL_CAP, tailOf } from "./brief.ts";
 import { checkedBy, type Red } from "./builder.ts";
 import { PUBLISHED_CHECK } from "./checks.ts";
-import { doneCheck, lastDoneCheck, missesOf } from "./done-checker.ts";
+import { doneCheck } from "./done-checker.ts";
 import { askedIssue, commentOnTicket, FOLLOW_UP_OF, gh, ghRead, git, gitRead, heldOn, labelsHeld, mark, OWNER, readOrStop, REVIEW_LET_THROUGH, STUCK, unread } from "./post.ts";
 import { afterRefused, approvedOn, firstTimeNamed, gathered, landing, ownerStepFiled, type Routed, ROUTED, ROUTED_REQUIRED, routedFiled } from "./reviewer.ts";
 import { fastForwarded, landedOn, MOST_BUILDERS, type Progress, progressOn, removed, specBranch, worktree } from "./scheduler.ts";
 import { fastForwards, rebaseStopped, sliceTrailed } from "./slice-builder.ts";
-import { FINDINGS_CAP } from "./slicer.ts";
 import { committed, commitlinted, CONTRACT, head, hireIn, MOST_FIXES, type OwnerStep, OWNER_STEPS, setupRefusedIn, type Spent } from "./stage.ts";
 import { SPEC } from "./spelled.ts";
 import { stopsOf } from "./stops.ts";
@@ -66,11 +65,8 @@ const codeDiff = ({ diff, stat }: Changes) => {
     : [`At ${over.bytes} bytes this diff is over the ${DIFF_CAP} handed, so here are its \`git diff --stat\` and the files it changes; read each file in the repo.`, over.stat, over.files].join("\n\n");
 };
 
-export function onTheCode(changes: Changes, { spec, red, commitlint, findings }: { spec: string; red?: Red | undefined; commitlint: boolean; findings?: string | undefined }): string {
-  const built =
-    findings === undefined
-      ? "Builders built this spec slice by slice on its integration branch, and a reviewer on the spec has read it and fixed what it missed."
-      : "This branch is the spec's one fix pass: once the spec landed on main, some sentences failed its done check, and this integration branch, cut fresh off main, holds only their fix. A reviewer on the spec has read it.";
+export function onTheCode(changes: Changes, { spec, red, commitlint }: { spec: string; red?: Red | undefined; commitlint: boolean }): string {
+  const built = "Builders built this spec slice by slice on its integration branch, and a reviewer on the spec has read it and fixed what it missed.";
   return [
     `# Hold spec #${spec} to the code standard before it lands`,
     `${built} You did not build it: read its commit messages and diff as its reviewer on the code standard.`,
@@ -82,7 +78,6 @@ export function onTheCode(changes: Changes, { spec, red, commitlint, findings }:
           `\`${PUBLISHED_CHECK}\` went red on this branch once the reviewer on the spec was done: \`${red.verdict}\`. The red may sit in any slice's code, and it is yours wherever it sits: make it pass, since the check runs again when you answer and holds you until it passes. The end of each red step's part of its log:`,
           tailOf(red.failed, TAIL_CAP),
         ]),
-    ...(findings === undefined ? [] : ["## What the done check found", capped(findings, FINDINGS_CAP)]),
     "## Commits, newest first",
     "`git show <id>` reads one; `git log origin/main..HEAD` reads those cut here.",
     capped(changes.commits, LIST_CAP),
@@ -111,15 +106,11 @@ const specDiff = ({ diff, stat }: Changes) => {
     : [`The diff is ${over.bytes} bytes, over ${DIFF_CAP}, so only its \`git diff --stat\` and its files are handed; read in the repo what you need of it.`, over.stat, "Every file changed:", over.files].join("\n\n");
 };
 
-export function onTheSpec(changes: Changes, { spec, title, body, commitlint, briefs, findings }: { spec: string; title: string; body: string; commitlint: boolean; briefs: string; findings?: string | undefined }): string {
+export function onTheSpec(changes: Changes, { spec, title, body, commitlint, briefs }: { spec: string; title: string; body: string; commitlint: boolean; briefs: string }): string {
   const built =
-    findings === undefined
-      ? "Builders built the spec below slice by slice on its integration branch, each slice to its brief under `## Its slices`. You did not build it: read the spec, the briefs, its commit messages and its diff, over the whole branch, as its reviewer on the spec."
-      : "The spec landed on main, and some of its sentences failed the done check; the findings are under `## The done check's findings`. This is the spec's one fix pass: its integration branch is fresh off main and holds only the fix, built slice by slice, so the rest of the spec is on main already. You did not build the fix: read the spec, the fix's slices under `## Its slices`, its commit messages and its diff as its reviewer on the spec, and judge whether it makes those sentences hold.";
+    "Builders built the spec below slice by slice on its integration branch, each slice to its brief under `## Its slices`. You did not build it: read the spec, the briefs, its commit messages and its diff, over the whole branch, as its reviewer on the spec.";
   const fix =
-    findings === undefined
-      ? "Where the branch misses what the spec asks, builds what it rules out of scope, or leaves any story or any sentence under `## I'll know it works when I can` short of whole, build the rest here yourself: nothing goes back to a builder. Once it lands, a fresh done check tries each of those sentences."
-      : "Where the fix leaves a finding's sentence short of whole anywhere it reaches, builds what the spec rules out of scope, or breaks what already landed, fix it here yourself: nothing goes back to a builder. Once it lands, a fresh done check tries each sentence again.";
+    "Where the branch misses what the spec asks, builds what it rules out of scope, or leaves any story or any sentence under `## I'll know it works when I can` short of whole, build the rest here yourself: nothing goes back to a builder. Once it lands, a fresh done check tries each of those sentences.";
   return [
     `# Hold spec #${spec} to what it asks before it lands`,
     `${built} A reviewer on the code standard reads the branch after you, your fixes with it.`,
@@ -128,7 +119,6 @@ export function onTheSpec(changes: Changes, { spec, title, body, commitlint, bri
     "## Its slices",
     "Each slice the slicer cut, with the brief its builder built to:",
     capped(briefs, BRIEFS_CAP) || "(none on record)",
-    ...(findings === undefined ? [] : ["## The done check's findings", capped(findings, FINDINGS_CAP)]),
     "Its commits are listed newest first, each with its id: `git show <id>` reads one, and `git log origin/main..HEAD` reads any the list cuts.",
     "## Commits",
     capped(changes.commits, LIST_CAP),
@@ -158,7 +148,6 @@ const landRefused = (refused: string) => ["`bin/land` refused to land the spec. 
 
 const briefsOf = (progress: Progress) =>
   progress.slices
-    .filter(({ fix }) => fix === progress.fixPass)
     .map(({ id, title, why, done }) => `- \`${id}\`: ${title.trim()}\n  Why: ${why.trim()}\n  Done when: ${done.map((sentence) => sentence.trim()).join(" ")}`)
     .join("\n");
 
@@ -364,7 +353,6 @@ async function reviews(run: Run, { title, body }: { title: string; body: string 
   const { spec } = run;
   const top = process.cwd();
   const commitlint = commitlinted();
-  const findings = progress.fixPass ? missesOf(lastDoneCheck(spec, `the comments on #${spec} could not be read, so nothing was reviewed`) ?? "") : undefined;
   const reviewer = (seat: string, on: "spec" | "code standard", answers: object, { tree = top, slices }: { tree?: string; slices?: string[] | undefined } = {}): Reviewer => ({
     spend: hireIn(tree, "finish", seat, { name: `reviewer on the ${on}`, model: "opus", answers }),
     seat,
@@ -375,7 +363,7 @@ async function reviews(run: Run, { title, body }: { title: string; body: string 
     ...(tree === top ? {} : { branch: `review/${seat}` }),
   });
   const onSpec = reviewer(`${spec}-spec`, "spec", ANSWER);
-  const approved = await answered(run, onSpec, onTheSpec(wholeBranch(), { spec, title, body, commitlint, briefs: briefsOf(progress), findings }), `Review #${spec} on the spec`);
+  const approved = await answered(run, onSpec, onTheSpec(wholeBranch(), { spec, title, body, commitlint, briefs: briefsOf(progress) }), `Review #${spec} on the spec`);
   if (approved === undefined) return undefined;
   run.reasons.set(onSpec.seat, `${onSpec.on}: ${approved.reason}`);
   const red = checkedBy(PUBLISHED_CHECK);
@@ -388,7 +376,7 @@ async function reviews(run: Run, { title, body }: { title: string; body: string 
     packs.map((changes, at) => async () => {
       const ofPack = reviewer(`${spec}-code-${at + 1}`, "code standard", CODE_ANSWER, root === undefined ? {} : { tree: join(root, String(at + 1)), slices: changes.slices });
       if (!(await treeMade(run, ofPack))) return undefined;
-      const answer = await answered(run, ofPack, onTheCode(changes, { spec, red: at === 0 ? red : undefined, commitlint, findings }), commit);
+      const answer = await answered(run, ofPack, onTheCode(changes, { spec, red: at === 0 ? red : undefined, commitlint }), commit);
       return answer !== undefined && (await merged(run, ofPack, commit)) === true ? { ofPack, answer } : undefined;
     }),
   );
@@ -441,7 +429,6 @@ async function finished(spec: string, app: AppKey | undefined): Promise<Finished
   };
   if (found.progress.landed !== undefined) return checkedOnMain(found.progress.landed);
   if (gitRead(["rev-list", "--count", PAST_MAIN], UNREAD) === "0") {
-    if (found.progress.firstLanding !== undefined) return checkedOnMain(found.progress.firstLanding);
     stoppedAt("unfinishable", `${said} holds nothing past main on its integration branch, ${unchanged}`);
     return {};
   }

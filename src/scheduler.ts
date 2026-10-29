@@ -16,7 +16,6 @@ const stoppedAt = stopsOf({
   unmoved: "Schedule: no slice can move and none is left to build, so the spec is marked `stuck`",
   unfinished: "Schedule: bin/finish ended red, so the spec did not land",
   unchecked: "Schedule: bin/finish ended red after the spec landed, before its done check finished, so a rerun goes straight to the done check",
-  missedTwice: "Schedule: the done check missed after the spec's one fix pass, so the spec is marked `stuck`",
 });
 type Stop = ReturnType<typeof stoppedAt>;
 
@@ -29,7 +28,6 @@ type SliceState = "cut" | "hired" | "merged" | "out";
 interface Tracked extends Slice {
   state: SliceState;
   tries: number;
-  fix: boolean;
   session?: string | undefined;
   left?: string | undefined;
   stopped?: string | undefined;
@@ -37,9 +35,7 @@ interface Tracked extends Slice {
 }
 
 export interface Progress {
-  fixPass: boolean;
   landed?: string | undefined;
-  firstLanding?: string | undefined;
   slices: Tracked[];
 }
 
@@ -74,7 +70,7 @@ const cell = (text: string) => text.replaceAll("|", "\\|").replaceAll(/\s*\n\s*/
 function progressComment(progress: Progress): string {
   const rows = progress.slices.map(({ id, title, state, tries, left, stopped }) => `| \`${id}\` | ${cell(title)} | ${state} | ${tries} | ${cell(left ?? stopped ?? "")} |`);
   const json = JSON.stringify(progress).replaceAll("--", "-\\u002d");
-  return [PROGRESS_HEADING, "", "| Slice | Title | State | Tries | Left |", "|---|---|---|---|---|", ...rows, "", `Fix pass: ${progress.fixPass ? "spent" : "not spent"}.`, "", `${PROGRESS_OPEN}${json}${PROGRESS_CLOSE}`, ""].join("\n");
+  return [PROGRESS_HEADING, "", "| Slice | Title | State | Tries | Left |", "|---|---|---|---|---|", ...rows, "", `${PROGRESS_OPEN}${json}${PROGRESS_CLOSE}`, ""].join("\n");
 }
 
 interface Found {
@@ -93,7 +89,7 @@ export function progressOn(spec: string): Found {
       .filter(({ author, body }) => author === MACHINE && body.startsWith(PROGRESS_HEADING))
       .at(-1);
     const json = PROGRESS.exec(written?.body ?? "")?.[1];
-    if (json === undefined) return { url: written?.url, progress: { fixPass: false, slices: [] } };
+    if (json === undefined) return { url: written?.url, progress: { slices: [] } };
     const saved = JSON.parse(json) as Progress;
     return { url: written?.url, progress: { ...saved, slices: saved.slices.map((slice) => ({ ...slice, decisions: slice.decisions ?? [], leftOf: slice.leftOf ?? [] })) } };
   } catch {
@@ -347,7 +343,7 @@ async function scheduled(spec: string, app: AppKey | undefined): Promise<Stop | 
       plan = false;
       if (cut === undefined) slicerStopped = true;
       else {
-        progress.slices.push(...cut.map((slice): Tracked => ({ ...slice, state: "cut", tries: 0, fix: progress.fixPass })));
+        progress.slices.push(...cut.map((slice): Tracked => ({ ...slice, state: "cut", tries: 0 })));
         cutNothing = cut.length === 0;
       }
       posted(spec, found);
@@ -380,16 +376,8 @@ async function scheduled(spec: string, app: AppKey | undefined): Promise<Stop | 
         return stoppedAt("unfinished", `${said} ended red, bin/finish ${spec} ended ${String(ended.status)}`);
       }
       progress.landed = undefined;
-      if (ended.missed === "") {
-        console.log(`${said} landed as #${ended.landed ?? "?"}, and its done check found every sentence held or put to the owner`);
-        return undefined;
-      }
-      if (progress.fixPass) return calledOwner(spec, "missedTwice", `the done check missed sentence ${ended.missed} after its one fix pass`);
-      progress.fixPass = true;
-      progress.firstLanding = ended.landed;
-      plan = true;
-      posted(spec, found);
-      continue;
+      console.log(`${said} landed as #${ended.landed ?? "?"}, and its done check ${ended.missed === "" ? "found every sentence held or put to the owner" : `filed sentence ${ended.missed} as bugs`}`);
+      return undefined;
     }
     const built = await Promise.race(running.values());
     running.delete(built.id);
