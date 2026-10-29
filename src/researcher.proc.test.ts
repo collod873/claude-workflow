@@ -138,16 +138,19 @@ describe("bin/research files what its findings call for, so a closed note leaves
     expect(note?.body).toContain(`@collod873 #902's research leaves these to you:\n\n- ${ask}`);
   });
 
-  it("files a step only the owner can take as an owner-step note naming the note, never as a ticket that builds, where #1759 built a fix waiting on a Stripe key", () => {
-    const step = { title: "Put the Stripe sandbox key on the runner", why: "The stripe-contract step calls Stripe for real; file it once the key is there." };
-    const answered = researching({ steps: [step] });
+  it("files each owner step as its own note, and a fix that needs one files waiting on that note, so the fix builds once the owner has taken it (#1565)", () => {
+    const step = { title: "Add the Stripe key to Lumaria's Railway variables", why: "The charge path reads STRIPE_KEY, and only the owner holds it." };
+    const answered = researching({ steps: [step], fixes: [{ ...fix, after: step.title }, fix], gh: "[[ $2 == create ]] && { printf 'https://github.com/collod873/claude-workflow/issues/1700\\n'; exit 0; }" });
 
     expect(answered.run().status).toBe(0);
-    const [note] = answered.filed();
+    const [note, waiting, atOnce] = answered.filed();
     expect(note?.title).toBe(step.title);
-    expect(note?.labels).toEqual(["note", "owner-step"]);
+    expect(note?.labels).toContain("owner-step");
     expect(note?.body).toContain(step.why);
-    expect(note?.body).toContain("#902");
+    expect(waiting?.labels).toEqual(["ticket", "waiting"]);
+    expect(waiting?.body).toContain("## Waits on\n\n- #1700");
+    expect(atOnce?.labels).toEqual(["ticket"]);
+    expect(atOnce?.body).not.toContain("## Waits on");
   });
 
   it("files no more than three fixes, however many the researcher gives", () => {

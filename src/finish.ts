@@ -404,7 +404,7 @@ function landed(run: Run, { last }: Reviewed): Promise<string | undefined> {
 function leftFiled(spec: string, approved: Approved[]): void {
   const unfiled = firstTimeNamed();
   const once = approved.flatMap(({ steps }) => steps).filter(({ title }) => unfiled(title));
-  const filed = [...once.map(ownerStepFiled(`Left to the owner by the run that landed spec #${spec}.`)), ...routedFiled(`${FOLLOW_UP_OF}${spec}${REVIEW_LET_THROUGH}`, approved)];
+  const filed = routedFiled(`${FOLLOW_UP_OF}${spec}${REVIEW_LET_THROUGH}`, `Left to the owner by the run that landed spec #${spec}.`, once, approved);
   const refused = filed.filter(({ refusals }) => refusals.length > 0);
   if (refused.length > 0) commentOnTicket(spec, [`What the reviewers of #${spec} left that could not be filed:`, "", ...refused.map(({ named, refusals }) => `- ${named} (${quoted(refusals[0] ?? "")})`), ""].join("\n"), gh);
 }

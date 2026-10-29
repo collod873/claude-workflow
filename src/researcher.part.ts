@@ -12,15 +12,16 @@ export function researching({
   labels = ["note", "research"],
   findings = "The closer judges only an issue with checks, so a note waits on a session.",
   fixes = [],
+  steps = [],
   asks = [],
   steps = [],
   gh = "",
   sources = "",
   readsPastCap = false,
   markRefusal,
-}: { labels?: string[] | undefined; findings?: string; fixes?: { fault: string; title: string; done: string[] }[]; asks?: string[]; steps?: { title: string; why: string }[]; gh?: string; sources?: string; readsPastCap?: boolean; markRefusal?: string } = {}) {
+}: { labels?: string[] | undefined; findings?: string; fixes?: { fault: string; title: string; done: string[]; after?: string }[]; steps?: { title: string; why: string }[]; asks?: string[]; gh?: string; sources?: string; readsPastCap?: boolean; markRefusal?: string } = {}) {
   const cutOff = readsPastCap ? `case "$*" in *--resume*) ;; *) printf '%s\\n' '${JSON.stringify({ type: "system", session_id: READING_SESSION })}'; exit 124 ;; esac\n` : "";
-  const { root, ...stage } = issueStage("research-", { title: "What does the closer judge", body: wellFormedNote, labels: labels.map((name) => ({ name })) }, { findings, fixes, asks, steps }, FINDINGS_POSTED, gh, cutOff);
+  const { root, ...stage } = issueStage("research-", { title: "What does the closer judge", body: wellFormedNote, labels: labels.map((name) => ({ name })) }, { findings, fixes, steps, asks }, FINDINGS_POSTED, gh, cutOff);
   const marked = stubbedMark(root, join(root, "claude-argv"), markRefusal);
   return {
     ...stage,
