@@ -1,10 +1,10 @@
-import { type Admission, commentOnTicket, commentsRead, FAULT_FROM, gh, type Gh, ghAs, heldOf, type Opened, opened, OWNER, readOrStop, RESEARCH, RESEARCH_FROM, REVIEW_FROM, SPLIT_FROM, STEP_WAITS, unread } from "./post.ts";
+import { type Admission, commentOnTicket, commentsRead, DONE_CHECK_FROM, FAULT_FROM, gh, type Gh, ghAs, heldOf, type Opened, opened, OWNER, readOrStop, RESEARCH, RESEARCH_FROM, REVIEW_FROM, SPLIT_FROM, STEP_WAITS, unread } from "./post.ts";
 import { dedashed } from "./em-dash.ts";
 import { exitFor } from "./stops.ts";
 import { why } from "./ticket-shape.ts";
 
 export const doesNotBuild = (ticket: string, refused: string) =>
-  `#${ticket} does not build, since its checks would run as shell with the App's token and ${refused}. A ticket the App opens builds only as the builder's follow-up, as research's follow-up from a research note the owner opened, as what a reviewer let through on a ticket that builds, or as a first step or machine fault its builder filed from a ticket that builds in its own repo.`;
+  `#${ticket} does not build, since its checks would run as shell with the App's token and ${refused}. A ticket the App opens builds only as the builder's follow-up, as research's follow-up from a research note the owner opened, as what a reviewer let through on a ticket that builds, as what a done check found on a spec that builds, or as a first step or machine fault its builder filed from a ticket that builds in its own repo.`;
 const NO_FOLLOW_UP = "as no follow-up the machine builds";
 const HERE = "{owner}/{repo}";
 const MOST_READS = 8;
@@ -27,6 +27,11 @@ function researchFollowUp({ body }: Opened, repo: string, line: string): boolean
 
 const within = (filed: string, refused: Admission): Admission => (refused === undefined ? undefined : `the App filed it as ${filed}, where ${refused}`);
 
+const CHAINED: [RegExp, (at: string) => string][] = [
+  [REVIEW_FROM, (at) => `what the reviewer of ${at} let through`],
+  [DONE_CHECK_FROM, (at) => `what the done check of ${at} found`],
+];
+
 interface Admitted {
   refused: Admission;
   said: string;
@@ -40,8 +45,10 @@ function admitted(repo: string, ticket: string, so: string, reads: number, missi
   if (asked === "missing") return { refused: missing(line), said: "" };
   const said = why(asked.body ?? "");
   if (ownersOrFollowUp(asked) || researchFollowUp(asked, repo, `the research note of ${at} could not be read, ${so}`)) return { refused: undefined, said };
-  const [, reviewed] = REVIEW_FROM.exec(said) ?? [];
-  if (reviewed !== undefined && Number(reviewed) < Number(ticket)) return { refused: within(`what the reviewer of ${named(repo, reviewed)} let through`, admitted(repo, reviewed, so, reads - 1, unread).refused), said };
+  for (const [from, filed] of CHAINED) {
+    const [, earlier] = from.exec(said) ?? [];
+    if (earlier !== undefined && Number(earlier) < Number(ticket)) return { refused: within(filed(named(repo, earlier)), admitted(repo, earlier, so, reads - 1, unread).refused), said };
+  }
   const [, from, origin, kind] = FAULT_FROM.exec(said) ?? [];
   if (from === undefined || origin === undefined) return { refused: `the App opened it ${NO_FOLLOW_UP}`, said };
   const filedFrom = `${from}#${origin}`;
