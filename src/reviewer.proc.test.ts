@@ -42,6 +42,18 @@ describe("every risk the ticket's reviewer names ends somewhere: fixed here, a t
     expect(approved).toContain(`- fixed here: ${FIXED_HERE.risk} ${FIXED_HERE.why}`);
   });
 
+  it("parks a fix that waits on an owner step from the same answer on that step's note, and lets one without `waits` build at once, where Mezzanine#1759 built before its owner step", () => {
+    const STEP = { title: "Add the Stripe webhook secret", why: "The webhook route rejects every event until the secret is set." };
+    const scenario = routed({ review: { outcome: "approve", reason: "it builds the Why", steps: [STEP], fixes: [{ ...FIX, waits: STEP.title }, { ...FIX, title: "Retry a dropped webhook" }], risks: [] } });
+
+    expect(scenario.run().status).toBe(0);
+    const created = createdIssues(scenario.calls()).map(({ title }) => title);
+    const note = `#${901 + created.indexOf(STEP.title)}`;
+    const waiter = String(901 + created.indexOf(FIX.title));
+    expect(scenario.marked().filter((marked) => !marked.startsWith("811 "))).toEqual([`${waiter} waiting`]);
+    expect(scenario.ticketComments().find((said) => said?.includes(`#${waiter} depends on the owner-step note`))).toContain(note);
+  });
+
   it("posts the reason alone when the reviewer saw no risk", () => {
     const scenario = fixing({ claude: FIXES });
 

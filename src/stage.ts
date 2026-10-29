@@ -3,7 +3,7 @@ import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readdirSync
 import { join } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import { NO_EM_DASH, onDisk } from "./brief.ts";
-import { type Asked, askedIssue, commentOnTicket, followUpBody, gh, ghRead, git, gitRead, heldOn, mark, OWNER, post, STUCK, unread, type MarkedLabel } from "./post.ts";
+import { type Asked, askedIssue, commentOnTicket, followUpBody, gh, ghRead, git, gitRead, heldOn, mark, OWNER, post, STUCK, unread, WAITING, waitsOnOwnerStep, type MarkedLabel } from "./post.ts";
 import type { Stop } from "./stops.ts";
 import { quoted } from "./ticket-shape.ts";
 
@@ -275,6 +275,7 @@ export const FOLLOW_UPS = {
         fault: { type: "string", pattern: NO_EM_DASH },
         title: { type: "string", pattern: NO_EM_DASH },
         done: { type: "array", minItems: 1, items: { type: "string", pattern: NO_EM_DASH } },
+        waits: { type: "string", pattern: NO_EM_DASH },
       },
       required: ["fault", "title", "done"],
       additionalProperties: false,
@@ -287,10 +288,23 @@ export interface Fix {
   fault: string;
   title: string;
   done: string[];
+  waits?: string;
 }
 
-export const fixesFiled = (found: string, fixes: Fix[]): { named: string; refusals: string[]; said: string }[] =>
-  fixes.slice(0, MOST_FIXES).map(({ fault, title, done }) => ({ named: title, ...post({ kind: "ticket", title, text: followUpBody([found, "", `> ${fault}`], done) }, gh) }));
+export const FILED_NUMBER = /\/issues\/(\d+)\s*$/;
+
+function parkedOnNote(filed: { refusals: string[]; said: string }, waits: string | undefined, notes: Map<string, string>): { refusals: string[]; said: string } {
+  const ticket = FILED_NUMBER.exec(filed.said)?.[1];
+  if (waits === undefined || ticket === undefined) return filed;
+  const note = FILED_NUMBER.exec(notes.get(waits.trim().toLowerCase()) ?? "")?.[1];
+  if (note === undefined) return { ...filed, refusals: [`it waits on the owner step ${quoted(waits)}, which was not filed, so it builds at once`] };
+  mark(ticket, WAITING);
+  commentOnTicket(ticket, waitsOnOwnerStep(ticket, `#${note}`), gh);
+  return filed;
+}
+
+export const fixesFiled = (found: string, fixes: Fix[], notes = new Map<string, string>()): { named: string; refusals: string[]; said: string }[] =>
+  fixes.slice(0, MOST_FIXES).map(({ fault, title, done, waits }) => ({ named: title, ...parkedOnNote(post({ kind: "ticket", title, text: followUpBody([found, "", `> ${fault}`], done) }, gh), waits, notes) }));
 
 export function followedUp(found: string, fixes: Fix[], asks: string[], call: { title: string; by: string }): ReturnType<typeof fixesFiled> {
   const tickets = fixesFiled(found, fixes);

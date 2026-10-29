@@ -126,6 +126,9 @@ export function followUpBody(whyLines: string[], done: string[]): string {
 }
 
 export { OWNER, RESEARCH, STUCK, WAITING, type MarkedLabel };
+export const LABELLED_WAITING = `labelled \`${WAITING}\``;
+export const dependsOnOwnerStep = (ticket: string) => `#${ticket} depends on the owner-step note`;
+export const waitsOnOwnerStep = (ticket: string, note: string) => `${dependsOnOwnerStep(ticket)} ${note}, the step its reviewer left to the owner. It waits on it, ${LABELLED_WAITING}, and the closer wakes it once the note closes.`;
 
 const KINDS: Record<string, Kind> = {
   ticket: filed(ticketRefusals, [TICKET]),

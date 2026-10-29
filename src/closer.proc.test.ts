@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { waitsOnFault, waitsOnOpen, waitsOnStep } from "./builder.ts";
+import { waitsOnOwnerStep } from "./post.ts";
 import { closing, type FaultOrigin } from "./closer.part.ts";
 import { faultOf, firstStepOf } from "./post.ts";
 import { holds, workflowJobs } from "./scenarios.ts";
@@ -180,6 +181,13 @@ describe("bin/close wakes a ticket its builder parked waiting on an open ticket 
     expect(result.status, result.stderr).toBe(0);
     expect(calls().findIndex((call) => call.trimEnd() === "issue\nedit\n1710\n--remove-label\nwaiting")).toBeGreaterThanOrEqual(0);
     expect(calls().find((call) => call.startsWith("issue\ncomment\n1710\n"))).toContain("#1711 merged");
+  });
+
+  it("wakes a reviewer's fix parked on an owner-step note once that note closes", () => {
+    const { calls, run } = closing({ closedIssue: "1601", splitFrom: { parent: "1602", labels: "waiting\n", said: waitsOnOwnerStep("1602", "#1601"), siblings: { "1601": "CLOSED COMPLETED" } } });
+
+    expect(run().status).toBe(0);
+    expect(calls().findIndex((call) => call.trimEnd() === "issue\nedit\n1602\n--remove-label\nwaiting")).toBeGreaterThanOrEqual(0);
   });
 
   it("leaves it waiting while a ticket it depends on is still open", () => {

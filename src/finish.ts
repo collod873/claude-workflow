@@ -7,10 +7,10 @@ import { checkedBy, type Red } from "./builder.ts";
 import { PUBLISHED_CHECK } from "./checks.ts";
 import { doneCheck } from "./done-checker.ts";
 import { askedIssue, commentOnTicket, FOLLOW_UP_OF, gh, ghRead, git, gitRead, heldOn, labelsHeld, mark, OWNER, readOrStop, REVIEW_LET_THROUGH, STUCK, unread } from "./post.ts";
-import { afterRefused, approvedOn, firstTimeNamed, gathered, landing, type Routed, ROUTED, ROUTED_REQUIRED, routedFiled } from "./reviewer.ts";
+import { afterRefused, approvedOn, firstTimeNamed, gathered, landing, ownerStepsFiled, type Routed, ROUTED, ROUTED_REQUIRED, routedFiled } from "./reviewer.ts";
 import { fastForwarded, landedOn, MOST_BUILDERS, type Progress, progressOn, removed, specBranch, worktree } from "./scheduler.ts";
 import { fastForwards, rebaseStopped, sliceTrailed } from "./slice-builder.ts";
-import { committed, commitlinted, CONTRACT, head, hireIn, MOST_FIXES, type OwnerStep, ownerStepFiled, OWNER_STEPS, setupRefusedIn, type Spent } from "./stage.ts";
+import { committed, commitlinted, CONTRACT, head, hireIn, MOST_FIXES, type OwnerStep, OWNER_STEPS, setupRefusedIn, type Spent } from "./stage.ts";
 import { SPEC } from "./spelled.ts";
 import { stopsOf } from "./stops.ts";
 import { quoted, SPEC_CAP } from "./ticket-shape.ts";
@@ -404,7 +404,8 @@ function landed(run: Run, { last }: Reviewed): Promise<string | undefined> {
 function leftFiled(spec: string, approved: Approved[]): void {
   const unfiled = firstTimeNamed();
   const once = approved.flatMap(({ steps }) => steps).filter(({ title }) => unfiled(title));
-  const filed = [...once.map(ownerStepFiled(`Left to the owner by the run that landed spec #${spec}.`)), ...routedFiled(`${FOLLOW_UP_OF}${spec}${REVIEW_LET_THROUGH}`, approved)];
+  const steps = ownerStepsFiled(`Left to the owner by the run that landed spec #${spec}.`, once);
+  const filed = [...steps.filed, ...routedFiled(`${FOLLOW_UP_OF}${spec}${REVIEW_LET_THROUGH}`, approved, steps.notes)];
   const refused = filed.filter(({ refusals }) => refusals.length > 0);
   if (refused.length > 0) commentOnTicket(spec, [`What the reviewers of #${spec} left that could not be filed:`, "", ...refused.map(({ named, refusals }) => `- ${named} (${quoted(refusals[0] ?? "")})`), ""].join("\n"), gh);
 }

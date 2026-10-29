@@ -7,9 +7,9 @@ import { admission, doesNotBuild } from "./admit.ts";
 import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
 import { capped, LIST_CAP, NO_EM_DASH, onDisk, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
 import { PUBLISHED_CHECK } from "./checks.ts";
-import { BUILDER_SPLIT, commentOnTicket, commentsRead, ENROLLED_CALLER, faultOf, firstStepOf, FOLLOW_UP_OF, FOREIGN, followUpBody, gh, ghRead, git, gitRead, MACHINE_REPO, mark, MISSING, NOTHING_MARKED, OWNER, post, postRefusals, readOrStop, rewriteTicket, FILED_IN, ticketBranch, unread, WAITING } from "./post.ts";
+import { BUILDER_SPLIT, commentOnTicket, commentsRead, ENROLLED_CALLER, faultOf, firstStepOf, FOLLOW_UP_OF, FOREIGN, followUpBody, gh, ghRead, git, gitRead, LABELLED_WAITING, MACHINE_REPO, mark, MISSING, NOTHING_MARKED, OWNER, post, postRefusals, readOrStop, rewriteTicket, FILED_IN, ticketBranch, unread, WAITING } from "./post.ts";
 import { reviewedAndLanded } from "./reviewer.ts";
-import { calledOwner, committed, commitlinted, CONTRACT, opened, setupRefusal, type Spent, treePathed } from "./stage.ts";
+import { calledOwner, committed, commitlinted, CONTRACT, FILED_NUMBER, opened, setupRefusal, type Spent, treePathed } from "./stage.ts";
 import { BUILDING, TICKET } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { doneWhen, quoted, why, whyChanged } from "./ticket-shape.ts";
@@ -63,7 +63,6 @@ const stoppedAt = stopsOf({ unadmitted: "Build refused: the ticket's checks woul
 
 export const splitInto = (ticket: string) => `@${OWNER} the builder split #${ticket} into`;
 export const splitClosed = (ticket: string) => `Every ticket #${ticket} was split into has closed:`;
-export const LABELLED_WAITING = `labelled \`${WAITING}\``;
 const wokenByTheCloser = (ticket: string) => `#${ticket} waits on it, ${LABELLED_WAITING}, and the closer wakes it once every one of them closes:`;
 export const dependsOn = (ticket: string) => `The builder of #${ticket} found it depends on`;
 export const waitsOnOpen = (ticket: string, open: string[]) => `${dependsOn(ticket)} ${open.join(", ")}, still open. ${wokenByTheCloser(ticket)}`;
@@ -72,7 +71,6 @@ const handedStep = (ticket: string, repo: string, filed: string[]) => `The build
 export const waitsOnStep = (ticket: string, repo: string, filed: string[]) => `${handedStep(ticket, repo, filed)} ${wokenByTheCloser(ticket)}`;
 export const waitsUnheard = (ticket: string, repo: string, filed: string[]) => `${handedStep(ticket, repo, filed)} #${ticket} waits on it, ${LABELLED_WAITING}. @${OWNER} ${repo} carries no caller file, so nothing hears it close: take \`${WAITING}\` off #${ticket} once every one of them closes:`;
 export const filedClosed = (ticket: string) => `Every ticket the builder of #${ticket} filed and waits on has closed:`;
-const FILED = /\/issues\/(\d+)\s*$/;
 
 interface Handed {
   ticket: string;
@@ -234,9 +232,9 @@ function split(ticket: string, body: string, answer: Answer): Round {
   const refused = splitRefusals(body, answer, postings);
   if (refused.length > 0) return { red: ["Your split was refused, and nothing was filed:", ...refused.map((refusal) => `- ${refusal}`)].join("\n") };
   const filed = postings.map((posting) => ({ title: posting.title, ...post({ kind: "ticket", ...posting }, gh) }));
-  const numbers = filed.flatMap(({ said }) => FILED.exec(said)?.slice(1) ?? []);
+  const numbers = filed.flatMap(({ said }) => FILED_NUMBER.exec(said)?.slice(1) ?? []);
   const named = numbers.map((number) => `#${number}`).join(", ");
-  if (numbers.length < filed.length) return { ended: calledOwner(ticket, "builder", `its split filed ${numbers.length} of ${filed.length} tickets${named === "" ? "" : `, ${named}`}: ${quoted(filed.find(({ said }) => !FILED.test(said))?.refusals[0] ?? "")}`) };
+  if (numbers.length < filed.length) return { ended: calledOwner(ticket, "builder", `its split filed ${numbers.length} of ${filed.length} tickets${named === "" ? "" : `, ${named}`}: ${quoted(filed.find(({ said }) => !FILED_NUMBER.test(said))?.refusals[0] ?? "")}`) };
   if (answer.body === undefined) return { ended: closedAs(ticket, "not planned", `${splitInto(ticket)} ${named}, which build themselves, and closed it: ${answer.reason}`) };
   const written = gh(["issue", "edit", ticket, "--body", answer.body]);
   if (written.status !== 0) return { ended: calledOwner(ticket, "builder", `it filed ${named} and its rewrite of what waits would not save: ${quoted((written.stderr || written.stdout).trim().split("\n")[0] ?? "")}`) };
@@ -291,7 +289,7 @@ export function filedInRepo(repo: string, origin: string, outcome: string, unfil
   if (refused.length > 0) return { red: [`Your \`${outcome}\` answer was refused, and nothing was filed:`, ...refused.map((refusal) => `- ${refusal}`)].join("\n") };
   const inRepo = (args: string[]) => gh([...args, "--repo", repo]);
   const said = postings.map((posting) => post({ kind: "ticket", ...posting }, inRepo).said.trim());
-  return { filed: said.filter((one) => FILED.test(one)), all: said.every((one) => FILED.test(one)) };
+  return { filed: said.filter((one) => FILED_NUMBER.test(one)), all: said.every((one) => FILED_NUMBER.test(one)) };
 }
 
 function filedToWaitOn(ticket: string, answer: Answer, { repo, filedFrom, parked, unfiled }: Handing): Round {

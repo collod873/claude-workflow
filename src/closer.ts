@@ -1,5 +1,5 @@
-import { filedClosed, LABELLED_WAITING, splitClosed, splitInto, dependsOn } from "./builder.ts";
-import { commentOnTicket, commentsRead, FAULT_FROM, gh, ghAs, ghRead, opened, readOrStop, unread, WAITING } from "./post.ts";
+import { filedClosed, splitClosed, splitInto, dependsOn } from "./builder.ts";
+import { commentOnTicket, dependsOnOwnerStep, LABELLED_WAITING, commentsRead, FAULT_FROM, gh, ghAs, ghRead, opened, readOrStop, unread, WAITING } from "./post.ts";
 import { exitFor } from "./stops.ts";
 import { quoted, waitsOn, why } from "./ticket-shape.ts";
 
@@ -37,6 +37,7 @@ function wokenFromSplit(parent: string, body: string, split: string, said = spli
 function wokenWaiting(ticket: string, body: string): string {
   const comments = commentsRead(ticket, `the comments on #${ticket} could not be read, so it is not woken`, gh);
   const parked = comments.filter((said) => said.includes(LABELLED_WAITING)).at(-1);
+  if (parked?.startsWith(dependsOnOwnerStep(ticket)) === true) return wokenFromSplit(ticket, body, parked, dependsOnOwnerStep(ticket), dependedOnClosed(ticket));
   if (parked?.startsWith(dependsOn(ticket)) === true) return wokenFromSplit(ticket, body, parked, dependsOn(ticket), dependedOnClosed(ticket));
   return parked?.startsWith(splitInto(ticket)) === true ? wokenFromSplit(ticket, body, parked) : "";
 }

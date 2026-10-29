@@ -74,9 +74,9 @@ export function firstTimeNamed(): (said: string) => boolean {
   };
 }
 
-export function routedFiled(found: string, routed: Routed[]): ReturnType<typeof fixesFiled> {
+export function routedFiled(found: string, routed: Routed[], notes?: Map<string, string>): ReturnType<typeof fixesFiled> {
   const unfiled = firstTimeNamed();
-  return routed.flatMap(({ fixes = [] }) => fixesFiled(found, fixes.filter(({ title }) => unfiled(title))));
+  return routed.flatMap(({ fixes = [] }) => fixesFiled(found, fixes.filter(({ title }) => unfiled(title)), notes));
 }
 
 export const approvedOn = (reviewed: string[], later: string[], routed: Routed[]) => [...reviewed, ...later, ...routedOn(routed)].join("\n\n");
@@ -137,8 +137,8 @@ export function handedOn({ ticket, body, commits, diff, stat, alongside, said, c
     "Commit each change you make with its reason as the message; `bin/land` refuses an em dash or a closing keyword such as `Fixes #12`. Answer one outcome:",
     "- `approve`: it builds the Why, with whatever you fixed; `bin/land` then runs the full check and merges it, and anything it refuses comes back to you.",
     "- `stuck`: the work has a gap only the owner can close, and you cannot fix it; give the why in `reason`, and the ticket goes `stuck`.",
-    "`steps`: each step only the owner can take before this work runs, such as a dashboard setting or a key, read from the finished work; each one named is filed as an `owner-step` note once it lands, and the ticket still closes. A fix that waits on one rides in that step's `why`.",
-    `\`fixes\`: up to ${MOST_FIXES} faults this branch cannot carry, in another repo or in code this work leaves untouched and too big to fix here, each with one sure fix: \`fault\` with its evidence, \`title\`, and \`done\` naming the sentences that hold after the fix; each is filed as a ticket once it lands.`,
+    "`steps`: each step only the owner can take before this work runs, such as a dashboard setting or a key, read from the finished work; each one named is filed as an `owner-step` note once it lands, and the ticket still closes.",
+    `\`fixes\`: up to ${MOST_FIXES} faults this branch cannot carry, in another repo or in code this work leaves untouched and too big to fix here, each with one sure fix: \`fault\` with its evidence, \`title\`, and \`done\` naming the sentences that hold after the fix; each is filed as a ticket once it lands. A fix that needs one of your \`steps\` taken first names that step's \`title\` in \`waits\`: it is filed \`waiting\` and builds once the owner closes that step's note.`,
     "`risks`: each other fault, cost or risk you saw, `risk` saying what it is and `ends` where it went: `fixed` here, `why` saying how; or `nothing`, `why` saying why it can stand. The owner hears from your review through `steps` alone.",
     "Your review is done once each fault, cost or risk you saw sits in `fixes` or `risks`; leave both empty only when you saw none. Each answer adds to what you named before, so after the first name only what is new or has changed its end.",
     "`reason`: one paragraph for the owner on what the ticket built. An `approve`'s `reason` is commented on the ticket's PR before it merges, followed by each of your `fixes` and `risks` and where it ends.",
@@ -148,11 +148,14 @@ export function handedOn({ ticket, body, commits, diff, stat, alongside, said, c
 
 const reviewedBy = (ticket: string) => `Review #${ticket} as its reviewer`;
 
+export function ownerStepsFiled(left: string, steps: OwnerStep[]): { filed: ReturnType<typeof fixesFiled>; notes: Map<string, string> } {
+  const filed = steps.map(ownerStepFiled(left));
+  return { filed, notes: new Map(steps.map(({ title }, at) => [title.trim().toLowerCase(), filed[at]?.said ?? ""])) };
+}
+
 function filedOnceLanded(ticket: string, answer: Gathered): string {
-  const filed = [
-    ...answer.steps.map(ownerStepFiled(`Left to the owner by the run that built #${ticket}, which closed.`)),
-    ...routedFiled(`${FOLLOW_UP_OF}${ticket}${REVIEW_LET_THROUGH}`, [answer]),
-  ];
+  const steps = ownerStepsFiled(`Left to the owner by the run that built #${ticket}, which closed.`, answer.steps);
+  const filed = [...steps.filed, ...routedFiled(`${FOLLOW_UP_OF}${ticket}${REVIEW_LET_THROUGH}`, [answer], steps.notes)];
   const refused = filed.filter(({ refusals }) => refusals.length > 0);
   if (refused.length > 0) commentOnTicket(ticket, [`What the reviewer of #${ticket} left that could not be filed:`, "", ...refused.map(({ named, refusals }) => `- ${named} (${quoted(refusals[0] ?? "")})`), ""].join("\n"), gh);
   return filed.length === 0 ? "" : `; filed: ${filed.map(({ said }) => said.trim()).filter((said) => said !== "").join(" ") || "none"}`;
