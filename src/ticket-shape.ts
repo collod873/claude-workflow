@@ -41,14 +41,15 @@ export const BUILD_SHAPE = [
   `a decision Collin has made. Adds ## ${NAMED.doneWhen}: what we decided to do, said as ${DONE_SENTENCES}.`,
   `Its ${NAMED.doneWhen} names only work its own repo does; what another repo shows as proof may stay.`,
   `What another repo must do once the build lands goes under ## ${NAMED.followUps}, one line per repo, and whoever lands the build files each one there as a build.`,
-  "A build starts the moment it is filed, so a question still open makes it an idea or a look-into.",
+  "In an enrolled repo a build starts the moment it is filed, so a question still open makes it an idea or a look-into.",
+  `One that needs another issue closed first lists it under ## ${NAMED.waitsOn} as '- #<number>', is filed labelled waiting, and builds once every one of them closes.`,
 ].join(" ");
-export const BUG_SHAPE = `a fault still standing; its ## ${NAMED.why} quotes the evidence, such as a log line, a failing test or error text. Adds ## ${NAMED.doneWhen}: what working looks like. It builds the moment it is filed.`;
+export const BUG_SHAPE = `a fault still standing; its ## ${NAMED.why} quotes the evidence, such as a log line, a failing test or error text. Adds ## ${NAMED.doneWhen}: what working looks like. In an enrolled repo it builds the moment it is filed.`;
 export const IDEA_SHAPE = "something Collin floated, kept for him to decide.";
 export const LOOK_INTO_SHAPE = "a question Collin wants answered before deciding; a research agent answers it.";
 export const OWNER_SHAPE = `a step only Collin can take before shipped work can run, such as a dashboard setting, a key or a sign-in. Its ## ${NAMED.why} says what to do, where, and what waits on it.`;
 export const SPEC_SHAPE = [
-  "he asked for a spec in his own words: the whole statement of a big job, which the machine cuts into slices and lands as one.",
+  "a big job Collin asked for: his own words state its point, you write the spec from them, and the machine cuts it into slices and lands it as one.",
   `  ## ${NAMED.problem} quoting the owner, ## ${NAMED.solution}, ## ${NAMED.stories} numbered, ## ${NAMED.decisions} naming no file paths,`,
   `  ## ${NAMED.testing}, ## ${NAMED.outOfScope}, ## ${NAMED.furtherNotes}, and last ## ${NAMED.sentences}, as '- [ ]' items`,
 ].join("\n");

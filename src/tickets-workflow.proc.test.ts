@@ -98,7 +98,7 @@ describe("a repo's tickets build through one caller file that holds only trigger
   });
 
   it("enrols this repo too on a push to its main, from a workflow of its own the caller file does not carry to enrolled repos, beside every repo the App reaches that holds the caller file, so its caller file follows the move within a minute (#1386, #1447)", () => {
-    expect((parse(readFileSync(join(WORKFLOWS, "enrol.yml"), "utf8")) as { on: unknown }).on).toEqual({ push: { branches: ["main"] } });
+    expect((parse(readFileSync(join(WORKFLOWS, "enrol.yml"), "utf8")) as { on: unknown }).on).toEqual({ push: { branches: ["main"] }, workflow_dispatch: { inputs: { repo: { description: "owner/repo to enrol", required: true } } } });
     const step = workflowJobs("enrol.yml").enrol?.steps.find(({ run }) => /bin\/enrol\b/.test(run ?? ""));
     const root = scratch("enrol-step-");
     const calls = join(root, "calls");
@@ -109,6 +109,13 @@ describe("a repo's tickets build through one caller file that holds only trigger
 
     expect(ran.status).toBe(0);
     expect(readFileSync(calls, "utf8").trim().split("\n")).toEqual(["collod873/claude-workflow --caller", "collod873/Lumaria --caller"]);
+  });
+
+  it("enrols one repo on dispatch with every secret it sets, so a session enrols a repo with no step from the owner", () => {
+    const step = workflowJobs("enrol.yml")["enrol-one"]?.steps.find(({ run }) => /bin\/enrol\b/.test(run ?? ""));
+
+    expect(step?.run).toBe('CLAUDE_CODE_OAUTH_TOKEN="$TOKEN_TO_SET" bin/enrol "$REPO"');
+    expect(Object.keys(step?.env ?? {}).sort()).toEqual(["CORE_APP_PRIVATE_KEY", "GH_TOKEN", "REPO", "TOKEN_TO_SET"]);
   });
 
   it("hands a run whose stage job ended red, was cancelled or timed out to a dispatch of the caller file, and on that dispatch only re-runs it or calls the owner, no build starting (#1225)", () => {

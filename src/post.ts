@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { text as read } from "node:stream/consumers";
+import { added, enrolmentLine, filedLine, likelyMatches, matchRefusals, NEW, openWaitedOn, unlisted } from "./door.ts";
 import { dedashed } from "./em-dash.ts";
 import {
   BUG_SHAPE,
@@ -148,9 +149,17 @@ const DOOR: Record<string, DoorKind> = {
   owner: { files: "owner", says: OWNER_SHAPE },
 };
 
-const DOOR_USAGE = `file-issue: usage: file-issue ${Object.keys(DOOR).join("|")} --title <title> --body-file <path>`;
+const DOOR_USAGE = `file-issue: usage: file-issue ${Object.keys(DOOR).join("|")} --title <title> --body-file <path> [${NEW}]\n       file-issue add <number> --body-file <path>`;
 
-const doorHelp = (): string[] => [DOOR_USAGE, WHY_SHAPE, ...Object.entries(DOOR).map(([kind, { says }]) => `${kind}: ${says}`)];
+const doorHelp = (): string[] => [
+  DOOR_USAGE,
+  enrolmentLine(gh),
+  WHY_SHAPE,
+  "Before filing, it reads the repo's open issues and stops on a title that may be the same job, listing each for you to read.",
+  "add: your new evidence goes onto an open issue as a comment, for a match that is the same job.",
+  `${NEW}: files anyway, for a match that is a different job.`,
+  ...Object.entries(DOOR).map(([kind, { says }]) => `${kind}: ${says}`),
+];
 
 const FIRST_HEADING = /^##[ \t].*$/m;
 
@@ -309,10 +318,28 @@ if (import.meta.main) {
     console.log((kind === "--help" ? doorHelp() : [DOOR_USAGE]).join("\n"));
     process.exit(0);
   }
+  const text = await read(process.stdin);
+  if (kind === "add") {
+    if (title === undefined) throw new Error("no issue number in the arguments to add");
+    const { refusals, said } = added(title, text, gh);
+    for (const refusal of refusals) console.error(refusal);
+    if (said !== "") console.log(said);
+    process.exit(refusals.length > 0 ? 1 : 0);
+  }
   const door = DOOR[kind];
   if (door === undefined) throw new Error(`${kind} is not a kind file-issue files`);
-  const { refusals, said } = post({ kind: door.files, text: await read(process.stdin), title, sessionId }, gh);
+  if (process.argv[5] !== NEW) {
+    const matches = likelyMatches(title ?? "", gh);
+    if (matches === undefined || matches.length > 0) {
+      console.error((matches === undefined ? [unlisted] : matchRefusals(matches)).join("\n"));
+      process.exit(1);
+    }
+  }
+  const waiting = openWaitedOn(text, gh).length > 0;
+  const { refusals, said } = post({ kind: door.files, text, title, sessionId, labels: waiting ? [WAITING] : [] }, gh);
   for (const refusal of refusals) console.error(refusal);
   if (said !== "") console.log(said);
+  const line = refusals.length > 0 ? undefined : filedLine(kind, gh, waiting);
+  if (line !== undefined) console.error(line);
   process.exit(refusals.length > 0 ? 1 : 0);
 }

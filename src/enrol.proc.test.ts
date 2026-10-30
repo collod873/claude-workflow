@@ -2,11 +2,12 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 const ENROLLED_REVIEW = "tickets / review";
-import { MACHINE } from "./spelled.ts";
+import { MACHINE, OWNER } from "./spelled.ts";
 import { bare, checkJobRule, ci, CI_ON_EVERY_PR, DEPLOY, ENROLLED as REPO, enrolling, home, HOME, key, PC_RUNS_ON } from "./scenarios.ts";
 
 const CALLER = readFileSync(join(import.meta.dirname, "..", ".github", "caller.yml"), "utf8");
 const OFFER = `enrol: \`bin/runner ${REPO} pc\` moves its jobs to this PC; run one fresh full check there and watch its peak memory before leaving it on\n`;
+const ENROL_USAGE = `enrol: usage: enrol <owner/repo> [--caller]\nenrol: with no step from Collin: gh workflow run enrol.yml -R ${OWNER}/claude-workflow -f repo=<owner/repo>; that run holds every secret enrol sets, then gh run watch it\n`;
 
 describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#1152)", () => {
   it("writes the caller file, reaches it with the App, sets every secret, label and auto-merge, and holds main for check alone, since the reviewer lands what it reviews (ADR-0012)", () => {
@@ -123,8 +124,8 @@ describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#11
   it("refuses anything but one owner/name", () => {
     const { run, writes } = enrolling(bare());
 
-    expect(run("Next")).toEqual({ status: 2, stdout: "", stderr: "enrol: usage: enrol <owner/repo> [--caller]\n" });
-    expect(run(REPO, "--labels")).toEqual({ status: 2, stdout: "", stderr: "enrol: usage: enrol <owner/repo> [--caller]\n" });
+    expect(run("Next")).toEqual({ status: 2, stdout: "", stderr: ENROL_USAGE });
+    expect(run(REPO, "--labels")).toEqual({ status: 2, stdout: "", stderr: ENROL_USAGE });
     expect(writes()).toEqual([]);
   });
 });

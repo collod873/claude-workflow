@@ -6,10 +6,12 @@ import { why } from "./ticket-shape.ts";
 
 const URL = "https://github.com/collod873/claude-workflow/issues/700";
 const PAGE = "[sessions](https://github.com/collod873/transcripts/blob/main/issues/claude-workflow-700.md)";
-const RECORDS = `python3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "$@" >>"$PWD/gh-argv"\nprintf '%s\\n' ${URL}\n`;
-const REFUSES = "printf 'nothing filed\\n' >&2\nexit 1\n";
+const LOOKS = `case "$*" in\n  *"issue list"*) printf '[]\\n'; exit 0 ;;\n  *contents/*) printf 'gh: Not Found (HTTP 404)\\n' >&2; exit 1 ;;\nesac\n`;
+const RECORDS = `${LOOKS}python3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "$@" >>"$PWD/gh-argv"\nprintf '%s\\n' ${URL}\n`;
+const REFUSES = `${LOOKS}printf 'nothing filed\\n' >&2\nexit 1\n`;
 const UNSTAMPED = "file-issue: CLAUDE_CODE_SESSION_ID is empty, so the filing names no session\n";
-const USAGE = "file-issue: usage: file-issue idea|look-into|build|bug|spec|owner --title <title> --body-file <path>";
+const USAGE = "file-issue: usage: file-issue idea|look-into|build|bug|spec|owner --title <title> --body-file <path> [--new]\n       file-issue add <number> --body-file <path>";
+const WAITS = "this repo is not enrolled: a build, bug or spec waits for a session to take it.\n";
 const NOTE_CALL = ["idea", "--title", "What the audit found", "--body-file", "body.md"];
 const BUG_CALL = ["bug", "--title", "check-gate crashes on a contract with no steps", "--body-file", "body.md"];
 
@@ -36,14 +38,14 @@ describe("bin/file-issue files a ticket, or refuses it and files nothing (#662)"
 
     const result = run();
 
-    expect(result).toMatchObject({ status: 0, stdout: `${URL}\n`, stderr: UNSTAMPED });
+    expect(result).toMatchObject({ status: 0, stdout: `${URL}\n`, stderr: `${WAITS}${UNSTAMPED}` });
     expect(filedAs(ghSaw(repo))).toEqual({ title: "Port the ticket shape into core/", labels: ["ticket"], body: wellFormedTicket, then: [edit(linked(wellFormedTicket, "## Done when"))] });
   });
 
   it("files a bug labelled ticket and bug, so the machine builds it, and refuses one quoting no evidence as it refuses a ticket quoting no owner", () => {
     const { repo, run } = filing({ gh: RECORDS, body: wellFormedBug });
 
-    expect(run(BUG_CALL)).toMatchObject({ status: 0, stdout: `${URL}\n`, stderr: UNSTAMPED });
+    expect(run(BUG_CALL)).toMatchObject({ status: 0, stdout: `${URL}\n`, stderr: `${WAITS}${UNSTAMPED}` });
     expect(filedAs(ghSaw(repo))).toEqual({ title: "check-gate crashes on a contract with no steps", labels: ["ticket", "bug"], body: wellFormedBug, then: [edit(linked(wellFormedBug, "## Done when"))] });
     expect(filing({ gh: RECORDS, body: wellFormedNote }).run(BUG_CALL)).toMatchObject({
       status: 1,
@@ -133,7 +135,7 @@ describe("bin/file-issue files a ticket, or refuses it and files nothing (#662)"
 
     const result = run(["spec", "--title", "Give the slicer something to read", "--body-file", "body.md"]);
 
-    expect(result).toMatchObject({ status: 0, stdout: `${URL}\n`, stderr: UNSTAMPED });
+    expect(result).toMatchObject({ status: 0, stdout: `${URL}\n`, stderr: `${WAITS}${UNSTAMPED}` });
     expect(filedAs(ghSaw(repo))).toEqual({ title: "Give the slicer something to read", labels: ["spec"], body: wellFormedSpec, then: [edit(linked(wellFormedSpec, "## Solution"))] });
   });
 
@@ -142,7 +144,7 @@ describe("bin/file-issue files a ticket, or refuses it and files nothing (#662)"
 
     const result = stamped.run(["spec", "--title", "A spec", "--body-file", "body.md"]);
 
-    expect(result).toMatchObject({ status: 0, stdout: `${URL}\n`, stderr: "" });
+    expect(result).toMatchObject({ status: 0, stdout: `${URL}\n`, stderr: WAITS });
     const problemStatement = (posted: string) => posted.slice(posted.indexOf("## Problem Statement"), posted.indexOf("## Solution"));
     expect(problemStatement(firstBody(stamped.repo)).trim().split("\n").at(-1)).toBe("Session: `sess-abc`");
     expect(problemStatement(lastBody(stamped.repo)).trim().split("\n").at(-1)).toBe(`Session: \`sess-abc\` · ${PAGE}`);
@@ -160,7 +162,7 @@ describe("bin/file-issue files a ticket, or refuses it and files nothing (#662)"
 
     const result = stamped.run();
 
-    expect(result).toMatchObject({ status: 0, stdout: `${URL}\n`, stderr: "" });
+    expect(result).toMatchObject({ status: 0, stdout: `${URL}\n`, stderr: WAITS });
     expect(why(firstBody(stamped.repo)).split("\n").at(-1)).toBe("Session: `sess-abc`");
     const posted = lastBody(stamped.repo);
     expect(why(posted).split("\n").at(-1)).toBe(`Session: \`sess-abc\` · ${PAGE}`);
@@ -188,5 +190,49 @@ describe("bin/file-issue files a ticket, or refuses it and files nothing (#662)"
 
     expect(emptyResult).toMatchObject({ status: 0, stdout: `${URL}\n` });
     expect(emptyResult.stderr).toMatch(/names no session/);
+  });
+});
+
+const LISTED = `[{"number":412,"title":"Stop hook flags VALUES edits as leftovers","labels":[{"name":"ticket"},{"name":"stuck"}]},{"number":9,"title":"Unrelated chore","labels":[]}]`;
+const MATCHING = `case "$*" in\n  *"issue list"*) printf '%s\\n' '${LISTED}'; exit 0 ;;\n  *"issue view"*) printf 'OPEN\\n'; exit 0 ;;\n  *contents/*) printf 'machine.yml\\n'; exit 0 ;;\nesac\n${RECORDS}`;
+const SAME_JOB = ["bug", "--title", "Stop hook keeps flagging VALUES edits", "--body-file", "body.md"];
+
+describe("bin/file-issue reads the open issues first, so the same job is not filed twice", () => {
+  it("files nothing on a title that may be the same job, lists it with its held label, and says how to go on", () => {
+    const { repo, run } = filing({ gh: MATCHING, body: wellFormedBug });
+
+    const result = run(SAME_JOB);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('#412 ticket [stuck] "Stop hook flags VALUES edits as leftovers"');
+    expect(result.stderr).not.toContain("#9");
+    expect(result.stderr).toContain("file-issue add <number>");
+    expect(ghSaw(repo)).toEqual([]);
+  });
+
+  it("files a different job with --new and says the enrolled repo builds it now", () => {
+    const { repo, run } = filing({ gh: MATCHING, body: wellFormedBug, sessionId: "sess-abc" });
+
+    const result = run([...SAME_JOB, "--new"]);
+
+    expect(result).toMatchObject({ status: 0, stdout: `${URL}\n`, stderr: "this repo is enrolled: a build, bug or spec starts the moment it is filed.\n" });
+    expect(filedAs(ghSaw(repo)).labels).toEqual(["ticket", "bug"]);
+  });
+
+  it("puts new evidence on an open issue as a comment with add", () => {
+    const { repo, run } = filing({ gh: MATCHING, body: "Seen again on agent-hooks.\n" });
+
+    expect(run(["add", "412", "--body-file", "body.md"])).toMatchObject({ status: 0, stdout: `${URL}\n` });
+    expect(ghSaw(repo)).toEqual([["issue", "comment", "412", "--body", "Seen again on agent-hooks.\n"]]);
+  });
+
+  it("files a build whose Waits on names an open issue labelled waiting, so the closer wakes it", () => {
+    const { repo, run } = filing({ gh: MATCHING, body: `${wellFormedTicket}\n## Waits on\n\n- #412\n`, sessionId: "sess-abc" });
+
+    const result = run(["build", "--title", "Port the ticket shape into core/", "--body-file", "body.md"]);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain("labelled waiting until every issue under its ## Waits on closes");
+    expect(filedAs(ghSaw(repo)).labels).toEqual(["ticket", "waiting"]);
   });
 });
