@@ -3,11 +3,39 @@ name: Enrol
 "on":
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      repo:
+        description: owner/repo to enrol
+        required: true
 
 permissions: {}
 
 jobs:
+  enrol-one:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - run: npm ci
+
+      - env:
+          GH_TOKEN: ${{ secrets.ENROL_PAT }}
+          CORE_APP_PRIVATE_KEY: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          TOKEN_TO_SET: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          REPO: ${{ inputs.repo }}
+        run: CLAUDE_CODE_OAUTH_TOKEN="$TOKEN_TO_SET" bin/enrol "$REPO"
+
   enrol:
+    if: github.event_name == 'push'
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
     env:
