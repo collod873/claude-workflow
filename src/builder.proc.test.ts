@@ -174,6 +174,28 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
     expect(marked()).toEqual(["811 building", "811 checking"]);
   });
 
+  it("reports a red whose every step the machine starved of memory as the machine's fault to the owner, never handing it back, since no code change fixes it (#1573)", () => {
+    const starved = "printf 'check: red build killed for memory (the machine ran short; next at 5120 MiB), lint killed for memory (the machine ran short; eslint at 900 MiB); log .git/check/logs/full.log\\n'; exit 1";
+    const { run, handed, landed, marked, ticketComments } = fixing({ claude: SPENT_BY_THE_THIRD_ROUND, check: starved, stageMinutes: "1" });
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(handed()).toHaveLength(1);
+    expect(landed()).toEqual([]);
+    expect(marked()).toContain("811 stuck");
+    expect(ticketComments().at(-1)).toContain("the machine ran short");
+  });
+
+  it("hands back a red where one step failed on its own beside a step the machine starved", () => {
+    const mixed = "printf 'check: red build killed for memory (the machine ran short; next at 5120 MiB), test src/stops.test.ts:4; log .git/check/logs/full.log\\n'; exit 1";
+    const { run, handed } = fixing({ claude: SPENT_BY_THE_THIRD_ROUND, check: mixed, stageMinutes: "1" });
+
+    run();
+
+    expect(handed()[1]).toContain("test src/stops.test.ts:4");
+  });
+
   it("keeps going past three rounds while every round changes something", () => {
     const { run, handed, landed } = fixing({ claude: FIXES_EACH_ROUND, check: RED_FOUR_TIMES });
 
