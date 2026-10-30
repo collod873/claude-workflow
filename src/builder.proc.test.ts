@@ -3,8 +3,11 @@ import { readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { BUILDER_SESSION, CHECK_PASSES, CHECK_RED, FULL_CHECK_RED_ONCE, fixing, SPENT_BY_THE_THIRD_ROUND } from "./builder.part.ts";
-import { git, scratch } from "./scenarios.ts";
+import { git, scratch, wellFormedSpec } from "./scenarios.ts";
+import { why } from "./ticket-shape.ts";
 import { HELD } from "./spelled.ts";
+
+const asSpec = (body: string) => wellFormedSpec.replace(/## Problem Statement\n\n.*\n/, `## Problem Statement\n\n${why(body).trim()}\n`);
 
 const FIXES = "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n";
 const REVIEWER_FIXES = "printf 'export const shaped = 3;\\n' >src/ticket-shape.ts\n";
@@ -136,28 +139,6 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
     expect(unheld.run("811").status).toBe(0);
     expect(unnamed.handed()[0]).not.toContain(unnamed.captured(""));
     expect(unheld.handed()[0]).not.toContain(unheld.captured(""));
-  });
-
-  it("opens a woken split ticket with the newest closer comment naming how each piece ended, under its body (#1066)", () => {
-    const older = "Every ticket #811 was split into has closed: #901 merged. #811 builds now.\n\nRun: 1";
-    const newest = "Every ticket #811 was split into has closed: #901 merged, #902 closed unbuilt. #811 builds now.\n\nRun: 2";
-    const { run, handed, body } = fixing({ claude: FIXES, onTicket: [older, "the split left #902 open", newest, { author: "stranger", type: "User", body: newest.replace("#902 closed unbuilt", "#903 merged") }] });
-
-    expect(run("811").status).toBe(0);
-    const opening = handed()[0] ?? "";
-    expect(opening).toContain(newest);
-    expect(opening).not.toContain(older);
-    expect(opening).not.toContain("#903 merged");
-    expect(opening.indexOf(newest)).toBeGreaterThan(opening.indexOf(body.trim()));
-    expect(opening.indexOf(newest)).toBeLessThan(opening.indexOf("## Build it"));
-  });
-
-  it("opens a ticket no split woke as before (#1066)", () => {
-    const { run, handed } = fixing({ claude: FIXES, onTicket: ["the owner says hello"] });
-
-    expect(run("811").status).toBe(0);
-    expect(handed()[0]).not.toContain("the owner says hello");
-    expect(handed()[0]).not.toContain("split into has closed");
   });
 
   it("runs on Opus with no fence, every command in the foreground under a ten minute default, with nothing it could leave running after it answers, under the owner's own settings beside the repo's that no repo setting can switch his hooks off in", () => {
@@ -347,64 +328,34 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
     expect(landed()).toEqual([]);
   });
 
-  it("splits a ticket too big for one build into follow-up tickets that build themselves, and parks what must wait under `waiting`, where #910 was closed in silence", () => {
+  it("rewrites a ticket too big for one build as a spec, its Why byte-identical in the Problem Statement, and swaps `ticket` for `spec` so the slicer cuts it", () => {
     const { body } = fixing();
-    const waits = body.replace("The builder clears a red ticket", "The builder turns the flag on once its pieces merge");
-    const reason = "it is two changes that build apart";
-    const tickets = [
-      { title: "Handle the misses in the shape rules", why: "The shape rules refuse a missing read by name.", done: ["Shape reads refuse by name."] },
-      { title: "Handle the misses in the post door", why: "The post door refuses a missing read by name.", done: ["Post reads refuse by name."] },
-    ];
-    const { run, filed, edits, labelled, marked, closes, ticketComments, landed, handed, log } = fixing({ answer: { outcome: "split", reason, tickets, body: waits }, check: "touch ../checked\nexit 1\n" });
+    const spec = asSpec(body);
+    const reason = "about 27 fields across 18 files do not fit one build";
+    const { run, filed, edits, labelled, closes, ticketComments, landed, handed } = fixing({ answer: { outcome: "spec", reason, body: spec }, check: "touch ../checked\nexit 1\n" });
 
     expect(run().status).toBe(0);
-    expect(filed()).toHaveLength(2);
-    for (const [at, piece] of filed().entries()) {
-      expect(piece).toMatch(/^## Why\n\nFollow-up of #811: its builder split it/);
-      const ticket = tickets[at];
-      if (ticket === undefined) throw new Error(`no ticket for filed piece ${at}`);
-      expect(piece).toContain(`> ${ticket.why}`);
-      expect(piece).toContain("> The owner, in session: \"a red ticket stays with its builder until it merges, never the owner\".");
-      for (const sentence of ticket.done) expect(piece).toContain(`## Done when\n\n- ${sentence}`);
-    }
-    expect(edits()).toEqual([...filed().map((piece, at) => (piece ?? "").replace("## Done when", `[sessions](https://github.com/collod873/transcripts/blob/main/issues/claude-workflow-90${at + 1}.md)\n\n## Done when`)), waits]);
-    expect(ticketComments().at(-1)).toMatch(new RegExp(`^@collod873 the builder split #811 into #901, #902, which build themselves\\..*${reason}`));
-    expect(labelled()).toEqual([]);
-    expect(marked()).toEqual(["811 building", "811 waiting"]);
+    expect(filed()).toEqual([]);
+    expect(edits()).toEqual([spec]);
+    expect(labelled()).toEqual(["811 --remove-label ticket --remove-label building --add-label spec"]);
+    expect(ticketComments().at(-1)).toMatch(new RegExp(`^The builder of #811 rewrote it as a spec, which the slicer cuts: ${reason}`));
     expect(closes()).toEqual([]);
-    expect(log("-1", "--format=%s"), "drops what it built, which builds again once the pieces close").toBe("what the build stands on");
     expect(landed()).toEqual([]);
     expect(handed()).toHaveLength(1);
   });
 
-  it("closes a split ticket with nothing left to wait, once its follow-ups are filed", () => {
-    const tickets = [{ title: "Handle the misses in the shape rules", why: "The shape rules refuse a missing read by name.", done: ["Shape reads refuse by name."] }];
-    const { run, filed, closes, ticketComments } = fixing({ answer: { outcome: "split", reason: "one piece holds all of it", tickets } });
-
-    expect(run().status).toBe(0);
-    expect(filed()).toHaveLength(1);
-    expect(ticketComments().at(-1)).toMatch(/^@collod873 the builder split #811 into #901, which build themselves, and closed it/);
-    expect(closes()).toEqual([["issue", "close", "811", "--reason", "not planned"]]);
-  });
-
-  it("files nothing and hands the split back when a follow-up says nothing about what done looks like", () => {
-    const piece = { title: "Handle the misses", why: "The rules refuse a missing read by name.", done: [] };
-    const unshaped = fixing({ answer: { outcome: "split", reason: "no Done when", tickets: [piece] }, claude: SPENT_BY_THE_THIRD_ROUND, stageMinutes: "1" });
-
-    expect(unshaped.run().status).toBe(1);
-    expect(unshaped.filed()).toEqual([]);
-    expect(unshaped.handed()[1]).toContain("Handle the misses: '## Done when' says nothing");
-  });
-
-  it("will not split a follow-up again, so a chain of splits stops at one generation", () => {
+  it("hands the spec back and changes nothing when its Problem Statement drops the Why or its shape is refused", () => {
     const { body } = fixing();
-    const followUp = body.replace("The owner, in session:", "Follow-up of #700: its builder split it, since it does not fit one build.\n\n>");
-    const piece = { title: "Handle the misses", why: "The rules refuse a missing read by name.", done: ["Reads refuse by name."] };
-    const { run, filed, handed } = fixing({ body: followUp, answer: { outcome: "split", reason: "still too big", tickets: [piece] }, claude: SPENT_BY_THE_THIRD_ROUND, stageMinutes: "1" });
+    const reworded = fixing({ answer: { outcome: "spec", reason: "too big", body: wellFormedSpec }, claude: SPENT_BY_THE_THIRD_ROUND, stageMinutes: "1" });
+    const unshaped = fixing({ answer: { outcome: "spec", reason: "too big", body: asSpec(body).replace("## Out of Scope", "## Elsewhere") }, claude: SPENT_BY_THE_THIRD_ROUND, stageMinutes: "1" });
 
-    expect(run().status).toBe(1);
-    expect(filed()).toEqual([]);
-    expect(handed()[1]).toContain("itself a follow-up, so it is not split again");
+    expect(reworded.run().status).toBe(1);
+    expect(reworded.edits()).toEqual([]);
+    expect(reworded.labelled()).toEqual([]);
+    expect(reworded.handed()[1]).toContain("its Problem Statement does not carry the ticket's Why byte-identical");
+    expect(unshaped.run().status).toBe(1);
+    expect(unshaped.edits()).toEqual([]);
+    expect(unshaped.handed()[1]).toContain("the body carries no '## Out of Scope'");
   });
 
   it("merges a machine fix it landed on main into the ticket, tells the owner, and hands the build back, landing nothing until it answers `code` (#1195)", () => {

@@ -111,7 +111,7 @@ _Avoid_: precondition, validation, check
 **Builder**:
 The agent that builds a ticket until its full check is green, then hands it to the reviewer. A
 later run resumes its session or logs why not. It fixes the code, the ticket only in a `code`
-answer, or the machine, hands a first step to its owning repo, splits or closes it, done if main
+answer, or the machine, hands a first step to its owning repo, rewrites one too big for one build as a spec, or closes it, done if main
 holds it, else unbuilt; stopped, it marks `stuck`. A spec's slice gets a **slice builder** instead (`bin/build-slice`): fast check only, its
 own Postgres, port and temp dir, done when its branch fast-forwards the integration branch, or
 `partial`, saying what is left.
@@ -271,7 +271,7 @@ _Avoid_: flake, glitch
 
 **Resume**:
 Setting a held issue going again. Taking `waiting` off a ticket resumes its build; the closer takes it
-off once every piece of its split, fault or first step it filed and issue its `## Waits on` names has closed. Taking `paused`
+off once every open ticket it depends on, fault or first step it filed and issue its `## Waits on` names has closed. Taking `paused`
 or `stuck` off a ticket that then holds neither builds it again on the branch its last run kept,
 its builder resuming its session. Taking either off an open spec that then holds neither runs its
 scheduler again from its integration branch and progress comment, resuming each out slice's builder with the reason it stopped.

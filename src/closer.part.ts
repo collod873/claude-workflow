@@ -24,7 +24,7 @@ export interface FaultOrigin {
   filed: Record<string, string>;
 }
 
-interface SplitFrom {
+interface ParkedOn {
   parent: string;
   labels: string;
   said: string | string[];
@@ -32,21 +32,21 @@ interface SplitFrom {
   body?: string;
 }
 
-const waitingListed = (splitFrom: SplitFrom | undefined) => (splitFrom !== undefined && splitFrom.labels.split("\n").includes(WAITING) ? [{ number: Number(splitFrom.parent), body: splitFrom.body ?? CLOSER_TICKET }] : []);
+const waitingListed = (parkedOn: ParkedOn | undefined) => (parkedOn !== undefined && parkedOn.labels.split("\n").includes(WAITING) ? [{ number: Number(parkedOn.parent), body: parkedOn.body ?? CLOSER_TICKET }] : []);
 
 const CLOSE_RUN_ID = "36740874094";
 
 export function closing({
   ticketBody = CLOSER_TICKET,
   listable = true,
-  splitFrom,
+  parkedOn,
   faultOrigin,
   closedIssue,
   closedIn = "collod873/claude-workflow",
 }: {
   ticketBody?: string;
   listable?: boolean;
-  splitFrom?: SplitFrom;
+  parkedOn?: ParkedOn;
   faultOrigin?: FaultOrigin;
   closedIssue?: string;
   closedIn?: string;
@@ -85,12 +85,12 @@ export function closing({
             `  *"issues/${faultOrigin.ticket}/comments"*) [ "$GH_REPO" = "${faultOrigin.repo}" ] || exit 1; cat <<'SAID'\n${faultOrigin.said.map((body) => JSON.stringify({ author: MACHINE, type: "Bot", body })).join("\n")}\nSAID\n    ;;`,
             ...Object.entries(faultOrigin.filed).map(([filed, state]) => `  *"issue view ${filed} "*"state"*) printf '%s\\n' '${state}' ;;`),
           ]),
-      listable ? `  *"issue list"*"${WAITING}"*) cat <<'LISTED'\n${JSON.stringify(waitingListed(splitFrom))}\nLISTED\n    ;;` : `  *"issue list"*) printf 'gh: Bad credentials (HTTP 401)\\n' >&2; exit 1 ;;`,
-      ...(splitFrom === undefined
+      listable ? `  *"issue list"*"${WAITING}"*) cat <<'LISTED'\n${JSON.stringify(waitingListed(parkedOn))}\nLISTED\n    ;;` : `  *"issue list"*) printf 'gh: Bad credentials (HTTP 401)\\n' >&2; exit 1 ;;`,
+      ...(parkedOn === undefined
         ? []
         : [
-            `  *"api"*"issues/${splitFrom.parent}/comments"*) cat <<'SAID'\n${[splitFrom.said].flat().map((body) => JSON.stringify({ author: MACHINE, type: "Bot", body })).join("\n")}\nSAID\n    ;;`,
-            ...Object.entries(splitFrom.siblings).map(([sibling, state]) => `  *"issue view ${sibling} "*"state"*) printf '%s\\n' '${state}' ;;`),
+            `  *"api"*"issues/${parkedOn.parent}/comments"*) cat <<'SAID'\n${[parkedOn.said].flat().map((body) => JSON.stringify({ author: MACHINE, type: "Bot", body })).join("\n")}\nSAID\n    ;;`,
+            ...Object.entries(parkedOn.siblings).map(([sibling, state]) => `  *"issue view ${sibling} "*"state"*) printf '%s\\n' '${state}' ;;`),
           ]),
       `  *"issue view"*"state"*) printf '%s\\n' 'OPEN REOPENED' ;;`,
       "  *\"issue view\"*)",

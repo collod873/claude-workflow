@@ -4,14 +4,14 @@ import { closing, type FaultOrigin } from "./closer.part.ts";
 import { faultOf, firstStepOf } from "./post.ts";
 import { holds, workflowJobs } from "./scenarios.ts";
 
-describe("bin/close wakes a ticket its builder split once every follow-up it split into has merged (#910)", () => {
+describe("bin/close wakes a ticket its builder parked on several open tickets once the last of them merges (#910)", () => {
   const piece = (ticket: string) =>
-    ["## Why", "", "Follow-up of #811: its builder split it, since it does not fit one build.", "", "> The shape rules refuse a missing read by name.", "", "## Done when", "", `- The fix for #${ticket} lands.`, ""].join("\n");
-  const said = "@collod873 the builder split #811 into #812, #813, which build themselves. #811 keeps what must wait for them, labelled `waiting`, and builds once they all merge: see #889";
+    ["## Why", "", "The owner, in session: \"one ticket\".", "", "> The shape rules refuse a missing read by name.", "", "## Done when", "", `- The fix for #${ticket} lands.`, ""].join("\n");
+  const said = `${waitsOnOpen("811", ["#812", "#813"])} see #889`;
   const woken = (calls: string[]) => calls.findIndex((call) => call.trimEnd() === "issue\nedit\n811\n--remove-label\nwaiting");
 
-  it("takes `waiting` off the split ticket, as the App so its build starts, when the last follow-up merges", () => {
-    const { calls, tokens, run } = closing({ closedIssue: "812", ticketBody: piece("812"), splitFrom: { parent: "811", labels: "waiting\n", said, siblings: { "812": "CLOSED COMPLETED", "813": "CLOSED COMPLETED" } } });
+  it("takes `waiting` off the parked ticket, as the App so its build starts, when the last ticket it depends on merges", () => {
+    const { calls, tokens, run } = closing({ closedIssue: "812", ticketBody: piece("812"), parkedOn: { parent: "811", labels: "waiting\n", said, siblings: { "812": "CLOSED COMPLETED", "813": "CLOSED COMPLETED" } } });
 
     const result = run();
 
@@ -21,9 +21,9 @@ describe("bin/close wakes a ticket its builder split once every follow-up it spl
     expect(result.stdout).toContain("#811 builds now");
   });
 
-  it("leaves the split ticket waiting while a follow-up is still open, and never wakes one that is not waiting", () => {
-    const early = closing({ closedIssue: "812", ticketBody: piece("812"), splitFrom: { parent: "811", labels: "waiting\n", said, siblings: { "812": "CLOSED COMPLETED", "813": "OPEN " } } });
-    const unparked = closing({ closedIssue: "812", ticketBody: piece("812"), splitFrom: { parent: "811", labels: "building\n", said, siblings: { "812": "CLOSED COMPLETED", "813": "CLOSED COMPLETED" } } });
+  it("leaves the parked ticket waiting while one it depends on is still open, and never wakes one that is not waiting", () => {
+    const early = closing({ closedIssue: "812", ticketBody: piece("812"), parkedOn: { parent: "811", labels: "waiting\n", said, siblings: { "812": "CLOSED COMPLETED", "813": "OPEN " } } });
+    const unparked = closing({ closedIssue: "812", ticketBody: piece("812"), parkedOn: { parent: "811", labels: "building\n", said, siblings: { "812": "CLOSED COMPLETED", "813": "CLOSED COMPLETED" } } });
 
     const result = early.run();
 
@@ -35,13 +35,13 @@ describe("bin/close wakes a ticket its builder split once every follow-up it spl
   });
 });
 
-describe("bin/close wakes a split ticket once every piece has closed, however each closed, and names how each ended (#1058)", () => {
-  const said = "@collod873 the builder split #811 into #812, #813, which build themselves. #811 keeps what must wait for them, labelled `waiting`, and builds once they all close: see #889";
+describe("bin/close wakes a parked ticket once every ticket it depends on has closed, however each closed, and names how each ended (#1058)", () => {
+  const said = `${waitsOnOpen("811", ["#812", "#813"])} see #889`;
   const woken = (calls: string[]) => calls.findIndex((call) => call.trimEnd() === "issue\nedit\n811\n--remove-label\nwaiting");
   const told = (calls: string[]) => calls.find((call) => call.startsWith("issue\ncomment\n811\n"));
 
-  it("wakes the split ticket when its last open piece closes unbuilt, naming each piece and how it ended", () => {
-    const { calls, run } = closing({ splitFrom: { parent: "811", labels: "waiting\n", said, siblings: { "812": "CLOSED COMPLETED", "813": "CLOSED NOT_PLANNED" } } });
+  it("wakes the parked ticket when its last open dependency closes unbuilt, naming each and how it ended", () => {
+    const { calls, run } = closing({ parkedOn: { parent: "811", labels: "waiting\n", said, siblings: { "812": "CLOSED COMPLETED", "813": "CLOSED NOT_PLANNED" } } });
 
     const result = run();
 
@@ -49,12 +49,12 @@ describe("bin/close wakes a split ticket once every piece has closed, however ea
     expect(woken(calls())).toBeGreaterThanOrEqual(0);
     expect(told(calls())).toContain("#812 merged");
     expect(told(calls())).toContain("#813 closed unbuilt");
-    expect(calls().indexOf(told(calls()) ?? ""), "tells the split ticket before its build starts").toBeLessThan(woken(calls()));
+    expect(calls().indexOf(told(calls()) ?? ""), "tells the parked ticket before its build starts").toBeLessThan(woken(calls()));
   });
 
-  it("names the piece that just merged as merged, and wakes nothing and says nothing while a piece is still open", () => {
-    const last = closing({ closedIssue: "812", splitFrom: { parent: "811", labels: "waiting\n", said, siblings: { "812": "CLOSED COMPLETED", "813": "CLOSED NOT_PLANNED" } } });
-    const early = closing({ splitFrom: { parent: "811", labels: "waiting\n", said, siblings: { "812": "CLOSED NOT_PLANNED", "813": "OPEN " } } });
+  it("names the ticket that just merged as merged, and wakes nothing and says nothing while one is still open", () => {
+    const last = closing({ closedIssue: "812", parkedOn: { parent: "811", labels: "waiting\n", said, siblings: { "812": "CLOSED COMPLETED", "813": "CLOSED NOT_PLANNED" } } });
+    const early = closing({ parkedOn: { parent: "811", labels: "waiting\n", said, siblings: { "812": "CLOSED NOT_PLANNED", "813": "OPEN " } } });
 
     expect(last.run().status).toBe(0);
     expect(told(last.calls())).toContain("#812 merged");
@@ -67,10 +67,10 @@ describe("bin/close wakes a split ticket once every piece has closed, however ea
     expect(told(early.calls())).toBeUndefined();
   });
 
-  it("holds a split ticket whose pieces have all closed while its Waits on names an open issue, and wakes it once that closes (#1223)", () => {
-    const body = ["## Why", "", '"one ticket"', "", "## Waits on", "", "- The Bank link ticket (#974), whose migration it reads.", "- The ticket split from this one.", "", "## Done when", "", "- It lands.", ""].join("\n");
-    const held = closing({ closedIssue: "812", splitFrom: { parent: "811", labels: "waiting\n", said, body, siblings: { "812": "CLOSED COMPLETED", "813": "CLOSED COMPLETED", "974": "OPEN " } } });
-    const freed = closing({ closedIssue: "812", splitFrom: { parent: "811", labels: "waiting\n", said, body, siblings: { "812": "CLOSED COMPLETED", "813": "CLOSED COMPLETED", "974": "CLOSED COMPLETED" } } });
+  it("holds a parked ticket whose dependencies have all closed while its Waits on names an open issue, and wakes it once that closes (#1223)", () => {
+    const body = ["## Why", "", '"one ticket"', "", "## Waits on", "", "- The Bank link ticket (#974), whose migration it reads.", "- The tickets it depends on.", "", "## Done when", "", "- It lands.", ""].join("\n");
+    const held = closing({ closedIssue: "812", parkedOn: { parent: "811", labels: "waiting\n", said, body, siblings: { "812": "CLOSED COMPLETED", "813": "CLOSED COMPLETED", "974": "OPEN " } } });
+    const freed = closing({ closedIssue: "812", parkedOn: { parent: "811", labels: "waiting\n", said, body, siblings: { "812": "CLOSED COMPLETED", "813": "CLOSED COMPLETED", "974": "CLOSED COMPLETED" } } });
 
     const result = held.run();
     expect(result.status, result.stderr).toBe(0);
@@ -83,8 +83,8 @@ describe("bin/close wakes a split ticket once every piece has closed, however ea
 
   it("wakes a follow-up filed waiting on an owner-step note, with no builder comment, once that note closes (#1565)", () => {
     const body = ["## Why", "", '"one ticket"', "", "## Waits on", "", "- #1700", "", "## Done when", "", "- It lands.", ""].join("\n");
-    const held = closing({ closedIssue: "1699", splitFrom: { parent: "811", labels: "waiting\n", said: [], body, siblings: { "1700": "OPEN " } } });
-    const freed = closing({ closedIssue: "1700", splitFrom: { parent: "811", labels: "waiting\n", said: [], body, siblings: { "1700": "CLOSED COMPLETED" } } });
+    const held = closing({ closedIssue: "1699", parkedOn: { parent: "811", labels: "waiting\n", said: [], body, siblings: { "1700": "OPEN " } } });
+    const freed = closing({ closedIssue: "1700", parkedOn: { parent: "811", labels: "waiting\n", said: [], body, siblings: { "1700": "CLOSED COMPLETED" } } });
 
     const result = held.run();
     expect(result.status, result.stderr).toBe(0);
@@ -94,18 +94,18 @@ describe("bin/close wakes a split ticket once every piece has closed, however ea
     expect(woken(freed.calls())).toBeGreaterThanOrEqual(0);
   });
 
-  it("leaves a split ticket waiting on a Machine fault filed after its split, though every piece has closed (#1262)", () => {
+  it("leaves a parked ticket waiting on a Machine fault filed after it parked, though every dependency has closed (#1262)", () => {
     const fault = "@collod873 the builder of #811 found the machine at fault and filed https://github.com/collod873/claude-workflow/issues/1223. #811 waits on it, labelled `waiting`: take the label off once it merges. see #1262";
-    const held = closing({ closedIssue: "812", splitFrom: { parent: "811", labels: "waiting\n", said: [said, fault], siblings: { "812": "CLOSED COMPLETED", "813": "CLOSED COMPLETED" } } });
+    const held = closing({ closedIssue: "812", parkedOn: { parent: "811", labels: "waiting\n", said: [said, fault], siblings: { "812": "CLOSED COMPLETED", "813": "CLOSED COMPLETED" } } });
 
     expect(held.run().status).toBe(0);
     expect(woken(held.calls())).toBe(-1);
     expect(told(held.calls())).toBeUndefined();
   });
 
-  it("wakes with no merge, given the issue that closed, whenever an issue closes, so a piece closed unbuilt still wakes its split ticket", () => {
+  it("wakes with no merge, given the issue that closed, whenever an issue closes, so a dependency closed unbuilt still wakes its parked ticket", () => {
     const close = workflowJobs("tickets.yml").close;
-    const { calls, run } = closing({ closedIssue: "813", splitFrom: { parent: "811", labels: "waiting\n", said, siblings: { "812": "CLOSED COMPLETED", "813": "CLOSED NOT_PLANNED" } } });
+    const { calls, run } = closing({ closedIssue: "813", parkedOn: { parent: "811", labels: "waiting\n", said, siblings: { "812": "CLOSED COMPLETED", "813": "CLOSED NOT_PLANNED" } } });
 
     expect(holds(close?.if ?? "false", { event: "issues", action: "closed" })).toBe(true);
     expect(holds(close?.if ?? "false", { event: "issues", action: "opened" })).toBe(false);
@@ -178,7 +178,7 @@ describe("bin/close wakes a ticket its builder parked waiting on an open ticket 
   const woken = (calls: string[]) => calls.findIndex((call) => call.trimEnd() === "issue\nedit\n1596\n--remove-label\nwaiting");
 
   it("takes `waiting` off, as the App so its build starts, once the ticket it depends on closes", () => {
-    const { calls, tokens, run } = closing({ closedIssue: "1592", splitFrom: { parent: "1596", labels: "waiting\n", said, siblings: { "1592": "CLOSED COMPLETED" } } });
+    const { calls, tokens, run } = closing({ closedIssue: "1592", parkedOn: { parent: "1596", labels: "waiting\n", said, siblings: { "1592": "CLOSED COMPLETED" } } });
 
     expect(run().status).toBe(0);
     expect(woken(calls())).toBeGreaterThanOrEqual(0);
@@ -186,7 +186,7 @@ describe("bin/close wakes a ticket its builder parked waiting on an open ticket 
   });
 
   it("wakes it once the pull request it depends on merges, naming it merged, where Mezzanine#1710 sat waiting two hours after kit-sync PR #1711 merged", () => {
-    const { calls, run } = closing({ closedIssue: "1711", splitFrom: { parent: "1710", labels: "waiting\n", said: `${waitsOnOpen("1710", ["#1711"])} see #1546`, siblings: { "1711": "MERGED " } } });
+    const { calls, run } = closing({ closedIssue: "1711", parkedOn: { parent: "1710", labels: "waiting\n", said: `${waitsOnOpen("1710", ["#1711"])} see #1546`, siblings: { "1711": "MERGED " } } });
 
     const result = run();
 
@@ -196,7 +196,7 @@ describe("bin/close wakes a ticket its builder parked waiting on an open ticket 
   });
 
   it("leaves it waiting while a ticket it depends on is still open", () => {
-    const { calls, run } = closing({ closedIssue: "1592", splitFrom: { parent: "1596", labels: "waiting\n", said: `${waitsOnOpen("1596", ["#1592", "#1593"])} see #1546`, siblings: { "1592": "CLOSED COMPLETED", "1593": "OPEN " } } });
+    const { calls, run } = closing({ closedIssue: "1592", parkedOn: { parent: "1596", labels: "waiting\n", said: `${waitsOnOpen("1596", ["#1592", "#1593"])} see #1546`, siblings: { "1592": "CLOSED COMPLETED", "1593": "OPEN " } } });
 
     expect(run().status).toBe(0);
     expect(woken(calls())).toBe(-1);

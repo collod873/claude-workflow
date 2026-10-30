@@ -86,7 +86,7 @@ const blankLinesTrimmed = (text: string): string => text.replace(/^(?:[ \t]*\r?\
 
 export const filedOutOfScope = (body: string): string => blankLinesTrimmed(section(body, OUT_OF_SCOPE));
 
-export const whyChanged = (read: string, written: string): string[] => (why(written) === why(read) ? [] : ["the rewrite changes '## Why', the owner's words, which stay byte-identical"]);
+const whyChanged = (read: string, written: string): string[] => (why(written) === why(read) ? [] : ["the rewrite changes '## Why', the owner's words, which stay byte-identical"]);
 
 export function rewriteRefusals(read: string, written: string): string[] {
   const changed = whyChanged(read, written);
@@ -143,6 +143,8 @@ export interface Sentence {
 export function sentences(body: string): Sentence[] {
   return itemsUnder(body.replaceAll(/\r\n?/g, "\n"), SENTENCES).map((said) => ({ said }));
 }
+
+export const specProblem = (body: string) => section(body.replaceAll(/\r\n?/g, "\n"), PROBLEM_STATEMENT);
 
 export function specRefusals(body: string): string[] {
   const text = body.replaceAll(/\r\n?/g, "\n");
