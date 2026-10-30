@@ -343,3 +343,12 @@ if (import.meta.main) {
   if (line !== undefined) console.error(line);
   process.exit(refusals.length > 0 ? 1 : 0);
 }
+
+export function heardIn(repo: string): boolean {
+  const got = gh(["--missing-answers", "api", `repos/${repo}/contents/.github/workflows/${ENROLLED_CALLER}`, "--silent"]);
+  if (got.status === 0) return true;
+  return MISSING.test(got.stderr) ? false : unread(`whether ${repo} carries a caller file could not be read, ${NOTHING_MARKED}`);
+}
+
+export const LABELLED_WAITING = `labelled \`${WAITING}\``;
+export const nothingHears = (ticket: string, repo: string) => `@${OWNER} ${repo} carries no caller file, so nothing hears it close: take \`${WAITING}\` off #${ticket} once every one of them closes:`;

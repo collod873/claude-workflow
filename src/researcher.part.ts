@@ -18,7 +18,7 @@ export function researching({
   sources = "",
   readsPastCap = false,
   markRefusal,
-}: { labels?: string[] | undefined; findings?: string; fixes?: { fault: string; title: string; done: string[]; after?: string }[]; steps?: { title: string; why: string }[]; asks?: string[]; gh?: string; sources?: string; readsPastCap?: boolean; markRefusal?: string } = {}) {
+}: { labels?: string[] | undefined; findings?: string; fixes?: { fault: string; title: string; done: string[]; waits?: string }[]; steps?: { title: string; why: string }[]; asks?: string[]; gh?: string; sources?: string; readsPastCap?: boolean; markRefusal?: string } = {}) {
   const cutOff = readsPastCap ? `case "$*" in *--resume*) ;; *) printf '%s\\n' '${JSON.stringify({ type: "system", session_id: READING_SESSION })}'; exit 124 ;; esac\n` : "";
   const { root, ...stage } = issueStage("research-", { title: "What does the closer judge", body: wellFormedNote, labels: labels.map((name) => ({ name })) }, { findings, fixes, steps, asks }, FINDINGS_POSTED, gh, cutOff);
   const marked = stubbedMark(root, join(root, "claude-argv"), markRefusal);
