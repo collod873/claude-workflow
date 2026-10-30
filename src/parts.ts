@@ -6,6 +6,7 @@ export interface Part {
   stops: string;
   lines?: number;
   printsData?: true;
+  clock?: true;
 }
 
 const FIXED: Part[] = [
@@ -82,6 +83,13 @@ const FIXED: Part[] = [
     name: "bin/runner-watch",
     file: "bin/runner-watch",
     stops: "https://github.com/collod873/claude-workflow/issues/1590",
+    lines: 6,
+  },
+  {
+    name: "runner watch workflow",
+    file: ".github/workflows/runner-watch.yml",
+    stops: "https://github.com/collod873/claude-workflow/issues/1590",
+    clock: true,
   },
   {
     name: "bin/mark",

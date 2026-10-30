@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parts, type Part } from "./parts.ts";
-import { bare, CONTRACT, LINE_LIMIT, MOST_LINES, coveredByCheck, enrolling, execute, filing, githubCall, landSession, marking, overLimit, scratch, script, sessionExtras, wellFormedTicket, wellFormedNote, misshapenSpec, switching } from "./scenarios.ts";
+import { bare, CONTRACT, LINE_LIMIT, MOST_LINES, coveredByCheck, enrolling, execute, filing, githubCall, landSession, marking, overLimit, scratch, script, sessionExtras, watching, wellFormedTicket, wellFormedNote, misshapenSpec, switching } from "./scenarios.ts";
 import { stages, type Scenario } from "./stages.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
@@ -39,6 +39,10 @@ const listed: Record<string, Scenario[]> = {
   "bin/runner": [
     { label: "installing a repo's PC runners and sending its jobs there", run: () => switching().run("pc") },
     { label: "refusing a public repo", run: () => switching({ isPrivate: false }).run("pc") },
+  ],
+  "bin/runner-watch": [
+    { label: "flipping a repo whose PC runners went offline", run: () => watching([{ name: "collod873/chess", runners: [{ status: "offline", labels: ["pc"] }], variable: "pc" }]).run("flip") },
+    { label: "with GitHub refusing the runners", run: () => watching([{ name: "collod873/chess" }]).run("minutes", "collod873", "2026-10-28") },
   ],
   "bin/mark": [
     { label: "moving a ticket to a state", run: () => marking({ labels: { "811": ["ticket", "checking", "try-2"] }, pr: "900" }).run("811", "building", "--try") },

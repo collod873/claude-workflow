@@ -979,6 +979,42 @@ export const PC_RUNNER_COUNT = 4;
 const runnerId = (name: string) => [...name].reduce((sum, char) => sum + char.charCodeAt(0), 0);
 export const pcRunner = (name: string, status = "online", busy = false, labels = ["pc"]) => ({ id: runnerId(name), name, status, busy, labels: ["self-hosted", ...labels].map((label) => ({ name: label })) });
 
+type WatchedRepo = { name: string; private?: boolean; runners?: { status: string; labels: string[] }[]; variable?: string };
+
+export function watching(repos: WatchedRepo[], billing: object[] = [], runs: Record<string, object[]> = {}) {
+  const root = scratch("runner-watch-");
+  const at = (name: string) => join(root, name);
+  const lines = ['case "$*" in', `  "api installation/repositories --paginate --jq .repositories[].full_name") printf '%s\\n' ${repos.map(({ name }) => `'${name}'`).join(" ")} ;;`];
+  for (const repo of repos) {
+    const file = at(`var-${repo.name.replace("/", "-")}`);
+    if (repo.variable !== undefined) writeFileSync(file, repo.variable);
+    writeFileSync(at(`runners-${repo.name.replace("/", "-")}`), JSON.stringify({ runners: (repo.runners ?? []).map((runner) => ({ ...runner, labels: runner.labels.map((name) => ({ name })) })) }));
+    lines.push(
+      `  "api repos/${repo.name}/actions/runners") cat "${at(`runners-${repo.name.replace("/", "-")}`)}" ;;`,
+      `  "api repos/${repo.name} --jq .private") printf '%s\\n' ${repo.private ?? true} ;;`,
+      `  "variable get CI_RUNNER -R ${repo.name}") [ -f "${file}" ] || { printf 'variable CI_RUNNER was not found\\n' >&2; exit 1; }; cat "${file}" ;;`,
+      `  "variable set CI_RUNNER -R ${repo.name} --body "*) printf '%s' "\${@: -1}" >"${file}" ;;`,
+    );
+  }
+  for (const [repo, list] of Object.entries(runs)) {
+    lines.push(`  "api repos/${repo}/actions/runs?created=2026-10-29&per_page=100") printf '%s' '${JSON.stringify({ workflow_runs: list.map((run, id) => ({ id, ...run })) })}' ;;`);
+    list.forEach((run, id) => lines.push(`  "api repos/${repo}/actions/runs/${id}/jobs?per_page=100") printf '%s' '${JSON.stringify({ jobs: (run as { jobs: object[] }).jobs })}' ;;`));
+  }
+  lines.push(
+    `  "api users/collod873/settings/billing/usage?year=2026&month=10&day=29") [[ $BILLING_TOKEN_SEEN == pat ]] && printf '%s' '${JSON.stringify({ usageItems: billing })}' ;;`,
+    `  "issue create"*) printf '%s\\n' "$@" >"${at("issue")}" ;;`,
+    "  *) printf 'unexpected gh %s\\n' \"$*\" >&2; exit 1 ;;",
+    "esac",
+  );
+  script(at("bin/gh"), `BILLING_TOKEN_SEEN=\${GH_TOKEN:-}\n${lines.join("\n")}\n`);
+  const env = { PATH: `${at("bin")}:${process.env.PATH ?? ""}`, GH_TOKEN: "app", BILLING_TOKEN: "pat", GH_REPO: "collod873/claude-workflow" };
+  return {
+    run: (...args: string[]) => execute(join(BIN, "runner-watch"), root, env, args),
+    variable: (repo: string) => (existsSync(at(`var-${repo.replace("/", "-")}`)) ? readFileSync(at(`var-${repo.replace("/", "-")}`), "utf8") : undefined),
+    issue: () => (existsSync(at("issue")) ? readFileSync(at("issue"), "utf8") : undefined),
+  };
+}
+
 export function switching({ isPrivate = true, runners = [] as object[], variable = "", startsOnline = true, slowToStart = [] as string[], stoppedByHand = [] as string[], manyJobs = [] as string[], userExists = true } = {}) {
   const root = scratch("runner-");
   const at = (name: string) => join(root, name);

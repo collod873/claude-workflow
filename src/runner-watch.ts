@@ -69,10 +69,15 @@ function minutes(owner: string, day: string): void {
 
 if (import.meta.main) {
   const [mode, owner, day] = process.argv.slice(2);
-  if (mode === "flip") flip();
-  else if (mode === "minutes" && owner !== undefined && day !== undefined && /^\d{4}-\d\d-\d\d$/.test(day)) minutes(owner, day);
-  else {
+  const asked = mode === "flip" ? flip : mode === "minutes" && owner !== undefined && day !== undefined && /^\d{4}-\d\d-\d\d$/.test(day) ? () => minutes(owner, day) : undefined;
+  if (asked === undefined) {
     console.error("runner-watch: usage: runner-watch flip | runner-watch minutes <owner> <yyyy-mm-dd>");
     process.exit(2);
+  }
+  try {
+    asked();
+  } catch (error) {
+    console.error(`runner-watch: ${(error instanceof Error ? error.message : String(error)).split("\n")[0]}`);
+    process.exit(1);
   }
 }
