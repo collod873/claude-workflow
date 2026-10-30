@@ -178,6 +178,16 @@ describe("bin/finish calls the owner on a full check the machine alone starved, 
     expect(finished.landed()).toEqual([]);
   });
 
+  it("marks the spec stuck when the check re-run after the reviewer's answer is red only on starved steps", () => {
+    const finished = finishing({ check: `n=$(cat ../checks-run 2>/dev/null || echo 0); n=$((n + 1)); echo $n >../checks-run\nif [ $n -le 1 ]; then\n${MIXED}\nfi\n${STARVED}\n` });
+
+    finished.run();
+
+    expect(finished.marked()).toEqual(["974 stuck"]);
+    expect(finished.handed()).toHaveLength(2);
+    expect(finished.landed()).toEqual([]);
+  });
+
   it("hands a red mixing a starved step with a real failure to the reviewer on the code standard", () => {
     const finished = finishing({ check: MIXED });
 
