@@ -607,9 +607,10 @@ export function landSession({
   const covering = covered ? "printf 'check: covered, all 9 steps\\n'" : "printf 'check: due test\\n'\nexit 3";
   const publishing = green ? "printf 'check: green, all 9 steps\\n'" : "printf 'check: red test; log .git/check-logs/test.log\\n'\nexit 1";
   const checkNodes = join(state, "check-nodes");
+  const checkCallers = join(state, "check-callers");
   const treeBin = join(root, "tree-bin");
   if (treeNode) script(join(treeBin, "node"), "exit 9\n");
-  script(join(root, "bin", "check"), `printf '%s\\n' "$*" >>${JSON.stringify(checks)}\ncommand -v node >>${JSON.stringify(checkNodes)}\nif [[ $* == *--publish* ]]; then\n${publishing}\nelse\n${covering}\nfi\n`);
+  script(join(root, "bin", "check"), `printf '%s\\n' "$*" >>${JSON.stringify(checks)}\ncommand -v node >>${JSON.stringify(checkNodes)}\nprintf '%s\\n' "\${CHECK_CALLER-unset}" >>${JSON.stringify(checkCallers)}\nif [[ $* == *--publish* ]]; then\n${publishing}\nelse\n${covering}\nfi\n`);
   const head = git(session, "rev-parse", "HEAD");
   return {
     root,
@@ -623,6 +624,7 @@ export function landSession({
     posted: (call: string[]) => call[0] === "api" && call[3]?.startsWith("repos/{owner}/{repo}/statuses/") === true,
     checked: () => (existsSync(checks) ? readFileSync(checks, "utf8").trim().split("\n") : []),
     checkedOn: () => (existsSync(checkNodes) ? readFileSync(checkNodes, "utf8").trim().split("\n") : []),
+    checkedAs: () => (existsSync(checkCallers) ? readFileSync(checkCallers, "utf8").trim().split("\n") : []),
     treeBin,
   };
 }

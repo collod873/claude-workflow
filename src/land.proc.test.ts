@@ -63,12 +63,13 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
   });
 
   it("runs the full check itself when no receipt covers the commit, publishing its receipts, then posts the check and merges on green, so no agent hand-runs a check before landing (#1412)", () => {
-    const { run, calls, checked, head, branch, merged, posted } = sessionAheadOfMain(1, { covered: false });
+    const { run, calls, checked, checkedAs, head, branch, merged, posted } = sessionAheadOfMain(1, { covered: false });
 
     const result = run();
 
     expect(result.status, result.stderr).toBe(0);
     expect(checked()).toEqual(["--full --covered", "--full --publish"]);
+    expect(checkedAs(), "each check land runs logs land as its caller").toEqual(["land", "land"]);
     expect(calls().filter(posted).map((call) => call.at(-1))).toEqual([JUDGED_CHECK]);
     expect(calls().filter(merged)).toEqual([["pr", "merge", branch, "--merge", "--match-head-commit", head]]);
   });
