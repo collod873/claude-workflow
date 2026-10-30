@@ -3,6 +3,7 @@ import { readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { BUILDER_SESSION, CHECK_PASSES, CHECK_RED, FULL_CHECK_RED_ONCE, fixing, SPENT_BY_THE_THIRD_ROUND } from "./builder.part.ts";
+import { checkedBy } from "./builder.ts";
 import { git, scratch, wellFormedSpec } from "./scenarios.ts";
 import { why } from "./ticket-shape.ts";
 import { HELD } from "./spelled.ts";
@@ -868,5 +869,20 @@ describe("the builder builds another repo's checkout from this repo's bin/ (#113
     expect(run("811").status).toBe(0);
     expect(log("-1", "--format=%s")).toBe("Build #811 as its builder");
     expect(handed()[0]).not.toContain("commitlint");
+  });
+});
+
+describe("the builder's check still tells hooks it runs on GitHub, without vitest's annotation reporter (#1587)", () => {
+  it("keeps GITHUB_ACTIONS set, but not to the true that turns vitest's annotations on", () => {
+    const was = process.env.GITHUB_ACTIONS;
+    process.env.GITHUB_ACTIONS = "true";
+    try {
+      const red = checkedBy(`echo "$GITHUB_ACTIONS"`);
+      expect(red?.verdict).not.toBe("");
+      expect(red?.verdict).not.toBe("true");
+    } finally {
+      if (was === undefined) delete process.env.GITHUB_ACTIONS;
+      else process.env.GITHUB_ACTIONS = was;
+    }
   });
 });
