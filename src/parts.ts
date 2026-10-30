@@ -79,6 +79,11 @@ const FIXED: Part[] = [
     stops: "https://github.com/collod873/claude-workflow/issues/1257",
   },
   {
+    name: "bin/runner-watch",
+    file: "bin/runner-watch",
+    stops: "https://github.com/collod873/claude-workflow/issues/1590",
+  },
+  {
     name: "bin/mark",
     file: "bin/mark",
     stops: "https://github.com/collod873/claude-workflow/issues/835",

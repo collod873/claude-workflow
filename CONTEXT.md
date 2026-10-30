@@ -70,7 +70,8 @@ _Avoid_: onboard, install, register
 **PC runner**:
 A `pc` runner, where a private repo's `CI_RUNNER` sends every job, else GitHub's. It caps neither memory
 nor CPU: its full checks take turns in the machine's one check slot, as the owner's do, so each gets
-every core.
+every core. While a repo's PC runners are all offline, the runner watch sets its `CI_RUNNER` to
+`ubuntu-latest`, and back to `pc` once one returns; an unset `CI_RUNNER` is a hand switch it leaves.
 _Avoid_: local runner, quick lane
 
 **Worker**:
