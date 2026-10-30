@@ -72,7 +72,7 @@ describe("bin/research answers a research note on the note and closes it, with n
     expect(research.env?.GH_REPO).toBe("${{ github.repository }}");
   });
 
-  it("specs.yml skips a run whose job list GitHub still refuses after its retries, names it in jobs.jsonl, and gathers the rest (#1592)", () => {
+  it("specs.yml skips a run whose job list GitHub still refuses after its retries, or an artifact GitHub still refuses, names each as missing, and gathers the rest (#1592)", () => {
     const fetching = (workflowJobs("specs.yml").research?.steps ?? []).find((step) => step.id === "sources");
     const root = mkdtempSync(join(tmpdir(), "sources-"));
     mkdirSync(join(root, "bin"));
@@ -81,7 +81,9 @@ describe("bin/research answers a research note on the note and closes it, with n
       join(root, "bin", "github"),
       `#!/usr/bin/env bash
 case "$*" in
+  *"actions/artifacts?"*) printf "8 2 logs\\n" ;;
   "run list"*) printf '[{"databaseId":1},{"databaseId":2},{"databaseId":3}]' ;;
+  *artifacts/8/zip*) echo "gh: Server Error (HTTP 502)" >&2; exit 1 ;;
   *runs/2/jobs*) echo "gh: Server Error (HTTP 502)" >&2; exit 1 ;;
   *runs/*/jobs*) run="\${2#*runs/}"; printf '{"run":%s}\n' "\${run%%/*}" ;;
 esac
@@ -93,6 +95,7 @@ esac
     const ran = spawnSync("bash", ["-e", "-o", "pipefail", "-c", fetching?.run ?? ""], { env, encoding: "utf8" });
 
     expect(ran.status).toBe(0);
+    expect(readFileSync(join(root, "research-sources", "machine-logs", "missing.txt"), "utf8")).toBe("GitHub refused artifact 8 of run 2 after every retry\n");
     expect(readFileSync(join(root, "research-sources", "jobs.jsonl"), "utf8").trim().split("\n").map((line) => JSON.parse(line))).toEqual([{ run: 1 }, { run: 2, missing: "GitHub refused its job list after every retry" }, { run: 3 }]);
   });
 
