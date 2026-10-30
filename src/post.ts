@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { text as read } from "node:stream/consumers";
-import { added, enrolmentLine, filedLine, likelyMatches, matchRefusals, NEW, openWaitedOn, unlisted } from "./door.ts";
+import { added, filedLine, likelyMatches, matchRefusals, NEW, openWaitedOn, unlisted } from "./door.ts";
 import { dedashed } from "./em-dash.ts";
 import {
   BUG_SHAPE,
@@ -153,8 +153,8 @@ const DOOR_USAGE = `file-issue: usage: file-issue ${Object.keys(DOOR).join("|")}
 
 const doorHelp = (): string[] => [
   DOOR_USAGE,
-  enrolmentLine(gh),
   WHY_SHAPE,
+  "Filing a build, bug or spec says whether this repo is enrolled, so whether it builds at once or waits for a session.",
   "Before filing, it reads the repo's open issues and stops on a title that may be the same job, listing each for you to read.",
   "add: your new evidence goes onto an open issue as a comment, for a match that is the same job.",
   `${NEW}: files anyway, for a match that is a different job.`,
