@@ -251,10 +251,15 @@ jobs:
           git log --date=short --format='commit %h %ad %s' --name-status >"$sources/git-log.txt"
           "$GITHUB_WORKSPACE/bin/github" run list --limit 1000 --json databaseId,workflowName,displayTitle,event,headBranch,conclusion,createdAt,url | jq -c '.[]' >"$sources/runs.jsonl"
           head -n "$NEWEST_RUNS" "$sources/runs.jsonl" | jq -r .databaseId | while read -r run; do
-            "$GITHUB_WORKSPACE/bin/github" api "repos/$GH_REPO/actions/runs/$run/jobs" --jq ".jobs[] | {run: $run, job: .name, conclusion, steps: [.steps[] | {name, conclusion}]}"
+            "$GITHUB_WORKSPACE/bin/github" api "repos/$GH_REPO/actions/runs/$run/jobs" --jq ".jobs[] | {run: $run, job: .name, conclusion, steps: [.steps[] | {name, conclusion}]}" ||
+              printf '{"run":%s,"missing":"GitHub refused its job list after every retry"}\n' "$run"
           done >"$sources/jobs.jsonl"
           "$GITHUB_WORKSPACE/bin/github" api "repos/$GH_REPO/actions/artifacts?per_page=$NEWEST_LOGS" --jq '.artifacts[] | select(.expired | not) | "\(.id) \(.workflow_run.id) \(.name)"' | while read -r id run kept; do
-            "$GITHUB_WORKSPACE/bin/github" api "repos/$GH_REPO/actions/artifacts/$id/zip" >"$sources/machine-logs/$id.zip"
+            "$GITHUB_WORKSPACE/bin/github" api "repos/$GH_REPO/actions/artifacts/$id/zip" >"$sources/machine-logs/$id.zip" || {
+              printf 'GitHub refused artifact %s of run %s after every retry\n' "$id" "$run" >>"$sources/machine-logs/missing.txt"
+              rm -f "$sources/machine-logs/$id.zip"
+              continue
+            }
             python3 -m zipfile -e "$sources/machine-logs/$id.zip" "$sources/machine-logs/$run-$kept-$id"
             rm "$sources/machine-logs/$id.zip"
           done
