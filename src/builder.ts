@@ -124,6 +124,16 @@ export function checkedBy(check: string): Red | undefined {
   return { verdict, failed: failedSteps(log) || log };
 }
 
+const MACHINE_RAN_SHORT = "the machine ran short";
+const STEPS_BLAMED = /^check: red (.*?)(?:; receipts not published .*)?; log \S+$/;
+
+function starvedOnly(verdict: string): boolean {
+  const blamed = STEPS_BLAMED.exec(verdict)?.[1];
+  if (blamed === undefined) return false;
+  const steps = blamed.split(/, (?![^(]*\))/);
+  return steps.every((step) => step.includes(MACHINE_RAN_SHORT));
+}
+
 export const repaired = ({ verdict, failed }: Red) =>
   [`\`${PUBLISHED_CHECK}\` ran on your answer and went red: \`${verdict}\`. What each red step printed, from the end of its part of that log:`, tailOf(failed, TAIL_CAP), "Make it pass, commit, and answer again.", ""].join("\n\n");
 
@@ -346,11 +356,12 @@ function mergesCarryingWork(): string[] {
         .map(([short = "", , , subject = ""]) => `${short} ${subject}`);
 }
 
-function judged(): Round {
+function judged(ticket: string): Round {
   if (gitRead(["rev-list", "--count", "origin/main..HEAD"], PAST_MAIN_UNREAD) === "0") return { red: "You answered `code`, and this branch has no commits past main, so there is nothing to land: build the ticket, or answer `done` if main already does what it asks." };
   const lost = mergesCarryingWork();
   if (lost.length > 0) return { red: `You answered \`code\`, and a rebase drops merge commits, so these past main would land without the work they carry beyond a clean merge of their parents: ${lost.join(", ")}. Leave that work out of merge commits and add its work as plain commits on top of main, such as with \`git reset --soft origin/main\` and a fresh commit.` };
   const red = checkedBy(PUBLISHED_CHECK);
+  if (red !== undefined && starvedOnly(red.verdict)) return { ended: calledOwner(ticket, "builder", `the machine is at fault, not the code: \`${PUBLISHED_CHECK}\` went red only on steps killed because ${MACHINE_RAN_SHORT}, after the check reran them once other work on the runner ended: \`${red.verdict}\``) };
   return red === undefined ? {} : { red: repaired(red) };
 }
 
@@ -398,7 +409,9 @@ function ownTicket(ticket: string, app: AppKey | undefined): number {
     if (round.ended !== undefined) return round.ended;
     body = round.body ?? body;
     committed(builtBy(ticket), "feat");
-    const { red } = round.red === undefined ? judged() : round;
+    const judgedRound = round.red === undefined ? judged(ticket) : round;
+    if (judgedRound.ended !== undefined) return judgedRound.ended;
+    const { red } = judgedRound;
     if (red === undefined) return reviewedAndLanded(ticket, { body, alongside: owning.carried.alongside, said: said.join("\n\n") }, app);
     input = red;
   }
