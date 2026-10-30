@@ -131,7 +131,6 @@ let spelledOnce: string | undefined;
 function answeredOnce(): string {
   if (spelledOnce !== undefined) return spelledOnce;
   const root = mkdtempSync(join(tmpdir(), "spelled-once-"));
-  process.once("exit", () => rmSync(root, { recursive: true, force: true }));
   const known = SPELLINGS.filter(([key]) => key !== "labels").map(([key, spelling]) => `  ${key}) printf '%s\\n' '${spelling.replaceAll("'", "'\\''")}'; exit 0 ;;`);
   script(join(root, "bin", "spelled"), ['[ "$#" -eq 1 ] && case "$1" in', ...known, "esac", `exec "${join(BIN, "spelled")}" "$@"`, ""].join("\n"));
   return (spelledOnce = root);

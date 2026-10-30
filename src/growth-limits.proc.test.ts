@@ -1,13 +1,12 @@
 import { execFileSync } from "node:child_process";
-import { chmodSync, copyFileSync, existsSync, globSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, copyFileSync, existsSync, globSync, mkdirSync, readdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, normalize, resolve } from "node:path";
 import ts from "typescript";
 import { parse } from "yaml";
-import { describe, expect, it, onTestFinished } from "vitest";
+import { describe, expect, it } from "vitest";
 import { FAILURE_LINK } from "./part-links.ts";
 import { parts, type Part } from "./parts.ts";
-import { CONTRACT, coveredByCheck } from "./scenarios.ts";
+import { CONTRACT, coveredByCheck, scratch } from "./scenarios.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
 const MOST_PARTS = 40;
@@ -17,12 +16,6 @@ const WIRING = [".claude/*.json", WORKFLOWS, ".husky/*", "package.json"];
 const SRC_OR_BIN = /(src|bin)\/[\w.-]+(\/[\w.-]+)*/g;
 const REASONED_DROP = /^Test count drop: \S/m;
 const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_") && !name.startsWith("VITEST")));
-
-function scratch(): string {
-  const dir = mkdtempSync(join(tmpdir(), "growth-limits-"));
-  onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
-  return dir;
-}
 
 function plant(root: string, file: string, content: string, mode = 0o644): void {
   mkdirSync(dirname(join(root, file)), { recursive: true });
@@ -101,7 +94,7 @@ function testsIn(root: string): number {
 function testCountDrop(repo: string): string[] {
   const base = git(repo, "merge-base", "HEAD", "origin/main");
   if (REASONED_DROP.test(git(repo, "log", "--format=%B", `${base}..HEAD`))) return [];
-  const atBase = scratch();
+  const atBase = scratch("growth-limits-");
   const archive = execFileSync("git", ["archive", base], { cwd: repo, env, maxBuffer: 1 << 30 });
   execFileSync("tar", ["-x", "-C", atBase], { input: archive });
   const before = testsIn(atBase);
@@ -122,13 +115,13 @@ describe("the machine holds its growth limits", () => {
 
     const crowded = Array.from({ length: MOST_PARTS + 1 }, (_, n) => ({ ...planted, name: `planted ${n}` }));
     expect(overCrowded(crowded)).toEqual([`${MOST_PARTS + 1} parts, over ${MOST_PARTS}`]);
-    expect(missingFiles(scratch(), [planted])).toEqual(["planted names src/planted.ts, which does not exist"]);
+    expect(missingFiles(scratch("growth-limits-"), [planted])).toEqual(["planted names src/planted.ts, which does not exist"]);
   });
 
   it("2. every registered part links the failure it stops, and everything under src/ and bin/ that can run is registered", () => {
     expect(unlinkedParts(REPO, parts)).toEqual([]);
 
-    const copy = scratch();
+    const copy = scratch("growth-limits-");
     plant(copy, "bin/unregistered", "#!/bin/bash\n", 0o755);
     plant(copy, "src/planted.ts", "export {};\n");
     plant(copy, CONTRACT, JSON.stringify({ steps: { lint: { run: "node_modules/.bin/eslint --config src/planted.config.js src" } } }));
@@ -154,7 +147,7 @@ describe("the machine holds its growth limits", () => {
     expect(globSync(WORKFLOWS, { cwd: REPO })).not.toEqual([]);
     expect(timedWorkflows(REPO)).toEqual([]);
 
-    const copy = scratch();
+    const copy = scratch("growth-limits-");
     plant(copy, ".github/workflows/tick.yml", "on:\n  push:\n  schedule:\n    - cron: \"0 * * * *\"\njobs: {}\n");
     plant(copy, ".github/workflows/listed.yml", "on: [push, schedule]\njobs: {}\n");
     plant(copy, ".github/workflows/event.yml", "on: issues\njobs: {}\n");
@@ -164,7 +157,7 @@ describe("the machine holds its growth limits", () => {
   it("4. the count of tests is not below the merge base with origin/main, unless a commit gives the reason", { timeout: 120_000 }, () => {
     expect(testCountDrop(REPO)).toEqual([]);
 
-    const copy = scratch();
+    const copy = scratch("growth-limits-");
     git(copy, "init", "--quiet", "--initial-branch=main");
     git(copy, "config", "user.email", "limits@test");
     git(copy, "config", "user.name", "limits");
