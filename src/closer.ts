@@ -1,6 +1,5 @@
 import { filedClosed, dependsOn } from "./builder.ts";
-import { LABELLED_WAITING } from "./post.ts";
-import { commentOnTicket, commentsRead, FAULT_FROM, gh, ghAs, ghRead, opened, readOrStop, unread, WAITING } from "./post.ts";
+import { commentOnTicket, commentsRead, FAULT_FROM, gh, ghAs, ghRead, LABELLED_WAITING, opened, readOrStop, unread, WAITING } from "./post.ts";
 import { exitFor } from "./stops.ts";
 import { quoted, waitsOn, why } from "./ticket-shape.ts";
 
