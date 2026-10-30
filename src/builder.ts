@@ -114,8 +114,11 @@ function failedSteps(log: string): string {
   return failed.map((step) => tailOf(step.trim(), Math.floor(TAIL_CAP / failed.length))).join("\n\n");
 }
 
+const UNANNOTATED_GITHUB_ACTIONS = "unannotated";
+
 export function checkedBy(check: string): Red | undefined {
-  const { GITHUB_ACTIONS: _annotating, ...env } = process.env;
+  const { GITHUB_ACTIONS: onGitHub, ...rest } = process.env;
+  const env = onGitHub === undefined ? rest : { ...rest, GITHUB_ACTIONS: UNANNOTATED_GITHUB_ACTIONS };
   const { stdout, stderr } = spawnSync("bash", ["-c", check], { env: treePathed(env), encoding: "utf8" });
   const verdict = stdout.trim().split("\n").at(-1) ?? "";
   if (PASSED.test(verdict)) return undefined;
