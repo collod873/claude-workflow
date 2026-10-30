@@ -1,8 +1,8 @@
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { appendFileSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { configShaped, LINTABLE, listedFiles } from "./files.mjs";
 
@@ -117,8 +117,33 @@ export function refused(layer, refusals, verb = "lint") {
   return refusals.length > 0;
 }
 
+function buildInfoOf(root, tsc, config) {
+  const shown = spawnSync(process.execPath, [tsc, "-p", config, "--showConfig"], {
+    cwd: root,
+    encoding: "utf8",
+  });
+  try {
+    const file = JSON.parse(shown.stdout).compilerOptions?.tsBuildInfoFile;
+    return file ? resolve(root, dirname(config), file) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function tscStage(root, config) {
   const tsc = packageBin("typescript-native", "bin/tsc");
+  const incremental = spawnSync(process.execPath, [tsc, "-p", config], {
+    cwd: root,
+    env: process.env,
+  });
+  if (incremental.error) throw incremental.error;
+  if (incremental.status === 0) {
+    process.stdout.write(incremental.stdout);
+    process.stderr.write(incremental.stderr);
+    return true;
+  }
+  const buildInfo = buildInfoOf(root, tsc, config);
+  if (buildInfo && existsSync(buildInfo)) rmSync(buildInfo);
   return stage("tsc", process.execPath, [tsc, "-p", config], root, {}, "typecheck");
 }
 
