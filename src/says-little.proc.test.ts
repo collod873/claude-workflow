@@ -42,7 +42,7 @@ const listed: Record<string, Scenario[]> = {
   ],
   "bin/runner-watch": [
     { label: "flipping a repo whose PC runners went offline", run: () => watching([{ name: "collod873/chess", runners: [{ status: "offline", labels: ["pc"] }], variable: "pc" }]).run("flip") },
-    { label: "with GitHub refusing the runners", run: () => watching([{ name: "collod873/chess" }]).run("minutes", "collod873", "2026-10-28") },
+    { label: "with GitHub refusing the billing usage", run: () => watching([{ name: "collod873/chess" }]).run("minutes", "collod873", "2026-10-28") },
   ],
   "bin/mark": [
     { label: "moving a ticket to a state", run: () => marking({ labels: { "811": ["ticket", "checking", "try-2"] }, pr: "900" }).run("811", "building", "--try") },

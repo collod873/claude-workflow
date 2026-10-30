@@ -23,17 +23,27 @@ function variableOf(repo: string): string | undefined {
 
 function flip(): void {
   const repos = gh(["api", "installation/repositories", "--paginate", "--jq", ".repositories[].full_name"]).split("\n").filter(Boolean);
+  const failed: string[] = [];
   for (const repo of repos) {
-    const pcRunners = (JSON.parse(gh(["api", `repos/${repo}/actions/runners`])) as { runners: Runner[] }).runners.filter(({ labels }) => labels.some(({ name }) => name === PC));
-    if (pcRunners.length === 0) continue;
-    const online = pcRunners.some(({ status }) => status === "online");
-    const current = variableOf(repo);
-    const to = !online && current === PC ? GITHUB_HOSTED : online && current === GITHUB_HOSTED ? PC : undefined;
-    if (to === undefined) continue;
-    gh(["variable", "set", VARIABLE, "-R", repo, "--body", to]);
-    const flipped = to === PC ? "github -> pc, its PC runners are back" : "pc -> github, its PC runners are offline";
-    console.log(`runner-watch: ${new Date().toISOString().replace(/\.\d+Z$/, "Z")} ${repo} ${flipped}`);
+    try {
+      flipRepo(repo);
+    } catch (error) {
+      failed.push(error instanceof Error ? error.message.split("\n")[0] : String(error));
+    }
   }
+  if (failed.length > 0) throw new Error(`${failed.length} of ${repos.length} repos unchecked, first: ${failed[0]}`);
+}
+
+function flipRepo(repo: string): void {
+  const pcRunners = (JSON.parse(gh(["api", `repos/${repo}/actions/runners`])) as { runners: Runner[] }).runners.filter(({ labels }) => labels.some(({ name }) => name === PC));
+  if (pcRunners.length === 0) return;
+  const online = pcRunners.some(({ status }) => status === "online");
+  const current = variableOf(repo);
+  const to = !online && current === PC ? GITHUB_HOSTED : online && current === GITHUB_HOSTED ? PC : undefined;
+  if (to === undefined) return;
+  gh(["variable", "set", VARIABLE, "-R", repo, "--body", to]);
+  const flipped = to === PC ? "github -> pc, its PC runners are back" : "pc -> github, its PC runners are offline";
+  console.log(`runner-watch: ${new Date().toISOString().replace(/\.\d+Z$/, "Z")} ${repo} ${flipped}`);
 }
 
 function hostedMinutesByWorkflow(repo: string, day: string): Map<string, number> {

@@ -31,6 +31,16 @@ describe("bin/runner-watch keeps private repos off paid minutes without Collin w
     expect(watch.variable("collod873/design-kit")).toBe("pc");
   });
 
+  it("still flips the other repos when GitHub refuses one, then fails on one line", () => {
+    const watch = watching([{ name: "collod873/chess", runners: [pc("offline")], variable: "pc" }]);
+    watch.refuse("collod873/secret");
+
+    const ran = watch.run("flip");
+    expect(watch.variable("collod873/chess")).toBe("ubuntu-latest");
+    expect(ran.status).toBe(1);
+    expect(ran.stderr).toMatch(/^runner-watch: 1 of 2 repos unchecked, first: gh api repos\/collod873\/secret\/actions\/runners: .*\n$/);
+  });
+
   it("files one issue to Collin naming each private repo, workflow and GitHub-hosted minutes of the day, counting each job's started minute", () => {
     const watch = watching(
       [{ name: "collod873/chess" }, { name: "collod873/claude-workflow", private: false }],

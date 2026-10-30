@@ -1009,6 +1009,10 @@ export function watching(repos: WatchedRepo[], billing: object[] = [], runs: Rec
   script(at("bin/gh"), `BILLING_TOKEN_SEEN=\${GH_TOKEN:-}\n${lines.join("\n")}\n`);
   const env = { PATH: `${at("bin")}:${process.env.PATH ?? ""}`, GH_TOKEN: "app", BILLING_TOKEN: "pat", GH_REPO: "collod873/claude-workflow" };
   return {
+    refuse: (repo: string) => {
+      const gh = readFileSync(at("bin/gh"), "utf8").replace(" ;;\n", ` '${repo}' ;;\n  "api repos/${repo}/actions/runners") printf 'HTTP 403\\n' >&2; exit 1 ;;\n`);
+      writeFileSync(at("bin/gh"), gh);
+    },
     run: (...args: string[]) => execute(join(BIN, "runner-watch"), root, env, args),
     variable: (repo: string) => (existsSync(at(`var-${repo.replace("/", "-")}`)) ? readFileSync(at(`var-${repo.replace("/", "-")}`), "utf8") : undefined),
     issue: () => (existsSync(at("issue")) ? readFileSync(at("issue"), "utf8") : undefined),
