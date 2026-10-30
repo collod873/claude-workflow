@@ -28,7 +28,7 @@ function flip(): void {
     try {
       flipRepo(repo);
     } catch (error) {
-      failed.push(error instanceof Error ? error.message.split("\n")[0] : String(error));
+      failed.push(error instanceof Error ? (error.message.split("\n")[0] ?? "") : String(error));
     }
   }
   if (failed.length > 0) throw new Error(`${failed.length} of ${repos.length} repos unchecked, first: ${failed[0]}`);
