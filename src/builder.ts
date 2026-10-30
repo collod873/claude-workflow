@@ -7,9 +7,9 @@ import { admission, doesNotBuild } from "./admit.ts";
 import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
 import { capped, LIST_CAP, NO_EM_DASH, onDisk, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
 import { PUBLISHED_CHECK } from "./checks.ts";
-import { commentOnTicket, commentsRead, ENROLLED_CALLER, faultOf, firstStepOf, FOREIGN, followUpBody, gh, ghRead, git, gitRead, MACHINE_REPO, mark, MISSING, NOTHING_MARKED, OWNER, post, postRefusals, readOrStop, rewriteTicket, FILED_IN, ticketBranch, unread, WAITING } from "./post.ts";
+import { commentOnTicket, commentsRead, faultOf, firstStepOf, FOREIGN, followUpBody, gh, ghRead, git, gitRead, MACHINE_REPO, mark, NOTHING_MARKED, OWNER, post, postRefusals, readOrStop, rewriteTicket, FILED_IN, ticketBranch, unread, WAITING } from "./post.ts";
 import { reviewedAndLanded } from "./reviewer.ts";
-import { calledOwner, committed, commitlinted, CONTRACT, FILED, opened, setupRefusal, type Spent, treePathed } from "./stage.ts";
+import { calledOwner, committed, commitlinted, CONTRACT, FILED, heardIn, LABELLED_WAITING, nothingHears, opened, setupRefusal, type Spent, treePathed } from "./stage.ts";
 import { dedashed } from "./em-dash.ts";
 import { BUILDING, SPEC, TICKET } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
@@ -63,14 +63,13 @@ interface Answer {
 const stoppedAt = stopsOf({ unadmitted: "Build refused: the ticket's checks would run as shell with the App's token" });
 
 const rewroteAsSpec = (ticket: string) => `The builder of #${ticket} rewrote it as a spec, which the slicer cuts:`;
-export const LABELLED_WAITING = `labelled \`${WAITING}\``;
 const wokenByTheCloser = (ticket: string) => `#${ticket} waits on it, ${LABELLED_WAITING}, and the closer wakes it once every one of them closes:`;
 export const dependsOn = (ticket: string) => `The builder of #${ticket} found it depends on`;
 export const waitsOnOpen = (ticket: string, open: string[]) => `${dependsOn(ticket)} ${open.join(", ")}, still open. ${wokenByTheCloser(ticket)}`;
 export const waitsOnFault = (ticket: string, filed: string[]) => `The builder of #${ticket} found the machine at fault and filed ${filed.join(", ")}. ${wokenByTheCloser(ticket)}`;
 const handedStep = (ticket: string, repo: string, filed: string[]) => `The builder of #${ticket} handed its first step to ${repo} and filed ${filed.join(", ")}.`;
 export const waitsOnStep = (ticket: string, repo: string, filed: string[]) => `${handedStep(ticket, repo, filed)} ${wokenByTheCloser(ticket)}`;
-export const waitsUnheard = (ticket: string, repo: string, filed: string[]) => `${handedStep(ticket, repo, filed)} #${ticket} waits on it, ${LABELLED_WAITING}. @${OWNER} ${repo} carries no caller file, so nothing hears it close: take \`${WAITING}\` off #${ticket} once every one of them closes:`;
+export const waitsUnheard = (ticket: string, repo: string, filed: string[]) => `${handedStep(ticket, repo, filed)} #${ticket} waits on it, ${LABELLED_WAITING}. ${nothingHears(ticket, repo)}`;
 export const filedClosed = (ticket: string) => `Every ticket the builder of #${ticket} filed and waits on has closed:`;
 
 interface Handed {
@@ -298,12 +297,6 @@ function filedToWaitOn(ticket: string, answer: Answer, { repo, filedFrom, parked
 
 const filedForMachine = (ticket: string, answer: Answer): Round =>
   filedToWaitOn(ticket, answer, { repo: MACHINE_REPO, filedFrom: faultOf, parked: (filed) => waitsOnFault(ticket, filed), unfiled: "a `machine` answer from a tree that is not the machine's files the machine's fault as one ticket or more in `tickets`" });
-
-export function heardIn(repo: string): boolean {
-  const got = gh(["--missing-answers", "api", `repos/${repo}/contents/.github/workflows/${ENROLLED_CALLER}`, "--silent"]);
-  if (got.status === 0) return true;
-  return MISSING.test(got.stderr) ? false : unread(`whether ${repo} carries a caller file could not be read, ${NOTHING_MARKED}`);
-}
 
 function handedToItsRepo(ticket: string, answer: Answer): Round {
   const { repo } = answer;

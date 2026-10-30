@@ -140,7 +140,7 @@ describe("bin/research files what its findings call for, so a closed note leaves
 
   it("files each owner step as its own note, and a fix that needs one files waiting on that note, so the fix builds once the owner has taken it (#1565)", () => {
     const step = { title: "Add the Stripe key to Lumaria's Railway variables", why: "The charge path reads STRIPE_KEY, and only the owner holds it." };
-    const answered = researching({ steps: [step], fixes: [{ ...fix, after: step.title }, fix], gh: "[[ $2 == create ]] && { printf 'https://github.com/collod873/claude-workflow/issues/1700\\n'; exit 0; }" });
+    const answered = researching({ steps: [step], fixes: [{ ...fix, waits: step.title }, fix], gh: "[[ $2 == create ]] && { printf 'https://github.com/collod873/claude-workflow/issues/1700\\n'; exit 0; }" });
 
     expect(answered.run().status).toBe(0);
     const [note, waiting, atOnce] = answered.filed();
@@ -151,6 +151,14 @@ describe("bin/research files what its findings call for, so a closed note leaves
     expect(waiting?.body).toContain("## Waits on\n\n- #1700");
     expect(atOnce?.labels).toEqual(["ticket"]);
     expect(atOnce?.body).not.toContain("## Waits on");
+  });
+
+  it("pings the owner to take waiting off a fix waiting on a step's note in a repo that carries no caller file, since nothing there hears the note close (#1591)", () => {
+    const step = { title: "Add the Stripe key to Lumaria's Railway variables", why: "The charge path reads STRIPE_KEY, and only the owner holds it." };
+    const answered = researching({ steps: [step], fixes: [{ ...fix, waits: step.title }], gh: "[[ $2 == create ]] && { printf 'https://github.com/collod873/claude-workflow/issues/1700\\n'; exit 0; }; [[ $1 == api ]] && { printf 'HTTP 404: Not Found\\n' >&2; exit 1; }" });
+
+    expect(answered.run().status).toBe(0);
+    expect(answered.comments().at(-1)).toBe("#1700 waits on #1700, labelled `waiting`. @collod873 collod873/claude-workflow carries no caller file, so nothing hears it close: take `waiting` off #1700 once every one of them closes: #1700");
   });
 
   it("files no more than three fixes, however many the researcher gives", () => {

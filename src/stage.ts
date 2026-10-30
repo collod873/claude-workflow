@@ -3,7 +3,7 @@ import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readdirSync
 import { join } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import { NO_EM_DASH, onDisk } from "./brief.ts";
-import { type Asked, askedIssue, commentOnTicket, followUpBody, gh, ghRead, git, gitRead, heldOn, mark, OWNER, post, STUCK, unread, WAITING, type MarkedLabel } from "./post.ts";
+import { type Asked, askedIssue, commentOnTicket, ENROLLED_CALLER, followUpBody, gh, ghRead, git, gitRead, heldOn, mark, MISSING, NOTHING_MARKED, OWNER, post, STUCK, unread, WAITING, type MarkedLabel } from "./post.ts";
 import type { Stop } from "./stops.ts";
 import { quoted } from "./ticket-shape.ts";
 
@@ -273,7 +273,7 @@ export const FOLLOW_UPS = {
         fault: { type: "string", pattern: NO_EM_DASH },
         title: { type: "string", pattern: NO_EM_DASH },
         done: { type: "array", minItems: 1, items: { type: "string", pattern: NO_EM_DASH } },
-        after: { type: "string", pattern: NO_EM_DASH },
+        waits: { type: "string", pattern: NO_EM_DASH },
       },
       required: ["fault", "title", "done"],
       additionalProperties: false,
@@ -286,7 +286,7 @@ export interface Fix {
   fault: string;
   title: string;
   done: string[];
-  after?: string | undefined;
+  waits?: string | undefined;
 }
 
 export type Filed = { named: string; refusals: string[]; said: string };
@@ -296,12 +296,29 @@ export const FILED = /\/issues\/(\d+)\s*$/;
 
 const ownerStepFiled = (left: string) => (step: OwnerStep): Filed => ({ named: `${step.title}: ${step.why}`, ...post({ kind: "owner", title: step.title, text: `## Why\n\n${step.why}\n\n${left}\n` }, gh) });
 
-function fixFiled(found: string, { fault, title, done, after }: Fix, notes: Map<string, Filed>): Filed {
+export function heardIn(repo: string): boolean {
+  const got = gh(["--missing-answers", "api", `repos/${repo}/contents/.github/workflows/${ENROLLED_CALLER}`, "--silent"]);
+  if (got.status === 0) return true;
+  return MISSING.test(got.stderr) ? false : unread(`whether ${repo} carries a caller file could not be read, ${NOTHING_MARKED}`);
+}
+
+export const LABELLED_WAITING = `labelled \`${WAITING}\``;
+export const nothingHears = (ticket: string, repo: string) => `@${OWNER} ${repo} carries no caller file, so nothing hears it close: take \`${WAITING}\` off #${ticket} once every one of them closes:`;
+
+function pingedUnheard(filed: Filed, note: string): Filed {
+  const repo = process.env.GH_REPO ?? "";
+  const fix = FILED.exec(filed.said)?.[1];
+  if (fix === undefined || heardIn(repo)) return filed;
+  commentOnTicket(fix, `#${fix} waits on #${note}, ${LABELLED_WAITING}. ${nothingHears(fix, repo)} #${note}`, gh);
+  return filed;
+}
+
+function fixFiled(found: string, { fault, title, done, waits }: Fix, notes: Map<string, Filed>): Filed {
   const text = followUpBody([found, "", `> ${fault}`], done);
-  if (after === undefined || after.trim() === "") return { named: title, ...post({ kind: "ticket", title, text }, gh) };
-  const number = FILED.exec(notes.get(stepKey(after))?.said ?? "")?.[1];
-  if (number === undefined) return { named: title, refusals: [`it waits on the owner step "${after}", which was not filed`], said: "" };
-  return { named: title, ...post({ kind: "ticket", title, text: `${text}\n## Waits on\n\n- #${number}\n`, labels: [WAITING] }, gh) };
+  if (waits === undefined || waits.trim() === "") return { named: title, ...post({ kind: "ticket", title, text }, gh) };
+  const number = FILED.exec(notes.get(stepKey(waits))?.said ?? "")?.[1];
+  if (number === undefined) return { named: title, refusals: [`it waits on the owner step "${waits}", which was not filed`], said: "" };
+  return pingedUnheard({ named: title, ...post({ kind: "ticket", title, text: `${text}\n## Waits on\n\n- #${number}\n`, labels: [WAITING] }, gh) }, number);
 }
 
 export function stepsAndFixesFiled(found: string, left: string, steps: OwnerStep[], fixes: Fix[]): Filed[] {
