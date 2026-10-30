@@ -7,12 +7,13 @@ import { admission, doesNotBuild } from "./admit.ts";
 import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
 import { capped, LIST_CAP, NO_EM_DASH, onDisk, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
 import { PUBLISHED_CHECK } from "./checks.ts";
-import { BUILDER_SPLIT, commentOnTicket, commentsRead, ENROLLED_CALLER, faultOf, firstStepOf, FOLLOW_UP_OF, FOREIGN, followUpBody, gh, ghRead, git, gitRead, MACHINE_REPO, mark, MISSING, NOTHING_MARKED, OWNER, post, postRefusals, readOrStop, rewriteTicket, FILED_IN, ticketBranch, unread, WAITING } from "./post.ts";
+import { commentOnTicket, commentsRead, ENROLLED_CALLER, faultOf, firstStepOf, FOREIGN, followUpBody, gh, ghRead, git, gitRead, MACHINE_REPO, mark, MISSING, NOTHING_MARKED, OWNER, post, postRefusals, readOrStop, rewriteTicket, FILED_IN, ticketBranch, unread, WAITING } from "./post.ts";
 import { reviewedAndLanded } from "./reviewer.ts";
 import { calledOwner, committed, commitlinted, CONTRACT, FILED, opened, setupRefusal, type Spent, treePathed } from "./stage.ts";
-import { BUILDING, TICKET } from "./spelled.ts";
+import { dedashed } from "./em-dash.ts";
+import { BUILDING, SPEC, TICKET } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
-import { doneWhen, quoted, why, whyChanged } from "./ticket-shape.ts";
+import { doneWhen, quoted, specProblem, specRefusals, why } from "./ticket-shape.ts";
 
 export const OWNED_ANSWER = {
   repo: { type: "string", pattern: `^${OWNER}/[\\w.-]+$` },
@@ -34,7 +35,7 @@ export const OWNED_ANSWER = {
 const ANSWER = {
   type: "object",
   properties: {
-    outcome: { enum: ["code", "split", "done", "close", "stuck", "machine", "owned", "waits"] },
+    outcome: { enum: ["code", "spec", "done", "close", "stuck", "machine", "owned", "waits"] },
     on: { type: "array", items: { type: "integer" } },
     reason: { type: "string", pattern: NO_EM_DASH },
     body: { type: "string", pattern: NO_EM_DASH },
@@ -51,7 +52,7 @@ export interface Piece {
 }
 
 interface Answer {
-  outcome: "code" | "split" | "done" | "close" | "stuck" | "machine" | "owned" | "waits";
+  outcome: "code" | "spec" | "done" | "close" | "stuck" | "machine" | "owned" | "waits";
   on?: number[];
   reason: string;
   repo?: string;
@@ -61,8 +62,7 @@ interface Answer {
 
 const stoppedAt = stopsOf({ unadmitted: "Build refused: the ticket's checks would run as shell with the App's token" });
 
-export const splitInto = (ticket: string) => `@${OWNER} the builder split #${ticket} into`;
-export const splitClosed = (ticket: string) => `Every ticket #${ticket} was split into has closed:`;
+const rewroteAsSpec = (ticket: string) => `The builder of #${ticket} rewrote it as a spec, which the slicer cuts:`;
 export const LABELLED_WAITING = `labelled \`${WAITING}\``;
 const wokenByTheCloser = (ticket: string) => `#${ticket} waits on it, ${LABELLED_WAITING}, and the closer wakes it once every one of them closes:`;
 export const dependsOn = (ticket: string) => `The builder of #${ticket} found it depends on`;
@@ -77,7 +77,6 @@ interface Handed {
   ticket: string;
   body: string;
   capture?: string | undefined;
-  woken?: string | undefined;
   alongside?: string;
   commitlint?: boolean;
   foreign?: boolean;
@@ -149,11 +148,10 @@ const machineAtFault = (foreign: boolean | undefined) =>
     ? `- \`machine\`: the machine is at fault; it lives in ${MACHINE_REPO}, not this tree, so change nothing here for it: file the fault as \`tickets\`, and this ticket waits on them.`
     : "- `machine`: the machine is at fault; fix it in a worktree off `origin/main`, commit naming this ticket as `Refs #<number>`, never after a closing word like `Fixes`, since that closes it before its own build lands, and `bin/land` it first.";
 
-export function handedOn({ ticket, body, capture, woken, alongside, commitlint, foreign }: Handed): string {
+export function handedOn({ ticket, body, capture, alongside, commitlint, foreign }: Handed): string {
   return [
     `# Ticket #${ticket}`,
     capped(body, TICKET_CAP),
-    ...(woken === undefined ? [] : ["## How its split ended", "Build what a piece closed unbuilt left, or rule it out:", capped(woken, LIST_CAP)]),
     ...alongsideSection(alongside),
     ...filedIn(capture),
     "## Build it",
@@ -164,7 +162,7 @@ export function handedOn({ ticket, body, capture, woken, alongside, commitlint, 
     "## Your answer",
     "Answer one outcome:",
     `- \`code\`: built; the machine commits whatever you left, runs \`${PUBLISHED_CHECK}\` and hands back each red until it passes, then a fresh reviewer reads your diff, fixes what it finds, and lands it with \`bin/land\`. Where its \`## Done when\` was wrong, give the ticket rewritten to hold its whole Why as \`body\`, Why byte-identical; it is posted on the ticket before the check.`,
-    "- `split`: too big for one build; file `tickets` that build at once, each with `done` as the sentences true once it is built. What must wait for them stays as `body`, Why byte-identical, and builds once they merge.",
+    "- `spec`: too big for one build; give it rewritten as a spec in `body`, its Why byte-identical under `## Problem Statement`, its `## Done when` sentences moved into the closing `## I'll know it works when I can`; it is relabelled `spec` and the slicer cuts it.",
     "- `done`: main already does what it asks, as when an earlier run landed it and its close failed; it closes completed, and no one is called.",
     "- `close`: the ticket should not exist as written, and nothing should replace it, as for a gate you cannot make pass, since a gate is proven first.",
     "- `waits`: it depends on other open tickets here, as one another builder is still building: name them as `on`; it is marked `waiting` and builds once they all close.",
@@ -205,45 +203,23 @@ function closedAs(ticket: string, reason: "completed" | "not planned", said: str
   return 0;
 }
 
-const pieceBody = (ticket: string, parentWhy: string, { why: piece, done }: Piece): string =>
-  followUpBody(
-    [
-      `${FOLLOW_UP_OF}${ticket}${BUILDER_SPLIT}, since it does not fit one build.`,
-      "",
-      `> ${piece}`,
-      "",
-      `The Why of #${ticket}, of which this builds only the part above:`,
-      "",
-      ...parentWhy.split("\n").map((line) => `> ${line}`.trimEnd()),
-    ],
-    done,
-  );
-
-function splitRefusals(body: string, answer: Answer, postings: { title: string; text: string }[]): string[] {
-  if (why(body).includes(FOLLOW_UP_OF)) return ["this ticket is itself a follow-up, so it is not split again"];
-  if (postings.length === 0) return ["a split files at least one ticket in `tickets`"];
-  return [
-    ...(answer.body === undefined ? [] : [...whyChanged(body, answer.body), ...postRefusals({ kind: "ticket", title: "what waits", text: answer.body })].map((refusal) => `the ticket's rewrite: ${refusal}`)),
-    ...postings.flatMap((posting) => postRefusals({ kind: "ticket", ...posting }).map((refusal) => `${posting.title}: ${refusal}`)),
-  ];
+function specRefused(body: string, spec: string | undefined): string[] {
+  if (spec === undefined) return ["a `spec` answer gives the spec as `body`"];
+  const said = why(body).trim();
+  return [...(said !== "" && specProblem(spec).includes(said) ? [] : ["its Problem Statement does not carry the ticket's Why byte-identical"]), ...specRefusals(spec)];
 }
 
-function split(ticket: string, body: string, answer: Answer): Round {
-  const postings = (answer.tickets ?? []).map((piece) => ({ title: piece.title, text: pieceBody(ticket, why(body), piece) }));
-  const refused = splitRefusals(body, answer, postings);
-  if (refused.length > 0) return { red: ["Your split was refused, and nothing was filed:", ...refused.map((refusal) => `- ${refusal}`)].join("\n") };
-  const filed = postings.map((posting) => ({ title: posting.title, ...post({ kind: "ticket", ...posting }, gh) }));
-  const numbers = filed.flatMap(({ said }) => FILED.exec(said)?.slice(1) ?? []);
-  const named = numbers.map((number) => `#${number}`).join(", ");
-  if (numbers.length < filed.length) return { ended: calledOwner(ticket, "builder", `its split filed ${numbers.length} of ${filed.length} tickets${named === "" ? "" : `, ${named}`}: ${quoted(filed.find(({ said }) => !FILED.test(said))?.refusals[0] ?? "")}`) };
-  if (answer.body === undefined) return { ended: closedAs(ticket, "not planned", `${splitInto(ticket)} ${named}, which build themselves, and closed it: ${answer.reason}`) };
-  const written = gh(["issue", "edit", ticket, "--body", answer.body]);
-  if (written.status !== 0) return { ended: calledOwner(ticket, "builder", `it filed ${named} and its rewrite of what waits would not save: ${quoted((written.stderr || written.stdout).trim().split("\n")[0] ?? "")}`) };
-  commentOnTicket(ticket, `${splitInto(ticket)} ${named}, which build themselves. #${ticket} keeps what must wait for them, ${LABELLED_WAITING}, and builds once they all close: ${answer.reason}`, gh);
-  mark(ticket, WAITING);
+function rewrittenAsSpec(ticket: string, body: string, answer: Answer): Round {
+  const refused = specRefused(body, answer.body);
+  if (refused.length > 0 || answer.body === undefined) return { red: ["Your spec was refused, and nothing changed:", ...refused.map((refusal) => `- ${refusal}`)].join("\n") };
+  const written = gh(["issue", "edit", ticket, "--body", dedashed(answer.body)]);
+  if (written.status !== 0) return { ended: calledOwner(ticket, "builder", `its spec would not save: ${quoted((written.stderr || written.stdout).trim().split("\n")[0] ?? "")}`) };
+  commentOnTicket(ticket, `${rewroteAsSpec(ticket)} ${answer.reason}`, gh);
   git(["reset", "--quiet", "--hard", "origin/main"]);
   git(["push", "--quiet", "origin", "--delete", ticketBranch(ticket)]);
-  console.log(`fix: #${ticket} split into ${named}; it waits for them`);
+  const relabelled = gh(["issue", "edit", ticket, "--remove-label", TICKET, "--remove-label", BUILDING, "--add-label", SPEC]);
+  if (relabelled.status !== 0) return { ended: calledOwner(ticket, "builder", `its spec saved and its labels would not swap to \`${SPEC}\`: ${quoted((relabelled.stderr || relabelled.stdout).trim().split("\n")[0] ?? "")}`) };
+  console.log(`fix: #${ticket} rewritten as a spec`);
   return { ended: 0 };
 }
 
@@ -334,7 +310,7 @@ function outcomeOf(ticket: string, body: string, answer: Answer | undefined, mai
   if (answer.outcome === "done") return { ended: closedAs(ticket, "completed", `The builder of #${ticket} found its work already on main and closed it: ${answer.reason}`) };
   if (answer.outcome === "close") return { ended: closedAs(ticket, "not planned", `@${OWNER} the builder closed #${ticket} unbuilt and kept its branch: ${answer.reason}`) };
   if (answer.outcome === "stuck") return { ended: calledOwner(ticket, "builder", answer.reason) };
-  if (answer.outcome === "split") return split(ticket, body, answer);
+  if (answer.outcome === "spec") return rewrittenAsSpec(ticket, body, answer);
   if (answer.outcome === "waits") return waitedOn(ticket, answer);
   if (answer.outcome === "machine" && FOREIGN) return filedForMachine(ticket, answer);
   if (answer.outcome === "owned") return handedToItsRepo(ticket, answer);
@@ -406,7 +382,6 @@ function ownTicket(ticket: string, app: AppKey | undefined): number {
     commitlint: commitlinted(),
     foreign: FOREIGN,
     capture: captureOf(body, process.env.SESSION_CAPTURES),
-    woken: owning.carried.onTicket.filter((said) => said.startsWith(splitClosed(ticket))).at(-1),
   });
   let input = opening;
   const said: string[] = [];

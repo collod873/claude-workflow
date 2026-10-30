@@ -1,4 +1,4 @@
-import { filedClosed, LABELLED_WAITING, splitClosed, splitInto, dependsOn } from "./builder.ts";
+import { filedClosed, LABELLED_WAITING, dependsOn } from "./builder.ts";
 import { commentOnTicket, commentsRead, FAULT_FROM, gh, ghAs, ghRead, opened, readOrStop, unread, WAITING } from "./post.ts";
 import { exitFor } from "./stops.ts";
 import { quoted, waitsOn, why } from "./ticket-shape.ts";
@@ -22,23 +22,22 @@ const howEnded = (states: { number: string; state: string }[]) => states.map(({ 
 
 const dependedOnClosed = (ticket: string) => `Every ticket #${ticket} depends on has closed:`;
 
-function wokenFromSplit(parent: string, body: string, split: string, said = splitInto(parent), closedLine = splitClosed(parent)): string {
-  const pieces = ((NAMED.exec(split.slice(said.length).trimStart())?.[0] ?? "").match(/#\d+/g) ?? []).map((named) => named.slice(1));
-  if (pieces.length === 0) return `; #${parent} waits, and no split record names what for`;
+function wokenFromDependsOn(parent: string, body: string, parked: string): string {
+  const pieces = ((NAMED.exec(parked.slice(dependsOn(parent).length).trimStart())?.[0] ?? "").match(/#\d+/g) ?? []).map((named) => named.slice(1));
+  if (pieces.length === 0) return `; #${parent} waits, and and no record names what for`;
   const states = pieces.map((piece) => ({ piece, state: ended(piece, parent) }));
   const open = [...states.filter(({ state }) => !hasEnded(state)).map(({ piece }) => piece), ...openWaitedOn(parent, body, pieces)];
   if (open.length > 0) return stillWaits(parent, open);
   const how = howEnded(states.map(({ piece, state }) => ({ number: piece, state })));
-  commentOnTicket(parent, `${closedLine} ${how}. #${parent} builds now.\n\nRun: ${thisRun}`, gh);
+  commentOnTicket(parent, `${dependedOnClosed(parent)} ${how}. #${parent} builds now.\n\nRun: ${thisRun}`, gh);
   const woke = gh(["issue", "edit", parent, "--remove-label", WAITING]);
-  return woke.status === 0 ? `; #${parent} builds now, its split tickets all closed: ${how}` : `; #${parent} could not be woken: ${quoted((woke.stderr || woke.stdout).trim().split("\n")[0] ?? "")}`;
+  return woke.status === 0 ? `; #${parent} builds now, what it depends on all closed: ${how}` : `; #${parent} could not be woken: ${quoted((woke.stderr || woke.stdout).trim().split("\n")[0] ?? "")}`;
 }
 
 function wokenWaiting(ticket: string, body: string): string {
   const comments = commentsRead(ticket, `the comments on #${ticket} could not be read, so it is not woken`, gh);
   const parked = comments.filter((said) => said.includes(LABELLED_WAITING)).at(-1);
-  if (parked?.startsWith(dependsOn(ticket)) === true) return wokenFromSplit(ticket, body, parked, dependsOn(ticket), dependedOnClosed(ticket));
-  if (parked?.startsWith(splitInto(ticket)) === true) return wokenFromSplit(ticket, body, parked);
+  if (parked?.startsWith(dependsOn(ticket)) === true) return wokenFromDependsOn(ticket, body, parked);
   return parked === undefined ? wokenFromWaitsOn(ticket, body) : "";
 }
 

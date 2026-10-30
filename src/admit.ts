@@ -1,10 +1,10 @@
-import { type Admission, commentOnTicket, commentsRead, DONE_CHECK_FROM, FAULT_FROM, gh, type Gh, ghAs, heldOf, type Opened, opened, OWNER, readOrStop, RESEARCH, RESEARCH_FROM, REVIEW_FROM, SPLIT_FROM, STEP_WAITS, unread } from "./post.ts";
+import { type Admission, commentOnTicket, commentsRead, DONE_CHECK_FROM, FAULT_FROM, gh, type Gh, ghAs, heldOf, type Opened, opened, OWNER, readOrStop, RESEARCH, RESEARCH_FROM, REVIEW_FROM, STEP_WAITS, unread } from "./post.ts";
 import { dedashed } from "./em-dash.ts";
 import { exitFor } from "./stops.ts";
 import { why } from "./ticket-shape.ts";
 
 export const doesNotBuild = (ticket: string, refused: string) =>
-  `#${ticket} does not build, since its checks would run as shell with the App's token and ${refused}. A ticket the App opens builds only as the builder's follow-up, as research's follow-up from a research note the owner opened, as what a reviewer let through on a ticket that builds, as what a done check found on a spec that builds, or as a first step or machine fault its builder filed from a ticket that builds in its own repo.`;
+  `#${ticket} does not build, since its checks would run as shell with the App's token and ${refused}. A ticket the App opens builds only as research's follow-up from a research note the owner opened, as what a reviewer let through on a ticket that builds, as what a done check found on a spec that builds, or as a first step or machine fault its builder filed from a ticket that builds in its own repo.`;
 const NO_FOLLOW_UP = "as no follow-up the machine builds";
 const HERE = "{owner}/{repo}";
 const MOST_READS = 8;
@@ -13,10 +13,7 @@ const named = (repo: string, ticket: string) => (repo === HERE ? `#${ticket}` : 
 const filedAs = (kind: string | undefined, origin: string) => (kind === STEP_WAITS ? `the first step of ${origin}` : `the machine's fault from ${origin}`);
 const handedAs = (kind: string | undefined) => (kind === STEP_WAITS ? "its first step" : "the machine's fault its builder filed");
 
-const ownersOrFollowUp = ({ user, body }: Opened): boolean => {
-  const said = why(body ?? "");
-  return user?.login === OWNER || SPLIT_FROM.test(said);
-};
+const ownersOwn = ({ user }: Opened): boolean => user?.login === OWNER;
 
 function researchFollowUp({ body }: Opened, repo: string, line: string): boolean {
   const [, note] = RESEARCH_FROM.exec(why(body ?? "")) ?? [];
@@ -44,7 +41,7 @@ function admitted(repo: string, ticket: string, so: string, reads: number, missi
   const asked = opened(ticket, line, gh, repo);
   if (asked === "missing") return { refused: missing(line), said: "" };
   const said = why(asked.body ?? "");
-  if (ownersOrFollowUp(asked) || researchFollowUp(asked, repo, `the research note of ${at} could not be read, ${so}`)) return { refused: undefined, said };
+  if (ownersOwn(asked) || researchFollowUp(asked, repo, `the research note of ${at} could not be read, ${so}`)) return { refused: undefined, said };
   for (const [from, filed] of CHAINED) {
     const [, earlier] = from.exec(said) ?? [];
     if (earlier !== undefined && Number(earlier) < Number(ticket)) return { refused: within(filed(named(repo, earlier)), admitted(repo, earlier, so, reads - 1, unread).refused), said };

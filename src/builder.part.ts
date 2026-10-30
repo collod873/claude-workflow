@@ -216,9 +216,9 @@ declareStage({
     {
       name: "builder building",
       file: "src/builder.ts",
-      cap: TICKET_CAP + 2 * LIST_CAP + 2 * HANDED_ON,
-      slots: ["body", "woken", "alongside"],
-      build: (filled) => handedOn({ ticket: "", body: filled.body ?? "", woken: filled.woken ?? "", alongside: filled.alongside ?? "", commitlint: true, foreign: true }),
+      cap: TICKET_CAP + LIST_CAP + 2 * HANDED_ON,
+      slots: ["body", "alongside"],
+      build: (filled) => handedOn({ ticket: "", body: filled.body ?? "", alongside: filled.alongside ?? "", commitlint: true, foreign: true }),
     },
     {
       name: "repair",

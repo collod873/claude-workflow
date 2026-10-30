@@ -101,8 +101,6 @@ export const MISSING = /HTTP 404/;
 export const ticketBranch = (ticket: string) => `${TICKET_PREFIX}${ticket}`;
 
 export const FOLLOW_UP_OF = "Follow-up of #";
-export const BUILDER_SPLIT = ": its builder split it";
-export const SPLIT_FROM = new RegExp(`^${FOLLOW_UP_OF}(\\d+)${BUILDER_SPLIT}`, "m");
 export const RESEARCH_FOUND = ": its research found this.";
 const followUpFrom = (said: string) => new RegExp(`^${FOLLOW_UP_OF}(\\d+)${said.replaceAll(".", "\\.")}`);
 export const RESEARCH_FROM = followUpFrom(RESEARCH_FOUND);
