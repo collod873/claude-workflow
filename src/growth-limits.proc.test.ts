@@ -63,9 +63,11 @@ function unlinkedParts(repo: string, registry: Part[]): string[] {
   return [...unregistered, ...unlinked];
 }
 
-function timedWorkflows(repo: string): string[] {
+function timedWorkflows(repo: string, registry: Part[] = parts): string[] {
+  const clocks = new Set(registry.filter((part) => part.clock === true).map((part) => part.file));
   return globSync(WORKFLOWS, { cwd: repo })
     .sort()
+    .filter((file) => !clocks.has(file))
     .filter((file) => {
       const on = (parse(readFileSync(join(repo, file), "utf8")) as { on?: unknown } | null)?.on;
       const triggers = typeof on === "string" ? [on] : Array.isArray(on) ? on : Object.keys(on ?? {});
@@ -143,7 +145,7 @@ describe("the machine holds its growth limits", () => {
     ]);
   });
 
-  it("3. no workflow the machine owns fires on a timer", () => {
+  it("3. no workflow the machine owns fires on a timer, but a part registered as a clock where no event exists (ADR-0009)", () => {
     expect(globSync(WORKFLOWS, { cwd: REPO })).not.toEqual([]);
     expect(timedWorkflows(REPO)).toEqual([]);
 
@@ -152,6 +154,7 @@ describe("the machine holds its growth limits", () => {
     plant(copy, ".github/workflows/listed.yml", "on: [push, schedule]\njobs: {}\n");
     plant(copy, ".github/workflows/event.yml", "on: issues\njobs: {}\n");
     expect(timedWorkflows(copy)).toEqual([".github/workflows/listed.yml fires on a timer", ".github/workflows/tick.yml fires on a timer"]);
+    expect(timedWorkflows(copy, [{ name: "tick", file: ".github/workflows/tick.yml", stops: "", clock: true }])).toEqual([".github/workflows/listed.yml fires on a timer"]);
   });
 
   it("4. the count of tests is not below the merge base with origin/main, unless a commit gives the reason", { timeout: 120_000 }, () => {

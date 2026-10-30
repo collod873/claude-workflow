@@ -1,0 +1,41 @@
+name: Runner watch
+
+"on":
+  schedule:
+    - cron: "*/15 * * * *"
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: bin/runner-watch flip | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - if: github.event.schedule == '17 6 * * *' || github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          BILLING_TOKEN: ${{ secrets.BILLING_PAT }}
+        run: bin/runner-watch minutes "${{ github.repository_owner }}" "$(date -u -d yesterday +%F)"

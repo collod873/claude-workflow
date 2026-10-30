@@ -2,8 +2,8 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { hostname } from "node:os";
 
-const VARIABLE = "CI_RUNNER";
-const LABEL = "pc";
+export const VARIABLE = "CI_RUNNER";
+export const LABEL = "pc";
 const PC_RUNNERS = 4;
 const USER = "ghrunner";
 const HOME = `/home/${USER}`;
