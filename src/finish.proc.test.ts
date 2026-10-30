@@ -162,6 +162,32 @@ describe("bin/finish runs the full check after the reviewer on the spec and hold
   });
 });
 
+describe("bin/finish calls the owner on a full check the machine alone starved, as a ticket's builder does (#1573)", () => {
+  const STARVED = "printf 'check: red build killed for memory (the machine ran short; next at 5120 MiB), lint killed for memory (the machine ran short; eslint at 900 MiB); log .git/check/logs/full.log\\n'; exit 1";
+  const MIXED = "printf 'check: red build killed for memory (the machine ran short; next at 5120 MiB), test src/stops.test.ts:4; log .git/check/logs/full.log\\n'; exit 1";
+
+  it("marks the spec stuck and calls the owner with a machine fault, handing the red to no reviewer", () => {
+    const finished = finishing({ check: STARVED });
+
+    const ran = finished.run();
+
+    expect(ran.status).toBe(1);
+    expect(finished.marked()).toEqual(["974 stuck"]);
+    expect(finished.calls().find((args) => args[1] === "comment")?.join(" ")).toContain("the machine is at fault, not the code");
+    expect(finished.handed()).toHaveLength(1);
+    expect(finished.landed()).toEqual([]);
+  });
+
+  it("hands a red mixing a starved step with a real failure to the reviewer on the code standard", () => {
+    const finished = finishing({ check: MIXED });
+
+    finished.run();
+
+    expect(finished.marked()).toEqual([]);
+    expect(finished.handed()[1]).toContain("## Its full check is red");
+  });
+});
+
 describe("bin/finish takes a reviewer's stuck and owner steps, as a ticket's review does (ADR-0005)", () => {
   const STEP = { title: "Add the Twilio key $CALL to Railway", why: "Storm alerts text through Twilio, which needs TWILIO_KEY set on the Railway service." };
 

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { capped, DIFF_CAP, diffOverCap, LIST_CAP, NO_EM_DASH, onDisk, TAIL_CAP, tailOf } from "./brief.ts";
-import { checkedBy, type Red } from "./builder.ts";
+import { checkedBy, type Red, starvedFault } from "./builder.ts";
 import { PUBLISHED_CHECK } from "./checks.ts";
 import { doneCheck } from "./done-checker.ts";
 import { askedIssue, commentOnTicket, FOLLOW_UP_OF, gh, ghRead, git, gitRead, heldOn, labelsHeld, mark, OWNER, readOrStop, REVIEW_LET_THROUGH, STUCK, unread } from "./post.ts";
@@ -21,6 +21,7 @@ const stoppedAt = stopsOf({
   unchecked: "Finish: the full check stayed red, and two rounds in a row of the reviewer handed it changed nothing",
   reviewerStuck: "Finish: a reviewer answered `stuck`, so the spec is marked `stuck` and the owner is called",
   unmerged: "Finish: a pack's reviewer left its commits conflicting with the integration branch, and two rounds in a row of it changed nothing",
+  machineStarved: "Finish: the full check went red only on steps the machine starved of memory, so the spec is marked `stuck` and the owner is called",
   unready: "Finish: a pack's tree would not set up, so its reviewer on the code standard was not hired",
 });
 
@@ -309,9 +310,19 @@ async function rounds<Done>(run: Run, reviewer: Reviewer, { failed, stop, commit
   }
 }
 
+function starved({ spec, said }: Run, red: Red | undefined): boolean {
+  const fault = starvedFault(red);
+  if (fault === undefined) return false;
+  mark(spec, STUCK);
+  commentOnTicket(spec, `@${OWNER} the finisher of #${spec} stopped and needs you: ${fault}`, gh);
+  stoppedAt("machineStarved", `${said} marked ${STUCK}, ${fault}`);
+  return true;
+}
+
 const greened = (run: Run, reviewer: Reviewer, commit: string) =>
   rounds(run, reviewer, { failed: "stayed red on its full check", stop: "unchecked", commit, kept: (approved) => run.later.push(`After its full check went red: ${approved.reason}`) }, () => {
     const red = checkedBy(PUBLISHED_CHECK);
+    if (starved(run, red)) return { done: undefined };
     return red === undefined ? { done: true } : { refused: red.verdict, told: stillRedOnReview(red) };
   });
 
@@ -367,6 +378,7 @@ async function reviews(run: Run, { title, body }: { title: string; body: string 
   if (approved === undefined) return undefined;
   run.reasons.set(onSpec.seat, `${onSpec.on}: ${approved.reason}`);
   const red = checkedBy(PUBLISHED_CHECK);
+  if (starved(run, red)) return undefined;
   const packs = onTheCodeInPacks();
   const root = packs.length === 1 ? undefined : mkdtempSync(join(tmpdir(), "spec-review-"));
   run.trees.root = root;
