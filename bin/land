@@ -137,15 +137,15 @@ else
   title=
   body=
 fi
-tree_pathed() {
-  PATH="${TREE_PATH:+$TREE_PATH:}$PATH" "$@"
+land_check() {
+  PATH="${TREE_PATH:+$TREE_PATH:}$PATH" CHECK_CALLER=land check "$@"
 }
 
 judged="judged by land on the commit before the push (ADR-0008)"
 for (( round = 1; ; round++ )); do
-  if ! tree_pathed check --full --covered >"$err" 2>&1; then
+  if ! land_check --full --covered >"$err" 2>&1; then
     { printf -- '--- check --full --covered ---\n'; cat "$err"; } >>"$log"
-    if ! tree_pathed check --full --publish >&2; then
+    if ! land_check --full --publish >&2; then
       printf 'land: the full check went red on the commit, so nothing was pushed; fix what it names and land again\n' >&2
       exit 1
     fi
