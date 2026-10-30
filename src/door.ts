@@ -18,7 +18,7 @@ function enrolled(gh: Gh): boolean | undefined {
   return MISSING.test(got.stderr) ? false : undefined;
 }
 
-export function enrolmentLine(gh: Gh): string {
+function enrolmentLine(gh: Gh): string {
   const here = repoName();
   const is = enrolled(gh);
   if (is === undefined) return `${here}: whether it is enrolled could not be read, so a build may wait for a session to take it.`;

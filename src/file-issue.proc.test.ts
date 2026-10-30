@@ -236,3 +236,15 @@ describe("bin/file-issue reads the open issues first, so the same job is not fil
     expect(filedAs(ghSaw(repo)).labels).toEqual(["ticket", "waiting"]);
   });
 });
+
+describe("bin/file-issue --help runs no gh, since gh writes its state under HOME on a first run and --help writes nothing (#1581)", () => {
+  it("prints its help without calling gh", () => {
+    const { repo, run } = filing({ gh: `printf 'called\\n' >>"$PWD/gh-argv"\nexit 0\n`, body: wellFormedTicket });
+
+    const result = run(["--help"]);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain(USAGE);
+    expect(existsSync(join(repo, "gh-argv"))).toBe(false);
+  });
+});
