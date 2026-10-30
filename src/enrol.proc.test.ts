@@ -7,7 +7,7 @@ import { bare, checkJobRule, ci, CI_ON_EVERY_PR, DEPLOY, ENROLLED as REPO, enrol
 
 const CALLER = readFileSync(join(import.meta.dirname, "..", ".github", "caller.yml"), "utf8");
 const OFFER = `enrol: \`bin/runner ${REPO} pc\` moves its jobs to this PC; run one fresh full check there and watch its peak memory before leaving it on\n`;
-const ENROL_USAGE = `enrol: usage: enrol <owner/repo> [--caller]\nenrol: with no step from Collin: gh workflow run enrol.yml -R ${OWNER}/claude-workflow -f repo=<owner/repo>; that run holds every secret enrol sets, then gh run watch it\n`;
+const ENROL_USAGE = `enrol: usage: enrol <owner/repo> [--caller]\nenrol: with no step from Collin: CORE_APP_PRIVATE_KEY comes from ${process.env.HOME ?? ""}/.config/claude-workflow/core-app.pem when unset; for CLAUDE_CODE_OAUTH_TOKEN, gh workflow run enrol.yml -R ${OWNER}/claude-workflow -f repo=<owner/repo> sets it from the secret this repo holds, then run enrol here for the rest\n`;
 
 describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#1152)", () => {
   it("writes the caller file, reaches it with the App, sets every secret, label and auto-merge, and holds main for check alone, since the reviewer lands what it reviews (ADR-0012)", () => {
@@ -212,7 +212,7 @@ describe("bin/enrol keeps an enrolled repo current with the owner's own login (#
   });
 
   it("refuses the App's access, naming the key, when no CORE_APP_PRIVATE_KEY is in the environment to read it with", () => {
-    const { run } = enrolling(bare(), { CLAUDE_CODE_OAUTH_TOKEN: "sk-token" });
+    const { run } = enrolling(bare(), { CLAUDE_CODE_OAUTH_TOKEN: "sk-token", HOME: "/nonexistent" });
 
     expect(run().stderr).toContain("- the App's access: no CORE_APP_PRIVATE_KEY in the environment to read the App's access with");
   });

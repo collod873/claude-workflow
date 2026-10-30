@@ -1,13 +1,15 @@
 #!/bin/bash
 set -uo pipefail
 
+key_file="$HOME/.config/claude-workflow/core-app.pem"
 repo=${1:-}
 mode=${2:-}
 if [[ $# -lt 1 || $# -gt 2 || ! $repo =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ || ( -n $mode && $mode != --caller ) ]]; then
   printf 'enrol: usage: enrol <owner/repo> [--caller]\n' >&2
-  printf 'enrol: with no step from Collin: gh workflow run enrol.yml -R %s/claude-workflow -f repo=<owner/repo>; that run holds every secret enrol sets, then gh run watch it\n' "$("$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/spelled" OWNER)" >&2
+  printf 'enrol: with no step from Collin: CORE_APP_PRIVATE_KEY comes from %s when unset; for CLAUDE_CODE_OAUTH_TOKEN, gh workflow run enrol.yml -R %s/claude-workflow -f repo=<owner/repo> sets it from the secret this repo holds, then run enrol here for the rest\n' "$key_file" "$("$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/spelled" OWNER)" >&2
   exit 2
 fi
 
+[[ -z ${CORE_APP_PRIVATE_KEY:-} && -f $key_file ]] && export CORE_APP_PRIVATE_KEY="$(<"$key_file")"
 src="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../src" && pwd)"
 exec node "$src/enrol.ts" "$repo" $mode
