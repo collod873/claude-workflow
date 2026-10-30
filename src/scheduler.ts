@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
 import { capped, LIST_CAP } from "./brief.ts";
 import { waitsOnStep, waitsUnheard } from "./builder.ts";
-import { heardIn } from "./stage.ts";
+import { heardIn } from "./post.ts";
 import { askedIssue, commentEdited, commentOnTicket, gh, ghRead, git, gitRead, heldOn, labelsHeld, machineBin, mark, OWNER, readOrStop, STUCK, unread, WAITING } from "./post.ts";
 import type { Slice } from "./slicer.ts";
 import { BUILDING, MACHINE, SPEC, SPEC_PREFIX } from "./spelled.ts";

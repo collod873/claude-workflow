@@ -3,7 +3,7 @@ import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readdirSync
 import { join } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import { NO_EM_DASH, onDisk } from "./brief.ts";
-import { type Asked, askedIssue, commentOnTicket, ENROLLED_CALLER, followUpBody, gh, ghRead, git, gitRead, heldOn, mark, MISSING, NOTHING_MARKED, OWNER, post, STUCK, unread, WAITING, type MarkedLabel } from "./post.ts";
+import { type Asked, askedIssue, commentOnTicket, followUpBody, gh, ghRead, git, gitRead, heardIn, heldOn, LABELLED_WAITING, mark, nothingHears, OWNER, post, STUCK, unread, WAITING, type MarkedLabel } from "./post.ts";
 import type { Stop } from "./stops.ts";
 import { quoted } from "./ticket-shape.ts";
 
@@ -295,15 +295,6 @@ const stepKey = (title: string) => title.trim().toLowerCase();
 export const FILED = /\/issues\/(\d+)\s*$/;
 
 const ownerStepFiled = (left: string) => (step: OwnerStep): Filed => ({ named: `${step.title}: ${step.why}`, ...post({ kind: "owner", title: step.title, text: `## Why\n\n${step.why}\n\n${left}\n` }, gh) });
-
-export function heardIn(repo: string): boolean {
-  const got = gh(["--missing-answers", "api", `repos/${repo}/contents/.github/workflows/${ENROLLED_CALLER}`, "--silent"]);
-  if (got.status === 0) return true;
-  return MISSING.test(got.stderr) ? false : unread(`whether ${repo} carries a caller file could not be read, ${NOTHING_MARKED}`);
-}
-
-export const LABELLED_WAITING = `labelled \`${WAITING}\``;
-export const nothingHears = (ticket: string, repo: string) => `@${OWNER} ${repo} carries no caller file, so nothing hears it close: take \`${WAITING}\` off #${ticket} once every one of them closes:`;
 
 function pingedUnheard(filed: Filed, note: string): Filed {
   const repo = process.env.GH_REPO ?? "";
