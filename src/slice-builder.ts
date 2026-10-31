@@ -10,7 +10,7 @@ import { checkedBy, filedInRepo, OWNED_ANSWER, ownedRefusal, type Piece, type Re
 import { FAST_CHECK } from "./checks.ts";
 import { LEFT_CAP } from "./scheduler.ts";
 import { SLICE_ID } from "./slicer.ts";
-import { firstStepOf, gh, git, gitRead, Stopped, unread } from "./post.ts";
+import { firstStepOf, gh, git, gitRead, rebuiltOnMain, rebuiltRef, Stopped, unread } from "./post.ts";
 import { commitlinted, committed, CONTRACT, hire, setupRefusal } from "./stage.ts";
 
 const USAGE = "build-slice: usage: build-slice --spec <N> --slice <id> --brief <file> --onto <integration ref> [--resume <session>] [--told <text> | --out-of-time | --answer <its answer's JSON, to land again>]";
@@ -91,9 +91,12 @@ export const unrebased = (onto: string, said: string) =>
   [`\`${onto}\` moved, and \`git rebase ${onto}\` failed on this branch:`, capped(said, LIST_CAP), `Bring this branch onto \`${onto}\`'s tip, and answer again.`, ""].join("\n\n");
 
 export const mergesRefused = (onto: string, merges: string) =>
-  [`This branch must fast-forward \`${onto}\` with plain commits, and these past it are merge commits:`, capped(merges, LIST_CAP), `Put their work in plain commits on \`${onto}\`'s tip, such as with \`git rebase ${onto}\`, and answer again.`, ""].join("\n\n");
+  [`This branch must fast-forward \`${onto}\` with plain commits, and these past it are merge commits:`, capped(merges, LIST_CAP), `Put their work in plain commits on \`${onto}\`'s tip, such as with \`git rebase ${onto}\`, and answer again. Where the slice needs \`origin/main\` under the spec, rebuild it on \`origin/main\` instead, such as with \`git rebase origin/main\` from \`${onto}\`'s work, migrations renumbered after main's: plain commits on \`origin/main\` become \`${onto}\` whole.`, ""].join("\n\n");
 
 export const nothingBuilt = (outcome: string, onto: string) => `You answered \`${outcome}\`, and this branch has no commits past \`${onto}\`: build the slice, or answer \`done\` if \`${onto}\` already does what it asks.`;
+
+export const ontoMovedSinceRebuild = (onto: string, since: string) =>
+  [`\`${onto}\` moved since you rebuilt it on \`origin/main\`. Bring its commits \`${since}..${onto}\` onto your rebuild, as with \`git cherry-pick ${since}..${onto}\`, migrations renumbered after main's, and answer again.`, ""].join("\n\n");
 
 export const builtNotDone = (onto: string) => `You answered \`done\`, and this branch has commits past \`${onto}\`: answer \`built\` to land them, or drop them with \`git reset --hard ${onto}\` and answer \`done\` again.`;
 
@@ -225,11 +228,33 @@ export function sliceTrailed(onto: string, slices: string[]): void {
   gitRead(["-c", "trailer.ifexists=addIfDifferent", "rebase", "--quiet", "--exec", `git commit --quiet --amend --no-edit --no-verify --allow-empty ${added}`, onto], `the ${named} trailer could not be added to every commit past ${onto}`);
 }
 
+const sliceRebuilt = () => rebuiltRef(gitRead(["symbolic-ref", "--short", "HEAD"], "the slice's branch could not be read"));
+
+function ontoSeen(onto: string): void {
+  if (!rebuiltOnMain(onto, "HEAD")) gitRead(["update-ref", sliceRebuilt(), onto], `the tip of ${onto} its builder sees could not be kept`);
+}
+
+function landableRebuild(slicing: Slicing): string | undefined {
+  const { onto } = slicing;
+  const merges = gitRead(["log", "--merges", "--format=%h %s", "origin/main..HEAD"], PAST_ONTO_UNREAD);
+  if (merges !== "") return mergesRefused("origin/main", merges);
+  const since = gitRead(["rev-parse", sliceRebuilt()], "the integration branch the builder rebuilt could not be read");
+  const tip = gitRead(["rev-parse", onto], `${onto} could not be read`);
+  if (since !== tip) {
+    gitRead(["update-ref", sliceRebuilt(), tip], `the tip of ${onto} its builder sees could not be kept`);
+    return ontoMovedSinceRebuild(onto, since);
+  }
+  sliceTrailed("origin/main", [slicing.slice]);
+  const red = checkedBy(FAST_CHECK);
+  return red === undefined ? undefined : repaired(red);
+}
+
 const pastOnto = (onto: string) => gitRead(["rev-list", "--count", `${onto}..HEAD`], PAST_ONTO_UNREAD);
 
 function landable(slicing: Slicing, outcome: "built" | "partial", left: string): string | undefined {
   const { onto } = slicing;
   if (outcome === "partial" && left === "") return LEFT_UNNAMED;
+  if (rebuiltOnMain(onto, "HEAD")) return landableRebuild(slicing);
   const merges = gitRead(["log", "--merges", "--format=%h %s", `${onto}..HEAD`], PAST_ONTO_UNREAD);
   if (merges !== "") return mergesRefused(onto, merges);
   for (;;) {
@@ -266,6 +291,7 @@ function built(slicing: Slicing, app: AppKey | undefined): Ending {
   let left = "";
   for (let answer = slicing.answer; ; answer = undefined) {
     if (answer === undefined) {
+      ontoSeen(onto);
       const spent = spentOn(`build-slice: #${spec} ${slice}`, spend, input, session, opening);
       session = spent.session ?? session;
       keepSession(file, session);
