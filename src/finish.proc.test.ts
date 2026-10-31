@@ -334,6 +334,21 @@ describe("bin/finish packs the review on the code standard into whole slices und
     expect(finished.wheres()[told]).toBe(finished.wheres()[last]);
     expect(finished.wheres()[told]).not.toBe(finished.wheres()[0]);
   });
+  it("lands a pack reviewer's rebuild on origin/main as the integration branch whole, where the branch conflicts with main on migrations main took while it built, and keeps every reviewer's commits on origin (#1598)", () => {
+    const MAIN_TOOK_MIGRATIONS = [
+      "if ! git merge-base --is-ancestor main-took HEAD 2>/dev/null; then",
+      '  [ -f ../main-moved ] || { touch ../main-moved; took=$(git commit-tree -p origin/main -m "Main took migrations" "$(git rev-parse "origin/main^{tree}")"); git update-ref refs/remotes/origin/main "$took"; git tag main-took "$took"; }',
+      "  printf 'land: HEAD does not rebase cleanly onto origin/main, conflicting in drizzle/meta/_journal.json\\n' >&2; exit 1",
+      "fi",
+    ].join("\n");
+    const finished = finishing({ slices: packed, land: MAIN_TOOK_MIGRATIONS, reviewer: `  grep -q 'rebuild it in this tree on' "$PROMPT" && git reset --quiet --hard origin/main && printf 'rebuilt\\n' >rebuilt.ts && git add -A && git commit --quiet -m "Rebuild spec on main"` });
+
+    expect(finished.run().status).toBe(0);
+    expect(finished.pushed().split("\n").slice(0, 2)).toEqual(["Rebuild spec on main", "Main took migrations"]);
+    const kept = git(join(finished.root, "origin.git"), "for-each-ref", "--format=%(refname:short)", "refs/heads/review/");
+    expect(kept.split("\n")).toHaveLength(2);
+    expect(git(join(finished.root, "origin.git"), "log", "--format=%s", "-1", kept.split("\n").at(-1) ?? "")).toMatch(/Rebuild spec on main|Review #974/);
+  });
 });
 
 describe("bin/finish hands bin/land's refusal back to the last reviewer, as a ticket's review does (ADR-0012)", () => {

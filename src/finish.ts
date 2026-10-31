@@ -145,7 +145,12 @@ export function onTheSpec(changes: Changes, { spec, title, body, commitlint, bri
 const WHOLE_BRANCH = "This refusal covers the whole integration branch, not only your slice: it is yours wherever it sits.";
 const stillRedOnReview = ({ verdict, failed }: Red) =>
   [`The full check still ends red after your answer: \`${verdict}\`. The end of each red step's part of its log:`, tailOf(failed, TAIL_CAP), "Make it pass, commit, and answer again.", ""].join("\n\n");
-const landRefused = (refused: string) => ["`bin/land` refused to land the spec. What it said:", refused, "Fix what it names, commit, and answer again."].join("\n\n");
+const landRefused = (refused: string) =>
+  [
+    "`bin/land` refused to land the spec. What it said:",
+    refused,
+    "Fix what it names, commit, and answer again. Where the branch conflicts with `origin/main`, as on migrations main took while it built, rebuild it in this tree on `origin/main` instead, such as one squashed commit with the migrations renumbered after main's: a head built on `origin/main` becomes the integration branch whole.",
+  ].join("\n\n");
 
 const briefsOf = (progress: Progress) =>
   progress.slices
@@ -247,6 +252,11 @@ function reviewed(spec: string, said: string, spent: Spent, app: AppKey | undefi
 
 const pushedForRerun = (spec: string) => gitRead(["push", "--quiet", "--force", "origin", `HEAD:refs/heads/${specBranch(spec)}`], `${specBranch(spec)} would not push, so a rerun would lose its reviewers' fixes`);
 
+const keptOnOrigin = ({ tree, branch }: Reviewer) =>
+  inTree(tree, () => gitRead(["push", "--quiet", "--force", "origin", `HEAD:refs/heads/${branch}`], `${branch} would not push, so its reviewer's work lives only on this machine`));
+
+const builtOnMain = () => git(["merge-base", "--is-ancestor", "origin/main", "HEAD"]).status === 0;
+
 function inTree<Done>(tree: string, act: () => Done): Done {
   const home = process.cwd();
   process.chdir(tree);
@@ -261,14 +271,15 @@ async function answered({ spec, said, app, left }: Run, reviewer: Reviewer, inpu
   const before = inTree(reviewer.tree, head);
   const spent = await reviewer.spend(input, reviewer.session);
   reviewer.session = spent.session ?? reviewer.session;
-  const approved = reviewed(spec, said, spent, app);
-  if (approved === undefined) return undefined;
   inTree(reviewer.tree, () => {
     committed(commit, "fix");
     const sliced = reviewer.slices.filter((slice) => slice !== UNSLICED);
     if (sliced.length > 0 && git(["merge-base", "--is-ancestor", before, "HEAD"]).status === 0) sliceTrailed(before, sliced);
   });
   if (reviewer.branch === undefined) pushedForRerun(spec);
+  else keptOnOrigin(reviewer);
+  const approved = reviewed(spec, said, spent, app);
+  if (approved === undefined) return undefined;
   left.set(reviewer.seat, { ...approved, ...gathered(left.get(reviewer.seat), reviewer.stepped ? approved : { ...approved, steps: [] }) });
   return approved;
 }
@@ -283,9 +294,17 @@ const packUnrebased = (onto: string, { files, said }: { files: string; said: str
     "",
   ].join("\n\n");
 
-function broughtBack(spec: string, { tree, branch }: Reviewer): Round<never> | undefined {
+function broughtBack(spec: string, { tree, branch }: Reviewer, rebuilt: boolean): Round<never> | undefined {
   if (branch === undefined) return undefined;
   const onto = specBranch(spec);
+  if (rebuilt && !builtOnMain()) {
+    const rebuild = inTree(tree, () => (builtOnMain() && git(["merge-base", "--is-ancestor", onto, "HEAD"]).status !== 0 ? head() : undefined));
+    if (rebuild !== undefined) {
+      gitRead(["reset", "--quiet", "--hard", rebuild], `${onto} could not take ${branch}'s rebuild on origin/main`);
+      pushedForRerun(spec);
+      return undefined;
+    }
+  }
   const stopped = inTree(tree, () => (fastForwards(onto) ? undefined : rebaseStopped(onto)));
   if (stopped !== undefined) return { refused: `${branch} would not rebase onto ${onto}`, told: packUnrebased(onto, stopped) };
   if (!fastForwarded(spec, branch)) unread(`${onto} would not fast-forward to ${branch} though it was rebased onto it`);
@@ -295,7 +314,7 @@ function broughtBack(spec: string, { tree, branch }: Reviewer): Round<never> | u
 async function rounds<Done>(run: Run, reviewer: Reviewer, { failed, stop, commit, kept }: { failed: string; stop: "unlanded" | "unchecked" | "unmerged"; commit: string; kept: (approved: Approved) => void }, attempt: () => Round<Done>): Promise<Done | undefined> {
   let idle = false;
   for (;;) {
-    const tried = broughtBack(run.spec, reviewer) ?? attempt();
+    const tried = broughtBack(run.spec, reviewer, stop === "unlanded") ?? attempt();
     if ("done" in tried) return tried.done;
     const before = inTree(reviewer.tree, head);
     const approved = await answered(run, reviewer, tried.told, commit);
