@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
 import { capped, LIST_CAP } from "./brief.ts";
 import { waitsOnStep, waitsUnheard } from "./builder.ts";
-import { askedIssue, commentEdited, commentOnTicket, gh, ghRead, git, gitRead, heardIn, heldOn, labelsHeld, machineBin, mark, OWNER, readOrStop, STUCK, unread, WAITING } from "./post.ts";
+import { askedIssue, commentEdited, commentOnTicket, gh, ghRead, git, gitRead, heardIn, heldOn, labelsHeld, machineBin, mark, OWNER, readOrStop, rebuiltOnMain, rebuiltRef, STUCK, unread, WAITING } from "./post.ts";
 import type { Slice } from "./slicer.ts";
 import { BUILDING, MACHINE, SPEC, SPEC_PREFIX } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
@@ -241,14 +241,22 @@ export function removed(branch: string, dir: string): void {
   rmSync(dir, { recursive: true, force: true });
   git(["worktree", "prune"]);
   git(["branch", "--quiet", "-D", branch]);
+  git(["update-ref", "-d", rebuiltRef(branch)]);
+}
+
+function rebuiltFromTip(spec: string, branch: string): boolean {
+  const seen = git(["rev-parse", "--verify", "--quiet", rebuiltRef(branch)]).stdout.trim();
+  return seen !== "" && seen === gitRead(["rev-parse", specBranch(spec)], `${specBranch(spec)} could not be read`) && rebuiltOnMain(specBranch(spec), branch);
 }
 
 export function fastForwarded(spec: string, branch: string): boolean {
   const ancestor = git(["merge-base", "--is-ancestor", specBranch(spec), branch]);
-  if (ancestor.status === 1) return false;
-  if (ancestor.status !== 0) unread(`${branch} could not be read against ${specBranch(spec)}`);
+  if (ancestor.status !== 0 && ancestor.status !== 1) unread(`${branch} could not be read against ${specBranch(spec)}`);
+  const rebuilt = ancestor.status === 1 && rebuiltFromTip(spec, branch);
+  if (ancestor.status === 1 && !rebuilt) return false;
   cleaned();
-  gitRead(["merge", "--quiet", "--ff-only", branch], `${specBranch(spec)} would not fast-forward to ${branch}`);
+  if (rebuilt) gitRead(["reset", "--quiet", "--hard", branch], `${specBranch(spec)} could not take ${branch}'s rebuild on origin/main`);
+  else gitRead(["merge", "--quiet", "--ff-only", branch], `${specBranch(spec)} would not fast-forward to ${branch}`);
   pushed(spec);
   return true;
 }

@@ -187,6 +187,7 @@ export function scheduling({
     seen: (id: string, attempt = 1) => readFileSync(join(at("built"), `${id}-${attempt}.seen`), "utf8"),
     ...issue,
     onRemote: (ref: string) => git(remote, "log", "--format=%s", ref).split("\n"),
+    mainMovedUnder: (ref: string) => git(remote, "log", "--format=%H", "--grep=^Main moved$", ref) === git(remote, "log", "--format=%H", "--grep=^Main moved$", "main"),
     run: () =>
       execute(join(BIN, "schedule"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}`, MACHINE_BIN: join(root, "bin"), GH_TOKEN: "original", ...(appKeyed ? { APP_KEY_FILE: keyFile } : {}) }, [SPEC_ISSUE]),
   };

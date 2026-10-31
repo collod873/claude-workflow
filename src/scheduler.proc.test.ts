@@ -93,6 +93,24 @@ describe("bin/schedule runs a spec from its first cut to its landing, one slice 
     expect(stateOf(run)).toEqual({ first: "merged", second: "merged" });
   });
 
+  it("takes a slice rebuilt on origin/main as the integration branch whole, so the spec's later slices build on main's work, where Mezzanine#1968 stopped", () => {
+    const rebuilds = `${MAIN_MOVES} && git fetch --quiet origin main && git update-ref "refs/rebuilt/$(git symbolic-ref --short HEAD)" "$onto" && git rebase --quiet origin/main`;
+    const run = scheduling({ onSpec: ["Spec work"], cuts: [[sliceOf("seam")], [sliceOf("after")], []], plans: { seam: [{ then: rebuilds }] } });
+
+    expect(run.run().status).toBe(0);
+    expect(run.mainMovedUnder(SPEC_BRANCH)).toBe(true);
+    expect(run.onRemote(SPEC_BRANCH).slice(0, 4)).toEqual(["Build after", "Build seam", "Spec work", "Main moved"]);
+    expect(stateOf(run)).toEqual({ seam: "merged", after: "merged" });
+  });
+
+  it("hands a rebuild on origin/main back to land again when the integration branch moved after its builder saw it", () => {
+    const rebuilds = `${MAIN_MOVES} && git fetch --quiet origin main && git update-ref "refs/rebuilt/$(git symbolic-ref --short HEAD)" "$(git rev-parse "$onto~1")" && git rebase --quiet origin/main`;
+    const run = scheduling({ onSpec: ["Spec work"], cuts: [[sliceOf("seam")], []], plans: { seam: [{ then: rebuilds }] } });
+
+    run.run();
+    expect(run.built("seam", 2)).toContain("--answer");
+  });
+
   it("resumes a stopped builder once with its reason, leaves the slice out on its second stop while the others build and merge, and marks stuck only once nothing can move", () => {
     const run = scheduling({ cuts: [[sliceOf("wall"), sliceOf("free"), sliceOf("after", ["wall"])], []], plans: { wall: [{ outcome: "stopped" }, { outcome: "stopped" }], free: [{ wait: 1 }] } });
 

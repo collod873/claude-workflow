@@ -352,3 +352,9 @@ export function heardIn(repo: string): boolean {
 
 export const LABELLED_WAITING = `labelled \`${WAITING}\``;
 export const nothingHears = (ticket: string, repo: string) => `@${OWNER} ${repo} carries no caller file, so nothing hears it close: take \`${WAITING}\` off #${ticket} once every one of them closes:`;
+
+export const rebuiltRef = (branch: string) => `refs/rebuilt/${branch}`;
+
+const isAncestor = (older: string, newer: string) => git(["merge-base", "--is-ancestor", older, newer]).status === 0;
+
+export const rebuiltOnMain = (onto: string, built: string) => git(["rev-parse", "--verify", "--quiet", "origin/main"]).status === 0 && isAncestor("origin/main", built) && !isAncestor("origin/main", onto);

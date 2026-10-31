@@ -131,6 +131,18 @@ describe("a fresh builder builds one slice of a spec in its own worktree until i
     expect(fastForwards(log, ONTO)).toBe(true);
   });
 
+  it("ends built on a rebuild of the integration branch on origin/main, where Mezzanine#1968 stopped since only a merge commit could bring main under its spec", () => {
+    const mainMoves = "git update-ref refs/remotes/origin/main elsewhere";
+    const rebuilds = `if [ "$CALL" = 1 ]; then ${mainMoves}; ${BUILDS.trim().split("\n").join("; ")}; git merge --quiet --no-edit origin/main; else git rebase --quiet origin/main; fi\n`;
+    const builder = slicing({ elsewhere: { "migrations/0189_main.sql": "select 1;\n" }, claude: rebuilds });
+    const { log } = builder;
+
+    expect(handedBackOnce(builder)).toContain("rebuild it on `origin/main`");
+    expect(log("log", "--merges", "--format=%h", "origin/main..HEAD")).toBe("");
+    expect(fastForwards(log, "origin/main")).toBe(true);
+    expect(log("rev-parse", `refs/rebuilt/slice/${SPEC}-${SLICE}`)).toBe(log("rev-parse", ONTO));
+  });
+
   it("asks a round that gave no outcome for one, then ends on the outcome it gives", () => {
     const builder = slicing({ answers: [undefined, { outcome: "built", reason: "a job time shows in the tenant's zone" }] });
 

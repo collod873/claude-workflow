@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { CHECK_PASSES } from "./builder.part.ts";
 import { LIST_CAP, onDisk, TAIL_CAP, TICKET_CAP } from "./brief.ts";
-import { builtNotDone, CARRY_ON, conflicted, handedOn, LEFT_UNNAMED, mergesRefused, nothingBuilt, OUT_OF_TIME, repaired, unrebased } from "./slice-builder.ts";
+import { builtNotDone, CARRY_ON, conflicted, handedOn, LEFT_UNNAMED, mergesRefused, nothingBuilt, ontoMovedSinceRebuild, OUT_OF_TIME, repaired, unrebased } from "./slice-builder.ts";
 import { BIN, execute, ghArgv, git, plant, scratch, script } from "./scenarios.ts";
 import { declareStage, HANDED_ON } from "./stages.ts";
 
@@ -128,6 +128,7 @@ declareStage({
     { name: "slice repair", file: "src/slice-builder.ts", cap: TAIL_CAP + HANDED_ON, slots: ["failed"], build: (filled) => repaired({ verdict: "", failed: filled.failed ?? "" }) },
     { name: "slice conflict", file: "src/slice-builder.ts", cap: LIST_CAP + HANDED_ON, slots: ["files"], build: (filled) => conflicted("", filled.files ?? "") },
     { name: "slice merges refused", file: "src/slice-builder.ts", cap: LIST_CAP + HANDED_ON, slots: ["merges"], build: (filled) => mergesRefused("", filled.merges ?? "") },
+    { name: "slice integration branch moved since its rebuild", file: "src/slice-builder.ts", cap: HANDED_ON, slots: [], build: () => ontoMovedSinceRebuild("", "") },
     { name: "slice rebase failed", file: "src/slice-builder.ts", cap: LIST_CAP + HANDED_ON, slots: ["said"], build: (filled) => unrebased("", filled.said ?? "") },
     { name: "slice nothing built", file: "src/slice-builder.ts", cap: HANDED_ON, slots: [], build: () => nothingBuilt("partial", "") },
     { name: "slice done with commits", file: "src/slice-builder.ts", cap: HANDED_ON, slots: [], build: () => builtNotDone("") },
