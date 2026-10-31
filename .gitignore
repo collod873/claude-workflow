@@ -38,3 +38,6 @@ venv/
 .ruff_cache/
 # Agent worktrees are machine-local sessions, never part of the tree they branch from.
 .claude/worktrees
+
+# A tool run with TMPDIR unset writes here
+/null/
