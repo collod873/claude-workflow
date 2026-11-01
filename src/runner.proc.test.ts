@@ -82,7 +82,7 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
     expect(again.filter((call) => call.includes("svc.sh stop"))).toEqual([]);
   });
 
-  it("starts and ends every job on a cleared home, temp and workspace with its runner's Postgres gone, as GitHub's fresh runner does, so no job reads what the last one left, while killing nothing outside its runner's service", () => {
+  it("starts and ends every job on a cleared home, temp and workspace with its runner's Postgres gone, as GitHub's fresh runner does, so no job reads what the last one left and no Compose database outlives the folder it ran from, while killing nothing outside its runner's service", () => {
     const { run, placed } = switching();
     run("pc");
     const runnerDir = scratch("pc-runner-");
@@ -90,8 +90,13 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
     writeFileSync(hook, placed(`/home/ghrunner/runners/collod873-Lumaria/${HOST}-1/clear.sh`));
     chmodSync(hook, 0o755);
     const removed = join(runnerDir, "removed");
-    script(join(runnerDir, "bin", "docker"), `case $1 in\n  ps) [[ $* == *"name=^database-collod873-Lumaria-${HOST}-1$"* ]] && printf 'c0ffee\\n' ;;\n  rm) printf '%s\\n' "$*" >>"${removed}" ;;\nesac\n`);
     const temp = scratch("pc-temp-");
+    const composed = [
+      `0rphan\t${join(temp, "spec-worktrees-x", "2060", "slice")}`,
+      `0ldtree\t${join(runnerDir, "_work", "Mezzanine", "Mezzanine", "tree")}`,
+      `0wner\t/home/collin/Claude Projects/Mezzanine`,
+    ].join("\\n");
+    script(join(runnerDir, "bin", "docker"), `case $1 in\n  ps) if [[ $* == *"name=^database-collod873-Lumaria-${HOST}-1$"* ]]; then printf 'c0ffee\\n'; elif [[ $* == *working_dir* ]]; then printf '${composed}\\n'; fi ;;\n  rm) printf '%s\\n' "$*" >>"${removed}" ;;\nesac\n`);
     writeFileSync(join(runnerDir, ".env"), `HOME=${join(runnerDir, "home")}\nTMPDIR=${temp}\n`);
     const left = { HOME: join(runnerDir, "home"), TMPDIR: temp, GITHUB_WORKSPACE: join(runnerDir, "_work", "Lumaria", "Lumaria") };
     const env = { ...left, PATH: `${join(runnerDir, "bin")}:${process.env.PATH}` };
@@ -102,7 +107,10 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
 
     expect(execute(hook, runnerDir, env).status).toBe(0);
     for (const dir of Object.values(left)) expect(readdirSync(dir), dir).toEqual([]);
-    expect(readFileSync(removed, "utf8")).toBe("rm --force c0ffee\n");
+    expect(readFileSync(removed, "utf8").split("\n")).toEqual(
+      expect.arrayContaining(["rm --force c0ffee", "rm --force --volumes 0rphan", "rm --force --volumes 0ldtree"]),
+    );
+    expect(readFileSync(removed, "utf8")).not.toContain("0wner");
 
     const neighbour = spawn("sleep", ["30"], { detached: true, stdio: "ignore" });
     expect(execute(hook, runnerDir, env).status).toBe(0);
