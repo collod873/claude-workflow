@@ -69,6 +69,16 @@ describe("bin/runner-watch keeps private repos off paid minutes without Collin w
     expect(issue).not.toContain("claude-workflow:");
   });
 
+  it("counts every run of a busy day, past the first page and a megabyte of run list", () => {
+    const hosted = { labels: ["ubuntu-latest"], started_at: "2026-10-29T10:00:00Z", completed_at: "2026-10-29T10:00:30Z" };
+    const watch = watching([{ name: "collod873/Mezzanine" }], [{ product: "actions", unitType: "Minutes", quantity: 150, repositoryName: "Mezzanine" }], {
+      "collod873/Mezzanine": Array.from({ length: 150 }, () => ({ name: "Busy", display_title: "x".repeat(8000), jobs: [hosted] })),
+    });
+
+    expect(watch.run("minutes", "collod873", "2026-10-29").stderr).toBe("");
+    expect(watch.issue()).toContain("Busy: 150 minutes");
+  });
+
   it("files nothing on a day no private repo used GitHub-hosted minutes", () => {
     const watch = watching([{ name: "collod873/chess" }], [{ product: "actions", unitType: "Minutes", quantity: 0, repositoryName: "collod873/chess" }]);
 
