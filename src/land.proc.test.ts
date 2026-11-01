@@ -196,6 +196,29 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
     expect(git(session, "rev-parse", "HEAD")).toBe(head);
   });
 
+  it("waits for a required check still running on GitHub and merges the same head once it passes, since a spec branch runs CI's own check beside land's status (Mezzanine PR 1998)", () => {
+    const { head, branch, run, calls, merged } = sessionAheadOfMain(1, { merges: ["refused", "merged"], views: ["BLOCKED"], required: ["pending", "passed"] });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toBe(`Landed ${PR}\n`);
+    expect(calls().filter(merged)).toEqual([
+      ["pr", "merge", branch, "--merge", "--match-head-commit", head],
+      ["pr", "merge", branch, "--merge", "--match-head-commit", head],
+    ]);
+  });
+
+  it("ends red naming GitHub's refusal and merges nothing more when the required check it waited on fails", () => {
+    const { run, calls, merged } = sessionAheadOfMain(1, { merges: ["refused", "merged"], views: ["BLOCKED"], required: ["pending", "failed"] });
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toBe(`land: GitHub refused to merge ${PR}: ${REFUSAL}; it is left open\n`);
+    expect(calls().filter(merged)).toHaveLength(1);
+  });
+
   it("rebases onto the main it fetches, re-pushes the same branch and merges, closing nothing, when GitHub refuses the merge over a conflict with a main that moved after the push (Lumaria#1332)", () => {
     const { remote, session, head, run, calls, merged } = sessionAheadOfMain(1, { merges: ["refused", "merged"], views: ["DIRTY"], mainMovesOnRefusal: { "theirs.txt": "theirs\n" }, changes: { "mine.txt": "mine\n" } });
     git(session, "checkout", "--quiet", "-b", "ticket/811");

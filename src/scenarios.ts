@@ -517,6 +517,10 @@ export const GITHUB_ERRED = "GraphQL: Something went wrong while executing your 
 
 const REFUSALS = { refused: MERGE_REFUSAL, raced: MAIN_RACED, erred: GITHUB_ERRED };
 
+const REQUIRED_CHECKS_EXIT = { pending: 8, passed: 0, failed: 1 };
+
+export type RequiredChecks = keyof typeof REQUIRED_CHECKS_EXIT;
+
 export type Merge = "merged" | "mergedErred" | keyof typeof REFUSALS;
 
 export const TICKET_TITLE = "Build what the ticket asks";
@@ -545,7 +549,8 @@ export function landSession({
   defaultBranch = "main",
   openPr = false,
   treeNode = false,
-}: { gh?: string; remoteRefuses?: string; messages?: string[]; merges?: Merge[]; views?: string[]; mainMovesOnRefusal?: Record<string, string>; rounds?: string; covered?: boolean; green?: boolean; changes?: Record<string, string>; defaultBranch?: string; openPr?: boolean; treeNode?: boolean } = {}) {
+  required = [],
+}: { gh?: string; remoteRefuses?: string; messages?: string[]; merges?: Merge[]; views?: string[]; mainMovesOnRefusal?: Record<string, string>; rounds?: string; covered?: boolean; green?: boolean; changes?: Record<string, string>; defaultBranch?: string; openPr?: boolean; treeNode?: boolean; required?: RequiredChecks[] } = {}) {
   const root = scratch("land-");
   const { remote, session } = clonedOn(root, defaultBranch, ["base"]);
   git(remote, "config", "user.email", "github@test");
@@ -567,6 +572,7 @@ export function landSession({
         `remote=${JSON.stringify(remote)}`,
         `merges=(${merges.join(" ")})`,
         `views=(${views.join(" ")})`,
+        `pending=(${required.map((checks) => REQUIRED_CHECKS_EXIT[checks]).join(" ")})`,
         'case "$1 $2" in',
         `  "issue view") echo ${JSON.stringify(TICKET_TITLE)} ;;`,
         ...(openPr
@@ -580,6 +586,11 @@ export function landSession({
         `    n=${counted("view")}; touch ${JSON.stringify(state)}/view-$n`,
         "    (( n > ${#views[@]} )) && n=${#views[@]}",
         '    echo "${views[n - 1]}"',
+        "    ;;",
+        '  "pr checks")',
+        `    n=${counted("checks")}; touch ${JSON.stringify(state)}/checks-$n`,
+        "    (( n > ${#pending[@]} )) && exit 0",
+        '    exit "${pending[n - 1]}"',
         "    ;;",
         '  "pr close")',
         '    for arg in "$@"; do [[ $arg == --delete-branch ]] && git checkout --quiet ' + defaultBranch + ' 2>/dev/null && git branch --quiet -D "$3"; done',
