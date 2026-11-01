@@ -304,7 +304,7 @@ export interface OwnerStep {
   handover: string;
 }
 
-const PAGES_ASKING = [{ page: "https://github.com/settings/personal-access-tokens/new", asks: ["Expiration", "Repository access"], prefills: ["name", "expires_in"] }];
+const PAGES_ASKING = [{ page: "https://github.com/settings/personal-access-tokens/new", asks: ["Expiration", "Repository access"], prefills: ["name", "target_name", "expires_in"], unpermitted: ["name", "description", "target_name", "expires_in"] }];
 const UNANSWERED = /^\s*(|any|whatever|your (call|choice)|choose|pick one|tbd|n\/a|\?+|depends)\s*$/i;
 const SECRET = /\b(tokens?|secrets?|passwords?|keys?|pat)\b|_(KEY|TOKEN|SECRET|PAT)\b/i;
 
@@ -316,7 +316,8 @@ function clickRefusals({ at, picks }: Click, index: number): string[] {
   if (!linked(at)) return [`step ${number} links no page: "${at}" is no direct https link`];
   const url = new URL(at);
   const asking = askingAt(url);
-  const unfilled = (asking?.prefills ?? []).filter((param) => !url.searchParams.has(param));
+  const permitted = asking === undefined || [...url.searchParams.keys()].some((param) => !asking.unpermitted.includes(param));
+  const unfilled = [...(asking?.prefills ?? []).filter((param) => !url.searchParams.has(param)), ...(permitted ? [] : ["a permission"])];
   return [
     ...picks.filter(({ value }) => UNANSWERED.test(value)).map(({ field }) => `step ${number} leaves "${field}" unanswered`),
     ...(unfilled.length > 0 ? [`step ${number} links its page without pre-filling ${unfilled.join(", ")}`] : []),
@@ -333,7 +334,7 @@ function unaskedRefusals(clicks: Click[]): string[] {
   return [...firstOnPage].flatMap(([{ asks }, index]) => asks.filter((ask) => !fields.some((field) => field.includes(ask.toLowerCase()))).map((ask) => `step ${index + 1} leaves "${ask}" unanswered, which its page asks`));
 }
 
-function ownerStepRefusals(step: OwnerStep): string[] {
+export function ownerStepRefusals(step: OwnerStep): string[] {
   if (step.clicks.length === 0) return ["it gives no numbered steps, so the owner must work out where to click"];
   const said = [step.title, step.why, step.needs, ...step.clicks.map(({ action }) => action)].join("\n");
   const unhanded = SECRET.test(said) && step.handover.trim() === "" ? ["it makes a secret, but no last step says how to hand it over without pasting it into a chat"] : [];

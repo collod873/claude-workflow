@@ -3,7 +3,7 @@ import { type AppKey, freshAppToken } from "./app-token.ts";
 import { capped, DIFF_CAP, diffOverCap, LIST_CAP, NO_EM_DASH, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
 import { commentOnTicket, fromHere, fromLine, gh, gitRead, heldOn, labelsHeld, machineBin, mark } from "./post.ts";
 import { CHECKING } from "./spelled.ts";
-import { calledOwner, committed, commitlinted, type Filed, type Fix, FOLLOW_UPS, head, hire, MOST_FIXES, type OwnerStep, OWNER_STEPS, stepsAndFixesFiled } from "./stage.ts";
+import { calledOwner, committed, commitlinted, type Filed, type Fix, FOLLOW_UPS, head, hire, MOST_FIXES, type OwnerStep, ownerStepRefusals, OWNER_STEPS, stepsAndFixesFiled } from "./stage.ts";
 import { quoted } from "./ticket-shape.ts";
 
 const ENDS = { fixed: "fixed here", nothing: "needs nothing" } as const;
@@ -165,6 +165,11 @@ export function landing(named: ["--ticket" | "--spec", string], reason: string):
   return { refused: tailOf(`${landed.stdout}${landed.stderr}`.trim(), TAIL_CAP) || `bin/land ended ${landed.status} and said nothing` };
 }
 
+function stepsUnfileable(steps: OwnerStep[]): string | undefined {
+  const refused = steps.flatMap((step) => ownerStepRefusals(step).map((refusal) => `- "${step.title}": ${refusal}`));
+  return refused.length === 0 ? undefined : ["These owner steps would be refused, not filed:", refused.join("\n"), "Answer each again under its same title, fixed, and nothing has landed yet."].join("\n\n");
+}
+
 const landRefused = (refused: string) => ["`bin/land` refused to land it. Its output:", refused, "Fix what it names, commit, and answer again."].join("\n\n");
 
 function triedAgainLater(ticket: string, refusal: string): number {
@@ -202,7 +207,8 @@ export function reviewedAndLanded(ticket: string, { body, alongside, said }: { b
       reasons.push(answer.reason);
       named = gathered(named, answer);
     }
-    const landed = named === undefined ? { refused: "You gave no outcome. Answer one." } : landing(["--ticket", ticket], approvedOn(reasons.slice(0, 1), reasons.slice(1).map(afterRefused), [named]));
+    const unfileable = stepsUnfileable(named?.steps ?? []);
+    const landed = named === undefined ? { refused: "You gave no outcome. Answer one." } : unfileable !== undefined ? { refused: unfileable } : landing(["--ticket", ticket], approvedOn(reasons.slice(0, 1), reasons.slice(1).map(afterRefused), [named]));
     if ("pr" in landed) {
       const filed = named === undefined ? "" : filedOnceLanded(ticket, named);
       console.log(`review: #${ticket} landed as PR #${landed.pr}${filed}`);
@@ -210,6 +216,6 @@ export function reviewedAndLanded(ticket: string, { body, alongside, said }: { b
     }
     if (!changed && idle) return calledOwner(ticket, "reviewer", `two rounds in a row changed nothing: ${quoted(landed.refused.split("\n").at(-1) ?? "")}`);
     idle = !changed;
-    input = answer === undefined ? landed.refused : landRefused(landed.refused);
+    input = answer === undefined || unfileable !== undefined ? landed.refused : landRefused(landed.refused);
   }
 }

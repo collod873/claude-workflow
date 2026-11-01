@@ -247,7 +247,7 @@ describe("bin/research files what its findings call for, so a closed note leaves
     );
   });
 
-  it("refuses before filing an owner step with no steps, no direct link, a choice left without a value, its page's choice unasked or its secret with no handover, and keeps the note open (#1619)", () => {
+  it("refuses before filing an owner step with no steps, no direct link, a choice left without a value, its page's choice unasked, its token page missing its owner or a permission, or its secret with no handover, and keeps the note open (#1619)", () => {
     const token = { title: "Save a billing token", why: "The paid-minutes check reads billing.", needs: "BILLING_PAT" };
     const steps = [
       { ...token, clicks: [], handover: HANDED_OVER },
@@ -255,6 +255,7 @@ describe("bin/research files what its findings call for, so a closed note leaves
       { ...token, clicks: [{ ...OPENED_TOKEN_PAGE, picks: [{ field: "Expiration", value: "your choice" }, { field: "Repository access", value: "All repositories" }] }], handover: HANDED_OVER },
       { ...token, clicks: [{ ...OPENED_TOKEN_PAGE, picks: [{ field: "Expiration", value: "366 days" }] }], handover: HANDED_OVER },
       { ...token, clicks: [{ ...OPENED_TOKEN_PAGE, at: "https://github.com/settings/personal-access-tokens/new" }], handover: HANDED_OVER },
+      { ...token, clicks: [{ ...OPENED_TOKEN_PAGE, at: "https://github.com/settings/personal-access-tokens/new?name=BILLING_PAT&target_name=collod873&expires_in=366" }], handover: HANDED_OVER },
       { ...token, handover: " ", clicks: TAKEN_STEP.clicks },
     ];
     const answered = researching({ steps });
@@ -269,7 +270,8 @@ describe("bin/research files what its findings call for, so a closed note leaves
       'step 1 links no page: "the token settings page" is no direct https link',
       'step 1 leaves "Expiration" unanswered',
       'step 1 leaves "Repository access" unanswered',
-      "step 1 links its page without pre-filling name, expires_in",
+      "step 1 links its page without pre-filling name, target_name, expires_in",
+      "step 1 links its page without pre-filling a permission",
       "it makes a secret, but no last step says how to hand it over",
     ]) expect(stderr).toContain(refusal);
   });

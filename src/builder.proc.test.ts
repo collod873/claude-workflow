@@ -727,6 +727,21 @@ describe("a fresh reviewer reads each green build, fixes or approves it, and bin
     expect(calls().find((args) => args[1] === "create")).toEqual(expect.arrayContaining(["owner-step", STEP.title]));
   });
 
+  it("hands an owner step that would be refused back to the reviewer before anything lands, and files it once answered whole, so a step missing its handover is never dropped into a comment on a closed ticket (#1619)", () => {
+    const answeredWhole = [{ type: "system", session_id: BUILDER_SESSION }, { type: "result", subtype: "success", is_error: false, session_id: BUILDER_SESSION, structured_output: { outcome: "approve", reason: "it builds the Why", steps: [STEP] } }].map((line) => `'${JSON.stringify(line)}'`).join(" ");
+    const { run, handed, landed, filed } = fixing({
+      claude: FIXES,
+      review: { outcome: "approve", reason: "it builds the Why", steps: [{ ...STEP, handover: "" }] },
+      reviewer: `if [ -f ../step-refused ]; then printf '%s\\n' ${answeredWhole} >../review.jsonl; else touch ../step-refused; fi\n`,
+    });
+
+    expect(run().status).toBe(0);
+    expect(handed()[2]).toContain(`"${STEP.title}": it makes a secret, but no last step says how to hand it over without pasting it into a chat`);
+    expect(landed()).toHaveLength(1);
+    expect(filed()).toHaveLength(1);
+    expect(filed()[0]).toContain(`3. ${TAKEN_STEP.handover}`);
+  });
+
   it("lands nothing, and ends green keeping the branch, when the ticket is held by the time its review ends", () => {
     const { run, landed } = fixing({ claude: FIXES, reviewer: "printf 'paused\\n' >>../labels\n" });
 
