@@ -235,6 +235,36 @@ describe("bin/finish takes a reviewer's stuck and owner steps, as a ticket's rev
     const doneCheckClose = finished.calls().findIndex((args) => args[1] === "close");
     expect(firstCreate).toBeLessThan(doneCheckClose);
   });
+
+  const WHOLE = { ...STEP, title: "Add the Twilio key to Railway" };
+  const UNHANDED = { ...WHOLE, handover: "" };
+  const UNHANDED_REFUSAL = `"${WHOLE.title}": it makes a secret, but no last step says how to hand it over without pasting it into a chat`;
+
+  it("hands the reviewer on the spec an owner step that filing would refuse back to its own session before bin/land, and files it once answered whole, never as a could-not-be-filed comment (#1623)", () => {
+    const finished = finishing({ answer: { outcome: "approve", reason: "reason $CALL", steps: [UNHANDED] }, answerFrom: { call: 2, answer: { outcome: "approve", reason: "reason $CALL", steps: [WHOLE] } } });
+
+    expect(finished.run().status).toBe(0);
+    const [, handedBack = "", code = ""] = finished.handed();
+    expect(handedBack).toContain(UNHANDED_REFUSAL);
+    expect(finished.hired()[1]).toEqual(expect.arrayContaining(["--resume", "review-1"]));
+    expect(code).toMatch(/^# Hold spec #974 to the code standard/);
+    expect(finished.landed()).toHaveLength(1);
+    const created = finished.calls().filter((args) => args[1] === "create");
+    expect(created).toHaveLength(1);
+    expect(created[0]?.join(" ")).toContain("3. In a terminal, run");
+    expect(finished.calls().filter((args) => args[1] === "comment").join(" ")).not.toContain("could not be filed");
+  });
+
+  it("lands nothing when the reviewer on the spec answers the same refused owner step again, so a step it cannot fix stops the run rather than looping", () => {
+    const finished = finishing({ answer: { outcome: "approve", reason: "reason $CALL", steps: [UNHANDED] } });
+
+    const ran = heard(finished.run());
+
+    expect(ran.status).toBe(1);
+    expect(ran.stderr).toContain(UNHANDED_REFUSAL);
+    expect(finished.handed()).toHaveLength(2);
+    expect(finished.landed()).toEqual([]);
+  });
 });
 
 describe("bin/finish packs the review on the code standard into whole slices under its cap, by the commits' Slice trailers, only when the diff is over that cap, and runs three packs at once", () => {

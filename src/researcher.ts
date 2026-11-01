@@ -1,7 +1,7 @@
 import { capped, NO_EM_DASH } from "./brief.ts";
 import { commentOnTicket, fromHere, fromLine, gh, readOrStop, RESEARCH } from "./post.ts";
 import { RESEARCHING } from "./spelled.ts";
-import { type Fix, FOLLOW_UPS, followedUp, MOST_FIXES, opened, type OwnerStep, ownerStepRefusals, OWNER_STEPS } from "./stage.ts";
+import { type Fix, FOLLOW_UPS, followedUp, MOST_FIXES, opened, type OwnerStep, OWNER_STEPS, type Spent, stepsUnfileable } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { quoted } from "./ticket-shape.ts";
 
@@ -26,7 +26,7 @@ const FINDINGS = {
 };
 
 interface Findings {
-  findings?: unknown;
+  findings?: string;
   fixes?: Fix[];
   asks?: string[];
   steps?: OwnerStep[];
@@ -52,6 +52,23 @@ export function handedOn(title: string, body: string, sources?: string): string 
 
 const researchFound = (note: string) => fromLine(fromHere(note), "researched");
 
+function stepsAnswered(said: string, spend: (input: string, resume?: string) => Spent, input: string): Required<Findings> | Stop {
+  let session: string | undefined;
+  let told: string | undefined;
+  let handed = input;
+  for (;;) {
+    const spent = spend(handed, session);
+    session = spent.session ?? session;
+    if (spent.refusal !== undefined) return stoppedAt("modelRun", `${said} ended red, ${spent.refusal}`);
+    const { findings, fixes = [], asks = [], steps = [] } = (spent.answer ?? {}) as Findings;
+    if (typeof findings !== "string" || findings.trim() === "") return stoppedAt("modelRun", `${said} ended red, the researcher gave no findings`);
+    const refused = stepsUnfileable(steps);
+    if (refused === undefined) return { findings, fixes, asks, steps };
+    if (refused === told) return stoppedAt("unrecorded", `${said} is answered but its researcher gave the same refused owner steps again, so nothing is posted or filed and it stays open: ${refused}`);
+    told = handed = refused;
+  }
+}
+
 function researched(issue: string): Stop | undefined {
   const said = `research: #${issue}`;
   const opening = opened({
@@ -64,12 +81,9 @@ function researched(issue: string): Stop | undefined {
   });
   if (typeof opening !== "object") return opening;
   const { asked, spend } = opening;
-  const spent = spend(handedOn(asked.title, asked.body, process.env.RESEARCH_SOURCES || undefined));
-  if (spent.refusal !== undefined) return stoppedAt("modelRun", `${said} ended red, ${spent.refusal}`);
-  const { findings, fixes = [], asks = [], steps = [] } = (spent.answer ?? {}) as Findings;
-  if (typeof findings !== "string" || findings.trim() === "") return stoppedAt("modelRun", `${said} ended red, the researcher gave no findings`);
-  const unfileable = steps.flatMap((step) => ownerStepRefusals(step).map((refusal) => `${quoted(step.title)}: ${quoted(refusal)}`));
-  if (unfileable.length > 0) return stoppedAt("unrecorded", `${said} is answered but its owner steps would be refused, so nothing is posted or filed and it stays open: ${unfileable.join("; ")}`);
+  const answer = stepsAnswered(said, spend, handedOn(asked.title, asked.body, process.env.RESEARCH_SOURCES || undefined));
+  if (typeof answer !== "object") return answer;
+  const { findings, fixes, asks, steps } = answer;
   const posted = commentOnTicket(issue, findings, gh);
   const [refusal] = posted.refusals;
   if (refusal !== undefined) return stoppedAt("unrecorded", `${said} ended red, its findings would not post: ${quoted(refusal)}`);
