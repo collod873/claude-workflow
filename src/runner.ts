@@ -45,6 +45,10 @@ const clearing = (repo: string, name: string, unit: string) =>
     "  [[ $left == \"$own\"/* || $left == \"$temp\" ]] || { printf 'clear: %s is outside this runner, so it is not cleared\\n' \"$left\" >&2; exit 1; }",
     '  find "$left" -mindepth 1 -delete',
     "done",
+    "docker ps --all --filter label=com.docker.compose.project.working_dir --format '{{.ID}}\t{{.Label \"com.docker.compose.project.working_dir\"}}' |",
+    '  while IFS=$\'\\t\' read -r id at; do',
+    '    [[ ($at == "$own"/* || $at == "$temp"/*) && ! -d $at ]] && docker rm --force --volumes "$id" >/dev/null || true',
+    "  done",
     `docker ps --all --quiet --filter 'name=^database-${repo.replace("/", "-")}-${name}$' | xargs --no-run-if-empty docker rm --force >/dev/null`,
     "",
   ].join("\n");
