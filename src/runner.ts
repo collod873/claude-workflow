@@ -252,8 +252,11 @@ function where(repo: string): string {
   return `${repo} runs on ${on.current() === "pc" ? "this PC" : "GitHub's runners"}, ${pc.filter(({ status }) => status === "online").length} of ${pc.length} PC runners online`;
 }
 
-function runner(repo: string, mode: string | undefined, count: string | undefined): number {
+const canonical = (repo: string) => (JSON.parse(gh(["api", `repos/${repo}`])) as { full_name?: string }).full_name ?? repo;
+
+function runner(asked: string, mode: string | undefined, count: string | undefined): number {
   try {
+    const repo = canonical(asked);
     console.log(`runner: ${mode === "pc" ? toPc(repo, count === undefined ? undefined : Number(count)) : mode === "github" ? toGithub(repo) : where(repo)}`);
     return 0;
   } catch (error) {
