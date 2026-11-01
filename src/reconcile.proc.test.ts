@@ -30,6 +30,34 @@ describe("bin/reconcile applies the waiting projection of each open ticket's blo
   });
 });
 
+describe("bin/reconcile restarts a stale build once, then flags it to the owner (#1606)", () => {
+  const stale = { event: "labeled", label: { name: "building" }, created_at: "2026-01-01T00:00:00Z" };
+  const changes = (calls: string[][]) => calls.filter((args) => ["edit", "comment"].includes(args[1] ?? "") || args[0] === "workflow");
+
+  it("dispatches the caller file with the ticket and records the marker line, then flags stuck with an owner comment after one restart, leaving a live build alone", () => {
+    const { reconcile, calls } = linking({
+      liveTitles: ["labeled #933: live one"],
+      tickets: [
+        { number: 931, labels: ["ticket", "building"], blockers: [], timeline: [stale] },
+        { number: 932, labels: ["ticket", "building"], blockers: [], timeline: [stale, { event: "commented", body: "<!-- reconcile: restarted -->\nReconcile restarted #932" }] },
+        { number: 933, labels: ["ticket", "building"], blockers: [], timeline: [stale] },
+      ],
+    });
+
+    const result = reconcile();
+
+    expect(result.status, result.stderr).toBe(0);
+    const [dispatch, marker, stuck, owner, ...rest] = changes(calls());
+    expect(dispatch).toEqual(["workflow", "run", expect.any(String), "--repo", HERE, "-f", "ticket=931"]);
+    expect(marker?.slice(0, 4)).toEqual(["issue", "comment", "931", "--repo"]);
+    expect(marker?.at(-1)).toMatch(/^<!-- reconcile: restarted -->\n/);
+    expect(stuck).toEqual(["issue", "edit", "932", "--repo", HERE, "--add-label", "stuck"]);
+    expect(owner?.slice(0, 3)).toEqual(["issue", "comment", "932"]);
+    expect(owner?.at(-1)).toMatch(/^@collod873 /);
+    expect(rest).toEqual([]);
+  });
+});
+
 describe("bin/issue-links reads and adds blocked-by links and sub-issue parents across repos (#1606)", () => {
   it("reads a ticket's blockers with the repo each lives in", () => {
     const { links } = linking({ tickets: [{ number: 931, labels: [], blockers: [{ repo: ELSEWHERE, number: 7, state: "closed" }] }] });

@@ -7,7 +7,7 @@ const ticket = (labels: string[], blockers: IssueState["blockers"]): IssueState 
 
 const applied = (states: IssueState[], actions: Action[]): IssueState[] =>
   states.map((state) => {
-    const mine = actions.filter((action) => action.repo === state.repo && action.number === state.number);
+    const mine = actions.flatMap((action) => ("label" in action && action.repo === state.repo && action.number === state.number ? [action] : []));
     const removed = new Set(mine.filter(({ kind }) => kind === "remove-label").map(({ label }) => label));
     const added = mine.filter(({ kind }) => kind === "add-label").map(({ label }) => label);
     return { ...state, labels: [...state.labels.filter((label) => !removed.has(label)), ...added] };
@@ -37,5 +37,24 @@ describe("reconcile projects the blocked-by state onto the waiting label (#1606)
 
     expect(first).toHaveLength(2);
     expect(reconcile(applied(states, first))).toEqual([]);
+  });
+});
+
+const HOUR = 3_600_000;
+const NOW = Date.parse("2026-11-01T12:00:00Z");
+const building = (over: Partial<IssueState> = {}): IssueState => ({ ...ticket(["ticket", "building"], []), buildingSince: NOW - HOUR - 1, liveRun: false, restarted: false, ...over });
+
+describe("reconcile restarts a stale build once, then flags it to the owner (#1606)", () => {
+  it("restarts a ticket building for over an hour with no live run, flags it after one restart, then does nothing more", () => {
+    expect(reconcile([building()], NOW)).toEqual([{ kind: "restart", repo: REPO, number: 931 }]);
+    expect(reconcile([building({ restarted: true })], NOW)).toEqual([{ kind: "flag", repo: REPO, number: 931 }]);
+    expect(reconcile([building({ restarted: true, labels: ["ticket", "building", "stuck"] })], NOW)).toEqual([]);
+  });
+
+  it.each([
+    ["with a live run", building({ liveRun: true })],
+    ["for under an hour", building({ buildingSince: NOW - HOUR + 1000 })],
+  ])("leaves a ticket building %s alone", (_, state) => {
+    expect(reconcile([state], NOW)).toEqual([]);
   });
 });

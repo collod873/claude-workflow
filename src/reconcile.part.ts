@@ -9,18 +9,21 @@ interface Ticket {
   number: number;
   labels: string[];
   blockers: { repo: string; number: number; state: string }[];
+  timeline?: object[];
 }
 
 const linked = ({ repo, number, state }: Ticket["blockers"][number]) => ({ id: number * 100, number, state, repository_url: `https://api.github.com/repos/${repo}` });
 
-export function linking({ tickets = [] as Ticket[], parentless = false, refused = false } = {}) {
+export function linking({ tickets = [] as Ticket[], parentless = false, refused = false, liveTitles = [] as string[] } = {}) {
   const root = scratch("reconcile-");
   const { setup, calls } = ghArgv(join(root, "gh-argv"));
   plant(root, "listed.json", JSON.stringify(tickets.map(({ number, labels }) => ({ number, labels: labels.map((name) => ({ name })) }))));
-  const cases = tickets.flatMap(({ number, labels, blockers }) => {
+  plant(root, "live", liveTitles.join("\n"));
+  const cases = tickets.flatMap(({ number, labels, blockers, timeline = [] }) => {
     plant(root, `blockers-${number}.json`, JSON.stringify([blockers.map(linked)]));
+    plant(root, `timeline-${number}.json`, JSON.stringify([timeline]));
     plant(root, `labels-${number}`, labels.join("\n"));
-    return [`  *"issues/${number}/dependencies/blocked_by"*) cat "${join(root, `blockers-${number}.json`)}" ;;`, `  "issue view ${number} "*) cat "${join(root, `labels-${number}`)}" ;;`];
+    return [`  *"issues/${number}/timeline"*) cat "${join(root, `timeline-${number}.json`)}" ;;`, `  *"issues/${number}/dependencies/blocked_by"*) cat "${join(root, `blockers-${number}.json`)}" ;;`, `  "issue view ${number} "*) cat "${join(root, `labels-${number}`)}" ;;`];
   });
   script(
     join(root, "bin", "gh"),
@@ -28,6 +31,7 @@ export function linking({ tickets = [] as Ticket[], parentless = false, refused 
       setup,
       'case "$*" in',
       ...(refused ? ['  *"--method POST"*) printf \'gh: Forbidden (HTTP 403)\\n\' >&2; exit 1 ;;', '  *"issue edit"*) printf \'gh: Forbidden (HTTP 403)\\n\' >&2; exit 1 ;;'] : []),
+      `  "run list"*"--status queued"*) cat "${join(root, "live")}" ;;`,
       `  "issue list"*) cat "${join(root, "listed.json")}" ;;`,
       ...cases,
       `  *"/parent") ${parentless ? "printf 'gh: Not Found (HTTP 404)\\n' >&2; exit 1" : `printf '%s' '${JSON.stringify(linked({ repo: ELSEWHERE, number: 12, state: "open" }))}'`} ;;`,
@@ -48,6 +52,7 @@ declareStage({
   part: { name: "bin/reconcile", file: "bin/reconcile", stops: "https://github.com/collod873/claude-workflow/issues/1606" },
   scenarios: [
     { label: "waking a ticket whose blockers closed", run: () => linking({ tickets: [{ number: 931, labels: ["ticket", "waiting"], blockers: [{ repo: ELSEWHERE, number: 7, state: "closed" }] }] }).reconcile() },
+    { label: "restarting a stale build", run: () => linking({ tickets: [{ number: 931, labels: ["ticket", "building"], blockers: [], timeline: [{ event: "labeled", label: { name: "building" }, created_at: "2026-01-01T00:00:00Z" }] }] }).reconcile() },
     { label: "with the label edit refused", run: () => linking({ refused: true, tickets: [{ number: 931, labels: ["ticket"], blockers: [{ repo: ELSEWHERE, number: 7, state: "open" }] }] }).reconcile() },
   ],
 });
