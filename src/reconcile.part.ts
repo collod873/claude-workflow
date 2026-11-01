@@ -16,12 +16,14 @@ export type Issues = Record<string, { user: { login: string }; body: string }>;
 
 const linked = ({ repo, number, state }: Ticket["blockers"][number]) => ({ id: number * 100, number, state, repository_url: `https://api.github.com/repos/${repo}` });
 
-export function linking({ tickets = [] as Ticket[], parentless = false, refused = false, liveTitles = [] as string[], issues = {} } = {}) {
+export function linking({ tickets = [] as Ticket[], specs = [] as Ticket[], parentless = false, refused = false, liveTitles = [] as string[], issues = {} } = {}) {
   const root = scratch("reconcile-");
   const { setup, calls } = ghArgv(join(root, "gh-argv"));
-  plant(root, "listed.json", JSON.stringify(tickets.map(({ number, labels }) => ({ number, labels: labels.map((name) => ({ name })) }))));
+  const listed = (issues: Ticket[]) => JSON.stringify(issues.map(({ number, labels }) => ({ number, labels: labels.map((name) => ({ name })) })));
+  plant(root, "listed.json", listed(tickets));
+  plant(root, "specs.json", listed(specs));
   plant(root, "live", liveTitles.join("\n"));
-  const cases = tickets.flatMap(({ number, labels, blockers, timeline = [] }) => {
+  const cases = [...tickets, ...specs].flatMap(({ number, labels, blockers, timeline = [] }) => {
     plant(root, `blockers-${number}.json`, JSON.stringify([blockers.map(linked)]));
     plant(root, `timeline-${number}.json`, JSON.stringify([timeline]));
     plant(root, `labels-${number}`, labels.join("\n"));
@@ -38,6 +40,7 @@ export function linking({ tickets = [] as Ticket[], parentless = false, refused 
       'case "$*" in',
       ...(refused ? ['  *"--method POST"*) printf \'gh: Forbidden (HTTP 403)\\n\' >&2; exit 1 ;;', '  *"issue edit"*) printf \'gh: Forbidden (HTTP 403)\\n\' >&2; exit 1 ;;'] : []),
       `  "run list"*"--status queued"*) cat "${join(root, "live")}" ;;`,
+      `  "issue list"*"--label spec "*) cat "${join(root, "specs.json")}" ;;`,
       `  "issue list"*) cat "${join(root, "listed.json")}" ;;`,
       ...cases,
       ...opened,

@@ -54,7 +54,7 @@ const said = (text) => process.stdout.write(text + "\\n");
 const comments = () => JSON.parse(read("comments.json"));
 const saved = (held) => fs.writeFileSync(join(root, "comments.json"), JSON.stringify(held));
 const labels = () => read("labels").split("\\n").filter(Boolean);
-if (all.includes("repos/{owner}/{repo}/installation")) said("4242");
+if (all.includes("repos/{owner}/{repo}/installation") || (args[0] === "api" && args.at(-1) === ".id")) said("4242");
 else if (all.includes("access_tokens")) { const n = Number(fs.existsSync(join(root, "minted")) ? read("minted") : "0") + 1; fs.writeFileSync(join(root, "minted"), String(n)); said("minted-" + n); }
 else if (args[0] === "issue" && args[1] === "view" && args[2].startsWith("https://")) said(JSON.parse(fs.existsSync(join(root, "states.json")) ? read("states.json") : "{}")[args[2]] ?? "OPEN");
 else if (args[0] === "issue" && args[1] === "view") said(args.includes("--jq") ? labels().join("\\n") : JSON.stringify({ title: "A spec worth building", body: read("body"), labels: labels().map((name) => ({ name })) }));
@@ -189,7 +189,7 @@ export function scheduling({
     onRemote: (ref: string) => git(remote, "log", "--format=%s", ref).split("\n"),
     mainMovedUnder: (ref: string) => git(remote, "log", "--format=%H", "--grep=^Main moved$", ref) === git(remote, "log", "--format=%H", "--grep=^Main moved$", "main"),
     run: () =>
-      execute(join(BIN, "schedule"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}`, MACHINE_BIN: join(root, "bin"), GH_TOKEN: "original", ...(appKeyed ? { APP_KEY_FILE: keyFile } : {}) }, [SPEC_ISSUE]),
+      execute(join(BIN, "schedule"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}`, MACHINE_BIN: join(root, "bin"), GH_REPO: "collod873/claude-workflow", GH_TOKEN: "original", ...(appKeyed ? { APP_KEY_FILE: keyFile } : {}) }, [SPEC_ISSUE]),
   };
 }
 

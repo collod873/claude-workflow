@@ -2,7 +2,6 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { git } from "./scenarios.ts";
 import { KIT_STEP, LANDED, MAIN_MOVES, PAUSES, machineComment, scheduling, sliceOf, SPEC_ISSUE } from "./scheduler.part.ts";
-import { waitsOnStep } from "./builder.ts";
 
 const SPEC_BRANCH = `spec/${SPEC_ISSUE}`;
 const optionOf = (argv: string[] | undefined, name: string) => (argv?.includes(name) ? argv[argv.indexOf(name) + 1] : undefined);
@@ -139,8 +138,16 @@ describe("bin/schedule runs a spec from its first cut to its landing, one slice 
     expect(stateOf(run)).toEqual({ signup: "handed", free: "merged" });
     expect(run.order().at(-1)).toBe(`mark ${SPEC_ISSUE} waiting`);
     expect(run.order()).not.toContain(`mark ${SPEC_ISSUE} stuck`);
-    expect(run.comments().at(-1)?.body).toContain(waitsOnStep(SPEC_ISSUE, "collod873/design-kit", [KIT_STEP]));
+    expect(run.comments().at(-1)?.body).toBe(`The builder of #${SPEC_ISSUE} parked it, blocked by collod873/design-kit#301: \`signup\` build once they close.`);
     expect(run.finished()).toEqual([]);
+  });
+
+  it("links the spec blocked by each issue a slice handed off, so reconcile takes waiting off once they close, where Mezzanine#2080 sat waiting two hours after design-kit#347 closed", () => {
+    const run = scheduling({ cuts: [[sliceOf("signup"), sliceOf("free")], []], plans: { signup: [{ outcome: "owned" }] } });
+
+    expect(run.run().status).toBe(0);
+    expect(run.calls()).toContainEqual(["api", "repos/collod873/design-kit/issues/301", "--jq", ".id"]);
+    expect(run.calls()).toContainEqual(["api", "--method", "POST", `repos/collod873/claude-workflow/issues/${SPEC_ISSUE}/dependencies/blocked_by`, "-F", "issue_id=4242"]);
   });
 
   it("builds a waiting slice again once everything it handed off has closed, and keeps it waiting while any is open", () => {

@@ -197,7 +197,8 @@ _Avoid_: issue, sub-issue, card, item
 `bin/reconcile`, the one idempotent pass that owns wake, admit and stale-build recovery: a pure
 `reconcile` from each open ticket's state to label edits, each checking the labels first so two
 runs at once act once. `waiting` is its projection of the ticket's blocked-by links, written and
-never read as state; a ticket with no blocked-by link is left alone.
+never read as state; a ticket with no blocked-by link is left alone. An open spec gets the same
+projection and nothing more: a spec parks blocked by each issue its slices handed off.
 _Avoid_: sweeper, poller
 
 **Note**:

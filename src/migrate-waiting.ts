@@ -1,4 +1,4 @@
-import { builderOf, dependsOn, waitsOnStep } from "./builder.ts";
+import { builderOf, dependsOn, handedStep } from "./builder.ts";
 import { addBlocker, addParent, blockersOf, parentOf } from "./issue-links.ts";
 import { fromLine, fromOf, type FromKind, ghRead, heardIn, MACHINE_REPO, OWNER, Stopped } from "./post.ts";
 import { heading, section } from "./ticket-shape.ts";
@@ -27,7 +27,7 @@ const TICKET = "\\d+";
 const NAMED = "(\\S+(?:, \\S+)*)";
 const DEPENDS_ON = shaped(`${dependsOn(HOLE)} ${HOLE}, still open.`, TICKET, "((?:#\\d+(?:, )?)+)");
 const FAULT_FILED = shaped(`${builderOf(HOLE)} found the machine at fault and filed ${HOLE}.`, TICKET, NAMED);
-const STEP_FILED = shaped(`${waitsOnStep(HOLE, HOLE, [HOLE]).split(". ")[0] ?? ""}.`, TICKET, "[\\w.-]+/[\\w.-]+", NAMED);
+const STEP_FILED = shaped(handedStep(HOLE, HOLE, [HOLE]), TICKET, "[\\w.-]+/[\\w.-]+", NAMED);
 const WAITS_ON = heading("Waits on");
 const ISSUE_REFERENCE = /(?<![\w/-])#(\d+)\b/g;
 const waitsOn = (body: string): string[] => [...new Set(Array.from(section(body.replaceAll(/\r\n?/g, "\n"), WAITS_ON).matchAll(ISSUE_REFERENCE), ([, number]) => number ?? ""))];
