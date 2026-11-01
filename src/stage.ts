@@ -334,11 +334,16 @@ function unaskedRefusals(clicks: Click[]): string[] {
   return [...firstOnPage].flatMap(([{ asks }, index]) => asks.filter((ask) => !fields.some((field) => field.includes(ask.toLowerCase()))).map((ask) => `step ${index + 1} leaves "${ask}" unanswered, which its page asks`));
 }
 
-export function ownerStepRefusals(step: OwnerStep): string[] {
+function ownerStepRefusals(step: OwnerStep): string[] {
   if (step.clicks.length === 0) return ["it gives no numbered steps, so the owner must work out where to click"];
   const said = [step.title, step.why, step.needs, ...step.clicks.map(({ action }) => action)].join("\n");
   const unhanded = SECRET.test(said) && step.handover.trim() === "" ? ["it makes a secret, but no last step says how to hand it over without pasting it into a chat"] : [];
   return [...new Set([...step.clicks.flatMap(clickRefusals), ...unaskedRefusals(step.clicks)]), ...unhanded];
+}
+
+export function stepsUnfileable(steps: OwnerStep[]): string | undefined {
+  const refused = steps.flatMap((step) => ownerStepRefusals(step).map((refusal) => `- "${step.title}": ${refusal}`));
+  return refused.length === 0 ? undefined : ["These owner steps would be refused, not filed:", refused.join("\n"), "Answer again with each under its same title, fixed: nothing is posted, filed or landed until every one would file."].join("\n\n");
 }
 
 const numbered = ({ clicks, handover }: OwnerStep): string =>

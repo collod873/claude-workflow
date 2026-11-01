@@ -10,7 +10,7 @@ import { askedIssue, commentOnTicket, fromHere, fromLine, gh, ghRead, git, gitRe
 import { afterRefused, approvedOn, firstTimeNamed, gathered, landing, type Routed, ROUTED, ROUTED_REQUIRED, routedFiled } from "./reviewer.ts";
 import { fastForwarded, landedOn, MOST_BUILDERS, type Progress, progressOn, removed, specBranch, worktree } from "./scheduler.ts";
 import { fastForwards, rebaseStopped, sliceTrailed } from "./slice-builder.ts";
-import { committed, commitlinted, CONTRACT, head, hireIn, MOST_FIXES, type OwnerStep, OWNER_STEPS, setupRefusedIn, type Spent } from "./stage.ts";
+import { committed, commitlinted, CONTRACT, head, hireIn, MOST_FIXES, type OwnerStep, OWNER_STEPS, setupRefusedIn, type Spent, stepsUnfileable } from "./stage.ts";
 import { SPEC } from "./spelled.ts";
 import { stopsOf } from "./stops.ts";
 import { quoted, SPEC_CAP } from "./ticket-shape.ts";
@@ -23,6 +23,7 @@ const stoppedAt = stopsOf({
   unmerged: "Finish: a pack's reviewer left its commits conflicting with the integration branch, and two rounds in a row of it changed nothing",
   machineStarved: "Finish: the full check went red only on steps the machine starved of memory, so the spec is marked `stuck` and the owner is called",
   unready: "Finish: a pack's tree would not set up, so its reviewer on the code standard was not hired",
+  unfiled: "Finish: the reviewer on the spec answered the same owner steps that filing refuses twice in a row",
 });
 
 const PAST_MAIN = "origin/main..HEAD";
@@ -345,6 +346,20 @@ const greened = (run: Run, reviewer: Reviewer, commit: string) =>
     return red === undefined ? { done: true } : { refused: red.verdict, told: stillRedOnReview(red) };
   });
 
+async function stepsWhole(run: Run, reviewer: Reviewer, commit: string): Promise<boolean> {
+  let told: string | undefined;
+  for (;;) {
+    const refused = stepsUnfileable(run.left.get(reviewer.seat)?.steps ?? []);
+    if (refused === undefined) return true;
+    if (refused === told) {
+      stoppedAt("unfiled", `${run.said} landed nothing, its reviewer on the spec answered the same refused owner steps again: ${refused}`);
+      return false;
+    }
+    told = refused;
+    if ((await answered(run, reviewer, refused, commit)) === undefined) return false;
+  }
+}
+
 const merged = (run: Run, reviewer: Reviewer, commit: string) => rounds(run, reviewer, { failed: "left a pack's commits conflicting with its integration branch", stop: "unmerged", commit, kept: () => undefined }, () => ({ done: true }));
 
 async function treeMade(run: Run, reviewer: Reviewer): Promise<boolean> {
@@ -393,8 +408,9 @@ async function reviews(run: Run, { title, body }: { title: string; body: string 
     ...(tree === top ? {} : { branch: `review/${seat}` }),
   });
   const onSpec = reviewer(`${spec}-spec`, "spec", ANSWER);
-  const approved = await answered(run, onSpec, onTheSpec(wholeBranch(), { spec, title, body, commitlint, briefs: briefsOf(progress) }), `Review #${spec} on the spec`);
-  if (approved === undefined) return undefined;
+  const onSpecCommit = `Review #${spec} on the spec`;
+  const approved = await answered(run, onSpec, onTheSpec(wholeBranch(), { spec, title, body, commitlint, briefs: briefsOf(progress) }), onSpecCommit);
+  if (approved === undefined || !(await stepsWhole(run, onSpec, onSpecCommit))) return undefined;
   run.reasons.set(onSpec.seat, `${onSpec.on}: ${approved.reason}`);
   const red = checkedBy(PUBLISHED_CHECK);
   if (starved(run, red)) return undefined;

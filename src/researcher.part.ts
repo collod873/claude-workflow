@@ -18,8 +18,11 @@ export function researching({
   sources = "",
   readsPastCap = false,
   markRefusal,
-}: { labels?: string[] | undefined; findings?: string; fixes?: { fault: string; title: string; done: string[]; waits?: string }[]; steps?: { title: string; why: string }[]; asks?: string[]; gh?: string; sources?: string; readsPastCap?: boolean; markRefusal?: string } = {}) {
-  const cutOff = readsPastCap ? `case "$*" in *--resume*) ;; *) printf '%s\\n' '${JSON.stringify({ type: "system", session_id: READING_SESSION })}'; exit 124 ;; esac\n` : "";
+  handedBack,
+}: { labels?: string[] | undefined; findings?: string; fixes?: { fault: string; title: string; done: string[]; waits?: string }[]; steps?: ({ title: string; why: string } & Record<string, unknown>)[]; asks?: string[]; gh?: string; sources?: string; readsPastCap?: boolean; markRefusal?: string; handedBack?: { steps: object[]; fixes?: object[] } } = {}) {
+  const session = `printf '%s\\n' '${JSON.stringify({ type: "system", session_id: READING_SESSION })}'`;
+  const answeredAgain = (answer: object) => `case "$*" in *--resume*) printf '%s\\n' '${JSON.stringify({ type: "result", subtype: "success", is_error: false, session_id: READING_SESSION, structured_output: answer })}'; exit 0 ;; *) ${session} ;; esac\n`;
+  const cutOff = readsPastCap ? `case "$*" in *--resume*) ;; *) ${session}; exit 124 ;; esac\n` : handedBack === undefined ? "" : answeredAgain({ findings, fixes, asks, ...handedBack });
   const { root, ...stage } = issueStage("research-", { title: "What does the closer judge", body: wellFormedNote, labels: labels.map((name) => ({ name })) }, { findings, fixes, steps, asks }, FINDINGS_POSTED, gh, cutOff);
   const marked = stubbedMark(root, join(root, "claude-argv"), markRefusal);
   return {
