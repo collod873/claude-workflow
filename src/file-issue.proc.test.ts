@@ -238,4 +238,13 @@ describe("bin/file-issue --help runs no gh, since gh writes its state under HOME
     expect(result.stdout).toContain(USAGE);
     expect(existsSync(join(repo, "gh-argv"))).toBe(false);
   });
+
+  it("opens on what it does, since tools shows each tool by its help's first prose line (#1620)", () => {
+    const { run } = filing({ gh: "exit 1\n", body: wellFormedTicket });
+
+    const [opening, usage] = run(["--help"]).stdout.split("\n");
+
+    expect(opening).toBe("file-issue: file a GitHub issue of one kind (idea, look-into, build, bug, spec, owner) on the repo you're in.");
+    expect(usage).toBe(USAGE.split("\n")[0]);
+  });
 });
