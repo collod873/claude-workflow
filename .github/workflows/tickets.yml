@@ -440,6 +440,40 @@ jobs:
           run: the strip run
           token: ${{ steps.app.outputs.token }}
 
+  reconcile:
+    if: ${{ github.event_name != 'workflow_dispatch' }}
+    concurrency:
+      group: reconcile-${{ github.repository }}
+      cancel-in-progress: false
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 10
+    env:
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - id: machine
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/claude-workflow
+          ref: main
+          token: ${{ steps.app.outputs.token }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          REPO: ${{ github.repository }}
+        run: bin/reconcile --repo "$REPO"
+
   dispatch-rerun:
     needs: [wake, build, close, strip]
     if: ${{ always() && (needs.wake.result == 'failure' || needs.build.result == 'failure' || needs.close.result == 'failure' || needs.strip.result == 'failure' || contains(needs.*.result, 'cancelled')) }}

@@ -69,25 +69,35 @@ describe("a repo's tickets build through one caller file that holds only trigger
     expect(rest).toEqual({});
     expect(typeof runName).toBe("string");
     expect(typeof name).toBe("string");
-    expect(Object.keys(on).sort()).toEqual(["issues", "pull_request", "workflow_dispatch"]);
+    expect(Object.keys(on).sort()).toEqual(["issues", "pull_request", "schedule", "workflow_dispatch"]);
     expect(Object.values(jobs)).toEqual(CALLED.map((file) => ({ uses: `collod873/claude-workflow/.github/workflows/${file}@main`, secrets: "inherit" })));
   });
 
   it("answers each trigger the caller holds: a ticket labelled builds, lands and closes in its own run, a closed issue is stripped and wakes what waited on it (ADR-0012)", () => {
     const woken = { wake: { held: "true" } };
-    expect(jobsRun({ event: "issues", action: "labeled", outputs: woken })).toEqual(["wake", "build"]);
-    expect(jobsRun({ event: "issues", action: "labeled", sender: MACHINE, outputs: woken })).toEqual(["wake", "build"]);
-    expect(jobsRun({ event: "issues", action: "unlabeled", sender: MACHINE, outputs: woken })).toEqual(["wake", "build"]);
-    expect(jobsRun({ event: "issues", action: "unlabeled", sender: MACHINE, outputs: { wake: { held: "false" } } })).toEqual(["wake"]);
-    expect(jobsRun({ event: "issues", action: "opened", sender: MACHINE })).toEqual([]);
-    expect(jobsRun({ event: "issues", action: "labeled", sender: "stranger" })).toEqual([]);
-    expect(jobsRun({ event: "issues", action: "closed" })).toEqual(["close", "strip"]);
+    expect(jobsRun({ event: "issues", action: "labeled", outputs: woken })).toEqual(["wake", "build", "reconcile"]);
+    expect(jobsRun({ event: "issues", action: "labeled", sender: MACHINE, outputs: woken })).toEqual(["wake", "build", "reconcile"]);
+    expect(jobsRun({ event: "issues", action: "unlabeled", sender: MACHINE, outputs: woken })).toEqual(["wake", "build", "reconcile"]);
+    expect(jobsRun({ event: "issues", action: "unlabeled", sender: MACHINE, outputs: { wake: { held: "false" } } })).toEqual(["wake", "reconcile"]);
+    expect(jobsRun({ event: "issues", action: "opened", sender: MACHINE })).toEqual(["reconcile"]);
+    expect(jobsRun({ event: "issues", action: "labeled", sender: "stranger" })).toEqual(["reconcile"]);
+    expect(jobsRun({ event: "issues", action: "closed" })).toEqual(["close", "strip", "reconcile"]);
   });
 
   it("wakes what waited on a pull request once it merges, and runs nothing for one closed unmerged, where Mezzanine#1710 sat waiting on kit-sync PR #1711 after it merged", () => {
-    expect(jobsRun({ event: "pull_request", action: "closed", merged: true })).toEqual(["close"]);
-    expect(jobsRun({ event: "pull_request", action: "closed", merged: false })).toEqual([]);
+    expect(jobsRun({ event: "pull_request", action: "closed", merged: true })).toEqual(["close", "reconcile"]);
+    expect(jobsRun({ event: "pull_request", action: "closed", merged: false })).toEqual(["reconcile"]);
     expect(jobsRun({ event: "pull_request", action: "closed", merged: true }, "specs.yml")).toEqual([]);
+  });
+
+  it("reconciles every 15 minutes and on every machine event, one pass at a time per repo, so a ticket whose blockers closed builds whatever order the events came in (#1606)", () => {
+    expect(caller().on.schedule).toEqual([{ cron: "*/15 * * * *" }]);
+    expect(jobsRun({ event: "schedule" })).toEqual(["reconcile"]);
+    expect(jobsRun({ event: "schedule" }, "specs.yml")).toEqual([]);
+    expect(jobsRun({ event: "workflow_dispatch", inputs: { ticket: "1" } }).includes("reconcile")).toBe(false);
+    const { concurrency, steps } = workflowJobs("tickets.yml").reconcile ?? { steps: [] };
+    expect(concurrency).toEqual({ group: "reconcile-${{ github.repository }}", "cancel-in-progress": false });
+    expect(steps.some(({ run }) => /bin\/reconcile\b/.test(run ?? ""))).toBe(true);
   });
 
   it("names its run by no event it does not hear, so a ticket's PR or a CI run names no run that starts nothing (#1447)", () => {
@@ -122,10 +132,10 @@ describe("a repo's tickets build through one caller file that holds only trigger
     const named = { which: { ticket: "828" }, wake: { held: "true" } };
     const handed = { event: "workflow_dispatch", action: "", inputs: { ticket: "828", rerun: "4417/1" }, outputs: named };
 
-    expect(jobsRun({ event: "issues", action: "labeled", sender: OWNER, red: ["wake"] })).toEqual(["wake", "dispatch-rerun"]);
-    expect(jobsRun({ event: "issues", action: "labeled", sender: OWNER, red: ["build"], outputs: named })).toEqual(["wake", "build", "dispatch-rerun"]);
-    expect(jobsRun({ event: "issues", action: "labeled", sender: OWNER, stopped: ["build"], outputs: named })).toEqual(["wake", "build", "dispatch-rerun"]);
-    expect(jobsRun({ event: "issues", action: "closed", stopped: ["close"] })).toEqual(["close", "strip", "dispatch-rerun"]);
+    expect(jobsRun({ event: "issues", action: "labeled", sender: OWNER, red: ["wake"] })).toEqual(["wake", "reconcile", "dispatch-rerun"]);
+    expect(jobsRun({ event: "issues", action: "labeled", sender: OWNER, red: ["build"], outputs: named })).toEqual(["wake", "build", "reconcile", "dispatch-rerun"]);
+    expect(jobsRun({ event: "issues", action: "labeled", sender: OWNER, stopped: ["build"], outputs: named })).toEqual(["wake", "build", "reconcile", "dispatch-rerun"]);
+    expect(jobsRun({ event: "issues", action: "closed", stopped: ["close"] })).toEqual(["close", "strip", "reconcile", "dispatch-rerun"]);
     const woken = { wake: { spec: "true", research: "true" } };
     expect(jobsRun({ event: "issues", action: "labeled", sender: OWNER, red: ["wake"] }, "specs.yml")).toEqual(["wake", "dispatch-rerun"]);
     expect(jobsRun({ event: "issues", action: "labeled", sender: OWNER, red: ["spec"], outputs: woken }, "specs.yml")).toEqual(["wake", "spec", "research", "dispatch-rerun"]);

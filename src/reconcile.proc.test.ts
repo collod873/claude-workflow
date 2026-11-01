@@ -22,6 +22,21 @@ describe("bin/reconcile applies the waiting projection of each open ticket's blo
     ]);
   });
 
+  it("wakes the dependent of Mezzanine#2022's race on the next scheduled pass: its blocker closed, then it was parked behind it, and only waiting comes off", () => {
+    const { reconcile, calls } = linking({
+      tickets: [
+        { number: 2022, labels: ["ticket", "waiting"], blockers: [{ repo: HERE, number: 2021, state: "closed" }] },
+        { number: 2023, labels: ["ticket", "waiting"], blockers: [{ repo: HERE, number: 2024, state: "open" }] },
+        { number: 2025, labels: ["ticket"], blockers: [{ repo: HERE, number: 2021, state: "closed" }] },
+      ],
+    });
+
+    const result = reconcile();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(edits(calls())).toEqual([["issue", "edit", "2022", "--repo", HERE, "--remove-label", "waiting"]]);
+  });
+
   it("fails red naming the ticket when the label edit is refused", () => {
     const result = linking({ refused: true, tickets: [{ number: 932, labels: ["ticket"], blockers: [{ repo: HERE, number: 5, state: "open" }] }] }).reconcile();
 
