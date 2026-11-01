@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { OUT_OF_TIME } from "./researcher.ts";
-import { heard, starts, wellFormedNote, workflowJobs, type WorkflowStep } from "./scenarios.ts";
+import { HANDED_OVER, heard, OPENED_TOKEN_PAGE, starts, TAKEN_STEP, TOKEN_PAGE, wellFormedNote, workflowJobs, type WorkflowStep } from "./scenarios.ts";
 import { FINDINGS_POSTED, READING_SESSION, researching } from "./researcher.part.ts";
 
 const STAGE_ACTION = join(import.meta.dirname, "..", ".github", "actions", "stage", "action.yml");
@@ -190,7 +190,7 @@ describe("bin/research files what its findings call for, so a closed note leaves
   });
 
   it("files each owner step as its own note, and a fix that needs one files waiting on that note, blocked by that note, so reconcile builds the fix once the owner has taken it (#1565, #1606)", () => {
-    const step = { title: "Add the Stripe key to Lumaria's Railway variables", why: "The charge path reads STRIPE_KEY, and only the owner holds it.", needs: "STRIPE_KEY" };
+    const step = { title: "Add the Stripe key to Lumaria's Railway variables", why: "The charge path reads STRIPE_KEY, and only the owner holds it.", needs: "STRIPE_KEY", ...TAKEN_STEP };
     const answered = researching({ steps: [step], fixes: [{ ...fix, waits: step.title }, fix], gh: "[[ $2 == create ]] && { printf 'https://github.com/collod873/claude-workflow/issues/1700\\n'; exit 0; }" });
 
     expect(answered.run().status).toBe(0);
@@ -204,7 +204,7 @@ describe("bin/research files what its findings call for, so a closed note leaves
   });
 
   it("files an owner step naming nothing that needs it as a plain note, and a fix naming it builds at once, as Mezzanine#2034 waited on a Resend key nothing used", () => {
-    const step = { title: "Add the Resend key to Railway", why: "Mail might go through Resend someday.", needs: " " };
+    const step = { title: "Add the Resend key to Railway", why: "Mail might go through Resend someday.", needs: " ", ...TAKEN_STEP };
     const answered = researching({ steps: [step], fixes: [{ ...fix, waits: step.title }], gh: "[[ $2 == create ]] && { printf 'https://github.com/collod873/claude-workflow/issues/1700\\n'; exit 0; }" });
 
     expect(answered.run().status).toBe(0);
@@ -217,7 +217,7 @@ describe("bin/research files what its findings call for, so a closed note leaves
   });
 
   it("files an owner step naming what needs it as owner-step with a Needs line", () => {
-    const step = { title: "Add the Stripe key to Lumaria's Railway variables", why: "The charge path reads it, and only the owner holds it.", needs: "STRIPE_KEY" };
+    const step = { title: "Add the Stripe key to Lumaria's Railway variables", why: "The charge path reads it, and only the owner holds it.", needs: "STRIPE_KEY", ...TAKEN_STEP };
     const answered = researching({ steps: [step] });
 
     expect(answered.run().status).toBe(0);
@@ -226,8 +226,59 @@ describe("bin/research files what its findings call for, so a closed note leaves
     expect(note?.body).toContain("Needs: STRIPE_KEY");
   });
 
+  it("files an owner step as numbered steps, one action each, with its direct link and every value its page asks for, and how to hand its secret over last, where #1596 named a token but not where to click or what expiration to pick (#1619)", () => {
+    const step = { title: "Save a billing token as BILLING_PAT in claude-workflow", why: "The daily paid-minutes check reads billing, which only a personal token can.", needs: "BILLING_PAT", ...TAKEN_STEP };
+    const answered = researching({ steps: [step] });
+
+    expect(answered.run().status).toBe(0);
+    expect(answered.filed()[0]?.body).toContain(
+      [
+        "## Steps",
+        "",
+        `1. Open the pre-filled token page: ${TOKEN_PAGE}`,
+        "   - Expiration: **366 days**",
+        "   - Repository access: **Public repositories**",
+        "   - Plan: **Read-only**",
+        `2. Click Generate token and copy it: ${TOKEN_PAGE}`,
+        `3. ${HANDED_OVER}`,
+        "",
+        "Needs: BILLING_PAT",
+      ].join("\n"),
+    );
+  });
+
+  it("refuses before filing an owner step with no steps, no direct link, a choice left without a value, its page's choice unasked, its token page missing its owner or a permission, or its secret with no handover, filing none of its steps while one is refused and keeping the note open (#1619)", () => {
+    const token = { title: "Save a billing token", why: "The paid-minutes check reads billing.", needs: "BILLING_PAT" };
+    const steps = [
+      { ...token, title: "Save a billing token, given whole", ...TAKEN_STEP },
+      { ...token, clicks: [], handover: HANDED_OVER },
+      { ...token, clicks: [{ ...OPENED_TOKEN_PAGE, at: "the token settings page" }], handover: HANDED_OVER },
+      { ...token, clicks: [{ ...OPENED_TOKEN_PAGE, picks: [{ field: "Expiration", value: "your choice" }, { field: "Repository access", value: "All repositories" }] }], handover: HANDED_OVER },
+      { ...token, clicks: [{ ...OPENED_TOKEN_PAGE, picks: [{ field: "Expiration", value: "366 days" }] }], handover: HANDED_OVER },
+      { ...token, clicks: [{ ...OPENED_TOKEN_PAGE, at: "https://github.com/settings/personal-access-tokens/new" }], handover: HANDED_OVER },
+      { ...token, clicks: [{ ...OPENED_TOKEN_PAGE, at: "https://github.com/settings/personal-access-tokens/new?name=BILLING_PAT&target_name=collod873&expires_in=366" }], handover: HANDED_OVER },
+      { ...token, handover: " ", clicks: TAKEN_STEP.clicks },
+    ];
+    const answered = researching({ steps });
+
+    const { status, stderr } = answered.run();
+
+    expect(status).toBe(1);
+    expect(answered.filed()).toEqual([]);
+    expect(answered.calls()).not.toContain("issue close 902");
+    for (const refusal of [
+      "it gives no numbered steps",
+      'step 1 links no page: "the token settings page" is no direct https link',
+      'step 1 leaves "Expiration" unanswered',
+      'step 1 leaves "Repository access" unanswered',
+      "step 1 links its page without pre-filling name, target_name, expires_in",
+      "step 1 links its page without pre-filling a permission",
+      "it makes a secret, but no last step says how to hand it over",
+    ]) expect(stderr).toContain(refusal);
+  });
+
   it("pings the owner to take waiting off a fix waiting on a step's note in a repo that carries no caller file, since nothing there hears the note close (#1591)", () => {
-    const step = { title: "Add the Stripe key to Lumaria's Railway variables", why: "The charge path reads STRIPE_KEY, and only the owner holds it.", needs: "STRIPE_KEY" };
+    const step = { title: "Add the Stripe key to Lumaria's Railway variables", why: "The charge path reads STRIPE_KEY, and only the owner holds it.", needs: "STRIPE_KEY", ...TAKEN_STEP };
     const answered = researching({ steps: [step], fixes: [{ ...fix, waits: step.title }], gh: "[[ $2 == create ]] && { [[ \"$*\" == *owner-step* ]] && n=1700 || n=1701; printf 'https://github.com/collod873/claude-workflow/issues/%s\\n' $n; exit 0; }; [[ $1 == api && \"$*\" == *contents* ]] && { printf 'HTTP 404: Not Found\\n' >&2; exit 1; }" });
 
     expect(answered.run().status).toBe(0);

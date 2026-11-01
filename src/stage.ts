@@ -244,6 +244,32 @@ export function opened<Carried, Own extends string>({ stage, issue, state, tried
   return { asked, carried: readied.carrying, spend };
 }
 
+const DIRECT_LINK = /^https:\/\/\S+$/;
+
+const CLICK = {
+  type: "object",
+  properties: {
+    action: { type: "string", pattern: NO_EM_DASH, description: "One action the owner takes, such as Click Generate token." },
+    at: {
+      type: "string",
+      pattern: DIRECT_LINK.source,
+      description: "The exact settings page as a direct link, pre-filled where GitHub allows, as a fine-grained token's https://github.com/settings/personal-access-tokens/new?name=NAME&target_name=OWNER&expires_in=DAYS&PERMISSION=read.",
+    },
+    picks: {
+      type: "array",
+      description: "Every field the page asks, each with the one value to set, such as Expiration and Repository access for a token.",
+      items: {
+        type: "object",
+        properties: { field: { type: "string", pattern: NO_EM_DASH }, value: { type: "string", minLength: 1, pattern: NO_EM_DASH } },
+        required: ["field", "value"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["action", "at", "picks"],
+  additionalProperties: false,
+};
+
 export const OWNER_STEPS = {
   type: "array",
   items: {
@@ -252,17 +278,74 @@ export const OWNER_STEPS = {
       title: { type: "string", pattern: NO_EM_DASH },
       why: { type: "string", pattern: NO_EM_DASH },
       needs: { type: "string", pattern: NO_EM_DASH },
+      clicks: { type: "array", minItems: 1, items: CLICK, description: "The owner's numbered steps, one action each; a step missing a link or a value is refused, not filed." },
+      handover: {
+        type: "string",
+        pattern: NO_EM_DASH,
+        description: "The last step: how a secret this makes reaches its home without being pasted into a chat, such as running gh secret set NAME --repo OWNER/REPO and pasting at its prompt. Empty when it makes no secret.",
+      },
     },
-    required: ["title", "why", "needs"],
+    required: ["title", "why", "needs", "clicks", "handover"],
     additionalProperties: false,
   },
 };
+
+interface Click {
+  action: string;
+  at: string;
+  picks: { field: string; value: string }[];
+}
 
 export interface OwnerStep {
   title: string;
   why: string;
   needs: string;
+  clicks: Click[];
+  handover: string;
 }
+
+const PAGES_ASKING = [{ page: "https://github.com/settings/personal-access-tokens/new", asks: ["Expiration", "Repository access"], prefills: ["name", "target_name", "expires_in"], unpermitted: ["name", "description", "target_name", "expires_in"] }];
+const UNANSWERED = /^\s*(|any|whatever|your (call|choice)|choose|pick one|tbd|n\/a|\?+|depends)\s*$/i;
+const SECRET = /\b(tokens?|secrets?|passwords?|keys?|pat)\b|_(KEY|TOKEN|SECRET|PAT)\b/i;
+
+const linked = (at: string) => DIRECT_LINK.test(at) && URL.canParse(at);
+const askingAt = (url: URL) => PAGES_ASKING.find(({ page }) => `${url.origin}${url.pathname}` === page);
+
+function clickRefusals({ at, picks }: Click, index: number): string[] {
+  const number = index + 1;
+  if (!linked(at)) return [`step ${number} links no page: "${at}" is no direct https link`];
+  const url = new URL(at);
+  const asking = askingAt(url);
+  const permitted = asking === undefined || [...url.searchParams.keys()].some((param) => !asking.unpermitted.includes(param));
+  const unfilled = [...(asking?.prefills ?? []).filter((param) => !url.searchParams.has(param)), ...(permitted ? [] : ["a permission"])];
+  return [
+    ...picks.filter(({ value }) => UNANSWERED.test(value)).map(({ field }) => `step ${number} leaves "${field}" unanswered`),
+    ...(unfilled.length > 0 ? [`step ${number} links its page without pre-filling ${unfilled.join(", ")}`] : []),
+  ];
+}
+
+function unaskedRefusals(clicks: Click[]): string[] {
+  const fields = clicks.flatMap(({ picks }) => picks.map(({ field }) => field.toLowerCase()));
+  const firstOnPage = new Map<(typeof PAGES_ASKING)[number], number>();
+  clicks.forEach(({ at }, index) => {
+    const asking = linked(at) ? askingAt(new URL(at)) : undefined;
+    if (asking !== undefined && !firstOnPage.has(asking)) firstOnPage.set(asking, index);
+  });
+  return [...firstOnPage].flatMap(([{ asks }, index]) => asks.filter((ask) => !fields.some((field) => field.includes(ask.toLowerCase()))).map((ask) => `step ${index + 1} leaves "${ask}" unanswered, which its page asks`));
+}
+
+export function ownerStepRefusals(step: OwnerStep): string[] {
+  if (step.clicks.length === 0) return ["it gives no numbered steps, so the owner must work out where to click"];
+  const said = [step.title, step.why, step.needs, ...step.clicks.map(({ action }) => action)].join("\n");
+  const unhanded = SECRET.test(said) && step.handover.trim() === "" ? ["it makes a secret, but no last step says how to hand it over without pasting it into a chat"] : [];
+  return [...new Set([...step.clicks.flatMap(clickRefusals), ...unaskedRefusals(step.clicks)]), ...unhanded];
+}
+
+const numbered = ({ clicks, handover }: OwnerStep): string =>
+  [
+    ...clicks.flatMap(({ action, at, picks }, index) => [`${index + 1}. ${action}: ${at}`, ...picks.map(({ field, value }) => `   - ${field}: **${value}**`)]),
+    ...(handover.trim() === "" ? [] : [`${clicks.length + 1}. ${handover.trim()}`]),
+  ].join("\n");
 
 export const MOST_FIXES = 3;
 
@@ -300,8 +383,11 @@ export const FILED = /\/issues\/(\d+)\s*$/;
 const blocks = (step: OwnerStep) => step.needs.trim() !== "";
 
 const ownerStepFiled = (left: string) => (step: OwnerStep): Filed => {
+  const named = `${step.title}: ${step.why}`;
+  const refusals = ownerStepRefusals(step);
+  if (refusals.length > 0) return { named, refusals, said: "" };
   const needs = blocks(step) ? `Needs: ${step.needs.trim()}\n\n` : "";
-  return { named: `${step.title}: ${step.why}`, ...post({ kind: blocks(step) ? "owner" : "note", title: step.title, text: `## Why\n\n${step.why}\n\n${needs}${left}\n` }, gh) };
+  return { named, ...post({ kind: blocks(step) ? "owner" : "note", title: step.title, text: `## Why\n\n${step.why}\n\n## Steps\n\n${numbered(step)}\n\n${needs}${left}\n` }, gh) };
 };
 
 function pingedUnheard(filed: Filed, note: string): Filed {

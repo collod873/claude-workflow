@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { BUILDER_SESSION, CHECK_PASSES, CHECK_RED, FULL_CHECK_RED_ONCE, fixing, SPENT_BY_THE_THIRD_ROUND } from "./builder.part.ts";
 import { checkedBy } from "./builder.ts";
-import { git, scratch, wellFormedSpec } from "./scenarios.ts";
+import { git, scratch, TAKEN_STEP, wellFormedSpec } from "./scenarios.ts";
 import { why } from "./ticket-shape.ts";
 import { HELD } from "./spelled.ts";
 
@@ -542,7 +542,7 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
 
 describe("a fresh reviewer reads each green build, fixes or approves it, and bin/land lands it in the same run (ADR-0012)", () => {
   const LAND_REFUSES_ONCE = "[ -f ../land-refused ] || { touch ../land-refused; printf 'land: the commit subject carries an em dash\\n' >&2; exit 1; }\n";
-  const STEP = { title: "Set the Stripe key in the dashboard", why: "Payments run only once the live key is set.", needs: "STRIPE_KEY" };
+  const STEP = { title: "Set the Stripe key in the dashboard", why: "Payments run only once the live key is set.", needs: "STRIPE_KEY", ...TAKEN_STEP };
 
   it("hires a second session on Opus that resumes nothing, handed the ticket, its commits and its diff from main", () => {
     const { run, handed, hired, body } = fixing({ claude: FIXES });
@@ -725,6 +725,21 @@ describe("a fresh reviewer reads each green build, fixes or approves it, and bin
     expect(filed()[0]).toContain(STEP.why);
     expect(filed()[0]).toContain("Left to the owner by the run that built #811, which closed.");
     expect(calls().find((args) => args[1] === "create")).toEqual(expect.arrayContaining(["owner-step", STEP.title]));
+  });
+
+  it("hands an owner step that would be refused back to the reviewer before anything lands, and files it once answered whole, so a step missing its handover is never dropped into a comment on a closed ticket (#1619)", () => {
+    const answeredWhole = [{ type: "system", session_id: BUILDER_SESSION }, { type: "result", subtype: "success", is_error: false, session_id: BUILDER_SESSION, structured_output: { outcome: "approve", reason: "it builds the Why", steps: [STEP] } }].map((line) => `'${JSON.stringify(line)}'`).join(" ");
+    const { run, handed, landed, filed } = fixing({
+      claude: FIXES,
+      review: { outcome: "approve", reason: "it builds the Why", steps: [{ ...STEP, handover: "" }] },
+      reviewer: `if [ -f ../step-refused ]; then printf '%s\\n' ${answeredWhole} >../review.jsonl; else touch ../step-refused; fi\n`,
+    });
+
+    expect(run().status).toBe(0);
+    expect(handed()[2]).toContain(`"${STEP.title}": it makes a secret, but no last step says how to hand it over without pasting it into a chat`);
+    expect(landed()).toHaveLength(1);
+    expect(filed()).toHaveLength(1);
+    expect(filed()[0]).toContain(`3. ${TAKEN_STEP.handover}`);
   });
 
   it("lands nothing, and ends green keeping the branch, when the ticket is held by the time its review ends", () => {

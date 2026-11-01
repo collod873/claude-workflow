@@ -420,6 +420,17 @@ export const wellFormedBug = [
   "",
 ].join("\n");
 
+export const TOKEN_PAGE = "https://github.com/settings/personal-access-tokens/new?name=BILLING_PAT&target_name=collod873&expires_in=366&plan=read";
+export const HANDED_OVER = "In a terminal, run `gh secret set BILLING_PAT --repo collod873/claude-workflow` and paste the token at its prompt, never into a chat";
+export const OPENED_TOKEN_PAGE = { action: "Open the pre-filled token page", at: TOKEN_PAGE, picks: [{ field: "Expiration", value: "366 days" }, { field: "Repository access", value: "Public repositories" }, { field: "Plan", value: "Read-only" }] };
+export const TAKEN_STEP = {
+  clicks: [
+    OPENED_TOKEN_PAGE,
+    { action: "Click Generate token and copy it", at: TOKEN_PAGE, picks: [] },
+  ],
+  handover: HANDED_OVER,
+};
+
 export const wellFormedNote = ["## Why", "", "Three passes over the standards left four proposals nobody can build until the owner weighs them.", ""].join("\n");
 
 export const wellFormedSpec = [
