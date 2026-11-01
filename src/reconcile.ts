@@ -1,13 +1,7 @@
 import { admission } from "./admit.ts";
-import { blockersOf } from "./issue-links.ts";
+import { type Blocker, blockersOf } from "./issue-links.ts";
 import { ghRead, Stopped } from "./post.ts";
 import { BUILDING, HELD, OWNER, STUCK, TICKET, WAITING } from "./spelled.ts";
-
-export interface Blocker {
-  repo: string;
-  number: number;
-  open: boolean;
-}
 
 export interface IssueState {
   repo: string;

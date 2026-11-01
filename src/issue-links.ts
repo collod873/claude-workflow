@@ -1,5 +1,10 @@
 import { fromOf, gh, type Gh, ghRead, MISSING, post, type Posting, Stopped, unread } from "./post.ts";
-import type { Blocker } from "./reconcile.ts";
+
+export interface Blocker {
+  repo: string;
+  number: number;
+  open: boolean;
+}
 
 interface Linked {
   number: number;
