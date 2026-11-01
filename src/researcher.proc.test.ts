@@ -1,3 +1,4 @@
+import { fromOf } from "./post.ts";
 import { spawnSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -159,7 +160,7 @@ describe("bin/research files what its findings call for, so a closed note leaves
     const [ticket, note] = answered.filed();
     expect(ticket?.title).toBe(fix.title);
     expect(ticket?.labels).toEqual(["ticket"]);
-    expect(ticket?.body).toContain("Follow-up of #902: its research found this.");
+    expect(fromOf(ticket?.body ?? "")).toMatchObject({ number: "902", kind: "researched" });
     expect(ticket?.body).toContain(`> ${fix.fault}`);
     expect(ticket?.body).toContain("## Done when\n\n- A landing in Lumaria merges at once.");
     expect(note?.title).toBe("Your call after #902: What does the closer judge");
@@ -167,8 +168,29 @@ describe("bin/research files what its findings call for, so a closed note leaves
     expect(note?.body).toContain(`@collod873 #902's research leaves these to you:\n\n- ${ask}`);
   });
 
-  it("files each owner step as its own note, and a fix that needs one files waiting on that note, so the fix builds once the owner has taken it (#1565)", () => {
-    const step = { title: "Add the Stripe key to Lumaria's Railway variables", why: "The charge path reads STRIPE_KEY, and only the owner holds it." };
+  const FILED_UNDER = "[[ $2 == create ]] && { printf 'https://github.com/collod873/claude-workflow/issues/1700\\n'; exit 0; }; [[ $* == *'--jq .id'* ]] && { printf '4242\\n'; exit 0; }";
+  const SUB_ISSUE = ["api", "--method", "POST", "repos/collod873/claude-workflow/issues/902/sub_issues", "-F", "sub_issue_id=4242"];
+
+  it("files each fix as a sub-issue of the note it was researched from, and keeps its from line", () => {
+    const answered = researching({ fixes: [fix], gh: FILED_UNDER });
+
+    expect(answered.run().status).toBe(0);
+    expect(answered.argv()).toContainEqual(SUB_ISSUE);
+    expect(fromOf(answered.filed()[0]?.body ?? "")).toMatchObject({ number: "902", kind: "researched" });
+  });
+
+  it("still files a fix with its from line, and closes the note, when its parent link will not write", () => {
+    const answered = researching({ fixes: [fix], gh: `[[ $* == *sub_issues* ]] && exit 1; ${FILED_UNDER}` });
+
+    const result = answered.run();
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stderr).toContain("could not be filed under collod873/claude-workflow#902");
+    expect(fromOf(answered.filed()[0]?.body ?? "")).toMatchObject({ number: "902", kind: "researched" });
+    expect(answered.calls()).toContain("issue close 902");
+  });
+
+  it("files each owner step as its own note, and a fix that needs one files waiting on that note, blocked by that note, so reconcile builds the fix once the owner has taken it (#1565, #1606)", () => {
+    const step = { title: "Add the Stripe key to Lumaria's Railway variables", why: "The charge path reads STRIPE_KEY, and only the owner holds it.", needs: "STRIPE_KEY" };
     const answered = researching({ steps: [step], fixes: [{ ...fix, waits: step.title }, fix], gh: "[[ $2 == create ]] && { printf 'https://github.com/collod873/claude-workflow/issues/1700\\n'; exit 0; }" });
 
     expect(answered.run().status).toBe(0);
@@ -177,14 +199,36 @@ describe("bin/research files what its findings call for, so a closed note leaves
     expect(note?.labels).toContain("owner-step");
     expect(note?.body).toContain(step.why);
     expect(waiting?.labels).toEqual(["ticket", "waiting"]);
-    expect(waiting?.body).toContain("## Waits on\n\n- #1700");
+    expect(answered.argv().filter((args) => args.includes("--method") && args.some((arg) => arg.endsWith("/issues/1700/dependencies/blocked_by")))).toHaveLength(1);
     expect(atOnce?.labels).toEqual(["ticket"]);
-    expect(atOnce?.body).not.toContain("## Waits on");
+  });
+
+  it("files an owner step naming nothing that needs it as a plain note, and a fix naming it builds at once, as Mezzanine#2034 waited on a Resend key nothing used", () => {
+    const step = { title: "Add the Resend key to Railway", why: "Mail might go through Resend someday.", needs: " " };
+    const answered = researching({ steps: [step], fixes: [{ ...fix, waits: step.title }], gh: "[[ $2 == create ]] && { printf 'https://github.com/collod873/claude-workflow/issues/1700\\n'; exit 0; }" });
+
+    expect(answered.run().status).toBe(0);
+    const [note, atOnce] = answered.filed();
+    expect(note?.labels).toEqual(["note"]);
+    expect(note?.body).not.toContain("Needs:");
+    expect(atOnce?.labels).toEqual(["ticket"]);
+    expect(answered.argv().filter((args) => args.some((arg) => arg.endsWith("dependencies/blocked_by")))).toEqual([]);
+    expect(answered.comments().filter((said) => said?.includes("labelled `waiting`"))).toEqual([]);
+  });
+
+  it("files an owner step naming what needs it as owner-step with a Needs line", () => {
+    const step = { title: "Add the Stripe key to Lumaria's Railway variables", why: "The charge path reads it, and only the owner holds it.", needs: "STRIPE_KEY" };
+    const answered = researching({ steps: [step] });
+
+    expect(answered.run().status).toBe(0);
+    const [note] = answered.filed();
+    expect(note?.labels).toEqual(["note", "owner-step"]);
+    expect(note?.body).toContain("Needs: STRIPE_KEY");
   });
 
   it("pings the owner to take waiting off a fix waiting on a step's note in a repo that carries no caller file, since nothing there hears the note close (#1591)", () => {
-    const step = { title: "Add the Stripe key to Lumaria's Railway variables", why: "The charge path reads STRIPE_KEY, and only the owner holds it." };
-    const answered = researching({ steps: [step], fixes: [{ ...fix, waits: step.title }], gh: "[[ $2 == create ]] && { [[ \"$*\" == *owner-step* ]] && n=1700 || n=1701; printf 'https://github.com/collod873/claude-workflow/issues/%s\\n' $n; exit 0; }; [[ $1 == api ]] && { printf 'HTTP 404: Not Found\\n' >&2; exit 1; }" });
+    const step = { title: "Add the Stripe key to Lumaria's Railway variables", why: "The charge path reads STRIPE_KEY, and only the owner holds it.", needs: "STRIPE_KEY" };
+    const answered = researching({ steps: [step], fixes: [{ ...fix, waits: step.title }], gh: "[[ $2 == create ]] && { [[ \"$*\" == *owner-step* ]] && n=1700 || n=1701; printf 'https://github.com/collod873/claude-workflow/issues/%s\\n' $n; exit 0; }; [[ $1 == api && \"$*\" == *contents* ]] && { printf 'HTTP 404: Not Found\\n' >&2; exit 1; }" });
 
     expect(answered.run().status).toBe(0);
     expect(answered.comments().at(-1)).toBe("#1701 waits on #1700, labelled `waiting`. @collod873 collod873/claude-workflow carries no caller file, so nothing hears it close: take `waiting` off #1701 once every one of them closes: #1700");

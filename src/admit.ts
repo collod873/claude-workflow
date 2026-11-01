@@ -1,7 +1,7 @@
-import { type Admission, commentOnTicket, commentsRead, DONE_CHECK_FROM, FAULT_FROM, gh, type Gh, ghAs, heldOf, type Opened, opened, OWNER, readOrStop, RESEARCH, RESEARCH_FROM, REVIEW_FROM, STEP_WAITS, unread } from "./post.ts";
+import { type Admission, commentOnTicket, commentsRead, type From, fromOf, gh, type Gh, ghAs, heldOf, type Opened, opened, OWNER, readOrStop, RESEARCH, unread } from "./post.ts";
 import { dedashed } from "./em-dash.ts";
+import { parentOf } from "./issue-links.ts";
 import { exitFor } from "./stops.ts";
-import { specProblem, why } from "./ticket-shape.ts";
 
 export const doesNotBuild = (ticket: string, refused: string) =>
   `#${ticket} does not build, since its checks would run as shell with the App's token and ${refused}. A ticket the App opens builds only as research's follow-up from a research note the owner opened, as what a reviewer let through on a ticket that builds, as what a done check found on a spec that builds, or as a first step or machine fault its builder filed from a ticket that builds in its own repo.`;
@@ -10,49 +10,63 @@ const HERE = "{owner}/{repo}";
 const MOST_READS = 8;
 
 const named = (repo: string, ticket: string) => (repo === HERE ? `#${ticket}` : `${repo}#${ticket}`);
-const filedAs = (kind: string | undefined, origin: string) => (kind === STEP_WAITS ? `the first step of ${origin}` : `the machine's fault from ${origin}`);
-const handedAs = (kind: string | undefined) => (kind === STEP_WAITS ? "its first step" : "the machine's fault its builder filed");
+const handedAs = (kind: string | undefined) => (kind === "first-step" ? "its first step" : "the machine's fault its builder filed");
+
+const FILED_AS: Record<From["kind"] | "parent", (at: string) => string> = {
+  researched: (at) => `research's follow-up from ${at}`,
+  review: (at) => `what the reviewer of ${at} let through`,
+  "done-check": (at) => `what the done check of ${at} found`,
+  fault: (at) => `the machine's fault from ${at}`,
+  "first-step": (at) => `the first step of ${at}`,
+  parent: (at) => `a sub-issue of ${at}`,
+};
 
 const ownersOwn = ({ user }: Opened): boolean => user?.login === OWNER;
 
-function researchFollowUp({ body }: Opened, repo: string, line: string): boolean {
-  const [, note] = RESEARCH_FROM.exec(why(body ?? "")) ?? [];
-  if (note === undefined) return false;
-  const asked = opened(note, line, gh, repo);
-  return asked !== "missing" && asked.user?.login === OWNER && heldOf(asked.labels).has(RESEARCH);
+function researchNoted(repo: string, note: string, so: string): Admission {
+  const at = named(repo, note);
+  const asked = opened(note, `the research note of ${at} could not be read, ${so}`, gh, repo);
+  return asked !== "missing" && ownersOwn(asked) && heldOf(asked.labels).has(RESEARCH) ? undefined : `the App opened it ${NO_FOLLOW_UP}`;
 }
 
 const within = (filed: string, refused: Admission): Admission => (refused === undefined ? undefined : `the App filed it as ${filed}, where ${refused}`);
 
-const CHAINED: [RegExp, (at: string) => string][] = [
-  [REVIEW_FROM, (at) => `what the reviewer of ${at} let through`],
-  [DONE_CHECK_FROM, (at) => `what the done check of ${at} found`],
-];
-
 interface Admitted {
   refused: Admission;
-  said: string;
+  from: From | undefined;
+}
+
+interface Origin {
+  repo: string;
+  number: string;
+  kind: From["kind"] | "parent";
+}
+
+function originOf(repo: string, ticket: string, from: From | undefined): Origin | undefined {
+  const parent = parentOf(repo, Number(ticket));
+  if (parent !== undefined) return { repo: parent.repo, number: String(parent.number), kind: from?.kind ?? "parent" };
+  if (from === undefined) return undefined;
+  if (from.repo === undefined && (from.kind === "review" || from.kind === "done-check") && Number(from.number) >= Number(ticket)) return undefined;
+  return { repo: from.repo ?? repo, number: from.number, kind: from.kind };
 }
 
 function admitted(repo: string, ticket: string, so: string, reads: number, missing: (line: string) => Admission): Admitted {
   const at = named(repo, ticket);
-  if (reads === 0) return { refused: `its chain reads ${MOST_READS} tickets before ${at} without reaching one the owner opened`, said: "" };
+  if (reads === 0) return { refused: `its chain reads ${MOST_READS} tickets before ${at} without reaching one the owner opened`, from: undefined };
   const line = `${at} could not be read, ${so}`;
   const asked = opened(ticket, line, gh, repo);
-  if (asked === "missing") return { refused: missing(line), said: "" };
-  const said = why(asked.body ?? "") || specProblem(asked.body ?? "").trim();
-  if (ownersOwn(asked) || researchFollowUp(asked, repo, `the research note of ${at} could not be read, ${so}`)) return { refused: undefined, said };
-  for (const [from, filed] of CHAINED) {
-    const [, earlier] = from.exec(said) ?? [];
-    if (earlier !== undefined && Number(earlier) < Number(ticket)) return { refused: within(filed(named(repo, earlier)), admitted(repo, earlier, so, reads - 1, unread).refused), said };
-  }
-  const [, from, origin, kind] = FAULT_FROM.exec(said) ?? [];
-  if (from === undefined || origin === undefined) return { refused: `the App opened it ${NO_FOLLOW_UP}`, said };
-  const filedFrom = `${from}#${origin}`;
-  return { refused: within(filedAs(kind, filedFrom), admitted(from, origin, so, reads - 1, () => `${filedFrom} does not exist`).refused), said };
+  if (asked === "missing") return { refused: missing(line), from: undefined };
+  const from = fromOf(asked.body ?? "");
+  if (ownersOwn(asked)) return { refused: undefined, from };
+  const origin = originOf(repo, ticket, from);
+  if (origin === undefined) return { refused: `the App opened it ${NO_FOLLOW_UP}`, from };
+  const filedFrom = named(origin.repo, origin.number);
+  if (origin.kind === "researched") return { refused: within(FILED_AS.researched(filedFrom), researchNoted(origin.repo, origin.number, so)), from };
+  const notThere = origin.repo === repo ? unread : () => `${filedFrom} does not exist`;
+  return { refused: within(FILED_AS[origin.kind](filedFrom), admitted(origin.repo, origin.number, so, reads - 1, notThere).refused), from };
 }
 
-export const admission = (ticket: string, so: string): Admission => admitted(HERE, ticket, so, MOST_READS, unread).refused;
+export const admission = (ticket: string, so: string, repo = HERE): Admission => admitted(repo, ticket, so, MOST_READS, unread).refused;
 
 function toldOnce(ticket: string, text: string, inRepo: Gh, at: string): void {
   const said = commentsRead(ticket, `the comments on ${at} could not be read, so nothing was admitted`, inRepo);
@@ -61,19 +75,19 @@ function toldOnce(ticket: string, text: string, inRepo: Gh, at: string): void {
   if (unsaid !== undefined) console.error(`admit: the refusal was not posted on ${at}: ${unsaid}`);
 }
 
-function waitingTold(ticket: string, said: string, refused: string): void {
-  const [, repo, origin, kind] = FAULT_FROM.exec(said) ?? [];
-  if (repo === undefined || origin === undefined) return;
+function waitingTold(ticket: string, from: From | undefined, refused: string): void {
+  if (from?.repo === undefined || (from.kind !== "fault" && from.kind !== "first-step")) return;
+  const { repo, number: origin, kind } = from;
   const step = `${process.env.GH_REPO ?? ""}#${ticket}`;
   const text = `@${OWNER} #${origin} waits on ${step}, ${handedAs(kind)}, which does not build, since ${refused}. Build or close ${step} by hand, or #${origin} waits for good.`;
   toldOnce(origin, text, ghAs({ ...process.env, GH_REPO: repo }), `${repo}#${origin}`);
 }
 
 function admit(ticket: string): undefined {
-  const { refused, said } = admitted(HERE, ticket, "so nothing was admitted", MOST_READS, unread);
+  const { refused, from } = admitted(HERE, ticket, "so nothing was admitted", MOST_READS, unread);
   if (refused !== undefined) {
     toldOnce(ticket, doesNotBuild(ticket, refused), gh, `#${ticket}`);
-    waitingTold(ticket, said, refused);
+    waitingTold(ticket, from, refused);
     console.log("admitted=false");
     return undefined;
   }

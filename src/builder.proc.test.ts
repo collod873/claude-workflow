@@ -1,3 +1,4 @@
+import { fromOf } from "./post.ts";
 import { createVerify, generateKeyPairSync } from "node:crypto";
 import { readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -275,12 +276,16 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
     expect(landed()).toEqual([]);
   });
 
+  const CALLER = "collod873/Lumaria/.github/workflows/machine.yml@refs/heads/main";
+
   it("parks `waiting` on an open ticket it depends on, not `stuck`, and says so, where Mezzanine #1596 sat stuck six hours after #1592 merged (#1546)", () => {
-    const { run, marked, ticketComments, landed } = fixing({ answer: { outcome: "waits", on: [1592], reason: "it builds on the parser #1592 adds" } });
+    const { run, marked, ticketComments, landed, calls } = fixing({ calledFrom: CALLER, answer: { outcome: "waits", on: [1592], reason: "it builds on the parser #1592 adds" } });
 
     expect(run().status).toBe(0);
     expect(marked().at(-1)).toBe("811 waiting");
-    expect(ticketComments().at(-1)).toContain("found it depends on #1592, still open");
+    expect(calls()).toContainEqual(["api", "--method", "POST", "repos/collod873/Lumaria/issues/811/dependencies/blocked_by", "-F", "issue_id=4242"]);
+    expect(calls()).toContainEqual(["api", "repos/collod873/Lumaria/issues/1592", "--jq", ".id"]);
+    expect(ticketComments().at(-1)).toBe("The builder of #811 parked it, blocked by collod873/Lumaria#1592: it builds on the parser #1592 adds");
     expect(landed()).toEqual([]);
   });
 
@@ -405,22 +410,22 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
     expect(landed()).toEqual([]);
   });
 
-  const CALLER = "collod873/Lumaria/.github/workflows/machine.yml@refs/heads/main";
   const FAULT = { title: "Give the machine's check the database a tree's integration step needs", why: "The machine's check runs a tree's integration step with no database, so it is red whatever the code.", done: ["A tree's integration step runs against a database on the machine."] };
 
   it("files a machine fault found in a foreign tree as a ticket in the machine's repo, and parks its own ticket waiting on it, where Lumaria #828 landed a fix into Lumaria's main (#1143)", () => {
     const reason = "the machine's check has no database";
-    const { run, createdIn, filed, ticketComments, marked, landed, closes, handed } = fixing({ calledFrom: CALLER, answer: { outcome: "machine", reason, tickets: [FAULT] }, claude: FIXES });
+    const { run, createdIn, filed, ticketComments, marked, landed, closes, handed, calls } = fixing({ calledFrom: CALLER, answer: { outcome: "machine", reason, tickets: [FAULT] }, claude: FIXES });
 
     const result = run();
 
     expect(result.status, result.stderr).toBe(0);
     expect(createdIn()).toEqual(["collod873/claude-workflow"]);
     expect(filed()).toHaveLength(1);
-    expect(filed()[0]).toMatch(/^## Why\n\nFiled by the builder of collod873\/Lumaria#811, which waits on it/);
+    expect(fromOf(filed()[0] ?? "")).toEqual({ repo: "collod873/Lumaria", number: "811", kind: "fault" });
     expect(filed()[0]).toContain(`> ${FAULT.why}`);
     expect(filed()[0]).toContain(`## Done when\n\n- ${FAULT.done[0]}`);
-    expect(ticketComments().at(-1)).toMatch(new RegExp(`^The builder of #811 found the machine at fault and filed https://github.com/collod873/claude-workflow/issues/901\\. #811 waits on it.*${reason}`));
+    expect(calls()).toContainEqual(["api", "--method", "POST", "repos/collod873/Lumaria/issues/811/dependencies/blocked_by", "-F", "issue_id=4242"]);
+    expect(ticketComments().at(-1)).toBe(`The builder of #811 parked it, blocked by collod873/claude-workflow#901: ${reason}`);
     expect(marked()).toEqual(["811 building", "811 waiting"]);
     expect(landed()).toEqual([]);
     expect(closes()).toEqual([]);
@@ -431,14 +436,18 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
 
   it("hands a first step another repo owns to that repo as a ticket, and parks its own ticket waiting on it, where Lumaria#1382 and #1393 sat stuck until the owner filed design-kit#191 and #193", () => {
     const reason = "the kit's map needs coordinates, so the fix starts in design-kit";
-    const { run, createdIn, filed, ticketComments, marked, landed, handed } = fixing({ calledFrom: CALLER, answer: { outcome: "owned", repo: "collod873/design-kit", reason, tickets: [KIT_STEP] }, claude: FIXES });
+    const { run, createdIn, filed, ticketComments, marked, landed, handed, calls } = fixing({ calledFrom: CALLER, answer: { outcome: "owned", repo: "collod873/design-kit", reason, tickets: [KIT_STEP] }, claude: FIXES });
 
     const result = run();
 
     expect(result.status, result.stderr).toBe(0);
     expect(createdIn()).toEqual(["collod873/design-kit"]);
-    expect(filed()[0]).toMatch(/^## Why\n\nFiled by the builder of collod873\/Lumaria#811, which waits on it, as its first step\.\n\n> The kit's address map/);
-    expect(ticketComments().at(-1)).toMatch(new RegExp(`^The builder of #811 handed its first step to collod873/design-kit and filed https://github.com/collod873/design-kit/issues/901\\. #811 waits on it, labelled \`waiting\`, and the closer wakes it once every one of them closes: ${reason}`));
+    expect(fromOf(filed()[0] ?? "")).toEqual({ repo: "collod873/Lumaria", number: "811", kind: "first-step" });
+    expect(filed()[0]).toContain("> The kit's address map");
+    expect(calls()).toContainEqual(["api", "repos/collod873/design-kit/issues/901", "--jq", ".id"]);
+    expect(calls()).toContainEqual(["api", "--method", "POST", "repos/collod873/Lumaria/issues/811/dependencies/blocked_by", "-F", "issue_id=4242"]);
+    expect(calls()).toContainEqual(["api", "--method", "POST", "repos/collod873/Lumaria/issues/811/sub_issues", "-F", "sub_issue_id=4242"]);
+    expect(ticketComments().at(-1)).toBe(`The builder of #811 parked it, blocked by collod873/design-kit#901: ${reason}`);
     expect(marked()).toEqual(["811 building", "811 waiting"]);
     expect(landed()).toEqual([]);
     expect(handed()).toHaveLength(1);
@@ -451,14 +460,6 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
     expect(marked().slice(0, 3)).toEqual(["811 building", "811 waiting", "811 building"]);
     expect(ticketComments()).toContainEqual(expect.stringMatching(/^Every ticket the builder of #811 filed and waits on has closed: .*#811 builds now/));
     expect(handed().join("\n")).toContain("https://github.com/collod873/design-kit/issues/901 is closed already");
-  });
-
-  it("calls the owner on a first step handed to a repo with no caller file, since nothing there hears it close", () => {
-    const { run, ticketComments, marked } = fixing({ calledFrom: CALLER, answer: { outcome: "owned", repo: "collod873/design-kit", reason: "the fix starts in design-kit", tickets: [KIT_STEP] }, claude: FIXES, unheardIn: "collod873/design-kit" });
-
-    expect(run().status).toBe(0);
-    expect(ticketComments().at(-1)).toMatch(/^The builder of #811 handed its first step to collod873\/design-kit and filed https:\/\/github.com\/collod873\/design-kit\/issues\/901\. #811 waits on it, labelled `waiting`\. @collod873 collod873\/design-kit carries no caller file, so nothing hears it close: take `waiting` off #811 once every one of them closes:/);
-    expect(marked()).toEqual(["811 building", "811 waiting"]);
   });
 
   it("hands back a first step named for its own repo, or for no repo, filing nothing", () => {
@@ -541,7 +542,7 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
 
 describe("a fresh reviewer reads each green build, fixes or approves it, and bin/land lands it in the same run (ADR-0012)", () => {
   const LAND_REFUSES_ONCE = "[ -f ../land-refused ] || { touch ../land-refused; printf 'land: the commit subject carries an em dash\\n' >&2; exit 1; }\n";
-  const STEP = { title: "Set the Stripe key in the dashboard", why: "Payments run only once the live key is set." };
+  const STEP = { title: "Set the Stripe key in the dashboard", why: "Payments run only once the live key is set.", needs: "STRIPE_KEY" };
 
   it("hires a second session on Opus that resumes nothing, handed the ticket, its commits and its diff from main", () => {
     const { run, handed, hired, body } = fixing({ claude: FIXES });
@@ -748,11 +749,10 @@ describe("a fresh reviewer reads each green build, fixes or approves it, and bin
 });
 
 describe("the builder builds an App-opened ticket only as a follow-up a stage wrote, never for its spec alone (#1022, #1509)", () => {
-  const SPEC = { state: "open", user: { login: "collod873" }, labels: [{ name: "spec" }] };
   const APP = "collod873-machine[bot]";
 
-  it("stops a ticket the App opened under an open spec the owner opened, before its builder runs anything", () => {
-    const scenario = fixing({ claude: FIXES, opener: APP, parent: SPEC });
+  it("stops a ticket the App opened with no parent link or marker line, before its builder runs anything", () => {
+    const scenario = fixing({ claude: FIXES, opener: APP });
 
     const result = scenario.run("811");
 

@@ -6,7 +6,7 @@ import { capped, DIFF_CAP, diffOverCap, LIST_CAP, NO_EM_DASH, onDisk, TAIL_CAP, 
 import { checkedBy, type Red, starvedFault } from "./builder.ts";
 import { PUBLISHED_CHECK } from "./checks.ts";
 import { doneCheck } from "./done-checker.ts";
-import { askedIssue, commentOnTicket, FOLLOW_UP_OF, gh, ghRead, git, gitRead, heldOn, labelsHeld, mark, OWNER, readOrStop, REVIEW_LET_THROUGH, STUCK, unread } from "./post.ts";
+import { askedIssue, commentOnTicket, fromHere, fromLine, gh, ghRead, git, gitRead, heldOn, labelsHeld, mark, OWNER, readOrStop, STUCK, unread } from "./post.ts";
 import { afterRefused, approvedOn, firstTimeNamed, gathered, landing, type Routed, ROUTED, ROUTED_REQUIRED, routedFiled } from "./reviewer.ts";
 import { fastForwarded, landedOn, MOST_BUILDERS, type Progress, progressOn, removed, specBranch, worktree } from "./scheduler.ts";
 import { fastForwards, rebaseStopped, sliceTrailed } from "./slice-builder.ts";
@@ -435,7 +435,7 @@ function landed(run: Run, { last }: Reviewed): Promise<string | undefined> {
 function leftFiled(spec: string, approved: Approved[]): void {
   const unfiled = firstTimeNamed();
   const once = approved.flatMap(({ steps }) => steps).filter(({ title }) => unfiled(title));
-  const filed = routedFiled(`${FOLLOW_UP_OF}${spec}${REVIEW_LET_THROUGH}`, `Left to the owner by the run that landed spec #${spec}.`, once, approved);
+  const filed = routedFiled(fromLine(fromHere(spec), "review"), `Left to the owner by the run that landed spec #${spec}.`, once, approved);
   const refused = filed.filter(({ refusals }) => refusals.length > 0);
   if (refused.length > 0) commentOnTicket(spec, [`What the reviewers of #${spec} left that could not be filed:`, "", ...refused.map(({ named, refusals }) => `- ${named} (${quoted(refusals[0] ?? "")})`), ""].join("\n"), gh);
 }

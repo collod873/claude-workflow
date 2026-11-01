@@ -7,7 +7,8 @@ import { admission, doesNotBuild } from "./admit.ts";
 import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
 import { capped, LIST_CAP, NO_EM_DASH, onDisk, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
 import { PUBLISHED_CHECK } from "./checks.ts";
-import { commentOnTicket, commentsRead, faultOf, firstStepOf, FOREIGN, followUpBody, gh, ghRead, git, gitRead, MACHINE_REPO, mark, NOTHING_MARKED, OWNER, post, postRefusals, readOrStop, rewriteTicket, FILED_IN, heardIn, LABELLED_WAITING, nothingHears, ticketBranch, unread, WAITING } from "./post.ts";
+import { addBlocker, postedUnderOrigin } from "./issue-links.ts";
+import { commentOnTicket, commentsRead, FOREIGN, fromLine, followUpBody, gh, ghRead, git, gitRead, MACHINE_REPO, mark, NOTHING_MARKED, OWNER, postRefusals, readOrStop, rewriteTicket, FILED_IN, LABELLED_WAITING, nothingHears, ticketBranch, unread, WAITING } from "./post.ts";
 import { reviewedAndLanded } from "./reviewer.ts";
 import { calledOwner, committed, commitlinted, CONTRACT, FILED, opened, setupRefusal, type Spent, treePathed } from "./stage.ts";
 import { dedashed } from "./em-dash.ts";
@@ -62,15 +63,15 @@ interface Answer {
 
 const stoppedAt = stopsOf({ unadmitted: "Build refused: the ticket's checks would run as shell with the App's token" });
 
-const rewroteAsSpec = (ticket: string) => `The builder of #${ticket} rewrote it as a spec, which the slicer cuts:`;
-const wokenByTheCloser = (ticket: string) => `#${ticket} waits on it, ${LABELLED_WAITING}, and the closer wakes it once every one of them closes:`;
-export const dependsOn = (ticket: string) => `The builder of #${ticket} found it depends on`;
-export const waitsOnOpen = (ticket: string, open: string[]) => `${dependsOn(ticket)} ${open.join(", ")}, still open. ${wokenByTheCloser(ticket)}`;
-export const waitsOnFault = (ticket: string, filed: string[]) => `The builder of #${ticket} found the machine at fault and filed ${filed.join(", ")}. ${wokenByTheCloser(ticket)}`;
-const handedStep = (ticket: string, repo: string, filed: string[]) => `The builder of #${ticket} handed its first step to ${repo} and filed ${filed.join(", ")}.`;
-export const waitsOnStep = (ticket: string, repo: string, filed: string[]) => `${handedStep(ticket, repo, filed)} ${wokenByTheCloser(ticket)}`;
+export const builderOf = (ticket: string) => `The builder of #${ticket}`;
+const rewroteAsSpec = (ticket: string) => `${builderOf(ticket)} rewrote it as a spec, which the slicer cuts:`;
+const wokenByReconcile = (ticket: string) => `#${ticket} waits on it, ${LABELLED_WAITING}, and reconcile wakes it once every one of them closes:`;
+export const dependsOn = (ticket: string) => `${builderOf(ticket)} found it depends on`;
+const parkedBehind = (ticket: string, blockers: string[]) => `${builderOf(ticket)} parked it, blocked by ${blockers.join(", ")}:`;
+const handedStep = (ticket: string, repo: string, filed: string[]) => `${builderOf(ticket)} handed its first step to ${repo} and filed ${filed.join(", ")}.`;
+export const waitsOnStep = (ticket: string, repo: string, filed: string[]) => `${handedStep(ticket, repo, filed)} ${wokenByReconcile(ticket)}`;
 export const waitsUnheard = (ticket: string, repo: string, filed: string[]) => `${handedStep(ticket, repo, filed)} #${ticket} waits on it, ${LABELLED_WAITING}. ${nothingHears(ticket, repo)}`;
-export const filedClosed = (ticket: string) => `Every ticket the builder of #${ticket} filed and waits on has closed:`;
+const filedClosed = (ticket: string) => `Every ticket the builder of #${ticket} filed and waits on has closed:`;
 
 interface Handed {
   ticket: string;
@@ -243,8 +244,10 @@ function waitedOn(ticket: string, answer: Answer): Round {
   if (on.length === 0) return { red: "Your `waits` answer was refused: it names the open tickets this one depends on as `on`." };
   const closed = on.filter((number) => ghRead(["issue", "view", number, "--json", "state", "--jq", ".state"], `the state of #${number} could not be read, ${NOTHING_MARKED}`) !== "OPEN");
   if (closed.length > 0) return { red: `Your \`waits\` answer was refused: ${closed.map((number) => `#${number}`).join(", ")} is closed already, so build on what it left.` };
-  const named = on.map((number) => `#${number}`);
-  commentOnTicket(ticket, `${waitsOnOpen(ticket, named)} ${answer.reason}`, gh);
+  const here = process.env.GH_REPO ?? "";
+  const named = on.map((number) => `${here}#${number}`);
+  for (const number of on) addBlocker(here, Number(ticket), here, Number(number));
+  commentOnTicket(ticket, `${parkedBehind(ticket, named)} ${answer.reason}`, gh);
   mark(ticket, WAITING);
   console.log(`fix: #${ticket} waits on ${named.join(", ")}`);
   return { ended: 0 };
@@ -255,7 +258,7 @@ function rewritten(ticket: string, body: string, answer: Answer): Round {
   const written = rewriteTicket(ticket, body, answer.body, gh);
   const [refusal] = written.refusals;
   if (refusal !== undefined) return { red: `Your rewrite of the ticket was refused: ${quoted(refusal)}` };
-  commentOnTicket(ticket, `The builder of #${ticket} rewrote what done looks like against its Why, and builds it as rewritten in this run: ${answer.reason}\n\n## Done when\n\n${doneWhen(answer.body)}`, gh);
+  commentOnTicket(ticket, `${builderOf(ticket)} rewrote what done looks like against its Why, and builds it as rewritten in this run: ${answer.reason}\n\n## Done when\n\n${doneWhen(answer.body)}`, gh);
   console.log(`fix: #${ticket} rewritten; it builds as rewritten`);
   return { body: answer.body };
 }
@@ -263,9 +266,10 @@ function rewritten(ticket: string, body: string, answer: Answer): Round {
 interface Handing {
   repo: string;
   filedFrom: (origin: string) => string;
-  parked: (filed: string[]) => string;
   unfiled: string;
 }
+
+const FILED_NUMBER = /\/issues\/(\d+)$/;
 
 
 
@@ -280,16 +284,21 @@ export function filedInRepo(repo: string, origin: string, outcome: string, unfil
   const refused = postings.length === 0 ? [unfiled] : postings.flatMap((posting) => postRefusals({ kind: "ticket", ...posting }).map((refusal) => `${posting.title}: ${refusal}`));
   if (refused.length > 0) return { red: [`Your \`${outcome}\` answer was refused, and nothing was filed:`, ...refused.map((refusal) => `- ${refusal}`)].join("\n") };
   const inRepo = (args: string[]) => gh([...args, "--repo", repo]);
-  const said = postings.map((posting) => post({ kind: "ticket", ...posting }, inRepo).said.trim());
+  const said = postings.map((posting) => postedUnderOrigin({ kind: "ticket", ...posting }, inRepo).said.trim());
   return { filed: said.filter((one) => FILED.test(one)), all: said.every((one) => FILED.test(one)) };
 }
 
-function filedToWaitOn(ticket: string, answer: Answer, { repo, filedFrom, parked, unfiled }: Handing): Round {
+function filedToWaitOn(ticket: string, answer: Answer, { repo, filedFrom, unfiled }: Handing): Round {
   const handed = filedInRepo(repo, filedFrom(`${process.env.GH_REPO ?? ""}#${ticket}`), answer.outcome, unfiled, answer.tickets);
   if ("red" in handed) return { red: handed.red };
   const { filed, all } = handed;
   if (!all) return { ended: calledOwner(ticket, "builder", `it filed ${filed.length} of ${answer.tickets?.length ?? 0} tickets in ${repo} to wait on`) };
-  commentOnTicket(ticket, `${parked(filed)} ${answer.reason}`, gh);
+  const here = process.env.GH_REPO ?? "";
+  const numbers = filed.map((url) => Number(FILED_NUMBER.exec(url)?.[1]));
+  for (const number of numbers) {
+    addBlocker(here, Number(ticket), repo, number);
+  }
+  commentOnTicket(ticket, `${parkedBehind(ticket, numbers.map((number) => `${repo}#${number}`))} ${answer.reason}`, gh);
   mark(ticket, WAITING);
   const open = filed.filter((url) => ghRead(["issue", "view", url, "--json", "state", "--jq", ".state"], `the state of ${url} could not be read, so #${ticket} stays waiting`) === "OPEN");
   if (open.length === 0) return closedBeforeParked(ticket, filed);
@@ -305,14 +314,13 @@ function closedBeforeParked(ticket: string, filed: string[]): Round {
 }
 
 const filedForMachine = (ticket: string, answer: Answer): Round =>
-  filedToWaitOn(ticket, answer, { repo: MACHINE_REPO, filedFrom: faultOf, parked: (filed) => waitsOnFault(ticket, filed), unfiled: "a `machine` answer from a tree that is not the machine's files the machine's fault as one ticket or more in `tickets`" });
+  filedToWaitOn(ticket, answer, { repo: MACHINE_REPO, filedFrom: (origin) => fromLine(origin, "fault"), unfiled: "a `machine` answer from a tree that is not the machine's files the machine's fault as one ticket or more in `tickets`" });
 
 function handedToItsRepo(ticket: string, answer: Answer): Round {
   const { repo } = answer;
   const refused = ownedRefusal(repo, process.env.GH_REPO, "ticket");
   if (refused !== undefined || repo === undefined) return { red: refused ?? "" };
-  const parked = heardIn(repo) ? waitsOnStep : waitsUnheard;
-  return filedToWaitOn(ticket, answer, { repo, filedFrom: firstStepOf, parked: (filed) => parked(ticket, repo, filed), unfiled: "an `owned` answer files its first step as one ticket or more in `tickets`" });
+  return filedToWaitOn(ticket, answer, { repo, filedFrom: (origin) => fromLine(origin, "first-step"), unfiled: "an `owned` answer files its first step as one ticket or more in `tickets`" });
 }
 
 function landedOnMain(ticket: string, reason: string, before: string): Round {
@@ -325,7 +333,7 @@ function landedOnMain(ticket: string, reason: string, before: string): Round {
 
 function outcomeOf(ticket: string, body: string, answer: Answer | undefined, mainBefore: string): Round {
   if (answer === undefined) return { red: "You gave no outcome. Answer one." };
-  if (answer.outcome === "done") return { ended: closedAs(ticket, "completed", `The builder of #${ticket} found its work already on main and closed it: ${answer.reason}`) };
+  if (answer.outcome === "done") return { ended: closedAs(ticket, "completed", `${builderOf(ticket)} found its work already on main and closed it: ${answer.reason}`) };
   if (answer.outcome === "close") return { ended: closedAs(ticket, "not planned", `@${OWNER} the builder closed #${ticket} unbuilt and kept its branch: ${answer.reason}`) };
   if (answer.outcome === "stuck") return { ended: calledOwner(ticket, "builder", answer.reason) };
   if (answer.outcome === "spec") return rewrittenAsSpec(ticket, body, answer);

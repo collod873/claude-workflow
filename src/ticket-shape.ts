@@ -10,10 +10,9 @@ const NAMED = {
   outOfScope: "Out of Scope",
   furtherNotes: "Further Notes",
   sentences: "I'll know it works when I can",
-  waitsOn: "Waits on",
   followUps: "Follow-ups",
 } as const;
-const heading = (name: string): RegExp => new RegExp(`^##[ \\t]+${name.replace("'", "[’']")}[ \\t]*(?=\\r?$)`, "m");
+export const heading = (name: string): RegExp => new RegExp(`^##[ \\t]+${name.replace("'", "[’']")}[ \\t]*(?=\\r?$)`, "m");
 const WHY = heading(NAMED.why);
 const DONE_WHEN = heading(NAMED.doneWhen);
 const PROBLEM_STATEMENT = heading(NAMED.problem);
@@ -24,8 +23,6 @@ const TESTING_DECISIONS = heading(NAMED.testing);
 const OUT_OF_SCOPE = heading(NAMED.outOfScope);
 const FURTHER_NOTES = heading(NAMED.furtherNotes);
 const SENTENCES = heading(NAMED.sentences);
-const WAITS_ON = heading(NAMED.waitsOn);
-const ISSUE_REFERENCE = /(?<![\w/-])#(\d+)\b/g;
 export const NEXT_HEADING = /^##[ \t]/m;
 const ITEM = /^[ \t]*-[ \t]*\[[ xX]\][ \t]*/;
 const OWNER_WORDS = /"[^"\n]{4,}"|^>[ \t]*\S/m;
@@ -42,7 +39,7 @@ export const BUILD_SHAPE = [
   `Its ${NAMED.doneWhen} names only work its own repo does; what another repo shows as proof may stay.`,
   `What another repo must do once the build lands goes under ## ${NAMED.followUps}, one line per repo, and whoever lands the build files each one there as a build.`,
   "In an enrolled repo a build starts the moment it is filed, so a question still open makes it an idea or a look-into.",
-  `One that needs another issue closed first lists it under ## ${NAMED.waitsOn} as '- #<number>', is filed labelled waiting, and builds once every one of them closes.`,
+  "One that needs another issue closed first, in any repo, gets a blocked-by link to it once filed, through `issue-links add-blocker <repo> <number> <blocker repo> <blocker number>`, and builds once every blocker closes.",
 ].join(" ");
 export const BUG_SHAPE = `a fault still standing; its ## ${NAMED.why} quotes the evidence, such as a log line, a failing test or error text. Adds ## ${NAMED.doneWhen}: what working looks like. In an enrolled repo it builds the moment it is filed.`;
 export const IDEA_SHAPE = "something Collin floated, kept for him to decide.";
@@ -60,7 +57,7 @@ export function matchEnd(found: RegExpMatchArray): number {
   return found.index + whole.length;
 }
 
-function section(body: string, heading: RegExp): string {
+export function section(body: string, heading: RegExp): string {
   const found = heading.exec(body);
   if (found === null) return "";
   const rest = body.slice(matchEnd(found));
@@ -78,8 +75,6 @@ function itemsUnder(body: string, heading: RegExp, item = ITEM): string[] {
 }
 
 export const why = (body: string): string => section(body.replaceAll(/\r\n?/g, "\n"), WHY).trim();
-
-export const waitsOn = (body: string): string[] => [...new Set(Array.from(section(body.replaceAll(/\r\n?/g, "\n"), WAITS_ON).matchAll(ISSUE_REFERENCE), ([, number]) => number ?? ""))];
 
 export const doneWhen = (body: string): string => section(body.replaceAll(/\r\n?/g, "\n"), DONE_WHEN).trim();
 

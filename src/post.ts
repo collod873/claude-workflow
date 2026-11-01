@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { text as read } from "node:stream/consumers";
-import { added, filedLine, likelyMatches, matchRefusals, NEW, openWaitedOn, unlisted } from "./door.ts";
+import { added, filedLine, likelyMatches, matchRefusals, NEW, unlisted } from "./door.ts";
 import { dedashed } from "./em-dash.ts";
 import {
   BUG_SHAPE,
@@ -101,25 +101,26 @@ const filed = (refuses: (text: string) => string[], labels: LabelName[]): Kind =
 export const MISSING = /HTTP 404/;
 export const ticketBranch = (ticket: string) => `${TICKET_PREFIX}${ticket}`;
 
-export const FOLLOW_UP_OF = "Follow-up of #";
-export const RESEARCH_FOUND = ": its research found this.";
-const followUpFrom = (said: string) => new RegExp(`^${FOLLOW_UP_OF}(\\d+)${said.replaceAll(".", "\\.")}`);
-export const RESEARCH_FROM = followUpFrom(RESEARCH_FOUND);
-export const REVIEW_LET_THROUGH = ": its reviewer let this through.";
-export const REVIEW_FROM = followUpFrom(REVIEW_LET_THROUGH);
-export const DONE_CHECK_MISSED = ": its done check found this did not hold.";
-export const DONE_CHECK_FROM = followUpFrom(DONE_CHECK_MISSED);
-const FAULT_OF = "Filed by the builder of ";
-const FAULT_WAITS = ", which waits on it, as the machine's fault";
-export const STEP_WAITS = ", which waits on it, as its first step";
-export const faultOf = (origin: string) => `${FAULT_OF}${origin}${FAULT_WAITS}.`;
-export const firstStepOf = (origin: string) => `${FAULT_OF}${origin}${STEP_WAITS}.`;
+const FROM_KINDS = ["researched", "review", "done-check", "fault", "first-step"] as const;
+export type FromKind = (typeof FROM_KINDS)[number];
+export interface From {
+  repo: string | undefined;
+  number: string;
+  kind: FromKind;
+}
+const named = (repo: string | undefined, number: string) => `${repo ?? ""}#${number}`;
+export const fromHere = (number: string) => named(process.env.GH_REPO || undefined, number);
+export const fromLine = (origin: string, kind: FromKind) => `<!-- from: ${origin} ${kind} -->`;
+const FROM_LINE = new RegExp(`^<!-- from: ([\\w.-]+/[\\w.-]+)?#(\\d+) (${FROM_KINDS.join("|")}) -->$`, "m");
+export function fromOf(body: string): From | undefined {
+  const [, repo, number, kind] = FROM_LINE.exec(body) ?? [];
+  return number === undefined ? undefined : { repo, number, kind: kind as FromKind };
+}
 export const MACHINE_REPO = `${OWNER}/claude-workflow`;
 const callerRepo = /^([^/]+\/[^/]+)\//.exec(process.env.CALLED_FROM ?? "")?.[1];
 export const FOREIGN = callerRepo !== undefined && callerRepo !== MACHINE_REPO;
 export const ENROLLED_CALLER = "machine.yml";
 export const CALLER_FILE = /\/([^/@]+)@/.exec(process.env.CALLED_FROM ?? "")?.[1] ?? ENROLLED_CALLER;
-export const FAULT_FROM = new RegExp(`^${FAULT_OF}(${OWNER}/[\\w.-]+)#(\\d+)(${FAULT_WAITS}|${STEP_WAITS})\\.`, "m");
 export function followUpBody(whyLines: string[], done: string[]): string {
   return ["## Why", "", ...whyLines, "", "## Done when", "", ...done.map((sentence) => `- ${sentence}`), ""].join("\n");
 }
@@ -335,11 +336,10 @@ if (import.meta.main) {
       process.exit(1);
     }
   }
-  const waiting = openWaitedOn(text, gh).length > 0;
-  const { refusals, said } = post({ kind: door.files, text, title, sessionId, labels: waiting ? [WAITING] : [] }, gh);
+  const { refusals, said } = post({ kind: door.files, text, title, sessionId }, gh);
   for (const refusal of refusals) console.error(refusal);
   if (said !== "") console.log(said);
-  const line = refusals.length > 0 ? undefined : filedLine(kind, gh, waiting);
+  const line = refusals.length > 0 ? undefined : filedLine(kind, gh);
   if (line !== undefined) console.error(line);
   process.exit(refusals.length > 0 ? 1 : 0);
 }

@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { type AppKey, freshAppToken } from "./app-token.ts";
 import { capped, DIFF_CAP, diffOverCap, LIST_CAP, NO_EM_DASH, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
-import { commentOnTicket, FOLLOW_UP_OF, gh, gitRead, heldOn, labelsHeld, machineBin, mark, REVIEW_LET_THROUGH } from "./post.ts";
+import { commentOnTicket, fromHere, fromLine, gh, gitRead, heldOn, labelsHeld, machineBin, mark } from "./post.ts";
 import { CHECKING } from "./spelled.ts";
 import { calledOwner, committed, commitlinted, type Filed, type Fix, FOLLOW_UPS, head, hire, MOST_FIXES, type OwnerStep, OWNER_STEPS, stepsAndFixesFiled } from "./stage.ts";
 import { quoted } from "./ticket-shape.ts";
@@ -137,7 +137,7 @@ export function handedOn({ ticket, body, commits, diff, stat, alongside, said, c
     "Commit each change you make with its reason as the message; `bin/land` refuses an em dash or a closing keyword such as `Fixes #12`. Answer one outcome:",
     "- `approve`: it builds the Why, with whatever you fixed; `bin/land` then runs the full check and merges it, and anything it refuses comes back to you.",
     "- `stuck`: the work has a gap only the owner can close, and you cannot fix it; give the why in `reason`, and the ticket goes `stuck`.",
-    "`steps`: each step only the owner can take before this work runs, such as a dashboard setting or a key, read from the finished work; each one named is filed as an `owner-step` note once it lands, and the ticket still closes.",
+    "`steps`: each step only the owner can take before this work runs, such as a dashboard setting or a key, read from the finished work; each one named is filed as an `owner-step` note once it lands, and the ticket still closes. Its `needs` names the file, setting or env variable that reads what the step provides, such as `RESEND_API_KEY` read in `src/mail.ts`; a step whose `needs` is empty is filed as a plain note and holds no fix.",
     "A fix you file that cannot build before the owner takes one of your `steps` carries that step's exact title in `waits`, so it waits on the step's note and builds once he closes it; keep the fix out of the step's `why`.",
     `\`fixes\`: up to ${MOST_FIXES} faults this branch cannot carry, in another repo or in code this work leaves untouched and too big to fix here, each with one sure fix: \`fault\` with its evidence, \`title\`, and \`done\` naming the sentences that hold after the fix; each is filed as a ticket once it lands.`,
     "`risks`: each other fault, cost or risk you saw, `risk` saying what it is and `ends` where it went: `fixed` here, `why` saying how; or `nothing`, `why` saying why it can stand. The owner hears from your review through `steps` alone.",
@@ -151,7 +151,7 @@ const reviewedBy = (ticket: string) => `Review #${ticket} as its reviewer`;
 
 function filedOnceLanded(ticket: string, answer: Gathered): string {
   const filed = [
-    ...routedFiled(`${FOLLOW_UP_OF}${ticket}${REVIEW_LET_THROUGH}`, `Left to the owner by the run that built #${ticket}, which closed.`, answer.steps, [answer]),
+    ...routedFiled(fromLine(fromHere(ticket), "review"), `Left to the owner by the run that built #${ticket}, which closed.`, answer.steps, [answer]),
   ];
   const refused = filed.filter(({ refusals }) => refusals.length > 0);
   if (refused.length > 0) commentOnTicket(ticket, [`What the reviewer of #${ticket} left that could not be filed:`, "", ...refused.map(({ named, refusals }) => `- ${named} (${quoted(refusals[0] ?? "")})`), ""].join("\n"), gh);

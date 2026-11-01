@@ -1,0 +1,14 @@
+#!/bin/bash
+set -uo pipefail
+
+usage="reconcile: usage: reconcile [--repo owner/repo]"
+repo=()
+if [[ $# -eq 2 && $1 == --repo && $2 =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+  repo=("$2")
+elif [[ $# -ne 0 ]]; then
+  printf '%s\n' "$usage" >&2
+  exit 2
+fi
+
+src="$(cd "${BASH_SOURCE[0]%/*}/../src" && pwd)"
+exec node "$src/reconcile.ts" "${repo[@]}"

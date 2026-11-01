@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { CHECK_PASSES } from "./builder.part.ts";
 import { BRIEF, BUILDS, KIT_FILED, ONTO, SLICE, SLICE_SESSION, SPEC, slicing } from "./slice-builder.part.ts";
-import { firstStepOf } from "./post.ts";
+import { fromLine } from "./post.ts";
 import { BIN, execute, scratch } from "./scenarios.ts";
 import { OUT_OF_TIME } from "./slice-builder.ts";
 
@@ -241,7 +241,8 @@ describe("a fresh builder builds one slice of a spec in its own worktree until i
     const created = calls().filter((args) => args[1] === "create");
     expect(created).toHaveLength(1);
     expect(created[0]).toEqual(expect.arrayContaining(["--repo", "collod873/design-kit"]));
-    expect(created[0]?.[created[0].indexOf("--body") + 1]).toContain(firstStepOf(`collod873/Lumaria#${SPEC}`));
+    expect(created[0]?.[created[0].indexOf("--body") + 1]).toContain(fromLine(`collod873/Lumaria#${SPEC}`, "first-step"));
+    expect(calls()).toContainEqual(["api", "--method", "POST", `repos/collod873/Lumaria/issues/${SPEC}/sub_issues`, "-F", "sub_issue_id=4242"]);
     expect(checked()).toEqual([]);
   });
 

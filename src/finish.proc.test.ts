@@ -1,3 +1,4 @@
+import { fromOf } from "./post.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -199,7 +200,7 @@ describe("bin/finish calls the owner on a full check the machine alone starved, 
 });
 
 describe("bin/finish takes a reviewer's stuck and owner steps, as a ticket's review does (ADR-0005)", () => {
-  const STEP = { title: "Add the Twilio key $CALL to Railway", why: "Storm alerts text through Twilio, which needs TWILIO_KEY set on the Railway service." };
+  const STEP = { title: "Add the Twilio key $CALL to Railway", why: "Storm alerts text through Twilio, which needs TWILIO_KEY set on the Railway service.", needs: "TWILIO_KEY" };
 
   it("marks the spec stuck and calls the owner on a reviewer's stuck, landing nothing", () => {
     const finished = finishing({ answer: { outcome: "stuck", reason: "only the owner can say which zones count" } });
@@ -456,7 +457,8 @@ describe("every risk a spec's reviewer names ends somewhere, as a ticket's revie
     expect(finished.handed()[0]).toContain("sits in `fixes` or `risks`");
     const created = createdIssues(finished.calls());
     expect(created.map(({ title }) => title)).toEqual([FIX.title]);
-    expect(created[0]?.body).toContain("Follow-up of #974: its reviewer let this through.");
+    expect(fromOf(created[0]?.body ?? "")).toMatchObject({ number: "974", kind: "review" });
+    expect(finished.calls()).toContainEqual(["api", "--method", "POST", "repos/collod873/claude-workflow/issues/974/sub_issues", "-F", "sub_issue_id=4242"]);
     const [approved = ""] = finished.approved();
     expect(approved).toContain(`- filed as the ticket "${FIX.title}" once it lands: ${FIX.fault}`);
     expect(approved).toContain(`- needs nothing: ${NEEDS_NOTHING.risk} ${NEEDS_NOTHING.why}`);
