@@ -1,4 +1,4 @@
-import { fromOf, gh, type Gh, ghRead, MISSING, post, type Posting, Stopped, unread } from "./post.ts";
+import { fromOf, gh, type Gh, ghRead, mark, MISSING, post, type Posting, Stopped, unread, WAITING } from "./post.ts";
 
 export interface Blocker {
   repo: string;
@@ -10,6 +10,11 @@ interface Linked {
   number: number;
   state: string;
   repository_url: string;
+  labels?: { name: string }[];
+}
+
+export interface Dependent extends Blocker {
+  labels: string[];
 }
 
 const REPO_OF = /repos\/([^/]+\/[^/]+)$/;
@@ -19,15 +24,28 @@ const linkedOf = ({ number, state, repository_url: url }: Linked): Blocker => ({
 
 const idOf = (repo: string, number: number): string => ghRead(["api", issuePath(repo, number), "--jq", ".id"], `${named(repo, number)} could not be read, so nothing is linked`);
 
+const ALREADY_LINKED = /already been taken \(HTTP 422\)/;
+
 function linked(path: string, field: string, id: string, line: string): void {
-  ghRead(["api", "--method", "POST", path, "-F", `${field}=${id}`], line);
+  const got = gh(["api", "--method", "POST", path, "-F", `${field}=${id}`]);
+  if (got.status !== 0 && !ALREADY_LINKED.test(got.stderr)) unread(line);
 }
 
-export const blockersOf = (repo: string, number: number): Blocker[] =>
-  (JSON.parse(ghRead(["api", "--paginate", "--slurp", `${issuePath(repo, number)}/dependencies/blocked_by`], `the blockers of ${named(repo, number)} could not be read`)) as Linked[][]).flat().map(linkedOf);
+const dependencies = (repo: string, number: number, side: "blocked_by" | "blocking", line: string): Linked[] =>
+  (JSON.parse(ghRead(["api", "--paginate", "--slurp", `${issuePath(repo, number)}/dependencies/${side}`], line)) as Linked[][]).flat();
+
+export const blockersOf = (repo: string, number: number): Blocker[] => dependencies(repo, number, "blocked_by", `the blockers of ${named(repo, number)} could not be read`).map(linkedOf);
+
+export const dependentsOf = (repo: string, number: number): Dependent[] =>
+  dependencies(repo, number, "blocking", `the issues ${named(repo, number)} blocks could not be read`).map((issue) => ({ ...linkedOf(issue), labels: (issue.labels ?? []).map(({ name }) => name) }));
 
 export function addBlocker(repo: string, number: number, blockerRepo: string, blockerNumber: number): void {
   linked(`${issuePath(repo, number)}/dependencies/blocked_by`, "issue_id", idOf(blockerRepo, blockerNumber), `${named(repo, number)} could not be marked blocked by ${named(blockerRepo, blockerNumber)}`);
+}
+
+export function park(issue: string, blockers: Omit<Blocker, "open">[]): void {
+  for (const blocker of blockers) addBlocker(process.env.GH_REPO ?? "", Number(issue), blocker.repo, blocker.number);
+  mark(issue, WAITING);
 }
 
 export function parentOf(repo: string, number: number): Blocker | undefined {

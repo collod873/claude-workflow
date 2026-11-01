@@ -197,8 +197,11 @@ _Avoid_: issue, sub-issue, card, item
 `bin/reconcile`, the one idempotent pass that owns wake, admit and stale-build recovery: a pure
 `reconcile` from each open ticket's state to label edits, each checking the labels first so two
 runs at once act once. `waiting` is its projection of the ticket's blocked-by links, written and
-never read as state; a ticket with no blocked-by link is left alone. An open spec gets the same
-projection and nothing more: a spec parks blocked by each issue its slices handed off.
+never read as state; a ticket with no blocked-by link is left alone. Any other open issue labelled
+`waiting`, a spec included, has `waiting` taken off once every blocker closed. When an issue closes,
+the pass in its repo also reconciles each issue it blocked in another repo, so a cross-repo wait
+ends on the close; the 15-minute clock is the last resort. The builder and the scheduler park
+through `park`, which links each blocker, then marks `waiting`; a link already there counts as linked.
 _Avoid_: sweeper, poller
 
 **Note**:
@@ -261,7 +264,7 @@ _Avoid_: self-heard rerun, rerun workflow
 The one repo a kind of fix belongs in: this one for the machine, `design-kit` for a kit primitive,
 `agent-skills` for a skill or shared tool. A builder whose ticket's first step belongs there answers
 `owned`: it files that step there as a ticket and its own ticket waits on it. It is blocked by that
-step, and reconcile in its own repo wakes it once the step closes.
+step, and the step's close wakes it through reconcile in the step's repo.
 _Avoid_: upstream, other repo, dependency
 
 **Probe**:

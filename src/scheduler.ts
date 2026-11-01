@@ -5,8 +5,8 @@ import { join } from "node:path";
 import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
 import { capped, LIST_CAP } from "./brief.ts";
 import { parkedBehind } from "./builder.ts";
-import { addBlocker } from "./issue-links.ts";
-import { askedIssue, commentEdited, commentOnTicket, gh, ghRead, git, gitRead, heldOn, labelsHeld, machineBin, mark, OWNER, readOrStop, rebuiltOnMain, rebuiltRef, STUCK, unread, WAITING } from "./post.ts";
+import { park } from "./issue-links.ts";
+import { askedIssue, commentEdited, commentOnTicket, gh, ghRead, git, gitRead, heldOn, labelsHeld, machineBin, mark, OWNER, readOrStop, rebuiltOnMain, rebuiltRef, STUCK, unread } from "./post.ts";
 import type { Slice } from "./slicer.ts";
 import { BUILDING, MACHINE, SPEC, SPEC_PREFIX } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
@@ -305,10 +305,9 @@ function parked(spec: string, waiting: Tracked[]): undefined {
     const [, repo, number] = FILED_IN_REPO.exec(url) ?? [];
     return repo === undefined ? [] : [{ repo, number: Number(number) }];
   });
-  for (const { repo, number } of blockers) addBlocker(process.env.GH_REPO ?? "", Number(spec), repo, number);
+  park(spec, blockers);
   const said = parkedBehind(spec, blockers.map(({ repo, number }) => `${repo}#${number}`));
   commentOnTicket(spec, `${said} ${waiting.map(({ id }) => `\`${id}\``).join(", ")} build once they close.`, gh);
-  mark(spec, WAITING);
   console.log(`schedule: #${spec} waits on ${filed.join(", ")}, which its slices handed off`);
   return undefined;
 }
