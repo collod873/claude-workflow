@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { text as read } from "node:stream/consumers";
-import { added, filedLine, likelyMatches, matchRefusals, NEW, openWaitedOn, unlisted } from "./door.ts";
+import { added, filedLine, likelyMatches, matchRefusals, NEW, unlisted } from "./door.ts";
 import { dedashed } from "./em-dash.ts";
 import {
   BUG_SHAPE,
@@ -336,11 +336,10 @@ if (import.meta.main) {
       process.exit(1);
     }
   }
-  const waiting = openWaitedOn(text, gh).length > 0;
-  const { refusals, said } = post({ kind: door.files, text, title, sessionId, labels: waiting ? [WAITING] : [] }, gh);
+  const { refusals, said } = post({ kind: door.files, text, title, sessionId }, gh);
   for (const refusal of refusals) console.error(refusal);
   if (said !== "") console.log(said);
-  const line = refusals.length > 0 ? undefined : filedLine(kind, gh, waiting);
+  const line = refusals.length > 0 ? undefined : filedLine(kind, gh);
   if (line !== undefined) console.error(line);
   process.exit(refusals.length > 0 ? 1 : 0);
 }

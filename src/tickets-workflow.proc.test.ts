@@ -73,7 +73,7 @@ describe("a repo's tickets build through one caller file that holds only trigger
     expect(Object.values(jobs)).toEqual(CALLED.map((file) => ({ uses: `collod873/claude-workflow/.github/workflows/${file}@main`, secrets: "inherit" })));
   });
 
-  it("answers each trigger the caller holds: a ticket labelled builds, lands and closes in its own run, a closed issue is stripped and wakes what waited on it (ADR-0012)", () => {
+  it("answers each trigger the caller holds: a ticket labelled builds, lands and closes in its own run, a closed issue is stripped and reconciled, reconcile alone waking what it blocked (ADR-0012, #1606)", () => {
     const woken = { wake: { held: "true" } };
     expect(jobsRun({ event: "issues", action: "labeled", outputs: woken })).toEqual(["wake", "build", "reconcile"]);
     expect(jobsRun({ event: "issues", action: "labeled", sender: MACHINE, outputs: woken })).toEqual(["wake", "build", "reconcile"]);
@@ -81,11 +81,11 @@ describe("a repo's tickets build through one caller file that holds only trigger
     expect(jobsRun({ event: "issues", action: "unlabeled", sender: MACHINE, outputs: { wake: { held: "false" } } })).toEqual(["wake", "reconcile"]);
     expect(jobsRun({ event: "issues", action: "opened", sender: MACHINE })).toEqual(["reconcile"]);
     expect(jobsRun({ event: "issues", action: "labeled", sender: "stranger" })).toEqual(["reconcile"]);
-    expect(jobsRun({ event: "issues", action: "closed" })).toEqual(["close", "strip", "reconcile"]);
+    expect(jobsRun({ event: "issues", action: "closed" })).toEqual(["strip", "reconcile"]);
   });
 
-  it("wakes what waited on a pull request once it merges, and runs nothing for one closed unmerged, where Mezzanine#1710 sat waiting on kit-sync PR #1711 after it merged", () => {
-    expect(jobsRun({ event: "pull_request", action: "closed", merged: true })).toEqual(["close", "reconcile"]);
+  it("reconciles a pull request closing, merged or not, so what it blocked wakes, where Mezzanine#1710 sat waiting on kit-sync PR #1711 after it merged", () => {
+    expect(jobsRun({ event: "pull_request", action: "closed", merged: true })).toEqual(["reconcile"]);
     expect(jobsRun({ event: "pull_request", action: "closed", merged: false })).toEqual(["reconcile"]);
     expect(jobsRun({ event: "pull_request", action: "closed", merged: true }, "specs.yml")).toEqual([]);
   });
@@ -135,7 +135,7 @@ describe("a repo's tickets build through one caller file that holds only trigger
     expect(jobsRun({ event: "issues", action: "labeled", sender: OWNER, red: ["wake"] })).toEqual(["wake", "reconcile", "dispatch-rerun"]);
     expect(jobsRun({ event: "issues", action: "labeled", sender: OWNER, red: ["build"], outputs: named })).toEqual(["wake", "build", "reconcile", "dispatch-rerun"]);
     expect(jobsRun({ event: "issues", action: "labeled", sender: OWNER, stopped: ["build"], outputs: named })).toEqual(["wake", "build", "reconcile", "dispatch-rerun"]);
-    expect(jobsRun({ event: "issues", action: "closed", stopped: ["close"] })).toEqual(["close", "strip", "reconcile", "dispatch-rerun"]);
+    expect(jobsRun({ event: "issues", action: "closed", stopped: ["strip"] })).toEqual(["strip", "reconcile", "dispatch-rerun"]);
     const woken = { wake: { spec: "true", research: "true" } };
     expect(jobsRun({ event: "issues", action: "labeled", sender: OWNER, red: ["wake"] }, "specs.yml")).toEqual(["wake", "dispatch-rerun"]);
     expect(jobsRun({ event: "issues", action: "labeled", sender: OWNER, red: ["spec"], outputs: woken }, "specs.yml")).toEqual(["wake", "spec", "research", "dispatch-rerun"]);
@@ -226,12 +226,6 @@ describe("a repo's tickets build through one caller file that holds only trigger
       }
       for (const step of steps.filter((later) => (later.run ?? "").includes("$GITHUB_WORKSPACE/bin/"))) expect((step as WorkflowStep & { "working-directory"?: string })["working-directory"], `${name} ${step.id ?? ""}`).toBe("tree");
     }
-  });
-
-  it("tells the closer which caller file it runs under, as it tells every stage", () => {
-    const closing = workflowJobs("tickets.yml").close?.steps.find(({ run }) => (run ?? "").includes("bin/close"));
-
-    expect(closing?.env?.CALLED_FROM).toBe("${{ github.workflow_ref }}");
   });
 
   it("tells the builder it runs in a tree that is not the machine's, so a machine fault is filed here and not landed on the tree's main (#1143)", () => {
@@ -446,7 +440,7 @@ describe("a repo's specs and research notes run through the same caller file, on
     expect(specs({ event: "issues", action: "unlabeled", sender: "stranger" })).toEqual([]);
   });
 
-  it("resumes a spec the closer takes `waiting` off once what its slices handed off has closed, and no other label the machine takes off", async () => {
+  it("resumes a spec reconcile takes `waiting` off once what its slices handed off has closed, and no other label the machine takes off", async () => {
     const wake = labelledStep("specs.yml", "wake");
     const resumed = await labelledOutputs(wake, REPO, { action: "unlabeled", label: "waiting", sender: MACHINE, labels: ["spec"] });
     const building = await labelledOutputs(wake, REPO, { action: "unlabeled", label: "building", sender: MACHINE, labels: ["spec"] });

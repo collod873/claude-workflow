@@ -65,13 +65,13 @@ const stoppedAt = stopsOf({ unadmitted: "Build refused: the ticket's checks woul
 
 export const builderOf = (ticket: string) => `The builder of #${ticket}`;
 const rewroteAsSpec = (ticket: string) => `${builderOf(ticket)} rewrote it as a spec, which the slicer cuts:`;
-const wokenByTheCloser = (ticket: string) => `#${ticket} waits on it, ${LABELLED_WAITING}, and the closer wakes it once every one of them closes:`;
+const wokenByReconcile = (ticket: string) => `#${ticket} waits on it, ${LABELLED_WAITING}, and reconcile wakes it once every one of them closes:`;
 export const dependsOn = (ticket: string) => `${builderOf(ticket)} found it depends on`;
 const parkedBehind = (ticket: string, blockers: string[]) => `${builderOf(ticket)} parked it, blocked by ${blockers.join(", ")}:`;
 const handedStep = (ticket: string, repo: string, filed: string[]) => `${builderOf(ticket)} handed its first step to ${repo} and filed ${filed.join(", ")}.`;
-export const waitsOnStep = (ticket: string, repo: string, filed: string[]) => `${handedStep(ticket, repo, filed)} ${wokenByTheCloser(ticket)}`;
+export const waitsOnStep = (ticket: string, repo: string, filed: string[]) => `${handedStep(ticket, repo, filed)} ${wokenByReconcile(ticket)}`;
 export const waitsUnheard = (ticket: string, repo: string, filed: string[]) => `${handedStep(ticket, repo, filed)} #${ticket} waits on it, ${LABELLED_WAITING}. ${nothingHears(ticket, repo)}`;
-export const filedClosed = (ticket: string) => `Every ticket the builder of #${ticket} filed and waits on has closed:`;
+const filedClosed = (ticket: string) => `Every ticket the builder of #${ticket} filed and waits on has closed:`;
 
 interface Handed {
   ticket: string;

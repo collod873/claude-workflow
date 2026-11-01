@@ -28,7 +28,7 @@ _Avoid_: core, new core, v2
 The one workflow another repo carries to have its tickets built and its specs and research notes
 run: its triggers and calls to `tickets.yml` and `specs.yml` here, nothing else, so no part of the
 machine is copied into it. `.github/caller.yml` is its text. Its specs are tried on its own checkout,
-readied by its contract's setup. The closer wakes a builder by taking `waiting` off its ticket, which
+readied by its contract's setup. Reconcile wakes a builder by taking `waiting` off its ticket, which
 the caller's `issues: unlabeled` hears from the caller's default branch alone, so the file lands on
 main before any ticket there builds. A builder it reaches passes a check red only for
 `(needs ...)` steps, which the machine's runner lacks, or unpublished receipts; that repo's own CI
@@ -129,13 +129,12 @@ under that cap, one reviewer each, at most three at once, each in its own tree o
 and rebased onto the integration branch as it answers.
 _Avoid_: review job, judge, second builder
 
-**Closer**:
-`bin/close`: given a closed issue, it takes `waiting` off each ticket that waited on it. It closes,
-queues and merges nothing: a ticket closes on its PR's `Closes #N`, which `bin/land --ticket`
+**Closing**:
+No stage closes, queues or merges by itself: waking what a closed issue blocked is reconcile's alone (#1606). A ticket closes on its PR's `Closes #N`, which `bin/land --ticket`
 writes, and a session's commit may close an issue the same way, since `bin/land` merges only past
 the full check. A spec closes only on its done check, so `bin/land --spec` refuses a commit that
 closes it by keyword.
-_Avoid_: merger, queue, landing job
+_Avoid_: closer, merger, queue, landing job
 
 ### The work
 
@@ -260,9 +259,8 @@ _Avoid_: self-heard rerun, rerun workflow
 **Owning repo**:
 The one repo a kind of fix belongs in: this one for the machine, `design-kit` for a kit primitive,
 `agent-skills` for a skill or shared tool. A builder whose ticket's first step belongs there answers
-`owned`: it files that step there as a ticket and its own ticket waits on it. The closer wakes it
-from that repo's close run, so the owning repo carries the caller file; one that lacks it gets the
-owner called on the waiting ticket instead.
+`owned`: it files that step there as a ticket and its own ticket waits on it. It is blocked by that
+step, and reconcile in its own repo wakes it once the step closes.
 _Avoid_: upstream, other repo, dependency
 
 **Probe**:
@@ -278,8 +276,8 @@ missing parent, says `--missing-answers`. A blip is absorbed at its call, a reru
 _Avoid_: flake, glitch
 
 **Resume**:
-Setting a held issue going again. Taking `waiting` off a ticket resumes its build; the closer takes it
-off once every open ticket it depends on, fault or first step it filed and issue its `## Waits on` names has closed. Taking `paused`
+Setting a held issue going again. Taking `waiting` off a ticket resumes its build; reconcile takes it
+off once every issue it is blocked by has closed. Taking `paused`
 or `stuck` off a ticket that then holds neither builds it again on the branch its last run kept,
 its builder resuming its session. Taking either off an open spec that then holds neither runs its
 scheduler again from its integration branch and progress comment, resuming each out slice's builder with the reason it stopped.

@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import { NO_EM_DASH, onDisk } from "./brief.ts";
 import { type Asked, askedIssue, commentOnTicket, followUpBody, gh, ghRead, git, gitRead, heardIn, heldOn, LABELLED_WAITING, mark, nothingHears, OWNER, post, STUCK, unread, WAITING, type MarkedLabel } from "./post.ts";
-import { postedUnderOrigin } from "./issue-links.ts";
 import type { Stop } from "./stops.ts";
+import { addBlocker, postedUnderOrigin } from "./issue-links.ts";
 import { quoted } from "./ticket-shape.ts";
 
 const STREAM = ["--output-format", "stream-json", "--verbose"];
@@ -317,7 +317,11 @@ function fixFiled(found: string, { fault, title, done, waits }: Fix, notes: Map<
   if (waits === undefined || waits.trim() === "" || unneeded.has(stepKey(waits))) return { named: title, ...postedUnderOrigin({ kind: "ticket", title, text }, gh) };
   const number = FILED.exec(notes.get(stepKey(waits))?.said ?? "")?.[1];
   if (number === undefined) return { named: title, refusals: [`it waits on the owner step "${waits}", which was not filed`], said: "" };
-  return pingedUnheard({ named: title, ...postedUnderOrigin({ kind: "ticket", title, text: `${text}\n## Waits on\n\n- #${number}\n`, labels: [WAITING] }, gh) }, number);
+  const filed: Filed = { named: title, ...postedUnderOrigin({ kind: "ticket", title, text, labels: [WAITING] }, gh) };
+  const fix = FILED.exec(filed.said)?.[1];
+  const repo = process.env.GH_REPO ?? "";
+  if (fix !== undefined) addBlocker(repo, Number(fix), repo, Number(number));
+  return pingedUnheard(filed, number);
 }
 
 export function stepsAndFixesFiled(found: string, left: string, steps: OwnerStep[], fixes: Fix[]): Filed[] {

@@ -226,15 +226,6 @@ describe("bin/file-issue reads the open issues first, so the same job is not fil
     expect(ghSaw(repo)).toEqual([["issue", "comment", "412", "--body", "Seen again on agent-hooks.\n"]]);
   });
 
-  it("files a build whose Waits on names an open issue labelled waiting, so the closer wakes it", () => {
-    const { repo, run } = filing({ gh: MATCHING, body: `${wellFormedTicket}\n## Waits on\n\n- #412\n`, sessionId: "sess-abc" });
-
-    const result = run(["build", "--title", "Port the ticket shape into core/", "--body-file", "body.md"]);
-
-    expect(result.status).toBe(0);
-    expect(result.stderr).toContain("labelled waiting until every issue it is blocked by closes");
-    expect(filedAs(ghSaw(repo)).labels).toEqual(["ticket", "waiting"]);
-  });
 });
 
 describe("bin/file-issue --help runs no gh, since gh writes its state under HOME on a first run and --help writes nothing (#1581)", () => {

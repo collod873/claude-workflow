@@ -1,5 +1,4 @@
 import { commentOnTicket, ENROLLED_CALLER, git, type Gh, MISSING } from "./post.ts";
-import { waitsOn } from "./ticket-shape.ts";
 import { PAUSED, STUCK, WAITING } from "./spelled.ts";
 
 const MOST_MATCHES = 5;
@@ -25,11 +24,7 @@ function enrolmentLine(gh: Gh): string {
   return is ? `${here} is enrolled: a build, bug or spec starts the moment it is filed.` : `${here} is not enrolled: a build, bug or spec waits for a session to take it.`;
 }
 
-export const filedLine = (kind: string, gh: Gh, waiting: boolean): string | undefined => {
-  if (!BUILDING_KINDS.has(kind)) return undefined;
-  const line = enrolmentLine(gh);
-  return waiting ? `${line} It is labelled ${WAITING} until every issue it is blocked by closes.` : line;
-};
+export const filedLine = (kind: string, gh: Gh): string | undefined => (BUILDING_KINDS.has(kind) ? enrolmentLine(gh) : undefined);
 
 const words = (title: string): Set<string> => new Set(title.toLowerCase().split(/[^a-z0-9]+/).filter((word) => word.length >= 4 && !COMMON.has(word)));
 
@@ -68,13 +63,6 @@ export const matchRefusals = (matches: string[]): string[] => [
 ];
 
 export const unlisted = `file-issue: nothing filed; the open issues could not be read to check for the same job. Rerun with ${NEW} to file without the check.`;
-
-export function openWaitedOn(text: string, gh: Gh): string[] {
-  return waitsOn(text).filter((number) => {
-    const got = gh(["issue", "view", number, "--json", "state", "--jq", ".state"]);
-    return got.status === 0 && got.stdout.trim() === "OPEN";
-  });
-}
 
 export function added(issue: string, text: string, gh: Gh): { refusals: string[]; said: string } {
   const got = gh(["issue", "view", issue, "--json", "state", "--jq", ".state"]);
