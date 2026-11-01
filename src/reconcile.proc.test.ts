@@ -49,7 +49,7 @@ describe("bin/reconcile restarts a stale build once, then flags it to the owner 
   const stale = { event: "labeled", label: { name: "building" }, created_at: "2026-01-01T00:00:00Z" };
   const changes = (calls: string[][]) => calls.filter((args) => ["edit", "comment"].includes(args[1] ?? "") || args[0] === "workflow");
 
-  it("dispatches the caller file with the ticket and records the marker line, then flags stuck with an owner comment after one restart, leaving a live build alone", () => {
+  it("records the marker line and relabels the ticket so its wake job builds it again, then flags stuck with an owner comment after one restart, leaving a live build alone", () => {
     const { reconcile, calls } = linking({
       liveTitles: ["labeled #933: live one"],
       tickets: [
@@ -62,9 +62,13 @@ describe("bin/reconcile restarts a stale build once, then flags it to the owner 
     const result = reconcile();
 
     expect(result.status, result.stderr).toBe(0);
-    const [dispatch, marker, stuck, owner, ...rest] = changes(calls());
-    expect(dispatch).toEqual(["workflow", "run", expect.any(String), "--repo", HERE, "-f", "ticket=931"]);
+    const [marker, unbuilding, untick, tick, stuck, owner, ...rest] = changes(calls());
     expect(marker?.slice(0, 4)).toEqual(["issue", "comment", "931", "--repo"]);
+    expect([unbuilding, untick, tick]).toEqual([
+      ["issue", "edit", "931", "--repo", HERE, "--remove-label", "building"],
+      ["issue", "edit", "931", "--repo", HERE, "--remove-label", "ticket"],
+      ["issue", "edit", "931", "--repo", HERE, "--add-label", "ticket"],
+    ]);
     expect(marker?.at(-1)).toMatch(/^<!-- reconcile: restarted -->\n/);
     expect(stuck).toEqual(["issue", "edit", "932", "--repo", HERE, "--add-label", "stuck"]);
     expect(owner?.slice(0, 3)).toEqual(["issue", "comment", "932"]);

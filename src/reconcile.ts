@@ -1,6 +1,6 @@
 import { admission } from "./admit.ts";
 import { blockersOf } from "./issue-links.ts";
-import { CALLER_FILE, ghRead, Stopped } from "./post.ts";
+import { ghRead, Stopped } from "./post.ts";
 import { BUILDING, HELD, OWNER, STUCK, TICKET, WAITING } from "./spelled.ts";
 
 export interface Blocker {
@@ -62,10 +62,16 @@ interface Listed {
 const labelsNow = (repo: string, number: number): string[] =>
   ghRead(["issue", "view", String(number), "--repo", repo, "--json", "labels", "--jq", ".labels[].name"], `the labels of ${repo}#${number} could not be read, so nothing is marked`).split("\n").filter((label) => label !== "");
 
+function relabel(repo: string, number: number, to: string): void {
+  ghRead(["issue", "edit", String(number), "--repo", repo, "--remove-label", TICKET], `${repo}#${number} could not be unlabelled ${TICKET} to ${to} it`);
+  ghRead(["issue", "edit", String(number), "--repo", repo, "--add-label", TICKET], `${repo}#${number} could not be labelled ${TICKET} again to ${to} it`);
+}
+
 function restart(repo: string, number: number): void {
-  ghRead(["workflow", "run", CALLER_FILE, "--repo", repo, "-f", `ticket=${number}`], `${repo}#${number} could not be restarted by dispatching ${CALLER_FILE}`);
   ghRead(["issue", "comment", String(number), "--repo", repo, "--body", `${RESTARTED}\nReconcile restarted #${number}: it was labelled \`${BUILDING}\` for over an hour with no live run.`], `the restart of ${repo}#${number} could not be recorded`);
-  console.log(`reconcile: ${repo}#${number} restarted by dispatching ${CALLER_FILE}`);
+  ghRead(["issue", "edit", String(number), "--repo", repo, "--remove-label", BUILDING], `${repo}#${number} could not be unlabelled ${BUILDING} to restart it`);
+  relabel(repo, number, "restart");
+  console.log(`reconcile: ${repo}#${number} restarted by relabelling it ${TICKET}`);
 }
 
 function flag(repo: string, number: number): void {
@@ -77,8 +83,7 @@ function flag(repo: string, number: number): void {
 
 function readmit(repo: string, number: number): void {
   ghRead(["issue", "comment", String(number), "--repo", repo, "--body", `${READMITTED}\nReconcile re-admitted #${number}: the chain that refused it is valid now.`], `the re-admission of ${repo}#${number} could not be recorded`);
-  ghRead(["issue", "edit", String(number), "--repo", repo, "--remove-label", TICKET], `${repo}#${number} could not be unlabelled ${TICKET} to re-admit it`);
-  ghRead(["issue", "edit", String(number), "--repo", repo, "--add-label", TICKET], `${repo}#${number} could not be labelled ${TICKET} again to re-admit it`);
+  relabel(repo, number, "re-admit");
   console.log(`reconcile: ${repo}#${number} re-admitted, as its chain is valid now`);
 }
 
