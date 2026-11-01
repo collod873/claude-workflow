@@ -63,11 +63,12 @@ interface Answer {
 
 const stoppedAt = stopsOf({ unadmitted: "Build refused: the ticket's checks would run as shell with the App's token" });
 
-const rewroteAsSpec = (ticket: string) => `The builder of #${ticket} rewrote it as a spec, which the slicer cuts:`;
+export const builderOf = (ticket: string) => `The builder of #${ticket}`;
+const rewroteAsSpec = (ticket: string) => `${builderOf(ticket)} rewrote it as a spec, which the slicer cuts:`;
 const wokenByTheCloser = (ticket: string) => `#${ticket} waits on it, ${LABELLED_WAITING}, and the closer wakes it once every one of them closes:`;
-export const dependsOn = (ticket: string) => `The builder of #${ticket} found it depends on`;
-const parkedBehind = (ticket: string, blockers: string[]) => `The builder of #${ticket} parked it, blocked by ${blockers.join(", ")}:`;
-const handedStep = (ticket: string, repo: string, filed: string[]) => `The builder of #${ticket} handed its first step to ${repo} and filed ${filed.join(", ")}.`;
+export const dependsOn = (ticket: string) => `${builderOf(ticket)} found it depends on`;
+const parkedBehind = (ticket: string, blockers: string[]) => `${builderOf(ticket)} parked it, blocked by ${blockers.join(", ")}:`;
+const handedStep = (ticket: string, repo: string, filed: string[]) => `${builderOf(ticket)} handed its first step to ${repo} and filed ${filed.join(", ")}.`;
 export const waitsOnStep = (ticket: string, repo: string, filed: string[]) => `${handedStep(ticket, repo, filed)} ${wokenByTheCloser(ticket)}`;
 export const waitsUnheard = (ticket: string, repo: string, filed: string[]) => `${handedStep(ticket, repo, filed)} #${ticket} waits on it, ${LABELLED_WAITING}. ${nothingHears(ticket, repo)}`;
 export const filedClosed = (ticket: string) => `Every ticket the builder of #${ticket} filed and waits on has closed:`;
@@ -257,7 +258,7 @@ function rewritten(ticket: string, body: string, answer: Answer): Round {
   const written = rewriteTicket(ticket, body, answer.body, gh);
   const [refusal] = written.refusals;
   if (refusal !== undefined) return { red: `Your rewrite of the ticket was refused: ${quoted(refusal)}` };
-  commentOnTicket(ticket, `The builder of #${ticket} rewrote what done looks like against its Why, and builds it as rewritten in this run: ${answer.reason}\n\n## Done when\n\n${doneWhen(answer.body)}`, gh);
+  commentOnTicket(ticket, `${builderOf(ticket)} rewrote what done looks like against its Why, and builds it as rewritten in this run: ${answer.reason}\n\n## Done when\n\n${doneWhen(answer.body)}`, gh);
   console.log(`fix: #${ticket} rewritten; it builds as rewritten`);
   return { body: answer.body };
 }
@@ -333,7 +334,7 @@ function landedOnMain(ticket: string, reason: string, before: string): Round {
 
 function outcomeOf(ticket: string, body: string, answer: Answer | undefined, mainBefore: string): Round {
   if (answer === undefined) return { red: "You gave no outcome. Answer one." };
-  if (answer.outcome === "done") return { ended: closedAs(ticket, "completed", `The builder of #${ticket} found its work already on main and closed it: ${answer.reason}`) };
+  if (answer.outcome === "done") return { ended: closedAs(ticket, "completed", `${builderOf(ticket)} found its work already on main and closed it: ${answer.reason}`) };
   if (answer.outcome === "close") return { ended: closedAs(ticket, "not planned", `@${OWNER} the builder closed #${ticket} unbuilt and kept its branch: ${answer.reason}`) };
   if (answer.outcome === "stuck") return { ended: calledOwner(ticket, "builder", answer.reason) };
   if (answer.outcome === "spec") return rewrittenAsSpec(ticket, body, answer);

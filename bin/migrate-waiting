@@ -1,0 +1,10 @@
+#!/bin/bash
+set -uo pipefail
+
+if [[ $# -gt 1 || ( $# -eq 1 && ! $1 =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ) ]]; then
+  printf '%s\n' "migrate-waiting: usage: migrate-waiting [owner/repo], every enrolled repo when none is named" >&2
+  exit 2
+fi
+
+src="$(cd "${BASH_SOURCE[0]%/*}/../src" && pwd)"
+exec node "$src/migrate-waiting.ts" "$@"
