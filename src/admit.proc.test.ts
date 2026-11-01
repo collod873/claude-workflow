@@ -179,6 +179,15 @@ describe("bin/admit follows a first step's origin in its own repo by the whole c
     expect(comments()).toEqual([]);
   });
 
+  it("admits a first step whose origin is a spec the App opened as a done check's follow-up of a spec the owner opened there, its origin line under Problem Statement (#1604)", () => {
+    const spec = "## Problem Statement\n\nFollow-up of #900: its done check found this did not hold.\n\n## Solution\n\nIt holds.\n";
+    const checked = { number: "900", opener: "collod873", labels: ["spec"], state: "closed", repo: LUMARIA };
+    const { run, comments } = admitting({ opener: APP, body: STEP, origin: fromLumaria(APP, undefined, spec), note: checked });
+
+    expect(run().stdout).toBe("admitted=true\n");
+    expect(comments()).toEqual([]);
+  });
+
   it("refuses a first step whose origin is a reviewer's follow-up of a ticket the App opened there as no follow-up, naming the whole chain", () => {
     const { run, comments } = admitting({ opener: APP, body: STEP, origin: fromLumaria(APP, undefined, LET_THROUGH), note: { ...REVIEWED, opener: APP } });
 

@@ -1,7 +1,7 @@
 import { type Admission, commentOnTicket, commentsRead, DONE_CHECK_FROM, FAULT_FROM, gh, type Gh, ghAs, heldOf, type Opened, opened, OWNER, readOrStop, RESEARCH, RESEARCH_FROM, REVIEW_FROM, STEP_WAITS, unread } from "./post.ts";
 import { dedashed } from "./em-dash.ts";
 import { exitFor } from "./stops.ts";
-import { why } from "./ticket-shape.ts";
+import { specProblem, why } from "./ticket-shape.ts";
 
 export const doesNotBuild = (ticket: string, refused: string) =>
   `#${ticket} does not build, since its checks would run as shell with the App's token and ${refused}. A ticket the App opens builds only as research's follow-up from a research note the owner opened, as what a reviewer let through on a ticket that builds, as what a done check found on a spec that builds, or as a first step or machine fault its builder filed from a ticket that builds in its own repo.`;
@@ -40,7 +40,7 @@ function admitted(repo: string, ticket: string, so: string, reads: number, missi
   const line = `${at} could not be read, ${so}`;
   const asked = opened(ticket, line, gh, repo);
   if (asked === "missing") return { refused: missing(line), said: "" };
-  const said = why(asked.body ?? "");
+  const said = why(asked.body ?? "") || specProblem(asked.body ?? "").trim();
   if (ownersOwn(asked) || researchFollowUp(asked, repo, `the research note of ${at} could not be read, ${so}`)) return { refused: undefined, said };
   for (const [from, filed] of CHAINED) {
     const [, earlier] = from.exec(said) ?? [];
