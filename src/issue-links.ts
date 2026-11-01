@@ -21,7 +21,7 @@ function linked(path: string, field: string, id: string, line: string): void {
 export const blockersOf = (repo: string, number: number): Blocker[] =>
   (JSON.parse(ghRead(["api", "--paginate", "--slurp", `${issuePath(repo, number)}/dependencies/blocked_by`], `the blockers of ${named(repo, number)} could not be read`)) as Linked[][]).flat().map(linkedOf);
 
-function addBlocker(repo: string, number: number, blockerRepo: string, blockerNumber: number): void {
+export function addBlocker(repo: string, number: number, blockerRepo: string, blockerNumber: number): void {
   linked(`${issuePath(repo, number)}/dependencies/blocked_by`, "issue_id", idOf(blockerRepo, blockerNumber), `${named(repo, number)} could not be marked blocked by ${named(blockerRepo, blockerNumber)}`);
 }
 
@@ -31,7 +31,7 @@ function parentOf(repo: string, number: number): Blocker | undefined {
   return got.status === 0 ? linkedOf(JSON.parse(got.stdout) as Linked) : unread(`the parent of ${named(repo, number)} could not be read`);
 }
 
-function addParent(repo: string, number: number, parentRepo: string, parentNumber: number): void {
+export function addParent(repo: string, number: number, parentRepo: string, parentNumber: number): void {
   linked(`${issuePath(parentRepo, parentNumber)}/sub_issues`, "sub_issue_id", idOf(repo, number), `${named(repo, number)} could not be filed under ${named(parentRepo, parentNumber)}`);
 }
 

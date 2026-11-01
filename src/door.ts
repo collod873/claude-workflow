@@ -28,7 +28,7 @@ function enrolmentLine(gh: Gh): string {
 export const filedLine = (kind: string, gh: Gh, waiting: boolean): string | undefined => {
   if (!BUILDING_KINDS.has(kind)) return undefined;
   const line = enrolmentLine(gh);
-  return waiting ? `${line} It is labelled ${WAITING} until every issue under its ## Waits on closes.` : line;
+  return waiting ? `${line} It is labelled ${WAITING} until every issue it is blocked by closes.` : line;
 };
 
 const words = (title: string): Set<string> => new Set(title.toLowerCase().split(/[^a-z0-9]+/).filter((word) => word.length >= 4 && !COMMON.has(word)));

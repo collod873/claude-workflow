@@ -42,7 +42,7 @@ export const BUILD_SHAPE = [
   `Its ${NAMED.doneWhen} names only work its own repo does; what another repo shows as proof may stay.`,
   `What another repo must do once the build lands goes under ## ${NAMED.followUps}, one line per repo, and whoever lands the build files each one there as a build.`,
   "In an enrolled repo a build starts the moment it is filed, so a question still open makes it an idea or a look-into.",
-  `One that needs another issue closed first lists it under ## ${NAMED.waitsOn} as '- #<number>', is filed labelled waiting, and builds once every one of them closes.`,
+  "One that needs another issue closed first, in any repo, gets a blocked-by link to it once filed, through `issue-links add-blocker <repo> <number> <blocker repo> <blocker number>`, and builds once every blocker closes.",
 ].join(" ");
 export const BUG_SHAPE = `a fault still standing; its ## ${NAMED.why} quotes the evidence, such as a log line, a failing test or error text. Adds ## ${NAMED.doneWhen}: what working looks like. In an enrolled repo it builds the moment it is filed.`;
 export const IDEA_SHAPE = "something Collin floated, kept for him to decide.";

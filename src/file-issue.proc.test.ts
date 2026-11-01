@@ -232,7 +232,7 @@ describe("bin/file-issue reads the open issues first, so the same job is not fil
     const result = run(["build", "--title", "Port the ticket shape into core/", "--body-file", "body.md"]);
 
     expect(result.status).toBe(0);
-    expect(result.stderr).toContain("labelled waiting until every issue under its ## Waits on closes");
+    expect(result.stderr).toContain("labelled waiting until every issue it is blocked by closes");
     expect(filedAs(ghSaw(repo)).labels).toEqual(["ticket", "waiting"]);
   });
 });

@@ -7,7 +7,8 @@ import { admission, doesNotBuild } from "./admit.ts";
 import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
 import { capped, LIST_CAP, NO_EM_DASH, onDisk, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
 import { PUBLISHED_CHECK } from "./checks.ts";
-import { commentOnTicket, commentsRead, faultOf, firstStepOf, FOREIGN, followUpBody, gh, ghRead, git, gitRead, MACHINE_REPO, mark, NOTHING_MARKED, OWNER, post, postRefusals, readOrStop, rewriteTicket, FILED_IN, heardIn, LABELLED_WAITING, nothingHears, ticketBranch, unread, WAITING } from "./post.ts";
+import { addBlocker, addParent } from "./issue-links.ts";
+import { commentOnTicket, commentsRead, faultOf, firstStepOf, FOREIGN, followUpBody, gh, ghRead, git, gitRead, MACHINE_REPO, mark, NOTHING_MARKED, OWNER, post, postRefusals, readOrStop, rewriteTicket, FILED_IN, LABELLED_WAITING, nothingHears, ticketBranch, unread, WAITING } from "./post.ts";
 import { reviewedAndLanded } from "./reviewer.ts";
 import { calledOwner, committed, commitlinted, CONTRACT, FILED, opened, setupRefusal, type Spent, treePathed } from "./stage.ts";
 import { dedashed } from "./em-dash.ts";
@@ -65,8 +66,7 @@ const stoppedAt = stopsOf({ unadmitted: "Build refused: the ticket's checks woul
 const rewroteAsSpec = (ticket: string) => `The builder of #${ticket} rewrote it as a spec, which the slicer cuts:`;
 const wokenByTheCloser = (ticket: string) => `#${ticket} waits on it, ${LABELLED_WAITING}, and the closer wakes it once every one of them closes:`;
 export const dependsOn = (ticket: string) => `The builder of #${ticket} found it depends on`;
-export const waitsOnOpen = (ticket: string, open: string[]) => `${dependsOn(ticket)} ${open.join(", ")}, still open. ${wokenByTheCloser(ticket)}`;
-export const waitsOnFault = (ticket: string, filed: string[]) => `The builder of #${ticket} found the machine at fault and filed ${filed.join(", ")}. ${wokenByTheCloser(ticket)}`;
+const parkedBehind = (ticket: string, blockers: string[]) => `The builder of #${ticket} parked it, blocked by ${blockers.join(", ")}:`;
 const handedStep = (ticket: string, repo: string, filed: string[]) => `The builder of #${ticket} handed its first step to ${repo} and filed ${filed.join(", ")}.`;
 export const waitsOnStep = (ticket: string, repo: string, filed: string[]) => `${handedStep(ticket, repo, filed)} ${wokenByTheCloser(ticket)}`;
 export const waitsUnheard = (ticket: string, repo: string, filed: string[]) => `${handedStep(ticket, repo, filed)} #${ticket} waits on it, ${LABELLED_WAITING}. ${nothingHears(ticket, repo)}`;
@@ -243,8 +243,10 @@ function waitedOn(ticket: string, answer: Answer): Round {
   if (on.length === 0) return { red: "Your `waits` answer was refused: it names the open tickets this one depends on as `on`." };
   const closed = on.filter((number) => ghRead(["issue", "view", number, "--json", "state", "--jq", ".state"], `the state of #${number} could not be read, ${NOTHING_MARKED}`) !== "OPEN");
   if (closed.length > 0) return { red: `Your \`waits\` answer was refused: ${closed.map((number) => `#${number}`).join(", ")} is closed already, so build on what it left.` };
-  const named = on.map((number) => `#${number}`);
-  commentOnTicket(ticket, `${waitsOnOpen(ticket, named)} ${answer.reason}`, gh);
+  const here = process.env.GH_REPO ?? "";
+  const named = on.map((number) => `${here}#${number}`);
+  for (const number of on) addBlocker(here, Number(ticket), here, Number(number));
+  commentOnTicket(ticket, `${parkedBehind(ticket, named)} ${answer.reason}`, gh);
   mark(ticket, WAITING);
   console.log(`fix: #${ticket} waits on ${named.join(", ")}`);
   return { ended: 0 };
@@ -263,9 +265,10 @@ function rewritten(ticket: string, body: string, answer: Answer): Round {
 interface Handing {
   repo: string;
   filedFrom: (origin: string) => string;
-  parked: (filed: string[]) => string;
   unfiled: string;
 }
+
+const FILED_NUMBER = /\/issues\/(\d+)$/;
 
 
 
@@ -284,12 +287,18 @@ export function filedInRepo(repo: string, origin: string, outcome: string, unfil
   return { filed: said.filter((one) => FILED.test(one)), all: said.every((one) => FILED.test(one)) };
 }
 
-function filedToWaitOn(ticket: string, answer: Answer, { repo, filedFrom, parked, unfiled }: Handing): Round {
+function filedToWaitOn(ticket: string, answer: Answer, { repo, filedFrom, unfiled }: Handing): Round {
   const handed = filedInRepo(repo, filedFrom(`${process.env.GH_REPO ?? ""}#${ticket}`), answer.outcome, unfiled, answer.tickets);
   if ("red" in handed) return { red: handed.red };
   const { filed, all } = handed;
   if (!all) return { ended: calledOwner(ticket, "builder", `it filed ${filed.length} of ${answer.tickets?.length ?? 0} tickets in ${repo} to wait on`) };
-  commentOnTicket(ticket, `${parked(filed)} ${answer.reason}`, gh);
+  const here = process.env.GH_REPO ?? "";
+  const numbers = filed.map((url) => Number(FILED_NUMBER.exec(url)?.[1]));
+  for (const number of numbers) {
+    addBlocker(here, Number(ticket), repo, number);
+    addParent(repo, number, here, Number(ticket));
+  }
+  commentOnTicket(ticket, `${parkedBehind(ticket, numbers.map((number) => `${repo}#${number}`))} ${answer.reason}`, gh);
   mark(ticket, WAITING);
   const open = filed.filter((url) => ghRead(["issue", "view", url, "--json", "state", "--jq", ".state"], `the state of ${url} could not be read, so #${ticket} stays waiting`) === "OPEN");
   if (open.length === 0) return closedBeforeParked(ticket, filed);
@@ -305,14 +314,13 @@ function closedBeforeParked(ticket: string, filed: string[]): Round {
 }
 
 const filedForMachine = (ticket: string, answer: Answer): Round =>
-  filedToWaitOn(ticket, answer, { repo: MACHINE_REPO, filedFrom: faultOf, parked: (filed) => waitsOnFault(ticket, filed), unfiled: "a `machine` answer from a tree that is not the machine's files the machine's fault as one ticket or more in `tickets`" });
+  filedToWaitOn(ticket, answer, { repo: MACHINE_REPO, filedFrom: faultOf, unfiled: "a `machine` answer from a tree that is not the machine's files the machine's fault as one ticket or more in `tickets`" });
 
 function handedToItsRepo(ticket: string, answer: Answer): Round {
   const { repo } = answer;
   const refused = ownedRefusal(repo, process.env.GH_REPO, "ticket");
   if (refused !== undefined || repo === undefined) return { red: refused ?? "" };
-  const parked = heardIn(repo) ? waitsOnStep : waitsUnheard;
-  return filedToWaitOn(ticket, answer, { repo, filedFrom: firstStepOf, parked: (filed) => parked(ticket, repo, filed), unfiled: "an `owned` answer files its first step as one ticket or more in `tickets`" });
+  return filedToWaitOn(ticket, answer, { repo, filedFrom: firstStepOf, unfiled: "an `owned` answer files its first step as one ticket or more in `tickets`" });
 }
 
 function landedOnMain(ticket: string, reason: string, before: string): Round {

@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { waitsOnFault, waitsOnOpen, waitsOnStep } from "./builder.ts";
+import { dependsOn, waitsOnStep } from "./builder.ts";
 import { closing, type FaultOrigin } from "./closer.part.ts";
 import { faultOf, firstStepOf } from "./post.ts";
+
+const wokenByTheCloser = (ticket: string) => `#${ticket} waits on it, labelled \`waiting\`, and the closer wakes it once every one of them closes:`;
+const waitsOnOpen = (ticket: string, open: string[]) => `${dependsOn(ticket)} ${open.join(", ")}, still open. ${wokenByTheCloser(ticket)}`;
+const waitsOnFault = (ticket: string, filed: string[]) => `The builder of #${ticket} found the machine at fault and filed ${filed.join(", ")}. ${wokenByTheCloser(ticket)}`;
 import { holds, workflowJobs } from "./scenarios.ts";
 
 describe("bin/close wakes a ticket its builder parked on several open tickets once the last of them merges (#910)", () => {
