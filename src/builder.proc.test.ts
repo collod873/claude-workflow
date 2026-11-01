@@ -444,6 +444,15 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
     expect(handed()).toHaveLength(1);
   });
 
+  it("builds on when every first step it filed closed before it was parked, where Mezzanine#2022 sat waiting on design-kit#328, closed nine minutes earlier (#1602)", () => {
+    const { run, ticketComments, marked, handed } = fixing({ calledFrom: CALLER, answer: { outcome: "owned", repo: "collod873/design-kit", reason: "the fix starts in design-kit", tickets: [KIT_STEP] }, claude: SPENT_BY_THE_THIRD_ROUND, stageMinutes: "1", filedState: "CLOSED" });
+
+    run();
+    expect(marked().slice(0, 3)).toEqual(["811 building", "811 waiting", "811 building"]);
+    expect(ticketComments()).toContainEqual(expect.stringMatching(/^Every ticket the builder of #811 filed and waits on has closed: .*#811 builds now/));
+    expect(handed().join("\n")).toContain("https://github.com/collod873/design-kit/issues/901 is closed already");
+  });
+
   it("calls the owner on a first step handed to a repo with no caller file, since nothing there hears it close", () => {
     const { run, ticketComments, marked } = fixing({ calledFrom: CALLER, answer: { outcome: "owned", repo: "collod873/design-kit", reason: "the fix starts in design-kit", tickets: [KIT_STEP] }, claude: FIXES, unheardIn: "collod873/design-kit" });
 
