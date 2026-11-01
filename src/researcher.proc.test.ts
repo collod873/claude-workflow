@@ -277,15 +277,17 @@ describe("bin/research files what its findings call for, so a closed note leaves
     ]) expect(stderr).toContain(refusal);
   });
 
-  it("hands an owner step that filing would refuse back to the researcher's own session, and posts, files once and closes on its whole answer, rather than ending the run and researching the note again (#1623)", () => {
+  it("hands an owner step that filing would refuse back to the researcher's own session, and posts, files once and closes on its whole answer, keeping the steps and fixes it gave before, rather than ending the run and researching the note again (#1623)", () => {
     const step = { title: "Save a billing token", why: "The paid-minutes check reads billing.", needs: "BILLING_PAT", ...TAKEN_STEP };
-    const answered = researching({ steps: [{ ...step, handover: "" }], handedBack: { steps: [step] } });
+    const alreadyWhole = { ...step, title: "Save a second billing token" };
+    const answered = researching({ steps: [{ ...step, handover: "" }, alreadyWhole], fixes: [fix], handedBack: { steps: [step], fixes: [] } });
 
     expect(answered.run().status).toBe(0);
     expect(answered.hired()).toEqual(expect.arrayContaining(["--resume", READING_SESSION]));
     expect(answered.handed()).toContain('"Save a billing token": it makes a secret, but no last step says how to hand it over');
-    expect(answered.calls()).toEqual(["issue view 902", "issue comment 902", "issue create --title", "issue close 902"]);
-    expect(answered.filed()[0]?.body).toContain(`3. ${HANDED_OVER}`);
+    expect(answered.filed().map(({ title }) => title)).toEqual(expect.arrayContaining([fix.title, step.title, alreadyWhole.title]));
+    expect(answered.filed().find(({ title }) => title === step.title)?.body).toContain(`3. ${HANDED_OVER}`);
+    expect(answered.calls()).toContain("issue close 902");
   });
 
   it("pings the owner to take waiting off a fix waiting on a step's note in a repo that carries no caller file, since nothing there hears the note close (#1591)", () => {

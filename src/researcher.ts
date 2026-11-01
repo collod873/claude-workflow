@@ -52,18 +52,23 @@ export function handedOn(title: string, body: string, sources?: string): string 
 
 const researchFound = (note: string) => fromLine(fromHere(note), "researched");
 
+const carried = <Named>(named: (one: Named) => string, earlier: Named[], later: Named[] = []) => [...earlier.filter((one) => !later.some((again) => named(again) === named(one))), ...later];
+
 function stepsAnswered(said: string, spend: (input: string, resume?: string) => Spent, input: string): Required<Findings> | Stop {
   let session: string | undefined;
   let told: string | undefined;
   let handed = input;
+  let kept: Pick<Required<Findings>, "fixes" | "asks" | "steps"> = { fixes: [], asks: [], steps: [] };
   for (;;) {
     const spent = spend(handed, session);
     session = spent.session ?? session;
     if (spent.refusal !== undefined) return stoppedAt("modelRun", `${said} ended red, ${spent.refusal}`);
-    const { findings, fixes = [], asks = [], steps = [] } = (spent.answer ?? {}) as Findings;
+    const answer = (spent.answer ?? {}) as Findings;
+    const { findings } = answer;
     if (typeof findings !== "string" || findings.trim() === "") return stoppedAt("modelRun", `${said} ended red, the researcher gave no findings`);
-    const refused = stepsUnfileable(steps);
-    if (refused === undefined) return { findings, fixes, asks, steps };
+    kept = { fixes: carried(({ title }) => title, kept.fixes, answer.fixes), asks: carried((ask) => ask, kept.asks, answer.asks), steps: carried(({ title }) => title, kept.steps, answer.steps) };
+    const refused = stepsUnfileable(kept.steps);
+    if (refused === undefined) return { findings, ...kept };
     if (refused === told) return stoppedAt("unrecorded", `${said} is answered but its researcher gave the same refused owner steps again, so nothing is posted or filed and it stays open: ${refused}`);
     told = handed = refused;
   }

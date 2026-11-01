@@ -19,7 +19,7 @@ export function researching({
   readsPastCap = false,
   markRefusal,
   handedBack,
-}: { labels?: string[] | undefined; findings?: string; fixes?: { fault: string; title: string; done: string[]; waits?: string }[]; steps?: ({ title: string; why: string } & Record<string, unknown>)[]; asks?: string[]; gh?: string; sources?: string; readsPastCap?: boolean; markRefusal?: string; handedBack?: { steps: object[] } } = {}) {
+}: { labels?: string[] | undefined; findings?: string; fixes?: { fault: string; title: string; done: string[]; waits?: string }[]; steps?: ({ title: string; why: string } & Record<string, unknown>)[]; asks?: string[]; gh?: string; sources?: string; readsPastCap?: boolean; markRefusal?: string; handedBack?: { steps: object[]; fixes?: object[] } } = {}) {
   const session = `printf '%s\\n' '${JSON.stringify({ type: "system", session_id: READING_SESSION })}'`;
   const answeredAgain = (answer: object) => `case "$*" in *--resume*) printf '%s\\n' '${JSON.stringify({ type: "result", subtype: "success", is_error: false, session_id: READING_SESSION, structured_output: answer })}'; exit 0 ;; *) ${session} ;; esac\n`;
   const cutOff = readsPastCap ? `case "$*" in *--resume*) ;; *) ${session}; exit 124 ;; esac\n` : handedBack === undefined ? "" : answeredAgain({ findings, fixes, asks, ...handedBack });
