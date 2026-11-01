@@ -93,6 +93,7 @@ export function fixing({
   openTickets = [] as { number: number; title: string; body: string }[],
   appKeyFile = undefined as string | undefined,
   unheardIn = undefined as string | undefined,
+  filedState = "OPEN",
 } = {}) {
   const root = scratch("builder-");
   const session = join(root, "session");
@@ -142,6 +143,7 @@ export function fixing({
       "  *\"api\"*\"app/installations/4242/access_tokens\"*) printf 'minted-%s\\n' \"$n\" ;;",
       ...(unheardIn === undefined ? [] : [`  *"api repos/${unheardIn}/contents/.github/workflows/machine.yml"*) printf 'gh: Not Found (HTTP 404)\\n' >&2; exit 1 ;;`]),
       `  *"issue view 1592 --json state --jq .state"*) printf 'OPEN\\n' ;;`,
+      `  *"issue view https://github.com/"*"--json state --jq .state"*) printf '${filedState}\\n' ;;`,
       `  *"issue view"*"--json state --jq .state"*) printf 'CLOSED\\n' ;;`,
       ...openedCases(root, opener, body, parent, ticket),
       `  *"issue list"*) cat "${join(root, "open-tickets.json")}" ;;`,

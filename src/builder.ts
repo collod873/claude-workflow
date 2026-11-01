@@ -291,8 +291,17 @@ function filedToWaitOn(ticket: string, answer: Answer, { repo, filedFrom, parked
   if (!all) return { ended: calledOwner(ticket, "builder", `it filed ${filed.length} of ${answer.tickets?.length ?? 0} tickets in ${repo} to wait on`) };
   commentOnTicket(ticket, `${parked(filed)} ${answer.reason}`, gh);
   mark(ticket, WAITING);
+  const open = filed.filter((url) => ghRead(["issue", "view", url, "--json", "state", "--jq", ".state"], `the state of ${url} could not be read, so #${ticket} stays waiting`) === "OPEN");
+  if (open.length === 0) return closedBeforeParked(ticket, filed);
   console.log(`fix: #${ticket} waits on ${filed.join(", ")}, filed in ${repo}`);
   return { ended: 0 };
+}
+
+function closedBeforeParked(ticket: string, filed: string[]): Round {
+  mark(ticket, BUILDING);
+  commentOnTicket(ticket, `${filedClosed(ticket)} ${filed.join(", ")} closed before #${ticket} was parked, so no close was left to wake it. #${ticket} builds now.`, gh);
+  console.log(`fix: #${ticket} builds on, ${filed.join(", ")} closed before it was parked`);
+  return { red: `Every ticket you filed to wait on, ${filed.join(", ")} is closed already, so build on what it left and answer again.` };
 }
 
 const filedForMachine = (ticket: string, answer: Answer): Round =>
