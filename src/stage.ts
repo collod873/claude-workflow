@@ -325,7 +325,7 @@ function clickRefusals({ at, picks }: Click, index: number): string[] {
 }
 
 function unaskedRefusals(clicks: Click[]): string[] {
-  const fields = clicks.flatMap(({ picks }) => picks.filter(({ value }) => !UNANSWERED.test(value)).map(({ field }) => field.toLowerCase()));
+  const fields = clicks.flatMap(({ picks }) => picks.map(({ field }) => field.toLowerCase()));
   const firstOnPage = new Map<(typeof PAGES_ASKING)[number], number>();
   clicks.forEach(({ at }, index) => {
     const asking = linked(at) ? askingAt(new URL(at)) : undefined;
