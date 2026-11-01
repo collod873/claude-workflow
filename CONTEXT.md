@@ -194,6 +194,13 @@ reviews and lands it in one run (ADR-0012), as `spec` slices and `research` answ
 nothing, and taking `ticket` off and adding it back builds it again. Its PR merging closes it.
 _Avoid_: issue, sub-issue, card, item
 
+**Reconcile**:
+`bin/reconcile`, the one idempotent pass that owns wake, admit and stale-build recovery: a pure
+`reconcile` from each open ticket's state to label edits, each checking the labels first so two
+runs at once act once. `waiting` is its projection of the ticket's blocked-by links, written and
+never read as state; a ticket with no blocked-by link is left alone.
+_Avoid_: sweeper, poller
+
 **Note**:
 An issue labelled `note`: filed to be kept, never built, with a `## Why`. A research
 note, labelled `research` too, the machine answers and closes; one labelled `owner-step`, a step
