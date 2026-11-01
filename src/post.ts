@@ -153,6 +153,7 @@ const DOOR: Record<string, DoorKind> = {
 const DOOR_USAGE = `file-issue: usage: file-issue ${Object.keys(DOOR).join("|")} --title <title> --body-file <path> [${NEW}]\n       file-issue add <number> --body-file <path>`;
 
 const doorHelp = (): string[] => [
+  `file-issue: file a GitHub issue of one kind (${Object.keys(DOOR).join(", ")}) on the repo you're in.`,
   DOOR_USAGE,
   WHY_SHAPE,
   "Filing a build, bug or spec says whether this repo is enrolled, so whether it builds at once or waits for a session.",
