@@ -101,7 +101,7 @@ const filed = (refuses: (text: string) => string[], labels: LabelName[]): Kind =
 export const MISSING = /HTTP 404/;
 export const ticketBranch = (ticket: string) => `${TICKET_PREFIX}${ticket}`;
 
-const FROM_KINDS = ["research", "review", "done-check", "fault", "first-step"] as const;
+const FROM_KINDS = ["researched", "review", "done-check", "fault", "first-step"] as const;
 export type FromKind = (typeof FROM_KINDS)[number];
 export interface From {
   repo: string | undefined;

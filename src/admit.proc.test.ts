@@ -65,7 +65,7 @@ describe("bin/admit lets a ticket into its build before anything marks it (#1022
 });
 
 describe("bin/admit lets research's follow-up in when its note is a research note the owner opened (#1470)", () => {
-  const FOUND = ticketWhy("<!-- from: #1461 research -->");
+  const FOUND = ticketWhy("<!-- from: #1461 researched -->");
   const NOTE = { number: "1461", opener: "collod873", labels: ["note", "research"], state: "closed" };
 
   it.each([
@@ -152,7 +152,7 @@ describe("bin/admit follows a first step's origin in its own repo by the whole c
   const REVIEWED = { number: "900", opener: "collod873", labels: ["ticket"], state: "closed", repo: LUMARIA };
   const RESEARCHED = { number: "900", opener: "collod873", labels: ["note", "research"], state: "closed", repo: LUMARIA };
   const LET_THROUGH = ticketWhy("<!-- from: #900 review -->");
-  const FOUND = ticketWhy("<!-- from: #900 research -->");
+  const FOUND = ticketWhy("<!-- from: #900 researched -->");
 
   it.each([
     ["a reviewer's follow-up of a ticket the owner opened there", LET_THROUGH, REVIEWED],

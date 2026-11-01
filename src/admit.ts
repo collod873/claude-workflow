@@ -13,7 +13,7 @@ const named = (repo: string, ticket: string) => (repo === HERE ? `#${ticket}` : 
 const handedAs = (kind: string | undefined) => (kind === "first-step" ? "its first step" : "the machine's fault its builder filed");
 
 const FILED_AS: Record<From["kind"] | "parent", (at: string) => string> = {
-  research: (at) => `research's follow-up from ${at}`,
+  researched: (at) => `research's follow-up from ${at}`,
   review: (at) => `what the reviewer of ${at} let through`,
   "done-check": (at) => `what the done check of ${at} found`,
   fault: (at) => `the machine's fault from ${at}`,
@@ -26,7 +26,7 @@ const ownersOwn = ({ user }: Opened): boolean => user?.login === OWNER;
 function researchNoted(repo: string, note: string, so: string): Admission {
   const at = named(repo, note);
   const asked = opened(note, `the research note of ${at} could not be read, ${so}`, gh, repo);
-  return asked !== "missing" && ownersOwn(asked) && heldOf(asked.labels).has(RESEARCH) ? undefined : `${at} is no research note the owner opened`;
+  return asked !== "missing" && ownersOwn(asked) && heldOf(asked.labels).has(RESEARCH) ? undefined : `the App opened it ${NO_FOLLOW_UP}`;
 }
 
 const within = (filed: string, refused: Admission): Admission => (refused === undefined ? undefined : `the App filed it as ${filed}, where ${refused}`);
@@ -61,7 +61,7 @@ function admitted(repo: string, ticket: string, so: string, reads: number, missi
   const origin = originOf(repo, ticket, from);
   if (origin === undefined) return { refused: `the App opened it ${NO_FOLLOW_UP}`, from };
   const filedFrom = named(origin.repo, origin.number);
-  if (origin.kind === "research") return { refused: within(FILED_AS.research(filedFrom), researchNoted(origin.repo, origin.number, so)), from };
+  if (origin.kind === "researched") return { refused: within(FILED_AS.researched(filedFrom), researchNoted(origin.repo, origin.number, so)), from };
   const notThere = origin.repo === repo ? unread : () => `${filedFrom} does not exist`;
   return { refused: within(FILED_AS[origin.kind](filedFrom), admitted(origin.repo, origin.number, so, reads - 1, notThere).refused), from };
 }

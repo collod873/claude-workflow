@@ -749,11 +749,10 @@ describe("a fresh reviewer reads each green build, fixes or approves it, and bin
 });
 
 describe("the builder builds an App-opened ticket only as a follow-up a stage wrote, never for its spec alone (#1022, #1509)", () => {
-  const SPEC = { state: "open", user: { login: "collod873" }, labels: [{ name: "spec" }] };
   const APP = "collod873-machine[bot]";
 
-  it("stops a ticket the App opened under an open spec the owner opened, before its builder runs anything", () => {
-    const scenario = fixing({ claude: FIXES, opener: APP, parent: SPEC });
+  it("stops a ticket the App opened with no parent link or marker line, before its builder runs anything", () => {
+    const scenario = fixing({ claude: FIXES, opener: APP });
 
     const result = scenario.run("811");
 

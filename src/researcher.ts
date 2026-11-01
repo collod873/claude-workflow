@@ -50,7 +50,7 @@ export function handedOn(title: string, body: string, sources?: string): string 
   ].join("\n\n");
 }
 
-const researchFound = (note: string) => fromLine(fromHere(note), "research");
+const researchFound = (note: string) => fromLine(fromHere(note), "researched");
 
 function researched(issue: string): Stop | undefined {
   const said = `research: #${issue}`;
