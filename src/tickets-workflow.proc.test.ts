@@ -100,6 +100,24 @@ describe("a repo's tickets build through one caller file that holds only trigger
     expect(steps.some(({ run }) => /bin\/reconcile\b/.test(run ?? ""))).toBe(true);
   });
 
+  it("hands reconcile the issue that closed, and nothing on any other event, so a dependent in another repo wakes on the close itself, where Mezzanine#2080 waited on design-kit#347 for a clock that ran twice that day", () => {
+    const step = workflowJobs("tickets.yml").reconcile?.steps.find(({ run }) => /bin\/reconcile\b/.test(run ?? ""));
+    const argsOn = (event: object) => {
+      const root = scratch("reconcile-step-");
+      writeFileSync(join(root, "event.json"), JSON.stringify(event));
+      script(join(root, "bin", "reconcile"), 'printf \'%s\\n\' "$@" >"$(dirname "$0")/../argv"\n');
+      script(join(root, "step"), step?.run ?? "");
+      const ran = execute(join(root, "step"), root, { GITHUB_EVENT_PATH: join(root, "event.json"), REPO: "collod873/design-kit", GH_TOKEN: "app" });
+      expect(ran.status, ran.stderr).toBe(0);
+      return readFileSync(join(root, "argv"), "utf8").trimEnd().split("\n");
+    };
+
+    expect(argsOn({ action: "closed", issue: { number: 347 } })).toEqual(["--repo", "collod873/design-kit", "--closed", "347"]);
+    expect(argsOn({ action: "labeled", issue: { number: 347 } })).toEqual(["--repo", "collod873/design-kit"]);
+    expect(argsOn({ action: "closed", pull_request: { number: 348 } })).toEqual(["--repo", "collod873/design-kit"]);
+    expect(argsOn({ schedule: "*/15 * * * *" })).toEqual(["--repo", "collod873/design-kit"]);
+  });
+
   it("names its run by no event it does not hear, so a ticket's PR or a CI run names no run that starts nothing (#1447)", () => {
     const named = [...caller()["run-name"].matchAll(/github\.event_name == '(\w+)'/g)].map(([, event]) => event ?? "");
 

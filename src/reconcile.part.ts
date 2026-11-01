@@ -16,14 +16,19 @@ export type Issues = Record<string, { user: { login: string }; body: string }>;
 
 const linked = ({ repo, number, state }: Ticket["blockers"][number]) => ({ id: number * 100, number, state, repository_url: `https://api.github.com/repos/${repo}` });
 
-export function linking({ tickets = [] as Ticket[], specs = [] as Ticket[], parentless = false, refused = false, liveTitles = [] as string[], issues = {} } = {}) {
+interface Dependent extends Ticket {
+  repo: string;
+}
+
+export function linking({ tickets = [] as Ticket[], waiting = [] as Ticket[], closing = undefined as { number: number; blocking: Dependent[] } | undefined, alreadyLinked = false, parentless = false, refused = false, liveTitles = [] as string[], issues = {} } = {}) {
   const root = scratch("reconcile-");
   const { setup, calls } = ghArgv(join(root, "gh-argv"));
   const listed = (issues: Ticket[]) => JSON.stringify(issues.map(({ number, labels }) => ({ number, labels: labels.map((name) => ({ name })) })));
   plant(root, "listed.json", listed(tickets));
-  plant(root, "specs.json", listed(specs));
+  plant(root, "waiting.json", listed(waiting));
+  plant(root, "blocking.json", JSON.stringify([(closing?.blocking ?? []).map(({ repo, number, labels }) => ({ ...linked({ repo, number, state: "open" }), labels: labels.map((name) => ({ name })) }))]));
   plant(root, "live", liveTitles.join("\n"));
-  const cases = [...tickets, ...specs].flatMap(({ number, labels, blockers, timeline = [] }) => {
+  const cases = [...tickets, ...waiting, ...(closing?.blocking ?? [])].flatMap(({ number, labels, blockers, timeline = [] }) => {
     plant(root, `blockers-${number}.json`, JSON.stringify([blockers.map(linked)]));
     plant(root, `timeline-${number}.json`, JSON.stringify([timeline]));
     plant(root, `labels-${number}`, labels.join("\n"));
@@ -40,7 +45,9 @@ export function linking({ tickets = [] as Ticket[], specs = [] as Ticket[], pare
       'case "$*" in',
       ...(refused ? ['  *"--method POST"*) printf \'gh: Forbidden (HTTP 403)\\n\' >&2; exit 1 ;;', '  *"issue edit"*) printf \'gh: Forbidden (HTTP 403)\\n\' >&2; exit 1 ;;'] : []),
       `  "run list"*"--status queued"*) cat "${join(root, "live")}" ;;`,
-      `  "issue list"*"--label spec "*) cat "${join(root, "specs.json")}" ;;`,
+      `  "issue list"*"--label waiting "*) cat "${join(root, "waiting.json")}" ;;`,
+      ...(closing === undefined ? [] : [`  *"issues/${closing.number}/dependencies/blocking"*) cat "${join(root, "blocking.json")}" ;;`]),
+      ...(alreadyLinked ? ['  *"--method POST"*"blocked_by"*) printf \'gh: An error occurred while adding the blocking issue to the issue. Validation failed: Target issue has already been taken (HTTP 422)\\n\' >&2; exit 1 ;;'] : []),
       `  "issue list"*) cat "${join(root, "listed.json")}" ;;`,
       ...cases,
       ...opened,
@@ -53,7 +60,7 @@ export function linking({ tickets = [] as Ticket[], specs = [] as Ticket[], pare
   const env = { PATH: `${join(root, "bin")}:${process.env.PATH}`, GH_RETRY_SECONDS: "0" };
   return {
     calls,
-    reconcile: () => execute(join(BIN, "reconcile"), root, env, ["--repo", HERE]),
+    reconcile: (...args: string[]) => execute(join(BIN, "reconcile"), root, env, ["--repo", HERE, ...args]),
     links: (...args: string[]) => execute(join(BIN, "issue-links"), root, env, args),
   };
 }

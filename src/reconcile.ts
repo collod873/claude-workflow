@@ -1,7 +1,7 @@
 import { admission } from "./admit.ts";
-import { type Blocker, blockersOf } from "./issue-links.ts";
+import { type Blocker, blockersOf, dependentsOf } from "./issue-links.ts";
 import { ghRead, Stopped } from "./post.ts";
-import { BUILDING, HELD, OWNER, SPEC, STUCK, TICKET, WAITING } from "./spelled.ts";
+import { BUILDING, HELD, OWNER, STUCK, TICKET, WAITING } from "./spelled.ts";
 
 export interface IssueState {
   repo: string;
@@ -125,10 +125,15 @@ function buildOf(number: number, live: string[], events: Event[]): Pick<IssueSta
 const openWith = (repo: string, label: string): Listed[] =>
   JSON.parse(ghRead(["issue", "list", "--repo", repo, "--label", label, "--state", "open", "--limit", "1000", "--json", "number,labels"], `the open ${label}s of ${repo} could not be read, so nothing is reconciled`)) as Listed[];
 
-const specStatesOf = (repo: string, tickets: Listed[]): IssueState[] =>
-  openWith(repo, SPEC)
+const waitingStatesOf = (repo: string, tickets: Listed[]): IssueState[] =>
+  openWith(repo, WAITING)
     .filter(({ number }) => !tickets.some((ticket) => ticket.number === number))
     .map(({ number, labels }) => ({ repo, number, labels: labels.map(({ name }) => name), blockers: blockersOf(repo, number) }));
+
+const dependentStatesOf = (repo: string, closed: number): IssueState[] =>
+  dependentsOf(repo, closed)
+    .filter((dependent) => dependent.open && dependent.repo !== repo)
+    .map((dependent) => ({ repo: dependent.repo, number: dependent.number, labels: dependent.labels, blockers: blockersOf(dependent.repo, dependent.number) }));
 
 function statesOf(repo: string): IssueState[] {
   const listed = openWith(repo, TICKET);
@@ -138,13 +143,15 @@ function statesOf(repo: string): IssueState[] {
     const names = labels.map(({ name }) => name);
     const events = timelineOf(repo, number);
     return { repo, number, labels: names, blockers: blockersOf(repo, number), ...(names.includes(BUILDING) ? buildOf(number, live, events) : admitOf(repo, number, events)) };
-  }).concat(specStatesOf(repo, listed));
+  }).concat(waitingStatesOf(repo, listed));
 }
 
 if (import.meta.main) {
-  const repo = process.argv[2] ?? ghRead(["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"], "the repo could not be read, so nothing is reconciled");
+  const [named, closed] = process.argv.slice(2);
+  const repo = named ?? ghRead(["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"], "the repo could not be read, so nothing is reconciled");
   try {
-    for (const action of reconcile(statesOf(repo))) apply(action);
+    const dependents = closed === undefined ? [] : dependentStatesOf(repo, Number(closed));
+    for (const action of reconcile([...statesOf(repo), ...dependents])) apply(action);
   } catch (error) {
     if (!(error instanceof Stopped)) throw error;
     console.error(`reconcile: ${error.message}`);

@@ -1,10 +1,10 @@
 #!/bin/bash
 set -uo pipefail
 
-usage="reconcile: usage: reconcile [--repo owner/repo]"
+usage="reconcile: usage: reconcile [--repo owner/repo [--closed number]]"
 repo=()
-if [[ $# -eq 2 && $1 == --repo && $2 =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
-  repo=("$2")
+if [[ ($# -eq 2 || ($# -eq 4 && $3 == --closed && $4 =~ ^[0-9]+$)) && $1 == --repo && $2 =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+  repo=("$2" "${@:4}")
 elif [[ $# -ne 0 ]]; then
   printf '%s\n' "$usage" >&2
   exit 2

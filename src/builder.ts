@@ -7,8 +7,8 @@ import { admission, doesNotBuild } from "./admit.ts";
 import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
 import { capped, LIST_CAP, NO_EM_DASH, onDisk, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
 import { PUBLISHED_CHECK } from "./checks.ts";
-import { addBlocker, postedUnderOrigin } from "./issue-links.ts";
-import { commentOnTicket, commentsRead, FOREIGN, fromLine, followUpBody, gh, ghRead, git, gitRead, MACHINE_REPO, mark, NOTHING_MARKED, OWNER, postRefusals, readOrStop, rewriteTicket, FILED_IN, ticketBranch, unread, WAITING } from "./post.ts";
+import { park, postedUnderOrigin } from "./issue-links.ts";
+import { commentOnTicket, commentsRead, FOREIGN, fromLine, followUpBody, gh, ghRead, git, gitRead, MACHINE_REPO, mark, NOTHING_MARKED, OWNER, postRefusals, readOrStop, rewriteTicket, FILED_IN, ticketBranch, unread } from "./post.ts";
 import { reviewedAndLanded } from "./reviewer.ts";
 import { calledOwner, committed, commitlinted, CONTRACT, FILED, opened, setupRefusal, type Spent, treePathed } from "./stage.ts";
 import { dedashed } from "./em-dash.ts";
@@ -243,9 +243,8 @@ function waitedOn(ticket: string, answer: Answer): Round {
   if (closed.length > 0) return { red: `Your \`waits\` answer was refused: ${closed.map((number) => `#${number}`).join(", ")} is closed already, so build on what it left.` };
   const here = process.env.GH_REPO ?? "";
   const named = on.map((number) => `${here}#${number}`);
-  for (const number of on) addBlocker(here, Number(ticket), here, Number(number));
+  park(ticket, on.map((number) => ({ repo: here, number: Number(number) })));
   commentOnTicket(ticket, `${parkedBehind(ticket, named)} ${answer.reason}`, gh);
-  mark(ticket, WAITING);
   console.log(`fix: #${ticket} waits on ${named.join(", ")}`);
   return { ended: 0 };
 }
@@ -290,13 +289,9 @@ function filedToWaitOn(ticket: string, answer: Answer, { repo, filedFrom, unfile
   if ("red" in handed) return { red: handed.red };
   const { filed, all } = handed;
   if (!all) return { ended: calledOwner(ticket, "builder", `it filed ${filed.length} of ${answer.tickets?.length ?? 0} tickets in ${repo} to wait on`) };
-  const here = process.env.GH_REPO ?? "";
   const numbers = filed.map((url) => Number(FILED_NUMBER.exec(url)?.[1]));
-  for (const number of numbers) {
-    addBlocker(here, Number(ticket), repo, number);
-  }
+  park(ticket, numbers.map((number) => ({ repo, number })));
   commentOnTicket(ticket, `${parkedBehind(ticket, numbers.map((number) => `${repo}#${number}`))} ${answer.reason}`, gh);
-  mark(ticket, WAITING);
   const open = filed.filter((url) => ghRead(["issue", "view", url, "--json", "state", "--jq", ".state"], `the state of ${url} could not be read, so #${ticket} stays waiting`) === "OPEN");
   if (open.length === 0) return closedBeforeParked(ticket, filed);
   console.log(`fix: #${ticket} waits on ${filed.join(", ")}, filed in ${repo}`);

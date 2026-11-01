@@ -425,7 +425,7 @@ jobs:
       - env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           REPO: ${{ github.repository }}
-        run: bin/reconcile --repo "$REPO"
+        run: bin/reconcile --repo "$REPO" $(jq -r 'select(.action == "closed" and .issue != null) | "--closed \(.issue.number)"' "$GITHUB_EVENT_PATH")
 
   dispatch-rerun:
     needs: [wake, build, strip]

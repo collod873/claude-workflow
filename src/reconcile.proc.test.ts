@@ -37,19 +37,36 @@ describe("bin/reconcile applies the waiting projection of each open ticket's blo
     expect(edits(calls())).toEqual([["issue", "edit", "2022", "--repo", HERE, "--remove-label", "waiting"]]);
   });
 
-  it("wakes a waiting spec whose handed-off step closed in another repo, and touches no other spec, where Mezzanine#2080 sat waiting after design-kit#347 closed", () => {
+  it("wakes any waiting issue whose blockers all closed, whatever its kind, and touches no other, where Mezzanine#2080, a spec, sat waiting because only tickets were read", () => {
     const { reconcile, calls } = linking({
-      specs: [
+      waiting: [
         { number: 2080, labels: ["spec", "waiting"], blockers: [{ repo: ELSEWHERE, number: 347, state: "closed" }] },
+        { number: 2090, labels: ["research", "waiting"], blockers: [{ repo: HERE, number: 5, state: "closed" }] },
         { number: 2081, labels: ["spec", "waiting"], blockers: [{ repo: ELSEWHERE, number: 348, state: "open" }] },
-        { number: 2082, labels: ["spec", "building"], blockers: [], timeline: [{ event: "labeled", label: { name: "building" }, created_at: "2026-01-01T00:00:00Z" }] },
       ],
     });
 
     const result = reconcile();
 
     expect(result.status, result.stderr).toBe(0);
-    expect(calls().filter((args) => ["edit", "comment"].includes(args[1] ?? ""))).toEqual([["issue", "edit", "2080", "--repo", HERE, "--remove-label", "waiting"]]);
+    expect(edits(calls())).toEqual([
+      ["issue", "edit", "2080", "--repo", HERE, "--remove-label", "waiting"],
+      ["issue", "edit", "2090", "--repo", HERE, "--remove-label", "waiting"],
+    ]);
+  });
+
+  it("wakes a dependent in another repo when the issue that closed was its last open blocker, and leaves one still blocked, so a cross-repo wait ends on the close and not the clock", () => {
+    const { reconcile, calls } = linking({
+      closing: { number: 7, blocking: [
+        { repo: ELSEWHERE, number: 2080, labels: ["spec", "waiting"], blockers: [{ repo: HERE, number: 7, state: "closed" }] },
+        { repo: ELSEWHERE, number: 2081, labels: ["ticket", "waiting"], blockers: [{ repo: HERE, number: 7, state: "closed" }, { repo: ELSEWHERE, number: 9, state: "open" }] },
+      ] },
+    });
+
+    const result = reconcile("--closed", "7");
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(edits(calls())).toEqual([["issue", "edit", "2080", "--repo", ELSEWHERE, "--remove-label", "waiting"]]);
   });
 
   it("fails red naming the ticket when the label edit is refused", () => {
@@ -139,6 +156,14 @@ describe("bin/issue-links reads and adds blocked-by links and sub-issue parents 
       ["api", `repos/${ELSEWHERE}/issues/7`, "--jq", ".id"],
       ["api", "--method", "POST", `repos/${HERE}/issues/931/dependencies/blocked_by`, "-F", "issue_id=4242"],
     ]);
+  });
+
+  it("takes a blocker already linked as linked, so parking twice behind one issue does not fail the run", () => {
+    const { links } = linking({ alreadyLinked: true });
+
+    const result = links("add-blocker", HERE, "931", ELSEWHERE, "7");
+
+    expect(result.status, result.stderr).toBe(0);
   });
 
   it("files a ticket under a parent in another repo by the ticket's issue id", () => {
