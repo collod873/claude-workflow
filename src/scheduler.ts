@@ -4,8 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
 import { capped, LIST_CAP } from "./brief.ts";
-import { waitsOnStep, waitsUnheard } from "./builder.ts";
-import { askedIssue, commentEdited, commentOnTicket, gh, ghRead, git, gitRead, heardIn, heldOn, labelsHeld, machineBin, mark, OWNER, readOrStop, rebuiltOnMain, rebuiltRef, STUCK, unread, WAITING } from "./post.ts";
+import { parkedBehind } from "./builder.ts";
+import { addBlocker } from "./issue-links.ts";
+import { askedIssue, commentEdited, commentOnTicket, gh, ghRead, git, gitRead, heldOn, labelsHeld, machineBin, mark, OWNER, readOrStop, rebuiltOnMain, rebuiltRef, STUCK, unread, WAITING } from "./post.ts";
 import type { Slice } from "./slicer.ts";
 import { BUILDING, MACHINE, SPEC, SPEC_PREFIX } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
@@ -294,15 +295,18 @@ function retried(spec: string, { session, outOfTime, stopped }: Tracked): Hiring
   return outOfTime === true ? { resume: session, outOfTime } : { resume: session, told: resumedAfterStop(spec, stopped ?? "") };
 }
 
-const REPO_OF = /^https:\/\/github\.com\/([^/]+\/[^/]+)\/issues\/\d+$/;
+const FILED_IN_REPO = /^https:\/\/github\.com\/([^/]+\/[^/]+)\/issues\/(\d+)$/;
 
 const hasEnded = (url: string) => /^(CLOSED|MERGED)/.test(ghRead(["issue", "view", url, "--json", "state", "--jq", ".state"], `the state of ${url} could not be read, so no waiting slice was woken`));
 
 function parked(spec: string, waiting: Tracked[]): undefined {
   const filed = [...new Set(waiting.flatMap(({ filed = [] }) => filed))];
-  const repos = [...new Set(filed.map((url) => REPO_OF.exec(url)?.[1] ?? ""))].filter((repo) => repo !== "");
-  const handedTo = repos.join(" and ");
-  const said = repos.every(heardIn) ? waitsOnStep(spec, handedTo, filed) : waitsUnheard(spec, handedTo, filed);
+  const blockers = filed.flatMap((url) => {
+    const [, repo, number] = FILED_IN_REPO.exec(url) ?? [];
+    return repo === undefined ? [] : [{ repo, number: Number(number) }];
+  });
+  for (const { repo, number } of blockers) addBlocker(process.env.GH_REPO ?? "", Number(spec), repo, number);
+  const said = parkedBehind(spec, blockers.map(({ repo, number }) => `${repo}#${number}`));
   commentOnTicket(spec, `${said} ${waiting.map(({ id }) => `\`${id}\``).join(", ")} build once they close.`, gh);
   mark(spec, WAITING);
   console.log(`schedule: #${spec} waits on ${filed.join(", ")}, which its slices handed off`);

@@ -37,6 +37,21 @@ describe("bin/reconcile applies the waiting projection of each open ticket's blo
     expect(edits(calls())).toEqual([["issue", "edit", "2022", "--repo", HERE, "--remove-label", "waiting"]]);
   });
 
+  it("wakes a waiting spec whose handed-off step closed in another repo, and touches no other spec, where Mezzanine#2080 sat waiting after design-kit#347 closed", () => {
+    const { reconcile, calls } = linking({
+      specs: [
+        { number: 2080, labels: ["spec", "waiting"], blockers: [{ repo: ELSEWHERE, number: 347, state: "closed" }] },
+        { number: 2081, labels: ["spec", "waiting"], blockers: [{ repo: ELSEWHERE, number: 348, state: "open" }] },
+        { number: 2082, labels: ["spec", "building"], blockers: [], timeline: [{ event: "labeled", label: { name: "building" }, created_at: "2026-01-01T00:00:00Z" }] },
+      ],
+    });
+
+    const result = reconcile();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(calls().filter((args) => ["edit", "comment"].includes(args[1] ?? ""))).toEqual([["issue", "edit", "2080", "--repo", HERE, "--remove-label", "waiting"]]);
+  });
+
   it("fails red naming the ticket when the label edit is refused", () => {
     const result = linking({ refused: true, tickets: [{ number: 932, labels: ["ticket"], blockers: [{ repo: HERE, number: 5, state: "open" }] }] }).reconcile();
 

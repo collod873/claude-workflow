@@ -1,7 +1,7 @@
 import { admission } from "./admit.ts";
 import { type Blocker, blockersOf } from "./issue-links.ts";
 import { ghRead, Stopped } from "./post.ts";
-import { BUILDING, HELD, OWNER, STUCK, TICKET, WAITING } from "./spelled.ts";
+import { BUILDING, HELD, OWNER, SPEC, STUCK, TICKET, WAITING } from "./spelled.ts";
 
 export interface IssueState {
   repo: string;
@@ -122,15 +122,23 @@ function buildOf(number: number, live: string[], events: Event[]): Pick<IssueSta
   return { buildingSince: since === undefined ? undefined : Date.parse(since), liveRun: live.some((title) => named.test(title)), restarted };
 }
 
+const openWith = (repo: string, label: string): Listed[] =>
+  JSON.parse(ghRead(["issue", "list", "--repo", repo, "--label", label, "--state", "open", "--limit", "1000", "--json", "number,labels"], `the open ${label}s of ${repo} could not be read, so nothing is reconciled`)) as Listed[];
+
+const specStatesOf = (repo: string, tickets: Listed[]): IssueState[] =>
+  openWith(repo, SPEC)
+    .filter(({ number }) => !tickets.some((ticket) => ticket.number === number))
+    .map(({ number, labels }) => ({ repo, number, labels: labels.map(({ name }) => name), blockers: blockersOf(repo, number) }));
+
 function statesOf(repo: string): IssueState[] {
-  const listed = JSON.parse(ghRead(["issue", "list", "--repo", repo, "--label", TICKET, "--state", "open", "--limit", "1000", "--json", "number,labels"], `the open tickets of ${repo} could not be read, so nothing is reconciled`)) as Listed[];
+  const listed = openWith(repo, TICKET);
   const building = listed.some(({ labels }) => labels.some(({ name }) => name === BUILDING));
   const live = building ? liveTitles(repo) : [];
   return listed.map(({ number, labels }) => {
     const names = labels.map(({ name }) => name);
     const events = timelineOf(repo, number);
     return { repo, number, labels: names, blockers: blockersOf(repo, number), ...(names.includes(BUILDING) ? buildOf(number, live, events) : admitOf(repo, number, events)) };
-  });
+  }).concat(specStatesOf(repo, listed));
 }
 
 if (import.meta.main) {
