@@ -92,6 +92,12 @@ const FIXED: Part[] = [
     clock: true,
   },
   {
+    name: "reconcile schedule",
+    file: ".github/workflows/machine.yml",
+    stops: "https://github.com/collod873/claude-workflow/issues/1606",
+    clock: true,
+  },
+  {
     name: "bin/mark",
     file: "bin/mark",
     stops: "https://github.com/collod873/claude-workflow/issues/835",
