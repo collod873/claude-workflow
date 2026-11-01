@@ -1,3 +1,4 @@
+import { fromOf } from "./post.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -456,7 +457,7 @@ describe("every risk a spec's reviewer names ends somewhere, as a ticket's revie
     expect(finished.handed()[0]).toContain("sits in `fixes` or `risks`");
     const created = createdIssues(finished.calls());
     expect(created.map(({ title }) => title)).toEqual([FIX.title]);
-    expect(created[0]?.body).toContain("Follow-up of #974: its reviewer let this through.");
+    expect(fromOf(created[0]?.body ?? "")).toMatchObject({ number: "974", kind: "review" });
     const [approved = ""] = finished.approved();
     expect(approved).toContain(`- filed as the ticket "${FIX.title}" once it lands: ${FIX.fault}`);
     expect(approved).toContain(`- needs nothing: ${NEEDS_NOTHING.risk} ${NEEDS_NOTHING.why}`);

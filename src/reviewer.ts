@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { type AppKey, freshAppToken } from "./app-token.ts";
 import { capped, DIFF_CAP, diffOverCap, LIST_CAP, NO_EM_DASH, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
-import { commentOnTicket, FOLLOW_UP_OF, gh, gitRead, heldOn, labelsHeld, machineBin, mark, REVIEW_LET_THROUGH } from "./post.ts";
+import { commentOnTicket, fromHere, fromLine, gh, gitRead, heldOn, labelsHeld, machineBin, mark } from "./post.ts";
 import { CHECKING } from "./spelled.ts";
 import { calledOwner, committed, commitlinted, type Filed, type Fix, FOLLOW_UPS, head, hire, MOST_FIXES, type OwnerStep, OWNER_STEPS, stepsAndFixesFiled } from "./stage.ts";
 import { quoted } from "./ticket-shape.ts";
@@ -151,7 +151,7 @@ const reviewedBy = (ticket: string) => `Review #${ticket} as its reviewer`;
 
 function filedOnceLanded(ticket: string, answer: Gathered): string {
   const filed = [
-    ...routedFiled(`${FOLLOW_UP_OF}${ticket}${REVIEW_LET_THROUGH}`, `Left to the owner by the run that built #${ticket}, which closed.`, answer.steps, [answer]),
+    ...routedFiled(fromLine(fromHere(ticket), "review"), `Left to the owner by the run that built #${ticket}, which closed.`, answer.steps, [answer]),
   ];
   const refused = filed.filter(({ refusals }) => refusals.length > 0);
   if (refused.length > 0) commentOnTicket(ticket, [`What the reviewer of #${ticket} left that could not be filed:`, "", ...refused.map(({ named, refusals }) => `- ${named} (${quoted(refusals[0] ?? "")})`), ""].join("\n"), gh);

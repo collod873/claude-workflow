@@ -10,7 +10,7 @@ import { checkedBy, filedInRepo, OWNED_ANSWER, ownedRefusal, type Piece, type Re
 import { FAST_CHECK } from "./checks.ts";
 import { LEFT_CAP } from "./scheduler.ts";
 import { SLICE_ID } from "./slicer.ts";
-import { firstStepOf, gh, git, gitRead, rebuiltOnMain, rebuiltRef, Stopped, unread } from "./post.ts";
+import { fromLine, gh, git, gitRead, rebuiltOnMain, rebuiltRef, Stopped, unread } from "./post.ts";
 import { commitlinted, committed, CONTRACT, hire, setupRefusal } from "./stage.ts";
 
 const USAGE = "build-slice: usage: build-slice --spec <N> --slice <id> --brief <file> --onto <integration ref> [--resume <session>] [--told <text> | --out-of-time | --answer <its answer's JSON, to land again>]";
@@ -272,7 +272,7 @@ function handedToItsRepo({ spec }: Slicing, { repo, tickets }: Answer): { red: s
   const own = process.env.GITHUB_REPOSITORY;
   const refused = ownedRefusal(repo, own, "spec");
   if (refused !== undefined || repo === undefined) return { red: refused ?? "" };
-  const handed = filedInRepo(repo, firstStepOf(`${own ?? ""}#${spec}`), "owned", "an `owned` answer files its first step as one ticket or more in `tickets`", tickets);
+  const handed = filedInRepo(repo, fromLine(`${own ?? ""}#${spec}`, "first-step"), "owned", "an `owned` answer files its first step as one ticket or more in `tickets`", tickets);
   if ("red" in handed) return handed;
   if (!handed.all) return { stopped: `its builder filed ${handed.filed.length} of ${tickets?.length ?? 0} tickets in ${repo} to wait on` };
   return { filed: handed.filed };

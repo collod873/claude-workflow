@@ -1,5 +1,5 @@
 import { capped, NO_EM_DASH } from "./brief.ts";
-import { commentOnTicket, FOLLOW_UP_OF, gh, readOrStop, RESEARCH, RESEARCH_FOUND } from "./post.ts";
+import { commentOnTicket, fromHere, fromLine, gh, readOrStop, RESEARCH } from "./post.ts";
 import { RESEARCHING } from "./spelled.ts";
 import { type Fix, FOLLOW_UPS, followedUp, MOST_FIXES, opened, type OwnerStep, OWNER_STEPS } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
@@ -50,7 +50,7 @@ export function handedOn(title: string, body: string, sources?: string): string 
   ].join("\n\n");
 }
 
-const researchFound = (note: string) => `${FOLLOW_UP_OF}${note}${RESEARCH_FOUND}`;
+const researchFound = (note: string) => fromLine(fromHere(note), "research");
 
 function researched(issue: string): Stop | undefined {
   const said = `research: #${issue}`;

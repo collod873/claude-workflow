@@ -25,7 +25,7 @@ export function addBlocker(repo: string, number: number, blockerRepo: string, bl
   linked(`${issuePath(repo, number)}/dependencies/blocked_by`, "issue_id", idOf(blockerRepo, blockerNumber), `${named(repo, number)} could not be marked blocked by ${named(blockerRepo, blockerNumber)}`);
 }
 
-function parentOf(repo: string, number: number): Blocker | undefined {
+export function parentOf(repo: string, number: number): Blocker | undefined {
   const got = gh(["--missing-answers", "api", `${issuePath(repo, number)}/parent`]);
   if (got.status !== 0 && MISSING.test(got.stderr)) return undefined;
   return got.status === 0 ? linkedOf(JSON.parse(got.stdout) as Linked) : unread(`the parent of ${named(repo, number)} could not be read`);

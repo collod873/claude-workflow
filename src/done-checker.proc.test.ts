@@ -1,3 +1,4 @@
+import { fromOf } from "./post.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -57,7 +58,7 @@ describe("bin/done-check files each sentence that did not hold as a bug and clos
     const created = checked.created();
     expect(created).toHaveLength(1);
     const body = created[0]?.[created[0].indexOf("--body") + 1] ?? "";
-    expect(body).toContain("Follow-up of #974: its done check found this did not hold.");
+    expect(fromOf(body ?? "")).toMatchObject({ number: "974", kind: "done-check" });
     expect(body).toContain("> opened a ticket it filed and its Why was empty");
     expect(body).toContain(`## Done when\n\n- ${SENTENCES[1]}`);
     expect(created[0]).toContain("bug");

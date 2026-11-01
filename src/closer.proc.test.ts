@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { dependsOn, waitsOnStep } from "./builder.ts";
 import { closing, type FaultOrigin } from "./closer.part.ts";
-import { faultOf, firstStepOf } from "./post.ts";
+import { fromLine } from "./post.ts";
 
 const wokenByTheCloser = (ticket: string) => `#${ticket} waits on it, labelled \`waiting\`, and the closer wakes it once every one of them closes:`;
 const waitsOnOpen = (ticket: string, open: string[]) => `${dependsOn(ticket)} ${open.join(", ")}, still open. ${wokenByTheCloser(ticket)}`;
@@ -122,7 +122,7 @@ describe("bin/close wakes a parked ticket once every ticket it depends on has cl
 describe("bin/close wakes a foreign ticket waiting on a machine fault its builder filed, once every fault it filed has closed, since ADR-0005 leaves nothing waiting on the owner", () => {
   const fault = (filed: string) => `https://github.com/collod873/claude-workflow/issues/${filed}`;
   const parked = `${waitsOnFault("1015", [fault("812"), fault("813")])} its stage hooks were missing`;
-  const faultBody = ["## Why", "", faultOf("collod873/Lumaria#1015"), "", "> The stage hooks were missing.", "", "## Done when", "", "- They are there.", ""].join("\n");
+  const faultBody = ["## Why", "", fromLine("collod873/Lumaria#1015", "fault"), "", "> The stage hooks were missing.", "", "## Done when", "", "- They are there.", ""].join("\n");
   const origin = (filed: Record<string, string>): FaultOrigin => ({ repo: "collod873/Lumaria", ticket: "1015", labels: ["ticket", "waiting"], said: [parked], filed });
   const woken = (calls: string[]) => calls.findIndex((call) => call.trimEnd() === "issue\nedit\n1015\n--remove-label\nwaiting");
   const told = (calls: string[]) => calls.findIndex((call) => call.startsWith("issue\ncomment\n1015\n"));
@@ -161,7 +161,7 @@ describe("bin/close wakes a foreign ticket waiting on a machine fault its builde
 describe("bin/close wakes a ticket waiting on a first step its builder handed to the repo that owns it, in that repo's close run, where Lumaria#1382 sat stuck until the owner filed design-kit#191", () => {
   const step = (filed: string) => `https://github.com/collod873/design-kit/issues/${filed}`;
   const parked = `${waitsOnStep("1382", "collod873/design-kit", [step("191")])} the kit's map needs coordinates`;
-  const stepBody = ["## Why", "", firstStepOf("collod873/Lumaria#1382"), "", "> The kit's map needs coordinates.", "", "## Done when", "", "- It draws from a place ID.", ""].join("\n");
+  const stepBody = ["## Why", "", fromLine("collod873/Lumaria#1382", "first-step"), "", "> The kit's map needs coordinates.", "", "## Done when", "", "- It draws from a place ID.", ""].join("\n");
   const origin: FaultOrigin = { repo: "collod873/Lumaria", ticket: "1382", labels: ["ticket", "waiting"], said: [parked], filed: { "191": "CLOSED COMPLETED" } };
 
   it("wakes it in its own repo once the step closes in the owning repo", () => {

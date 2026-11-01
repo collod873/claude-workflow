@@ -1,3 +1,4 @@
+import { fromOf } from "./post.ts";
 import { describe, expect, it } from "vitest";
 import { fixing } from "./builder.part.ts";
 import { createdIssues, schemaIn } from "./scenarios.ts";
@@ -31,7 +32,7 @@ describe("every risk the ticket's reviewer names ends somewhere: fixed here, a t
     const [ticket, ...more] = createdIssues(scenario.calls());
     expect(ticket?.title).toBe(FIX.title);
     expect(ticket?.labels).toEqual(["ticket"]);
-    expect(ticket?.body).toContain("Follow-up of #811: its reviewer let this through.");
+    expect(fromOf(ticket?.body ?? "")).toMatchObject({ number: "811", kind: "review" });
     expect(ticket?.body).toContain(`> ${FIX.fault}`);
     expect(ticket?.body).toContain(`## Done when\n\n- ${FIX.done[0]}`);
     expect(more).toEqual([]);

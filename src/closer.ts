@@ -1,7 +1,7 @@
 import { filedClosed, dependsOn } from "./builder.ts";
-import { commentOnTicket, commentsRead, FAULT_FROM, gh, ghAs, ghRead, LABELLED_WAITING, opened, readOrStop, unread, WAITING } from "./post.ts";
+import { commentOnTicket, commentsRead, fromOf, gh, ghAs, ghRead, LABELLED_WAITING, opened, readOrStop, unread, WAITING } from "./post.ts";
 import { exitFor } from "./stops.ts";
-import { quoted, waitsOn, why } from "./ticket-shape.ts";
+import { quoted, waitsOn } from "./ticket-shape.ts";
 
 const NAMED = /^(?:[ ,]*#\d+)+/;
 
@@ -56,7 +56,8 @@ function wokenFromWaitsOn(ticket: string, body: string): string {
 const filedHere = (repo: string) => new RegExp(`https://github\\.com/${repo.replaceAll(".", "\\.")}/issues/(\\d+)`, "g");
 
 function wokenAtFaultOrigin(fault: string, body: string): string {
-  const [, repo, origin] = FAULT_FROM.exec(why(body)) ?? [];
+  const from = fromOf(body);
+  const { repo, number: origin } = from?.kind === "fault" || from?.kind === "first-step" ? from : {};
   const closedIn = process.env.GH_REPO;
   if (repo === undefined || origin === undefined || closedIn === undefined) return "";
   const at = `${repo}#${origin}`;

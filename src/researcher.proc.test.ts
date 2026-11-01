@@ -1,3 +1,4 @@
+import { fromOf } from "./post.ts";
 import { spawnSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -159,7 +160,7 @@ describe("bin/research files what its findings call for, so a closed note leaves
     const [ticket, note] = answered.filed();
     expect(ticket?.title).toBe(fix.title);
     expect(ticket?.labels).toEqual(["ticket"]);
-    expect(ticket?.body).toContain("Follow-up of #902: its research found this.");
+    expect(fromOf(ticket?.body ?? "")).toMatchObject({ number: "902", kind: "research" });
     expect(ticket?.body).toContain(`> ${fix.fault}`);
     expect(ticket?.body).toContain("## Done when\n\n- A landing in Lumaria merges at once.");
     expect(note?.title).toBe("Your call after #902: What does the closer judge");

@@ -1,3 +1,4 @@
+import { fromOf } from "./post.ts";
 import { createVerify, generateKeyPairSync } from "node:crypto";
 import { readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -420,7 +421,7 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
     expect(result.status, result.stderr).toBe(0);
     expect(createdIn()).toEqual(["collod873/claude-workflow"]);
     expect(filed()).toHaveLength(1);
-    expect(filed()[0]).toMatch(/^## Why\n\nFiled by the builder of collod873\/Lumaria#811, which waits on it/);
+    expect(fromOf(filed()[0] ?? "")).toEqual({ repo: "collod873/Lumaria", number: "811", kind: "fault" });
     expect(filed()[0]).toContain(`> ${FAULT.why}`);
     expect(filed()[0]).toContain(`## Done when\n\n- ${FAULT.done[0]}`);
     expect(calls()).toContainEqual(["api", "--method", "POST", "repos/collod873/Lumaria/issues/811/dependencies/blocked_by", "-F", "issue_id=4242"]);
@@ -441,7 +442,8 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
 
     expect(result.status, result.stderr).toBe(0);
     expect(createdIn()).toEqual(["collod873/design-kit"]);
-    expect(filed()[0]).toMatch(/^## Why\n\nFiled by the builder of collod873\/Lumaria#811, which waits on it, as its first step\.\n\n> The kit's address map/);
+    expect(fromOf(filed()[0] ?? "")).toEqual({ repo: "collod873/Lumaria", number: "811", kind: "first-step" });
+    expect(filed()[0]).toContain("> The kit's address map");
     expect(calls()).toContainEqual(["api", "repos/collod873/design-kit/issues/901", "--jq", ".id"]);
     expect(calls()).toContainEqual(["api", "--method", "POST", "repos/collod873/Lumaria/issues/811/dependencies/blocked_by", "-F", "issue_id=4242"]);
     expect(calls()).toContainEqual(["api", "--method", "POST", "repos/collod873/Lumaria/issues/811/sub_issues", "-F", "sub_issue_id=4242"]);

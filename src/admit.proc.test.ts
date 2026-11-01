@@ -2,9 +2,8 @@ import { describe, expect, it } from "vitest";
 import { admitting } from "./admit.part.ts";
 
 const NO_FOLLOW_UP = "as no follow-up the machine builds";
-const SPEC = { state: "open", user: { login: "collod873" }, labels: [{ name: "spec" }] };
 const APP = "collod873-machine[bot]";
-const FAULT = ["## Why", "", "Filed by the builder of collod873/Lumaria#931, which waits on it, as the machine's fault.", "", "> Save runs on a ticket outcome.", "", "## Done when", "", "- Save never runs on a ticket outcome.", ""].join("\n");
+const FAULT = ["## Why", "", "<!-- from: collod873/Lumaria#931 fault -->", "", "> Save runs on a ticket outcome.", "", "## Done when", "", "- Save never runs on a ticket outcome.", ""].join("\n");
 const fromLumaria = (opener: string, parent: object | undefined, body?: string) => ({ repo: "collod873/Lumaria", ticket: "931", opener, parent, body });
 const ticketWhy = (line: string) => `## Why\n\n${line}\n\n## Done when\n\n- The builder builds it.\n`;
 const parentReads = (calls: string[][]) => calls.filter((args) => args.some((arg) => arg.endsWith("/parent")));
@@ -23,11 +22,8 @@ describe("bin/admit lets a ticket into its build before anything marks it (#1022
     expect(comments()).toEqual([]);
   });
 
-  it.each([
-    ["under no spec", undefined],
-    ["under an open spec the owner opened, since no stage files a ticket under a spec once slices replaced waves (#1509)", SPEC],
-  ])("refuses a ticket the App opened %s, saying why on the ticket, asking the owner nothing and reading no parent", (_, parent) => {
-    const { run, calls, comments } = admitting({ opener: APP, parent });
+  it("refuses a ticket the App opened with no parent link and no marker line, saying why on the ticket and asking the owner nothing", () => {
+    const { run, comments } = admitting({ opener: APP });
 
     const result = run();
 
@@ -36,7 +32,6 @@ describe("bin/admit lets a ticket into its build before anything marks it (#1022
     expect(comments()).toHaveLength(1);
     expect(comments()[0]).toContain(NO_FOLLOW_UP);
     expect(comments()[0]).not.toContain("@");
-    expect(parentReads(calls())).toEqual([]);
   });
 
   it("fails red, admitting nothing and saying nothing on the ticket, when the ticket cannot be read", () => {
@@ -46,15 +41,8 @@ describe("bin/admit lets a ticket into its build before anything marks it (#1022
     expect(ticket.comments()).toEqual([]);
   });
 
-  it("refuses a machine fault the App filed from an enrolled repo's ticket the App opened under an open spec the owner opened there, naming the origin (#1509)", () => {
-    const { run, comments } = admitting({ opener: APP, body: FAULT, origin: fromLumaria(APP, SPEC) });
-
-    expect(run().stdout).toBe("admitted=false\n");
-    expect(comments()[0]).toContain("collod873/Lumaria#931");
-  });
-
   it.each([
-    ["a first step the App filed in the repo that owns it from a ticket the owner opened, so the step builds there", FAULT.replace("as the machine's fault.", "as its first step."), fromLumaria("collod873", undefined)],
+    ["a first step the App filed in the repo that owns it from a ticket the owner opened, so the step builds there", FAULT.replace(" fault -->", " first-step -->"), fromLumaria("collod873", undefined)],
   ])("admits %s", (_, body, origin) => {
     const { run, comments } = admitting({ opener: APP, body, origin });
 
@@ -77,19 +65,18 @@ describe("bin/admit lets a ticket into its build before anything marks it (#1022
 });
 
 describe("bin/admit lets research's follow-up in when its note is a research note the owner opened (#1470)", () => {
-  const FOUND = ticketWhy("Follow-up of #1461: its research found this.");
+  const FOUND = ticketWhy("<!-- from: #1461 research -->");
   const NOTE = { number: "1461", opener: "collod873", labels: ["note", "research"], state: "closed" };
 
   it.each([
     ["closed", NOTE],
     ["open", { ...NOTE, state: "open" }],
   ])("admits research's follow-up from a research note the owner opened, %s", (_, note) => {
-    const { run, calls, comments } = admitting({ opener: APP, body: FOUND, note });
+    const { run, comments } = admitting({ opener: APP, body: FOUND, note });
 
     const result = run();
 
     expect(result.stdout, result.stderr).toBe("admitted=true\n");
-    expect(parentReads(calls())).toEqual([]);
     expect(comments()).toEqual([]);
   });
 
@@ -105,7 +92,7 @@ describe("bin/admit lets research's follow-up in when its note is a research not
 });
 
 describe("bin/admit lets what a reviewer let through in when the ticket it reviewed builds (#1491)", () => {
-  const LET_THROUGH = ticketWhy("Follow-up of #765: its reviewer let this through.");
+  const LET_THROUGH = ticketWhy("<!-- from: #765 review -->");
   const REVIEWED = { number: "765", opener: "collod873", labels: ["ticket"], state: "closed" };
 
   it("admits a reviewer's follow-up whose reviewed ticket the owner opened", () => {
@@ -117,7 +104,7 @@ describe("bin/admit lets what a reviewer let through in when the ticket it revie
 
   it.each([
     ["whose reviewed ticket the App opened", LET_THROUGH, { ...REVIEWED, opener: APP }, "#765"],
-    ["naming a ticket filed after it", ticketWhy("Follow-up of #900: its reviewer let this through."), { ...REVIEWED, number: "900" }, NO_FOLLOW_UP],
+    ["naming a ticket filed after it", ticketWhy("<!-- from: #900 review -->"), { ...REVIEWED, number: "900" }, NO_FOLLOW_UP],
   ])("refuses a reviewer's follow-up %s", (_, body, note, why) => {
     const { run, comments } = admitting({ opener: APP, body, note });
 
@@ -127,7 +114,7 @@ describe("bin/admit lets what a reviewer let through in when the ticket it revie
 });
 
 describe("bin/admit lets a done check's miss in when the spec it checked builds (Mezzanine #1751)", () => {
-  const MISSED = ticketWhy("Follow-up of #745: its done check found this did not hold.");
+  const MISSED = ticketWhy("<!-- from: #745 done-check -->");
   const CHECKED = { number: "745", opener: "collod873", labels: ["spec"], state: "closed" };
 
   it("admits a done check's follow-up whose spec the owner opened", () => {
@@ -147,7 +134,7 @@ describe("bin/admit lets a done check's miss in when the spec it checked builds 
 
 describe("bin/admit lets the App's ticket in only as a follow-up a stage wrote (#1022, #1509)", () => {
   it.each([
-    ["only quotes a follow-up line", ticketWhy("> Follow-up of #865: its reviewer let this through.")],
+    ["only quotes a follow-up line", ticketWhy("> <!-- from: #865 review -->")],
     ["has the split line no stage writes since a builder rewrites a ticket too big for one build as a spec", ticketWhy("Follow-up of #865: its builder split it, since it does not fit one build.")],
     ["has a follow-up line the builder does not write", ticketWhy("Follow-up of #865: its notes.")],
     ["has the review follow-up line no stage writes since one run builds, reviews and lands a ticket (#1445)", ticketWhy("Follow-up of #865: its review found this after its builder's repair.")],
@@ -160,12 +147,12 @@ describe("bin/admit lets the App's ticket in only as a follow-up a stage wrote (
 });
 
 describe("bin/admit follows a first step's origin in its own repo by the whole chain a ticket there builds by", () => {
-  const STEP = FAULT.replace("as the machine's fault.", "as its first step.");
+  const STEP = FAULT.replace(" fault -->", " first-step -->");
   const LUMARIA = "collod873/Lumaria";
   const REVIEWED = { number: "900", opener: "collod873", labels: ["ticket"], state: "closed", repo: LUMARIA };
   const RESEARCHED = { number: "900", opener: "collod873", labels: ["note", "research"], state: "closed", repo: LUMARIA };
-  const LET_THROUGH = ticketWhy("Follow-up of #900: its reviewer let this through.");
-  const FOUND = ticketWhy("Follow-up of #900: its research found this.");
+  const LET_THROUGH = ticketWhy("<!-- from: #900 review -->");
+  const FOUND = ticketWhy("<!-- from: #900 research -->");
 
   it.each([
     ["a reviewer's follow-up of a ticket the owner opened there", LET_THROUGH, REVIEWED],
@@ -180,7 +167,7 @@ describe("bin/admit follows a first step's origin in its own repo by the whole c
   });
 
   it("admits a first step whose origin is a spec the App opened as a done check's follow-up of a spec the owner opened there, its origin line under Problem Statement (#1604)", () => {
-    const spec = "## Problem Statement\n\nFollow-up of #900: its done check found this did not hold.\n\n## Solution\n\nIt holds.\n";
+    const spec = "## Problem Statement\n\n<!-- from: #900 done-check -->\n\n## Solution\n\nIt holds.\n";
     const checked = { number: "900", opener: "collod873", labels: ["spec"], state: "closed", repo: LUMARIA };
     const { run, comments } = admitting({ opener: APP, body: STEP, origin: fromLumaria(APP, undefined, spec), note: checked });
 
@@ -228,5 +215,36 @@ describe("bin/admit follows a first step's origin in its own repo by the whole c
     expect(result.stdout, result.stderr).toBe("admitted=false\n");
     expect(comments()[0]).toContain("without reaching one the owner opened");
     expect(calls().filter((args) => args.some((arg) => /issues\/\d+$/.test(arg))).length).toBeLessThanOrEqual(8);
+  });
+});
+
+describe("bin/admit reads provenance from the sub-issue parent link, then the one marker line wherever it sits (#1606)", () => {
+  const CHECKED = { number: "745", opener: "collod873", labels: ["spec"], state: "closed" };
+  const MARKER = "<!-- from: #745 done-check -->";
+  const LINKED = { number: 745, state: "closed", repository_url: "https://api.github.com/repos/collod873/design-kit" };
+
+  it.each([
+    ["under Problem Statement", `## Problem Statement\n\n${MARKER}\n\n## Solution\n\nIt holds.\n`],
+    ["under Why", ticketWhy(MARKER)],
+    ["in no section", `${MARKER}\n\n## Done when\n\n- It holds.\n`],
+  ])("admits a done check's follow-up whose marker line sits %s", (_, body) => {
+    const { run, comments } = admitting({ opener: APP, body, note: CHECKED });
+
+    expect(run().stdout).toBe("admitted=true\n");
+    expect(comments()).toEqual([]);
+  });
+
+  it("admits a ticket the App opened with only a sub-issue parent link to a spec the owner opened", () => {
+    const { run, comments } = admitting({ opener: APP, parent: LINKED, note: CHECKED });
+
+    expect(run().stdout).toBe("admitted=true\n");
+    expect(comments()).toEqual([]);
+  });
+
+  it("refuses a ticket the App opened whose only parent link is to a spec the App opened", () => {
+    const { run, comments } = admitting({ opener: APP, parent: LINKED, note: { ...CHECKED, opener: APP } });
+
+    expect(run().stdout).toBe("admitted=false\n");
+    expect(comments()[0]).toContain(NO_FOLLOW_UP);
   });
 });

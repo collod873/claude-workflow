@@ -8,7 +8,7 @@ import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
 import { capped, LIST_CAP, NO_EM_DASH, onDisk, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
 import { PUBLISHED_CHECK } from "./checks.ts";
 import { addBlocker, addParent } from "./issue-links.ts";
-import { commentOnTicket, commentsRead, faultOf, firstStepOf, FOREIGN, followUpBody, gh, ghRead, git, gitRead, MACHINE_REPO, mark, NOTHING_MARKED, OWNER, post, postRefusals, readOrStop, rewriteTicket, FILED_IN, LABELLED_WAITING, nothingHears, ticketBranch, unread, WAITING } from "./post.ts";
+import { commentOnTicket, commentsRead, FOREIGN, fromLine, followUpBody, gh, ghRead, git, gitRead, MACHINE_REPO, mark, NOTHING_MARKED, OWNER, post, postRefusals, readOrStop, rewriteTicket, FILED_IN, LABELLED_WAITING, nothingHears, ticketBranch, unread, WAITING } from "./post.ts";
 import { reviewedAndLanded } from "./reviewer.ts";
 import { calledOwner, committed, commitlinted, CONTRACT, FILED, opened, setupRefusal, type Spent, treePathed } from "./stage.ts";
 import { dedashed } from "./em-dash.ts";
@@ -314,13 +314,13 @@ function closedBeforeParked(ticket: string, filed: string[]): Round {
 }
 
 const filedForMachine = (ticket: string, answer: Answer): Round =>
-  filedToWaitOn(ticket, answer, { repo: MACHINE_REPO, filedFrom: faultOf, unfiled: "a `machine` answer from a tree that is not the machine's files the machine's fault as one ticket or more in `tickets`" });
+  filedToWaitOn(ticket, answer, { repo: MACHINE_REPO, filedFrom: (origin) => fromLine(origin, "fault"), unfiled: "a `machine` answer from a tree that is not the machine's files the machine's fault as one ticket or more in `tickets`" });
 
 function handedToItsRepo(ticket: string, answer: Answer): Round {
   const { repo } = answer;
   const refused = ownedRefusal(repo, process.env.GH_REPO, "ticket");
   if (refused !== undefined || repo === undefined) return { red: refused ?? "" };
-  return filedToWaitOn(ticket, answer, { repo, filedFrom: firstStepOf, unfiled: "an `owned` answer files its first step as one ticket or more in `tickets`" });
+  return filedToWaitOn(ticket, answer, { repo, filedFrom: (origin) => fromLine(origin, "first-step"), unfiled: "an `owned` answer files its first step as one ticket or more in `tickets`" });
 }
 
 function landedOnMain(ticket: string, reason: string, before: string): Round {

@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
 import { capped, NO_EM_DASH, onDisk, tailOf } from "./brief.ts";
-import { authoredOn, commentOnTicket, DONE_CHECK_MISSED, FOLLOW_UP_OF, followUpBody, FOREIGN, gh, mark, OWNER, post, readOrStop, STUCK, type Asked } from "./post.ts";
+import { authoredOn, commentOnTicket, followUpBody, fromHere, fromLine, FOREIGN, gh, mark, OWNER, post, readOrStop, STUCK, type Asked } from "./post.ts";
 import { CONTRACT, opened, setupRefusal, type Spent } from "./stage.ts";
 import { CHECKING, SPEC } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
@@ -178,7 +178,7 @@ export function doneCheck(issue: string, app: AppKey | undefined): Checked | Sto
   const putToOwner = found.filter(([, , one]) => one.outcome === "owner");
   const comment = commented(spec, posted(found, missed.length > 0 || putToOwner.length === 0 ? [] : [closedWith(putToOwner)]));
   if (typeof comment === "string") return comment;
-  const filed = missed.map(([number, sentence, one]) => ({ number, ...post({ kind: "bug", title: quoted(sentence), text: followUpBody([`${FOLLOW_UP_OF}${issue}${DONE_CHECK_MISSED}`, "", `> ${one.tried}`], [sentence]) }, gh) }));
+  const filed = missed.map(([number, sentence, one]) => ({ number, ...post({ kind: "bug", title: quoted(sentence), text: followUpBody([fromLine(fromHere(issue), "done-check"), "", `> ${one.tried}`], [sentence]) }, gh) }));
   const refused = filed.find(({ refusals }) => refusals.length > 0);
   if (refused !== undefined) return calledOwner(spec, "unrecorded", `sentence ${refused.number} did not hold and would not file as a bug: ${quoted(refused.refusals[0] ?? "")}`, `Its comment is posted: file each miss as a bug and close #${issue} by hand.`);
   const held =
