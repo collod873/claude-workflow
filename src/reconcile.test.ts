@@ -58,3 +58,24 @@ describe("reconcile restarts a stale build once, then flags it to the owner (#16
     expect(reconcile([state], NOW)).toEqual([]);
   });
 });
+
+const refused = (admissible: boolean): IssueState => ({ ...ticket(["ticket"], []), refused: true, admissible });
+const readmitted = (states: IssueState[], actions: Action[]): IssueState[] =>
+  states.map((state) => (actions.some(({ kind, number }) => kind === "admit" && number === state.number) ? { ...state, refused: false } : state));
+
+describe("reconcile re-admits a refused ticket once its chain is valid (#1606)", () => {
+  it("admits a refused ticket whose chain is valid now, leaves one still invalid alone, and does nothing more on a second pass", () => {
+    const states = [refused(true), { ...refused(false), number: 932 }];
+    const first = reconcile(states);
+
+    expect(first).toEqual([{ kind: "admit", repo: REPO, number: 931 }]);
+    expect(reconcile(readmitted(states, first))).toEqual([]);
+  });
+
+  it.each([
+    ["building", refused(true).labels.concat("building")],
+    ["held", ["ticket", "paused"]],
+  ])("leaves a refused ticket %s alone", (_, labels) => {
+    expect(reconcile([{ ...refused(true), labels }])).toEqual([]);
+  });
+});

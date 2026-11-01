@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ELSEWHERE, HERE, linking } from "./reconcile.part.ts";
+import { ELSEWHERE, HERE, type Issues, linking } from "./reconcile.part.ts";
 
 const edits = (calls: string[][]) => calls.filter((args) => args[0] === "issue" && args[1] === "edit");
 
@@ -70,6 +70,38 @@ describe("bin/reconcile restarts a stale build once, then flags it to the owner 
     expect(owner?.slice(0, 3)).toEqual(["issue", "comment", "932"]);
     expect(owner?.at(-1)).toMatch(/^@collod873 /);
     expect(rest).toEqual([]);
+  });
+});
+
+describe("bin/reconcile re-admits a refused ticket once its chain is valid (#1606)", () => {
+  const refusal = { event: "commented", body: "#931 does not build, since its checks would run as shell with the App's token and the App filed it as a sub-issue of collod873/design-kit#12, where the App opened it as no follow-up the machine builds." };
+  const chain = (origin: string): Issues => ({ [`${HERE}/issues/931`]: { user: { login: "collod873-machine[bot]" }, body: "## Why\n" }, [`${ELSEWHERE}/issues/12`]: { user: { login: origin }, body: "## Why\n" } });
+  const changes = (calls: string[][]) => calls.filter((args) => ["edit", "comment"].includes(args[1] ?? ""));
+
+  it("relabels a refused ticket whose origin became the owner's, posting no new refusal", () => {
+    const { reconcile, calls } = linking({ issues: chain("collod873"), tickets: [{ number: 931, labels: ["ticket"], blockers: [], timeline: [refusal] }] });
+
+    const result = reconcile();
+
+    expect(result.status, result.stderr).toBe(0);
+    const [marker, ...relabel] = changes(calls());
+    expect(marker?.at(-1)).toMatch(/^<!-- reconcile: readmitted -->\n/);
+    expect(marker?.at(-1)).not.toContain("does not build");
+    expect(relabel).toEqual([
+      ["issue", "edit", "931", "--repo", HERE, "--remove-label", "ticket"],
+      ["issue", "edit", "931", "--repo", HERE, "--add-label", "ticket"],
+    ]);
+  });
+
+  it("leaves a refused ticket whose chain is still invalid, and one already re-admitted, without a word", () => {
+    const still = linking({ issues: chain("collod873-machine[bot]"), tickets: [{ number: 931, labels: ["ticket"], blockers: [], timeline: [refusal] }] });
+    const again = linking({ issues: chain("collod873"), tickets: [{ number: 931, labels: ["ticket"], blockers: [], timeline: [refusal, { event: "commented", body: "<!-- reconcile: readmitted -->\nReconcile re-admitted #931" }] }] });
+
+    for (const { reconcile, calls } of [still, again]) {
+      const result = reconcile();
+      expect(result.status, result.stderr).toBe(0);
+      expect(changes(calls())).toEqual([]);
+    }
   });
 });
 

@@ -66,7 +66,7 @@ function admitted(repo: string, ticket: string, so: string, reads: number, missi
   return { refused: within(FILED_AS[origin.kind](filedFrom), admitted(origin.repo, origin.number, so, reads - 1, notThere).refused), from };
 }
 
-export const admission = (ticket: string, so: string): Admission => admitted(HERE, ticket, so, MOST_READS, unread).refused;
+export const admission = (ticket: string, so: string, repo = HERE): Admission => admitted(repo, ticket, so, MOST_READS, unread).refused;
 
 function toldOnce(ticket: string, text: string, inRepo: Gh, at: string): void {
   const said = commentsRead(ticket, `the comments on ${at} could not be read, so nothing was admitted`, inRepo);

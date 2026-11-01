@@ -1,3 +1,4 @@
+import { admission } from "./admit.ts";
 import { blockersOf } from "./issue-links.ts";
 import { CALLER_FILE, ghRead, Stopped } from "./post.ts";
 import { BUILDING, HELD, OWNER, STUCK, TICKET, WAITING } from "./spelled.ts";
@@ -16,15 +17,20 @@ export interface IssueState {
   buildingSince?: number | undefined;
   liveRun?: boolean;
   restarted?: boolean;
+  refused?: boolean;
+  admissible?: boolean;
 }
 
 export type Action =
   | { kind: "add-label" | "remove-label"; repo: string; number: number; label: string }
   | { kind: "restart"; repo: string; number: number }
+  | { kind: "admit"; repo: string; number: number }
   | { kind: "flag"; repo: string; number: number };
 
 const STALE_AFTER = 3_600_000;
 const RESTARTED = "<!-- reconcile: restarted -->";
+const READMITTED = "<!-- reconcile: readmitted -->";
+const refusalOf = (number: number) => `#${number} does not build, since `;
 
 function waitRule({ repo, number, labels, blockers }: IssueState): Action[] {
   if (blockers.length === 0) return [];
@@ -41,7 +47,12 @@ function staleRule({ repo, number, labels, buildingSince, liveRun, restarted }: 
   return [{ kind: restarted ? "flag" : "restart", repo, number }];
 }
 
-export const reconcile = (states: IssueState[], now = Date.now()): Action[] => states.flatMap((state) => [...waitRule(state), ...staleRule(state, now)]);
+function admitRule({ repo, number, labels, refused, admissible }: IssueState): Action[] {
+  if (!refused || !admissible || labels.includes(BUILDING) || HELD.some((held) => labels.includes(held))) return [];
+  return [{ kind: "admit", repo, number }];
+}
+
+export const reconcile = (states: IssueState[], now = Date.now()): Action[] => states.flatMap((state) => [...waitRule(state), ...staleRule(state, now), ...admitRule(state)]);
 
 interface Listed {
   number: number;
@@ -64,8 +75,16 @@ function flag(repo: string, number: number): void {
   console.log(`reconcile: ${repo}#${number} labelled ${STUCK}, as its build stayed stale after a restart`);
 }
 
+function readmit(repo: string, number: number): void {
+  ghRead(["issue", "comment", String(number), "--repo", repo, "--body", `${READMITTED}\nReconcile re-admitted #${number}: the chain that refused it is valid now.`], `the re-admission of ${repo}#${number} could not be recorded`);
+  ghRead(["issue", "edit", String(number), "--repo", repo, "--remove-label", TICKET], `${repo}#${number} could not be unlabelled ${TICKET} to re-admit it`);
+  ghRead(["issue", "edit", String(number), "--repo", repo, "--add-label", TICKET], `${repo}#${number} could not be labelled ${TICKET} again to re-admit it`);
+  console.log(`reconcile: ${repo}#${number} re-admitted, as its chain is valid now`);
+}
+
 function apply(action: Action): void {
   if (action.kind === "restart") return restart(action.repo, action.number);
+  if (action.kind === "admit") return readmit(action.repo, action.number);
   if (action.kind === "flag") return flag(action.repo, action.number);
   const { kind, repo, number, label } = action;
   const held = labelsNow(repo, number).includes(label);
@@ -87,8 +106,17 @@ function liveTitles(repo: string): string[] {
   );
 }
 
-function buildOf(repo: string, number: number, live: string[]): Pick<IssueState, "buildingSince" | "liveRun" | "restarted"> {
-  const events = (JSON.parse(ghRead(["api", `repos/${repo}/issues/${number}/timeline?per_page=100`, "--paginate", "--slurp"], `the build history of ${repo}#${number} could not be read, so nothing is reconciled`)) as Event[][]).flat();
+const timelineOf = (repo: string, number: number): Event[] =>
+  (JSON.parse(ghRead(["api", `repos/${repo}/issues/${number}/timeline?per_page=100`, "--paginate", "--slurp"], `the history of ${repo}#${number} could not be read, so nothing is reconciled`)) as Event[][]).flat();
+
+function admitOf(repo: string, number: number, events: Event[]): Pick<IssueState, "refused" | "admissible"> {
+  const comments = events.flatMap(({ event, body }) => (event === "commented" ? [body ?? ""] : []));
+  const refusedAt = comments.findLastIndex((body) => body.includes(refusalOf(number)));
+  const refused = refusedAt > comments.findLastIndex((body) => body.includes(READMITTED));
+  return refused ? { refused, admissible: admission(String(number), "so nothing is reconciled", repo) === undefined } : { refused };
+}
+
+function buildOf(number: number, live: string[], events: Event[]): Pick<IssueState, "buildingSince" | "liveRun" | "restarted"> {
   const since = events.filter(({ event, label }) => event === "labeled" && label?.name === BUILDING).at(-1)?.created_at;
   const restarted = events.some(({ event, body }) => event === "commented" && (body ?? "").includes(RESTARTED));
   const named = new RegExp(`#${number}\\b`);
@@ -101,7 +129,8 @@ function statesOf(repo: string): IssueState[] {
   const live = building ? liveTitles(repo) : [];
   return listed.map(({ number, labels }) => {
     const names = labels.map(({ name }) => name);
-    return { repo, number, labels: names, blockers: blockersOf(repo, number), ...(names.includes(BUILDING) ? buildOf(repo, number, live) : {}) };
+    const events = timelineOf(repo, number);
+    return { repo, number, labels: names, blockers: blockersOf(repo, number), ...(names.includes(BUILDING) ? buildOf(number, live, events) : admitOf(repo, number, events)) };
   });
 }
 

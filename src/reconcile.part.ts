@@ -12,9 +12,11 @@ interface Ticket {
   timeline?: object[];
 }
 
+export type Issues = Record<string, { user: { login: string }; body: string }>;
+
 const linked = ({ repo, number, state }: Ticket["blockers"][number]) => ({ id: number * 100, number, state, repository_url: `https://api.github.com/repos/${repo}` });
 
-export function linking({ tickets = [] as Ticket[], parentless = false, refused = false, liveTitles = [] as string[] } = {}) {
+export function linking({ tickets = [] as Ticket[], parentless = false, refused = false, liveTitles = [] as string[], issues = {} } = {}) {
   const root = scratch("reconcile-");
   const { setup, calls } = ghArgv(join(root, "gh-argv"));
   plant(root, "listed.json", JSON.stringify(tickets.map(({ number, labels }) => ({ number, labels: labels.map((name) => ({ name })) }))));
@@ -25,6 +27,10 @@ export function linking({ tickets = [] as Ticket[], parentless = false, refused 
     plant(root, `labels-${number}`, labels.join("\n"));
     return [`  *"issues/${number}/timeline"*) cat "${join(root, `timeline-${number}.json`)}" ;;`, `  *"issues/${number}/dependencies/blocked_by"*) cat "${join(root, `blockers-${number}.json`)}" ;;`, `  "issue view ${number} "*) cat "${join(root, `labels-${number}`)}" ;;`];
   });
+  const opened = Object.entries(issues).map(([path, issue], at) => {
+    plant(root, `issue-${at}.json`, JSON.stringify(issue));
+    return `  *"repos/${path}") cat "${join(root, `issue-${at}.json`)}" ;;`;
+  });
   script(
     join(root, "bin", "gh"),
     [
@@ -34,6 +40,7 @@ export function linking({ tickets = [] as Ticket[], parentless = false, refused 
       `  "run list"*"--status queued"*) cat "${join(root, "live")}" ;;`,
       `  "issue list"*) cat "${join(root, "listed.json")}" ;;`,
       ...cases,
+      ...opened,
       `  *"/parent") ${parentless ? "printf 'gh: Not Found (HTTP 404)\\n' >&2; exit 1" : `printf '%s' '${JSON.stringify(linked({ repo: ELSEWHERE, number: 12, state: "open" }))}'`} ;;`,
       '  *"--jq .id") printf \'4242\\n\' ;;',
       "esac",
