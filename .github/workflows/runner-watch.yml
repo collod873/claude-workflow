@@ -32,6 +32,7 @@ jobs:
 
       - env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
+        shell: bash
         run: bin/runner-watch flip | tee -a "$GITHUB_STEP_SUMMARY"
 
       - if: github.event.schedule == '17 6 * * *' || github.event_name == 'workflow_dispatch'

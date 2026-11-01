@@ -992,7 +992,7 @@ export const pcRunner = (name: string, status = "online", busy = false, labels =
 
 type WatchedRepo = { name: string; private?: boolean; runners?: { status: string; labels: string[] }[]; variable?: string };
 
-export function watching(repos: WatchedRepo[], billing: object[] = [], runs: Record<string, object[]> = {}) {
+export function watching(repos: WatchedRepo[], billing: object[] = [], runs: Record<string, ({ jobs: object[] } & Record<string, unknown>)[]> = {}) {
   const root = scratch("runner-watch-");
   const at = (name: string) => join(root, name);
   const lines = ['case "$*" in', `  "api installation/repositories --paginate --jq .repositories[].full_name") printf '%s\\n' ${repos.map(({ name }) => `'${name}'`).join(" ")} ;;`];
@@ -1008,8 +1008,11 @@ export function watching(repos: WatchedRepo[], billing: object[] = [], runs: Rec
     );
   }
   for (const [repo, list] of Object.entries(runs)) {
-    lines.push(`  "api repos/${repo}/actions/runs?created=2026-10-29&per_page=100") printf '%s' '${JSON.stringify({ workflow_runs: list.map((run, id) => ({ id, ...run })) })}' ;;`);
-    list.forEach((run, id) => lines.push(`  "api repos/${repo}/actions/runs/${id}/jobs?per_page=100") printf '%s' '${JSON.stringify({ jobs: (run as { jobs: object[] }).jobs })}' ;;`));
+    const pages = at(`runs-${repo.replace("/", "-")}`);
+    const listed = list.map(({ jobs: _jobs, ...run }, id) => ({ id, ...run }));
+    writeFileSync(pages, JSON.stringify(Array.from({ length: Math.ceil(listed.length / 100) }, (_, page) => ({ workflow_runs: listed.slice(page * 100, page * 100 + 100) }))));
+    lines.push(`  "api --paginate --slurp repos/${repo}/actions/runs?created=2026-10-29&per_page=100") cat "${pages}" ;;`);
+    list.forEach((run, id) => lines.push(`  "api repos/${repo}/actions/runs/${id}/jobs?per_page=100") printf '%s' '${JSON.stringify({ jobs: run.jobs })}' ;;`));
   }
   lines.push(
     `  "api users/collod873/settings/billing/usage?year=2026&month=10&day=29") [[ $BILLING_TOKEN_SEEN == pat ]] && printf '%s' '${JSON.stringify({ usageItems: billing })}' ;;`,
