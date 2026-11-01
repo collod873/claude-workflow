@@ -15,6 +15,12 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
     expect(sudo().filter((call) => call.includes("config.sh"))).toEqual([]);
   });
 
+  it("reads a renamed repo by its current name, so its runners stay in the one folder that name gives", () => {
+    const { runAs } = switching({ runners: [...Array.from({ length: PC_RUNNER_COUNT }, (_, at) => pcRunner(`${HOST}-${at + 1}`))] });
+
+    expect(runAs("collod873/Old-Name", "pc").stdout).toBe(`runner: ${REPO} runs on this PC from its next job, ${PC_RUNNER_COUNT} PC runners online\n`);
+  });
+
   it("installs the PC runners a repo is missing, each its own service with its own home and temp, and labels them pc", () => {
     const { run, variable, sudo, placed } = switching({ userExists: false });
 

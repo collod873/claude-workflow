@@ -1042,7 +1042,8 @@ export function switching({ isPrivate = true, runners = [] as object[], variable
       'case "$*" in',
       `  "api repos/${PC_REPO}/actions/runners") cat "${at("runners.json")}" ;;`,
       `  "api -X POST repos/${PC_REPO}/actions/runners/"*/labels*) id=\${4#repos/${PC_REPO}/actions/runners/}; jq -c --argjson id "\${id%/labels}" --arg label "\${@: -1}" '.runners |= map(if .id == $id then .labels += [{name: ($label | ltrimstr("labels[]="))}] else . end)' "${at("runners.json")}" >"${at("runners.next")}" && mv "${at("runners.next")}" "${at("runners.json")}" ;;`,
-      `  "api repos/${PC_REPO}") printf '{"private":${isPrivate}}\\n' ;;`,
+      `  "api repos/${PC_REPO}") printf '{"full_name":"%s","private":${isPrivate}}\\n' "${PC_REPO}" ;;`,
+      `  "api repos/collod873/Old-Name") printf '{"full_name":"%s","private":${isPrivate}}\\n' "${PC_REPO}" ;;`,
       `  "variable get"*) [ -f "${at("variable-")}$3" ] || { printf 'variable %s was not found\\n' "$3" >&2; exit 1; }; cat "${at("variable-")}$3" ;;`,
       `  "variable set"*) printf '%s' "\${@: -1}" >"${at("variable-")}$3" ;;`,
       `  "variable delete"*) rm "${at("variable-")}$3" ;;`,
@@ -1087,6 +1088,7 @@ export function switching({ isPrivate = true, runners = [] as object[], variable
   const lines = (name: string) => (existsSync(at(name)) ? readFileSync(at(name), "utf8").trim().split("\n") : []);
   return {
     run: (...args: string[]) => execute(join(BIN, "runner"), root, { PATH: `${at("bin")}:${process.env.PATH}`, RUNNER_WAIT_SECONDS: "0", RUNNER_PROC: at("proc") }, [PC_REPO, ...args]),
+    runAs: (repo: string, ...args: string[]) => execute(join(BIN, "runner"), root, { PATH: `${at("bin")}:${process.env.PATH}`, RUNNER_WAIT_SECONDS: "0", RUNNER_PROC: at("proc") }, [repo, ...args]),
     variable: () => (existsSync(at("variable-CI_RUNNER")) ? readFileSync(at("variable-CI_RUNNER"), "utf8") : undefined),
     runners: () => (JSON.parse(readFileSync(at("runners.json"), "utf8")) as { runners: { name: string; status: string; labels: { name: string }[] }[] }).runners,
     sudo: () => lines("sudo-calls"),
