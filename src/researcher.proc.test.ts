@@ -168,6 +168,27 @@ describe("bin/research files what its findings call for, so a closed note leaves
     expect(note?.body).toContain(`@collod873 #902's research leaves these to you:\n\n- ${ask}`);
   });
 
+  const FILED_UNDER = "[[ $2 == create ]] && { printf 'https://github.com/collod873/claude-workflow/issues/1700\\n'; exit 0; }; [[ $* == *'--jq .id'* ]] && { printf '4242\\n'; exit 0; }";
+  const SUB_ISSUE = ["api", "--method", "POST", "repos/collod873/claude-workflow/issues/902/sub_issues", "-F", "sub_issue_id=4242"];
+
+  it("files each fix as a sub-issue of the note it was researched from, and keeps its from line", () => {
+    const answered = researching({ fixes: [fix], gh: FILED_UNDER });
+
+    expect(answered.run().status).toBe(0);
+    expect(answered.argv()).toContainEqual(SUB_ISSUE);
+    expect(fromOf(answered.filed()[0]?.body ?? "")).toMatchObject({ number: "902", kind: "researched" });
+  });
+
+  it("still files a fix with its from line, and closes the note, when its parent link will not write", () => {
+    const answered = researching({ fixes: [fix], gh: `[[ $* == *sub_issues* ]] && exit 1; ${FILED_UNDER}` });
+
+    const result = answered.run();
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stderr).toContain("could not be filed under collod873/claude-workflow#902");
+    expect(fromOf(answered.filed()[0]?.body ?? "")).toMatchObject({ number: "902", kind: "researched" });
+    expect(answered.calls()).toContain("issue close 902");
+  });
+
   it("files each owner step as its own note, and a fix that needs one files waiting on that note, so the fix builds once the owner has taken it (#1565)", () => {
     const step = { title: "Add the Stripe key to Lumaria's Railway variables", why: "The charge path reads STRIPE_KEY, and only the owner holds it.", needs: "STRIPE_KEY" };
     const answered = researching({ steps: [step], fixes: [{ ...fix, waits: step.title }, fix], gh: "[[ $2 == create ]] && { printf 'https://github.com/collod873/claude-workflow/issues/1700\\n'; exit 0; }" });

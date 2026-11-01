@@ -51,6 +51,14 @@ describe("every risk the ticket's reviewer names ends somewhere: fixed here, a t
     expect(createdIssues(scenario.calls())).toEqual([]);
   });
 
+  it("files each fix as a sub-issue of the reviewed ticket, and keeps its from line", () => {
+    const scenario = routed();
+
+    expect(scenario.run().status).toBe(0);
+    expect(scenario.calls()).toContainEqual(["api", "--method", "POST", "repos/collod873/claude-workflow/issues/811/sub_issues", "-F", "sub_issue_id=4242"]);
+    expect(fromOf(createdIssues(scenario.calls())[0]?.body ?? "")).toMatchObject({ number: "811", kind: "review" });
+  });
+
   it("still lands and closes when a filing is refused, and comments the refusal on the ticket", () => {
     const scenario = routed({ unreadable: '*"issue create"*"--label ticket"*' });
 

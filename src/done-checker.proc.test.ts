@@ -59,6 +59,7 @@ describe("bin/done-check files each sentence that did not hold as a bug and clos
     expect(created).toHaveLength(1);
     const body = created[0]?.[created[0].indexOf("--body") + 1] ?? "";
     expect(fromOf(body ?? "")).toMatchObject({ number: "974", kind: "done-check" });
+    expect(checked.argv()).toContainEqual(["api", "--method", "POST", "repos/collod873/claude-workflow/issues/974/sub_issues", "-F", "sub_issue_id=4242"]);
     expect(body).toContain("> opened a ticket it filed and its Why was empty");
     expect(body).toContain(`## Done when\n\n- ${SENTENCES[1]}`);
     expect(created[0]).toContain("bug");

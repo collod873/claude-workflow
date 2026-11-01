@@ -7,8 +7,8 @@ import { admission, doesNotBuild } from "./admit.ts";
 import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
 import { capped, LIST_CAP, NO_EM_DASH, onDisk, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
 import { PUBLISHED_CHECK } from "./checks.ts";
-import { addBlocker, addParent } from "./issue-links.ts";
-import { commentOnTicket, commentsRead, FOREIGN, fromLine, followUpBody, gh, ghRead, git, gitRead, MACHINE_REPO, mark, NOTHING_MARKED, OWNER, post, postRefusals, readOrStop, rewriteTicket, FILED_IN, LABELLED_WAITING, nothingHears, ticketBranch, unread, WAITING } from "./post.ts";
+import { addBlocker, postedUnderOrigin } from "./issue-links.ts";
+import { commentOnTicket, commentsRead, FOREIGN, fromLine, followUpBody, gh, ghRead, git, gitRead, MACHINE_REPO, mark, NOTHING_MARKED, OWNER, postRefusals, readOrStop, rewriteTicket, FILED_IN, LABELLED_WAITING, nothingHears, ticketBranch, unread, WAITING } from "./post.ts";
 import { reviewedAndLanded } from "./reviewer.ts";
 import { calledOwner, committed, commitlinted, CONTRACT, FILED, opened, setupRefusal, type Spent, treePathed } from "./stage.ts";
 import { dedashed } from "./em-dash.ts";
@@ -284,7 +284,7 @@ export function filedInRepo(repo: string, origin: string, outcome: string, unfil
   const refused = postings.length === 0 ? [unfiled] : postings.flatMap((posting) => postRefusals({ kind: "ticket", ...posting }).map((refusal) => `${posting.title}: ${refusal}`));
   if (refused.length > 0) return { red: [`Your \`${outcome}\` answer was refused, and nothing was filed:`, ...refused.map((refusal) => `- ${refusal}`)].join("\n") };
   const inRepo = (args: string[]) => gh([...args, "--repo", repo]);
-  const said = postings.map((posting) => post({ kind: "ticket", ...posting }, inRepo).said.trim());
+  const said = postings.map((posting) => postedUnderOrigin({ kind: "ticket", ...posting }, inRepo).said.trim());
   return { filed: said.filter((one) => FILED.test(one)), all: said.every((one) => FILED.test(one)) };
 }
 
@@ -297,7 +297,6 @@ function filedToWaitOn(ticket: string, answer: Answer, { repo, filedFrom, unfile
   const numbers = filed.map((url) => Number(FILED_NUMBER.exec(url)?.[1]));
   for (const number of numbers) {
     addBlocker(here, Number(ticket), repo, number);
-    addParent(repo, number, here, Number(ticket));
   }
   commentOnTicket(ticket, `${parkedBehind(ticket, numbers.map((number) => `${repo}#${number}`))} ${answer.reason}`, gh);
   mark(ticket, WAITING);

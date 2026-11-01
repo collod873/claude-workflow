@@ -68,7 +68,7 @@ export function slicing({
   });
   script(join(root, "bin", "check"), `printf 'check%s\\n' "\${*:+ $*}" >>"${at("check-calls")}"\n${envKept("check")}${check}`);
   script(join(root, "bin", "docker"), `printf '%s\\n' "$*" >>"${at("docker-calls")}"\ncase $1 in\n  port) printf '127.0.0.1:49153\\n' ;;\n  ps) cat "${root}/containers" 2>/dev/null ;;\nesac\n`);
-  script(join(root, "bin", "gh"), [setup, 'case "$*" in', "  *\"repos/{owner}/{repo}/installation\"*) printf '4242\\n' ;;", "  *\"app/installations/4242/access_tokens\"*) printf 'minted-%s\\n' \"$n\" ;;", `  *"issue create"*) printf '%s\\n' '${KIT_FILED}' ;;`, "esac", ""].join("\n"));
+  script(join(root, "bin", "gh"), [setup, 'case "$*" in', "  *\"repos/{owner}/{repo}/installation\"*) printf '4242\\n' ;;", "  *\"app/installations/4242/access_tokens\"*) printf 'minted-%s\\n' \"$n\" ;;", `  *"issue create"*) printf '%s\\n' '${KIT_FILED}' ;;`, `  *"--jq .id"*) printf '4242\\n' ;;`, "esac", ""].join("\n"));
   plant(root, `claude-${slice}.sh`, claude);
   script(
     join(root, "bin", "claude"),

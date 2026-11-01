@@ -242,6 +242,7 @@ describe("a fresh builder builds one slice of a spec in its own worktree until i
     expect(created).toHaveLength(1);
     expect(created[0]).toEqual(expect.arrayContaining(["--repo", "collod873/design-kit"]));
     expect(created[0]?.[created[0].indexOf("--body") + 1]).toContain(fromLine(`collod873/Lumaria#${SPEC}`, "first-step"));
+    expect(calls()).toContainEqual(["api", "--method", "POST", `repos/collod873/Lumaria/issues/${SPEC}/sub_issues`, "-F", "sub_issue_id=4242"]);
     expect(checked()).toEqual([]);
   });
 

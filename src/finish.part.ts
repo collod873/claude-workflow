@@ -103,6 +103,7 @@ export function finishing({
       `  *"api"*"issues/974/comments"*) cat "${join(root, "comments.json")}" ;;`,
       `  *"issue comment"*) printf '%s\\n' '${POSTED}' ;;`,
       `  *"issue create"*) printf '%s\\n' '${FILED_NOTE}' ;;`,
+      `  *"--jq .id"*) printf '4242\\n' ;;`,
       "esac",
       "",
     ].join("\n"),

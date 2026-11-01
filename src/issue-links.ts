@@ -1,4 +1,4 @@
-import { gh, ghRead, MISSING, Stopped, unread } from "./post.ts";
+import { fromOf, gh, type Gh, ghRead, MISSING, post, type Posting, Stopped, unread } from "./post.ts";
 import type { Blocker } from "./reconcile.ts";
 
 interface Linked {
@@ -31,8 +31,27 @@ export function parentOf(repo: string, number: number): Blocker | undefined {
   return got.status === 0 ? linkedOf(JSON.parse(got.stdout) as Linked) : unread(`the parent of ${named(repo, number)} could not be read`);
 }
 
-export function addParent(repo: string, number: number, parentRepo: string, parentNumber: number): void {
+function addParent(repo: string, number: number, parentRepo: string, parentNumber: number): void {
   linked(`${issuePath(parentRepo, parentNumber)}/sub_issues`, "sub_issue_id", idOf(repo, number), `${named(repo, number)} could not be filed under ${named(parentRepo, parentNumber)}`);
+}
+
+const FILED_ISSUE = /github\.com\/(([^/\s]+)\/[^/\s]+)\/issues\/(\d+)\s*$/;
+const ownerOf = (repo: string) => repo.split("/")[0];
+
+export function postedUnderOrigin(posting: Posting, poster: Gh): ReturnType<typeof post> {
+  const posted = post(posting, poster);
+  const origin = fromOf(posting.text);
+  const [, repo, owner, number] = FILED_ISSUE.exec(posted.said) ?? [];
+  if (origin === undefined || repo === undefined) return posted;
+  const parentRepo = origin.repo ?? repo;
+  if (ownerOf(parentRepo) !== owner) return posted;
+  try {
+    addParent(repo, Number(number), parentRepo, Number(origin.number));
+  } catch (error) {
+    if (!(error instanceof Stopped)) throw error;
+    console.error(`issue-links: ${error.message}, so it carries only its from line`);
+  }
+  return posted;
 }
 
 const USAGE = "issue-links: usage: issue-links blockers|parent <repo> <number> | add-blocker|add-parent <repo> <number> <other repo> <other number>";

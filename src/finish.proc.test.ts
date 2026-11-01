@@ -458,6 +458,7 @@ describe("every risk a spec's reviewer names ends somewhere, as a ticket's revie
     const created = createdIssues(finished.calls());
     expect(created.map(({ title }) => title)).toEqual([FIX.title]);
     expect(fromOf(created[0]?.body ?? "")).toMatchObject({ number: "974", kind: "review" });
+    expect(finished.calls()).toContainEqual(["api", "--method", "POST", "repos/collod873/claude-workflow/issues/974/sub_issues", "-F", "sub_issue_id=4242"]);
     const [approved = ""] = finished.approved();
     expect(approved).toContain(`- filed as the ticket "${FIX.title}" once it lands: ${FIX.fault}`);
     expect(approved).toContain(`- needs nothing: ${NEEDS_NOTHING.risk} ${NEEDS_NOTHING.why}`);
