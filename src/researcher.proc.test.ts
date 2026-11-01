@@ -168,7 +168,7 @@ describe("bin/research files what its findings call for, so a closed note leaves
   });
 
   it("files each owner step as its own note, and a fix that needs one files waiting on that note, so the fix builds once the owner has taken it (#1565)", () => {
-    const step = { title: "Add the Stripe key to Lumaria's Railway variables", why: "The charge path reads STRIPE_KEY, and only the owner holds it." };
+    const step = { title: "Add the Stripe key to Lumaria's Railway variables", why: "The charge path reads STRIPE_KEY, and only the owner holds it.", needs: "STRIPE_KEY" };
     const answered = researching({ steps: [step], fixes: [{ ...fix, waits: step.title }, fix], gh: "[[ $2 == create ]] && { printf 'https://github.com/collod873/claude-workflow/issues/1700\\n'; exit 0; }" });
 
     expect(answered.run().status).toBe(0);
@@ -182,8 +182,31 @@ describe("bin/research files what its findings call for, so a closed note leaves
     expect(atOnce?.body).not.toContain("## Waits on");
   });
 
+  it("files an owner step naming nothing that needs it as a plain note, and a fix naming it builds at once, as Mezzanine#2034 waited on a Resend key nothing used", () => {
+    const step = { title: "Add the Resend key to Railway", why: "Mail might go through Resend someday.", needs: " " };
+    const answered = researching({ steps: [step], fixes: [{ ...fix, waits: step.title }], gh: "[[ $2 == create ]] && { printf 'https://github.com/collod873/claude-workflow/issues/1700\\n'; exit 0; }" });
+
+    expect(answered.run().status).toBe(0);
+    const [note, atOnce] = answered.filed();
+    expect(note?.labels).toEqual(["note"]);
+    expect(note?.body).not.toContain("Needs:");
+    expect(atOnce?.labels).toEqual(["ticket"]);
+    expect(atOnce?.body).not.toContain("## Waits on");
+    expect(answered.comments().filter((said) => said?.includes("labelled `waiting`"))).toEqual([]);
+  });
+
+  it("files an owner step naming what needs it as owner-step with a Needs line", () => {
+    const step = { title: "Add the Stripe key to Lumaria's Railway variables", why: "The charge path reads it, and only the owner holds it.", needs: "STRIPE_KEY" };
+    const answered = researching({ steps: [step] });
+
+    expect(answered.run().status).toBe(0);
+    const [note] = answered.filed();
+    expect(note?.labels).toEqual(["note", "owner-step"]);
+    expect(note?.body).toContain("Needs: STRIPE_KEY");
+  });
+
   it("pings the owner to take waiting off a fix waiting on a step's note in a repo that carries no caller file, since nothing there hears the note close (#1591)", () => {
-    const step = { title: "Add the Stripe key to Lumaria's Railway variables", why: "The charge path reads STRIPE_KEY, and only the owner holds it." };
+    const step = { title: "Add the Stripe key to Lumaria's Railway variables", why: "The charge path reads STRIPE_KEY, and only the owner holds it.", needs: "STRIPE_KEY" };
     const answered = researching({ steps: [step], fixes: [{ ...fix, waits: step.title }], gh: "[[ $2 == create ]] && { [[ \"$*\" == *owner-step* ]] && n=1700 || n=1701; printf 'https://github.com/collod873/claude-workflow/issues/%s\\n' $n; exit 0; }; [[ $1 == api ]] && { printf 'HTTP 404: Not Found\\n' >&2; exit 1; }" });
 
     expect(answered.run().status).toBe(0);

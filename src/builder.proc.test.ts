@@ -541,7 +541,7 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
 
 describe("a fresh reviewer reads each green build, fixes or approves it, and bin/land lands it in the same run (ADR-0012)", () => {
   const LAND_REFUSES_ONCE = "[ -f ../land-refused ] || { touch ../land-refused; printf 'land: the commit subject carries an em dash\\n' >&2; exit 1; }\n";
-  const STEP = { title: "Set the Stripe key in the dashboard", why: "Payments run only once the live key is set." };
+  const STEP = { title: "Set the Stripe key in the dashboard", why: "Payments run only once the live key is set.", needs: "STRIPE_KEY" };
 
   it("hires a second session on Opus that resumes nothing, handed the ticket, its commits and its diff from main", () => {
     const { run, handed, hired, body } = fixing({ claude: FIXES });

@@ -199,7 +199,7 @@ describe("bin/finish calls the owner on a full check the machine alone starved, 
 });
 
 describe("bin/finish takes a reviewer's stuck and owner steps, as a ticket's review does (ADR-0005)", () => {
-  const STEP = { title: "Add the Twilio key $CALL to Railway", why: "Storm alerts text through Twilio, which needs TWILIO_KEY set on the Railway service." };
+  const STEP = { title: "Add the Twilio key $CALL to Railway", why: "Storm alerts text through Twilio, which needs TWILIO_KEY set on the Railway service.", needs: "TWILIO_KEY" };
 
   it("marks the spec stuck and calls the owner on a reviewer's stuck, landing nothing", () => {
     const finished = finishing({ answer: { outcome: "stuck", reason: "only the owner can say which zones count" } });

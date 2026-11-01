@@ -250,8 +250,9 @@ export const OWNER_STEPS = {
     properties: {
       title: { type: "string", pattern: NO_EM_DASH },
       why: { type: "string", pattern: NO_EM_DASH },
+      needs: { type: "string", pattern: NO_EM_DASH },
     },
-    required: ["title", "why"],
+    required: ["title", "why", "needs"],
     additionalProperties: false,
   },
 };
@@ -259,6 +260,7 @@ export const OWNER_STEPS = {
 export interface OwnerStep {
   title: string;
   why: string;
+  needs: string;
 }
 
 export const MOST_FIXES = 3;
@@ -294,7 +296,12 @@ export type Filed = { named: string; refusals: string[]; said: string };
 const stepKey = (title: string) => title.trim().toLowerCase();
 export const FILED = /\/issues\/(\d+)\s*$/;
 
-const ownerStepFiled = (left: string) => (step: OwnerStep): Filed => ({ named: `${step.title}: ${step.why}`, ...post({ kind: "owner", title: step.title, text: `## Why\n\n${step.why}\n\n${left}\n` }, gh) });
+const blocks = (step: OwnerStep) => step.needs.trim() !== "";
+
+const ownerStepFiled = (left: string) => (step: OwnerStep): Filed => {
+  const needs = blocks(step) ? `Needs: ${step.needs.trim()}\n\n` : "";
+  return { named: `${step.title}: ${step.why}`, ...post({ kind: blocks(step) ? "owner" : "note", title: step.title, text: `## Why\n\n${step.why}\n\n${needs}${left}\n` }, gh) };
+};
 
 function pingedUnheard(filed: Filed, note: string): Filed {
   const repo = process.env.GH_REPO ?? "";
@@ -304,17 +311,19 @@ function pingedUnheard(filed: Filed, note: string): Filed {
   return filed;
 }
 
-function fixFiled(found: string, { fault, title, done, waits }: Fix, notes: Map<string, Filed>): Filed {
+function fixFiled(found: string, { fault, title, done, waits }: Fix, notes: Map<string, Filed>, unneeded: Set<string>): Filed {
   const text = followUpBody([found, "", `> ${fault}`], done);
-  if (waits === undefined || waits.trim() === "") return { named: title, ...post({ kind: "ticket", title, text }, gh) };
+  if (waits === undefined || waits.trim() === "" || unneeded.has(stepKey(waits))) return { named: title, ...post({ kind: "ticket", title, text }, gh) };
   const number = FILED.exec(notes.get(stepKey(waits))?.said ?? "")?.[1];
   if (number === undefined) return { named: title, refusals: [`it waits on the owner step "${waits}", which was not filed`], said: "" };
   return pingedUnheard({ named: title, ...post({ kind: "ticket", title, text: `${text}\n## Waits on\n\n- #${number}\n`, labels: [WAITING] }, gh) }, number);
 }
 
 export function stepsAndFixesFiled(found: string, left: string, steps: OwnerStep[], fixes: Fix[]): Filed[] {
-  const notes = new Map(steps.map((step) => [stepKey(step.title), ownerStepFiled(left)(step)]));
-  return [...notes.values(), ...fixes.map((fix) => fixFiled(found, fix, notes))];
+  const filed = steps.map((step) => ({ step, filed: ownerStepFiled(left)(step) }));
+  const notes = new Map(filed.filter(({ step }) => blocks(step)).map(({ step, filed }) => [stepKey(step.title), filed]));
+  const unneeded = new Set(steps.filter((step) => !blocks(step)).map((step) => stepKey(step.title)));
+  return [...filed.map(({ filed }) => filed), ...fixes.map((fix) => fixFiled(found, fix, notes, unneeded))];
 }
 
 
