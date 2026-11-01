@@ -247,9 +247,10 @@ describe("bin/research files what its findings call for, so a closed note leaves
     );
   });
 
-  it("refuses before filing an owner step with no steps, no direct link, a choice left without a value, its page's choice unasked, its token page missing its owner or a permission, or its secret with no handover, and keeps the note open (#1619)", () => {
+  it("refuses before filing an owner step with no steps, no direct link, a choice left without a value, its page's choice unasked, its token page missing its owner or a permission, or its secret with no handover, filing none of its steps while one is refused and keeping the note open (#1619)", () => {
     const token = { title: "Save a billing token", why: "The paid-minutes check reads billing.", needs: "BILLING_PAT" };
     const steps = [
+      { ...token, title: "Save a billing token, given whole", ...TAKEN_STEP },
       { ...token, clicks: [], handover: HANDED_OVER },
       { ...token, clicks: [{ ...OPENED_TOKEN_PAGE, at: "the token settings page" }], handover: HANDED_OVER },
       { ...token, clicks: [{ ...OPENED_TOKEN_PAGE, picks: [{ field: "Expiration", value: "your choice" }, { field: "Repository access", value: "All repositories" }] }], handover: HANDED_OVER },
