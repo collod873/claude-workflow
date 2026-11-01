@@ -97,7 +97,7 @@ async function minutes(owner: string, day: string): Promise<void> {
 
 if (import.meta.main) {
   const [mode, owner, day] = process.argv.slice(2);
-  const asked = mode === "flip" ? flip : mode === "minutes" && owner !== undefined && day !== undefined && /^\d{4}-\d\d-\d\d$/.test(day) ? () => minutes(owner, day) : undefined;
+  const asked = mode === "flip" ? () => Promise.resolve(flip()) : mode === "minutes" && owner !== undefined && day !== undefined && /^\d{4}-\d\d-\d\d$/.test(day) ? () => minutes(owner, day) : undefined;
   if (asked === undefined) {
     console.error("runner-watch: usage: runner-watch flip | runner-watch minutes <owner> <yyyy-mm-dd>");
     process.exit(2);
