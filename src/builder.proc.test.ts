@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { BUILDER_SESSION, CHECK_PASSES, CHECK_RED, FULL_CHECK_RED_ONCE, fixing, SPENT_BY_THE_THIRD_ROUND } from "./builder.part.ts";
 import { checkedBy } from "./builder.ts";
-import { git, scratch, wellFormedSpec } from "./scenarios.ts";
+import { git, scratch, TAKEN_STEP, wellFormedSpec } from "./scenarios.ts";
 import { why } from "./ticket-shape.ts";
 import { HELD } from "./spelled.ts";
 
@@ -542,7 +542,7 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
 
 describe("a fresh reviewer reads each green build, fixes or approves it, and bin/land lands it in the same run (ADR-0012)", () => {
   const LAND_REFUSES_ONCE = "[ -f ../land-refused ] || { touch ../land-refused; printf 'land: the commit subject carries an em dash\\n' >&2; exit 1; }\n";
-  const STEP = { title: "Set the Stripe key in the dashboard", why: "Payments run only once the live key is set.", needs: "STRIPE_KEY" };
+  const STEP = { title: "Set the Stripe key in the dashboard", why: "Payments run only once the live key is set.", needs: "STRIPE_KEY", ...TAKEN_STEP };
 
   it("hires a second session on Opus that resumes nothing, handed the ticket, its commits and its diff from main", () => {
     const { run, handed, hired, body } = fixing({ claude: FIXES });

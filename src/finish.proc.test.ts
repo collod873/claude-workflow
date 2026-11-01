@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { finishing, type Slice } from "./finish.part.ts";
-import { createdIssues, git, heard, schemaIn } from "./scenarios.ts";
+import { createdIssues, git, heard, schemaIn, TAKEN_STEP } from "./scenarios.ts";
 import { HELD, OWNER } from "./spelled.ts";
 
 const SENTENCES = ["see the spec land on main", "see each slice's file on main"];
@@ -200,7 +200,7 @@ describe("bin/finish calls the owner on a full check the machine alone starved, 
 });
 
 describe("bin/finish takes a reviewer's stuck and owner steps, as a ticket's review does (ADR-0005)", () => {
-  const STEP = { title: "Add the Twilio key $CALL to Railway", why: "Storm alerts text through Twilio, which needs TWILIO_KEY set on the Railway service.", needs: "TWILIO_KEY" };
+  const STEP = { title: "Add the Twilio key $CALL to Railway", why: "Storm alerts text through Twilio, which needs TWILIO_KEY set on the Railway service.", needs: "TWILIO_KEY", ...TAKEN_STEP };
 
   it("marks the spec stuck and calls the owner on a reviewer's stuck, landing nothing", () => {
     const finished = finishing({ answer: { outcome: "stuck", reason: "only the owner can say which zones count" } });
