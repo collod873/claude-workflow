@@ -31,7 +31,7 @@ export function parentOf(repo: string, number: number): Blocker | undefined {
   return got.status === 0 ? linkedOf(JSON.parse(got.stdout) as Linked) : unread(`the parent of ${named(repo, number)} could not be read`);
 }
 
-function addParent(repo: string, number: number, parentRepo: string, parentNumber: number): void {
+export function addParent(repo: string, number: number, parentRepo: string, parentNumber: number): void {
   linked(`${issuePath(parentRepo, parentNumber)}/sub_issues`, "sub_issue_id", idOf(repo, number), `${named(repo, number)} could not be filed under ${named(parentRepo, parentNumber)}`);
 }
 
