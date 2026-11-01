@@ -15,7 +15,7 @@ interface Waiting {
 
 const linked = ({ repo, number }: { repo: string; number: number }) => ({ id: number * 100, number, state: "open", repository_url: `https://api.github.com/repos/${repo}` });
 
-export function migrating({ waiting = [] as Waiting[], parented = [] as string[] } = {}) {
+export function migrating({ waiting = [] as Waiting[], parented = [] as string[], listable = true } = {}) {
   const root = scratch("migrate-waiting-");
   const { setup, calls } = ghArgv(join(root, "gh-argv"));
   plant(root, "listed.json", JSON.stringify(waiting.map(({ number, body }) => ({ number, body }))));
@@ -30,7 +30,7 @@ export function migrating({ waiting = [] as Waiting[], parented = [] as string[]
     [
       setup,
       'case "$*" in',
-      `  "issue list"*) cat "${join(root, "listed.json")}" ;;`,
+      listable ? `  "issue list"*) cat "${join(root, "listed.json")}" ;;` : `  "issue list"*) printf 'gh: Bad credentials (HTTP 401)\\n' >&2; exit 1 ;;`,
       ...cases,
       ...parents,
       `  *"/parent") printf 'gh: Not Found (HTTP 404)\\n' >&2; exit 1 ;;`,
@@ -45,5 +45,8 @@ export function migrating({ waiting = [] as Waiting[], parented = [] as string[]
 
 declareStage({
   part: { name: "bin/migrate-waiting", file: "bin/migrate-waiting", stops: "https://github.com/collod873/claude-workflow/issues/1606" },
-  scenarios: [{ label: "converting a ticket parked in prose", run: () => migrating({ waiting: [{ number: 931, body: "## Why\n\nx\n", comments: ["The builder of #931 found it depends on #5, still open. y"] }] }).migrate() }],
+  scenarios: [
+    { label: "converting a ticket parked in prose", run: () => migrating({ waiting: [{ number: 931, body: "## Why\n\nx\n", comments: ["The builder of #931 found it depends on #5, still open. y"] }] }).migrate() },
+    { label: "with the waiting tickets unlisted", run: () => migrating({ listable: false }).migrate() },
+  ],
 });
