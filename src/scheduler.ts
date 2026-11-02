@@ -320,8 +320,12 @@ const unmovedWhy = (progress: Progress) => {
 
 async function scheduled(spec: string, app: AppKey | undefined): Promise<Stop | undefined> {
   const said = `schedule: #${spec}`;
-  const asked = askedIssue(ghRead(["issue", "view", spec, "--json", "title,body,labels"], `#${spec} could not be read, so nothing was hired`)) ?? unread(`#${spec} could not be read, so nothing was hired`);
+  const asked = askedIssue(ghRead(["issue", "view", spec, "--json", "title,body,labels,state"], `#${spec} could not be read, so nothing was hired`)) ?? unread(`#${spec} could not be read, so nothing was hired`);
   if (!asked.labels.has(SPEC)) return stoppedAt("notSpec", `${said} is not a spec, so nothing was hired`);
+  if (asked.closed) {
+    console.log(`${said} is closed, so nothing was hired`);
+    return undefined;
+  }
   const heldAtStart = heldOn(asked.labels);
   if (heldAtStart !== undefined) {
     console.log(`${said} is marked ${heldAtStart}, so nothing was hired`);

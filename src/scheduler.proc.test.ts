@@ -323,6 +323,13 @@ describe("bin/schedule runs a spec from its first cut to its landing, one slice 
     expect(run.order()).toEqual([]);
   });
 
+  it("stands down green on a closed spec, hiring nothing and running no finish, where #2060's second run resumed after the spec closed and filed a duplicate bug from a second done check", () => {
+    const run = scheduling({ state: "CLOSED", cuts: [[sliceOf("seam")]] });
+
+    expect(run.run()).toMatchObject({ status: 0, stdout: `schedule: #${SPEC_ISSUE} is closed, so nothing was hired\n` });
+    expect(run.order()).toEqual([]);
+  });
+
   it("briefs each builder with the spec's decisions its slice follows, beside the spec's Out of Scope, since a builder never reads the spec", () => {
     const run = scheduling({ cuts: [[{ ...sliceOf("seam"), decisions: ["Reuse the ticket machinery where it already fits."] }], []] });
 

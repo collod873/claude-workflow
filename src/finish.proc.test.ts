@@ -437,6 +437,15 @@ describe("bin/finish stands down on a held spec, so a pause holds the landing to
     expect(finished.landed()).toEqual([]);
   });
 
+  it("reviews, checks and lands nothing on a closed spec, as #2060's second finish ran a second done check after it closed", () => {
+    const finished = finishing({ state: "CLOSED" });
+
+    expect(finished.run()).toEqual({ status: 1, stdout: "finish: #974 is closed, so nothing was reviewed or landed\nlanded=\nmissed=\n", stderr: "" });
+    expect(finished.handed()).toEqual([]);
+    expect(finished.checked()).toEqual([]);
+    expect(finished.landed()).toEqual([]);
+  });
+
   it("refuses an integration branch holding nothing past main, hiring nothing", () => {
     const finished = finishing({ slices: [] });
 

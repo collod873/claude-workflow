@@ -459,9 +459,13 @@ function leftFiled(spec: string, approved: Approved[]): void {
 async function finished(spec: string, app: AppKey | undefined): Promise<Finished> {
   const said = `finish: #${spec}`;
   const unchanged = "so nothing was reviewed or landed";
-  const asked = askedIssue(ghRead(["issue", "view", spec, "--json", "title,body,labels"], `#${spec} could not be read, ${unchanged}`)) ?? unread(`#${spec} could not be read, ${unchanged}`);
+  const asked = askedIssue(ghRead(["issue", "view", spec, "--json", "title,body,labels,state"], `#${spec} could not be read, ${unchanged}`)) ?? unread(`#${spec} could not be read, ${unchanged}`);
   if (!asked.labels.has(SPEC)) {
     stoppedAt("unfinishable", `${said} is not a spec, ${unchanged}`);
+    return {};
+  }
+  if (asked.closed) {
+    console.log(`${said} is closed, ${unchanged}`);
     return {};
   }
   const held = heldOn(asked.labels);

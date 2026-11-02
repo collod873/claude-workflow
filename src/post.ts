@@ -263,12 +263,13 @@ export interface Asked {
   title: string;
   body: string;
   labels: Held;
+  closed: boolean;
 }
 
 export function askedIssue(stdout: string): Asked | undefined {
   try {
-    const { title, body, labels } = JSON.parse(stdout) as { title?: unknown; body?: unknown; labels?: unknown };
-    return typeof title === "string" && typeof body === "string" && Array.isArray(labels) ? { title, body, labels: heldOf(labels as { name?: string }[]) } : undefined;
+    const { title, body, labels, state } = JSON.parse(stdout) as { title?: unknown; body?: unknown; labels?: unknown; state?: unknown };
+    return typeof title === "string" && typeof body === "string" && Array.isArray(labels) ? { title, body, labels: heldOf(labels as { name?: string }[]), closed: state === "CLOSED" } : undefined;
   } catch {
     return undefined;
   }

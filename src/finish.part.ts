@@ -22,6 +22,7 @@ export interface Slice {
 export function finishing({
   slices = [{ id: "tenant-time-zone", files: { "src/zone.ts": "export const zone = 1;\n" } }] as Slice[],
   labels = ["spec"] as string[],
+  state = "OPEN",
   labelsAtLand = undefined as string[] | undefined,
   sentences = ["see the spec land on main"],
   tries = [{ sentence: 1, outcome: "held", tried: "saw it on main" }] as { sentence: number; outcome: string; tried: string }[],
@@ -61,7 +62,7 @@ export function finishing({
     git(session, "add", ".");
     git(session, "commit", "--quiet", "-m", id === undefined ? "Build what no slice names" : `${message ?? `Build slice ${id}`}\n\nSlice: ${id}`);
   }
-  plant(root, "issue.json", JSON.stringify({ title: "A spec worth finishing", body: specWith(sentences), labels: labels.map((name) => ({ name })) }));
+  plant(root, "issue.json", JSON.stringify({ title: "A spec worth finishing", body: specWith(sentences), labels: labels.map((name) => ({ name })), state }));
   plant(root, "labels-at-land", (labelsAtLand ?? labels).map((label) => `${label}\n`).join(""));
   plant(root, "comments.json", authored(said));
   const answering = (output: object) => `${JSON.stringify({ type: "system", session_id: "review-$CALL" })}\n${JSON.stringify({ type: "result", subtype: "success", is_error: false, session_id: "review-$CALL", structured_output: output })}\n`;
