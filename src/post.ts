@@ -77,15 +77,33 @@ export interface Held {
   has(label: LabelName): boolean;
 }
 
-export const heldOn = (labels: Held) => HELD.find((label) => labels.has(label));
+const heldOn = (labels: Held) => HELD.find((label) => labels.has(label));
 
 export const heldOf = (labels: { name?: string }[] | undefined): Held => new Set((labels ?? []).map(({ name }) => name));
 
 export const NOTHING_MARKED = "so nothing is marked";
 
-export function labelsHeld(issue: string, gh: Gh): Held {
-  const got = gh(["issue", "view", issue, "--json", "labels", "--jq", ".labels[].name"]);
-  return got.status === 0 ? new Set(got.stdout.split("\n").filter((label) => label !== "")) : unread(`the labels of #${issue} could not be read, ${NOTHING_MARKED}`);
+export interface Standing {
+  labels: Held;
+  closed: boolean;
+}
+
+export const stoodDown = ({ labels, closed }: Standing): string | undefined => {
+  if (closed) return "is closed";
+  const held = heldOn(labels);
+  return held === undefined ? undefined : `is marked ${held}`;
+};
+
+export function standingOn(issue: string, gh: Gh): Standing {
+  const unreadLine = `the labels of #${issue} could not be read, ${NOTHING_MARKED}`;
+  const got = gh(["issue", "view", issue, "--json", "labels,state"]);
+  if (got.status !== 0) return unread(unreadLine);
+  try {
+    const { labels, state } = JSON.parse(got.stdout) as { labels?: unknown; state?: unknown };
+    return Array.isArray(labels) ? { labels: heldOf(labels as { name?: string }[]), closed: state === "CLOSED" } : unread(unreadLine);
+  } catch {
+    return unread(unreadLine);
+  }
 }
 
 interface Kind {
@@ -266,7 +284,9 @@ export interface Asked {
   closed: boolean;
 }
 
-export function askedIssue(stdout: string): Asked | undefined {
+export const askedOn = (issue: string, unchanged: string): Asked => askedIssue(ghRead(["issue", "view", issue, "--json", "title,body,labels,state"], `#${issue} could not be read, ${unchanged}`)) ?? unread(`#${issue} could not be read, ${unchanged}`);
+
+function askedIssue(stdout: string): Asked | undefined {
   try {
     const { title, body, labels, state } = JSON.parse(stdout) as { title?: unknown; body?: unknown; labels?: unknown; state?: unknown };
     return typeof title === "string" && typeof body === "string" && Array.isArray(labels) ? { title, body, labels: heldOf(labels as { name?: string }[]), closed: state === "CLOSED" } : undefined;

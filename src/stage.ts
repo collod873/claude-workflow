@@ -3,7 +3,7 @@ import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readdirSync
 import { join } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import { NO_EM_DASH, onDisk } from "./brief.ts";
-import { type Asked, askedIssue, commentOnTicket, followUpBody, gh, ghRead, git, gitRead, heardIn, heldOn, LABELLED_WAITING, mark, nothingHears, OWNER, post, STUCK, unread, WAITING, type MarkedLabel } from "./post.ts";
+import { type Asked, askedOn, commentOnTicket, followUpBody, gh, git, gitRead, heardIn, stoodDown, LABELLED_WAITING, mark, nothingHears, OWNER, post, STUCK, WAITING, type MarkedLabel } from "./post.ts";
 import type { Stop } from "./stops.ts";
 import { addBlocker, postedUnderOrigin } from "./issue-links.ts";
 import { quoted } from "./ticket-shape.ts";
@@ -87,6 +87,14 @@ export const treePathed = (env: NodeJS.ProcessEnv = process.env): NodeJS.Process
 
 export const CONTRACT = join(".claude", "contract.json");
 
+export function treeNeeds(contract: string): { database: boolean; keys: string[] } {
+  const { needs = [], steps = {} } = JSON.parse(contract || "{}") as { needs?: string[]; steps?: Record<string, { needs?: string[] }> };
+  const named = [...needs, ...Object.values(steps).flatMap((step) => step.needs ?? [])];
+  return { database: named.includes("DATABASE_URL"), keys: needs.filter((name) => name !== "DATABASE_URL") };
+}
+
+export const unsetKeys = () => (process.env.UNSET_KEYS ?? "").split(",").map((key) => key.trim()).filter(Boolean);
+
 const setupOf = (contract: string) => {
   const { setup } = JSON.parse(contract || "{}") as { setup?: string };
   return setup === undefined || setup.trim() === "" ? undefined : setup;
@@ -99,11 +107,11 @@ export function setupRefusal(contract: string): string | undefined {
   return setup === undefined ? undefined : unready(spawnSync("bash", ["-c", setup], { env: treePathed(), encoding: "utf8", maxBuffer: Infinity }));
 }
 
-export function setupRefusedIn(tree: string, contract: string): Promise<string | undefined> {
+export function setupRefusedIn(tree: string, contract: string, env: Record<string, string> = {}): Promise<string | undefined> {
   const setup = setupOf(contract);
   if (setup === undefined) return Promise.resolve(undefined);
   return new Promise((resolve) => {
-    execFile("bash", ["-c", setup], { cwd: tree, env: treePathed(), encoding: "utf8", maxBuffer: Infinity }, (error, stdout, stderr) => {
+    execFile("bash", ["-c", setup], { cwd: tree, env: treePathed({ ...process.env, ...env }), encoding: "utf8", maxBuffer: Infinity }, (error, stdout, stderr) => {
       resolve(unready({ status: error === null ? 0 : typeof error.code === "number" ? error.code : null, stdout, stderr }));
     });
   });
@@ -171,11 +179,11 @@ function launchedHere({ argv: [command, ...args], input, streamed, waitFirst }: 
 }
 
 const launchedIn =
-  (tree: string) =>
+  (tree: string, env: Record<string, string>) =>
   async ({ argv: [command, ...args], input, streamed, waitFirst }: Launch): Promise<Exited> => {
     if (waitFirst) await setTimeout(Number(RETRY_WAIT_SECONDS) * 1000);
     return new Promise((resolve) => {
-      const child = spawn(command, args, { cwd: tree, env: treePathed(), stdio: ["pipe", streamed, "pipe"] });
+      const child = spawn(command, args, { cwd: tree, env: treePathed({ ...process.env, ...env }), stdio: ["pipe", streamed, "pipe"] });
       let stderr = "";
       child.stderr?.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
       child.stdin?.on("error", () => undefined);
@@ -203,9 +211,9 @@ const transcriptOf = (stage: string, key: string) => join(machineLogs(), `${stag
 
 export const hire = (stage: string, key: string, hiring: Omit<Hire, "transcript">) => hired({ ...hiring, transcript: transcriptOf(stage, key) });
 
-export function hireIn(tree: string, stage: string, key: string, hiring: Omit<Hire, "transcript">): (input: string, resume?: string) => Promise<Spent> {
+export function hireIn(tree: string, stage: string, key: string, hiring: Omit<Hire, "transcript">, env: Record<string, string> = {}): (input: string, resume?: string) => Promise<Spent> {
   const spend = spending({ ...hiring, transcript: transcriptOf(stage, key) });
-  const launched = launchedIn(tree);
+  const launched = launchedIn(tree, env);
   return async (input, resume) => {
     const steps = spend(input, resume);
     for (let step = steps.next(); ; step = steps.next(await launched(step.value))) if (step.done === true) return step.value;
@@ -231,10 +239,10 @@ export interface Opened<Carried> {
 export function opened<Carried, Own extends string>({ stage, issue, state, tried, hire: hiring, ready }: Opening<Carried, Own>): Opened<Carried> | Own | undefined {
   const said = `${stage}: #${issue}`;
   const unchanged = "so no label changed and no model was hired";
-  const asked = askedIssue(ghRead(["issue", "view", issue, "--json", "title,body,labels"], `#${issue} could not be read, ${unchanged}`)) ?? unread(`#${issue} could not be read, ${unchanged}`);
-  const held = heldOn(asked.labels);
-  if (held !== undefined) {
-    console.log(`${said} is marked ${held}, ${unchanged}`);
+  const asked = askedOn(issue, unchanged);
+  const stood = stoodDown(asked);
+  if (stood !== undefined) {
+    console.log(`${said} ${stood}, ${unchanged}`);
     return undefined;
   }
   const readied = ready(asked);

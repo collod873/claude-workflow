@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { authoredOn, commentEdited, commentOnTicket, labelsHeld, opened, post, readOrStop, type Posting } from "./post.ts";
+import { authoredOn, commentEdited, commentOnTicket, opened, standingOn, post, readOrStop, type Posting } from "./post.ts";
 import { filedAs, wellFormedNote as NOTE, wellFormedSpec as SPEC } from "./scenarios.ts";
 
 const URL = "https://github.com/collod873/claude-workflow/issues/700";
@@ -223,16 +223,16 @@ describe("every filing links the transcripts page listing the sessions that file
 describe("src/post.ts reads what GitHub holds, stopping at unread itself, so no caller converts a stand-in (#1073, #1123)", () => {
   const failing = github({ status: 1, stdout: "", stderr: "gh: Server Error (HTTP 502)" }).gh;
 
-  it("names each label the issue holds", () => {
-    const { gh, calls } = github({ stdout: "ticket\nlanding\n" });
+  it("names each label the issue holds and whether it is closed", () => {
+    const { gh, calls } = github({ stdout: '{"state":"CLOSED","labels":[{"name":"ticket"},{"name":"landing"}]}' });
 
-    expect(labelsHeld("873", gh)).toEqual(new Set(["ticket", "landing"]));
+    expect(standingOn("873", gh)).toEqual({ labels: new Set(["ticket", "landing"]), closed: true });
     expect(calls).toHaveLength(1);
     expect(calls[0]).toContain("873");
   });
 
   it.each([
-    { read: "the labels", run: (): unknown => labelsHeld("874", failing), line: "read: the labels of #874 could not be read, so nothing is marked" },
+    { read: "the labels", run: (): unknown => standingOn("874", failing), line: "read: the labels of #874 could not be read, so nothing is marked" },
     { read: "the comments", run: () => authoredOn("874", "the comments on #874 could not be read", failing), line: "read: the comments on #874 could not be read" },
     { read: "the issue", run: () => opened("874", "#874 could not be read", failing), line: "read: #874 could not be read" },
   ])("stops at unread naming the read when GitHub fails $read (#1099)", ({ run, line }) => {

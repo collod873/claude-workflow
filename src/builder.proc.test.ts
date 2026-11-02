@@ -52,6 +52,16 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
     expect(landed()).toEqual([`${log("-1", "--format=%H")} --ticket 811 --approved it builds the Why`]);
   });
 
+  it("tells the builder each key the repo's contract names that its secrets lack, so it proves that code against a stand-in and names the key for the owner (#1626)", () => {
+    const told = fixing({ claude: FIXES, unsetKeys: "STRIPE_SECRET_KEY,RESEND_API_KEY" });
+    const plain = fixing({ claude: FIXES });
+
+    expect(told.run("811").status).toBe(0);
+    expect(plain.run("811").status).toBe(0);
+    expect(told.handed()[0]).toContain("This job lacks `STRIPE_SECRET_KEY` and `RESEND_API_KEY`, which the repo's contract asks for");
+    expect(plain.handed()[0]).not.toContain("This job lacks");
+  });
+
   it("builds a ticket marked building, commits it as a build, and once green hands it to review and lands it (#931)", () => {
     const { run, handed, marked, landed, log } = fixing({ claude: FIXES });
 
@@ -748,12 +758,22 @@ describe("a fresh reviewer reads each green build, fixes or approves it, and bin
     const result = run();
 
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toContain("review: #811 is labelled paused, so it does not land");
+    expect(result.stdout).toContain("review: #811 is marked paused, so it does not land");
+    expect(landed()).toEqual([]);
+  });
+
+  it("lands nothing, and ends green, when the ticket was closed by the time its review ends (#1626)", () => {
+    const { run, landed } = fixing({ claude: FIXES, reviewer: "printf 'CLOSED' >../labels.state\n" });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("review: #811 is closed, so it does not land");
     expect(landed()).toEqual([]);
   });
 
   it("ends red at unread, landing nothing, when the ticket's labels cannot be read at review", () => {
-    const { run, landed } = fixing({ claude: FIXES, unreadable: '*"issue view"*"labels"*"--jq"*' });
+    const { run, landed } = fixing({ claude: FIXES, unreadable: '*"--json labels,state"*' });
 
     const result = run();
 

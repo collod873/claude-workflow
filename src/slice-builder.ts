@@ -1,17 +1,18 @@
-import { spawnSync } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type AddressInfo } from "node:net";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { setTimeout } from "node:timers/promises";
 import { parseArgs } from "node:util";
 import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
-import { capped, LIST_CAP, NO_EM_DASH, onDisk, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
+import { capped, LIST_CAP, listedCapped, NO_EM_DASH, onDisk, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
 import { checkedBy, filedInRepo, OWNED_ANSWER, ownedRefusal, type Piece, type Red, spentOn } from "./builder.ts";
 import { FAST_CHECK } from "./checks.ts";
 import { LEFT_CAP } from "./scheduler.ts";
 import { SLICE_ID } from "./slicer.ts";
 import { fromLine, gh, git, gitRead, rebuiltOnMain, rebuiltRef, Stopped, unread } from "./post.ts";
-import { commitlinted, committed, CONTRACT, hire, setupRefusal } from "./stage.ts";
+import { commitlinted, committed, CONTRACT, hire, setupRefusal, treeNeeds, unsetKeys } from "./stage.ts";
 
 const USAGE = "build-slice: usage: build-slice --spec <N> --slice <id> --brief <file> --onto <integration ref> [--resume <session>] [--told <text> | --out-of-time | --answer <its answer's JSON, to land again>]";
 
@@ -64,12 +65,13 @@ export const CARRY_ON = "Your last run on this slice stopped before it answered.
 
 export const OUT_OF_TIME = "Your time on this slice is up. Build nothing more: commit what holds and answer `partial`, with `left` naming each `## Done when` sentence that does not hold yet, or `built` if every one holds.";
 
-export function handedOn({ brief, onto, commitlint }: { brief: string; onto: string; commitlint: boolean }): string {
+export function handedOn({ brief, onto, commitlint, unset = [] }: { brief: string; onto: string; commitlint: boolean; unset?: string[] }): string {
   return [
     capped(brief.trimEnd(), TICKET_CAP),
     "## Build it",
     "Ship the slice's Why whole on every path you touch, in the smallest diff; `## Done when` is its floor. Settle open choices yourself as its senior engineer. Call the Skill tool with `tdd`, to its end. Commit as you go: a why per message, no em dash, no `Fixes #12`.",
     ...(commitlint ? ["Commitlint runs here: each message is `type: subject`, a conventional type, lower-case."] : []),
+    ...(unset.length === 0 ? [] : [`Unset in this run though the contract wants them: ${listedCapped(unset.map((key) => `\`${key}\``))}. Where code needs one, test it through a stand-in and invent no value; list each in \`reason\` for the owner to set.`]),
     "## Your answer",
     `- \`built\`: the machine commits the rest, rebases onto \`${onto}\`, runs \`${FAST_CHECK}\` and hands back each red or conflict until it fast-forwards \`${onto}\` green.`,
     "- `partial`: too big for one build; commit what holds, with `left` naming each `## Done when` sentence not yet holding, for the slicer to cut again. Same check.",
@@ -160,19 +162,24 @@ const onLeaving = (clean: () => void) => {
   leaving.unshift(clean);
 };
 
-function needsDatabase(contract: string): boolean {
-  const { steps } = JSON.parse(contract || "{}") as { steps?: Record<string, { needs?: string[] }> };
-  return Object.values(steps ?? {}).some((step) => step.needs?.includes("DATABASE_URL") === true);
+export interface Isolation {
+  TMPDIR: string;
+  PORT: string;
+  DATABASE_URL?: string;
 }
 
-const docker = (args: string[]) => spawnSync("docker", args, { encoding: "utf8" });
+const dockerNow = (args: string[]) => spawnSync("docker", args, { encoding: "utf8" });
+const docker = (args: string[]) =>
+  new Promise<{ status: number; stdout: string; stderr: string }>((resolve) => {
+    execFile("docker", args, { encoding: "utf8" }, (error, stdout, stderr) => resolve({ status: error === null ? 0 : typeof error.code === "number" ? error.code : 1, stdout, stderr }));
+  });
 const firstLine = ({ stdout, stderr }: { stdout: string; stderr: string }) => `${stderr}${stdout}`.trim().split("\n")[0] ?? "";
 
 const RUNNER_LABEL = "machine.runner";
 const RUN_LABEL = "machine.run";
 
-function staleDatabases(container: string, runner: string, run: string): string[] {
-  const listed = docker(["ps", "--all", "--filter", `label=${RUNNER_LABEL}=${runner}`, "--format", `{{.ID}}\t{{.Names}}\t{{.Label "${RUN_LABEL}"}}`]).stdout.trim();
+async function staleDatabases(container: string, runner: string, run: string): Promise<string[]> {
+  const listed = (await docker(["ps", "--all", "--filter", `label=${RUNNER_LABEL}=${runner}`, "--format", `{{.ID}}\t{{.Names}}\t{{.Label "${RUN_LABEL}"}}`])).stdout.trim();
   return listed === ""
     ? []
     : listed
@@ -182,31 +189,30 @@ function staleDatabases(container: string, runner: string, run: string): string[
         .map(([id = ""]) => id);
 }
 
-function ownDatabase(container: string): string | undefined {
+async function ownDatabase(container: string): Promise<{ DATABASE_URL: string } | string> {
   const runner = process.env.RUNNER_NAME ?? "";
   const run = `${process.env.GITHUB_RUN_ID ?? ""}-${process.env.GITHUB_RUN_ATTEMPT ?? ""}`;
-  const stale = staleDatabases(container, runner, run);
-  if (stale.length > 0) docker(["rm", "--force", ...stale]);
-  onLeaving(() => docker(["rm", "--force", container]));
-  const started = docker(["run", "--quiet", "--detach", "--name", container, "--label", `${RUNNER_LABEL}=${runner}`, "--label", `${RUN_LABEL}=${run}`, "--publish", "127.0.0.1::5432", "--env", "POSTGRES_PASSWORD=postgres", "postgres:16"]);
+  const stale = await staleDatabases(container, runner, run);
+  if (stale.length > 0) await docker(["rm", "--force", ...stale]);
+  onLeaving(() => dockerNow(["rm", "--force", container]));
+  const started = await docker(["run", "--quiet", "--detach", "--name", container, "--label", `${RUNNER_LABEL}=${runner}`, "--label", `${RUN_LABEL}=${run}`, "--publish", "127.0.0.1::5432", "--env", "POSTGRES_PASSWORD=postgres", "postgres:16"]);
   if (started.status !== 0) return `its Postgres would not start: ${firstLine(started)}`;
-  for (let waited = 0; docker(["exec", container, "pg_isready", "--quiet", "--host", "127.0.0.1"]).status !== 0; waited++) {
+  for (let waited = 0; (await docker(["exec", container, "pg_isready", "--quiet", "--host", "127.0.0.1"])).status !== 0; waited++) {
     if (waited >= DATABASE_WAIT_SECONDS) return `its Postgres took no connections within ${DATABASE_WAIT_SECONDS} seconds`;
-    spawnSync("sleep", ["1"]);
+    await setTimeout(1000);
   }
-  const port = docker(["port", container, "5432/tcp"]).stdout.split("\n")[0]?.split(":").at(-1) ?? "";
+  const port = (await docker(["port", container, "5432/tcp"])).stdout.split("\n")[0]?.split(":").at(-1) ?? "";
   if (!/^\d+$/.test(port)) return "its Postgres published no port";
-  process.env.DATABASE_URL = `postgres://postgres:postgres@localhost:${port}/postgres`;
-  return undefined;
+  return { DATABASE_URL: `postgres://postgres:postgres@localhost:${port}/postgres` };
 }
 
-export function isolated(names: string[], port: number): string | undefined {
+export async function isolated(tree: string, names: string[], port: number): Promise<Isolation | string> {
   const own = mkdtempSync(join(tmpdir(), "slice-"));
   onLeaving(() => rmSync(own, { recursive: true, force: true }));
-  process.env.TMPDIR = own;
-  process.env.PORT = String(port);
-  if (!needsDatabase(onDisk(CONTRACT) ?? "")) return undefined;
-  return ownDatabase(named("database", process.env.GITHUB_REPOSITORY ?? "", process.env.RUNNER_NAME ?? "", ...names));
+  const isolation = { TMPDIR: own, PORT: String(port) };
+  if (!treeNeeds(onDisk(join(tree, CONTRACT)) ?? "").database) return isolation;
+  const database = await ownDatabase(named("database", process.env.GITHUB_REPOSITORY ?? "", process.env.RUNNER_NAME ?? "", ...names));
+  return typeof database === "string" ? database : { ...isolation, ...database };
 }
 
 export const fastForwards = (onto: string) => git(["merge-base", "--is-ancestor", onto, "HEAD"]).status === 0;
@@ -291,7 +297,7 @@ function built(slicing: Slicing, app: AppKey | undefined): Ending {
   const file = sessionFile(slicing);
   const spend = hire("build-slice", named(spec, slice), { name: "slice builder", model: "opus", answers: ANSWER, writeUp: { minutes: WRITE_UP_MINUTES, told: OUT_OF_TIME } });
   const brief = onDisk(slicing.brief) ?? unread(`the brief ${slicing.brief} could not be read, so no builder was hired`);
-  const opening = handedOn({ ...slicing, brief, commitlint: commitlinted() });
+  const opening = handedOn({ ...slicing, brief, commitlint: commitlinted(), unset: unsetKeys() });
   let session = slicing.resume ?? savedSession(file);
   let input = slicing.told ?? (slicing.outOfTime ? OUT_OF_TIME : session === undefined ? opening : CARRY_ON);
   let left = "";
@@ -330,11 +336,12 @@ function built(slicing: Slicing, app: AppKey | undefined): Ending {
   }
 }
 
-function builtIn(slicing: Slicing, app: AppKey | undefined, port: number): Ending {
+async function builtIn(slicing: Slicing, app: AppKey | undefined, port: number): Promise<Ending> {
   process.chdir(gitRead(["rev-parse", "--show-toplevel"], "the slice's worktree could not be found, so no builder was hired"));
   gitRead(["rev-parse", "--verify", "--quiet", `${slicing.onto}^{commit}`], `${slicing.onto} names no commit, so no builder was hired`);
-  const unisolated = isolated([slicing.spec, slicing.slice], port);
-  if (unisolated !== undefined) return ended("stopped", unisolated, undefined);
+  const isolation = await isolated(process.cwd(), [slicing.spec, slicing.slice], port);
+  if (typeof isolation === "string") return ended("stopped", isolation, undefined);
+  Object.assign(process.env, isolation);
   const unready = setupRefusal(onDisk(CONTRACT) ?? "");
   if (unready !== undefined) return ended("stopped", `its tree's setup failed: ${unready}`, undefined);
   return built(slicing, app);
@@ -363,9 +370,9 @@ if (import.meta.main) {
   }
   const app = takenAppKey();
   const port = await freePort();
-  const ending = (() => {
+  const ending = await (async () => {
     try {
-      return builtIn(slicing, app, port);
+      return await builtIn(slicing, app, port);
     } catch (error) {
       if (!(error instanceof Stopped)) throw error;
       console.error(`build-slice: ${error.message}`);

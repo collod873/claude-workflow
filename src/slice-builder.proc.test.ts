@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { CHECK_PASSES } from "./builder.part.ts";
 import { BRIEF, BUILDS, KIT_FILED, ONTO, SLICE, SLICE_SESSION, SPEC, slicing } from "./slice-builder.part.ts";
 import { fromLine } from "./post.ts";
-import { BIN, execute, scratch } from "./scenarios.ts";
+import { BIN, bodyIn, execute, scratch } from "./scenarios.ts";
 import { OUT_OF_TIME } from "./slice-builder.ts";
 
 const ending = (stdout: string) => JSON.parse(stdout.trim().split("\n").at(-1) ?? "") as { outcome: string; left: string; reason: string; session: string };
@@ -55,6 +55,13 @@ describe("a fresh builder builds one slice of a spec in its own worktree until i
     expect(checked()).toEqual(["check"]);
     expect(log("rev-list", "--count", `${ONTO}..HEAD`)).toBe("1");
     expect(fastForwards(log, ONTO)).toBe(true);
+  });
+
+  it("tells the slice builder each key the repo's contract names that its secrets lack (#1626)", () => {
+    const told = slicing({ unsetKeys: "TWILIO_AUTH_TOKEN" });
+
+    expect(told.run().status).toBe(0);
+    expect(told.handed()[0]).toContain("Unset in this run though the contract wants them: `TWILIO_AUTH_TOKEN`.");
   });
 
   it("puts the `Slice:` trailer on every commit past the integration branch, the builder's and the leftovers the machine commits, so the final reviewers can split the diff per slice", () => {
@@ -241,7 +248,7 @@ describe("a fresh builder builds one slice of a spec in its own worktree until i
     const created = calls().filter((args) => args[1] === "create");
     expect(created).toHaveLength(1);
     expect(created[0]).toEqual(expect.arrayContaining(["--repo", "collod873/design-kit"]));
-    expect(created[0]?.[created[0].indexOf("--body") + 1]).toContain(fromLine(`collod873/Lumaria#${SPEC}`, "first-step"));
+    expect(bodyIn(created[0] ?? [])).toContain(fromLine(`collod873/Lumaria#${SPEC}`, "first-step"));
     expect(calls()).toContainEqual(["api", "--method", "POST", `repos/collod873/Lumaria/issues/${SPEC}/sub_issues`, "-F", "sub_issue_id=4242"]);
     expect(checked()).toEqual([]);
   });
@@ -378,6 +385,13 @@ describe("three builders run at once in one runner job, each with its own Postgr
 
     expect(run().status).toBe(0);
     expect(dockered()[1]).toBe("rm --force c0ffee beef01 dead03");
+  });
+
+  it("starts it too when the contract's top-level needs names DATABASE_URL, read the same way the job's needs step reads it (#1626)", () => {
+    const { run, ranWith } = slicing({ contract: '{ "needs": ["DATABASE_URL"], "steps": { "integration": { "run": "true" } } }\n' });
+
+    expect(run().status).toBe(0);
+    expect(envOf(ranWith("claude")[0], "DATABASE_URL")).toBe("postgres://postgres:postgres@localhost:49153/postgres");
   });
 
   it("removes its Postgres when its builder ends stuck too", () => {

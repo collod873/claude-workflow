@@ -1,12 +1,10 @@
 import { postedUnderOrigin } from "./issue-links.ts";
-import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { parseArgs } from "node:util";
 import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
-import { capped, LIST_CAP, NO_EM_DASH, onDisk, tailOf } from "./brief.ts";
-import { authoredOn, commentOnTicket, followUpBody, fromHere, fromLine, FOREIGN, gh, mark, OWNER, post, readOrStop, STUCK, type Asked } from "./post.ts";
+import { capped, listedCapped, NO_EM_DASH, onDisk, tailOf } from "./brief.ts";
+import { askedOn, authoredOn, commentOnTicket, followUpBody, fromHere, fromLine, FOREIGN, gh, mark, OWNER, post, readOrStop, STUCK, stoodDown, type Asked } from "./post.ts";
 import { freePort, isolated } from "./slice-builder.ts";
-import { CONTRACT, opened, setupRefusal, type Spent } from "./stage.ts";
+import { CONTRACT, hireIn, opened, setupRefusal, setupRefusedIn, type Spent, unsetKeys } from "./stage.ts";
 import { CHECKING, SPEC } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { quoted, type Sentence, sentences, SPEC_CAP } from "./ticket-shape.ts";
@@ -63,19 +61,13 @@ const RUNNING_THERE = `Here the running system is this checkout of the repo, rea
 const SELF =
   " `self`, without trying it, for a sentence about the spec closing itself or the owner being told which sentence did not hold: this run is the one that closes the spec and files each miss, so the machine settles it from the other sentences.";
 
-const unsetKeys = () => (process.env.UNSET_KEYS ?? "").split(",").map((key) => key.trim()).filter(Boolean);
-
-const lacking = (keys: string[]) =>
-  keys.length === 0
-    ? []
-    : [`The repo's contract names ${capped(new Intl.ListFormat("en").format(keys.map((key) => `\`${key}\``)), LIST_CAP)}, which its secrets lack, so this run has none of them: a sentence resting on one is \`owner\`, its \`tried\` naming the key to set as a repo secret.`];
 
 const numbered = (listed: Sentence[]) => listed.map(({ said }, at) => `${at + 1}. ${said}`).join("\n");
 
 export function handedOn(title: string, body: string, { replies = "", foreign = false, unset = [] }: { replies?: string; foreign?: boolean; unset?: string[] } = {}): string {
   return [
     `Try each sentence under \`## The sentences to try\` on the running system, not on its tests, and say how each came out. Read and run what you need, and leave the repo and GitHub as they are. ${foreign ? RUNNING_THERE : RUNNING_HERE}`,
-    ...lacking(unset),
+    ...(unset.length === 0 ? [] : [`The repo's contract names ${listedCapped(unset.map((key) => `\`${key}\``))}, which its secrets lack, so this run has none of them: a sentence resting on one is \`owner\`, its \`tried\` naming the key to set as a repo secret.`]),
     "## The spec",
     capped(`# ${title}\n\n${body}`, SPEC_CAP),
     ...answered(replies),
@@ -107,7 +99,6 @@ interface Read {
   asked: Asked;
   listed: Sentence[];
   replies: string;
-  spend: (input: string) => Spent;
 }
 
 const NOTHING_POSTED = (issue: string) => `Nothing was posted, so once its cause is fixed the done check is safe to run again on its own: \`bin/done-check ${issue}\` on a checkout of main, with \`${STUCK}\` off.`;
@@ -130,38 +121,31 @@ function repliesOn(issue: string): string {
   return since === -1 ? "" : authored.slice(since + 1).flatMap(({ author, body }) => (author === OWNER ? [body] : [])).join("\n\n");
 }
 
-function opening(issue: string, unmarked: boolean): Read | string | undefined {
+const setupFailed = (unready: string | undefined) => (unready === undefined ? undefined : `its tree's setup failed: ${quoted(unready)}`);
+
+function read(issue: string): (Read & { spend: (input: string) => Spent }) | Stop | undefined {
   const spec = opened({
     stage: "done-check",
     issue,
     state: CHECKING,
-    stoppedAt: (_stop, line) => line,
+    stoppedAt,
     hire: HIRE,
     ready: (asked) => {
       const listed = unlisted(asked);
-      return Array.isArray(listed) ? { carrying: { listed, replies: repliesOn(issue) }, unmarked } : listed;
+      return Array.isArray(listed) ? { carrying: { listed, replies: repliesOn(issue) } } : stoppedAt("notSpec", `${SAID(issue)} ${listed}`);
     },
   });
-  return typeof spec === "object" ? { asked: spec.asked, ...spec.carried, spend: spec.spend } : spec;
-}
-
-function setupFailed(): string | undefined {
-  const unready = setupRefusal(onDisk(join(process.cwd(), CONTRACT)) ?? "");
-  return unready === undefined ? undefined : `its tree's setup failed: ${quoted(unready)}`;
-}
-
-function read(issue: string): Read | Stop | undefined {
-  const spec = opening(issue, false);
-  if (typeof spec !== "object") return spec === undefined ? undefined : stoppedAt("notSpec", `${SAID(issue)} ${spec}`);
-  const unready = setupFailed();
-  return unready === undefined ? spec : calledOwner(issue, "unready", unready);
+  if (typeof spec !== "object") return spec;
+  const unready = setupFailed(setupRefusal(onDisk(join(process.cwd(), CONTRACT)) ?? ""));
+  return unready === undefined ? { asked: spec.asked, ...spec.carried, spend: spec.spend } : calledOwner(issue, "unready", unready);
 }
 
 export const paired = (listed: Sentence[], tries: Try[]): [number, string, Try | undefined][] =>
   listed.map(({ said }, at) => [at + 1, said, tries.find(({ sentence }) => sentence === at + 1)]);
 
-function triesOf({ asked, listed, replies, spend }: Read): Try[] | { refusal: string } {
-  const spent = spend(handedOn(asked.title, asked.body, { replies, foreign: FOREIGN, unset: unsetKeys() }));
+const handedFor = ({ asked, replies }: Read) => handedOn(asked.title, asked.body, { replies, foreign: FOREIGN, unset: unsetKeys() });
+
+function triesIn(spent: Spent, listed: Sentence[]): Try[] | { refusal: string } {
   if (spent.refusal !== undefined) return { refusal: spent.refusal };
   const given = (spent.answer as { tries?: unknown } | undefined)?.tries;
   const found = paired(listed, Array.isArray(given) ? given.filter(isTry) : []);
@@ -225,30 +209,29 @@ export function doneCheck(issue: string, app: AppKey | undefined): Checked | Sto
   const spec = read(issue);
   if (typeof spec !== "object") return spec;
   if (app !== undefined) freshAppToken(app, gh, `so the done check of #${issue} is not tried`);
-  const tries = triesOf(spec);
+  const tries = triesIn(spec.spend(handedFor(spec)), spec.listed);
   if (app !== undefined) freshAppToken(app, gh, `so the done check of #${issue} is not posted`);
   if (!Array.isArray(tries)) return calledOwner(issue, "modelRun", tries.refusal);
   return postedOn(issue, spec.listed, tries, []);
 }
 
-async function triedHere(issue: string): Promise<Try[] | { stop: Stop; refusal: string }> {
-  const spec = opening(issue, true);
-  if (typeof spec !== "object") return { stop: "notSpec", refusal: `it ${spec ?? "is held, so nothing was tried"}` };
-  const unready = isolated([issue, "done-check"], await freePort()) ?? setupFailed();
-  if (unready !== undefined) return { stop: "unready", refusal: unready };
-  const tries = triesOf(spec);
-  return Array.isArray(tries) ? tries : { stop: "modelRun", refusal: tries.refusal };
-}
-
-async function triesWritten(issue: string, file: string): Promise<Stop | undefined> {
-  const tried = await triedHere(issue);
-  writeFileSync(file, JSON.stringify(Array.isArray(tried) ? { tries: tried } : { refusal: tried.refusal }));
-  return Array.isArray(tried) ? undefined : stoppedAt(tried.stop, `${SAID(issue)} ended red, ${tried.refusal}`);
+export async function triedIn(tree: string, issue: string): Promise<Try[] | { refusal: string }> {
+  const asked = askedOn(issue, "so nothing was tried");
+  const stood = stoodDown(asked);
+  if (stood !== undefined) return { refusal: `#${issue} ${stood}, so nothing was tried` };
+  const listed = unlisted(asked);
+  if (!Array.isArray(listed)) return { refusal: `#${issue} ${listed}` };
+  const isolation = await isolated(tree, [issue, "done-check"], await freePort());
+  if (typeof isolation === "string") return { refusal: isolation };
+  const unready = setupFailed(await setupRefusedIn(tree, onDisk(join(tree, CONTRACT)) ?? "", { ...isolation }));
+  if (unready !== undefined) return { refusal: unready };
+  const spend = hireIn(tree, "done-check", issue, HIRE, { ...isolation });
+  return triesIn(await spend(handedFor({ asked, listed, replies: repliesOn(issue) })), listed);
 }
 
 if (import.meta.main) {
-  const { positionals: [issue], values } = parseArgs({ allowPositionals: true, options: { tries: { type: "string" } } });
+  const [issue] = process.argv.slice(2);
   if (issue === undefined) throw new Error("no issue number in the arguments");
-  const ended = values.tries === undefined ? readOrStop("done-check", () => doneCheck(issue, takenAppKey())) : await triesWritten(issue, values.tries);
+  const ended = readOrStop("done-check", () => doneCheck(issue, takenAppKey()));
   process.exit(exitFor(typeof ended === "string" ? ended : undefined));
 }

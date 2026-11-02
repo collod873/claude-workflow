@@ -40,7 +40,7 @@ export function rerunning({ attempt = "1", jobs = [red()], labels = ["spec"], re
       `  *"rerun-failed-jobs"*) ${refused === "" ? "exit 0" : `printf '%s\\n' '${refused}' >&2; exit 1`} ;;`,
       `  *"actions/runs/4417/attempts/${attempt} "*) polled=$(cat "${join(root, "polled")}" 2>/dev/null || echo 0); echo $((polled + 1)) >"${join(root, "polled")}"; ((polled < ${pending})) && echo in_progress || echo completed ;;`,
       `  *"actions/runs/4417 "*) printf '%s %s\\n' '${latest ?? attempt}' '${RUN_URL}' ;;`,
-      `  *"issue view"*) printf '%s\\n' ${labels.map((label) => `'${label}'`).join(" ")} ;;`,
+      `  *"issue view"*) printf '%s\\n' '${JSON.stringify({ state: "OPEN", labels: labels.map((name) => ({ name })) })}' ;;`,
       "esac",
       "",
     ].join("\n"),

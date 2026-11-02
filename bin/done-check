@@ -1,7 +1,7 @@
 #!/bin/bash
 set -uo pipefail
 
-usage="done-check: usage: done-check <issue number> [--tries <file to write the tries to, posting nothing>]"
+usage="done-check: usage: done-check <issue number>"
 
 if [[ ${1:-} == "--help" ]]; then
   printf '%s\n' "$usage"
@@ -9,7 +9,7 @@ if [[ ${1:-} == "--help" ]]; then
 fi
 
 issue=${1:-}
-if [[ ! $issue =~ ^[0-9]+$ ]] || ! [[ $# -eq 1 || ($# -eq 3 && $2 == --tries) ]]; then
+if [[ ! $issue =~ ^[0-9]+$ ]] || (($# > 1)); then
   printf '%s\n' "$usage" >&2
   exit 2
 fi

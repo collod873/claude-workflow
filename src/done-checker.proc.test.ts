@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { heard, type Said, workflowJobs } from "./scenarios.ts";
+import { bodyIn, heard, type Said, workflowJobs } from "./scenarios.ts";
 import { HELD, OWNER } from "./spelled.ts";
 import { BUG_FILED, DONE_CHECK_POSTED, doneChecking, specWith, TRYING_SESSION } from "./done-checker.part.ts";
 import { OUT_OF_TIME, REPLIES_CAP } from "./done-checker.ts";
@@ -57,7 +57,7 @@ describe("bin/done-check files each sentence that did not hold as a bug and clos
     });
     const created = checked.created();
     expect(created).toHaveLength(1);
-    const body = created[0]?.[created[0].indexOf("--body") + 1] ?? "";
+    const body = bodyIn(created[0] ?? []);
     expect(fromOf(body ?? "")).toMatchObject({ number: "974", kind: "done-check" });
     expect(checked.argv()).toContainEqual(["api", "--method", "POST", "repos/collod873/claude-workflow/issues/974/sub_issues", "-F", "sub_issue_id=4242"]);
     expect(body).toContain("> opened a ticket it filed and its Why was empty");
@@ -182,7 +182,7 @@ describe("an owner's comment runs no done check of its own: his replies reach th
     expect(Object.keys(workflowJobs("specs.yml"))).not.toContain("asked");
     expect(Object.keys(workflowJobs("specs.yml"))).not.toContain("check");
     for (const args of [["974", "--asked"], ["974", "1"], ["--asked"]]) {
-      expect(doneChecking().run(...args), args.join(" ")).toEqual({ status: 2, stdout: "", stderr: "done-check: usage: done-check <issue number> [--tries <file to write the tries to, posting nothing>]\n" });
+      expect(doneChecking().run(...args), args.join(" ")).toEqual({ status: 2, stdout: "", stderr: "done-check: usage: done-check <issue number>\n" });
     }
   });
 
@@ -270,6 +270,18 @@ describe("bin/done-check marks the spec checking while it runs (#1064)", () => {
       expect(stopped.hired(), held).toEqual([]);
     }
   });
+
+  it("marks, hires and closes nothing on a spec that is already closed, as every stage opening an issue does (#1626)", () => {
+    const closed = doneChecking({ state: "CLOSED" });
+
+    const { status, stdout } = closed.run();
+
+    expect(status).toBe(0);
+    expect(stdout).toContain("done-check: #974 is closed, so no label changed and no model was hired");
+    expect(closed.marked()).toEqual([]);
+    expect(closed.hired()).toEqual([]);
+    expect(closed.closes()).toEqual([]);
+  });
 });
 
 describe("bin/done-check stops at a mark GitHub refused, so it tries, posts and closes nothing on a spec whose labels lag (#1107)", () => {
@@ -331,50 +343,5 @@ describe("bin/done-check tries a caller's spec on that repo's own checkout, read
     expect(checked.run().status).toBe(0);
     expect(checked.handed()).toContain("For this repo the running system is the landed code in this checkout");
     expect(checked.handed()).toContain("What only a live run can show goes to the owner.");
-  });
-});
-
-
-describe("bin/done-check --tries tries a spec's sentences on the checkout it runs in and writes them for bin/finish, which posts them once the spec lands (#1626)", () => {
-  const TWO = [SENTENCES[0] ?? "", SENTENCES[1] ?? ""];
-  const triedFile = (checked: ReturnType<typeof doneChecking>) => join(checked.root, "..", `${checked.root.split("/").at(-1) ?? ""}-tries.json`);
-
-  it("writes each sentence's try to the file it is given, posting, marking and closing nothing", () => {
-    const tries = [{ sentence: 1, outcome: "held", tried: "saw it" }, { sentence: 2, outcome: "missed", tried: "each save rolled back" }];
-    const checked = doneChecking({ body: specWith(TWO), tries });
-
-    const ran = checked.run("974", "--tries", triedFile(checked));
-
-    expect(ran.status, ran.stderr).toBe(0);
-    expect(JSON.parse(readFileSync(triedFile(checked), "utf8"))).toEqual({ tries });
-    expect(checked.comments()).toEqual([]);
-    expect(checked.closes()).toEqual([]);
-    expect(checked.created()).toEqual([]);
-    expect(checked.marked()).toEqual([]);
-  });
-
-  it("starts its own Postgres, port and temp dir for the app when a step of its contract needs DATABASE_URL, as a slice builder does, and removes the Postgres after, where Mezzanine#2023 lost all five sentences to a migration on the shared dev database", () => {
-    const checked = doneChecking({ contract: '{ "steps": { "integration": { "run": "true", "needs": ["DATABASE_URL"] } } }\n', atHire: true });
-
-    expect(checked.run("974", "--tries", triedFile(checked)).status).toBe(0);
-    const [, database, port = "", temp = ""] = checked.atHire();
-    expect(database).toBe("postgres://postgres:postgres@localhost:49153/postgres");
-    expect(port).toMatch(/^\d+$/);
-    expect(temp).not.toBe("");
-    const dockered = checked.dockered();
-    expect(dockered.some((call) => /^run .*postgres:16$/.test(call))).toBe(true);
-    expect(dockered.at(-1)).toMatch(/^rm --force database-/);
-  });
-
-  it("ends red naming the sentence it gave no try for, writing that refusal in place of tries for bin/finish to name to the owner, and marking nothing", () => {
-    const checked = doneChecking({ body: specWith(TWO), tries: [{ sentence: 1, outcome: "held", tried: "saw it" }] });
-
-    const ran = checked.run("974", "--tries", triedFile(checked));
-
-    expect(ran.status).toBe(1);
-    expect(ran.stderr).toContain("the done checker gave no try for sentence 2");
-    expect(JSON.parse(readFileSync(triedFile(checked), "utf8"))).toEqual({ refusal: "the done checker gave no try for sentence 2" });
-    expect(checked.marked()).toEqual([]);
-    expect(checked.comments()).toEqual([]);
   });
 });

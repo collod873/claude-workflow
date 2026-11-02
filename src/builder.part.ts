@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { handedOn, repaired } from "./builder.ts";
 import { handedOn as reviewing } from "./reviewer.ts";
 import { DIFF_CAP, LIST_CAP, TAIL_CAP, TICKET_CAP } from "./brief.ts";
-import { authored, BIN, execute, linesIn, FIXED_TICKET, ghArgv, git, gitRefusing, NO_FILES, nulSplit, openedCases, type Parent, plant, refusedMark, type Said, scratch, script } from "./scenarios.ts";
+import { authored, BIN, bodyIn, execute, labelsJson, linesIn, FIXED_TICKET, ghArgv, git, gitRefusing, NO_FILES, nulSplit, openedCases, type Parent, plant, refusedMark, type Said, scratch, script } from "./scenarios.ts";
 import { OWNER } from "./spelled.ts";
 import { declareStage, HANDED_ON } from "./stages.ts";
 
@@ -93,6 +93,7 @@ export function fixing({
   openTickets = [] as { number: number; title: string; body: string }[],
   appKeyFile = undefined as string | undefined,
   filedState = "OPEN",
+  unsetKeys = "",
 } = {}) {
   const root = scratch("builder-");
   const session = join(root, "session");
@@ -149,7 +150,7 @@ export function fixing({
       `  *"issue create"*) n=$(( $(cat "${join(root, "created")}" 2>/dev/null || echo 900) + 1 )); printf '%s\\n' "$n" >"${join(root, "created")}"; repo=collod873/claude-workflow; prev=; for arg in "$@"; do [ "$prev" = --repo ] && repo=$arg; prev=$arg; done; printf 'https://github.com/%s/issues/%s\\n' "$repo" "$n" ;;`,
       `  *"issue view"*"title,body,labels"*) cat "${join(root, "ticket.json")}" ;;`,
       `  *"issue view"*"body,title"*) printf 'Build what the ticket asks\\001%s' "$(cat "${join(root, "ticket-body")}")" ;;`,
-      `  *"issue view"*"labels"*"--jq"*) cat "${join(root, "labels")}" ;;`,
+      `  *"--json labels,state"*) ${labelsJson(join(root, "labels"))} ;;`,
       `  *) printf 'https://github.com/collod873/claude-workflow/issues/${ticket}#issuecomment-1\\n' ;;`,
       "esac",
       "",
@@ -181,7 +182,6 @@ export function fixing({
   );
   const listed = linesIn;
   const numbered = (dir: string) => readdirSync(dir).map((_, index) => readFileSync(join(dir, String(index + 1)), "utf8"));
-  const bodyOf = (args: string[]) => args[args.indexOf("--body") + 1];
   return {
     body,
     session,
@@ -194,10 +194,10 @@ export function fixing({
     ranWith: (who: string) => readdirSync(envs).filter((name) => name.startsWith(`${who}-`)).sort((one, other) => Number(one.split("-")[1]) - Number(other.split("-")[1])).map((name) => readFileSync(join(envs, name), "utf8")),
     calls,
     ranIn: () => [...new Set(listed(ranIn))],
-    ticketComments: () => calls().filter((args) => args[0] === "issue" && args[1] === "comment").map(bodyOf),
-    edits: () => calls().filter((args) => args[0] === "issue" && args[1] === "edit" && args.includes("--body")).map(bodyOf),
+    ticketComments: () => calls().filter((args) => args[0] === "issue" && args[1] === "comment").map(bodyIn),
+    edits: () => calls().filter((args) => args[0] === "issue" && args[1] === "edit" && args.includes("--body")).map(bodyIn),
     labelled: () => calls().filter((args) => args[0] === "issue" && args[1] === "edit" && !args.includes("--body")).map((args) => args.slice(2).join(" ")),
-    filed: () => calls().filter((args) => args[0] === "issue" && args[1] === "create").map(bodyOf),
+    filed: () => calls().filter((args) => args[0] === "issue" && args[1] === "create").map(bodyIn),
     createdIn: () => calls().filter((args) => args[0] === "issue" && args[1] === "create").map((args) => args[args.indexOf("--repo") + 1]),
     closes: () => calls().filter((args) => (args[0] === "issue" || args[0] === "pr") && args[1] === "close"),
     keptSession: (under = "builder") => {
@@ -207,7 +207,7 @@ export function fixing({
     captured: (name: string) => join(root, "captures", name),
     log: (...args: string[]) => git(session, "log", ...args),
     run: (...args: string[]) =>
-      execute(join(BIN, "fix"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}`, HOME: home, MACHINE_BIN: machine, SESSION_CAPTURES: join(root, "captures"), STAGE_MINUTES: stageMinutes, ...(calledFrom === undefined ? {} : { CALLED_FROM: calledFrom, GH_REPO: repo }), ...(appKeyFile === undefined ? {} : { APP_KEY_FILE: appKeyFile, GH_TOKEN: "job-token" }), ...(Object.keys(treePath).length === 0 ? {} : { TREE_PATH: join(root, "tree-bin") }) }, args.length === 0 ? [ticket] : args),
+      execute(join(BIN, "fix"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}`, HOME: home, MACHINE_BIN: machine, SESSION_CAPTURES: join(root, "captures"), STAGE_MINUTES: stageMinutes, UNSET_KEYS: unsetKeys, ...(calledFrom === undefined ? {} : { CALLED_FROM: calledFrom, GH_REPO: repo }), ...(appKeyFile === undefined ? {} : { APP_KEY_FILE: appKeyFile, GH_TOKEN: "job-token" }), ...(Object.keys(treePath).length === 0 ? {} : { TREE_PATH: join(root, "tree-bin") }) }, args.length === 0 ? [ticket] : args),
   };
 }
 
@@ -217,9 +217,9 @@ declareStage({
     {
       name: "builder building",
       file: "src/builder.ts",
-      cap: TICKET_CAP + LIST_CAP + 2 * HANDED_ON,
-      slots: ["body", "alongside"],
-      build: (filled) => handedOn({ ticket: "", body: filled.body ?? "", alongside: filled.alongside ?? "", commitlint: true, foreign: true }),
+      cap: TICKET_CAP + 2 * LIST_CAP + 2 * HANDED_ON,
+      slots: ["body", "alongside", "unset"],
+      build: (filled) => handedOn({ ticket: "", body: filled.body ?? "", alongside: filled.alongside ?? "", commitlint: true, foreign: true, unset: [filled.unset ?? "KEY"] }),
     },
     {
       name: "repair",
@@ -238,7 +238,7 @@ declareStage({
   ],
   scenarios: [
     { label: "building, reviewing and landing a ticket", run: () => fixing({ claude: "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n" }).run() },
-    { label: "with its labels unreadable at review", run: () => fixing({ claude: "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n", unreadable: '*"issue view"*"labels"*"--jq"*' }).run() },
+    { label: "with its labels unreadable at review", run: () => fixing({ claude: "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n", unreadable: '*"--json labels,state"*' }).run() },
     { label: "calling the owner when the check stays red to the stage's time cap", run: () => fixing({ check: CHECK_RED, claude: SPENT_BY_THE_THIRD_ROUND, stageMinutes: "1" }).run() },
   ],
 });
