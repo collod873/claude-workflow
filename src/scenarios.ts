@@ -699,8 +699,8 @@ export const FIXED_TICKET = [
 
 export type Parent = object | "unreadable" | undefined;
 
-export function openedCases(root: string, opener: string, body: string, parent: Parent, ticket = "811"): string[] {
-  plant(root, "opened.json", JSON.stringify({ number: Number(ticket), user: { login: opener }, body }));
+export function openedCases(root: string, opener: string, body: string, parent: Parent, ticket = "811", standing: { labels?: string[]; state?: string } = {}): string[] {
+  plant(root, "opened.json", JSON.stringify({ number: Number(ticket), user: { login: opener }, body, state: standing.state ?? "open", labels: (standing.labels ?? []).map((name) => ({ name })) }));
   return [`  *"api"*"issues/${ticket}/parent") ${parentSays(root, parent)} ;;`, `  *"api"*"issues/${ticket}") cat "${join(root, "opened.json")}" ;;`];
 }
 

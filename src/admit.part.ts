@@ -30,7 +30,7 @@ function noteCases(root: string, { number, opener, labels, state, repo, body }: 
   return [`  *"api"*"${issue}${number}/parent") printf 'gh: Not Found (HTTP 404)\\n' >&2; exit 1 ;;`, `  *"api"*"${issue}${number}") cat "${join(root, "note.json")}" ;;`];
 }
 
-export function admitting({ opener = OWNER, body = FIXED_TICKET, parent = undefined as Parent, unread = false, origin = undefined as Origin | undefined, note = undefined as Note | undefined, told = NOTHING_TOLD } = {}) {
+export function admitting({ opener = OWNER, body = FIXED_TICKET, parent = undefined as Parent, unread = false, origin = undefined as Origin | undefined, note = undefined as Note | undefined, told = NOTHING_TOLD, labels = [] as string[], state = "open" } = {}) {
   const root = scratch("admit-");
   const { setup, calls } = ghArgv(join(root, "gh-argv"));
   const elsewhere = origin === undefined ? [] : openedCases(join(root, "origin"), origin.opener, origin.body ?? FIXED_TICKET, origin.parent, origin.ticket).map((line) => line.replace('*"issues/', `*"repos/${origin.repo}/issues/`));
@@ -39,7 +39,7 @@ export function admitting({ opener = OWNER, body = FIXED_TICKET, parent = undefi
     plant(root, `told-${ticket}`, bodies.map((said) => `${JSON.stringify({ author: MACHINE, type: "Bot", body: said })}\n`).join(""));
     return `  *"api"*"issues/${ticket}/comments"*) cat "${join(root, `told-${ticket}`)}" ;;`;
   });
-  const cases = unread ? ["  *\"api\"*) printf 'gh: Bad credentials (HTTP 401)\\n' >&2; exit 1 ;;"] : [...toldCases, ...elsewhere, ...research, ...openedCases(root, opener, body, parent)];
+  const cases = unread ? ["  *\"api\"*) printf 'gh: Bad credentials (HTTP 401)\\n' >&2; exit 1 ;;"] : [...toldCases, ...elsewhere, ...research, ...openedCases(root, opener, body, parent, "811", { labels, state })];
   script(join(root, "bin", "gh"), [setup, `mkdir -p "${join(root, "gh-repo")}" && printf '%s' "\${GH_REPO:-}" >"${join(root, "gh-repo")}/$n"`, 'case "$*" in', ...cases, "  *\"issue comment\"*) printf 'https://github.com/collod873/claude-workflow/issues/811#issuecomment-1\\n' ;;", "esac", ""].join("\n"));
   return {
     calls,
