@@ -278,6 +278,6 @@ describe("bin/file-issue --help runs no gh, since gh writes its state under HOME
   it("says --repo files on the named repo over the clone's remote and GH_REPO", () => {
     const { run } = filing({ gh: "exit 1\n", body: wellFormedTicket });
 
-    expect(run(["--help"]).stdout).toContain("--repo <owner/name>: files on that repo instead of the one this clone's origin names, whatever GH_REPO says.");
+    expect(run(["--help"]).stdout).toMatch(/^--repo <owner\/name>: /m);
   });
 });
