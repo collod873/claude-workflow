@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { LIST_CAP } from "./brief.ts";
-import { BIN, cloned, execute, git, key, plant, scratch, script, wellFormedSpec } from "./scenarios.ts";
+import { BIN, cloned, execute, linesIn, git, key, plant, scratch, script, wellFormedSpec } from "./scenarios.ts";
 import { type Progress, resumedAfterStop } from "./scheduler.ts";
 import type { Slice } from "./slicer.ts";
 import { MACHINE } from "./spelled.ts";
@@ -73,7 +73,7 @@ export function specIssue(root: string, { body = wellFormedSpec, labels = ["spec
   script(join(root, "bin", "gh"), `${gh}\nexec node "${at("gh")}" "$@"\n`);
   const saidOn = () => JSON.parse(readFileSync(at("comments.json"), "utf8")) as Comment[];
   return {
-    calls: () => (existsSync(at("gh-calls")) ? readFileSync(at("gh-calls"), "utf8").trimEnd().split("\n").map((line) => JSON.parse(line) as string[]) : []),
+    calls: () => linesIn(at("gh-calls")).map((line) => JSON.parse(line) as string[]),
     comments: saidOn,
     progress: () => {
       const json = /<!-- progress: (.*) -->/s.exec(saidOn().filter(({ body }) => body.startsWith("## Spec run")).at(-1)?.body ?? "")?.[1];
@@ -175,7 +175,7 @@ export function scheduling({
   );
   const keyFile = at("app-key.json");
   if (appKeyed) writeFileSync(keyFile, JSON.stringify({ clientId: "Iv23liSpecRun", key: key() }));
-  const lines = (name: string) => (existsSync(at(name)) ? readFileSync(at(name), "utf8").trimEnd().split("\n") : []);
+  const lines = (name: string) => linesIn(at(name));
   const numbered = (dir: string) => (existsSync(at(dir)) ? readdirSync(at(dir)).map((_, n) => readFileSync(join(at(dir), String(n + 1)), "utf8")) : []);
   return {
     root,

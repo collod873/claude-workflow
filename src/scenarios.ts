@@ -379,7 +379,7 @@ export function stubbedMark(root: string, hiredAt?: string, refusal?: string): (
   const marks = join(root, "mark-calls");
   const when = hiredAt === undefined ? "" : `[[ -e "${hiredAt}" ]] && when=after || when=before\n`;
   script(join(root, "bin", "mark"), `${when}printf '%s\\n' "$*${hiredAt === undefined ? "" : " $when the model"}" >>"${marks}"\n${refusedMark(refusal)}`);
-  return () => (existsSync(marks) ? readFileSync(marks, "utf8").trimEnd().split("\n") : []);
+  return () => linesIn(marks);
 }
 
 export function copyMark(root: string): void {
@@ -668,6 +668,8 @@ export function ghArgv(dir: string): { setup: string; calls: () => string[][] } 
   };
 }
 
+export const linesIn = (file: string) => (existsSync(file) ? readFileSync(file, "utf8").trimEnd().split("\n") : []);
+
 export const nulSplit = (file: string) => (existsSync(file) ? readFileSync(file, "utf8").split("\0").filter((said) => said !== "") : []);
 
 export const schemaIn = (argv: string[]) => JSON.parse(argv[argv.indexOf("--json-schema") + 1] ?? "{}") as { required: string[]; properties: Record<string, { items?: { required: string[]; properties: Record<string, { enum?: string[] }> } }> };
@@ -730,7 +732,7 @@ export function marking({ gh = "", labels = {}, pr = "", repo = [] }: { gh?: str
     ].join("\n"),
   );
   return {
-    calls: () => (existsSync(calls) ? readFileSync(calls, "utf8").trimEnd().split("\n") : []),
+    calls: () => linesIn(calls),
     labels: (number: string) => (existsSync(held(number)) ? readFileSync(held(number), "utf8").split("\n").filter(Boolean).sort() : []),
     made: () => readFileSync(join(root, "repo"), "utf8").split("\n").filter(Boolean),
     run: (...args: string[]) => execute(join(BIN, "mark"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, args),

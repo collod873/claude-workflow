@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { DIFF_CAP, LIST_CAP, TAIL_CAP } from "./brief.ts";
 import { specWith } from "./done-checker.part.ts";
 import { BRIEFS_CAP, ONE_REVIEWER_CAP, onTheCode, onTheSpec, SLICE_CAP } from "./finish.ts";
-import { authored, BIN, execute, ghArgv, git, key, nulSplit, plant, type Said, scratch, script } from "./scenarios.ts";
+import { authored, BIN, execute, linesIn, ghArgv, git, key, nulSplit, plant, type Said, scratch, script } from "./scenarios.ts";
 import { PAUSED } from "./spelled.ts";
 import { declareStage, HANDED_ON } from "./stages.ts";
 import { SPEC_CAP } from "./ticket-shape.ts";
@@ -129,7 +129,7 @@ export function finishing({
   script(join(bin, "land"), `ls "${join(root, "gh-argv")}" | wc -l >>"${join(root, "gh-calls-at-land")}"\nprintf '%s %s %s\\n' "\${GH_TOKEN:-}" "$(git rev-parse HEAD)" "$1 $2" >>"${lands}"\nprintf '%s\\0' "$4" >>"${approvals}"\n${land}\nprintf 'Landed ${FINISHED_PR}\\n'\n`);
   const keyFile = join(root, "app-key.json");
   if (appKeyed) plant(root, "app-key.json", JSON.stringify({ clientId: "Iv1.finish", key: key() }));
-  const listed = (file: string) => (existsSync(file) ? readFileSync(file, "utf8").trimEnd().split("\n") : []);
+  const listed = linesIn;
   const numbered = (dir: string) => (existsSync(dir) ? readdirSync(dir).map((_, at) => readFileSync(join(dir, String(at + 1)), "utf8")) : []);
   return {
     root,

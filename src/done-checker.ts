@@ -4,9 +4,9 @@ import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
 import { capped, LIST_CAP, NO_EM_DASH, onDisk, tailOf } from "./brief.ts";
-import { askedIssue, authoredOn, commentOnTicket, followUpBody, fromHere, fromLine, FOREIGN, gh, ghRead, mark, OWNER, post, readOrStop, STUCK, unread, type Asked } from "./post.ts";
+import { authoredOn, commentOnTicket, followUpBody, fromHere, fromLine, FOREIGN, gh, mark, OWNER, post, readOrStop, STUCK, type Asked } from "./post.ts";
 import { freePort, isolated } from "./slice-builder.ts";
-import { CONTRACT, hire, opened, setupRefusal, type Spent } from "./stage.ts";
+import { CONTRACT, opened, setupRefusal, type Spent } from "./stage.ts";
 import { CHECKING, SPEC } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { quoted, type Sentence, sentences, SPEC_CAP } from "./ticket-shape.ts";
@@ -104,7 +104,6 @@ const SAID = (issue: string) => `done-check: #${issue}`;
 const HIRE = { name: "done checker", model: "opus", answers: TRIES, writeUp: { minutes: WRITE_UP_MINUTES, told: OUT_OF_TIME } };
 
 interface Read {
-  issue: string;
   asked: Asked;
   listed: Sentence[];
   replies: string;
@@ -131,36 +130,43 @@ function repliesOn(issue: string): string {
   return since === -1 ? "" : authored.slice(since + 1).flatMap(({ author, body }) => (author === OWNER ? [body] : [])).join("\n\n");
 }
 
-function read(issue: string): Read | Stop | undefined {
-  const opening = opened({
+function opening(issue: string, unmarked: boolean): Read | string | undefined {
+  const spec = opened({
     stage: "done-check",
     issue,
     state: CHECKING,
-    stoppedAt,
+    stoppedAt: (_stop, line) => line,
     hire: HIRE,
     ready: (asked) => {
       const listed = unlisted(asked);
-      return Array.isArray(listed) ? { carrying: { listed, replies: repliesOn(issue) } } : stoppedAt("notSpec", `${SAID(issue)} ${listed}`);
+      return Array.isArray(listed) ? { carrying: { listed, replies: repliesOn(issue) }, unmarked } : listed;
     },
   });
-  if (typeof opening !== "object") return opening;
-  const unready = setupRefusal(onDisk(join(process.cwd(), CONTRACT)) ?? "");
-  if (unready !== undefined) return calledOwner(issue, "unready", `its tree's setup failed: ${quoted(unready)}`);
-  return { issue, asked: opening.asked, ...opening.carried, spend: opening.spend };
+  return typeof spec === "object" ? { asked: spec.asked, ...spec.carried, spend: spec.spend } : spec;
 }
+
+function setupFailed(): string | undefined {
+  const unready = setupRefusal(onDisk(join(process.cwd(), CONTRACT)) ?? "");
+  return unready === undefined ? undefined : `its tree's setup failed: ${quoted(unready)}`;
+}
+
+function read(issue: string): Read | Stop | undefined {
+  const spec = opening(issue, false);
+  if (typeof spec !== "object") return spec === undefined ? undefined : stoppedAt("notSpec", `${SAID(issue)} ${spec}`);
+  const unready = setupFailed();
+  return unready === undefined ? spec : calledOwner(issue, "unready", unready);
+}
+
+export const paired = (listed: Sentence[], tries: Try[]): [number, string, Try | undefined][] =>
+  listed.map(({ said }, at) => [at + 1, said, tries.find(({ sentence }) => sentence === at + 1)]);
 
 function triesOf({ asked, listed, replies, spend }: Read): Try[] | { refusal: string } {
   const spent = spend(handedOn(asked.title, asked.body, { replies, foreign: FOREIGN, unset: unsetKeys() }));
   if (spent.refusal !== undefined) return { refusal: spent.refusal };
   const given = (spent.answer as { tries?: unknown } | undefined)?.tries;
-  const tries = Array.isArray(given) ? given.filter(isTry) : [];
-  const found: Try[] = [];
-  for (const at of listed.keys()) {
-    const one = tries.find((each) => each.sentence === at + 1);
-    if (one === undefined) return { refusal: `the done checker gave no try for sentence ${at + 1}` };
-    found.push(one);
-  }
-  return found;
+  const found = paired(listed, Array.isArray(given) ? given.filter(isTry) : []);
+  const untried = found.find(([, , one]) => one === undefined);
+  return untried === undefined ? found.flatMap(([, , one]) => (one === undefined ? [] : [one])) : { refusal: `the done checker gave no try for sentence ${untried[0]}` };
 }
 
 function commented(issue: string, text: string): { url: string } | Stop {
@@ -189,9 +195,9 @@ const ownerStepText = (issue: string, sentence: string, one: Try) =>
   ["## Why", "", fromLine(fromHere(issue), "done-check"), "", `The done check of #${issue} could not try "${sentence}" itself, since only the owner can.`, "", `> ${one.tried}`, ""].join("\n");
 
 export function postedOn(issue: string, listed: Sentence[], tries: Try[], fixed: number[]): Checked | Stop {
-  const found = settled(listed.map(({ said: sentence }, at): [number, string, Try] => {
-    const one = tries.find((each) => each.sentence === at + 1) ?? { sentence: at + 1, outcome: "missed", tried: "the done check gave no try for it" };
-    return [at + 1, sentence, one.outcome === "missed" && fixed.includes(at + 1) ? { ...one, outcome: "fixed" } : one];
+  const found = settled(paired(listed, tries).map(([number, sentence, given]): [number, string, Try] => {
+    const one = given ?? { sentence: number, outcome: "missed", tried: "the done check gave no try for it" };
+    return [number, sentence, one.outcome === "missed" && fixed.includes(number) ? { ...one, outcome: "fixed" } : one];
   }));
   const missed = found.filter(([, , one]) => one.outcome === "missed");
   const putToOwner = found.filter(([, , one]) => one.outcome === "owner");
@@ -226,16 +232,11 @@ export function doneCheck(issue: string, app: AppKey | undefined): Checked | Sto
 }
 
 async function triedHere(issue: string): Promise<Try[] | { stop: Stop; refusal: string }> {
-  const unchanged = "so nothing was tried";
-  const asked = askedIssue(ghRead(["issue", "view", issue, "--json", "title,body,labels"], `#${issue} could not be read, ${unchanged}`)) ?? unread(`#${issue} could not be read, ${unchanged}`);
-  const listed = unlisted(asked);
-  if (!Array.isArray(listed)) return { stop: "notSpec", refusal: `it ${listed}` };
-  const replies = repliesOn(issue);
-  const unisolated = isolated([issue, "done-check"], await freePort());
-  if (unisolated !== undefined) return { stop: "unready", refusal: unisolated };
-  const unready = setupRefusal(onDisk(join(process.cwd(), CONTRACT)) ?? "");
-  if (unready !== undefined) return { stop: "unready", refusal: `its tree's setup failed: ${quoted(unready)}` };
-  const tries = triesOf({ issue, asked, listed, replies, spend: hire("done-check", issue, HIRE) });
+  const spec = opening(issue, true);
+  if (typeof spec !== "object") return { stop: "notSpec", refusal: `it ${spec ?? "is held, so nothing was tried"}` };
+  const unready = isolated([issue, "done-check"], await freePort()) ?? setupFailed();
+  if (unready !== undefined) return { stop: "unready", refusal: unready };
+  const tries = triesOf(spec);
   return Array.isArray(tries) ? tries : { stop: "modelRun", refusal: tries.refusal };
 }
 

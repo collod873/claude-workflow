@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { capped, DIFF_CAP, diffOverCap, LIST_CAP, NO_EM_DASH, onDisk, TAIL_CAP, tailOf } from "./brief.ts";
 import { checkedBy, type Red, starvedFault } from "./builder.ts";
 import { PUBLISHED_CHECK } from "./checks.ts";
-import { calledOwner as doneCheckCalledOwner, doneCheck, postedOn, type Try } from "./done-checker.ts";
+import { type Checked, type Stop, calledOwner as doneCheckCalledOwner, doneCheck, paired, postedOn, type Try } from "./done-checker.ts";
 import { askedIssue, commentOnTicket, fromHere, fromLine, gh, ghRead, git, gitRead, heldOn, labelsHeld, machineBin, mark, OWNER, readOrStop, STUCK, unread } from "./post.ts";
 import { afterRefused, approvedOn, firstTimeNamed, gathered, landing, type Routed, ROUTED, ROUTED_REQUIRED, routedFiled } from "./reviewer.ts";
 import { fastForwarded, landedOn, MOST_BUILDERS, type Progress, progressOn, removed, specBranch, triedOn, worktree } from "./scheduler.ts";
@@ -449,10 +449,7 @@ function triedOnBranch(run: Run): Trying {
 
 async function heldAfterRound(run: Run, last: Reviewer, tried: Tried): Promise<Tried | undefined> {
   if ("refusal" in tried) return tried;
-  const missed = run.listed.flatMap(({ said }, at): [number, string, Try][] => {
-    const one = tried.tries.find(({ sentence }) => sentence === at + 1);
-    return one?.outcome === "missed" ? [[at + 1, said, one]] : [];
-  });
+  const missed = paired(run.listed, tried.tries).flatMap(([number, said, one]): [number, string, Try][] => (one?.outcome === "missed" ? [[number, said, one]] : []));
   if (missed.length === 0) return tried;
   let told = false;
   let fixed: number[] = [];
@@ -579,7 +576,7 @@ async function finished(spec: string, app: AppKey | undefined): Promise<Finished
   if (landedAs !== undefined && tries !== undefined) return closedFrom(spec, app, listed, { tries, fixed }, landedAs);
   if (landedAs !== undefined) {
     gitRead(["checkout", "--quiet", "-B", specBranch(spec), "origin/main"], `${specBranch(spec)} could not be checked out at origin/main, so its done check was not run`);
-    return checkedAfter(spec, landedAs, app);
+    return finishedWith(landedAs, () => doneCheck(spec, app));
   }
   if (gitRead(["rev-list", "--count", PAST_MAIN], UNREAD) === "0") {
     stoppedAt("unfinishable", `${said} holds nothing past main on its integration branch, ${unchanged}`);
@@ -609,16 +606,16 @@ async function finished(spec: string, app: AppKey | undefined): Promise<Finished
   return closedFrom(spec, app, listed, tried, pr);
 }
 
-function closedFrom(spec: string, app: AppKey | undefined, listed: Sentence[], { tries, fixed }: { tries: Try[]; fixed: number[] }, pr: string): Finished {
-  if (app !== undefined) freshAppToken(app, gh, `so the done check of #${spec} is not posted`);
-  const checked = readOrStop("done-check", () => postedOn(spec, listed, tries, fixed));
+function finishedWith(pr: string, check: () => Checked | Stop | undefined): Finished {
+  const checked = readOrStop("done-check", check);
   return { landed: pr, missed: typeof checked === "object" ? checked.missed : undefined };
 }
 
-function checkedAfter(spec: string, pr: string, app: AppKey | undefined): Finished {
-  const checked = readOrStop("done-check", () => doneCheck(spec, app));
-  return { landed: pr, missed: typeof checked === "object" ? checked.missed : undefined };
-}
+const closedFrom = (spec: string, app: AppKey | undefined, listed: Sentence[], { tries, fixed }: { tries: Try[]; fixed: number[] }, pr: string) =>
+  finishedWith(pr, () => {
+    if (app !== undefined) freshAppToken(app, gh, `so the done check of #${spec} is not posted`);
+    return postedOn(spec, listed, tries, fixed);
+  });
 
 if (import.meta.main) {
   const [spec] = process.argv.slice(2);

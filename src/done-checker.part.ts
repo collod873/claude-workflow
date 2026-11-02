@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { LIST_CAP } from "./brief.ts";
 import { handedOn, OUT_OF_TIME, REPLIES_CAP } from "./done-checker.ts";
-import { authored, BIN, execute, issueStage, plant, type Said, script, stubbedMark, wellFormedSpec } from "./scenarios.ts";
+import { authored, BIN, execute, linesIn, issueStage, plant, type Said, script, stubbedMark, wellFormedSpec } from "./scenarios.ts";
 import { PAUSED, STUCK } from "./spelled.ts";
 import { declareStage, HANDED_ON } from "./stages.ts";
 import { SPEC_CAP } from "./ticket-shape.ts";
@@ -47,7 +47,7 @@ export function doneChecking({
     created: () => argv().filter((args) => args[1] === "create"),
     marked,
     atHire: () => (existsSync(join(root, "at-hire")) ? readFileSync(join(root, "at-hire"), "utf8").split("\n") : []),
-    dockered: () => (existsSync(join(root, "docker-calls")) ? readFileSync(join(root, "docker-calls"), "utf8").trimEnd().split("\n") : []),
+    dockered: () => linesIn(join(root, "docker-calls")),
     run: (...args: string[]) => execute(join(BIN, "done-check"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}`, STAGE_MINUTES: triesPastCap ? "40" : "", UNSET_KEYS: unsetKeys, ...(calledFrom === undefined ? {} : { CALLED_FROM: calledFrom }) }, args.length > 0 ? args : ["974"]),
   };
 }
