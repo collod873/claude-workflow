@@ -1,5 +1,5 @@
 name: Hooks
-description: Fetches the owner's hooks from agent-hooks' main into $RUNNER_TEMP/agent-hooks, with the Python they run on, and puts its tools on every later step's PATH
+description: Fetches the owner's hooks from agent-hooks' main into $RUNNER_TEMP/agent-hooks, with the Python they run on, a venv so a tree's setup installs its packages there and not under HOME, and puts its tools on every later step's PATH
 
 inputs:
   client-id:
@@ -13,6 +13,16 @@ runs:
     - uses: actions/setup-python@v7
       with:
         python-version: "3.14"
+
+    - uses: astral-sh/setup-uv@v7
+
+    - id: python-venv
+      shell: bash
+      run: |
+        venv="$RUNNER_TEMP/python"
+        python3 -m venv "$venv"
+        printf '%s\n' "$venv/bin" >>"$GITHUB_PATH"
+        printf 'VIRTUAL_ENV=%s\n' "$venv" >>"$GITHUB_ENV"
 
     - shell: bash
       run: python3 -m pip install --quiet pyyaml
