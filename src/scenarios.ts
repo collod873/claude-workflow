@@ -657,7 +657,7 @@ export function plant(root: string, path: string, content: string): void {
 
 export function filedAs(calls: string[][]): { title: string | undefined; labels: string[]; body: string | undefined; then: string[][] } {
   const [call = [], ...then] = calls;
-  return { title: call[call.indexOf("--title") + 1], labels: call.filter((_, at) => call[at - 1] === "--label"), body: call[call.indexOf("--body") + 1], then };
+  return { title: call[call.indexOf("--title") + 1], labels: call.filter((_, at) => call[at - 1] === "--label"), body: bodyIn(call), then };
 }
 
 export function ghArgv(dir: string): { setup: string; calls: () => string[][] } {
@@ -670,6 +670,8 @@ export function ghArgv(dir: string): { setup: string; calls: () => string[][] } 
 
 export const labelsJson = (file: string) => `printf '{"state":"%s","labels":[%s]}' "$(cat "${file}.state" 2>/dev/null || echo OPEN)" "$(sed 's/.*/{"name":"&"}/' "${file}" | paste -sd, -)"`;
 
+export const bodyIn = (args: string[]) => (args.includes("--body") ? (args[args.indexOf("--body") + 1] ?? "") : (args.find((arg) => arg.startsWith("body="))?.slice("body=".length) ?? ""));
+
 export const linesIn = (file: string) => (existsSync(file) ? readFileSync(file, "utf8").trimEnd().split("\n") : []);
 
 export const nulSplit = (file: string) => (existsSync(file) ? readFileSync(file, "utf8").split("\0").filter((said) => said !== "") : []);
@@ -677,7 +679,7 @@ export const nulSplit = (file: string) => (existsSync(file) ? readFileSync(file,
 export const schemaIn = (argv: string[]) => JSON.parse(argv[argv.indexOf("--json-schema") + 1] ?? "{}") as { required: string[]; properties: Record<string, { items?: { required: string[]; properties: Record<string, { enum?: string[] }> } }> };
 
 export const createdIssues = (calls: string[][]) =>
-  calls.filter((args) => args[0] === "issue" && args[1] === "create").map((args) => ({ title: args[args.indexOf("--title") + 1], body: args[args.indexOf("--body") + 1], labels: args.flatMap((arg, at) => (args[at - 1] === "--label" ? [arg] : [])) }));
+  calls.filter((args) => args[0] === "issue" && args[1] === "create").map((args) => ({ title: args[args.indexOf("--title") + 1], body: bodyIn(args), labels: args.flatMap((arg, at) => (args[at - 1] === "--label" ? [arg] : [])) }));
 
 export const FIXED_TICKET = [
   "## Why",
@@ -757,7 +759,7 @@ export function issueStage(prefix: string, issue: object, answer: object, posted
     hired: () => (existsSync(hired) ? readFileSync(hired, "utf8").split("\0") : []),
     handed: () => (existsSync(handed) ? readFileSync(handed, "utf8") : ""),
     calls: () => calls().map((args) => args.slice(0, 3).join(" ")),
-    comments: () => calls().filter((args) => args[1] === "comment").map((args) => args[args.indexOf("--body") + 1]),
+    comments: () => calls().filter((args) => args[1] === "comment").map(bodyIn),
   };
 }
 

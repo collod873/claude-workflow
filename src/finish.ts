@@ -249,7 +249,7 @@ interface Run {
   reasons: Map<string, string>;
   later: string[];
   left: Map<string, Approved>;
-  trees: { roots: string[]; made: { tree: string; branch?: string | undefined }[]; topReadied: boolean };
+  trees: { roots: string[]; made: { tree: string; branch?: string | undefined }[]; readied: Set<string> };
   trying?: Promise<Try[] | { refusal: string }> | undefined;
 }
 
@@ -387,10 +387,9 @@ const merged = (run: Run, reviewer: Reviewer, commit: string) => rounds(run, rev
 
 async function treeMade(run: Run, reviewer: Reviewer): Promise<boolean> {
   const { spec, said, trees } = run;
-  if (reviewer.branch === undefined) {
-    if (trees.topReadied) return true;
-    trees.topReadied = true;
-  } else {
+  if (trees.readied.has(reviewer.tree)) return true;
+  trees.readied.add(reviewer.tree);
+  if (reviewer.branch !== undefined) {
     worktree(spec, reviewer.branch, reviewer.tree);
     trees.made.push(reviewer);
   }
@@ -555,7 +554,7 @@ async function finished(spec: string, app: AppKey | undefined): Promise<Finished
     stoppedAt("unfinishable", `${said} holds nothing past main on its integration branch, ${unchanged}`);
     return {};
   }
-  const run: Run = { spec, said, app, listed, reasons: new Map(), later: [], left: new Map(), trees: { roots: [], made: [], topReadied: false } };
+  const run: Run = { spec, said, app, listed, reasons: new Map(), later: [], left: new Map(), trees: { roots: [], made: [], readied: new Set() } };
   const ended = await (async () => {
     try {
       const review = await reviews(run, asked, found.progress);

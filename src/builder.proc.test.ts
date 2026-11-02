@@ -58,8 +58,8 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
 
     expect(told.run("811").status).toBe(0);
     expect(plain.run("811").status).toBe(0);
-    expect(told.handed()[0]).toContain("The repo's contract names `STRIPE_SECRET_KEY` and `RESEND_API_KEY`, which its secrets lack");
-    expect(plain.handed()[0]).not.toContain("which its secrets lack");
+    expect(told.handed()[0]).toContain("This job lacks `STRIPE_SECRET_KEY` and `RESEND_API_KEY`, which the repo's contract asks for");
+    expect(plain.handed()[0]).not.toContain("This job lacks");
   });
 
   it("builds a ticket marked building, commits it as a build, and once green hands it to review and lands it (#931)", () => {

@@ -5,12 +5,12 @@ import { dirname, join, resolve } from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import { admission, doesNotBuild } from "./admit.ts";
 import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
-import { capped, LIST_CAP, NO_EM_DASH, onDisk, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
+import { capped, LIST_CAP, listedCapped, NO_EM_DASH, onDisk, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
 import { PUBLISHED_CHECK } from "./checks.ts";
 import { park, postedUnderOrigin } from "./issue-links.ts";
 import { commentOnTicket, commentsRead, FOREIGN, fromLine, followUpBody, gh, ghRead, git, gitRead, MACHINE_REPO, mark, NOTHING_MARKED, OWNER, postRefusals, readOrStop, rewriteTicket, FILED_IN, ticketBranch, unread } from "./post.ts";
 import { reviewedAndLanded } from "./reviewer.ts";
-import { calledOwner, committed, commitlinted, CONTRACT, FILED, keysLacking, opened, setupRefusal, type Spent, treePathed, unsetKeys } from "./stage.ts";
+import { calledOwner, committed, commitlinted, CONTRACT, FILED, opened, setupRefusal, type Spent, treePathed, unsetKeys } from "./stage.ts";
 import { dedashed } from "./em-dash.ts";
 import { BUILDING, SPEC, TICKET } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
@@ -69,9 +69,6 @@ export const dependsOn = (ticket: string) => `${builderOf(ticket)} found it depe
 export const parkedBehind = (ticket: string, blockers: string[]) => `${builderOf(ticket)} parked it, blocked by ${blockers.join(", ")}:`;
 export const handedStep = (ticket: string, repo: string, filed: string[]) => `${builderOf(ticket)} handed its first step to ${repo} and filed ${filed.join(", ")}.`;
 const filedClosed = (ticket: string) => `Every ticket the builder of #${ticket} filed and waits on has closed:`;
-
-export const BUILDING_WITHOUT_KEYS =
-  "code resting on one cannot run its live path here, so prove it against a stand-in at that boundary, never a made-up value, and name in `reason` each key the owner should set as a repo secret.";
 
 interface Handed {
   ticket: string;
@@ -185,7 +182,7 @@ export function handedOn({ ticket, body, capture, alongside, commitlint, foreign
     ...filedIn(capture),
     "## Build it",
     "Ship the Why whole with the smallest change that does it: its `## Done when` is the floor, and every path your change touches works for the Why, edge cases with it. Every open choice is yours: decide it as the senior engineer the owner hired, and say why in its commit. Call the Skill tool with `tdd` and follow it to the end.",
-    ...keysLacking(unset, BUILDING_WITHOUT_KEYS),
+    ...(unset.length === 0 ? [] : [`This job lacks ${listedCapped(unset.map((key) => `\`${key}\``))}, which the repo's contract asks for: prove code that rests on one against a stand-in at that boundary, never a made-up value, and name in \`reason\` each one the owner should add as a repo secret.`]),
     "Stop at the fast `check`: the full check runs once you answer, outside your time cap, so running it yourself only spends that cap.",
     "Commit your work, each message saying why, with no em dash and no closing keyword such as `Fixes #12`: `bin/land` refuses them.",
     ...(commitlint ? ["This repo runs commitlint on every commit: write each message as `type: subject`, the type `feat`, `fix` or another conventional one, the subject lower-case, as the machine's own are."] : []),

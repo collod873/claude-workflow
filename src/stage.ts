@@ -2,7 +2,7 @@ import { execFile, spawn, spawnSync } from "node:child_process";
 import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout } from "node:timers/promises";
-import { listedCapped, NO_EM_DASH, onDisk } from "./brief.ts";
+import { NO_EM_DASH, onDisk } from "./brief.ts";
 import { type Asked, askedOn, commentOnTicket, followUpBody, gh, git, gitRead, heardIn, stoodDown, LABELLED_WAITING, mark, nothingHears, OWNER, post, STUCK, WAITING, type MarkedLabel } from "./post.ts";
 import type { Stop } from "./stops.ts";
 import { addBlocker, postedUnderOrigin } from "./issue-links.ts";
@@ -94,8 +94,6 @@ export function treeNeeds(contract: string): { database: boolean; keys: string[]
 }
 
 export const unsetKeys = () => (process.env.UNSET_KEYS ?? "").split(",").map((key) => key.trim()).filter(Boolean);
-
-export const keysLacking = (keys: string[], then: string) => (keys.length === 0 ? [] : [`The repo's contract names ${listedCapped(keys.map((key) => `\`${key}\``))}, which its secrets lack, so this run has none of them: ${then}`]);
 
 const setupOf = (contract: string) => {
   const { setup } = JSON.parse(contract || "{}") as { setup?: string };

@@ -6,13 +6,13 @@ import { dirname, join, resolve } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import { parseArgs } from "node:util";
 import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
-import { capped, LIST_CAP, NO_EM_DASH, onDisk, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
-import { BUILDING_WITHOUT_KEYS, checkedBy, filedInRepo, OWNED_ANSWER, ownedRefusal, type Piece, type Red, spentOn } from "./builder.ts";
+import { capped, LIST_CAP, listedCapped, NO_EM_DASH, onDisk, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
+import { checkedBy, filedInRepo, OWNED_ANSWER, ownedRefusal, type Piece, type Red, spentOn } from "./builder.ts";
 import { FAST_CHECK } from "./checks.ts";
 import { LEFT_CAP } from "./scheduler.ts";
 import { SLICE_ID } from "./slicer.ts";
 import { fromLine, gh, git, gitRead, rebuiltOnMain, rebuiltRef, Stopped, unread } from "./post.ts";
-import { commitlinted, committed, CONTRACT, hire, keysLacking, setupRefusal, treeNeeds, unsetKeys } from "./stage.ts";
+import { commitlinted, committed, CONTRACT, hire, setupRefusal, treeNeeds, unsetKeys } from "./stage.ts";
 
 const USAGE = "build-slice: usage: build-slice --spec <N> --slice <id> --brief <file> --onto <integration ref> [--resume <session>] [--told <text> | --out-of-time | --answer <its answer's JSON, to land again>]";
 
@@ -71,7 +71,7 @@ export function handedOn({ brief, onto, commitlint, unset = [] }: { brief: strin
     "## Build it",
     "Ship the slice's Why whole on every path you touch, in the smallest diff; `## Done when` is its floor. Settle open choices yourself as its senior engineer. Call the Skill tool with `tdd`, to its end. Commit as you go: a why per message, no em dash, no `Fixes #12`.",
     ...(commitlint ? ["Commitlint runs here: each message is `type: subject`, a conventional type, lower-case."] : []),
-    ...keysLacking(unset, BUILDING_WITHOUT_KEYS),
+    ...(unset.length === 0 ? [] : [`Unset in this run though the contract wants them: ${listedCapped(unset.map((key) => `\`${key}\``))}. Where code needs one, test it through a stand-in and invent no value; list each in \`reason\` for the owner to set.`]),
     "## Your answer",
     `- \`built\`: the machine commits the rest, rebases onto \`${onto}\`, runs \`${FAST_CHECK}\` and hands back each red or conflict until it fast-forwards \`${onto}\` green.`,
     "- `partial`: too big for one build; commit what holds, with `left` naming each `## Done when` sentence not yet holding, for the slicer to cut again. Same check.",

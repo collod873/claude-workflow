@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { finishing, type Slice } from "./finish.part.ts";
-import { createdIssues, git, heard, schemaIn, TAKEN_STEP } from "./scenarios.ts";
+import { bodyIn, createdIssues, git, heard, schemaIn, TAKEN_STEP } from "./scenarios.ts";
 import { HELD, OWNER } from "./spelled.ts";
 
 const SENTENCES = ["see the spec land on main", "see each slice's file on main"];
@@ -83,7 +83,7 @@ describe("bin/finish reviews a spec's integration branch on the spec, then on th
     expect(ran.lines.slice(-2)).toEqual(["landed=9974", "missed="]);
     expect(finished.landed()).toHaveLength(1);
     expect(finished.marked()).toEqual(["974 stuck"]);
-    const called = finished.calls().filter((args) => args[1] === "comment").map((args) => args[args.indexOf("--body") + 1] ?? "");
+    const called = finished.calls().filter((args) => args[1] === "comment").map(bodyIn);
     expect(called.filter((body) => body.startsWith(`@${OWNER} the done check of #974 stopped and needs you: the done checker gave no try for sentence 2.`))).toHaveLength(1);
     expect(finished.calls().filter((args) => args[1] === "close")).toEqual([]);
   });
@@ -92,7 +92,7 @@ describe("bin/finish reviews a spec's integration branch on the spec, then on th
     const finished = finishing({ said: [SLICED([{ id: "tenant-time-zone", title: "Store each tenant's time zone" }])] });
 
     expect(finished.run().status).toBe(0);
-    const bodies = finished.calls().map((args) => (args.includes("--body") ? (args[args.indexOf("--body") + 1] ?? "") : (args.find((arg) => arg.startsWith("body="))?.slice("body=".length) ?? "")));
+    const bodies = finished.calls().map(bodyIn);
     const stamped = bodies.findIndex((body) => body.startsWith("## Spec run") && body.includes('"landed":"9974"'));
     expect(stamped).toBeGreaterThanOrEqual(0);
     expect(stamped).toBeLessThan(bodies.findIndex((body) => body.startsWith("## Done check")));
@@ -129,7 +129,7 @@ describe("bin/finish reviews a spec's integration branch on the spec, then on th
 });
 
 describe("bin/finish tries the spec's sentences on its integration branch before it lands, and lands whatever they show (#1626, ADR-0006)", () => {
-  const bodies = (calls: string[][]) => calls.map((args) => args[args.indexOf("--body") + 1] ?? "");
+  const bodies = (calls: string[][]) => calls.map(bodyIn);
   const RECORDED = (tries: { sentence: number; outcome: string; tried: string }[], fixed: number[] = []) =>
     `## Spec run\n\n<!-- progress: ${JSON.stringify({ landed: "9974", slices: [{ id: "tenant-time-zone", title: "Store each tenant's time zone", why: "why", done: ["it holds"], blockedBy: [], state: "merged", tries: 1 }], tries, fixed })} -->`;
 
@@ -615,7 +615,7 @@ describe("bin/finish acts on a fresh App token after each model run, since a spe
     expect(finished.run().status).toBe(0);
     const [[landedOn = ""] = []] = finished.landed();
     expect(landedOn).toMatch(/^minted-\d+$/);
-    const [postedOn = ""] = finished.tokenOf((args) => args[0] === "issue" && args[1] === "comment" && args[args.indexOf("--body") + 1]?.startsWith("## Done check") === true);
+    const [postedOn = ""] = finished.tokenOf((args) => args[0] === "issue" && args[1] === "comment" && bodyIn(args).startsWith("## Done check"));
     expect(postedOn).toMatch(/^minted-\d+$/);
     expect(postedOn).not.toBe(landedOn);
   });

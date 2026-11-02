@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { heard, type Said, workflowJobs } from "./scenarios.ts";
+import { bodyIn, heard, type Said, workflowJobs } from "./scenarios.ts";
 import { HELD, OWNER } from "./spelled.ts";
 import { BUG_FILED, DONE_CHECK_POSTED, doneChecking, specWith, TRYING_SESSION } from "./done-checker.part.ts";
 import { OUT_OF_TIME, REPLIES_CAP } from "./done-checker.ts";
@@ -57,7 +57,7 @@ describe("bin/done-check files each sentence that did not hold as a bug and clos
     });
     const created = checked.created();
     expect(created).toHaveLength(1);
-    const body = created[0]?.[created[0].indexOf("--body") + 1] ?? "";
+    const body = bodyIn(created[0] ?? []);
     expect(fromOf(body ?? "")).toMatchObject({ number: "974", kind: "done-check" });
     expect(checked.argv()).toContainEqual(["api", "--method", "POST", "repos/collod873/claude-workflow/issues/974/sub_issues", "-F", "sub_issue_id=4242"]);
     expect(body).toContain("> opened a ticket it filed and its Why was empty");

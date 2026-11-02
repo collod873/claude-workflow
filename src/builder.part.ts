@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { handedOn, repaired } from "./builder.ts";
 import { handedOn as reviewing } from "./reviewer.ts";
 import { DIFF_CAP, LIST_CAP, TAIL_CAP, TICKET_CAP } from "./brief.ts";
-import { authored, BIN, execute, labelsJson, linesIn, FIXED_TICKET, ghArgv, git, gitRefusing, NO_FILES, nulSplit, openedCases, type Parent, plant, refusedMark, type Said, scratch, script } from "./scenarios.ts";
+import { authored, BIN, bodyIn, execute, labelsJson, linesIn, FIXED_TICKET, ghArgv, git, gitRefusing, NO_FILES, nulSplit, openedCases, type Parent, plant, refusedMark, type Said, scratch, script } from "./scenarios.ts";
 import { OWNER } from "./spelled.ts";
 import { declareStage, HANDED_ON } from "./stages.ts";
 
@@ -182,7 +182,6 @@ export function fixing({
   );
   const listed = linesIn;
   const numbered = (dir: string) => readdirSync(dir).map((_, index) => readFileSync(join(dir, String(index + 1)), "utf8"));
-  const bodyOf = (args: string[]) => args[args.indexOf("--body") + 1];
   return {
     body,
     session,
@@ -195,10 +194,10 @@ export function fixing({
     ranWith: (who: string) => readdirSync(envs).filter((name) => name.startsWith(`${who}-`)).sort((one, other) => Number(one.split("-")[1]) - Number(other.split("-")[1])).map((name) => readFileSync(join(envs, name), "utf8")),
     calls,
     ranIn: () => [...new Set(listed(ranIn))],
-    ticketComments: () => calls().filter((args) => args[0] === "issue" && args[1] === "comment").map(bodyOf),
-    edits: () => calls().filter((args) => args[0] === "issue" && args[1] === "edit" && args.includes("--body")).map(bodyOf),
+    ticketComments: () => calls().filter((args) => args[0] === "issue" && args[1] === "comment").map(bodyIn),
+    edits: () => calls().filter((args) => args[0] === "issue" && args[1] === "edit" && args.includes("--body")).map(bodyIn),
     labelled: () => calls().filter((args) => args[0] === "issue" && args[1] === "edit" && !args.includes("--body")).map((args) => args.slice(2).join(" ")),
-    filed: () => calls().filter((args) => args[0] === "issue" && args[1] === "create").map(bodyOf),
+    filed: () => calls().filter((args) => args[0] === "issue" && args[1] === "create").map(bodyIn),
     createdIn: () => calls().filter((args) => args[0] === "issue" && args[1] === "create").map((args) => args[args.indexOf("--repo") + 1]),
     closes: () => calls().filter((args) => (args[0] === "issue" || args[0] === "pr") && args[1] === "close"),
     keptSession: (under = "builder") => {

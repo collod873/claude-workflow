@@ -1,10 +1,10 @@
 import { postedUnderOrigin } from "./issue-links.ts";
 import { join } from "node:path";
 import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
-import { capped, NO_EM_DASH, onDisk, tailOf } from "./brief.ts";
+import { capped, listedCapped, NO_EM_DASH, onDisk, tailOf } from "./brief.ts";
 import { askedOn, authoredOn, commentOnTicket, followUpBody, fromHere, fromLine, FOREIGN, gh, mark, OWNER, post, readOrStop, STUCK, stoodDown, type Asked } from "./post.ts";
 import { freePort, isolated } from "./slice-builder.ts";
-import { CONTRACT, hireIn, keysLacking, opened, setupRefusal, setupRefusedIn, type Spent, unsetKeys } from "./stage.ts";
+import { CONTRACT, hireIn, opened, setupRefusal, setupRefusedIn, type Spent, unsetKeys } from "./stage.ts";
 import { CHECKING, SPEC } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { quoted, type Sentence, sentences, SPEC_CAP } from "./ticket-shape.ts";
@@ -67,7 +67,7 @@ const numbered = (listed: Sentence[]) => listed.map(({ said }, at) => `${at + 1}
 export function handedOn(title: string, body: string, { replies = "", foreign = false, unset = [] }: { replies?: string; foreign?: boolean; unset?: string[] } = {}): string {
   return [
     `Try each sentence under \`## The sentences to try\` on the running system, not on its tests, and say how each came out. Read and run what you need, and leave the repo and GitHub as they are. ${foreign ? RUNNING_THERE : RUNNING_HERE}`,
-    ...keysLacking(unset, "a sentence resting on one is `owner`, its `tried` naming the key to set as a repo secret."),
+    ...(unset.length === 0 ? [] : [`The repo's contract names ${listedCapped(unset.map((key) => `\`${key}\``))}, which its secrets lack, so this run has none of them: a sentence resting on one is \`owner\`, its \`tried\` naming the key to set as a repo secret.`]),
     "## The spec",
     capped(`# ${title}\n\n${body}`, SPEC_CAP),
     ...answered(replies),
