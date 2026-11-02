@@ -1,6 +1,7 @@
 import { type Admission, commentOnTicket, commentsRead, type From, fromOf, gh, type Gh, ghAs, heldOf, type Opened, opened, OWNER, readOrStop, RESEARCH, unread } from "./post.ts";
 import { dedashed } from "./em-dash.ts";
 import { parentOf } from "./issue-links.ts";
+import { HELD, WAITING } from "./spelled.ts";
 import { exitFor } from "./stops.ts";
 
 export const doesNotBuild = (ticket: string, refused: string) =>
@@ -50,11 +51,11 @@ function originOf(repo: string, ticket: string, from: From | undefined): Origin 
   return { repo: from.repo ?? repo, number: from.number, kind: from.kind };
 }
 
-function admitted(repo: string, ticket: string, so: string, reads: number, missing: (line: string) => Admission): Admitted {
+function admitted(repo: string, ticket: string, so: string, reads: number, missing: (line: string) => Admission, read?: Opened | "missing"): Admitted {
   const at = named(repo, ticket);
   if (reads === 0) return { refused: `its chain reads ${MOST_READS} tickets before ${at} without reaching one the owner opened`, from: undefined };
   const line = `${at} could not be read, ${so}`;
-  const asked = opened(ticket, line, gh, repo);
+  const asked = read ?? opened(ticket, line, gh, repo);
   if (asked === "missing") return { refused: missing(line), from: undefined };
   const from = fromOf(asked.body ?? "");
   if (ownersOwn(asked)) return { refused: undefined, from };
@@ -83,8 +84,26 @@ function waitingTold(ticket: string, from: From | undefined, refused: string): v
   toldOnce(origin, text, ghAs({ ...process.env, GH_REPO: repo }), `${repo}#${origin}`);
 }
 
+const STANDING_DOWN = [WAITING, ...HELD];
+
+function stoodDownBy(asked: Opened | "missing"): string | undefined {
+  if (asked === "missing") return undefined;
+  if (asked.state === "closed") return "is closed";
+  const labels = heldOf(asked.labels);
+  const held = STANDING_DOWN.find((label) => labels.has(label));
+  return held === undefined ? undefined : `is marked ${held}`;
+}
+
 function admit(ticket: string): undefined {
-  const { refused, from } = admitted(HERE, ticket, "so nothing was admitted", MOST_READS, unread);
+  const so = "so nothing was admitted";
+  const asked = opened(ticket, `#${ticket} could not be read, ${so}`, gh);
+  const stood = stoodDownBy(asked);
+  if (stood !== undefined) {
+    console.error(`admit: #${ticket} ${stood}, so its build stands down`);
+    console.log("admitted=false");
+    return undefined;
+  }
+  const { refused, from } = admitted(HERE, ticket, so, MOST_READS, unread, asked);
   if (refused !== undefined) {
     toldOnce(ticket, doesNotBuild(ticket, refused), gh, `#${ticket}`);
     waitingTold(ticket, from, refused);

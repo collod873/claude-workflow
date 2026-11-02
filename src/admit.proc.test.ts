@@ -22,6 +22,21 @@ describe("bin/admit lets a ticket into its build before anything marks it (#1022
     expect(comments()).toEqual([]);
   });
 
+  it.each([
+    ["parked waiting", ["ticket", "waiting"], "open", "is marked waiting"],
+    ["marked stuck", ["ticket", "stuck"], "open", "is marked stuck"],
+    ["closed", ["ticket"], "closed", "is closed"],
+  ])("admits nothing and says nothing on a ticket %s by the time its queued build starts, where agent-skills#408 rebuilt after its builder parked it on open machine faults (#1633)", (_, labels, state, said) => {
+    const { run, comments } = admitting({ labels, state });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toBe("admitted=false\n");
+    expect(result.stderr).toBe(`admit: #811 ${said}, so its build stands down\n`);
+    expect(comments()).toEqual([]);
+  });
+
   it("refuses a ticket the App opened with no parent link and no marker line, saying why on the ticket and asking the owner nothing", () => {
     const { run, comments } = admitting({ opener: APP });
 

@@ -171,7 +171,7 @@ function onTheSameFiles(ticket: string, body: string): string {
 
 const machineAtFault = (foreign: boolean | undefined) =>
   foreign === true
-    ? `- \`machine\`: the machine is at fault; it lives in ${MACHINE_REPO}, not this tree, so change nothing here for it: file the fault as \`tickets\`, and this ticket waits on them.`
+    ? `- \`machine\`: the machine is at fault; it lives in ${MACHINE_REPO}, not this tree, so change nothing here for it: file the fault as \`tickets\`, or name the machine tickets already open for it as \`on\`, filing none again, and this ticket waits on them.`
     : "- `machine`: the machine is at fault; fix it in a worktree off `origin/main`, commit naming this ticket as `Refs #<number>`, never after a closing word like `Fixes`, since that closes it before its own build lands, and `bin/land` it first.";
 
 export function handedOn({ ticket, body, capture, alongside, commitlint, foreign, unset = [] }: Handed): string {
@@ -298,16 +298,18 @@ export function filedInRepo(repo: string, origin: string, outcome: string, unfil
   return { filed: said.filter((one) => FILED.test(one)), all: said.every((one) => FILED.test(one)) };
 }
 
-function filedToWaitOn(ticket: string, answer: Answer, { repo, filedFrom, unfiled }: Handing): Round {
-  const handed = filedInRepo(repo, filedFrom(`${process.env.GH_REPO ?? ""}#${ticket}`), answer.outcome, unfiled, answer.tickets);
+const isOpen = (url: string, ticket: string) => ghRead(["issue", "view", url, "--json", "state", "--jq", ".state"], `the state of ${url} could not be read, so #${ticket} stays waiting`) === "OPEN";
+
+function filedToWaitOn(ticket: string, answer: Answer, { repo, filedFrom, unfiled }: Handing, named: number[] = []): Round {
+  const handed = named.length > 0 && (answer.tickets ?? []).length === 0 ? { filed: [], all: true } : filedInRepo(repo, filedFrom(`${process.env.GH_REPO ?? ""}#${ticket}`), answer.outcome, unfiled, answer.tickets);
   if ("red" in handed) return { red: handed.red };
   const { filed, all } = handed;
   if (!all) return { ended: calledOwner(ticket, "builder", `it filed ${filed.length} of ${answer.tickets?.length ?? 0} tickets in ${repo} to wait on`) };
-  const numbers = filed.map((url) => Number(FILED_NUMBER.exec(url)?.[1]));
+  const numbers = [...named, ...filed.map((url) => Number(FILED_NUMBER.exec(url)?.[1]))];
   park(ticket, numbers.map((number) => ({ repo, number })));
   commentOnTicket(ticket, `${parkedBehind(ticket, numbers.map((number) => `${repo}#${number}`))} ${answer.reason}`, gh);
-  const open = filed.filter((url) => ghRead(["issue", "view", url, "--json", "state", "--jq", ".state"], `the state of ${url} could not be read, so #${ticket} stays waiting`) === "OPEN");
-  if (open.length === 0) return closedBeforeParked(ticket, filed);
+  const open = filed.filter((url) => isOpen(url, ticket));
+  if (open.length === 0 && named.length === 0) return closedBeforeParked(ticket, filed);
   console.log(`fix: #${ticket} waits on ${filed.join(", ")}, filed in ${repo}`);
   return { ended: 0 };
 }
@@ -319,8 +321,12 @@ function closedBeforeParked(ticket: string, filed: string[]): Round {
   return { red: `Every ticket you filed to wait on, ${filed.join(", ")} is closed already, so build on what it left and answer again.` };
 }
 
-const filedForMachine = (ticket: string, answer: Answer): Round =>
-  filedToWaitOn(ticket, answer, { repo: MACHINE_REPO, filedFrom: (origin) => fromLine(origin, "fault"), unfiled: "a `machine` answer from a tree that is not the machine's files the machine's fault as one ticket or more in `tickets`" });
+function filedForMachine(ticket: string, answer: Answer): Round {
+  const named = [...new Set(answer.on ?? [])];
+  const closed = named.filter((number) => !isOpen(`https://github.com/${MACHINE_REPO}/issues/${number}`, ticket));
+  if (closed.length > 0) return { red: `Your \`machine\` answer was refused, and nothing was filed: ${closed.map((number) => `${MACHINE_REPO}#${number}`).join(", ")} is closed already, so build on what it left.` };
+  return filedToWaitOn(ticket, answer, { repo: MACHINE_REPO, filedFrom: (origin) => fromLine(origin, "fault"), unfiled: "a `machine` answer from a tree that is not the machine's files the machine's fault as one ticket or more in `tickets`, or names the open machine tickets it waits on as `on`" }, named);
+}
 
 function handedToItsRepo(ticket: string, answer: Answer): Round {
   const { repo } = answer;

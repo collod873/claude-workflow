@@ -202,6 +202,8 @@ The unit the machine builds: an issue labelled `ticket` carrying `## Why` in the
 repo, filed there as a build by whoever lands it. Adding `ticket` to an open issue builds,
 reviews and lands it in one run (ADR-0012), as `spec` slices and `research` answers; opening starts
 nothing, and taking `ticket` off and adding it back builds it again. Its PR merging closes it.
+A build reads its ticket's labels again at admit, so one queued behind the build before it stands
+down once that build marked it `waiting`, `paused` or `stuck`, or closed it.
 _Avoid_: issue, sub-issue, card, item
 
 **Reconcile**:

@@ -490,6 +490,7 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
     expect(run().status).toBe(0);
     expect(handed()[0]).not.toContain("`bin/land` it first");
     expect(handed()[0]).toContain("file the fault as `tickets`");
+    expect(handed()[0]).toContain("name the machine tickets already open for it as `on`");
   });
 
   const HOME_CALLER = "collod873/claude-workflow/.github/workflows/machine.yml@refs/heads/main";
@@ -508,6 +509,29 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
     expect(landed()).toHaveLength(1);
   });
 
+
+  it("parks a foreign tree's ticket on the open machine tickets its builder names as `on`, filing none, where agent-skills#408's second builder had to file #1633 to answer (#1633)", () => {
+    const reason = "#1631 and #1632 are still open";
+    const { run, filed, ticketComments, marked, calls } = fixing({ calledFrom: CALLER, answer: { outcome: "machine", reason, on: [1631, 1632] }, claude: FIXES });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(filed()).toEqual([]);
+    expect(calls()).toContainEqual(["api", "repos/collod873/claude-workflow/issues/1631", "--jq", ".id"]);
+    expect(calls()).toContainEqual(["api", "repos/collod873/claude-workflow/issues/1632", "--jq", ".id"]);
+    expect(ticketComments().at(-1)).toBe(`The builder of #811 parked it, blocked by collod873/claude-workflow#1631, collod873/claude-workflow#1632: ${reason}`);
+    expect(marked()).toEqual(["811 building", "811 waiting"]);
+  });
+
+  it("hands back a foreign tree's `machine` answer naming a machine ticket that has closed, parking nothing (#1633)", () => {
+    const { run, filed, marked, handed } = fixing({ calledFrom: CALLER, answer: { outcome: "machine", reason: "#1631 is still open", on: [1631] }, claude: SPENT_BY_THE_THIRD_ROUND, stageMinutes: "1", filedState: "CLOSED" });
+
+    expect(run().status).toBe(1);
+    expect(filed()).toEqual([]);
+    expect(marked()).not.toContain("811 waiting");
+    expect(handed()[1]).toContain("collod873/claude-workflow#1631 is closed already");
+  });
 
   it("hands back a `machine` answer from a foreign tree that files no ticket (#1143)", () => {
     const { run, filed, handed, marked } = fixing({ calledFrom: CALLER, answer: { outcome: "machine", reason: "the check has no database" }, claude: SPENT_BY_THE_THIRD_ROUND, stageMinutes: "1" });
