@@ -1,5 +1,5 @@
 name: Hooks
-description: Fetches the owner's hooks from agent-hooks' main into $RUNNER_TEMP/agent-hooks, with the Python they run on, a venv so a tree's setup installs its packages there and not under HOME, and puts its tools on every later step's PATH
+description: Fetches the owner's hooks from agent-hooks' main into $RUNNER_TEMP/agent-hooks, linked at ~/.agents/hooks where his PC keeps them, with the Python they run on, a venv so a tree's setup installs its packages there and not under HOME, and puts its tools on every later step's PATH
 
 inputs:
   client-id:
@@ -53,7 +53,11 @@ runs:
         done
         rm -rf "$hooks/.git"
 
-    - shell: bash
+    - id: hooks-install
+      shell: bash
       run: |
         hooks="$RUNNER_TEMP/agent-hooks"
         printf '%s\n' "$hooks/bin" >>"$GITHUB_PATH"
+        mkdir -p "$HOME/.agents"
+        rm -rf "$HOME/.agents/hooks"
+        ln -s "$hooks" "$HOME/.agents/hooks"

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
@@ -86,5 +86,26 @@ describe("the hooks action's fetch survives a transient clone failure (#849)", (
     expect(logged.startsWith(ROW)).toBe(true);
     expect(run.stderr).toContain(ROW);
     expect(run.stderr).toContain("fatal: repository not found");
+  });
+});
+
+describe("the hooks action installs the owner's hooks where his PC keeps them (#1637)", () => {
+  it("puts the fetched agent-hooks at HOME/.agents/hooks, replacing whatever an older job left there", () => {
+    const root = scratch("stage-hooks-home-");
+    const runnerTemp = join(root, "runner-temp");
+    const home = join(root, "home");
+    mkdirSync(join(runnerTemp, "agent-hooks", "hooks"), { recursive: true });
+    writeFileSync(join(runnerTemp, "agent-hooks", "hooks", "test-quality.py"), "fetched\n");
+    mkdirSync(join(home, ".agents", "hooks", "hooks"), { recursive: true });
+    writeFileSync(join(home, ".agents", "hooks", "hooks", "test-quality.py"), "stale\n");
+
+    const run = spawnSync("bash", ["-e", "-c", stepScript("hooks-install")], {
+      cwd: root,
+      env: { ...process.env, RUNNER_TEMP: runnerTemp, HOME: home, GITHUB_PATH: join(root, "github-path") },
+      encoding: "utf8",
+    });
+
+    expect(run.status, run.stderr).toBe(0);
+    expect(readFileSync(join(home, ".agents", "hooks", "hooks", "test-quality.py"), "utf8")).toBe("fetched\n");
   });
 });
