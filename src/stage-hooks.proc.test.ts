@@ -45,14 +45,14 @@ describe("the hooks action's Python keeps what setup installs whatever HOME a to
     expect(made.status, made.stderr).toBe(0);
 
     const pathed = readFileSync(githubPath, "utf8").trim().split("\n");
-    const probe = spawnSync("python3", ["-c", "import sys, sysconfig; print(sys.prefix != sys.base_prefix, sysconfig.get_path('purelib'))"], {
+    const probe = spawnSync("python3", ["-c", "import sys, sysconfig; print(sys.prefix != sys.base_prefix, sysconfig.get_path('purelib'), sys.prefix)"], {
       env: { PATH: [...pathed, process.env.PATH].join(":"), HOME: swappedHome },
       encoding: "utf8",
     });
-    const [isVenv, sitePackages] = probe.stdout.trim().split(" ");
+    const [isVenv, sitePackages, venvPrefix] = probe.stdout.trim().split(" ");
     expect(isVenv).toBe("True");
     expect(sitePackages?.startsWith(runnerTemp)).toBe(true);
-    expect(readFileSync(githubEnv, "utf8")).toContain(`VIRTUAL_ENV=${join(runnerTemp, "python")}`);
+    expect(readFileSync(githubEnv, "utf8")).toContain(`VIRTUAL_ENV=${venvPrefix}\n`);
   });
 });
 
