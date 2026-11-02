@@ -518,6 +518,7 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
 
     expect(result.status, result.stderr).toBe(0);
     expect(filed()).toEqual([]);
+    expect(calls()).toContainEqual(["issue", "view", "https://github.com/collod873/claude-workflow/issues/1631", "--json", "state", "--jq", ".state"]);
     expect(calls()).toContainEqual(["api", "repos/collod873/claude-workflow/issues/1631", "--jq", ".id"]);
     expect(calls()).toContainEqual(["api", "repos/collod873/claude-workflow/issues/1632", "--jq", ".id"]);
     expect(ticketComments().at(-1)).toBe(`The builder of #811 parked it, blocked by collod873/claude-workflow#1631, collod873/claude-workflow#1632: ${reason}`);
