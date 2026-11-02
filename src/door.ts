@@ -9,7 +9,7 @@ const HELD_SHOWN = new Set<string>([STUCK, WAITING, PAUSED]);
 
 export const NEW = "--new";
 
-const repoName = (): string => process.env.GH_REPO?.split("/")[1] || (/([^/:]+?)(?:\.git)?$/.exec(git(["remote", "get-url", "origin"]).stdout.trim())?.[1] ?? "this repo");
+const repoName = (): string => process.env.GH_REPO?.split("/").at(-1) || (/([^/:]+?)(?:\.git)?$/.exec(git(["remote", "get-url", "origin"]).stdout.trim())?.[1] ?? "this repo");
 
 function enrolled(gh: Gh): boolean | undefined {
   const got = gh(["--missing-answers", "api", `repos/{owner}/{repo}/contents/.github/workflows/${ENROLLED_CALLER}`, "--jq", ".name"]);
