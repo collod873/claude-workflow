@@ -108,7 +108,7 @@ interface Handed {
 }
 
 function diffHanded(diff: string, stat: string): string {
-  const over = diffOverCap(diff, stat);
+  const over = diffOverCap(diff, stat, DIFF_CAP);
   return over === undefined
     ? diff
     : [`The diff runs ${over.bytes} bytes, past the ${DIFF_CAP} you can be handed, so it reaches you as its \`git diff --stat\` and a list of changed files; read the rest in the repo as you need it.`, over.stat, "Every file changed:", over.files].join("\n\n");

@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { LIST_CAP } from "./brief.ts";
-import { BIN, cloned, execute, git, key, plant, scratch, script, wellFormedSpec } from "./scenarios.ts";
+import { BIN, cloned, execute, linesIn, git, key, plant, scratch, script, wellFormedSpec } from "./scenarios.ts";
 import { type Progress, resumedAfterStop } from "./scheduler.ts";
 import type { Slice } from "./slicer.ts";
 import { MACHINE } from "./spelled.ts";
@@ -57,14 +57,15 @@ const labels = () => read("labels").split("\\n").filter(Boolean);
 if (all.includes("repos/{owner}/{repo}/installation") || (args[0] === "api" && args.at(-1) === ".id")) said("4242");
 else if (all.includes("access_tokens")) { const n = Number(fs.existsSync(join(root, "minted")) ? read("minted") : "0") + 1; fs.writeFileSync(join(root, "minted"), String(n)); said("minted-" + n); }
 else if (args[0] === "issue" && args[1] === "view" && args[2].startsWith("https://")) said(JSON.parse(fs.existsSync(join(root, "states.json")) ? read("states.json") : "{}")[args[2]] ?? "OPEN");
-else if (args[0] === "issue" && args[1] === "view") said(args.includes("--jq") ? labels().join("\\n") : JSON.stringify({ title: "A spec worth building", body: read("body"), labels: labels().map((name) => ({ name })) }));
+else if (args[0] === "issue" && args[1] === "view") said(args.includes("--jq") ? labels().join("\\n") : JSON.stringify({ title: "A spec worth building", body: read("body"), labels: labels().map((name) => ({ name })), state: fs.existsSync(join(root, "state")) ? read("state") : "OPEN" }));
 else if (args[0] === "api" && args.includes("--paginate") && all.includes("/comments")) process.stdout.write(execFileSync("jq", ["-c", args[args.indexOf("--jq") + 1]], { input: JSON.stringify(comments()) }));
 else if (args[0] === "issue" && args[1] === "comment") { const held = comments(); const id = held.length + 1; const url = "https://github.com/collod873/claude-workflow/issues/" + args[2] + "#issuecomment-" + id; held.push({ id, html_url: url, user: { login: ${JSON.stringify(MACHINE)}, type: "Bot" }, body: args[args.indexOf("--body") + 1] }); saved(held); said(url); }
 else if (args.includes("PATCH")) { const id = Number(/comments\\/(\\d+)/.exec(all)[1]); const held = comments(); const found = held.find((comment) => comment.id === id); found.body = args[args.indexOf("-f") + 1].replace(/^body=/, ""); saved(held); said("{}"); }
 `;
 
-export function specIssue(root: string, { body = wellFormedSpec, labels = ["spec"], comments = [] as Comment[], gh = "" } = {}) {
+export function specIssue(root: string, { body = wellFormedSpec, labels = ["spec"], comments = [] as Comment[], gh = "", state = "OPEN" } = {}) {
   const at = (name: string) => join(root, name);
+  plant(root, "state", state);
   plant(root, "body", body);
   plant(root, "labels", labels.map((label) => `${label}\n`).join(""));
   plant(root, "comments.json", JSON.stringify(comments));
@@ -72,7 +73,7 @@ export function specIssue(root: string, { body = wellFormedSpec, labels = ["spec
   script(join(root, "bin", "gh"), `${gh}\nexec node "${at("gh")}" "$@"\n`);
   const saidOn = () => JSON.parse(readFileSync(at("comments.json"), "utf8")) as Comment[];
   return {
-    calls: () => (existsSync(at("gh-calls")) ? readFileSync(at("gh-calls"), "utf8").trimEnd().split("\n").map((line) => JSON.parse(line) as string[]) : []),
+    calls: () => linesIn(at("gh-calls")).map((line) => JSON.parse(line) as string[]),
     comments: saidOn,
     progress: () => {
       const json = /<!-- progress: (.*) -->/s.exec(saidOn().filter(({ body }) => body.startsWith("## Spec run")).at(-1)?.body ?? "")?.[1];
@@ -92,7 +93,8 @@ export function scheduling({
   onSpec = [] as string[],
   appKeyed = false,
   states = {},
-}: { cuts?: (Slice[] | "red")[]; plans?: Record<string, Attempt[]>; finishes?: Finish[]; labels?: string[]; comments?: Comment[]; onSpec?: string[]; appKeyed?: boolean; states?: Record<string, string> } = {}) {
+  state = "OPEN",
+}: { cuts?: (Slice[] | "red")[]; plans?: Record<string, Attempt[]>; finishes?: Finish[]; labels?: string[]; comments?: Comment[]; onSpec?: string[]; appKeyed?: boolean; states?: Record<string, string>; state?: string } = {}) {
   const root = scratch("schedule-");
   const { remote, session } = cloned(root, "Start");
   if (onSpec.length > 0) {
@@ -103,7 +105,7 @@ export function scheduling({
     git(session, "branch", "--quiet", "-D", `spec/${SPEC_ISSUE}`);
   }
   const at = (name: string) => join(root, name);
-  const issue = specIssue(root, { labels, comments });
+  const issue = specIssue(root, { labels, comments, state });
   plant(root, "states.json", JSON.stringify(states));
   cuts.forEach((cut, n) => plant(root, `cuts/${n + 1}`, cut === "red" ? "red" : `${JSON.stringify({ slices: cut })}\n`));
   for (const [id, attempts] of Object.entries(plans)) attempts.forEach((attempt, n) => plant(root, `plans/${id}/${n + 1}`, JSON.stringify(attempt)));
@@ -173,7 +175,7 @@ export function scheduling({
   );
   const keyFile = at("app-key.json");
   if (appKeyed) writeFileSync(keyFile, JSON.stringify({ clientId: "Iv23liSpecRun", key: key() }));
-  const lines = (name: string) => (existsSync(at(name)) ? readFileSync(at(name), "utf8").trimEnd().split("\n") : []);
+  const lines = (name: string) => linesIn(at(name));
   const numbered = (dir: string) => (existsSync(at(dir)) ? readdirSync(at(dir)).map((_, n) => readFileSync(join(at(dir), String(n + 1)), "utf8")) : []);
   return {
     root,

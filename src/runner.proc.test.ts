@@ -306,9 +306,9 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
 });
 
 describe("the machine's jobs run where the repo's switch says", () => {
-  it("runs every job of the machine's workflows on the repo's runners, the PC's when it is switched there", () => {
+  it("runs every job of the machine's workflows on the repo's runners, the PC's when it is switched there, but reconcile, which reads state in seconds and queued behind slice builders on the PC (#1626, as #1462)", () => {
     for (const file of ["tickets.yml", "specs.yml", "enrol.yml"]) {
-      for (const [name, job] of Object.entries(workflowJobs(file))) expect(job["runs-on"], `${file} ${name}`).toBe(PC_RUNS_ON);
+      for (const [name, job] of Object.entries(workflowJobs(file))) expect(job["runs-on"], `${file} ${name}`).toBe(file === "tickets.yml" && name === "reconcile" ? "ubuntu-latest" : PC_RUNS_ON);
     }
   });
 });

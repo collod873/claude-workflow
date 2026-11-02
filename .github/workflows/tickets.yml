@@ -104,6 +104,11 @@ jobs:
       - id: database
         uses: ./.github/actions/database
 
+      - id: keys
+        uses: ./.github/actions/keys
+        with:
+          secrets: ${{ toJSON(secrets) }}
+
       - id: logs
         run: |
           mkdir -p tree/.git/machine-logs
@@ -309,6 +314,11 @@ jobs:
       - id: database
         uses: ./.github/actions/database
 
+      - id: keys
+        uses: ./.github/actions/keys
+        with:
+          secrets: ${{ toJSON(secrets) }}
+
       - id: logs
         run: |
           mkdir -p tree/.git/machine-logs
@@ -398,7 +408,7 @@ jobs:
     concurrency:
       group: reconcile-${{ github.repository }}
       cancel-in-progress: false
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
       GH_REPO: ${{ github.repository }}

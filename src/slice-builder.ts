@@ -152,7 +152,13 @@ function savedSession(file: string): string | undefined {
 }
 
 const leaving: (() => void)[] = [];
-const onLeaving = (clean: () => void) => leaving.unshift(clean);
+const onLeaving = (clean: () => void) => {
+  if (leaving.length === 0)
+    process.once("exit", () => {
+      for (const each of leaving) each();
+    });
+  leaving.unshift(clean);
+};
 
 function needsDatabase(contract: string): boolean {
   const { steps } = JSON.parse(contract || "{}") as { steps?: Record<string, { needs?: string[] }> };
@@ -194,13 +200,13 @@ function ownDatabase(container: string): string | undefined {
   return undefined;
 }
 
-function isolated({ spec, slice }: Slicing, port: number): string | undefined {
+export function isolated(names: string[], port: number): string | undefined {
   const own = mkdtempSync(join(tmpdir(), "slice-"));
   onLeaving(() => rmSync(own, { recursive: true, force: true }));
   process.env.TMPDIR = own;
   process.env.PORT = String(port);
   if (!needsDatabase(onDisk(CONTRACT) ?? "")) return undefined;
-  return ownDatabase(named("database", process.env.GITHUB_REPOSITORY ?? "", process.env.RUNNER_NAME ?? "", spec, slice));
+  return ownDatabase(named("database", process.env.GITHUB_REPOSITORY ?? "", process.env.RUNNER_NAME ?? "", ...names));
 }
 
 export const fastForwards = (onto: string) => git(["merge-base", "--is-ancestor", onto, "HEAD"]).status === 0;
@@ -327,14 +333,14 @@ function built(slicing: Slicing, app: AppKey | undefined): Ending {
 function builtIn(slicing: Slicing, app: AppKey | undefined, port: number): Ending {
   process.chdir(gitRead(["rev-parse", "--show-toplevel"], "the slice's worktree could not be found, so no builder was hired"));
   gitRead(["rev-parse", "--verify", "--quiet", `${slicing.onto}^{commit}`], `${slicing.onto} names no commit, so no builder was hired`);
-  const unisolated = isolated(slicing, port);
+  const unisolated = isolated([slicing.spec, slicing.slice], port);
   if (unisolated !== undefined) return ended("stopped", unisolated, undefined);
   const unready = setupRefusal(onDisk(CONTRACT) ?? "");
   if (unready !== undefined) return ended("stopped", `its tree's setup failed: ${unready}`, undefined);
   return built(slicing, app);
 }
 
-const freePort = () =>
+export const freePort = () =>
   new Promise<number>((resolved, refused) => {
     const server = createServer();
     server.once("error", refused);
@@ -355,9 +361,6 @@ if (import.meta.main) {
     console.error(USAGE);
     process.exit(2);
   }
-  process.on("exit", () => {
-    for (const clean of leaving) clean();
-  });
   const app = takenAppKey();
   const port = await freePort();
   const ending = (() => {

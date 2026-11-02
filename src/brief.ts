@@ -28,8 +28,8 @@ const FILE_START = /^(?=diff --git )/m;
 const CHANGED_PATH = /^diff --git a\/.+? b\/(.+)$/m;
 const changedPaths = (diff: string): string[] => [...new Set(diff.split(FILE_START).flatMap((text) => CHANGED_PATH.exec(text)?.slice(1) ?? []))];
 
-export function diffOverCap(diff: string, stat: string): { bytes: number; stat: string; files: string } | undefined {
+export function diffOverCap(diff: string, stat: string, cap: number): { bytes: number; stat: string; files: string } | undefined {
   const bytes = Buffer.byteLength(diff);
-  if (bytes <= DIFF_CAP) return undefined;
+  if (bytes <= cap) return undefined;
   return { bytes, stat: capped(stat, LIST_CAP), files: capped(changedPaths(diff).map((path) => `- ${path}`).join("\n"), LIST_CAP) };
 }

@@ -100,6 +100,12 @@ after the push as the head's `check` status by whoever pushed, is the whole chec
 holds it (ADR-0008).
 _Avoid_: gate (for a step), gauntlet, a repo-local check script, static check
 
+**Keys**:
+The secrets a repo's contract names in its `needs` list, beside its steps. Every job that runs a stage
+hands each one the repo's secrets hold to its stages, so the builder and the done check see what the
+app sees, and names the rest in `UNSET_KEYS`, which the done check puts to the owner in one line.
+_Avoid_: env, credentials, test keys
+
 **Meter**:
 A rule that reports in the PR body what it would have refused, and refuses nothing. None is added any
 more, and none runs (ADR-0006, ADR-0012).
@@ -124,16 +130,17 @@ and diff, fixes what it finds or approves, and lands it with `bin/land`, which h
 refuses. Nothing goes back to the builder (ADR-0012). It files owner steps as `owner-step` notes
 and what it lets through as research does. A spec gets two in series at its finish: one on the spec over
 the whole branch, handed each slice's brief, then one on the code standard, last so it holds what the
-first wrote. Only a diff over 200 KB splits it into **packs**: whole slices packed into as few as fit
-under that cap, one reviewer each, at most three at once, each in its own tree on `review/<N>-code-<k>`
-and rebased onto the integration branch as it answers.
+first wrote. Each works in a tree the contract's setup readied. Only a diff over 200 KB splits either
+into **packs**: whole slices packed into as few as fit under that cap, one reviewer each, at most three
+at once, each in its own tree on `review/<N>-spec-<k>` or `review/<N>-code-<k>` and rebased onto the
+integration branch as it answers.
 _Avoid_: review job, judge, second builder
 
 **Closing**:
 No stage closes, queues or merges by itself: waking what a closed issue blocked is reconcile's alone (#1606). A ticket closes on its PR's `Closes #N`, which `bin/land --ticket`
 writes, and a session's commit may close an issue the same way, since `bin/land` merges only past
-the full check. A spec closes only on its done check, so `bin/land --spec` refuses a commit that
-closes it by keyword.
+the full check. A spec closes on landing, from its done check's tries, so `bin/land --spec` refuses a
+commit that closes it by keyword.
 _Avoid_: closer, merger, queue, landing job
 
 ### The work
@@ -155,11 +162,12 @@ its issue, a dispatch's rerun or probe, as `.github/caller.yml` spells each.
 _Avoid_: run title, display name
 
 **Done check**:
-The stage that tries each of a spec's "I'll know it works when I can ___" sentences on the running
-system once the spec has landed, files each one that did not hold as a bug quoting what it saw,
-and closes the spec. It runs once per spec: a miss is an ordinary bug the ticket builder fixes, not
-a second pass over the spec. A sentence put to the owner holds nothing open: the closing comment
-says what the owner could try for it, and a miss seen live later is a new ticket.
+The stage that tries each of a spec's "I'll know it works when I can ___" sentences on its
+integration branch before it lands, in its own tree, port and Postgres, beside the full check. It
+refuses nothing: its misses go once to the last reviewer, a fixed one lands with the spec, and the
+rest are filed as bugs quoting what it saw once the spec has landed, when it also comments and
+closes the spec. A sentence put to the owner holds nothing open: it is filed as an owner step saying
+what the owner could try, and a miss seen live later is a new ticket.
 _Avoid_: audit, acceptance test, verification
 
 **Integration branch**:
@@ -179,10 +187,10 @@ _Avoid_: ready queue
 
 **Scheduler**:
 `bin/schedule`, the code that runs a spec, hiring each fresh slicer and slice builder, at most
-three at once, then `bin/finish` (full check, two reviewers, `bin/land`, done check); it holds no
+three at once, then `bin/finish` (two reviewers, done check, full check, `bin/land`); it holds no
 model context. Its state is the integration branch and the `## Spec run` progress comment it
-writes, where `bin/finish` stamps the landing alone, so a rerun resumes from them: straight to the
-done check once the spec has landed and its done check has not finished.
+writes, where `bin/finish` stamps the landing alone, so a rerun resumes from them: once the spec has landed, it closes from the tries the progress
+comment recorded, and runs the done check on `main` only when none were recorded.
 _Avoid_: orchestrator
 
 **Ticket**:
