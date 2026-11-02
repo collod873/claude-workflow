@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { LIST_CAP } from "./brief.ts";
 import { handedOn, OUT_OF_TIME, REPLIES_CAP } from "./done-checker.ts";
 import { authored, BIN, execute, issueStage, plant, type Said, stubbedMark, wellFormedSpec } from "./scenarios.ts";
 import { PAUSED, STUCK } from "./spelled.ts";
@@ -26,7 +27,8 @@ export function doneChecking({
   contract,
   calledFrom,
   triesPastCap = false,
-}: { labels?: string[] | undefined; body?: string; tries?: { sentence: number; outcome: string; tried: string }[]; gh?: string; said?: Said[]; markRefusal?: string; contract?: string; calledFrom?: string; triesPastCap?: boolean } = {}) {
+  unsetKeys = "",
+}: { labels?: string[] | undefined; body?: string; tries?: { sentence: number; outcome: string; tried: string }[]; gh?: string; said?: Said[]; markRefusal?: string; contract?: string; calledFrom?: string; triesPastCap?: boolean; unsetKeys?: string } = {}) {
   const comments = `[[ $* == *'--jq .id'* ]] && { echo 4242; exit 0; }\n[[ $1 == api ]] && { cat "$(dirname "$0")/../comments.json"; exit 0; }\n[[ $1 == issue && $2 == create ]] && { echo ${BUG_FILED}; exit 0; }`;
   const cutOff = triesPastCap ? `case "$*" in *--resume*) ;; *) printf '%s\\n' '${JSON.stringify({ type: "system", session_id: TRYING_SESSION })}'; exit 124 ;; esac\n` : "";
   const { root, argv, ...stage } = issueStage("done-check-", { title: "A spec worth trying", body, labels: labels.map((name) => ({ name })) }, { tries }, DONE_CHECK_POSTED, `${gh}\n${comments}\n`, cutOff);
@@ -40,7 +42,7 @@ export function doneChecking({
     argv,
     created: () => argv().filter((args) => args[1] === "create"),
     marked,
-    run: (...args: string[]) => execute(join(BIN, "done-check"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}`, STAGE_MINUTES: triesPastCap ? "40" : "", ...(calledFrom === undefined ? {} : { CALLED_FROM: calledFrom }) }, args.length > 0 ? args : ["974"]),
+    run: (...args: string[]) => execute(join(BIN, "done-check"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}`, STAGE_MINUTES: triesPastCap ? "40" : "", UNSET_KEYS: unsetKeys, ...(calledFrom === undefined ? {} : { CALLED_FROM: calledFrom }) }, args.length > 0 ? args : ["974"]),
   };
 }
 
@@ -50,9 +52,9 @@ declareStage({
     {
       name: "done checker",
       file: "src/done-checker.ts",
-      cap: 2 * SPEC_CAP + REPLIES_CAP + 2 * HANDED_ON,
-      slots: ["title", "body", "replies"],
-      build: (filled) => handedOn(filled.title ?? "", filled.body ?? "", { replies: filled.replies ?? "", foreign: true }),
+      cap: 2 * SPEC_CAP + REPLIES_CAP + LIST_CAP + 2 * HANDED_ON,
+      slots: ["title", "body", "replies", "unset"],
+      build: (filled) => handedOn(filled.title ?? "", filled.body ?? "", { replies: filled.replies ?? "", foreign: true, unset: [filled.unset ?? "KEY"] }),
     },
     {
       name: "done checker on this repo",

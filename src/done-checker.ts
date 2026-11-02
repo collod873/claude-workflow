@@ -1,7 +1,7 @@
 import { postedUnderOrigin } from "./issue-links.ts";
 import { join } from "node:path";
 import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
-import { capped, NO_EM_DASH, onDisk, tailOf } from "./brief.ts";
+import { capped, LIST_CAP, NO_EM_DASH, onDisk, tailOf } from "./brief.ts";
 import { authoredOn, commentOnTicket, followUpBody, fromHere, fromLine, FOREIGN, gh, mark, OWNER, readOrStop, STUCK, type Asked } from "./post.ts";
 import { CONTRACT, opened, setupRefusal, type Spent } from "./stage.ts";
 import { CHECKING, SPEC } from "./spelled.ts";
@@ -59,11 +59,19 @@ const RUNNING_THERE = `Here the running system is this checkout of the repo, rea
 const SELF =
   " `self`, without trying it, for a sentence about the spec closing itself or the owner being told which sentence did not hold: this run is the one that closes the spec and files each miss, so the machine settles it from the other sentences.";
 
+const unsetKeys = () => (process.env.UNSET_KEYS ?? "").split(",").map((key) => key.trim()).filter(Boolean);
+
+const lacking = (keys: string[]) =>
+  keys.length === 0
+    ? []
+    : [`The repo's contract names ${capped(new Intl.ListFormat("en").format(keys.map((key) => `\`${key}\``)), LIST_CAP)}, which its secrets lack, so this run has none of them: a sentence resting on one is \`owner\`, its \`tried\` naming the key to set as a repo secret.`];
+
 const numbered = (listed: Sentence[]) => listed.map(({ said }, at) => `${at + 1}. ${said}`).join("\n");
 
-export function handedOn(title: string, body: string, { replies = "", foreign = false }: { replies?: string; foreign?: boolean } = {}): string {
+export function handedOn(title: string, body: string, { replies = "", foreign = false, unset = [] }: { replies?: string; foreign?: boolean; unset?: string[] } = {}): string {
   return [
     `Try each sentence under \`## The sentences to try\` on the running system, not on its tests, and say how each came out. Read and run what you need, and leave the repo and GitHub as they are. ${foreign ? RUNNING_THERE : RUNNING_HERE}`,
+    ...lacking(unset),
     "## The spec",
     capped(`# ${title}\n\n${body}`, SPEC_CAP),
     ...answered(replies),
@@ -132,7 +140,7 @@ function read(issue: string): Read | Stop | undefined {
 function tried(spec: Read, app: AppKey | undefined): [number, string, Try][] | Stop {
   const { issue, asked, replies, listed, spend } = spec;
   if (app !== undefined) freshAppToken(app, gh, `so the done check of #${issue} is not tried`);
-  const spent = spend(handedOn(asked.title, asked.body, { replies, foreign: FOREIGN }));
+  const spent = spend(handedOn(asked.title, asked.body, { replies, foreign: FOREIGN, unset: unsetKeys() }));
   if (app !== undefined) freshAppToken(app, gh, `so the done check of #${issue} is not posted`);
   if (spent.refusal !== undefined) return calledOwner(spec, "modelRun", spent.refusal);
   const given = (spent.answer as { tries?: unknown } | undefined)?.tries;

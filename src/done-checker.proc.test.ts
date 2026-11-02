@@ -297,6 +297,20 @@ describe("bin/done-check tries a caller's spec on that repo's own checkout, read
     expect(checked.handed()).not.toContain("For this repo the running system is the landed code in this checkout");
   });
 
+  it("names each key the contract asks for that the repo's secrets lack, so a sentence resting on one is put to the owner naming that key (#1626)", () => {
+    const checked = doneChecking({ unsetKeys: "TWILIO_AUTH_TOKEN,RESEND_API_KEY", calledFrom: LUMARIA });
+
+    expect(checked.run().status).toBe(0);
+    expect(checked.handed()).toContain("`TWILIO_AUTH_TOKEN` and `RESEND_API_KEY`");
+  });
+
+  it("names no missing key when the repo's secrets hold every one its contract asks for", () => {
+    const checked = doneChecking({ calledFrom: LUMARIA });
+
+    expect(checked.run().status).toBe(0);
+    expect(checked.handed()).not.toContain("secrets lack");
+  });
+
   it("marks the spec stuck and calls the owner when the tree's setup fails, hiring, posting and closing nothing else", () => {
     const checked = doneChecking({ contract: '{ "setup": "echo no lockfile >&2; exit 3", "steps": {} }\n', calledFrom: LUMARIA });
 

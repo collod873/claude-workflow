@@ -100,6 +100,12 @@ after the push as the head's `check` status by whoever pushed, is the whole chec
 holds it (ADR-0008).
 _Avoid_: gate (for a step), gauntlet, a repo-local check script, static check
 
+**Keys**:
+The secrets a repo's contract names in its `needs` list, beside its steps. Every job that runs a stage
+hands each one the repo's secrets hold to its stages, so the builder and the done check see what the
+app sees, and names the rest in `UNSET_KEYS`, which the done check puts to the owner in one line.
+_Avoid_: env, credentials, test keys
+
 **Meter**:
 A rule that reports in the PR body what it would have refused, and refuses nothing. None is added any
 more, and none runs (ADR-0006, ADR-0012).

@@ -104,6 +104,11 @@ jobs:
       - id: database
         uses: ./.github/actions/database
 
+      - id: keys
+        uses: ./.github/actions/keys
+        with:
+          secrets: ${{ toJSON(secrets) }}
+
       - id: logs
         run: |
           mkdir -p tree/.git/machine-logs
@@ -308,6 +313,11 @@ jobs:
 
       - id: database
         uses: ./.github/actions/database
+
+      - id: keys
+        uses: ./.github/actions/keys
+        with:
+          secrets: ${{ toJSON(secrets) }}
 
       - id: logs
         run: |

@@ -15,6 +15,7 @@ const WORKFLOWS = join(REPO, ".github", "workflows");
 const APP = "${{ steps.app.outputs.token }}";
 const PINNED = join(REPO, ".github", "actions", "pinned", "action.yml");
 const DATABASE = join(REPO, ".github", "actions", "database", "action.yml");
+const KEYS = join(REPO, ".github", "actions", "keys", "action.yml");
 
 interface Caller {
   name: string;
@@ -431,6 +432,73 @@ describe("a repo's tickets build through one caller file that holds only trigger
         expect(steps[database]?.if, name).toBe(steps[at(({ id }) => id === "npm-ci")]?.if);
       }
     });
+  });
+});
+
+function githubEnvOf(written: string): Record<string, string> {
+  const lines = written.split("\n");
+  const env: Record<string, string> = {};
+  for (let at = 0; at < lines.length; at++) {
+    const line = lines[at] ?? "";
+    const [name = "", delimiter] = line.split("<<");
+    if (delimiter === undefined) {
+      if (line.includes("=")) env[line.slice(0, line.indexOf("="))] = line.slice(line.indexOf("=") + 1);
+      continue;
+    }
+    const ends = lines.indexOf(delimiter, at + 1);
+    env[name] = lines.slice(at + 1, ends).join("\n");
+    at = ends;
+  }
+  return env;
+}
+
+describe("a stage gets each key its repo's contract names under needs, from the repo's secrets, where 10 of 11 sentences Mezzanine's done checks put to the owner on 11-01 lacked a key the runner did not have (#1626)", () => {
+  const handedKeys = (contract: string | undefined, secrets: Record<string, string>) => {
+    const root = scratch("keys-");
+    const githubEnv = join(root, "github-env");
+    mkdirSync(join(root, "tree", ".claude"), { recursive: true });
+    writeFileSync(githubEnv, "");
+    if (contract !== undefined) writeFileSync(join(root, "tree", ".claude", "contract.json"), contract);
+    const [step, ...more] = (parse(readFileSync(KEYS, "utf8")) as { runs: { steps: (WorkflowStep & { "working-directory"?: string })[] } }).runs.steps;
+    expect(more).toEqual([]);
+    const ran = execute("bash", join(root, step?.["working-directory"] ?? ""), { PATH: "/usr/bin:/bin", GITHUB_ENV: githubEnv, SECRETS: JSON.stringify(secrets) }, ["-e", "-c", step?.run ?? ""]);
+    expect(ran.status, ran.stderr).toBe(0);
+    return { env: githubEnvOf(readFileSync(githubEnv, "utf8")), said: ran.stdout };
+  };
+
+  it("hands on each named key the repo's secrets hold, a multi-line one whole, and none it does not name", () => {
+    const { env } = handedKeys('{ "needs": ["STRIPE_SECRET_KEY", "VAPID_PRIVATE_KEY"], "steps": {} }\n', { STRIPE_SECRET_KEY: "sk_test_1", VAPID_PRIVATE_KEY: "-----BEGIN-----\nabc\n-----END-----", CORE_APP_PRIVATE_KEY: "machine only" });
+
+    expect(env.STRIPE_SECRET_KEY).toBe("sk_test_1");
+    expect(env.VAPID_PRIVATE_KEY).toBe("-----BEGIN-----\nabc\n-----END-----");
+    expect(env.CORE_APP_PRIVATE_KEY).toBeUndefined();
+    expect(env.UNSET_KEYS).toBeUndefined();
+  });
+
+  it("names in UNSET_KEYS and the job's log each named key the repo's secrets lack, so the done check puts it to the owner in one line", () => {
+    const { env, said } = handedKeys('{ "needs": ["STRIPE_SECRET_KEY", "TWILIO_AUTH_TOKEN", "RESEND_API_KEY"] }\n', { STRIPE_SECRET_KEY: "sk_test_1" });
+
+    expect(env.UNSET_KEYS).toBe("TWILIO_AUTH_TOKEN,RESEND_API_KEY");
+    expect(said).toContain("TWILIO_AUTH_TOKEN,RESEND_API_KEY");
+  });
+
+  it("hands nothing on when the contract names no keys or the tree has no contract", () => {
+    for (const contract of ['{ "steps": { "integration": { "run": "true", "needs": ["DATABASE_URL"] } } }\n', undefined]) {
+      expect(handedKeys(contract, { STRIPE_SECRET_KEY: "sk_test_1" }).env.STRIPE_SECRET_KEY, contract).toBeUndefined();
+    }
+  });
+
+  it("in every job that starts Postgres for a stage, with the repo's secrets, after the tree is checked out and before any stage starts", () => {
+    const jobs = ["tickets.yml", "specs.yml"].flatMap((file) => Object.entries(workflowJobs(file)).filter(([, { steps }]) => steps.some(({ uses }) => uses === "./.github/actions/database")).map(([name, { steps }]) => ({ name: `${file} ${name}`, steps })));
+    expect(jobs.map(({ name }) => name)).toEqual(["tickets.yml build", "tickets.yml probe", "specs.yml spec"]);
+    for (const { name, steps } of jobs) {
+      const at = (found: (step: WorkflowStep) => boolean) => steps.findIndex(found);
+      const keys = at(({ uses }) => uses === "./.github/actions/keys");
+
+      expect(steps[keys]?.with, name).toEqual({ secrets: "${{ toJSON(secrets) }}" });
+      expect(keys, name).toBeGreaterThan(at(({ id }) => id === "checkout"));
+      expect(keys, name).toBeLessThan(at(({ env }) => env?.CLAUDE_CODE_OAUTH_TOKEN !== undefined));
+    }
   });
 });
 
