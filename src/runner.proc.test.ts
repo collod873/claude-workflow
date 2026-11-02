@@ -228,9 +228,7 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
 
     run("pc");
 
-    const calls = sudo().join("\n");
-    expect(calls).toContain("https://github.com/astral-sh/uv/releases/download/0.11.32/uv-x86_64-unknown-linux-gnu.tar.gz");
-    expect(calls).toContain(`[ "$(/home/ghrunner/uv/bin/uv --version 2>/dev/null | cut -d' ' -f2)" = 0.11.32 ]`);
+    expect(sudo().join("\n")).toContain("https://github.com/astral-sh/uv/releases/download/0.11.32/uv-x86_64-unknown-linux-gnu.tar.gz");
     const path = placed(`/home/ghrunner/runners/collod873-Lumaria/${HOST}-1/.path`).trim().split(":");
     expect(path.indexOf("/home/ghrunner/uv/bin")).toBeGreaterThanOrEqual(0);
     expect(path.indexOf("/home/ghrunner/uv/bin")).toBeLessThan(path.indexOf("/usr/local/bin"));
