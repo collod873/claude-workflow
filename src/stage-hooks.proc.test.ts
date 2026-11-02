@@ -19,12 +19,42 @@ interface Action {
   runs: { steps: Step[] };
 }
 
-function hooksFetchScript(): string {
+function stepScript(id: string): string {
   const { runs } = parse(readFileSync(ACTION, "utf8")) as Action;
-  const step = runs.steps.find((candidate) => candidate.id === "hooks-fetch");
-  expect(step, "a step that clones the owner's hooks").toBeDefined();
+  const step = runs.steps.find((candidate) => candidate.id === id);
+  expect(step, `a step with id ${id}`).toBeDefined();
   return (step as Step).run ?? "";
 }
+
+describe("the hooks action's Python keeps what setup installs whatever HOME a tool runs under (#1632)", () => {
+  it("puts a venv's python3 first on PATH, so setup installs into it and not into HOME's user site", () => {
+    const root = scratch("stage-python-");
+    const runnerTemp = join(root, "runner-temp");
+    const githubPath = join(root, "github-path");
+    const githubEnv = join(root, "github-env");
+    const swappedHome = join(root, "sandbox-home");
+    mkdirSync(runnerTemp, { recursive: true });
+    mkdirSync(swappedHome, { recursive: true });
+
+    const made = spawnSync("bash", ["-e", "-c", stepScript("python-venv")], {
+      cwd: root,
+      env: { ...process.env, RUNNER_TEMP: runnerTemp, GITHUB_PATH: githubPath, GITHUB_ENV: githubEnv },
+      encoding: "utf8",
+      timeout: 60_000,
+    });
+    expect(made.status, made.stderr).toBe(0);
+
+    const pathed = readFileSync(githubPath, "utf8").trim().split("\n");
+    const probe = spawnSync("python3", ["-c", "import sys, sysconfig; print(sys.prefix != sys.base_prefix, sysconfig.get_path('purelib'))"], {
+      env: { PATH: [...pathed, process.env.PATH].join(":"), HOME: swappedHome },
+      encoding: "utf8",
+    });
+    const [isVenv, sitePackages] = probe.stdout.trim().split(" ");
+    expect(isVenv).toBe("True");
+    expect(sitePackages?.startsWith(runnerTemp)).toBe(true);
+    expect(readFileSync(githubEnv, "utf8")).toContain(`VIRTUAL_ENV=${join(runnerTemp, "python")}`);
+  });
+});
 
 describe("the hooks action's fetch survives a transient clone failure (#849)", () => {
   it("retries the hooks fetch up to 3 times, and a third failure leaves a log opening with the row for it", () => {
@@ -37,7 +67,7 @@ describe("the hooks action's fetch survives a transient clone failure (#849)", (
       ['if [ "$1" = clone ]; then', `  printf 'attempt\\n' >>"${calls}"`, "  echo 'fatal: repository not found' >&2", "  exit 128", "fi", "exit 1"].join("\n"),
     );
 
-    const run = spawnSync("bash", ["-e", "-c", hooksFetchScript()], {
+    const run = spawnSync("bash", ["-e", "-c", stepScript("hooks-fetch")], {
       cwd: root,
       env: {
         ...process.env,
