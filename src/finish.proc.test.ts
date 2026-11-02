@@ -148,6 +148,21 @@ describe("bin/finish tries the spec's sentences on its integration branch before
     expect(bodies(finished.calls().slice(beforeLand)).filter((body) => body.startsWith("## Done check"))).toHaveLength(1);
   });
 
+  it("gives the done check its own Postgres, port and temp dir when a step of its contract needs DATABASE_URL, and removes the Postgres after, where Mezzanine#2023 lost all five sentences to a migration on the shared dev database", () => {
+    const finished = finishing({ contract: '{ "steps": { "integration": { "run": "true", "needs": ["DATABASE_URL"] } } }\n' });
+
+    const ran = heard(finished.run());
+
+    expect(ran.status, ran.stderr).toBe(0);
+    const [[, , database, port = "", temp = ""] = []] = finished.triedAt();
+    expect(database).toBe("postgres://postgres:postgres@localhost:49153/postgres");
+    expect(port).toMatch(/^\d+$/);
+    expect(temp).not.toBe("");
+    const dockered = finished.dockered();
+    expect(dockered.some((call) => /^run .*postgres:16$/.test(call))).toBe(true);
+    expect(dockered.at(-1)).toMatch(/^rm --force database-/);
+  });
+
   it("hands the sentences the done check missed to the last reviewer as one round in its own session, files as bugs only those it did not name fixed, and posts the fixed ones as fixed, where 26 of 39 misses in a week were pages and forms nothing tested", () => {
     const finished = finishing({
       sentences: SENTENCES,

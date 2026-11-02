@@ -1,13 +1,12 @@
 import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
-import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { capped, DIFF_CAP, diffOverCap, LIST_CAP, NO_EM_DASH, onDisk, TAIL_CAP, tailOf } from "./brief.ts";
-import { checkedBy, type Red, starvedFault } from "./builder.ts";
+import { checkedByAsync, type Red, starvedFault } from "./builder.ts";
 import { PUBLISHED_CHECK } from "./checks.ts";
-import { type Checked, type Stop, calledOwner as doneCheckCalledOwner, doneCheck, paired, postedOn, type Try } from "./done-checker.ts";
-import { askedOn, commentOnTicket, fromHere, fromLine, gh, git, gitRead, standingOn, stoodDown, machineBin, mark, OWNER, readOrStop, STUCK, unread } from "./post.ts";
+import { type Checked, type Stop, calledOwner as doneCheckCalledOwner, doneCheck, paired, postedOn, triedIn, type Try } from "./done-checker.ts";
+import { askedOn, commentOnTicket, fromHere, fromLine, gh, git, gitRead, standingOn, stoodDown, mark, OWNER, readOrStop, STUCK, Stopped, unread } from "./post.ts";
 import { afterRefused, approvedOn, firstTimeNamed, gathered, landing, type Routed, ROUTED, ROUTED_REQUIRED, routedFiled } from "./reviewer.ts";
 import { fastForwarded, landedOn, MOST_BUILDERS, type Progress, progressOn, removed, specBranch, triedOn, worktree } from "./scheduler.ts";
 import { fastForwards, rebaseStopped, sliceTrailed } from "./slice-builder.ts";
@@ -237,11 +236,6 @@ interface Approved extends Routed {
 
 type Tried = { tries: Try[]; fixed: number[] } | { refusal: string };
 
-interface Trying {
-  tried: Promise<Tried>;
-  stop: () => void;
-}
-
 interface Reviewed {
   last: Reviewer;
   tried: Tried;
@@ -256,7 +250,7 @@ interface Run {
   later: string[];
   left: Map<string, Approved>;
   trees: { roots: string[]; made: { tree: string; branch?: string | undefined }[]; topReadied: boolean };
-  trying?: Trying | undefined;
+  trying?: Promise<Try[] | { refusal: string }> | undefined;
 }
 
 function reviewed(spec: string, said: string, spent: Spent, app: AppKey | undefined): Approved | undefined {
@@ -341,10 +335,10 @@ function broughtBack(spec: string, { tree, branch }: Reviewer, rebuilt: boolean)
   return undefined;
 }
 
-async function rounds<Done>(run: Run, reviewer: Reviewer, { failed, stop, commit, kept }: { failed: string; stop: "unlanded" | "unchecked" | "unmerged"; commit: string; kept: (approved: Approved) => void }, attempt: () => Round<Done>): Promise<Done | undefined> {
+async function rounds<Done>(run: Run, reviewer: Reviewer, { failed, stop, commit, kept }: { failed: string; stop: "unlanded" | "unchecked" | "unmerged"; commit: string; kept: (approved: Approved) => void }, attempt: () => Round<Done> | Promise<Round<Done>>): Promise<Done | undefined> {
   let idle = false;
   for (;;) {
-    const tried = broughtBack(run.spec, reviewer, stop === "unlanded") ?? attempt();
+    const tried = broughtBack(run.spec, reviewer, stop === "unlanded") ?? (await attempt());
     if ("done" in tried) return tried.done;
     const before = inTree(reviewer.tree, head);
     const approved = await answered(run, reviewer, tried.told, commit);
@@ -369,8 +363,8 @@ function starved({ spec, said }: Run, red: Red | undefined): boolean {
 }
 
 const greened = (run: Run, reviewer: Reviewer, commit: string) =>
-  rounds(run, reviewer, { failed: "stayed red on its full check", stop: "unchecked", commit, kept: (approved) => run.later.push(`After its full check went red: ${approved.reason}`) }, () => {
-    const red = checkedBy(PUBLISHED_CHECK);
+  rounds(run, reviewer, { failed: "stayed red on its full check", stop: "unchecked", commit, kept: (approved) => run.later.push(`After its full check went red: ${approved.reason}`) }, async () => {
+    const red = await checkedByAsync(PUBLISHED_CHECK);
     if (starved(run, red)) return { done: undefined };
     return red === undefined ? { done: true } : { refused: red.verdict, told: stillRedOnReview(red) };
   });
@@ -417,40 +411,23 @@ function treesRemoved({ trees: { roots, made } }: Run): void {
   for (const root of roots) rmSync(root, { recursive: true, force: true });
 }
 
-const writtenTries = (written: string | undefined): Try[] | string | undefined => {
-  try {
-    const { tries, refusal } = JSON.parse(written ?? "{}") as { tries?: unknown; refusal?: unknown };
-    return Array.isArray(tries) ? (tries as Try[]) : typeof refusal === "string" ? refusal : undefined;
-  } catch {
-    return undefined;
-  }
-};
-
-function triedOnBranch(run: Run): Trying {
+function triedOnBranch(run: Run): Promise<Try[] | { refusal: string }> {
   const { spec, app } = run;
-  const root = treesRoot(run, "spec-done-");
-  const tree = join(root, "tree");
+  const tree = join(treesRoot(run, "spec-done-"), "tree");
   const branch = `review/${spec}-done`;
   worktree(spec, branch, tree);
   run.trees.made.push({ tree, branch });
-  const file = join(root, "tries.json");
   if (app !== undefined) freshAppToken(app, gh, `so the done check of #${spec} is not tried`);
-  const { APP_KEY_FILE: _taken, ...env } = process.env;
-  const child = spawn(machineBin("done-check"), [spec, "--tries", file], { cwd: tree, env, stdio: ["ignore", "inherit", "inherit"] });
-  const tried = new Promise<Tried>((resolve) => {
-    child.on("error", (error) => resolve({ refusal: `bin/done-check did not start: ${error.message}` }));
-    child.on("close", (status) => {
-      const written = writtenTries(onDisk(file));
-      resolve(Array.isArray(written) ? { tries: written, fixed: [] } : { refusal: written ?? `bin/done-check ended ${String(status)} and wrote no tries` });
-    });
+  return triedIn(tree, spec).catch((error: unknown) => {
+    if (error instanceof Stopped) return { refusal: error.message };
+    throw error;
   });
-  return { tried, stop: () => child.kill() };
 }
 
-async function heldAfterRound(run: Run, last: Reviewer, tried: Tried): Promise<Tried | undefined> {
-  if ("refusal" in tried) return tried;
-  const missed = paired(run.listed, tried.tries).flatMap(([number, said, one]): [number, string, Try][] => (one?.outcome === "missed" ? [[number, said, one]] : []));
-  if (missed.length === 0) return tried;
+async function heldAfterRound(run: Run, last: Reviewer, tries: Try[] | { refusal: string }): Promise<Tried | undefined> {
+  if (!Array.isArray(tries)) return tries;
+  const missed = paired(run.listed, tries).flatMap(([number, said, one]): [number, string, Try][] => (one?.outcome === "missed" ? [[number, said, one]] : []));
+  if (missed.length === 0) return { tries, fixed: [] };
   let told = false;
   let fixed: number[] = [];
   const held = await rounds(
@@ -466,7 +443,7 @@ async function heldAfterRound(run: Run, last: Reviewer, tried: Tried): Promise<T
       return { refused: `the done check missed sentence ${missed.map(([number]) => number).join(", ")}`, told: missesTold(run.spec, missed) };
     },
   );
-  return held === undefined ? undefined : { tries: tried.tries, fixed: fixed.filter((number) => missed.some(([at]) => at === number)) };
+  return held === undefined ? undefined : { tries, fixed: fixed.filter((number) => missed.some(([at]) => at === number)) };
 }
 
 async function atMost<Done>(most: number, jobs: (() => Promise<Done | undefined>)[]): Promise<Done[] | undefined> {
@@ -520,14 +497,14 @@ async function reviews(run: Run, { title, body }: { title: string; body: string 
   if (onSpec === undefined) return undefined;
   for (const { ofPack, answer } of onSpec) run.reasons.set(ofPack.seat, `${ofPack.on}: ${answer.reason}`);
   run.trying = triedOnBranch(run);
-  const red = checkedBy(PUBLISHED_CHECK);
+  const red = await checkedByAsync(PUBLISHED_CHECK);
   if (starved(run, red)) return undefined;
   const [first, ...rest] = (await reviewedInPacks("code standard", red)) ?? [];
   if (first === undefined) return undefined;
   for (const { ofPack, answer } of [first, ...rest]) run.reasons.set(ofPack.seat, `${ofPack.on}: ${answer.reason}`);
   if (red !== undefined && (await greened(run, first.ofPack, `Review #${spec} on the code standard`)) === undefined) return undefined;
   const last = (rest.at(-1) ?? first).ofPack;
-  const tried = await heldAfterRound(run, last, await run.trying.tried);
+  const tried = await heldAfterRound(run, last, await run.trying);
   return tried === undefined ? undefined : { last, tried };
 }
 
@@ -587,7 +564,6 @@ async function finished(spec: string, app: AppKey | undefined): Promise<Finished
       const pr = await landed(run, review);
       return pr === undefined ? undefined : { pr, tried: review.tried };
     } finally {
-      run.trying?.stop();
       treesRemoved(run);
     }
   })();

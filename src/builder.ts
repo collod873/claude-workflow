@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -113,10 +113,22 @@ function failedSteps(log: string): string {
 
 const UNANNOTATED_GITHUB_ACTIONS = "unannotated";
 
-export function checkedBy(check: string): Red | undefined {
+function checkEnv(): NodeJS.ProcessEnv {
   const { GITHUB_ACTIONS: onGitHub, ...rest } = process.env;
-  const env = onGitHub === undefined ? rest : { ...rest, GITHUB_ACTIONS: UNANNOTATED_GITHUB_ACTIONS };
-  const { stdout, stderr } = spawnSync("bash", ["-c", check], { env: treePathed(env), encoding: "utf8" });
+  return treePathed(onGitHub === undefined ? rest : { ...rest, GITHUB_ACTIONS: UNANNOTATED_GITHUB_ACTIONS });
+}
+
+export function checkedBy(check: string): Red | undefined {
+  const { stdout, stderr } = spawnSync("bash", ["-c", check], { env: checkEnv(), encoding: "utf8" });
+  return redOf(stdout, stderr);
+}
+
+export const checkedByAsync = (check: string) =>
+  new Promise<Red | undefined>((resolved) => {
+    execFile("bash", ["-c", check], { env: checkEnv(), encoding: "utf8", maxBuffer: Infinity }, (_error, stdout, stderr) => resolved(redOf(stdout, stderr)));
+  });
+
+function redOf(stdout: string, stderr: string): Red | undefined {
   const verdict = stdout.trim().split("\n").at(-1) ?? "";
   if (PASSED.test(verdict)) return undefined;
   const logPath = LOGGED.exec(verdict)?.[1];

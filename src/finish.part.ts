@@ -82,7 +82,7 @@ export function finishing({
       `if grep -q '^Try each sentence' "$ASKED"; then`,
       `  TRY=$(( $(ls "${triesDir}" | grep -vc '\\.') + 1 ))`,
       `  mv "$ASKED" "${triesDir}/$TRY"`,
-      `  { pwd; git rev-parse HEAD; } >"${triesDir}/$TRY.where"`,
+      `  { pwd; git rev-parse HEAD; printf '%s\\n' "\${DATABASE_URL:-}" "\${PORT:-}" "\${TMPDIR:-}"; } >"${triesDir}/$TRY.where"`,
       "  flock -u 9",
       ...(overlapped ? [`  touch "${join(root, "trying")}"`, `  for _ in $(seq 100); do [ -f "${join(root, "checked")}" ] && break; sleep 0.1; done`] : []),
       ...(tryRefused ? ["  exit 3"] : []),
@@ -124,7 +124,7 @@ export function finishing({
   );
   const overlap = overlapped ? `for _ in $(seq 100); do [ -f "${join(root, "trying")}" ] && break; sleep 0.1; done\n[ -f "${join(root, "trying")}" ] && touch "${join(root, "checked")}"\n` : "";
   script(join(bin, "check"), `printf '%s\\n' "$*" >>"${checks}"\n${overlap}${check}`);
-  script(join(bin, "done-check"), `exec "${join(BIN, "done-check")}" "$@"\n`);
+  script(join(bin, "docker"), `printf '%s\\n' "$*" >>"${join(root, "docker-calls")}"\ncase $1 in\n  port) printf '127.0.0.1:49153\\n' ;;\nesac\n`);
   script(join(bin, "mark"), `printf '%s\\n' "$*" >>"${marks}"\n`);
   script(join(bin, "land"), `ls "${join(root, "gh-argv")}" | wc -l >>"${join(root, "gh-calls-at-land")}"\nprintf '%s %s %s\\n' "\${GH_TOKEN:-}" "$(git rev-parse HEAD)" "$1 $2" >>"${lands}"\nprintf '%s\\0' "$4" >>"${approvals}"\n${land}\nprintf 'Landed ${FINISHED_PR}\\n'\n`);
   const keyFile = join(root, "app-key.json");
@@ -139,6 +139,7 @@ export function finishing({
     triedAt: () => (existsSync(triesDir) ? readdirSync(triesDir).filter((name) => name.endsWith(".where")).map((_, at) => readFileSync(join(triesDir, `${at + 1}.where`), "utf8").trim().split("\n")) : []),
     ghCallsAtLand: () => listed(join(root, "gh-calls-at-land")).map(Number),
     overlapped: () => existsSync(join(root, "checked")),
+    dockered: () => linesIn(join(root, "docker-calls")),
     wheres: () => numbered(wheres).map((where) => where.trim()),
     hired: () => numbered(hires).map((argv) => argv.split("\0").filter((part) => part !== "")),
     landed: () => listed(lands).map((line) => line.split(" ")),

@@ -99,11 +99,11 @@ export function setupRefusal(contract: string): string | undefined {
   return setup === undefined ? undefined : unready(spawnSync("bash", ["-c", setup], { env: treePathed(), encoding: "utf8", maxBuffer: Infinity }));
 }
 
-export function setupRefusedIn(tree: string, contract: string): Promise<string | undefined> {
+export function setupRefusedIn(tree: string, contract: string, env: Record<string, string> = {}): Promise<string | undefined> {
   const setup = setupOf(contract);
   if (setup === undefined) return Promise.resolve(undefined);
   return new Promise((resolve) => {
-    execFile("bash", ["-c", setup], { cwd: tree, env: treePathed(), encoding: "utf8", maxBuffer: Infinity }, (error, stdout, stderr) => {
+    execFile("bash", ["-c", setup], { cwd: tree, env: treePathed({ ...process.env, ...env }), encoding: "utf8", maxBuffer: Infinity }, (error, stdout, stderr) => {
       resolve(unready({ status: error === null ? 0 : typeof error.code === "number" ? error.code : null, stdout, stderr }));
     });
   });
@@ -171,11 +171,11 @@ function launchedHere({ argv: [command, ...args], input, streamed, waitFirst }: 
 }
 
 const launchedIn =
-  (tree: string) =>
+  (tree: string, env: Record<string, string>) =>
   async ({ argv: [command, ...args], input, streamed, waitFirst }: Launch): Promise<Exited> => {
     if (waitFirst) await setTimeout(Number(RETRY_WAIT_SECONDS) * 1000);
     return new Promise((resolve) => {
-      const child = spawn(command, args, { cwd: tree, env: treePathed(), stdio: ["pipe", streamed, "pipe"] });
+      const child = spawn(command, args, { cwd: tree, env: treePathed({ ...process.env, ...env }), stdio: ["pipe", streamed, "pipe"] });
       let stderr = "";
       child.stderr?.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
       child.stdin?.on("error", () => undefined);
@@ -203,9 +203,9 @@ const transcriptOf = (stage: string, key: string) => join(machineLogs(), `${stag
 
 export const hire = (stage: string, key: string, hiring: Omit<Hire, "transcript">) => hired({ ...hiring, transcript: transcriptOf(stage, key) });
 
-export function hireIn(tree: string, stage: string, key: string, hiring: Omit<Hire, "transcript">): (input: string, resume?: string) => Promise<Spent> {
+export function hireIn(tree: string, stage: string, key: string, hiring: Omit<Hire, "transcript">, env: Record<string, string> = {}): (input: string, resume?: string) => Promise<Spent> {
   const spend = spending({ ...hiring, transcript: transcriptOf(stage, key) });
-  const launched = launchedIn(tree);
+  const launched = launchedIn(tree, env);
   return async (input, resume) => {
     const steps = spend(input, resume);
     for (let step = steps.next(); ; step = steps.next(await launched(step.value))) if (step.done === true) return step.value;
