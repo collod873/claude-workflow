@@ -10,7 +10,7 @@ const LOOKS = `case "$*" in\n  *"issue list"*) printf '[]\\n'; exit 0 ;;\n  *con
 const RECORDS = `${LOOKS}python3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "$@" >>"$PWD/gh-argv"\nprintf '%s\\n' ${URL}\n`;
 const REFUSES = `${LOOKS}printf 'nothing filed\\n' >&2\nexit 1\n`;
 const UNSTAMPED = "file-issue: CLAUDE_CODE_SESSION_ID is empty, so the filing names no session\n";
-const USAGE = "file-issue: usage: file-issue idea|look-into|build|bug|spec|owner --title <title> --body-file <path> [--new]\n       file-issue add <number> --body-file <path>";
+const USAGE = "file-issue: usage: file-issue idea|look-into|build|bug|spec|owner --title <title> --body-file <path> [--new] [--repo <owner/name>]\n       file-issue add <number> --body-file <path> [--repo <owner/name>]";
 const WAITS = "this repo is not enrolled: a build, bug or spec waits for a session to take it.\n";
 const NOTE_CALL = ["idea", "--title", "What the audit found", "--body-file", "body.md"];
 const BUG_CALL = ["bug", "--title", "check-gate crashes on a contract with no steps", "--body-file", "body.md"];
@@ -228,6 +228,33 @@ describe("bin/file-issue reads the open issues first, so the same job is not fil
 
 });
 
+const RECORDS_REPO = `printf '%s\\n' "\${GH_REPO:-}" >>"$PWD/gh-repo"\ncase "$*" in *"issue view"*) printf 'OPEN\\n'; exit 0 ;; esac\n${RECORDS}`;
+const reposSaw = (repo: string) => [...new Set(readFileSync(join(repo, "gh-repo"), "utf8").trim().split("\n"))];
+
+describe("bin/file-issue files on the repo it is run in, not the one GH_REPO names (#1628)", () => {
+  it("files in the clone's own repo when the runner's GH_REPO names another", () => {
+    const { repo, run } = filing({ gh: RECORDS_REPO, body: wellFormedTicket, origin: "https://github.com/collod873/design-kit.git", ghRepo: "collod873/Mezzanine" });
+
+    expect(run()).toMatchObject({ status: 0, stdout: `${URL}\n` });
+    expect(reposSaw(repo)).toEqual(["collod873/design-kit"]);
+  });
+
+  it("files where --repo says, over both GH_REPO and the clone's remote, add included", () => {
+    const { repo, run } = filing({ gh: RECORDS_REPO, body: wellFormedTicket, origin: "git@github.com:collod873/design-kit.git", ghRepo: "collod873/Mezzanine" });
+
+    expect(run(["build", "--title", "A ticket", "--body-file", "body.md", "--repo", "collod873/agent-skills"])).toMatchObject({ status: 0, stdout: `${URL}\n`, stderr: `agent-skills is not enrolled: a build, bug or spec waits for a session to take it.\n${UNSTAMPED}` });
+    expect(run(["add", "412", "--repo", "collod873/agent-skills", "--body-file", "body.md"])).toMatchObject({ status: 0, stdout: `${URL}\n` });
+    expect(reposSaw(repo)).toEqual(["collod873/agent-skills"]);
+  });
+
+  it("refuses a --repo that is not owner/name without reaching gh", () => {
+    const { repo, run } = filing({ gh: RECORDS_REPO, body: wellFormedTicket });
+
+    expect(run(["build", "--title", "A ticket", "--body-file", "body.md", "--repo", "design-kit"])).toMatchObject({ status: 2, stderr: `${USAGE}\n` });
+    expect(existsSync(join(repo, "gh-repo"))).toBe(false);
+  });
+});
+
 describe("bin/file-issue --help runs no gh, since gh writes its state under HOME on a first run and --help writes nothing (#1581)", () => {
   it("prints its help without calling gh", () => {
     const { repo, run } = filing({ gh: `printf 'called\\n' >>"$PWD/gh-argv"\nexit 0\n`, body: wellFormedTicket });
@@ -246,5 +273,11 @@ describe("bin/file-issue --help runs no gh, since gh writes its state under HOME
 
     expect(opening).toBe("file-issue: file a GitHub issue of one kind (idea, look-into, build, bug, spec, owner) on the repo you're in.");
     expect(usage).toBe(USAGE.split("\n")[0]);
+  });
+
+  it("says --repo files on the named repo over the clone's remote and GH_REPO", () => {
+    const { run } = filing({ gh: "exit 1\n", body: wellFormedTicket });
+
+    expect(run(["--help"]).stdout).toMatch(/^--repo <owner\/name>: /m);
   });
 });

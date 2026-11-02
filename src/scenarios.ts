@@ -471,22 +471,27 @@ export function filing({
   body,
   title = "A ticket the machine can build",
   sessionId,
+  origin,
+  ghRepo,
 }: {
   gh: string;
   body: string;
   title?: string;
   sessionId?: string;
+  origin?: string;
+  ghRepo?: string;
 }) {
   const root = scratch("file-issue-");
   const repo = join(root, "repo");
   mkdirSync(repo, { recursive: true });
   git(repo, "init", "--quiet", "--initial-branch=main");
+  if (origin !== undefined) git(repo, "remote", "add", "origin", origin);
   writeFileSync(join(repo, "body.md"), body);
   script(join(root, "bin", "gh"), gh);
   return {
     repo,
     run: (args = ["build", "--title", title, "--body-file", "body.md"]) =>
-      execute(join(BIN, "file-issue"), repo, { PATH: `${join(root, "bin")}:${process.env.PATH}`, ...(sessionId === undefined ? {} : { CLAUDE_CODE_SESSION_ID: sessionId }) }, args),
+      execute(join(BIN, "file-issue"), repo, { PATH: `${join(root, "bin")}:${process.env.PATH}`, ...(sessionId === undefined ? {} : { CLAUDE_CODE_SESSION_ID: sessionId }), GH_REPO: ghRepo ?? "" }, args),
   };
 }
 

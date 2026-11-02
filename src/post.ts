@@ -168,7 +168,8 @@ const DOOR: Record<string, DoorKind> = {
   owner: { files: "owner", says: OWNER_SHAPE },
 };
 
-const DOOR_USAGE = `file-issue: usage: file-issue ${Object.keys(DOOR).join("|")} --title <title> --body-file <path> [${NEW}]\n       file-issue add <number> --body-file <path>`;
+const REPO = "--repo <owner/name>";
+const DOOR_USAGE = `file-issue: usage: file-issue ${Object.keys(DOOR).join("|")} --title <title> --body-file <path> [${NEW}] [${REPO}]\n       file-issue add <number> --body-file <path> [${REPO}]`;
 
 const doorHelp = (): string[] => [
   `file-issue: file a GitHub issue of one kind (${Object.keys(DOOR).join(", ")}) on the repo you're in.`,
@@ -178,6 +179,7 @@ const doorHelp = (): string[] => [
   "Before filing, it reads the repo's open issues and stops on a title that may be the same job, listing each for you to read.",
   "add: your new evidence goes onto an open issue as a comment, for a match that is the same job.",
   `${NEW}: files anyway, for a match that is a different job.`,
+  `${REPO}: files on that repo instead of the one this clone's origin names, whatever GH_REPO says.`,
   ...Object.entries(DOOR).map(([kind, { says }]) => `${kind}: ${says}`),
 ];
 

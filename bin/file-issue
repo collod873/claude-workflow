@@ -17,6 +17,7 @@ shift 2>/dev/null
 title=""
 body=""
 new=""
+repo=""
 if [[ $kind == add ]]; then
   title=${1:-}
   shift 2>/dev/null
@@ -28,6 +29,7 @@ while (( $# > 0 )); do
     --title) [[ $kind == add ]] && break; title=${2:-}; shift 2 || break ;;
     --body-file) body=${2:-}; shift 2 || break ;;
     --new) [[ $kind == add ]] && break; new=--new; shift ;;
+    --repo) repo=${2:-}; [[ $repo =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || break; shift 2 ;;
     *) break ;;
   esac
 done
@@ -38,6 +40,10 @@ if [[ -z $kind || $kinds != *"|$kind|"* || -z $title || -z $body || ! -f $body |
 fi
 
 top=$(git rev-parse --show-toplevel) || exit 1
+if [[ -z $repo ]] && origin=$(git -C "$top" remote get-url origin 2>/dev/null) && [[ $origin =~ github\.com[:/]([^/]+/[^/]+)$ ]]; then
+  repo=${BASH_REMATCH[1]%.git}
+fi
+[[ -n $repo ]] && export GH_REPO=$repo
 log="$(git rev-parse --path-format=absolute --git-common-dir)/machine-logs/file-issue-$$.log"
 mkdir -p "${log%/*}"
 [[ $log == "$top/"* ]] && shown="${log#"$top/"}" || shown="$log"
