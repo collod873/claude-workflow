@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DIFF_CAP, LIST_CAP, TAIL_CAP } from "./brief.ts";
 import { specWith } from "./done-checker.part.ts";
-import { BRIEFS_CAP, onTheCode, onTheSpec, SLICE_CAP } from "./finish.ts";
+import { BRIEFS_CAP, ONE_REVIEWER_CAP, onTheCode, onTheSpec, SLICE_CAP } from "./finish.ts";
 import { authored, BIN, execute, ghArgv, git, key, nulSplit, plant, type Said, scratch, script } from "./scenarios.ts";
 import { PAUSED } from "./spelled.ts";
 import { declareStage, HANDED_ON } from "./stages.ts";
@@ -33,6 +33,9 @@ export function finishing({
   land = "",
   said = [] as Said[],
   appKeyed = false,
+  contract = undefined as string | undefined,
+  overlapped = false,
+  tryRefused = false,
 } = {}) {
   const root = scratch("finish-");
   const session = join(root, "session");
@@ -43,6 +46,7 @@ export function finishing({
   const tokens = join(root, "tokens");
   const lands = join(root, "lands");
   const approvals = join(root, "approvals");
+  const triesDir = join(root, "tries");
   const checks = join(root, "checks");
   const marks = join(root, "marks");
   const origin = join(root, "origin.git");
@@ -51,6 +55,7 @@ export function finishing({
   git(session, "config", "user.email", "builder@test");
   git(session, "config", "user.name", "builder");
   plant(session, "README.md", "what the spec stands on\n");
+  if (contract !== undefined) plant(session, ".claude/contract.json", contract);
   git(session, "add", ".");
   git(session, "commit", "--quiet", "-m", "what the spec stands on");
   git(root, "init", "--quiet", "--bare", origin);
@@ -69,24 +74,32 @@ export function finishing({
   script(
     join(bin, "claude"),
     [
-      `mkdir -p "${prompts}" "${hires}" "${wheres}"`,
+      `mkdir -p "${prompts}" "${hires}" "${wheres}" "${triesDir}"`,
+      `ASKED=$(mktemp "${root}/asked.XXXXXX")`,
+      'cat >"$ASKED"',
       `exec 9>"${join(root, "claude.lock")}"`,
       "flock 9",
+      `if grep -q '^Try each sentence' "$ASKED"; then`,
+      `  TRY=$(( $(ls "${triesDir}" | grep -vc '\\.') + 1 ))`,
+      `  mv "$ASKED" "${triesDir}/$TRY"`,
+      `  { pwd; git rev-parse HEAD; } >"${triesDir}/$TRY.where"`,
+      "  flock -u 9",
+      ...(overlapped ? [`  touch "${join(root, "trying")}"`, `  for _ in $(seq 100); do [ -f "${join(root, "checked")}" ] && break; sleep 0.1; done`] : []),
+      ...(tryRefused ? ["  exit 3"] : []),
+      `  cat <<'TRIES'\n${answering({ tries })}TRIES`,
+      "  exit 0",
+      "fi",
       `CALL=$(( $(ls "${prompts}" | wc -l) + 1 ))`,
       `printf '%s\\0' "$@" >"${hires}/$CALL"`,
-      `cat >"${prompts}/$CALL"`,
+      `mv "$ASKED" "${prompts}/$CALL"`,
       `pwd >"${wheres}/$CALL"`,
       "flock -u 9",
       `ROOT="${root}"`,
       `PROMPT="${prompts}/$CALL"`,
-      `if grep -q '^Try each sentence' "${prompts}/$CALL"; then`,
-      `  cat <<'TRIES'\n${answering({ tries })}TRIES`,
-      "else",
       reviewer,
       ...(answerFrom === undefined
-        ? [`  cat <<ANSWER\n${answering(answer)}ANSWER`]
-        : [`  if [ "$CALL" -ge ${answerFrom.call} ]; then`, `  cat <<ANSWER\n${answering(answerFrom.answer)}ANSWER`, "  else", `  cat <<ANSWER\n${answering(answer)}ANSWER`, "  fi"]),
-      "fi",
+        ? [`cat <<ANSWER\n${answering(answer)}ANSWER`]
+        : [`if [ "$CALL" -ge ${answerFrom.call} ]; then`, `cat <<ANSWER\n${answering(answerFrom.answer)}ANSWER`, "else", `cat <<ANSWER\n${answering(answer)}ANSWER`, "fi"]),
       "",
     ].join("\n"),
   );
@@ -109,9 +122,11 @@ export function finishing({
       "",
     ].join("\n"),
   );
-  script(join(bin, "check"), `printf '%s\\n' "$*" >>"${checks}"\n${check}`);
+  const overlap = overlapped ? `for _ in $(seq 100); do [ -f "${join(root, "trying")}" ] && break; sleep 0.1; done\n[ -f "${join(root, "trying")}" ] && touch "${join(root, "checked")}"\n` : "";
+  script(join(bin, "check"), `printf '%s\\n' "$*" >>"${checks}"\n${overlap}${check}`);
+  script(join(bin, "done-check"), `exec "${join(BIN, "done-check")}" "$@"\n`);
   script(join(bin, "mark"), `printf '%s\\n' "$*" >>"${marks}"\n`);
-  script(join(bin, "land"), `printf '%s %s %s\\n' "\${GH_TOKEN:-}" "$(git rev-parse HEAD)" "$1 $2" >>"${lands}"\nprintf '%s\\0' "$4" >>"${approvals}"\n${land}\nprintf 'Landed ${FINISHED_PR}\\n'\n`);
+  script(join(bin, "land"), `ls "${join(root, "gh-argv")}" | wc -l >>"${join(root, "gh-calls-at-land")}"\nprintf '%s %s %s\\n' "\${GH_TOKEN:-}" "$(git rev-parse HEAD)" "$1 $2" >>"${lands}"\nprintf '%s\\0' "$4" >>"${approvals}"\n${land}\nprintf 'Landed ${FINISHED_PR}\\n'\n`);
   const keyFile = join(root, "app-key.json");
   if (appKeyed) plant(root, "app-key.json", JSON.stringify({ clientId: "Iv1.finish", key: key() }));
   const listed = (file: string) => (existsSync(file) ? readFileSync(file, "utf8").trimEnd().split("\n") : []);
@@ -120,6 +135,10 @@ export function finishing({
     root,
     session,
     handed: () => numbered(prompts),
+    tried: () => (existsSync(triesDir) ? readdirSync(triesDir).filter((name) => !name.includes(".")).map((_, at) => readFileSync(join(triesDir, String(at + 1)), "utf8")) : []),
+    triedAt: () => (existsSync(triesDir) ? readdirSync(triesDir).filter((name) => name.endsWith(".where")).map((_, at) => readFileSync(join(triesDir, `${at + 1}.where`), "utf8").trim().split("\n")) : []),
+    ghCallsAtLand: () => listed(join(root, "gh-calls-at-land")).map(Number),
+    overlapped: () => existsSync(join(root, "checked")),
     wheres: () => numbered(wheres).map((where) => where.trim()),
     hired: () => numbered(hires).map((argv) => argv.split("\0").filter((part) => part !== "")),
     landed: () => listed(lands).map((line) => line.split(" ")),
@@ -151,8 +170,8 @@ declareStage({
     {
       name: "reviewer on the spec",
       file: "src/finish.ts",
-      cap: SPEC_CAP + LIST_CAP + DIFF_CAP + BRIEFS_CAP + 2 * HANDED_ON,
-      slots: ["commits", "diff", "stat", "title", "body", "briefs"],
+      cap: SPEC_CAP + LIST_CAP + ONE_REVIEWER_CAP + BRIEFS_CAP + 2 * SLICE_CAP + 2 * HANDED_ON,
+      slots: ["slice", "commits", "diff", "stat", "title", "body", "briefs"],
       build: (filled) => onTheSpec(changesOf(filled), { spec: "", title: filled.title ?? "", body: filled.body ?? "", commitlint: true, briefs: filled.briefs ?? "" }),
     },
   ],

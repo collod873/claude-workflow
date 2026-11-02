@@ -7,6 +7,7 @@ import { capped, LIST_CAP } from "./brief.ts";
 import { parkedBehind } from "./builder.ts";
 import { park } from "./issue-links.ts";
 import { askedIssue, commentEdited, commentOnTicket, gh, ghRead, git, gitRead, heldOn, labelsHeld, machineBin, mark, OWNER, readOrStop, rebuiltOnMain, rebuiltRef, STUCK, unread } from "./post.ts";
+import type { Try } from "./done-checker.ts";
 import type { Slice } from "./slicer.ts";
 import { BUILDING, MACHINE, SPEC, SPEC_PREFIX } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
@@ -40,6 +41,8 @@ interface Tracked extends Slice {
 export interface Progress {
   landed?: string | undefined;
   slices: Tracked[];
+  tries?: Try[] | undefined;
+  fixed?: number[] | undefined;
 }
 
 interface Built {
@@ -107,6 +110,12 @@ function posted(spec: string, found: Found): void {
   const [refusal] = written.refusals;
   if (refusal !== undefined) unread(`the progress comment on #${spec} would not post: ${quoted(refusal)}`);
   found.url ??= written.said;
+}
+
+export function triedOn(spec: string, found: Found, { tries, fixed }: { tries: Try[]; fixed: number[] }): void {
+  found.progress.tries = tries.map((one) => ({ ...one, tried: capped(one.tried, LEFT_CAP) }));
+  found.progress.fixed = fixed;
+  posted(spec, found);
 }
 
 export function landedOn(spec: string, found: Found, pr: string): void {

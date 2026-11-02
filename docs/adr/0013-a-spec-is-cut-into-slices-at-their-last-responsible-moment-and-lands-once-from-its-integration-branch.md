@@ -11,9 +11,10 @@ seams first, then each tracer-bullet slice at its last responsible moment, once 
 blocked by has merged, reading names and files off the branch as built. The scheduler hires a fresh
 builder for each slice on the frontier, three at once; a builder is done when its branch
 fast-forwards the integration branch. A slice too big for its builder goes back to the slicer as
-what is left. Once no slice is left, the full check, review, `bin/land` and the done check each run
-once over the whole branch, as ADR-0012 does for a ticket; each sentence the done check misses is
-filed as a bug, and the spec closes. Work is a spec when its slices add up to
+what is left. Once no slice is left, review, the done check, the full check and `bin/land` each run
+once over the whole branch, as ADR-0012 does for a ticket. The done check tries each sentence on the
+integration branch before it lands: a miss its last reviewer fixes lands with the spec, one it
+cannot is filed as a bug, and the spec closes on landing. Work is a spec when its slices add up to
 one outcome the owner could try; anything else is a ticket.
 
 **Rejected: an agent orchestrating the spec, or slicing it all up front.** The orchestrator's
