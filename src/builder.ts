@@ -298,7 +298,7 @@ export function filedInRepo(repo: string, origin: string, outcome: string, unfil
   return { filed: said.filter((one) => FILED.test(one)), all: said.every((one) => FILED.test(one)) };
 }
 
-const isOpen = (url: string, ticket: string) => ghRead(["issue", "view", url, "--json", "state", "--jq", ".state"], `the state of ${url} could not be read, so #${ticket} stays waiting`) === "OPEN";
+const isOpen = (url: string, so: string) => ghRead(["issue", "view", url, "--json", "state", "--jq", ".state"], `the state of ${url} could not be read, ${so}`) === "OPEN";
 
 function filedToWaitOn(ticket: string, answer: Answer, { repo, filedFrom, unfiled }: Handing, named: number[] = []): Round {
   const handed = named.length > 0 && (answer.tickets ?? []).length === 0 ? { filed: [], all: true } : filedInRepo(repo, filedFrom(`${process.env.GH_REPO ?? ""}#${ticket}`), answer.outcome, unfiled, answer.tickets);
@@ -308,7 +308,7 @@ function filedToWaitOn(ticket: string, answer: Answer, { repo, filedFrom, unfile
   const numbers = [...named, ...filed.map((url) => Number(FILED_NUMBER.exec(url)?.[1]))];
   park(ticket, numbers.map((number) => ({ repo, number })));
   commentOnTicket(ticket, `${parkedBehind(ticket, numbers.map((number) => `${repo}#${number}`))} ${answer.reason}`, gh);
-  const open = filed.filter((url) => isOpen(url, ticket));
+  const open = filed.filter((url) => isOpen(url, `so #${ticket} stays waiting`));
   if (open.length === 0 && named.length === 0) return closedBeforeParked(ticket, filed);
   console.log(`fix: #${ticket} waits on ${numbers.map((number) => `${repo}#${number}`).join(", ")}`);
   return { ended: 0 };
@@ -323,7 +323,7 @@ function closedBeforeParked(ticket: string, filed: string[]): Round {
 
 function filedForMachine(ticket: string, answer: Answer): Round {
   const named = [...new Set(answer.on ?? [])];
-  const closed = named.filter((number) => !isOpen(`https://github.com/${MACHINE_REPO}/issues/${number}`, ticket));
+  const closed = named.filter((number) => !isOpen(`https://github.com/${MACHINE_REPO}/issues/${number}`, NOTHING_MARKED));
   if (closed.length > 0) return { red: `Your \`machine\` answer was refused, and nothing was filed: ${closed.map((number) => `${MACHINE_REPO}#${number}`).join(", ")} is closed already, so build on what it left.` };
   return filedToWaitOn(ticket, answer, { repo: MACHINE_REPO, filedFrom: (origin) => fromLine(origin, "fault"), unfiled: "a `machine` answer from a tree that is not the machine's files the machine's fault as one ticket or more in `tickets`, or names the open machine tickets it waits on as `on`" }, named);
 }

@@ -1,7 +1,7 @@
-import { type Admission, commentOnTicket, commentsRead, type From, fromOf, gh, type Gh, ghAs, heldOf, type Opened, opened, OWNER, readOrStop, RESEARCH, unread } from "./post.ts";
+import { type Admission, commentOnTicket, commentsRead, type From, fromOf, gh, type Gh, ghAs, heldOf, type Opened, opened, OWNER, readOrStop, RESEARCH, stoodDown, unread } from "./post.ts";
 import { dedashed } from "./em-dash.ts";
 import { parentOf } from "./issue-links.ts";
-import { HELD, WAITING } from "./spelled.ts";
+import { WAITING } from "./spelled.ts";
 import { exitFor } from "./stops.ts";
 
 export const doesNotBuild = (ticket: string, refused: string) =>
@@ -84,14 +84,10 @@ function waitingTold(ticket: string, from: From | undefined, refused: string): v
   toldOnce(origin, text, ghAs({ ...process.env, GH_REPO: repo }), `${repo}#${origin}`);
 }
 
-const STANDING_DOWN = [WAITING, ...HELD];
-
 function stoodDownBy(asked: Opened | "missing"): string | undefined {
   if (asked === "missing") return undefined;
-  if (asked.state === "closed") return "is closed";
   const labels = heldOf(asked.labels);
-  const held = STANDING_DOWN.find((label) => labels.has(label));
-  return held === undefined ? undefined : `is marked ${held}`;
+  return stoodDown({ labels, closed: asked.state === "closed" }) ?? (labels.has(WAITING) ? `is marked ${WAITING}` : undefined);
 }
 
 function admit(ticket: string): undefined {
