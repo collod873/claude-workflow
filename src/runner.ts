@@ -9,9 +9,12 @@ const USER = "ghrunner";
 const HOME = `/home/${USER}`;
 const NODE = `${HOME}/node`;
 const GH = `${HOME}/gh`;
-const PATH = `${NODE}/bin:${GH}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`;
+const UV = `${HOME}/uv`;
+const UV_VERSION = "0.11.32";
+const PATH = `${NODE}/bin:${GH}/bin:${UV}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`;
 const NODE_RELEASES = "https://nodejs.org/dist";
 const GH_RELEASES = "https://github.com/cli/cli/releases/download";
+const UV_RELEASES = "https://github.com/astral-sh/uv/releases/download";
 const RUNNER_RELEASES = "https://github.com/actions/runner/releases/download";
 const WAIT_SECONDS = Number(process.env.RUNNER_WAIT_SECONDS ?? "60");
 const PROC = process.env.RUNNER_PROC ?? "/proc";
@@ -105,6 +108,11 @@ function provisionGh(): void {
   const version = gh(["api", "repos/cli/cli/releases/latest", "--jq", ".tag_name"]).trim().replace(/^v/, "");
   const tarball = `${GH_RELEASES}/v${version}/gh_${version}_linux_amd64.tar.gz`;
   asRunnerUser(`${GH}/bin/gh --version 2>/dev/null | grep -qF 'gh version ${version} ' || { rm -rf ${GH}.next && mkdir -p ${GH}.next && curl -fsSL ${tarball} | tar -xz --strip-components 1 -C ${GH}.next && rm -rf ${GH} && mv ${GH}.next ${GH}; }`);
+}
+
+function provisionUv(): void {
+  const tarball = `${UV_RELEASES}/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz`;
+  asRunnerUser(`[ "$(${UV}/bin/uv --version 2>/dev/null | cut -d' ' -f2)" = ${UV_VERSION} ] || { rm -rf ${UV}.next && mkdir -p ${UV}.next/bin && curl -fsSL ${tarball} | tar -xz --strip-components 1 -C ${UV}.next/bin && rm -rf ${UV} && mv ${UV}.next ${UV}; }`);
 }
 
 const dirOf = (repo: string, name: string) => `${HOME}/runners/${repo.replace("/", "-")}/${name}`;
@@ -221,6 +229,7 @@ function toPc(repo: string, asked: number | undefined): string {
   provisionUser();
   provisionNode();
   provisionGh();
+  provisionUv();
   provisionEarlyoom();
   for (const name of missing) install(repo, name, LABEL);
   const settled = names.map((name) => ({ name, as: settle(repo, name, registered.get(name) === true && running(repo, name)) }));
