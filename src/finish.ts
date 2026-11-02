@@ -2,7 +2,7 @@ import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { capped, DIFF_CAP, diffOverCap, LIST_CAP, NO_EM_DASH, onDisk, TAIL_CAP, tailOf } from "./brief.ts";
+import { capped, DIFF_CAP, diffOverCap, LIST_CAP, listedCapped, NO_EM_DASH, onDisk, TAIL_CAP, tailOf } from "./brief.ts";
 import { checkedByAsync, type Red, starvedFault } from "./builder.ts";
 import { PUBLISHED_CHECK } from "./checks.ts";
 import { type Checked, type Stop, calledOwner as doneCheckCalledOwner, doneCheck, paired, postedOn, triedIn, type Try } from "./done-checker.ts";
@@ -52,7 +52,7 @@ export interface Changes {
 
 const UNSLICED = "";
 const sliceNamed = (slice: string) => (slice === UNSLICED ? "the commits naming no slice" : `slice \`${capped(slice, SLICE_CAP)}\``);
-const slicesNamed = (slices: string[]) => capped(new Intl.ListFormat("en").format(slices.map(sliceNamed)), LIST_CAP);
+const slicesNamed = (slices: string[]) => listedCapped(slices.map(sliceNamed));
 const alone = ({ slices }: Changes) =>
   slices === undefined
     ? []

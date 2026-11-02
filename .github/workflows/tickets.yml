@@ -101,11 +101,8 @@ jobs:
       - id: npm-ci
         run: npm ci
 
-      - id: database
-        uses: ./.github/actions/database
-
-      - id: keys
-        uses: ./.github/actions/keys
+      - id: needs
+        uses: ./.github/actions/needs
         with:
           secrets: ${{ toJSON(secrets) }}
 
@@ -311,11 +308,8 @@ jobs:
       - id: npm-ci
         run: npm ci
 
-      - id: database
-        uses: ./.github/actions/database
-
-      - id: keys
-        uses: ./.github/actions/keys
+      - id: needs
+        uses: ./.github/actions/needs
         with:
           secrets: ${{ toJSON(secrets) }}
 

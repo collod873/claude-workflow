@@ -52,6 +52,16 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
     expect(landed()).toEqual([`${log("-1", "--format=%H")} --ticket 811 --approved it builds the Why`]);
   });
 
+  it("tells the builder each key the repo's contract names that its secrets lack, so it proves that code against a stand-in and names the key for the owner (#1626)", () => {
+    const told = fixing({ claude: FIXES, unsetKeys: "STRIPE_SECRET_KEY,RESEND_API_KEY" });
+    const plain = fixing({ claude: FIXES });
+
+    expect(told.run("811").status).toBe(0);
+    expect(plain.run("811").status).toBe(0);
+    expect(told.handed()[0]).toContain("The repo's contract names `STRIPE_SECRET_KEY` and `RESEND_API_KEY`, which its secrets lack");
+    expect(plain.handed()[0]).not.toContain("which its secrets lack");
+  });
+
   it("builds a ticket marked building, commits it as a build, and once green hands it to review and lands it (#931)", () => {
     const { run, handed, marked, landed, log } = fixing({ claude: FIXES });
 

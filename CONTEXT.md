@@ -101,9 +101,12 @@ holds it (ADR-0008).
 _Avoid_: gate (for a step), gauntlet, a repo-local check script, static check
 
 **Keys**:
-The secrets a repo's contract names in its `needs` list, beside its steps. Every job that runs a stage
-hands each one the repo's secrets hold to its stages, so the builder and the done check see what the
-app sees, and names the rest in `UNSET_KEYS`, which the done check puts to the owner in one line.
+The secrets a repo's contract names in its `needs` list, beside its steps. That list is what the tree
+needs from outside: `DATABASE_URL` there, or under any step's `needs`, gets its own Postgres, and every
+other name is a key. One `needs` step in every job that runs a stage hands each key the repo's secrets
+hold to its stages, so the builders and the done check see what the app sees, and names the rest in
+`UNSET_KEYS`: a builder proves code resting on one against a stand-in and names the key, and the done
+check puts a sentence resting on one to the owner.
 _Avoid_: env, credentials, test keys
 
 **Meter**:

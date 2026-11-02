@@ -21,6 +21,8 @@ export function tailOf(text: string, limit: number): string {
 export const DIFF_CAP = 32 * 1024;
 export const TICKET_CAP = 8 * 1024;
 export const LIST_CAP = 4 * 1024;
+
+export const listedCapped = (items: string[]) => capped(new Intl.ListFormat("en").format(items), LIST_CAP);
 export const TAIL_CAP = 8 * 1024;
 export const NO_EM_DASH = "^[^\\u2014]*$";
 

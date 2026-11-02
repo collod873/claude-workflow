@@ -7,12 +7,12 @@ import { setTimeout } from "node:timers/promises";
 import { parseArgs } from "node:util";
 import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
 import { capped, LIST_CAP, NO_EM_DASH, onDisk, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
-import { checkedBy, filedInRepo, OWNED_ANSWER, ownedRefusal, type Piece, type Red, spentOn } from "./builder.ts";
+import { BUILDING_WITHOUT_KEYS, checkedBy, filedInRepo, OWNED_ANSWER, ownedRefusal, type Piece, type Red, spentOn } from "./builder.ts";
 import { FAST_CHECK } from "./checks.ts";
 import { LEFT_CAP } from "./scheduler.ts";
 import { SLICE_ID } from "./slicer.ts";
 import { fromLine, gh, git, gitRead, rebuiltOnMain, rebuiltRef, Stopped, unread } from "./post.ts";
-import { commitlinted, committed, CONTRACT, hire, setupRefusal } from "./stage.ts";
+import { commitlinted, committed, CONTRACT, hire, keysLacking, setupRefusal, treeNeeds, unsetKeys } from "./stage.ts";
 
 const USAGE = "build-slice: usage: build-slice --spec <N> --slice <id> --brief <file> --onto <integration ref> [--resume <session>] [--told <text> | --out-of-time | --answer <its answer's JSON, to land again>]";
 
@@ -65,12 +65,13 @@ export const CARRY_ON = "Your last run on this slice stopped before it answered.
 
 export const OUT_OF_TIME = "Your time on this slice is up. Build nothing more: commit what holds and answer `partial`, with `left` naming each `## Done when` sentence that does not hold yet, or `built` if every one holds.";
 
-export function handedOn({ brief, onto, commitlint }: { brief: string; onto: string; commitlint: boolean }): string {
+export function handedOn({ brief, onto, commitlint, unset = [] }: { brief: string; onto: string; commitlint: boolean; unset?: string[] }): string {
   return [
     capped(brief.trimEnd(), TICKET_CAP),
     "## Build it",
     "Ship the slice's Why whole on every path you touch, in the smallest diff; `## Done when` is its floor. Settle open choices yourself as its senior engineer. Call the Skill tool with `tdd`, to its end. Commit as you go: a why per message, no em dash, no `Fixes #12`.",
     ...(commitlint ? ["Commitlint runs here: each message is `type: subject`, a conventional type, lower-case."] : []),
+    ...keysLacking(unset, BUILDING_WITHOUT_KEYS),
     "## Your answer",
     `- \`built\`: the machine commits the rest, rebases onto \`${onto}\`, runs \`${FAST_CHECK}\` and hands back each red or conflict until it fast-forwards \`${onto}\` green.`,
     "- `partial`: too big for one build; commit what holds, with `left` naming each `## Done when` sentence not yet holding, for the slicer to cut again. Same check.",
@@ -167,11 +168,6 @@ export interface Isolation {
   DATABASE_URL?: string;
 }
 
-function needsDatabase(contract: string): boolean {
-  const { steps } = JSON.parse(contract || "{}") as { steps?: Record<string, { needs?: string[] }> };
-  return Object.values(steps ?? {}).some((step) => step.needs?.includes("DATABASE_URL") === true);
-}
-
 const dockerNow = (args: string[]) => spawnSync("docker", args, { encoding: "utf8" });
 const docker = (args: string[]) =>
   new Promise<{ status: number; stdout: string; stderr: string }>((resolve) => {
@@ -214,7 +210,7 @@ export async function isolated(tree: string, names: string[], port: number): Pro
   const own = mkdtempSync(join(tmpdir(), "slice-"));
   onLeaving(() => rmSync(own, { recursive: true, force: true }));
   const isolation = { TMPDIR: own, PORT: String(port) };
-  if (!needsDatabase(onDisk(join(tree, CONTRACT)) ?? "")) return isolation;
+  if (!treeNeeds(onDisk(join(tree, CONTRACT)) ?? "").database) return isolation;
   const database = await ownDatabase(named("database", process.env.GITHUB_REPOSITORY ?? "", process.env.RUNNER_NAME ?? "", ...names));
   return typeof database === "string" ? database : { ...isolation, ...database };
 }
@@ -301,7 +297,7 @@ function built(slicing: Slicing, app: AppKey | undefined): Ending {
   const file = sessionFile(slicing);
   const spend = hire("build-slice", named(spec, slice), { name: "slice builder", model: "opus", answers: ANSWER, writeUp: { minutes: WRITE_UP_MINUTES, told: OUT_OF_TIME } });
   const brief = onDisk(slicing.brief) ?? unread(`the brief ${slicing.brief} could not be read, so no builder was hired`);
-  const opening = handedOn({ ...slicing, brief, commitlint: commitlinted() });
+  const opening = handedOn({ ...slicing, brief, commitlint: commitlinted(), unset: unsetKeys() });
   let session = slicing.resume ?? savedSession(file);
   let input = slicing.told ?? (slicing.outOfTime ? OUT_OF_TIME : session === undefined ? opening : CARRY_ON);
   let left = "";

@@ -93,6 +93,7 @@ export function fixing({
   openTickets = [] as { number: number; title: string; body: string }[],
   appKeyFile = undefined as string | undefined,
   filedState = "OPEN",
+  unsetKeys = "",
 } = {}) {
   const root = scratch("builder-");
   const session = join(root, "session");
@@ -207,7 +208,7 @@ export function fixing({
     captured: (name: string) => join(root, "captures", name),
     log: (...args: string[]) => git(session, "log", ...args),
     run: (...args: string[]) =>
-      execute(join(BIN, "fix"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}`, HOME: home, MACHINE_BIN: machine, SESSION_CAPTURES: join(root, "captures"), STAGE_MINUTES: stageMinutes, ...(calledFrom === undefined ? {} : { CALLED_FROM: calledFrom, GH_REPO: repo }), ...(appKeyFile === undefined ? {} : { APP_KEY_FILE: appKeyFile, GH_TOKEN: "job-token" }), ...(Object.keys(treePath).length === 0 ? {} : { TREE_PATH: join(root, "tree-bin") }) }, args.length === 0 ? [ticket] : args),
+      execute(join(BIN, "fix"), session, { PATH: `${join(root, "bin")}:${process.env.PATH}`, HOME: home, MACHINE_BIN: machine, SESSION_CAPTURES: join(root, "captures"), STAGE_MINUTES: stageMinutes, UNSET_KEYS: unsetKeys, ...(calledFrom === undefined ? {} : { CALLED_FROM: calledFrom, GH_REPO: repo }), ...(appKeyFile === undefined ? {} : { APP_KEY_FILE: appKeyFile, GH_TOKEN: "job-token" }), ...(Object.keys(treePath).length === 0 ? {} : { TREE_PATH: join(root, "tree-bin") }) }, args.length === 0 ? [ticket] : args),
   };
 }
 
@@ -217,9 +218,9 @@ declareStage({
     {
       name: "builder building",
       file: "src/builder.ts",
-      cap: TICKET_CAP + LIST_CAP + 2 * HANDED_ON,
-      slots: ["body", "alongside"],
-      build: (filled) => handedOn({ ticket: "", body: filled.body ?? "", alongside: filled.alongside ?? "", commitlint: true, foreign: true }),
+      cap: TICKET_CAP + 2 * LIST_CAP + 2 * HANDED_ON,
+      slots: ["body", "alongside", "unset"],
+      build: (filled) => handedOn({ ticket: "", body: filled.body ?? "", alongside: filled.alongside ?? "", commitlint: true, foreign: true, unset: [filled.unset ?? "KEY"] }),
     },
     {
       name: "repair",

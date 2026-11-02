@@ -57,6 +57,13 @@ describe("a fresh builder builds one slice of a spec in its own worktree until i
     expect(fastForwards(log, ONTO)).toBe(true);
   });
 
+  it("tells the slice builder each key the repo's contract names that its secrets lack (#1626)", () => {
+    const told = slicing({ unsetKeys: "TWILIO_AUTH_TOKEN" });
+
+    expect(told.run().status).toBe(0);
+    expect(told.handed()[0]).toContain("The repo's contract names `TWILIO_AUTH_TOKEN`, which its secrets lack");
+  });
+
   it("puts the `Slice:` trailer on every commit past the integration branch, the builder's and the leftovers the machine commits, so the final reviewers can split the diff per slice", () => {
     const { run, log } = slicing({ claude: `${BUILDS}printf 'left over\\n' >src/left.ts\n` });
 
@@ -378,6 +385,13 @@ describe("three builders run at once in one runner job, each with its own Postgr
 
     expect(run().status).toBe(0);
     expect(dockered()[1]).toBe("rm --force c0ffee beef01 dead03");
+  });
+
+  it("starts it too when the contract's top-level needs names DATABASE_URL, read the same way the job's needs step reads it (#1626)", () => {
+    const { run, ranWith } = slicing({ contract: '{ "needs": ["DATABASE_URL"], "steps": { "integration": { "run": "true" } } }\n' });
+
+    expect(run().status).toBe(0);
+    expect(envOf(ranWith("claude")[0], "DATABASE_URL")).toBe("postgres://postgres:postgres@localhost:49153/postgres");
   });
 
   it("removes its Postgres when its builder ends stuck too", () => {

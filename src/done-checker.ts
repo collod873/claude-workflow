@@ -1,10 +1,10 @@
 import { postedUnderOrigin } from "./issue-links.ts";
 import { join } from "node:path";
 import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
-import { capped, LIST_CAP, NO_EM_DASH, onDisk, tailOf } from "./brief.ts";
+import { capped, NO_EM_DASH, onDisk, tailOf } from "./brief.ts";
 import { askedOn, authoredOn, commentOnTicket, followUpBody, fromHere, fromLine, FOREIGN, gh, mark, OWNER, post, readOrStop, STUCK, stoodDown, type Asked } from "./post.ts";
 import { freePort, isolated } from "./slice-builder.ts";
-import { CONTRACT, hireIn, opened, setupRefusal, setupRefusedIn, type Spent } from "./stage.ts";
+import { CONTRACT, hireIn, keysLacking, opened, setupRefusal, setupRefusedIn, type Spent, unsetKeys } from "./stage.ts";
 import { CHECKING, SPEC } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { quoted, type Sentence, sentences, SPEC_CAP } from "./ticket-shape.ts";
@@ -61,19 +61,13 @@ const RUNNING_THERE = `Here the running system is this checkout of the repo, rea
 const SELF =
   " `self`, without trying it, for a sentence about the spec closing itself or the owner being told which sentence did not hold: this run is the one that closes the spec and files each miss, so the machine settles it from the other sentences.";
 
-const unsetKeys = () => (process.env.UNSET_KEYS ?? "").split(",").map((key) => key.trim()).filter(Boolean);
-
-const lacking = (keys: string[]) =>
-  keys.length === 0
-    ? []
-    : [`The repo's contract names ${capped(new Intl.ListFormat("en").format(keys.map((key) => `\`${key}\``)), LIST_CAP)}, which its secrets lack, so this run has none of them: a sentence resting on one is \`owner\`, its \`tried\` naming the key to set as a repo secret.`];
 
 const numbered = (listed: Sentence[]) => listed.map(({ said }, at) => `${at + 1}. ${said}`).join("\n");
 
 export function handedOn(title: string, body: string, { replies = "", foreign = false, unset = [] }: { replies?: string; foreign?: boolean; unset?: string[] } = {}): string {
   return [
     `Try each sentence under \`## The sentences to try\` on the running system, not on its tests, and say how each came out. Read and run what you need, and leave the repo and GitHub as they are. ${foreign ? RUNNING_THERE : RUNNING_HERE}`,
-    ...lacking(unset),
+    ...keysLacking(unset, "a sentence resting on one is `owner`, its `tried` naming the key to set as a repo secret."),
     "## The spec",
     capped(`# ${title}\n\n${body}`, SPEC_CAP),
     ...answered(replies),

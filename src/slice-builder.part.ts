@@ -29,6 +29,7 @@ export function slicing({
   savedSession = undefined as string | undefined,
   containers = [] as string[][],
   root = scratch("slice-builder-"),
+  unsetKeys = "",
 } = {}) {
   const repo = join(root, "repo");
   const tree = join(root, slice);
@@ -89,7 +90,7 @@ export function slicing({
     readdirSync(dir)
       .sort((one, other) => Number(one) - Number(other))
       .map((call) => readFileSync(join(dir, call), "utf8"));
-  const env = { PATH: `${join(root, "bin")}:${process.env.PATH}`, HOME: home, TMPDIR: temp, RUNNER_TEMP: runnerTemp, GITHUB_RUN_ID: "7001", GITHUB_RUN_ATTEMPT: "1", GITHUB_REPOSITORY: "collod873/Lumaria", RUNNER_NAME: "GitHub Actions 7", STAGE_MINUTES: stageMinutes, ...(appKeyFile === undefined ? {} : { APP_KEY_FILE: appKeyFile, GH_TOKEN: "job-token" }) };
+  const env = { PATH: `${join(root, "bin")}:${process.env.PATH}`, HOME: home, TMPDIR: temp, RUNNER_TEMP: runnerTemp, GITHUB_RUN_ID: "7001", GITHUB_RUN_ATTEMPT: "1", GITHUB_REPOSITORY: "collod873/Lumaria", RUNNER_NAME: "GitHub Actions 7", STAGE_MINUTES: stageMinutes, UNSET_KEYS: unsetKeys, ...(appKeyFile === undefined ? {} : { APP_KEY_FILE: appKeyFile, GH_TOKEN: "job-token" }) };
   const argv = (extra: string[]) => ["--spec", SPEC, "--slice", slice, "--brief", join(root, `brief-${slice}.md`), "--onto", ONTO, ...extra];
   return {
     tree,
@@ -121,9 +122,9 @@ declareStage({
     {
       name: "slice builder building",
       file: "src/slice-builder.ts",
-      cap: TICKET_CAP + HANDED_ON,
-      slots: ["brief"],
-      build: (filled) => handedOn({ onto: "", brief: filled.brief ?? "", commitlint: true }),
+      cap: TICKET_CAP + LIST_CAP + HANDED_ON,
+      slots: ["brief", "unset"],
+      build: (filled) => handedOn({ onto: "", brief: filled.brief ?? "", commitlint: true, unset: [filled.unset ?? "KEY"] }),
     },
     { name: "slice repair", file: "src/slice-builder.ts", cap: TAIL_CAP + HANDED_ON, slots: ["failed"], build: (filled) => repaired({ verdict: "", failed: filled.failed ?? "" }) },
     { name: "slice conflict", file: "src/slice-builder.ts", cap: LIST_CAP + HANDED_ON, slots: ["files"], build: (filled) => conflicted("", filled.files ?? "") },

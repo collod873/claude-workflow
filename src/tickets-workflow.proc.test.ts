@@ -14,8 +14,8 @@ const CALLER = join(REPO, ".github", "caller.yml");
 const WORKFLOWS = join(REPO, ".github", "workflows");
 const APP = "${{ steps.app.outputs.token }}";
 const PINNED = join(REPO, ".github", "actions", "pinned", "action.yml");
-const DATABASE = join(REPO, ".github", "actions", "database", "action.yml");
-const KEYS = join(REPO, ".github", "actions", "keys", "action.yml");
+const NEEDS = join(REPO, ".github", "actions", "needs", "action.yml");
+const needsSteps = () => (parse(readFileSync(NEEDS, "utf8")) as { runs: { steps: (WorkflowStep & { "working-directory"?: string })[] } }).runs.steps;
 
 interface Caller {
   name: string;
@@ -385,7 +385,6 @@ describe("a repo's tickets build through one caller file that holds only trigger
   });
 
   describe("gives the builder the Postgres a step of the tree's contract needs as DATABASE_URL, so its check runs that step and leaves its receipt (#1202)", () => {
-    const databaseSteps = () => (parse(readFileSync(DATABASE, "utf8")) as { runs: { steps: (WorkflowStep & { "working-directory"?: string })[] } }).runs.steps;
     const readied = (contract: string | undefined, { stale = false } = {}) => {
       const root = scratch("database-");
       const calls = join(root, "calls");
@@ -394,9 +393,9 @@ describe("a repo's tickets build through one caller file that holds only trigger
       writeFileSync(githubEnv, "");
       if (contract !== undefined) writeFileSync(join(root, "tree", ".claude", "contract.json"), contract);
       script(join(root, "bin", "docker"), `printf '%s\\n' "$*" >>"${calls}"\ncase $1 in\n  port) printf '127.0.0.1:49153\\n' ;;\n  ps) ${stale ? "printf 'c0ffee\\n'" : ":"} ;;\nesac\n`);
-      const [step, ...more] = databaseSteps();
+      const [step, ...more] = needsSteps();
       expect(more).toEqual([]);
-      const ran = execute("bash", join(root, step?.["working-directory"] ?? ""), { PATH: `${join(root, "bin")}:/usr/bin:/bin`, GITHUB_ENV: githubEnv, GITHUB_REPOSITORY: "collod873/Lumaria", RUNNER_NAME: "GitHub Actions 7" }, ["-e", "-c", step?.run ?? ""]);
+      const ran = execute("bash", join(root, step?.["working-directory"] ?? ""), { PATH: `${join(root, "bin")}:/usr/bin:/bin`, GITHUB_ENV: githubEnv, GITHUB_REPOSITORY: "collod873/Lumaria", RUNNER_NAME: "GitHub Actions 7", SECRETS: "{}" }, ["-e", "-c", step?.run ?? ""]);
       expect(ran.status, ran.stderr).toBe(0);
       return { calls: existsSync(calls) ? readFileSync(calls, "utf8").trim().split("\n") : [], handed: readFileSync(githubEnv, "utf8") };
     };
@@ -407,6 +406,13 @@ describe("a repo's tickets build through one caller file that holds only trigger
       expect(calls[0]).toBe("ps --all --quiet --filter name=^database-collod873-Lumaria-GitHub-Actions-7$");
       expect(calls[1]).toMatch(/^run --quiet --detach --name database-collod873-Lumaria-GitHub-Actions-7 --publish 127\.0\.0\.1::5432 .*postgres:16$/);
       expect(calls.slice(2)).toEqual(["exec database-collod873-Lumaria-GitHub-Actions-7 pg_isready --quiet --host 127.0.0.1", "port database-collod873-Lumaria-GitHub-Actions-7 5432/tcp"]);
+      expect(handed).toBe("DATABASE_URL=postgres://postgres:postgres@localhost:49153/postgres\n");
+    });
+
+    it("starts it too when the contract's top-level needs names DATABASE_URL, without counting it as a key the secrets lack (#1626)", () => {
+      const { calls, handed } = readied('{ "needs": ["DATABASE_URL"], "steps": { "integration": { "run": "true" } } }\n');
+
+      expect(calls[1]).toMatch(/^run --quiet --detach --name database-collod873-Lumaria-GitHub-Actions-7 /);
       expect(handed).toBe("DATABASE_URL=postgres://postgres:postgres@localhost:49153/postgres\n");
     });
 
@@ -425,7 +431,7 @@ describe("a repo's tickets build through one caller file that holds only trigger
 
     it("in every job that runs the builder, after the tree is checked out and before the builder starts", () => {
       for (const { name, steps, at } of builders()) {
-        const database = at(({ uses }) => uses === "./.github/actions/database");
+        const database = at(({ uses }) => uses === "./.github/actions/needs");
 
         expect(database, name).toBeGreaterThan(at(({ id }) => id === "checkout"));
         expect(database, name).toBeLessThan(at(({ run }) => (run ?? "").includes("bin/fix")));
@@ -459,7 +465,7 @@ describe("a stage gets each key its repo's contract names under needs, from the 
     mkdirSync(join(root, "tree", ".claude"), { recursive: true });
     writeFileSync(githubEnv, "");
     if (contract !== undefined) writeFileSync(join(root, "tree", ".claude", "contract.json"), contract);
-    const [step, ...more] = (parse(readFileSync(KEYS, "utf8")) as { runs: { steps: (WorkflowStep & { "working-directory"?: string })[] } }).runs.steps;
+    const [step, ...more] = needsSteps();
     expect(more).toEqual([]);
     const ran = execute("bash", join(root, step?.["working-directory"] ?? ""), { PATH: "/usr/bin:/bin", GITHUB_ENV: githubEnv, SECRETS: JSON.stringify(secrets) }, ["-e", "-c", step?.run ?? ""]);
     expect(ran.status, ran.stderr).toBe(0);
@@ -483,17 +489,17 @@ describe("a stage gets each key its repo's contract names under needs, from the 
   });
 
   it("hands nothing on when the contract names no keys or the tree has no contract", () => {
-    for (const contract of ['{ "steps": { "integration": { "run": "true", "needs": ["DATABASE_URL"] } } }\n', undefined]) {
+    for (const contract of ['{ "steps": { "integration": { "run": "true", "needs": ["BASE_URL"] } } }\n', undefined]) {
       expect(handedKeys(contract, { STRIPE_SECRET_KEY: "sk_test_1" }).env.STRIPE_SECRET_KEY, contract).toBeUndefined();
     }
   });
 
-  it("in every job that starts Postgres for a stage, with the repo's secrets, after the tree is checked out and before any stage starts", () => {
-    const jobs = ["tickets.yml", "specs.yml"].flatMap((file) => Object.entries(workflowJobs(file)).filter(([, { steps }]) => steps.some(({ uses }) => uses === "./.github/actions/database")).map(([name, { steps }]) => ({ name: `${file} ${name}`, steps })));
+  it("in every job that readies a stage's tree, with the repo's secrets, after the tree is checked out and before any stage starts", () => {
+    const jobs = ["tickets.yml", "specs.yml"].flatMap((file) => Object.entries(workflowJobs(file)).filter(([, { steps }]) => steps.some(({ uses }) => uses === "./.github/actions/needs")).map(([name, { steps }]) => ({ name: `${file} ${name}`, steps })));
     expect(jobs.map(({ name }) => name)).toEqual(["tickets.yml build", "tickets.yml probe", "specs.yml spec"]);
     for (const { name, steps } of jobs) {
       const at = (found: (step: WorkflowStep) => boolean) => steps.findIndex(found);
-      const keys = at(({ uses }) => uses === "./.github/actions/keys");
+      const keys = at(({ uses }) => uses === "./.github/actions/needs");
 
       expect(steps[keys]?.with, name).toEqual({ secrets: "${{ toJSON(secrets) }}" });
       expect(keys, name).toBeGreaterThan(at(({ id }) => id === "checkout"));
