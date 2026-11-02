@@ -310,7 +310,7 @@ function filedToWaitOn(ticket: string, answer: Answer, { repo, filedFrom, unfile
   commentOnTicket(ticket, `${parkedBehind(ticket, numbers.map((number) => `${repo}#${number}`))} ${answer.reason}`, gh);
   const open = filed.filter((url) => isOpen(url, ticket));
   if (open.length === 0 && named.length === 0) return closedBeforeParked(ticket, filed);
-  console.log(`fix: #${ticket} waits on ${filed.join(", ")}, filed in ${repo}`);
+  console.log(`fix: #${ticket} waits on ${numbers.map((number) => `${repo}#${number}`).join(", ")}`);
   return { ended: 0 };
 }
 
