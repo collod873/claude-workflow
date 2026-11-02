@@ -37,8 +37,17 @@ describe("bin/schedule runs a spec from its first cut to its landing, one slice 
 
     expect(run.run().status).toBe(0);
     const dir = /^dir=(.*)$/m.exec(run.seen("seam"))?.[1] ?? "";
-    expect(dir).toMatch(new RegExp(`/spec-worktrees-[^/]+/${SPEC_ISSUE}/seam$`));
+    expect(dir).toMatch(new RegExp(`/spec-worktrees-[^/]+/${SPEC_ISSUE}/slice-seam$`));
     expect(dir).not.toContain("/.git/");
+  });
+
+  it("names no slice's folder, brief or key after the slice alone, since a slice cut as credentials lands under the global guard Read(//**/credentials*) and its builder can read no file", () => {
+    const run = scheduling({ cuts: [[sliceOf("credentials")], []] });
+
+    expect(run.run().status).toBe(0);
+    const dir = /^dir=(.*)$/m.exec(run.seen("credentials"))?.[1] ?? "";
+    const brief = optionOf(run.built("credentials"), "--brief") ?? "";
+    for (const path of [dir, brief]) expect(path.split("/").filter((part) => part.startsWith("credentials"))).toEqual([]);
   });
 
   it("keeps one progress comment on the spec, edited in place, with a row per slice and every slice's state in its progress JSON", () => {

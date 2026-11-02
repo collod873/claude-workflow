@@ -239,6 +239,8 @@ function building(spec: string, tracked: Tracked, dir: string, brief: string, lo
   });
 }
 
+const sliceTree = (root: string, id: string) => join(root, `slice-${id}`);
+
 export function worktree(spec: string, branch: string, dir: string): string {
   if (existsSync(dir)) return dir;
   removed(branch, dir);
@@ -357,14 +359,14 @@ async function scheduled(spec: string, app: AppKey | undefined): Promise<Stop | 
     if (app !== undefined) freshAppToken(app, gh, `so the spec run of #${spec} does not act after ${what}`);
   };
   const hire = (tracked: Tracked, how: Hiring) => {
-    const dir = worktree(spec, sliceBranch(spec, tracked.id), join(root, tracked.id));
-    const brief = join(root, `${tracked.id}.md`);
+    const dir = worktree(spec, sliceBranch(spec, tracked.id), sliceTree(root, tracked.id));
+    const brief = join(root, `slice-${tracked.id}.md`);
     writeFileSync(brief, briefOf(tracked, asked.body));
     tracked.state = "hired";
     const tried = how.answer === undefined;
     running.set(
       tracked.id,
-      building(spec, tracked, dir, brief, join(logs, `build-slice-${spec}-${tracked.id}.out`), keyed(join(root, `${tracked.id}-app-key.json`), app), how).then((built) => ({ ...built, tried })),
+      building(spec, tracked, dir, brief, join(logs, `build-slice-${spec}-${tracked.id}.out`), keyed(join(root, `slice-${tracked.id}-app-key.json`), app), how).then((built) => ({ ...built, tried })),
     );
   };
   const standsDown = (after: string) => {
@@ -435,20 +437,20 @@ async function scheduled(spec: string, app: AppKey | undefined): Promise<Stop | 
     if (built.outcome === "owned") {
       tracked.state = "handed";
       tracked.filed = built.filed;
-      removed(sliceBranch(spec, tracked.id), join(root, tracked.id));
+      removed(sliceBranch(spec, tracked.id), sliceTree(root, tracked.id));
     } else if (built.outcome === "stopped" || built.outcome === "outOfTime" || built.outcome === "stuck") {
       tracked.stopped = built.reason;
       tracked.outOfTime = built.outcome === "outOfTime";
       tracked.state = built.outcome !== "stuck" && tracked.tries < MOST_TRIES ? "cut" : "out";
-      if (tracked.state === "out") removed(sliceBranch(spec, tracked.id), join(root, tracked.id));
+      if (tracked.state === "out") removed(sliceBranch(spec, tracked.id), sliceTree(root, tracked.id));
     } else if (built.outcome === "done") {
       tracked.state = "merged";
-      removed(sliceBranch(spec, tracked.id), join(root, tracked.id));
+      removed(sliceBranch(spec, tracked.id), sliceTree(root, tracked.id));
       plan = true;
     } else if (fastForwarded(spec, sliceBranch(spec, tracked.id))) {
       tracked.state = "merged";
       tracked.left = built.outcome === "partial" ? capped(built.left ?? "", LEFT_CAP) : undefined;
-      removed(sliceBranch(spec, tracked.id), join(root, tracked.id));
+      removed(sliceBranch(spec, tracked.id), sliceTree(root, tracked.id));
       plan = true;
     } else {
       hire(tracked, { resume: tracked.session, answer: { outcome: built.outcome, reason: built.reason, ...(built.left === undefined ? {} : { left: built.left }) } });
