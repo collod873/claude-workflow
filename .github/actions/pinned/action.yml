@@ -1,5 +1,5 @@
 name: Pinned
-description: Readies the Node a tree's .nvmrc names, or 24 when it names none, and the package manager its package.json pins, and hands their bin directory on as TREE_PATH for the tree's setup and gate, leaving the machine on Node 24
+description: Readies the Node a tree's .nvmrc names, or 24 when it names none, and the package manager its package.json pins, and hands their bin directory on as TREE_PATH for the tree's setup and gate, gives a tree with no package.json an empty, git-excluded one so the module type of the machine above it does not reach the tree's own scripts, leaving the machine on Node 24
 
 runs:
   using: composite
@@ -16,6 +16,10 @@ runs:
       run: |
         bin=$(dirname "$(command -v node)")
         printf 'TREE_PATH=%s\n' "$bin" >>"$GITHUB_ENV"
+        if [ ! -e package.json ]; then
+          printf '{}\n' >package.json
+          printf '/package.json\n' >>"$(git rev-parse --git-path info/exclude)"
+        fi
         jq -e '.packageManager // .devEngines.packageManager' package.json >/dev/null 2>&1 || exit 0
         command -v corepack >/dev/null || npm install --global corepack@latest
         corepack enable --install-directory "$bin"

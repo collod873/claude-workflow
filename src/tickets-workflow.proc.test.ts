@@ -322,6 +322,8 @@ describe("a repo's tickets build through one caller file that holds only trigger
       const nodeBin = join(root, "node-bin");
       const githubEnv = join(root, "github-env");
       mkdirSync(join(root, "tree"));
+      execute("git", join(root, "tree"), {}, ["init", "--quiet"]);
+      writeFileSync(join(root, "package.json"), JSON.stringify({ type: "module" }));
       writeFileSync(githubEnv, "");
       if (manifest !== undefined) writeFileSync(join(root, "tree", "package.json"), JSON.stringify(manifest));
       const npm = `printf 'npm %s\\n' "$*" >>"${calls}"\n`;
@@ -335,6 +337,7 @@ describe("a repo's tickets build through one caller file that holds only trigger
       expect(ran.status, ran.stderr).toBe(0);
       const ranPnpm = () => execute("bash", join(root, "tree"), { PATH: `${/^TREE_PATH=(.*)$/m.exec(readFileSync(githubEnv, "utf8"))?.[1] ?? ""}:/usr/bin:/bin`, COREPACK_HOME: join(root, "corepack-home") }, ["-c", "pnpm --version"]);
       return {
+        tree: join(root, "tree"),
         calls: existsSync(calls) ? readFileSync(calls, "utf8").trim().split("\n").map((line) => line.replaceAll(root, "")) : [],
         handed: readFileSync(githubEnv, "utf8").replaceAll(root, ""),
         ranPnpm,
@@ -374,6 +377,26 @@ describe("a repo's tickets build through one caller file that holds only trigger
       expect(readied({ packageManager: "pnpm@11.7.0" }, { corepack: false }).calls).toEqual(["npm install --global corepack@latest", ...readying]);
       expect(readied({ name: "unpinned" }).calls).toEqual([]);
       expect(readied(undefined).calls).toEqual([]);
+    });
+
+    it("runs an extensionless CommonJS tool in a tree with no package.json as CommonJS, not as the machine's ES module scope, and leaves git status clean (#1631)", () => {
+      const { tree } = readied(undefined);
+      mkdirSync(join(tree, "tools"));
+      writeFileSync(join(tree, "tools", "prod-db"), "#!/usr/bin/env node\nconst { join } = require(\"node:path\");\nconsole.log(join(\"common\", \"js\"));\n");
+      execute("git", tree, {}, ["add", "tools"]);
+
+      const tool = execute(process.execPath, tree, {}, [join(tree, "tools", "prod-db")]);
+      const status = execute("git", tree, {}, ["status", "--porcelain", "--untracked-files=all"]);
+
+      expect(tool.stderr).toBe("");
+      expect(tool.stdout.trim()).toBe("common/js");
+      expect(status.stdout).toBe("A  tools/prod-db\n");
+    });
+
+    it("leaves a tree's own package.json as it is (#1631)", () => {
+      const { tree } = readied({ type: "module", name: "own" });
+
+      expect(JSON.parse(readFileSync(join(tree, "package.json"), "utf8"))).toEqual({ type: "module", name: "own" });
     });
 
     it("leaves a tree like Lumaria's running the pnpm its package.json pins from the tree's own directory, through the real corepack", () => {
