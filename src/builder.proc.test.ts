@@ -748,12 +748,22 @@ describe("a fresh reviewer reads each green build, fixes or approves it, and bin
     const result = run();
 
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toContain("review: #811 is labelled paused, so it does not land");
+    expect(result.stdout).toContain("review: #811 is marked paused, so it does not land");
+    expect(landed()).toEqual([]);
+  });
+
+  it("lands nothing, and ends green, when the ticket was closed by the time its review ends (#1626)", () => {
+    const { run, landed } = fixing({ claude: FIXES, reviewer: "printf 'CLOSED' >../labels.state\n" });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("review: #811 is closed, so it does not land");
     expect(landed()).toEqual([]);
   });
 
   it("ends red at unread, landing nothing, when the ticket's labels cannot be read at review", () => {
-    const { run, landed } = fixing({ claude: FIXES, unreadable: '*"issue view"*"labels"*"--jq"*' });
+    const { run, landed } = fixing({ claude: FIXES, unreadable: '*"--json labels,state"*' });
 
     const result = run();
 

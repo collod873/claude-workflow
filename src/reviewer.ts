@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { type AppKey, freshAppToken } from "./app-token.ts";
 import { capped, DIFF_CAP, diffOverCap, LIST_CAP, NO_EM_DASH, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
-import { commentOnTicket, fromHere, fromLine, gh, gitRead, heldOn, labelsHeld, machineBin, mark } from "./post.ts";
+import { commentOnTicket, fromHere, fromLine, gh, gitRead, standingOn, stoodDown, machineBin, mark } from "./post.ts";
 import { CHECKING } from "./spelled.ts";
 import { calledOwner, committed, commitlinted, type Filed, type Fix, FOLLOW_UPS, head, hire, MOST_FIXES, type OwnerStep, OWNER_STEPS, stepsAndFixesFiled, stepsUnfileable } from "./stage.ts";
 import { quoted } from "./ticket-shape.ts";
@@ -193,9 +193,9 @@ export function reviewedAndLanded(ticket: string, { body, alongside, said }: { b
     if (answer?.outcome === "stuck") return calledOwner(ticket, "reviewer", answer.reason);
     committed(reviewedBy(ticket), "fix");
     const changed = head() !== before;
-    const held = heldOn(labelsHeld(ticket, gh));
-    if (held !== undefined) {
-      console.log(`review: #${ticket} is labelled ${held}, so it does not land; its branch is kept for its next run`);
+    const stood = stoodDown(standingOn(ticket, gh));
+    if (stood !== undefined) {
+      console.log(`review: #${ticket} ${stood}, so it does not land; its branch is kept for its next run`);
       return 0;
     }
     if (answer !== undefined) {

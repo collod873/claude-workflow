@@ -7,7 +7,7 @@ import { capped, DIFF_CAP, diffOverCap, LIST_CAP, NO_EM_DASH, onDisk, TAIL_CAP, 
 import { checkedBy, type Red, starvedFault } from "./builder.ts";
 import { PUBLISHED_CHECK } from "./checks.ts";
 import { type Checked, type Stop, calledOwner as doneCheckCalledOwner, doneCheck, paired, postedOn, type Try } from "./done-checker.ts";
-import { askedIssue, commentOnTicket, fromHere, fromLine, gh, ghRead, git, gitRead, heldOn, labelsHeld, machineBin, mark, OWNER, readOrStop, STUCK, unread } from "./post.ts";
+import { askedOn, commentOnTicket, fromHere, fromLine, gh, git, gitRead, standingOn, stoodDown, machineBin, mark, OWNER, readOrStop, STUCK, unread } from "./post.ts";
 import { afterRefused, approvedOn, firstTimeNamed, gathered, landing, type Routed, ROUTED, ROUTED_REQUIRED, routedFiled } from "./reviewer.ts";
 import { fastForwarded, landedOn, MOST_BUILDERS, type Progress, progressOn, removed, specBranch, triedOn, worktree } from "./scheduler.ts";
 import { fastForwards, rebaseStopped, sliceTrailed } from "./slice-builder.ts";
@@ -534,9 +534,9 @@ async function reviews(run: Run, { title, body }: { title: string; body: string 
 function landed(run: Run, { last }: Reviewed): Promise<string | undefined> {
   const { spec, said, reasons, later, left } = run;
   return rounds(run, last, { failed: "did not land", stop: "unlanded", commit: `Fix what bin/land refused for #${spec}`, kept: (approved) => later.push(afterRefused(approved.reason)) }, (): Round<string | undefined> => {
-    const held = heldOn(labelsHeld(spec, gh));
-    if (held !== undefined) {
-      console.log(`${said} is marked ${held}, so its reviewed branch does not land`);
+    const stood = stoodDown(standingOn(spec, gh));
+    if (stood !== undefined) {
+      console.log(`${said} ${stood}, so its reviewed branch does not land`);
       return { done: undefined };
     }
     const attempt = landing(["--spec", spec], approvedOn([...reasons.values()], later, [...left.values()]));
@@ -556,18 +556,14 @@ function leftFiled(spec: string, approved: Approved[]): void {
 async function finished(spec: string, app: AppKey | undefined): Promise<Finished> {
   const said = `finish: #${spec}`;
   const unchanged = "so nothing was reviewed or landed";
-  const asked = askedIssue(ghRead(["issue", "view", spec, "--json", "title,body,labels,state"], `#${spec} could not be read, ${unchanged}`)) ?? unread(`#${spec} could not be read, ${unchanged}`);
+  const asked = askedOn(spec, unchanged);
   if (!asked.labels.has(SPEC)) {
     stoppedAt("unfinishable", `${said} is not a spec, ${unchanged}`);
     return {};
   }
-  if (asked.closed) {
-    console.log(`${said} is closed, ${unchanged}`);
-    return {};
-  }
-  const held = heldOn(asked.labels);
-  if (held !== undefined) {
-    console.log(`${said} is marked ${held}, ${unchanged}`);
+  const stood = stoodDown(asked);
+  if (stood !== undefined) {
+    console.log(`${said} ${stood}, ${unchanged}`);
     return {};
   }
   const found = progressOn(spec);

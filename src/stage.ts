@@ -3,7 +3,7 @@ import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readdirSync
 import { join } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import { NO_EM_DASH, onDisk } from "./brief.ts";
-import { type Asked, askedIssue, commentOnTicket, followUpBody, gh, ghRead, git, gitRead, heardIn, heldOn, LABELLED_WAITING, mark, nothingHears, OWNER, post, STUCK, unread, WAITING, type MarkedLabel } from "./post.ts";
+import { type Asked, askedOn, commentOnTicket, followUpBody, gh, git, gitRead, heardIn, stoodDown, LABELLED_WAITING, mark, nothingHears, OWNER, post, STUCK, WAITING, type MarkedLabel } from "./post.ts";
 import type { Stop } from "./stops.ts";
 import { addBlocker, postedUnderOrigin } from "./issue-links.ts";
 import { quoted } from "./ticket-shape.ts";
@@ -231,10 +231,10 @@ export interface Opened<Carried> {
 export function opened<Carried, Own extends string>({ stage, issue, state, tried, hire: hiring, ready }: Opening<Carried, Own>): Opened<Carried> | Own | undefined {
   const said = `${stage}: #${issue}`;
   const unchanged = "so no label changed and no model was hired";
-  const asked = askedIssue(ghRead(["issue", "view", issue, "--json", "title,body,labels"], `#${issue} could not be read, ${unchanged}`)) ?? unread(`#${issue} could not be read, ${unchanged}`);
-  const held = heldOn(asked.labels);
-  if (held !== undefined) {
-    console.log(`${said} is marked ${held}, ${unchanged}`);
+  const asked = askedOn(issue, unchanged);
+  const stood = stoodDown(asked);
+  if (stood !== undefined) {
+    console.log(`${said} ${stood}, ${unchanged}`);
     return undefined;
   }
   const readied = ready(asked);

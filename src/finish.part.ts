@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { DIFF_CAP, LIST_CAP, TAIL_CAP } from "./brief.ts";
 import { specWith } from "./done-checker.part.ts";
 import { BRIEFS_CAP, ONE_REVIEWER_CAP, onTheCode, onTheSpec, SLICE_CAP } from "./finish.ts";
-import { authored, BIN, execute, linesIn, ghArgv, git, key, nulSplit, plant, type Said, scratch, script } from "./scenarios.ts";
+import { authored, BIN, execute, labelsJson, linesIn, ghArgv, git, key, nulSplit, plant, type Said, scratch, script } from "./scenarios.ts";
 import { PAUSED } from "./spelled.ts";
 import { declareStage, HANDED_ON } from "./stages.ts";
 import { SPEC_CAP } from "./ticket-shape.ts";
@@ -113,7 +113,7 @@ export function finishing({
       "  *\"repos/{owner}/{repo}/installation\"*) printf '4242\\n' ;;",
       "  *\"access_tokens\"*) printf 'minted-%s\\n' \"$n\" ;;",
       `  *"issue view"*"title,body,labels"*) cat "${join(root, "issue.json")}" ;;`,
-      `  *"issue view"*"labels"*"--jq"*) cat "${join(root, "labels-at-land")}" ;;`,
+      `  *"--json labels,state"*) ${labelsJson(join(root, "labels-at-land"))} ;;`,
       `  *"api"*"issues/974/comments"*) cat "${join(root, "comments.json")}" ;;`,
       `  *"issue comment"*) printf '%s\\n' '${POSTED}' ;;`,
       `  *"issue create"*) printf '%s\\n' '${FILED_NOTE}' ;;`,

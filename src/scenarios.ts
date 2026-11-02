@@ -668,6 +668,8 @@ export function ghArgv(dir: string): { setup: string; calls: () => string[][] } 
   };
 }
 
+export const labelsJson = (file: string) => `printf '{"state":"%s","labels":[%s]}' "$(cat "${file}.state" 2>/dev/null || echo OPEN)" "$(sed 's/.*/{"name":"&"}/' "${file}" | paste -sd, -)"`;
+
 export const linesIn = (file: string) => (existsSync(file) ? readFileSync(file, "utf8").trimEnd().split("\n") : []);
 
 export const nulSplit = (file: string) => (existsSync(file) ? readFileSync(file, "utf8").split("\0").filter((said) => said !== "") : []);

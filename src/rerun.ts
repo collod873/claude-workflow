@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { CALLER_FILE, commentOnTicket, gh, ghRead, heldOn, labelsHeld, machineBin, OWNER, readOrStop, STUCK, unread } from "./post.ts";
+import { CALLER_FILE, commentOnTicket, gh, ghRead, standingOn, stoodDown, machineBin, OWNER, readOrStop, STUCK, unread } from "./post.ts";
 import { OWNER_CALL } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 
@@ -54,9 +54,9 @@ function callsOf(run: string, attempt: string): Call[] {
 const firstLine = (got: ReturnType<typeof gh>) => (got.stderr || got.stdout).trim().split("\n")[0] ?? "";
 
 function callOwner(call: Call, url: string, attempt: string): void {
-  const held = heldOn(labelsHeld(call.issue, gh));
-  if (held !== undefined) {
-    console.log(`rerun: #${call.issue} is labelled ${held}, so nothing is marked or posted`);
+  const stood = stoodDown(standingOn(call.issue, gh));
+  if (stood !== undefined) {
+    console.log(`rerun: #${call.issue} ${stood}, so nothing is marked or posted`);
     return;
   }
   if (spawnSync(machineBin("mark"), [call.issue, STUCK], { stdio: ["ignore", "ignore", "inherit"] }).status !== 0) gh(["issue", "edit", call.issue, "--add-label", STUCK]);

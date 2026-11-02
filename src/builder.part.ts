@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { handedOn, repaired } from "./builder.ts";
 import { handedOn as reviewing } from "./reviewer.ts";
 import { DIFF_CAP, LIST_CAP, TAIL_CAP, TICKET_CAP } from "./brief.ts";
-import { authored, BIN, execute, linesIn, FIXED_TICKET, ghArgv, git, gitRefusing, NO_FILES, nulSplit, openedCases, type Parent, plant, refusedMark, type Said, scratch, script } from "./scenarios.ts";
+import { authored, BIN, execute, labelsJson, linesIn, FIXED_TICKET, ghArgv, git, gitRefusing, NO_FILES, nulSplit, openedCases, type Parent, plant, refusedMark, type Said, scratch, script } from "./scenarios.ts";
 import { OWNER } from "./spelled.ts";
 import { declareStage, HANDED_ON } from "./stages.ts";
 
@@ -149,7 +149,7 @@ export function fixing({
       `  *"issue create"*) n=$(( $(cat "${join(root, "created")}" 2>/dev/null || echo 900) + 1 )); printf '%s\\n' "$n" >"${join(root, "created")}"; repo=collod873/claude-workflow; prev=; for arg in "$@"; do [ "$prev" = --repo ] && repo=$arg; prev=$arg; done; printf 'https://github.com/%s/issues/%s\\n' "$repo" "$n" ;;`,
       `  *"issue view"*"title,body,labels"*) cat "${join(root, "ticket.json")}" ;;`,
       `  *"issue view"*"body,title"*) printf 'Build what the ticket asks\\001%s' "$(cat "${join(root, "ticket-body")}")" ;;`,
-      `  *"issue view"*"labels"*"--jq"*) cat "${join(root, "labels")}" ;;`,
+      `  *"--json labels,state"*) ${labelsJson(join(root, "labels"))} ;;`,
       `  *) printf 'https://github.com/collod873/claude-workflow/issues/${ticket}#issuecomment-1\\n' ;;`,
       "esac",
       "",
@@ -238,7 +238,7 @@ declareStage({
   ],
   scenarios: [
     { label: "building, reviewing and landing a ticket", run: () => fixing({ claude: "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n" }).run() },
-    { label: "with its labels unreadable at review", run: () => fixing({ claude: "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n", unreadable: '*"issue view"*"labels"*"--jq"*' }).run() },
+    { label: "with its labels unreadable at review", run: () => fixing({ claude: "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n", unreadable: '*"--json labels,state"*' }).run() },
     { label: "calling the owner when the check stays red to the stage's time cap", run: () => fixing({ check: CHECK_RED, claude: SPENT_BY_THE_THIRD_ROUND, stageMinutes: "1" }).run() },
   ],
 });

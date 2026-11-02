@@ -30,11 +30,12 @@ export function doneChecking({
   triesPastCap = false,
   unsetKeys = "",
   atHire = false,
-}: { labels?: string[] | undefined; body?: string; tries?: { sentence: number; outcome: string; tried: string }[]; gh?: string; said?: Said[]; markRefusal?: string; contract?: string; calledFrom?: string; triesPastCap?: boolean; unsetKeys?: string; atHire?: boolean } = {}) {
+  state = "OPEN",
+}: { labels?: string[] | undefined; body?: string; tries?: { sentence: number; outcome: string; tried: string }[]; gh?: string; said?: Said[]; markRefusal?: string; contract?: string; calledFrom?: string; triesPastCap?: boolean; unsetKeys?: string; atHire?: boolean; state?: string } = {}) {
   const comments = `[[ $* == *'--jq .id'* ]] && { echo 4242; exit 0; }\n[[ $1 == api ]] && { cat "$(dirname "$0")/../comments.json"; exit 0; }\n[[ $1 == issue && $2 == create ]] && { echo ${BUG_FILED}; exit 0; }`;
   const seen = atHire ? `printf '%s\\n' "$PWD" "\${DATABASE_URL:-}" "\${PORT:-}" "\${TMPDIR:-}" >"$(dirname "$0")/../at-hire"\n` : "";
   const cutOff = seen + (triesPastCap ? `case "$*" in *--resume*) ;; *) printf '%s\\n' '${JSON.stringify({ type: "system", session_id: TRYING_SESSION })}'; exit 124 ;; esac\n` : "");
-  const { root, argv, ...stage } = issueStage("done-check-", { title: "A spec worth trying", body, labels: labels.map((name) => ({ name })) }, { tries }, DONE_CHECK_POSTED, `${gh}\n${comments}\n`, cutOff);
+  const { root, argv, ...stage } = issueStage("done-check-", { title: "A spec worth trying", body, labels: labels.map((name) => ({ name })), state }, { tries }, DONE_CHECK_POSTED, `${gh}\n${comments}\n`, cutOff);
   plant(root, "comments.json", authored(said));
   const marked = stubbedMark(root, undefined, markRefusal);
   if (contract !== undefined) plant(root, ".claude/contract.json", contract);

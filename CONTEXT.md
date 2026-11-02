@@ -140,7 +140,7 @@ _Avoid_: review job, judge, second builder
 No stage closes, queues or merges by itself: waking what a closed issue blocked is reconcile's alone (#1606). A ticket closes on its PR's `Closes #N`, which `bin/land --ticket`
 writes, and a session's commit may close an issue the same way, since `bin/land` merges only past
 the full check. A spec closes on landing, from its done check's tries, so `bin/land --spec` refuses a
-commit that closes it by keyword.
+commit that closes it by keyword. Every stage stands down on a closed issue as on a held one.
 _Avoid_: closer, merger, queue, landing job
 
 ### The work

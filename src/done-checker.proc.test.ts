@@ -270,6 +270,18 @@ describe("bin/done-check marks the spec checking while it runs (#1064)", () => {
       expect(stopped.hired(), held).toEqual([]);
     }
   });
+
+  it("marks, hires and closes nothing on a spec that is already closed, as every stage opening an issue does (#1626)", () => {
+    const closed = doneChecking({ state: "CLOSED" });
+
+    const { status, stdout } = closed.run();
+
+    expect(status).toBe(0);
+    expect(stdout).toContain("done-check: #974 is closed, so no label changed and no model was hired");
+    expect(closed.marked()).toEqual([]);
+    expect(closed.hired()).toEqual([]);
+    expect(closed.closes()).toEqual([]);
+  });
 });
 
 describe("bin/done-check stops at a mark GitHub refused, so it tries, posts and closes nothing on a spec whose labels lag (#1107)", () => {
