@@ -77,6 +77,65 @@ describe("bin/reconcile applies the waiting projection of each open ticket's blo
   });
 });
 
+describe("bin/reconcile holds a ticket waiting on another repo's full checks until that many have run (#1648)", () => {
+  const MEZZANINE = "collod873/Mezzanine";
+  const waits = "## Why\n\n> measure it\n\nWaits on 2 full checks of collod873/Mezzanine after collod873/agent-hooks@da77e6c.";
+  const waited = (runs: string) => `## Why\n\n> measure it\n\nWaited on 2 full checks of collod873/Mezzanine after collod873/agent-hooks@da77e6c: runs ${runs}. Each run's \`check-logs\` artifact holds its check's ledger rows: \`gh run download <run> --repo ${MEZZANINE} --name check-logs\`.`;
+  const reads = (calls: string[][]) => calls.filter((args) => args[0] === "api" && args.some((arg) => arg.includes("/actions/") || arg.includes("/commits/")));
+
+  it("counts only runs started after the commit merged that left a check's ledger rows, and leaves the ticket waiting while too few have", () => {
+    const { reconcile, calls } = linking({ checks: { lastBefore: 40, ledgered: [30, 41, 41] }, tickets: [{ number: 931, labels: ["ticket", "waiting"], body: waits, blockers: [{ repo: ELSEWHERE, number: 7, state: "closed" }] }] });
+
+    const result = reconcile();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(edits(calls())).toEqual([]);
+  });
+
+  it("counts no run while the commit's pull request is unmerged, so runs on the old code never meet it", () => {
+    const { reconcile, calls } = linking({ landed: "unmerged", checks: { lastBefore: 40, ledgered: [41, 42] }, tickets: [{ number: 931, labels: ["ticket", "waiting"], body: waits, blockers: [] }] });
+
+    const result = reconcile();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(edits(calls())).toEqual([]);
+  });
+
+  it("writes the runs that met it and how to read their ledger rows into the body before it takes waiting off", () => {
+    const { reconcile, calls } = linking({ checks: { lastBefore: 40, ledgered: [42, 43, 39, 41] }, tickets: [{ number: 931, labels: ["ticket", "waiting"], body: waits, blockers: [] }] });
+
+    const result = reconcile();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(edits(calls())).toEqual([
+      ["issue", "edit", "931", "--repo", HERE, "--body", `${waited("41, 42")}\n`],
+      ["issue", "edit", "931", "--repo", HERE, "--remove-label", "waiting"],
+    ]);
+  });
+
+  it("wakes a waiting ticket whose wait was written met when its wake was lost, and reads no runs for it", () => {
+    const { reconcile, calls } = linking({ tickets: [{ number: 931, labels: ["ticket", "waiting"], body: waited("41, 42"), blockers: [] }] });
+
+    const result = reconcile();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(reads(calls())).toEqual([]);
+    expect(edits(calls())).toEqual([["issue", "edit", "931", "--repo", HERE, "--remove-label", "waiting"]]);
+  });
+
+  it("keeps a dependent in another repo waiting on its checks when its last blocker closes, as agent-hooks#401 behind #1648", () => {
+    const { reconcile, calls } = linking({
+      checks: { lastBefore: 40, ledgered: [41] },
+      closing: { number: 1648, blocking: [{ repo: ELSEWHERE, number: 401, labels: ["ticket", "waiting"], body: waits, blockers: [{ repo: HERE, number: 1648, state: "closed" }] }] },
+    });
+
+    const result = reconcile("--closed", "1648");
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(edits(calls())).toEqual([]);
+  });
+});
+
 describe("bin/reconcile restarts a stale build once, then flags it to the owner (#1606)", () => {
   const stale = { event: "labeled", label: { name: "building" }, created_at: "2026-01-01T00:00:00Z" };
   const changes = (calls: string[][]) => calls.filter((args) => ["edit", "comment"].includes(args[1] ?? "") || args[0] === "workflow");

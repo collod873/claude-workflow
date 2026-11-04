@@ -1,4 +1,5 @@
 import { admission } from "./admit.ts";
+import { type ChecksWait, checkedRuns, checksWaitOf, waitedLine, waitedOf, waitsLine } from "./checks-wait.ts";
 import { type Blocker, blockersOf, dependentsOf } from "./issue-links.ts";
 import { ghRead, Stopped } from "./post.ts";
 import { BUILDING, HELD, OWNER, STUCK, TICKET, WAITING } from "./spelled.ts";
@@ -8,6 +9,8 @@ export interface IssueState {
   number: number;
   labels: string[];
   blockers: Blocker[];
+  checks?: { wait: ChecksWait; runs: number[] } | undefined;
+  waited?: boolean;
   buildingSince?: number | undefined;
   liveRun?: boolean;
   restarted?: boolean;
@@ -17,6 +20,7 @@ export interface IssueState {
 
 export type Action =
   | { kind: "add-label" | "remove-label"; repo: string; number: number; label: string }
+  | { kind: "waited"; repo: string; number: number; wait: ChecksWait; runs: number[] }
   | { kind: "restart"; repo: string; number: number }
   | { kind: "admit"; repo: string; number: number }
   | { kind: "flag"; repo: string; number: number };
@@ -26,13 +30,14 @@ const RESTARTED = "<!-- reconcile: restarted -->";
 const READMITTED = "<!-- reconcile: readmitted -->";
 const refusalOf = (number: number) => `#${number} does not build, since `;
 
-function waitRule({ repo, number, labels, blockers }: IssueState): Action[] {
-  if (blockers.length === 0) return [];
+function waitRule({ repo, number, labels, blockers, checks, waited }: IssueState): Action[] {
+  if (blockers.length === 0 && checks === undefined && waited !== true) return [];
+  const met: Action[] = checks === undefined || checks.runs.length < checks.wait.count ? [] : [{ kind: "waited", repo, number, wait: checks.wait, runs: checks.runs.slice(0, checks.wait.count) }];
   const parked = labels.includes(WAITING);
-  const blocked = blockers.some(({ open }) => open);
-  if (parked && !blocked) return [{ kind: "remove-label", repo, number, label: WAITING }];
+  const blocked = blockers.some(({ open }) => open) || (checks !== undefined && met.length === 0);
+  if (parked && !blocked) return [...met, { kind: "remove-label", repo, number, label: WAITING }];
   if (!parked && blocked) return [{ kind: "add-label", repo, number, label: WAITING }];
-  return [];
+  return met;
 }
 
 function staleRule({ repo, number, labels, buildingSince, liveRun, restarted }: IssueState, now: number): Action[] {
@@ -50,7 +55,23 @@ export const reconcile = (states: IssueState[], now = Date.now()): Action[] => s
 
 interface Listed {
   number: number;
+  body: string;
   labels: { name: string }[];
+}
+
+function runsOf(wait: ChecksWait): number[] {
+  try {
+    return checkedRuns(wait);
+  } catch (error) {
+    if (!(error instanceof Stopped)) throw error;
+    console.error(`reconcile: ${error.message}, so what waits on them stays waiting`);
+    return [];
+  }
+}
+
+function waitOf(body: string): Pick<IssueState, "checks" | "waited"> {
+  const wait = checksWaitOf(body);
+  return wait === undefined ? { waited: waitedOf(body) } : { checks: { wait, runs: runsOf(wait) } };
 }
 
 const labelsNow = (repo: string, number: number): string[] =>
@@ -81,7 +102,15 @@ function readmit(repo: string, number: number): void {
   console.log(`reconcile: ${repo}#${number} re-admitted, as its chain is valid now`);
 }
 
+function waitedOn(repo: string, number: number, wait: ChecksWait, runs: number[]): void {
+  const body = ghRead(["issue", "view", String(number), "--repo", repo, "--json", "body", "--jq", ".body"], `the body of ${repo}#${number} could not be read, so it stays waiting`);
+  if (!body.includes(waitsLine(wait))) return;
+  ghRead(["issue", "edit", String(number), "--repo", repo, "--body", `${body.replace(waitsLine(wait), waitedLine(wait, runs))}\n`], `${repo}#${number} could not record the full checks it waited on, so it stays waiting`);
+  console.log(`reconcile: ${repo}#${number} waited on ${wait.count} full checks of ${wait.repo}: runs ${runs.join(", ")}`);
+}
+
 function apply(action: Action): void {
+  if (action.kind === "waited") return waitedOn(action.repo, action.number, action.wait, action.runs);
   if (action.kind === "restart") return restart(action.repo, action.number);
   if (action.kind === "admit") return readmit(action.repo, action.number);
   if (action.kind === "flag") return flag(action.repo, action.number);
@@ -123,26 +152,26 @@ function buildOf(number: number, live: string[], events: Event[]): Pick<IssueSta
 }
 
 const openWith = (repo: string, label: string): Listed[] =>
-  JSON.parse(ghRead(["issue", "list", "--repo", repo, "--label", label, "--state", "open", "--limit", "1000", "--json", "number,labels"], `the open ${label}s of ${repo} could not be read, so nothing is reconciled`)) as Listed[];
+  JSON.parse(ghRead(["issue", "list", "--repo", repo, "--label", label, "--state", "open", "--limit", "1000", "--json", "number,labels,body"], `the open ${label}s of ${repo} could not be read, so nothing is reconciled`)) as Listed[];
 
 const waitingStatesOf = (repo: string, tickets: Listed[]): IssueState[] =>
   openWith(repo, WAITING)
     .filter(({ number }) => !tickets.some((ticket) => ticket.number === number))
-    .map(({ number, labels }) => ({ repo, number, labels: labels.map(({ name }) => name), blockers: blockersOf(repo, number) }));
+    .map(({ number, labels, body }) => ({ repo, number, labels: labels.map(({ name }) => name), blockers: blockersOf(repo, number), ...waitOf(body) }));
 
 const dependentStatesOf = (repo: string, closed: number): IssueState[] =>
   dependentsOf(repo, closed)
     .filter((dependent) => dependent.open && dependent.repo !== repo)
-    .map((dependent) => ({ repo: dependent.repo, number: dependent.number, labels: dependent.labels, blockers: blockersOf(dependent.repo, dependent.number) }));
+    .map((dependent) => ({ repo: dependent.repo, number: dependent.number, labels: dependent.labels, blockers: blockersOf(dependent.repo, dependent.number), ...waitOf(dependent.body) }));
 
 function statesOf(repo: string): IssueState[] {
   const listed = openWith(repo, TICKET);
   const building = listed.some(({ labels }) => labels.some(({ name }) => name === BUILDING));
   const live = building ? liveTitles(repo) : [];
-  return listed.map(({ number, labels }) => {
+  return listed.map(({ number, labels, body }) => {
     const names = labels.map(({ name }) => name);
     const events = timelineOf(repo, number);
-    return { repo, number, labels: names, blockers: blockersOf(repo, number), ...(names.includes(BUILDING) ? buildOf(number, live, events) : admitOf(repo, number, events)) };
+    return { repo, number, labels: names, blockers: blockersOf(repo, number), ...waitOf(body), ...(names.includes(BUILDING) ? buildOf(number, live, events) : admitOf(repo, number, events)) };
   }).concat(waitingStatesOf(repo, listed));
 }
 

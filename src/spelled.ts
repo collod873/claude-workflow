@@ -21,7 +21,7 @@ export const LABELS = [
   { name: "checking", kind: "state", colour: STATE_BLUE, description: "The reviewer reads the green build and lands it, or the done check tries a spec's sentences" },
   { name: "slicing", kind: "state", colour: STATE_BLUE, description: "The slicer is cutting a spec's next slices" },
   { name: "researching", kind: "state", colour: STATE_BLUE, description: "The researcher is answering this note" },
-  { name: "waiting", kind: "parked", colour: "fbca04", description: "Waits for other tickets before it builds" },
+  { name: "waiting", kind: "parked", colour: "fbca04", description: "Waits for other tickets, or another repo's full checks, before it builds" },
   { name: "paused", kind: "held", colour: "0e8a16", description: "The owner paused it; the machine never adds or removes it" },
   { name: "stuck", kind: "held", colour: "b60205", description: "The machine stopped and needs the owner; the machine never removes it" },
   { name: "try-", kind: "try", colour: "f66a0a", description: "A builder run after a failure, or a spec's fix pass" },

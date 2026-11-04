@@ -28,6 +28,7 @@ interface BuildAnswer {
   tickets?: unknown[];
   steps?: unknown[];
   on?: number[];
+  checks?: { repo: string; count: number; after: string };
 }
 
 interface ReviewAnswer {
@@ -94,6 +95,7 @@ export function fixing({
   appKeyFile = undefined as string | undefined,
   filedState = "OPEN",
   unsetKeys = "",
+  checksRan = [] as number[],
 } = {}) {
   const root = scratch("builder-");
   const session = join(root, "session");
@@ -138,6 +140,9 @@ export function fixing({
       `printf 'gh %s\\n' "$PWD" >>"${ranIn}"`,
       'case "$*" in',
       ...(unreadable === undefined ? [] : [`  ${unreadable}) printf 'gh: Bad credentials (HTTP 401)\\n' >&2; exit 1 ;;`]),
+      `  *"api"*"/commits/"*) printf '2026-11-04T04:53:38Z\\n' ;;`,
+      `  *"api"*"/actions/runs?created=<"*) printf '0\\n' ;;`,
+      `  *"api"*"/actions/"*) printf '${checksRan.map((run) => `${run}\\n`).join("")}' ;;`,
       `  *"api"*"issues/${ticket}/comments"*) cat "${join(root, "on-ticket.json")}" ;;`,
       "  *\"api\"*\"repos/{owner}/{repo}/installation\"*) printf '4242\\n' ;;",
       "  *\"api\"*\"app/installations/4242/access_tokens\"*) printf 'minted-%s\\n' \"$n\" ;;",

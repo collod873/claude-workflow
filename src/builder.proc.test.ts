@@ -299,6 +299,26 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
     expect(landed()).toEqual([]);
   });
 
+  const MEASURES = { repo: "collod873/Mezzanine", count: 10, after: "collod873/agent-hooks@da77e6c" };
+
+  it("parks `waiting` on full checks another repo has yet to run, written into the ticket for reconcile to count, where agent-hooks#401 was built before its data existed (#1648)", () => {
+    const { run, marked, ticketComments, edits, landed } = fixing({ calledFrom: CALLER, checksRan: [41], answer: { outcome: "waits", checks: MEASURES, reason: "it measures Mezzanine's checks after #397" } });
+
+    expect(run().status).toBe(0);
+    expect(edits().at(-1)).toMatch(/\n\nWaits on 10 full checks of collod873\/Mezzanine after collod873\/agent-hooks@da77e6c\.\n$/);
+    expect(marked().at(-1)).toBe("811 waiting");
+    expect(ticketComments().at(-1)).toBe("The builder of #811 parked it, blocked by 10 full checks of collod873/Mezzanine after collod873/agent-hooks@da77e6c: it measures Mezzanine's checks after #397");
+    expect(landed()).toEqual([]);
+  });
+
+  it("refuses a `waits` answer on full checks that have all run already, so it builds on them", () => {
+    const { run, marked, handed } = fixing({ checksRan: [41, 42], answer: { outcome: "waits", checks: { ...MEASURES, count: 2 }, reason: "it measures" }, claude: SPENT_BY_THE_THIRD_ROUND, stageMinutes: "1" });
+
+    run();
+    expect(marked()).not.toContain("811 waiting");
+    expect(handed().join("\n")).toContain("runs 41, 42");
+  });
+
   it("refuses a `waits` answer on a ticket already closed, so it never waits for good", () => {
     const { run, marked, handed } = fixing({ answer: { outcome: "waits", on: [1590], reason: "it builds on #1590" }, claude: SPENT_BY_THE_THIRD_ROUND, stageMinutes: "1" });
 
