@@ -83,8 +83,8 @@ describe("bin/reconcile holds a ticket waiting on another repo's full checks unt
   const waited = (runs: string) => `## Why\n\n> measure it\n\nWaited on 2 full checks of collod873/Mezzanine after collod873/agent-hooks@da77e6c: runs ${runs}. Each run's \`check-logs\` artifact holds its check's ledger rows: \`gh run download <run> --repo ${MEZZANINE} --name check-logs\`.`;
   const reads = (calls: string[][]) => calls.filter((args) => args[0] === "api" && args.some((arg) => arg.includes("/actions/") || arg.includes("/commits/")));
 
-  it("counts only CI runs started after the commit landed that left a check's ledger rows, and leaves the ticket waiting while too few have", () => {
-    const { reconcile, calls } = linking({ checks: { started: [41, 42], ledgered: [30, 41] }, tickets: [{ number: 931, labels: ["ticket", "waiting"], body: waits, blockers: [{ repo: ELSEWHERE, number: 7, state: "closed" }] }] });
+  it("counts only runs started after the commit landed that left a check's ledger rows, and leaves the ticket waiting while too few have", () => {
+    const { reconcile, calls } = linking({ checks: { lastBefore: 40, ledgered: [30, 41, 41] }, tickets: [{ number: 931, labels: ["ticket", "waiting"], body: waits, blockers: [{ repo: ELSEWHERE, number: 7, state: "closed" }] }] });
 
     const result = reconcile();
 
@@ -92,13 +92,13 @@ describe("bin/reconcile holds a ticket waiting on another repo's full checks unt
     expect(edits(calls())).toEqual([]);
     expect(reads(calls())).toEqual([
       ["api", "repos/collod873/agent-hooks/commits/da77e6c", "--jq", ".commit.committer.date"],
-      ["api", "--paginate", `repos/${MEZZANINE}/actions/workflows/ci.yml/runs?created=>=${LANDED}&per_page=100`, "--jq", ".workflow_runs[].id"],
+      ["api", `repos/${MEZZANINE}/actions/runs?created=<${LANDED}&per_page=1`, "--jq", ".workflow_runs[0].id // 0"],
       ["api", "--paginate", `repos/${MEZZANINE}/actions/artifacts?name=check-logs&per_page=100`, "--jq", ".artifacts[].workflow_run.id"],
     ]);
   });
 
   it("writes the runs that met it and how to read their ledger rows into the body before it takes waiting off", () => {
-    const { reconcile, calls } = linking({ checks: { started: [43, 41, 42], ledgered: [42, 43, 41] }, tickets: [{ number: 931, labels: ["ticket", "waiting"], body: waits, blockers: [] }] });
+    const { reconcile, calls } = linking({ checks: { lastBefore: 40, ledgered: [42, 43, 39, 41] }, tickets: [{ number: 931, labels: ["ticket", "waiting"], body: waits, blockers: [] }] });
 
     const result = reconcile();
 
@@ -121,7 +121,7 @@ describe("bin/reconcile holds a ticket waiting on another repo's full checks unt
 
   it("keeps a dependent in another repo waiting on its checks when its last blocker closes, as agent-hooks#401 behind #1648", () => {
     const { reconcile, calls } = linking({
-      checks: { started: [41], ledgered: [41] },
+      checks: { lastBefore: 40, ledgered: [41] },
       closing: { number: 1648, blocking: [{ repo: ELSEWHERE, number: 401, labels: ["ticket", "waiting"], body: waits, blockers: [{ repo: HERE, number: 1648, state: "closed" }] }] },
     });
 

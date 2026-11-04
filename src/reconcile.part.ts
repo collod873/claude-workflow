@@ -22,13 +22,13 @@ interface Dependent extends Ticket {
 }
 
 interface Checks {
-  started: number[];
+  lastBefore: number;
   ledgered: number[];
 }
 
 export const LANDED = "2026-11-04T04:53:38Z";
 
-const NO_CHECKS: Checks = { started: [], ledgered: [] };
+const NO_CHECKS: Checks = { lastBefore: 0, ledgered: [] };
 
 export function linking({ checks = NO_CHECKS, tickets = [] as Ticket[], waiting = [] as Ticket[], closing = undefined as { number: number; blocking: Dependent[] } | undefined, alreadyLinked = false, parentless = false, refused = false, liveTitles = [] as string[], issues = {} } = {}) {
   const root = scratch("reconcile-");
@@ -38,7 +38,6 @@ export function linking({ checks = NO_CHECKS, tickets = [] as Ticket[], waiting 
   plant(root, "waiting.json", listed(waiting));
   plant(root, "blocking.json", JSON.stringify([(closing?.blocking ?? []).map(({ repo, number, labels, body = "" }) => ({ ...linked({ repo, number, state: "open" }), body, labels: labels.map((name) => ({ name })) }))]));
   plant(root, "live", liveTitles.join("\n"));
-  plant(root, "started", checks.started.join("\n"));
   plant(root, "ledgered", checks.ledgered.join("\n"));
   const cases = [...tickets, ...waiting, ...(closing?.blocking ?? [])].flatMap(({ number, labels, blockers, timeline = [], body = "" }) => {
     plant(root, `blockers-${number}.json`, JSON.stringify([blockers.map(linked)]));
@@ -58,7 +57,7 @@ export function linking({ checks = NO_CHECKS, tickets = [] as Ticket[], waiting 
       'case "$*" in',
       ...(refused ? ['  *"--method POST"*) printf \'gh: Forbidden (HTTP 403)\\n\' >&2; exit 1 ;;', '  *"issue edit"*) printf \'gh: Forbidden (HTTP 403)\\n\' >&2; exit 1 ;;'] : []),
       `  *"/commits/"*) printf '${LANDED}\\n' ;;`,
-      `  *"/actions/workflows/ci.yml/runs?created=>=${LANDED}&"*) cat "${join(root, "started")}" ;;`,
+      `  *"/actions/runs?created=<${LANDED}&per_page=1"*) printf '${checks.lastBefore}\\n' ;;`,
       `  *"/actions/artifacts?name=check-logs&"*) cat "${join(root, "ledgered")}" ;;`,
       `  "run list"*"--status queued"*) cat "${join(root, "live")}" ;;`,
       `  "issue list"*"--label waiting "*) cat "${join(root, "waiting.json")}" ;;`,

@@ -14,7 +14,6 @@ const WAITED_ON = "Waited on";
 const WAITS = new RegExp(`^${WAITS_ON} ${WAIT}\\.$`, "m");
 const WAITED = new RegExp(`^${WAITED_ON} ${WAIT}: .*$`, "m");
 const ANY_WAIT = new RegExp(`\\n*^(?:${WAITS_ON}|${WAITED_ON}) ${WAIT}(?:\\.|: .*)$`, "gm");
-const CI_WORKFLOW = "ci.yml";
 const LEDGER_ARTIFACT = "check-logs";
 
 export const checksNamed = ({ repo, count, afterRepo, sha }: ChecksWait) => `${count} full checks of ${repo} after ${afterRepo}@${sha}`;
@@ -35,13 +34,6 @@ const withoutWait = (body: string): string => body.replace(ANY_WAIT, "").trimEnd
 
 export const withWait = (body: string, wait: ChecksWait): string => `${withoutWait(body)}\n\n${waitsLine(wait)}\n`;
 
-const ids = (path: string, jq: string, line: string): Set<number> =>
-  new Set(
-    ghRead(["api", "--paginate", path, "--jq", jq], line)
-      .split("\n")
-      .filter((id) => id !== "")
-      .map(Number),
-  );
 
 function landedAt({ afterRepo, sha }: ChecksWait): string {
   return ghRead(["api", `repos/${afterRepo}/commits/${sha}`, "--jq", ".commit.committer.date"], `${afterRepo}@${sha} could not be read`);
@@ -50,7 +42,7 @@ function landedAt({ afterRepo, sha }: ChecksWait): string {
 export function checkedRuns(wait: ChecksWait): number[] {
   const since = landedAt(wait);
   const unread = `the full checks ${wait.repo} ran after ${wait.afterRepo}@${wait.sha} could not be read`;
-  const started = ids(`repos/${wait.repo}/actions/workflows/${CI_WORKFLOW}/runs?created=>=${since}&per_page=100`, ".workflow_runs[].id", unread);
-  const ledgered = ids(`repos/${wait.repo}/actions/artifacts?name=${LEDGER_ARTIFACT}&per_page=100`, ".artifacts[].workflow_run.id", unread);
-  return [...started].filter((run) => ledgered.has(run)).sort((one, other) => one - other);
+  const lastBefore = Number(ghRead(["api", `repos/${wait.repo}/actions/runs?created=<${since}&per_page=1`, "--jq", ".workflow_runs[0].id // 0"], unread));
+  const ledgered = ghRead(["api", "--paginate", `repos/${wait.repo}/actions/artifacts?name=${LEDGER_ARTIFACT}&per_page=100`, "--jq", ".artifacts[].workflow_run.id"], unread).split("\n").filter((id) => id !== "").map(Number);
+  return [...new Set(ledgered)].filter((run) => run > lastBefore).sort((one, other) => one - other);
 }
