@@ -28,7 +28,9 @@ interface Checks {
 
 export const LANDED = "2026-11-04T04:53:38Z";
 
-export function linking({ checks = { started: [], ledgered: [] } as Checks, tickets = [] as Ticket[], waiting = [] as Ticket[], closing = undefined as { number: number; blocking: Dependent[] } | undefined, alreadyLinked = false, parentless = false, refused = false, liveTitles = [] as string[], issues = {} } = {}) {
+const NO_CHECKS: Checks = { started: [], ledgered: [] };
+
+export function linking({ checks = NO_CHECKS, tickets = [] as Ticket[], waiting = [] as Ticket[], closing = undefined as { number: number; blocking: Dependent[] } | undefined, alreadyLinked = false, parentless = false, refused = false, liveTitles = [] as string[], issues = {} } = {}) {
   const root = scratch("reconcile-");
   const { setup, calls } = ghArgv(join(root, "gh-argv"));
   const listed = (issues: Ticket[]) => JSON.stringify(issues.map(({ number, labels, body = "" }) => ({ number, body, labels: labels.map((name) => ({ name })) })));
