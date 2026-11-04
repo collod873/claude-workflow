@@ -79,3 +79,32 @@ describe("reconcile re-admits a refused ticket once its chain is valid (#1606)",
     expect(reconcile([{ ...refused(true), labels }])).toEqual([]);
   });
 });
+
+const MEZZANINE = "collod873/Mezzanine";
+const wait = { repo: MEZZANINE, count: 3, afterRepo: "collod873/agent-hooks", sha: "da77e6c" };
+const checked = (runs: number[], blockers: IssueState["blockers"] = []): IssueState => ({ ...ticket(["ticket", "waiting"], blockers), checks: { wait, runs } });
+
+describe("reconcile holds a ticket waiting on another repo's full checks until that many have run (#1648)", () => {
+  it("keeps it waiting while fewer have run, even with every blocker closed", () => {
+    expect(reconcile([checked([11, 12], [blocker(false)])])).toEqual([]);
+  });
+
+  it("parks a ticket with a checks wait not yet met", () => {
+    expect(reconcile([{ ...checked([]), labels: ["ticket"] }])).toEqual([{ kind: "add-label", repo: REPO, number: 931, label: "waiting" }]);
+  });
+
+  it("records the first runs that met it, then wakes it", () => {
+    expect(reconcile([checked([11, 12, 13, 14])])).toEqual([
+      { kind: "waited", repo: REPO, number: 931, wait, runs: [11, 12, 13] },
+      { kind: "remove-label", repo: REPO, number: 931, label: "waiting" },
+    ]);
+  });
+
+  it("keeps it waiting on an open blocker once its checks have run", () => {
+    expect(reconcile([checked([11, 12, 13], [blocker(true)])])).toEqual([{ kind: "waited", repo: REPO, number: 931, wait, runs: [11, 12, 13] }]);
+  });
+
+  it("wakes a waiting ticket whose checks wait was recorded met before its wake was lost", () => {
+    expect(reconcile([{ ...ticket(["ticket", "waiting"], []), waited: true }])).toEqual([{ kind: "remove-label", repo: REPO, number: 931, label: "waiting" }]);
+  });
+});

@@ -10,11 +10,13 @@ interface Linked {
   number: number;
   state: string;
   repository_url: string;
+  body?: string | null;
   labels?: { name: string }[];
 }
 
 export interface Dependent extends Blocker {
   labels: string[];
+  body: string;
 }
 
 const REPO_OF = /repos\/([^/]+\/[^/]+)$/;
@@ -37,7 +39,7 @@ const dependencies = (repo: string, number: number, side: "blocked_by" | "blocki
 export const blockersOf = (repo: string, number: number): Blocker[] => dependencies(repo, number, "blocked_by", `the blockers of ${named(repo, number)} could not be read`).map(linkedOf);
 
 export const dependentsOf = (repo: string, number: number): Dependent[] =>
-  dependencies(repo, number, "blocking", `the issues ${named(repo, number)} blocks could not be read`).map((issue) => ({ ...linkedOf(issue), labels: (issue.labels ?? []).map(({ name }) => name) }));
+  dependencies(repo, number, "blocking", `the issues ${named(repo, number)} blocks could not be read`).map((issue) => ({ ...linkedOf(issue), labels: (issue.labels ?? []).map(({ name }) => name), body: issue.body ?? "" }));
 
 export function addBlocker(repo: string, number: number, blockerRepo: string, blockerNumber: number): void {
   linked(`${issuePath(repo, number)}/dependencies/blocked_by`, "issue_id", idOf(blockerRepo, blockerNumber), `${named(repo, number)} could not be marked blocked by ${named(blockerRepo, blockerNumber)}`);

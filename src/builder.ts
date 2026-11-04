@@ -7,8 +7,9 @@ import { admission, doesNotBuild } from "./admit.ts";
 import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
 import { capped, LIST_CAP, listedCapped, NO_EM_DASH, onDisk, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
 import { PUBLISHED_CHECK } from "./checks.ts";
+import { type ChecksWait, checkedRuns, checksNamed, waitedLine, withWait } from "./checks-wait.ts";
 import { park, postedUnderOrigin } from "./issue-links.ts";
-import { commentOnTicket, commentsRead, FOREIGN, fromLine, followUpBody, gh, ghRead, git, gitRead, MACHINE_REPO, mark, NOTHING_MARKED, OWNER, postRefusals, readOrStop, rewriteTicket, FILED_IN, ticketBranch, unread } from "./post.ts";
+import { commentOnTicket, commentsRead, FOREIGN, fromLine, followUpBody, gh, ghRead, git, gitRead, MACHINE_REPO, mark, NOTHING_MARKED, OWNER, postRefusals, readOrStop, rewriteTicket, FILED_IN, Stopped, ticketBranch, unread } from "./post.ts";
 import { reviewedAndLanded } from "./reviewer.ts";
 import { calledOwner, committed, commitlinted, CONTRACT, FILED, opened, setupRefusal, type Spent, treePathed, unsetKeys } from "./stage.ts";
 import { dedashed } from "./em-dash.ts";
@@ -38,6 +39,16 @@ const ANSWER = {
   properties: {
     outcome: { enum: ["code", "spec", "done", "close", "stuck", "machine", "owned", "waits"] },
     on: { type: "array", items: { type: "integer" } },
+    checks: {
+      type: "object",
+      properties: {
+        repo: { type: "string", pattern: "^[\\w.-]+/[\\w.-]+$" },
+        count: { type: "integer", minimum: 1 },
+        after: { type: "string", pattern: "^[\\w.-]+/[\\w.-]+@[0-9a-f]{7,40}$" },
+      },
+      required: ["repo", "count", "after"],
+      additionalProperties: false,
+    },
     reason: { type: "string", pattern: NO_EM_DASH },
     body: { type: "string", pattern: NO_EM_DASH },
     ...OWNED_ANSWER,
@@ -55,6 +66,7 @@ export interface Piece {
 interface Answer {
   outcome: "code" | "spec" | "done" | "close" | "stuck" | "machine" | "owned" | "waits";
   on?: number[];
+  checks?: { repo: string; count: number; after: string };
   reason: string;
   repo?: string;
   body?: string;
@@ -192,7 +204,7 @@ export function handedOn({ ticket, body, capture, alongside, commitlint, foreign
     "- `spec`: too big for one build; give it rewritten as a spec in `body`, its Why byte-identical under `## Problem Statement`, its `## Done when` sentences moved into the closing `## I'll know it works when I can`; it is relabelled `spec` and the slicer cuts it.",
     "- `done`: main already does what it asks, as when an earlier run landed it and its close failed; it closes completed, and no one is called.",
     "- `close`: the ticket should not exist as written, and nothing should replace it, as for a gate you cannot make pass, since a gate is proven first.",
-    "- `waits`: it depends on other open tickets here, as one another builder is still building: name them as `on`; it is marked `waiting` and builds once they all close.",
+    "- `waits`: it depends on other open tickets here, as one another builder is still building: name them as `on`; or it measures what another repo's full checks show after a commit lands, and too few have run: name the repo, how many and the commit as `owner/repo@sha` in `checks`. It is marked `waiting` and builds once they all close or have run.",
     "- `stuck`: only the owner can unblock it, even rewritten; `reason` says why, and the ticket is marked `stuck`.",
     machineAtFault(foreign),
     `- \`owned\`: its first step belongs in the one other repo that owns that kind of fix, such as \`${OWNER}/design-kit\` for a kit primitive or \`${OWNER}/agent-skills\` for a skill or shared tool: name it as \`repo\`, change nothing here for it, and file that step as \`tickets\`; this ticket waits on them and builds once they close.`,
@@ -250,13 +262,35 @@ function rewrittenAsSpec(ticket: string, body: string, answer: Answer): Round {
   return { ended: 0 };
 }
 
-function waitedOn(ticket: string, answer: Answer): Round {
+const answeredWait = ({ repo, count, after }: NonNullable<Answer["checks"]>): ChecksWait => {
+  const [afterRepo = "", sha = ""] = after.split("@");
+  return { repo, count, afterRepo, sha };
+};
+
+function checksRefusal(wait: ChecksWait): string | undefined {
+  try {
+    const runs = checkedRuns(wait);
+    return runs.length < wait.count ? undefined : `Your \`waits\` answer was refused: they have run already, so build on them. ${waitedLine(wait, runs.slice(0, wait.count))}`;
+  } catch (error) {
+    if (!(error instanceof Stopped)) throw error;
+    return `Your \`waits\` answer was refused: ${error.message}.`;
+  }
+}
+
+function waitedOn(ticket: string, body: string, answer: Answer): Round {
   const on = [...new Set((answer.on ?? []).map(String))].filter((number) => number !== ticket);
-  if (on.length === 0) return { red: "Your `waits` answer was refused: it names the open tickets this one depends on as `on`." };
+  const wait = answer.checks === undefined ? undefined : answeredWait(answer.checks);
+  if (on.length === 0 && wait === undefined) return { red: "Your `waits` answer was refused: it names the open tickets this one depends on as `on`, or the full checks it measures as `checks`." };
   const closed = on.filter((number) => ghRead(["issue", "view", number, "--json", "state", "--jq", ".state"], `the state of #${number} could not be read, ${NOTHING_MARKED}`) !== "OPEN");
   if (closed.length > 0) return { red: `Your \`waits\` answer was refused: ${closed.map((number) => `#${number}`).join(", ")} is closed already, so build on what it left.` };
+  const ran = wait === undefined ? undefined : checksRefusal(wait);
+  if (ran !== undefined) return { red: ran };
   const here = process.env.GH_REPO ?? "";
-  const named = on.map((number) => `${here}#${number}`);
+  const named = [...on.map((number) => `${here}#${number}`), ...(wait === undefined ? [] : [checksNamed(wait)])];
+  if (wait !== undefined) {
+    const written = gh(["issue", "edit", ticket, "--body", withWait(body, wait)]);
+    if (written.status !== 0) return { ended: calledOwner(ticket, "builder", `the full checks it waits on would not save to the ticket: ${quoted((written.stderr || written.stdout).trim().split("\n")[0] ?? "")}`) };
+  }
   park(ticket, on.map((number) => ({ repo: here, number: Number(number) })));
   commentOnTicket(ticket, `${parkedBehind(ticket, named)} ${answer.reason}`, gh);
   console.log(`fix: #${ticket} waits on ${named.join(", ")}`);
@@ -349,7 +383,7 @@ function outcomeOf(ticket: string, body: string, answer: Answer | undefined, mai
   if (answer.outcome === "close") return { ended: closedAs(ticket, "not planned", `@${OWNER} the builder closed #${ticket} unbuilt and kept its branch: ${answer.reason}`) };
   if (answer.outcome === "stuck") return { ended: calledOwner(ticket, "builder", answer.reason) };
   if (answer.outcome === "spec") return rewrittenAsSpec(ticket, body, answer);
-  if (answer.outcome === "waits") return waitedOn(ticket, answer);
+  if (answer.outcome === "waits") return waitedOn(ticket, body, answer);
   if (answer.outcome === "machine" && FOREIGN) return filedForMachine(ticket, answer);
   if (answer.outcome === "owned") return handedToItsRepo(ticket, answer);
   if (answer.outcome === "machine") return landedOnMain(ticket, answer.reason, mainBefore);

@@ -8,6 +8,7 @@ export const ELSEWHERE = "collod873/design-kit";
 interface Ticket {
   number: number;
   labels: string[];
+  body?: string;
   blockers: { repo: string; number: number; state: string }[];
   timeline?: object[];
 }
@@ -20,19 +21,29 @@ interface Dependent extends Ticket {
   repo: string;
 }
 
-export function linking({ tickets = [] as Ticket[], waiting = [] as Ticket[], closing = undefined as { number: number; blocking: Dependent[] } | undefined, alreadyLinked = false, parentless = false, refused = false, liveTitles = [] as string[], issues = {} } = {}) {
+interface Checks {
+  started: number[];
+  ledgered: number[];
+}
+
+export const LANDED = "2026-11-04T04:53:38Z";
+
+export function linking({ checks = { started: [], ledgered: [] } as Checks, tickets = [] as Ticket[], waiting = [] as Ticket[], closing = undefined as { number: number; blocking: Dependent[] } | undefined, alreadyLinked = false, parentless = false, refused = false, liveTitles = [] as string[], issues = {} } = {}) {
   const root = scratch("reconcile-");
   const { setup, calls } = ghArgv(join(root, "gh-argv"));
-  const listed = (issues: Ticket[]) => JSON.stringify(issues.map(({ number, labels }) => ({ number, labels: labels.map((name) => ({ name })) })));
+  const listed = (issues: Ticket[]) => JSON.stringify(issues.map(({ number, labels, body = "" }) => ({ number, body, labels: labels.map((name) => ({ name })) })));
   plant(root, "listed.json", listed(tickets));
   plant(root, "waiting.json", listed(waiting));
-  plant(root, "blocking.json", JSON.stringify([(closing?.blocking ?? []).map(({ repo, number, labels }) => ({ ...linked({ repo, number, state: "open" }), labels: labels.map((name) => ({ name })) }))]));
+  plant(root, "blocking.json", JSON.stringify([(closing?.blocking ?? []).map(({ repo, number, labels, body = "" }) => ({ ...linked({ repo, number, state: "open" }), body, labels: labels.map((name) => ({ name })) }))]));
   plant(root, "live", liveTitles.join("\n"));
-  const cases = [...tickets, ...waiting, ...(closing?.blocking ?? [])].flatMap(({ number, labels, blockers, timeline = [] }) => {
+  plant(root, "started", checks.started.join("\n"));
+  plant(root, "ledgered", checks.ledgered.join("\n"));
+  const cases = [...tickets, ...waiting, ...(closing?.blocking ?? [])].flatMap(({ number, labels, blockers, timeline = [], body = "" }) => {
     plant(root, `blockers-${number}.json`, JSON.stringify([blockers.map(linked)]));
+    plant(root, `body-${number}`, body);
     plant(root, `timeline-${number}.json`, JSON.stringify([timeline]));
     plant(root, `labels-${number}`, labels.join("\n"));
-    return [`  *"issues/${number}/timeline"*) cat "${join(root, `timeline-${number}.json`)}" ;;`, `  *"issues/${number}/dependencies/blocked_by"*) cat "${join(root, `blockers-${number}.json`)}" ;;`, `  "issue view ${number} "*) cat "${join(root, `labels-${number}`)}" ;;`];
+    return [`  *"issues/${number}/timeline"*) cat "${join(root, `timeline-${number}.json`)}" ;;`, `  *"issues/${number}/dependencies/blocked_by"*) cat "${join(root, `blockers-${number}.json`)}" ;;`, `  "issue view ${number} "*"--json body"*) cat "${join(root, `body-${number}`)}" ;;`, `  "issue view ${number} "*) cat "${join(root, `labels-${number}`)}" ;;`];
   });
   const opened = Object.entries(issues).map(([path, issue], at) => {
     plant(root, `issue-${at}.json`, JSON.stringify(issue));
@@ -44,6 +55,9 @@ export function linking({ tickets = [] as Ticket[], waiting = [] as Ticket[], cl
       setup,
       'case "$*" in',
       ...(refused ? ['  *"--method POST"*) printf \'gh: Forbidden (HTTP 403)\\n\' >&2; exit 1 ;;', '  *"issue edit"*) printf \'gh: Forbidden (HTTP 403)\\n\' >&2; exit 1 ;;'] : []),
+      `  *"/commits/"*) printf '${LANDED}\\n' ;;`,
+      `  *"/actions/workflows/ci.yml/runs?created=>=${LANDED}&"*) cat "${join(root, "started")}" ;;`,
+      `  *"/actions/artifacts?name=check-logs&"*) cat "${join(root, "ledgered")}" ;;`,
       `  "run list"*"--status queued"*) cat "${join(root, "live")}" ;;`,
       `  "issue list"*"--label waiting "*) cat "${join(root, "waiting.json")}" ;;`,
       ...(closing === undefined ? [] : [`  *"issues/${closing.number}/dependencies/blocking"*) cat "${join(root, "blocking.json")}" ;;`]),

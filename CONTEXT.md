@@ -209,13 +209,21 @@ _Avoid_: issue, sub-issue, card, item
 **Reconcile**:
 `bin/reconcile`, the one idempotent pass that owns wake, admit and stale-build recovery: a pure
 `reconcile` from each open ticket's state to label edits, each checking the labels first so two
-runs at once act once. `waiting` is its projection of the ticket's blocked-by links, written and
-never read as state; a ticket with no blocked-by link is left alone. Any other open issue labelled
+runs at once act once. `waiting` is its projection of the ticket's blocked-by links and any checks
+wait, written and never read as state; a ticket with neither is left alone. Any other open issue labelled
 `waiting`, a spec included, has `waiting` taken off once every blocker closed. When an issue closes,
 the pass in its repo also reconciles each issue it blocked in another repo, so a cross-repo wait
 ends on the close; the 15-minute clock is the last resort. The builder and the scheduler park
 through `park`, which links each blocker, then marks `waiting`; a link already there counts as linked.
 _Avoid_: sweeper, poller
+
+**Checks wait**:
+A line in an issue's body, `Waits on N full checks of <repo> after <repo>@<sha>.`, for work that
+measures what a change did once it lands. Reconcile counts that repo's CI runs started after the
+commit landed that left a `check-logs` artifact, each holding its check's ledger rows; once N have,
+it rewrites the line as `Waited on ...`, naming the runs and how to download their rows, and takes
+`waiting` off. A builder answers `waits` with `checks` to write it.
+_Avoid_: data wait, delayed ticket
 
 **Note**:
 An issue labelled `note`: filed to be kept, never built, with a `## Why`. A research
