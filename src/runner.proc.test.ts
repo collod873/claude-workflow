@@ -39,7 +39,7 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
     }
     const dir = `/home/ghrunner/runners/collod873-Lumaria/${HOST}-2`;
     const env = placed(`${dir}/.env`).split("\n");
-    expect(env).toEqual(expect.arrayContaining([`HOME=${dir}/home`, `ACTIONS_RUNNER_HOOK_JOB_STARTED=${dir}/clear.sh`, `ACTIONS_RUNNER_HOOK_JOB_COMPLETED=${dir}/clear.sh`, `npm_config_store_dir=${dir}/toolcache/pnpm-store`]));
+    expect(env).toEqual(expect.arrayContaining([`HOME=${dir}/home`, `ACTIONS_RUNNER_HOOK_JOB_STARTED=${dir}/clear.sh`, `ACTIONS_RUNNER_HOOK_JOB_COMPLETED=${dir}/clear.sh`, `pnpm_config_store_dir=${dir}/toolcache/pnpm-store`]));
     expect(env.filter((line) => line.startsWith("CHECK_SLOTS")), "a runner's checks wait in the machine's one check line beside the owner's").toEqual([]);
   });
 
