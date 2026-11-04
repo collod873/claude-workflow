@@ -220,7 +220,8 @@ _Avoid_: sweeper, poller
 **Checks wait**:
 A line in an issue's body, `Waits on N full checks of <repo> after <repo>@<sha>.`, for work that
 measures what a change did once it lands. Reconcile counts that repo's CI runs started after the
-commit landed that left a `check-logs` artifact, each holding its check's ledger rows; once N have,
+commit landed, when its pull request merged or, with none, when it was pushed, that left a
+`check-logs` artifact, each holding its check's ledger rows; once N have,
 it rewrites the line as `Waited on ...`, naming the runs and how to download their rows, and takes
 `waiting` off. A builder answers `waits` with `checks` to write it.
 _Avoid_: data wait, delayed ticket

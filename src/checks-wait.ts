@@ -33,14 +33,20 @@ export const waitedOf = (body: string): boolean => WAITED.test(body);
 const withoutWait = (body: string): string => body.replace(ANY_WAIT, "").trimEnd();
 
 export const withWait = (body: string, wait: ChecksWait): string => `${withoutWait(body)}\n\n${waitsLine(wait)}\n`;
+const PUSHED = "pushed";
+const UNMERGED = "unmerged";
+const MERGED_AT = `if length == 0 then "${PUSHED}" else ([.[] | select(.merged_at != null and .base.ref == .base.repo.default_branch) | .merged_at] | min // "${UNMERGED}") end`;
 
-
-function landedAt({ afterRepo, sha }: ChecksWait): string {
-  return ghRead(["api", `repos/${afterRepo}/commits/${sha}`, "--jq", ".commit.committer.date"], `${afterRepo}@${sha} could not be read`);
+function landedAt({ afterRepo, sha }: ChecksWait): string | undefined {
+  const unread = `${afterRepo}@${sha} could not be read`;
+  const merged = ghRead(["api", `repos/${afterRepo}/commits/${sha}/pulls`, "--jq", MERGED_AT], unread);
+  if (merged === UNMERGED) return undefined;
+  return merged === PUSHED ? ghRead(["api", `repos/${afterRepo}/commits/${sha}`, "--jq", ".commit.committer.date"], unread) : merged;
 }
 
 export function checkedRuns(wait: ChecksWait): number[] {
   const since = landedAt(wait);
+  if (since === undefined) return [];
   const unread = `the full checks ${wait.repo} ran after ${wait.afterRepo}@${wait.sha} could not be read`;
   const lastBefore = Number(ghRead(["api", `repos/${wait.repo}/actions/runs?created=<${since}&per_page=1`, "--jq", ".workflow_runs[0].id // 0"], unread));
   const ledgered = ghRead(["api", "--paginate", `repos/${wait.repo}/actions/artifacts?name=${LEDGER_ARTIFACT}&per_page=100`, "--jq", ".artifacts[].workflow_run.id"], unread).split("\n").filter((id) => id !== "").map(Number);

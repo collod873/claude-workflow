@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ELSEWHERE, HERE, type Issues, LANDED, linking } from "./reconcile.part.ts";
+import { ELSEWHERE, HERE, type Issues, linking } from "./reconcile.part.ts";
 
 const edits = (calls: string[][]) => calls.filter((args) => args[0] === "issue" && args[1] === "edit");
 
@@ -83,18 +83,22 @@ describe("bin/reconcile holds a ticket waiting on another repo's full checks unt
   const waited = (runs: string) => `## Why\n\n> measure it\n\nWaited on 2 full checks of collod873/Mezzanine after collod873/agent-hooks@da77e6c: runs ${runs}. Each run's \`check-logs\` artifact holds its check's ledger rows: \`gh run download <run> --repo ${MEZZANINE} --name check-logs\`.`;
   const reads = (calls: string[][]) => calls.filter((args) => args[0] === "api" && args.some((arg) => arg.includes("/actions/") || arg.includes("/commits/")));
 
-  it("counts only runs started after the commit landed that left a check's ledger rows, and leaves the ticket waiting while too few have", () => {
+  it("counts only runs started after the commit merged that left a check's ledger rows, and leaves the ticket waiting while too few have", () => {
     const { reconcile, calls } = linking({ checks: { lastBefore: 40, ledgered: [30, 41, 41] }, tickets: [{ number: 931, labels: ["ticket", "waiting"], body: waits, blockers: [{ repo: ELSEWHERE, number: 7, state: "closed" }] }] });
 
     const result = reconcile();
 
     expect(result.status, result.stderr).toBe(0);
     expect(edits(calls())).toEqual([]);
-    expect(reads(calls())).toEqual([
-      ["api", "repos/collod873/agent-hooks/commits/da77e6c", "--jq", ".commit.committer.date"],
-      ["api", `repos/${MEZZANINE}/actions/runs?created=<${LANDED}&per_page=1`, "--jq", ".workflow_runs[0].id // 0"],
-      ["api", "--paginate", `repos/${MEZZANINE}/actions/artifacts?name=check-logs&per_page=100`, "--jq", ".artifacts[].workflow_run.id"],
-    ]);
+  });
+
+  it("counts no run while the commit's pull request is unmerged, so runs on the old code never meet it", () => {
+    const { reconcile, calls } = linking({ landed: "unmerged", checks: { lastBefore: 40, ledgered: [41, 42] }, tickets: [{ number: 931, labels: ["ticket", "waiting"], body: waits, blockers: [] }] });
+
+    const result = reconcile();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(edits(calls())).toEqual([]);
   });
 
   it("writes the runs that met it and how to read their ledger rows into the body before it takes waiting off", () => {

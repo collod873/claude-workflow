@@ -26,11 +26,11 @@ interface Checks {
   ledgered: number[];
 }
 
-export const LANDED = "2026-11-04T04:53:38Z";
+const LANDED = "2026-11-04T04:53:38Z";
 
 const NO_CHECKS: Checks = { lastBefore: 0, ledgered: [] };
 
-export function linking({ checks = NO_CHECKS, tickets = [] as Ticket[], waiting = [] as Ticket[], closing = undefined as { number: number; blocking: Dependent[] } | undefined, alreadyLinked = false, parentless = false, refused = false, liveTitles = [] as string[], issues = {} } = {}) {
+export function linking({ checks = NO_CHECKS, landed = LANDED, tickets = [] as Ticket[], waiting = [] as Ticket[], closing = undefined as { number: number; blocking: Dependent[] } | undefined, alreadyLinked = false, parentless = false, refused = false, liveTitles = [] as string[], issues = {} } = {}) {
   const root = scratch("reconcile-");
   const { setup, calls } = ghArgv(join(root, "gh-argv"));
   const listed = (issues: Ticket[]) => JSON.stringify(issues.map(({ number, labels, body = "" }) => ({ number, body, labels: labels.map((name) => ({ name })) })));
@@ -56,7 +56,7 @@ export function linking({ checks = NO_CHECKS, tickets = [] as Ticket[], waiting 
       setup,
       'case "$*" in',
       ...(refused ? ['  *"--method POST"*) printf \'gh: Forbidden (HTTP 403)\\n\' >&2; exit 1 ;;', '  *"issue edit"*) printf \'gh: Forbidden (HTTP 403)\\n\' >&2; exit 1 ;;'] : []),
-      `  *"/commits/"*) printf '${LANDED}\\n' ;;`,
+      `  *"/commits/"*"/pulls"*) printf '${landed}\\n' ;;`,
       `  *"/actions/runs?created=<${LANDED}&per_page=1"*) printf '${checks.lastBefore}\\n' ;;`,
       `  *"/actions/artifacts?name=check-logs&"*) cat "${join(root, "ledgered")}" ;;`,
       `  "run list"*"--status queued"*) cat "${join(root, "live")}" ;;`,
