@@ -1,4 +1,4 @@
-import { execFile, execFileSync, spawnSync } from "node:child_process";
+import { execFile, execFileSync, spawn, spawnSync } from "node:child_process";
 import { generateKeyPairSync } from "node:crypto";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { hostname, tmpdir } from "node:os";
@@ -551,6 +551,8 @@ function landedBeside(root: string, remote: string, files: Record<string, string
   return git(elsewhere, "rev-parse", "HEAD");
 }
 
+export type LandStage = "check" | "rebase" | "merge wait";
+
 export function landSession({
   gh,
   remoteRefuses,
@@ -566,7 +568,8 @@ export function landSession({
   openPr = false,
   treeNode = false,
   required = [],
-}: { gh?: string; remoteRefuses?: string; messages?: string[]; merges?: Merge[]; views?: string[]; mainMovesOnRefusal?: Record<string, string>; rounds?: string; covered?: boolean; green?: boolean; changes?: Record<string, string>; defaultBranch?: string; openPr?: boolean; treeNode?: boolean; required?: RequiredChecks[] } = {}) {
+  hold,
+}: { hold?: LandStage; gh?: string; remoteRefuses?: string; messages?: string[]; merges?: Merge[]; views?: string[]; mainMovesOnRefusal?: Record<string, string>; rounds?: string; covered?: boolean; green?: boolean; changes?: Record<string, string>; defaultBranch?: string; openPr?: boolean; treeNode?: boolean; required?: RequiredChecks[] } = {}) {
   const root = scratch("land-");
   const { remote, session } = clonedOn(root, defaultBranch, ["base"]);
   git(remote, "config", "user.email", "github@test");
@@ -579,6 +582,10 @@ export function landSession({
   const state = join(root, "gh-state");
   mkdirSync(state);
   const log = join(state, "argv.jsonl");
+  const held = join(state, "held");
+  const holding = (stage: LandStage) => (hold === stage ? `[[ -e ${JSON.stringify(held)} ]] || { touch ${JSON.stringify(held)}; exec sleep 30; }\n` : "");
+  if (hold === "rebase")
+    script(join(root, "bin", "git"), `if [[ $1 == rebase && $2 != --abort && ! -e ${JSON.stringify(held)} ]]; then shift; PATH="\${PATH#*:}" exec git rebase -x ${JSON.stringify(`touch ${held}; sleep 30`)} "$@"; fi\nPATH="\${PATH#*:}" exec git "$@"\n`);
   const counted = (name: string) => `$(( $(ls ${JSON.stringify(state)} | grep -c ${name}-) + 1 ))`;
   script(
     join(root, "bin", "gh"),
@@ -604,6 +611,7 @@ export function landSession({
         '    echo "${views[n - 1]}"',
         "    ;;",
         '  "pr checks")',
+        ...(hold === "merge wait" ? [`    [[ $* == *--watch* ]] && { ${holding("merge wait").trim()}; }`] : []),
         `    n=${counted("checks")}; touch ${JSON.stringify(state)}/checks-$n`,
         "    (( n > ${#pending[@]} )) && exit 0",
         '    exit "${pending[n - 1]}"',
@@ -636,15 +644,17 @@ export function landSession({
   const checkCallers = join(state, "check-callers");
   const treeBin = join(root, "tree-bin");
   if (treeNode) script(join(treeBin, "node"), "exit 9\n");
-  script(join(root, "bin", "check"), `printf '%s\\n' "$*" >>${JSON.stringify(checks)}\ncommand -v node >>${JSON.stringify(checkNodes)}\nprintf '%s\\n' "\${CHECK_CALLER-unset}" >>${JSON.stringify(checkCallers)}\nif [[ $* == *--publish* ]]; then\n${publishing}\nelse\n${covering}\nfi\n`);
+  script(join(root, "bin", "check"), `${holding("check")}printf '%s\\n' "$*" >>${JSON.stringify(checks)}\ncommand -v node >>${JSON.stringify(checkNodes)}\nprintf '%s\\n' "\${CHECK_CALLER-unset}" >>${JSON.stringify(checkCallers)}\nif [[ $* == *--publish* ]]; then\n${publishing}\nelse\n${covering}\nfi\n`);
   const head = git(session, "rev-parse", "HEAD");
+  const landEnv = { PATH: `${join(root, "bin")}:${process.env.PATH}`, LAND_ROUNDS: rounds, LAND_PAUSE_SECONDS: "0", ...(treeNode ? { TREE_PATH: treeBin } : {}) };
   return {
     root,
     remote,
     session,
     head,
     branch: `land/${head.slice(0, 12)}`,
-    run: (args: string[] = [], from = session) => execute(join(BIN, "land"), from, { PATH: `${join(root, "bin")}:${process.env.PATH}`, LAND_ROUNDS: rounds, LAND_PAUSE_SECONDS: "0", ...(treeNode ? { TREE_PATH: treeBin } : {}) }, args),
+    run: (args: string[] = [], from = session) => execute(join(BIN, "land"), from, landEnv, args),
+    stoppedWhileHeld: (signal: NodeJS.Signals) => stoppedOnceHeld(join(BIN, "land"), session, { MACHINE_BIN: join(session, "bin"), ...env, ...landEnv }, held, signal),
     calls: (): string[][] => (existsSync(log) ? readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as string[]) : []),
     merged: (call: string[]) => call[0] === "pr" && call[1] === "merge",
     posted: (call: string[]) => call[0] === "api" && call[3]?.startsWith("repos/{owner}/{repo}/statuses/") === true,
@@ -653,6 +663,25 @@ export function landSession({
     checkedAs: () => (existsSync(checkCallers) ? readFileSync(checkCallers, "utf8").trim().split("\n") : []),
     treeBin,
   };
+}
+
+function stoppedOnceHeld(file: string, cwd: string, environment: NodeJS.ProcessEnv, held: string, signal: NodeJS.Signals): Promise<Run> {
+  return new Promise((resolve) => {
+    const child = spawn(file, [], { cwd, env: environment, detached: true });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk: Buffer) => (stdout += chunk.toString()));
+    child.stderr.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
+    const waiting = setInterval(() => {
+      if (!existsSync(held)) return;
+      clearInterval(waiting);
+      process.kill(-(child.pid ?? 0), signal);
+    }, 20);
+    child.on("close", (status) => {
+      clearInterval(waiting);
+      resolve({ status, stdout, stderr });
+    });
+  });
 }
 
 export function plant(root: string, path: string, content: string): void {

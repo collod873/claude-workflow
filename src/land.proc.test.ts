@@ -1,7 +1,7 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { agedLogs, git, GITHUB_ERRED, landSession, LANDED_PR as PR, MAIN_RACED, MERGE_REFUSAL as REFUSAL, plant, TICKET_TITLE, type Merge } from "./scenarios.ts";
+import { agedLogs, git, GITHUB_ERRED, landSession, LANDED_PR as PR, MAIN_RACED, MERGE_REFUSAL as REFUSAL, plant, TICKET_TITLE, type LandStage, type Merge } from "./scenarios.ts";
 
 const JUDGED_CHECK = "description=judged by land on the commit before the push (ADR-0008)";
 const DASH = "\u2014";
@@ -330,6 +330,37 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
     expect(result.status, result.stderr).toBe(0);
     expect(calls()).toEqual([]);
     expect(result.stdout).toContain("Nothing to land");
+  });
+});
+
+describe("bin/land stopped by the session limit says where it stopped and leaves a tree the next land resumes from (agent-hooks#411)", () => {
+  const NOT_YET = "no PR is open yet and no check status is posted";
+  it.each<[LandStage, NodeJS.Signals, Parameters<typeof landSession>[0], string]>([
+    ["check", "SIGTERM", {}, NOT_YET],
+    ["check", "SIGINT", {}, NOT_YET],
+    ["rebase", "SIGTERM", {}, NOT_YET],
+    ["merge wait", "SIGTERM", { merges: ["refused", "merged"], views: ["BLOCKED"], required: ["pending"] }, `${PR} is open and the check status is posted`],
+  ])("at the %s on %s, aborts its own rebase, names the stage, main, the PR and its check status in one line, and lands on the next run with no hand step", async (stage, signal, options, pr) => {
+    const { root, remote, session, head, run, stoppedWhileHeld } = sessionAheadOfMain(1, { ...options, hold: stage });
+    const before = git(remote, "rev-parse", "main");
+    if (stage === "rebase") landedElsewhere(root, remote, "theirs.txt", "theirs\n");
+    const moved = git(remote, "rev-parse", "main");
+
+    const stopped = await stoppedWhileHeld(signal);
+
+    expect(stopped.status).toBe(signal === "SIGINT" ? 130 : 143);
+    expect(stopped.stderr).toBe(`land: stopped by ${signal.slice(3)} at the ${stage}, so main is untouched, ${pr}; run land again and it resumes from there\n`);
+    expect(git(remote, "rev-parse", "main")).toBe(stage === "rebase" ? moved : before);
+    expect(git(session, "status", "--porcelain")).toBe("");
+    expect(existsSync(join(session, ".git", "rebase-merge"))).toBe(false);
+    expect(git(session, "symbolic-ref", "--short", "HEAD")).toBe("main");
+    expect(git(session, "rev-parse", "HEAD")).toBe(head);
+
+    const resumed = run();
+
+    expect(resumed.status, resumed.stderr).toBe(0);
+    expect(resumed.stdout).toBe(`Landed ${PR}\n`);
+    expect(git(session, "rev-parse", "HEAD")).toBe(git(remote, "rev-parse", "main"));
   });
 });
 
