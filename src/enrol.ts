@@ -224,7 +224,7 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
   const lookOf = (name: string) => looks().find((label) => label.name.toLowerCase() === name);
   const drifted = () => made().filter(({ name, colour, description }) => {
     const look = lookOf(name);
-    return look !== undefined && (look.color.toLowerCase() !== colour || look.description !== description);
+    return look !== undefined && (look.color.toLowerCase() !== colour.toLowerCase() || look.description !== description);
   });
   const variables = once(() => names(["variable", "list"]));
   const secretsOf = { actions: once(() => names(["secret", "list"])), dependabot: once(() => names(["secret", "list", "--app", "dependabot"])) };
