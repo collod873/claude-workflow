@@ -335,22 +335,24 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
 
 describe("bin/land stopped by the session limit says where it stopped and leaves a tree the next land resumes from (agent-hooks#411)", () => {
   const NOT_YET = "no PR is open yet and no check status is posted";
-  it.each<[LandStage, NodeJS.Signals, Parameters<typeof landSession>[0], string]>([
-    ["check", "SIGTERM", {}, NOT_YET],
-    ["check", "SIGINT", {}, NOT_YET],
-    ["rebase", "SIGTERM", {}, NOT_YET],
-    ["merge wait", "SIGTERM", { merges: ["refused", "merged"], views: ["BLOCKED"], required: ["pending"] }, `${PR} is open and the check status is posted`],
-  ])("at the %s on %s, aborts its own rebase, names the stage, main, the PR and its check status in one line, and lands on the next run with no hand step", async (stage, signal, options, pr) => {
+  it.each<[LandStage, NodeJS.Signals, boolean, Parameters<typeof landSession>[0], string]>([
+    ["check", "SIGTERM", false, {}, NOT_YET],
+    ["check", "SIGINT", false, {}, NOT_YET],
+    ["check", "SIGHUP", false, {}, NOT_YET],
+    ["check", "SIGTERM", true, {}, NOT_YET],
+    ["rebase", "SIGTERM", true, {}, NOT_YET],
+    ["merge wait", "SIGTERM", false, { merges: ["refused", "merged"], views: ["BLOCKED"], required: ["pending"] }, `${PR} is open and the check status is posted`],
+  ])("at the %s on %s with main moved %s, undoes its own rebase, names the stage, main, the PR and its check status in one line, and lands on the next run with no hand step (#1656)", async (stage, signal, mainMoved, options, pr) => {
     const { root, remote, session, head, run, stoppedWhileHeld } = sessionAheadOfMain(1, { ...options, hold: stage });
     const before = git(remote, "rev-parse", "main");
-    if (stage === "rebase") landedElsewhere(root, remote, "theirs.txt", "theirs\n");
+    if (mainMoved) landedElsewhere(root, remote, "theirs.txt", "theirs\n");
     const moved = git(remote, "rev-parse", "main");
 
     const stopped = await stoppedWhileHeld(signal);
 
-    expect(stopped.status).toBe(signal === "SIGINT" ? 130 : 143);
+    expect(stopped.status).toBe({ SIGINT: 130, SIGHUP: 129 }[signal as string] ?? 143);
     expect(stopped.stderr).toBe(`land: stopped by ${signal.slice(3)} at the ${stage}, so main is untouched, ${pr}; run land again and it resumes from there\n`);
-    expect(git(remote, "rev-parse", "main")).toBe(stage === "rebase" ? moved : before);
+    expect(git(remote, "rev-parse", "main")).toBe(mainMoved ? moved : before);
     expect(git(session, "status", "--porcelain")).toBe("");
     expect(existsSync(join(session, ".git", "rebase-merge"))).toBe(false);
     expect(git(session, "symbolic-ref", "--short", "HEAD")).toBe("main");

@@ -30,6 +30,7 @@ exec {shown_fd}>&2
 stage=fetch
 url=
 posted_head=
+began=
 
 rebasing() {
   [[ -d $(git rev-parse --git-path rebase-merge) || -d $(git rev-parse --git-path rebase-apply) ]]
@@ -38,6 +39,9 @@ rebasing() {
 stopped() {
   if [[ $stage == rebase ]] && rebasing; then
     git rebase --abort >/dev/null 2>&1 # quiet: the line below says the rebase was stopped
+  fi
+  if [[ $stage != landed && -n $began && $(git rev-parse HEAD) != "$began" ]]; then
+    git reset --quiet --keep "$began"
   fi
   if [[ $stage == landed ]]; then
     printf 'land: stopped by %s after %s merged, so main has it; run git pull to bring this checkout up to it\n' "$1" "$url" >&"$shown_fd"
@@ -49,6 +53,7 @@ stopped() {
 }
 trap 'stopped TERM 143' TERM
 trap 'stopped INT 130' INT
+trap 'stopped HUP 129' HUP
 
 call() {
   local label=$1
@@ -83,6 +88,7 @@ if [[ -n $dirty ]]; then
   printf 'land: the tree differs from the commit, so nothing landed; commit or remove %s and land again\n' "$dirty" >&2
   exit 1
 fi
+began=$head
 
 onto_default_branch() {
   if [[ -n $(git rev-list "origin/$default_branch..HEAD") ]] && ! git merge-base --is-ancestor "origin/$default_branch" HEAD; then
