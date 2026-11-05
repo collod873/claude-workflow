@@ -4,6 +4,7 @@ import { hostname } from "node:os";
 
 export const VARIABLE = "CI_RUNNER";
 export const LABEL = "pc";
+export const RECONCILE_LABEL = "pc-reconcile";
 const PC_RUNNERS = 4;
 const USER = "ghrunner";
 const HOME = `/home/${USER}`;
@@ -225,26 +226,32 @@ function toPc(repo: string, asked: number | undefined): string {
   const registered = new Map(runners.map(({ name, busy }) => [name, busy]));
   const names = Array.from({ length: wanted }, (_, at) => `${host}-${at + 1}`);
   const missing = names.filter((name) => !registered.has(name));
-  const extra = all.filter(({ name }) => name.startsWith(`${host}-`) && !names.includes(name));
+  const reconcilerName = `${host}-reconcile`;
+  const reconciler = all.find(({ name }) => name === reconcilerName);
+  const extra = all.filter(({ name }) => name.startsWith(`${host}-`) && !names.includes(name) && name !== reconcilerName);
   provisionUser();
   provisionNode();
   provisionGh();
   provisionUv();
   provisionEarlyoom();
   for (const name of missing) install(repo, name, LABEL);
+  if (reconciler === undefined) install(repo, reconcilerName, RECONCILE_LABEL);
   const settled = names.map((name) => ({ name, as: settle(repo, name, registered.get(name) === true && running(repo, name)) }));
+  settle(repo, reconcilerName, reconciler?.busy === true && running(repo, reconcilerName));
   const named = (as: string) => settled.filter((runner) => runner.as === as).map(({ name }) => name);
   const atJobEnd = named("at-job-end");
   const midJob = named("mid-job");
   const off = turnOff(repo, extra);
   const count = waitOnline(() => on.pcRunners().filter(({ name, status }) => names.includes(name) && status === "online").length, wanted);
   if (count === 0) throw new Refused(`no PC runner of ${repo} came online within ${WAIT_SECONDS}s, so it stays where it was: start them with \`sudo systemctl start 'actions.runner.*'\``);
+  const reconcilerUp = waitOnline(() => on.runners().filter(({ name, status }) => name === reconcilerName && status === "online").length, 1) === 1;
   if (on.current() !== "pc") gh(["variable", "set", VARIABLE, "-R", repo, "--body", LABEL]);
   const installed = missing.length > 0 ? `, ${missing.length} installed` : "";
   const settling = atJobEnd.length > 0 ? `; ${atJobEnd.join(", ")} take the new setup when their job ends` : "";
   const waiting = midJob.length > 0 ? `; ${midJob.join(", ")} kept their old setup mid-job, since it takes jobs until stopped: run this again once they finish` : "";
   const up = count < wanted ? `${count} of ${wanted} PC runners online, the rest still starting` : `${count} PC runners online`;
-  return `${repo} runs on this PC from its next job, ${up}${installed}${off}${settling}${waiting}`;
+  const reconciling = reconcilerUp ? "" : "; its reconcile runner is still starting";
+  return `${repo} runs on this PC from its next job, ${up}${installed}${off}${settling}${waiting}${reconciling}`;
 }
 
 function toGithub(repo: string): string {
