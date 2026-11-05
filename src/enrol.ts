@@ -219,7 +219,13 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
     return ours;
   };
   const names = (args: string[]) => read<{ name: string }[]>([...args, "-R", repo, "--json", "name"]).map(({ name }) => name.toLowerCase());
-  const labels = once(() => names(["label", "list", "--limit", "1000"]));
+  const looks = once(() => read<{ name: string; color: string; description: string }[]>(["label", "list", "--limit", "1000", "-R", repo, "--json", "name,color,description"]));
+  const labels = once(() => looks().map(({ name }) => name.toLowerCase()));
+  const lookOf = (name: string) => looks().find((label) => label.name.toLowerCase() === name);
+  const drifted = () => made().filter(({ name, colour, description }) => {
+    const look = lookOf(name);
+    return look !== undefined && (look.color.toLowerCase() !== colour || look.description !== description);
+  });
   const variables = once(() => names(["variable", "list"]));
   const secretsOf = { actions: once(() => names(["secret", "list"])), dependabot: once(() => names(["secret", "list", "--app", "dependabot"])) };
 
@@ -336,9 +342,10 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
     secret("CLAUDE_CODE_OAUTH_TOKEN", "actions"),
     {
       name: "the machine's labels",
-      held: () => made().every(({ name }) => labels().includes(name)),
+      held: () => made().every(({ name }) => labels().includes(name)) && drifted().length === 0,
       set: () => {
         for (const { name, colour, description } of made().filter((label) => !labels().includes(label.name))) gh(["label", "create", name, "-R", repo, "--color", colour, "--description", description]);
+        for (const { name, colour, description } of drifted()) gh(["label", "edit", lookOf(name)?.name ?? name, "-R", repo, "--color", colour, "--description", description]);
       },
     },
     {

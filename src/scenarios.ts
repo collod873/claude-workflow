@@ -849,6 +849,7 @@ interface Held {
   secrets: string[];
   dependabot: string[];
   labels: string[];
+  looks: Record<string, { color: string; description: string }>;
   appKey: string;
   rules: { type: string; ruleset_id?: number; parameters?: unknown }[];
   refused: Record<string, string>;
@@ -968,8 +969,9 @@ else if (args[0] === "variable" && args[1] === "list") out(held.variables.map((n
 else if (args[0] === "variable" && args[1] === "set") { wrote(); held.variables.push(args[2]); save(); }
 else if (args[0] === "secret" && args[1] === "list") out((args.includes("dependabot") ? held.dependabot : held.secrets).map((name) => ({ name })));
 else if (args[0] === "secret" && args[1] === "set") { wrote(); held.writes.at(-1).push("value " + stdin()); (args.includes("dependabot") ? held.dependabot : held.secrets).push(args[2]); save(); }
-else if (args[0] === "label" && args[1] === "list") out(held.labels.map((name) => ({ name })));
-else if (args[0] === "label" && args[1] === "create") { wrote(); held.labels.push(args[2]); save(); }
+else if (args[0] === "label" && args[1] === "list") out(held.labels.map((name) => ({ name, color: "ededed", description: "", ...held.looks[name] })));
+else if (args[0] === "label" && args[1] === "create") { wrote(); held.labels.push(args[2]); held.looks[args[2]] = { color: flag("--color"), description: flag("--description") }; save(); }
+else if (args[0] === "label" && args[1] === "edit") { wrote(); held.looks[args[2]] = { color: flag("--color"), description: flag("--description") }; save(); }
 else if (args[0] === "label" && args[1] === "delete") { wrote(); held.labels = held.labels.filter((name) => name !== args[2]); save(); }
 else { process.stderr.write("fake gh: unknown call " + said + "\n"); process.exit(9); }
 `;
@@ -989,6 +991,7 @@ export function bare(extra: Partial<Held> = {}): Held {
     secrets: [],
     dependabot: [],
     labels: ["bug"],
+    looks: {},
     appKey: appKeys().publicKey,
     rules: [],
     refused: {},

@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 const ENROLLED_REVIEW = "tickets / review";
-import { MACHINE, OWNER } from "./spelled.ts";
+import { LABELS, MACHINE, OWNER } from "./spelled.ts";
 import { bare, checkJobRule, ci, CI_ON_EVERY_PR, DEPLOY, ENROLLED as REPO, enrolling, home, HOME, key, PC_RUNS_ON } from "./scenarios.ts";
 
 const CALLER = readFileSync(join(import.meta.dirname, "..", ".github", "caller.yml"), "utf8");
@@ -72,6 +72,23 @@ describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#11
 
     expect(again).toEqual({ status: 0, stdout: `enrol: ${REPO} was already enrolled, nothing changed\n${OFFER}`, stderr: "" });
     expect(held().writes).toHaveLength(before);
+  });
+
+  it("edits a machine label whose description or colour drifted from bin/spelled labels, leaving the owner's labels alone (#1665)", () => {
+    const enrolled = enrolling(bare());
+    enrolled.run();
+    const drifted = { ...enrolled.held(), labels: [...enrolled.held().labels, "help wanted"], looks: { ...enrolled.held().looks, checking: { color: "1D76DB", description: "Reviewers read a green ticket" }, "help wanted": { color: "008672", description: "Extra attention" } } };
+    const { run, held } = enrolling(drifted);
+    const before = held().writes.length;
+
+    const result = run();
+
+    expect(result.stderr).toBe("");
+    expect(held().writes.slice(before).map((args) => args.slice(0, 3).join(" "))).toEqual(["label edit checking"]);
+    const checking = LABELS.find(({ name }) => name === "checking");
+    expect(held().looks.checking).toEqual({ color: checking?.colour, description: checking?.description });
+    expect(held().looks["help wanted"]).toEqual({ color: "008672", description: "Extra attention" });
+    expect(run().stdout).toBe(`enrol: ${REPO} was already enrolled, nothing changed\n${OFFER}`);
   });
 
   it("refuses and names what it could not set, setting the rest", () => {
