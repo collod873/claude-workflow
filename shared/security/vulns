@@ -26,7 +26,9 @@ def vuln_findings(report: dict, production: set[tuple[str, str]] | None, excepti
     for advisory, exception in exceptions.items():
         if not isinstance(exception, dict) or not exception.get("reason") or not exception.get("until"):
             findings.append(f"{EXCEPTIONS_FILE}: {advisory} needs a reason and an until")
-        elif re.fullmatch(r"\d{4}-\d{2}-\d{2}", exception["until"]) and exception["until"] < today:
+        elif not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(exception["until"])):
+            findings.append(f"{EXCEPTIONS_FILE}: {advisory} until {exception['until']} is not YYYY-MM-DD")
+        elif exception["until"] < today:
             findings.append(f"{EXCEPTIONS_FILE}: {advisory} expired {exception['until']}")
         else:
             standing.add(advisory)
