@@ -68,7 +68,9 @@ labels nothing marks (ADR-0012). This repo's `Enrol` workflow re-enrols them on 
 _Avoid_: onboard, install, register
 
 **PC runner**:
-A `pc` runner, where a private repo's `CI_RUNNER` sends every job, else GitHub's. It caps neither memory
+A `pc` runner, where a private repo's `CI_RUNNER` sends every job but reconcile's, else GitHub's. Reconcile's
+job takes the repo's one `pc-reconcile` runner, so a wake never queues behind a builder; its concurrency group
+runs one pass at a time, so one is enough, and on GitHub's a pass of seconds per ticket event bills a minute. It caps neither memory
 nor CPU: its full checks take turns in the machine's one check slot, as the owner's do, so each gets
 every core. While a repo's PC runners are all offline, the runner watch sets its `CI_RUNNER` to
 `ubuntu-latest`, and back to `pc` once one returns; an unset `CI_RUNNER` is a hand switch it leaves.

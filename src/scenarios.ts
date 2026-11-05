@@ -1124,7 +1124,7 @@ export function switching({ isPrivate = true, runners = [] as object[], variable
       `[[ $* == *"${at("proc")}/"* ]] && exec "$@"`,
       "started='runners/[^/ ]+/([^ /]+) && .*svc\\.sh start'",
       `if ${startsOnline} && [[ $* =~ $started ]] && [[ " ${slowToStart.join(" ")} " != *" \${BASH_REMATCH[1]} "* ]]; then`,
-      `  jq -c --arg name "\${BASH_REMATCH[1]}" '.runners |= (map(select(.name != $name)) + [{id: ($name | explode | add), name: $name, status: "online", busy: false, labels: [{name: "self-hosted"}, {name: "pc"}]}])' "${at("runners.json")}" >"${at("runners.next")}"`,
+      `  jq -c --arg name "\${BASH_REMATCH[1]}" '.runners |= (map(select(.name != $name)) + [{id: ($name | explode | add), name: $name, status: "online", busy: false, labels: [{name: "self-hosted"}, {name: (if ($name | endswith("-reconcile")) then "pc-reconcile" else "pc" end)}]}])' "${at("runners.json")}" >"${at("runners.next")}"`,
       `  mv "${at("runners.next")}" "${at("runners.json")}"`,
       "fi",
       "",

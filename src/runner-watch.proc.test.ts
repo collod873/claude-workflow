@@ -51,7 +51,7 @@ describe("bin/runner-watch keeps private repos off paid minutes without Collin w
       ],
       {
         "collod873/chess": [
-          { name: "CI", jobs: [{ labels: ["ubuntu-latest"], started_at: "2026-10-29T10:00:00Z", completed_at: "2026-10-29T10:04:10Z" }, { labels: ["pc"], started_at: "2026-10-29T10:00:00Z", completed_at: "2026-10-29T11:00:00Z" }] },
+          { name: "CI", jobs: [{ labels: ["ubuntu-latest"], started_at: "2026-10-29T10:00:00Z", completed_at: "2026-10-29T10:04:10Z" }, { labels: ["pc"], started_at: "2026-10-29T10:00:00Z", completed_at: "2026-10-29T11:00:00Z" }, { labels: ["pc-reconcile"], started_at: "2026-10-29T10:00:00Z", completed_at: "2026-10-29T10:00:12Z" }] },
           { name: "Nightly", jobs: [{ labels: ["ubuntu-latest"], started_at: "2026-10-29T03:00:00Z", completed_at: "2026-10-29T03:02:00Z" }] },
         ],
       },

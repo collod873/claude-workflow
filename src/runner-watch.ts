@@ -1,6 +1,6 @@
 import { execFile, spawnSync } from "node:child_process";
 import { promisify } from "node:util";
-import { LABEL as PC, VARIABLE } from "./runner.ts";
+import { LABEL as PC, RECONCILE_LABEL, VARIABLE } from "./runner.ts";
 
 const GITHUB_HOSTED = "ubuntu-latest";
 const MINUTE = 60_000;
@@ -68,7 +68,7 @@ async function hostedMinutesByWorkflow(repo: string, day: string): Promise<Map<s
   const minutes = new Map<string, number>();
   for (const [index, { name }] of runs.entries()) {
     for (const job of jobLists[index] ?? []) {
-      if (job.labels.includes(PC) || job.started_at === null || job.completed_at === null) continue;
+      if (job.labels.includes(PC) || job.labels.includes(RECONCILE_LABEL) || job.started_at === null || job.completed_at === null) continue;
       const spent = Math.ceil((Date.parse(job.completed_at) - Date.parse(job.started_at)) / MINUTE);
       minutes.set(name, (minutes.get(name) ?? 0) + spent);
     }

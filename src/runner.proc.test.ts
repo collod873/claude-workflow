@@ -8,11 +8,32 @@ const SOCKET_PATH_MAX = 107;
 
 describe("bin/runner moves a private repo's jobs between this PC and GitHub's runners", () => {
   it("sends a repo's next jobs to the PC once its PC runners are online, installing none it already has", () => {
-    const { run, variable, sudo } = switching({ runners: [...Array.from({ length: PC_RUNNER_COUNT }, (_, at) => pcRunner(`${HOST}-${at + 1}`))] });
+    const { run, variable, sudo } = switching({ runners: [...Array.from({ length: PC_RUNNER_COUNT }, (_, at) => pcRunner(`${HOST}-${at + 1}`)), pcRunner(`${HOST}-reconcile`, "online", false, ["pc-reconcile"])] });
 
     expect(run("pc")).toEqual({ status: 0, stdout: `runner: ${REPO} runs on this PC from its next job, ${PC_RUNNER_COUNT} PC runners online\n`, stderr: "" });
     expect(variable()).toBe("pc");
     expect(sudo().filter((call) => call.includes("config.sh"))).toEqual([]);
+  });
+
+  it("gives a repo one reconcile runner no other job can take, and keeps it when the repo's PC runner count changes", () => {
+    const { run, sudo } = switching({ runners: [...Array.from({ length: PC_RUNNER_COUNT }, (_, at) => pcRunner(`${HOST}-${at + 1}`))] });
+
+    expect(run("pc").status).toBe(0);
+    const installs = sudo().filter((call) => call.includes("config.sh"));
+    expect(installs).toHaveLength(1);
+    expect(installs[0]).toContain(`--name '${HOST}-reconcile' --labels pc-reconcile >`);
+
+    const before = sudo().length;
+    expect(run("pc", "2").status).toBe(0);
+    const again = sudo().slice(before);
+    expect(again.filter((call) => call.includes("config.sh"))).toEqual([]);
+    expect(again.filter((call) => call.includes("systemctl disable"))).toEqual([3, 4].map((n) => `bash -c systemctl disable --quiet --now actions.runner.collod873-Lumaria.${HOST}-${n}.service`));
+  });
+
+  it("says so when the reconcile runner has not come online yet, since its jobs wait for it", () => {
+    const { run } = switching({ runners: [pcRunner(`${HOST}-1`)], slowToStart: [`${HOST}-reconcile`] });
+
+    expect(run("pc").stdout).toContain("; its reconcile runner is still starting");
   });
 
   it("reads a renamed repo by its current name, so its runners stay in the one folder that name gives", () => {
@@ -60,7 +81,7 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
     const { run, sudo } = switching({ runners: [pcRunner(`${HOST}-1`), pcRunner(`${HOST}-2`)] });
 
     expect(run("pc", "4").stdout).toContain(", 2 installed");
-    expect(sudo().filter((call) => call.includes("config.sh")).map((call) => /--name '([^']+)'/.exec(call)?.[1])).toEqual([3, 4].map((n) => `${HOST}-${n}`));
+    expect(sudo().filter((call) => call.includes("config.sh")).map((call) => /--name '([^']+)'/.exec(call)?.[1])).toEqual([...[3, 4].map((n) => `${HOST}-${n}`), `${HOST}-reconcile`]);
   });
 
   it("keeps only as many PC runners as asked, turning the rest off for good and letting a mid-job one finish first", () => {
@@ -72,7 +93,7 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
     expect(result.stdout).toBe(`runner: ${REPO} runs on this PC from its next job, 1 PC runners online, 5 turned off, 1 once its job ends\n`);
     const calls = sudo();
     expect(calls.filter((call) => call.includes("systemctl disable"))).toEqual([2, 3, 4, 5, 6].map((n) => `bash -c systemctl disable --quiet ${n === 3 ? "" : "--now "}${unit(n)}`));
-    expect(calls.filter((call) => call.includes("svc.sh start"))).toHaveLength(1);
+    expect(calls.filter((call) => call.includes("svc.sh start"))).toHaveLength(2);
     expect(calls.some((call) => call.includes(`systemctl enable --quiet ${unit(1)}`))).toBe(true);
   });
 
@@ -84,7 +105,7 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
     run("pc");
 
     const again = sudo().slice(before);
-    expect(again.filter((call) => call.includes("svc.sh start"))).toHaveLength(PC_RUNNER_COUNT);
+    expect(again.filter((call) => call.includes("svc.sh start"))).toHaveLength(PC_RUNNER_COUNT + 1);
     expect(again.filter((call) => call.includes("svc.sh stop"))).toEqual([]);
   });
 
@@ -263,7 +284,7 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
 
   it("turns off the quick runners the quick lane left, so a repo keeps only its PC runners", () => {
     const quick = [1, 2].map((n) => pcRunner(`${HOST}-quick-${n}`, "online", false, ["pc-quick"]));
-    const { run, sudo } = switching({ runners: [...Array.from({ length: PC_RUNNER_COUNT }, (_, at) => pcRunner(`${HOST}-${at + 1}`)), ...quick] });
+    const { run, sudo } = switching({ runners: [...Array.from({ length: PC_RUNNER_COUNT }, (_, at) => pcRunner(`${HOST}-${at + 1}`)), pcRunner(`${HOST}-reconcile`, "online", false, ["pc-reconcile"]), ...quick] });
 
     expect(run("pc").stdout).toBe(`runner: ${REPO} runs on this PC from its next job, 4 PC runners online, 2 turned off\n`);
     expect(sudo().filter((call) => call.includes("systemctl disable"))).toEqual([1, 2].map((n) => `bash -c systemctl disable --quiet --now actions.runner.collod873-Lumaria.${HOST}-quick-${n}.service`));
@@ -317,9 +338,9 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
 });
 
 describe("the machine's jobs run where the repo's switch says", () => {
-  it("runs every job of the machine's workflows on the repo's runners, the PC's when it is switched there, but reconcile, which reads state in seconds and queued behind slice builders on the PC (#1626, as #1462)", () => {
+  it("runs every job of the machine's workflows on the repo's runners, the PC's when it is switched there, with reconcile on its own PC runner, since on GitHub's its seconds on every ticket event each bill a minute and among the builders it queued behind them (#1659, #1626)", () => {
     for (const file of ["tickets.yml", "specs.yml", "enrol.yml"]) {
-      for (const [name, job] of Object.entries(workflowJobs(file))) expect(job["runs-on"], `${file} ${name}`).toBe(file === "tickets.yml" && name === "reconcile" ? "ubuntu-latest" : PC_RUNS_ON);
+      for (const [name, job] of Object.entries(workflowJobs(file))) expect(job["runs-on"], `${file} ${name}`).toBe(file === "tickets.yml" && name === "reconcile" ? "${{ vars.CI_RUNNER == 'pc' && 'pc-reconcile' || 'ubuntu-latest' }}" : PC_RUNS_ON);
     }
   });
 });
