@@ -55,6 +55,13 @@ describe("bin/finish reviews a spec's integration branch on the spec, then on th
     expect(code).not.toContain("is why tenant-time-zone was cut");
   });
 
+  it("marks the spec checking before its first reviewer is hired, so the issue stops showing slicing or building while finish reviews and lands it (#1663)", () => {
+    const finished = finishing({ reviewer: '  [ "$CALL" = 1 ] && cp "$MACHINE_BIN/../marks" "$MACHINE_BIN/../marks-at-first-review"' });
+
+    expect(finished.run().status).toBe(0);
+    expect(readFileSync(join(finished.root, "marks-at-first-review"), "utf8")).toBe("974 checking\n");
+  });
+
   it("comments both reviewers' reasons on the spec's PR through bin/land's approve reason", () => {
     const finished = finishing();
 
@@ -71,7 +78,7 @@ describe("bin/finish reviews a spec's integration branch on the spec, then on th
     expect(ran.status, ran.stderr).toBe(0);
     expect(ran.lines.slice(-2)).toEqual(["landed=9974", "missed=2"]);
     expect(finished.calls().filter((args) => args[1] === "close")).toEqual([["issue", "close", "974", "--reason", "completed"]]);
-    expect(finished.marked()).toEqual([]);
+    expect(finished.marked()).toEqual(["974 checking"]);
   });
 
   it("lands though the done check could not finish, since it refuses no landing (#1626), then marks the landed spec stuck and calls the owner with its reason, so the scheduler stands down on stuck rather than leave a landed spec that nothing wakes (ADR-0009)", () => {
@@ -82,7 +89,7 @@ describe("bin/finish reviews a spec's integration branch on the spec, then on th
     expect(ran.status).toBe(1);
     expect(ran.lines.slice(-2)).toEqual(["landed=9974", "missed="]);
     expect(finished.landed()).toHaveLength(1);
-    expect(finished.marked()).toEqual(["974 stuck"]);
+    expect(finished.marked()).toEqual(["974 checking", "974 stuck"]);
     const called = finished.calls().filter((args) => args[1] === "comment").map(bodyIn);
     expect(called.filter((body) => body.startsWith(`@${OWNER} the done check of #974 stopped and needs you: the done checker gave no try for sentence 2.`))).toHaveLength(1);
     expect(finished.calls().filter((args) => args[1] === "close")).toEqual([]);
@@ -113,6 +120,7 @@ describe("bin/finish reviews a spec's integration branch on the spec, then on th
     expect(finished.handed()).toEqual([]);
     expect(finished.log("-1", "--format=%s")).toBe("Merge the spec");
     expect(git(finished.session, "symbolic-ref", "--short", "HEAD")).toBe("spec/974");
+    expect(finished.marked()).toEqual(["974 checking"]);
     expect(finished.calls().filter((args) => args[1] === "close")).toEqual([["issue", "close", "974", "--reason", "completed"]]);
   });
 
@@ -218,6 +226,7 @@ describe("bin/finish tries the spec's sentences on its integration branch before
     expect(finished.handed()).toEqual([]);
     expect(finished.tried()).toEqual([]);
     expect(finished.landed()).toEqual([]);
+    expect(finished.marked()).toEqual(["974 checking"]);
     expect(bodies(finished.calls()).filter((body) => body.startsWith("## Done check"))).toHaveLength(1);
     expect(finished.calls().filter((args) => args[1] === "close")).toEqual([["issue", "close", "974", "--reason", "completed"]]);
   });
@@ -320,7 +329,7 @@ describe("bin/finish calls the owner on a full check the machine alone starved, 
     const ran = finished.run();
 
     expect(ran.status).toBe(1);
-    expect(finished.marked()).toEqual(["974 stuck"]);
+    expect(finished.marked()).toEqual(["974 checking", "974 stuck"]);
     expect(finished.calls().find((args) => args[1] === "comment")?.join(" ")).toContain("the machine is at fault, not the code");
     expect(finished.handed()).toHaveLength(1);
     expect(finished.landed()).toEqual([]);
@@ -331,7 +340,7 @@ describe("bin/finish calls the owner on a full check the machine alone starved, 
 
     finished.run();
 
-    expect(finished.marked()).toEqual(["974 stuck"]);
+    expect(finished.marked()).toEqual(["974 checking", "974 stuck"]);
     expect(finished.handed()).toHaveLength(2);
     expect(finished.landed()).toEqual([]);
   });
@@ -341,7 +350,7 @@ describe("bin/finish calls the owner on a full check the machine alone starved, 
 
     finished.run();
 
-    expect(finished.marked()).toEqual([]);
+    expect(finished.marked()).toEqual(["974 checking"]);
     expect(finished.handed()[1]).toContain("## Its full check is red");
   });
 });
@@ -356,7 +365,7 @@ describe("bin/finish takes a reviewer's stuck and owner steps, as a ticket's rev
 
     expect(ran.status).toBe(1);
     expect(ran.lines).toEqual(["landed=", "missed="]);
-    expect(finished.marked()).toEqual(["974 stuck"]);
+    expect(finished.marked()).toEqual(["974 checking", "974 stuck"]);
     expect(finished.calls().find((args) => args[1] === "comment")?.join(" ")).toContain("@collod873 a reviewer of #974 stopped and needs you: only the owner can say which zones count");
     expect(finished.handed()).toHaveLength(1);
     expect(finished.landed()).toEqual([]);
@@ -598,6 +607,7 @@ describe("bin/finish stands down on a held spec, so a pause holds the landing to
 
     expect(finished.run()).toEqual({ status: 1, stdout: "landed=\nmissed=\n", stderr: "finish: #974 holds nothing past main on its integration branch, so nothing was reviewed or landed\n" });
     expect(finished.handed()).toEqual([]);
+    expect(finished.marked()).toEqual([]);
   });
 
   it("refuses an issue that is not a spec, hiring nothing", () => {
