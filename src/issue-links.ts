@@ -79,6 +79,7 @@ export function postedUnderOrigin(posting: Posting, poster: Gh): ReturnType<type
   return posted;
 }
 
+const HELP = "issue-links: read or add GitHub's blocked-by and sub-issue links between issues, in any repo.";
 const USAGE = "issue-links: usage: issue-links blockers|parent <repo> <number> | add-blocker|add-parent <repo> <number> <other repo> <other number>";
 const COMMANDS: Record<string, (args: string[]) => unknown> = {
   blockers: ([repo = "", number = ""]) => blockersOf(repo, Number(number)),
@@ -89,6 +90,10 @@ const COMMANDS: Record<string, (args: string[]) => unknown> = {
 
 if (import.meta.main) {
   const [command = "", ...args] = process.argv.slice(2);
+  if (command === "--help") {
+    console.log(`${HELP}\n${USAGE.replace("issue-links: usage: ", "usage: ")}`);
+    process.exit(0);
+  }
   const run = COMMANDS[command];
   const arity = command.startsWith("add-") ? 4 : 2;
   if (run === undefined || args.length !== arity || args.some((arg, at) => at % 2 === 1 && !/^\d+$/.test(arg))) {
