@@ -11,7 +11,7 @@ import { afterRefused, approvedOn, firstTimeNamed, gathered, landing, type Route
 import { fastForwarded, landedOn, MOST_BUILDERS, type Progress, progressOn, removed, specBranch, triedOn, worktree } from "./scheduler.ts";
 import { fastForwards, rebaseStopped, sliceTrailed } from "./slice-builder.ts";
 import { committed, commitlinted, CONTRACT, head, hireIn, MOST_FIXES, type OwnerStep, OWNER_STEPS, setupRefusedIn, type Spent, stepsUnfileable } from "./stage.ts";
-import { SPEC } from "./spelled.ts";
+import { CHECKING, SPEC } from "./spelled.ts";
 import { stopsOf } from "./stops.ts";
 import { quoted, type Sentence, sentences, SPEC_CAP } from "./ticket-shape.ts";
 
@@ -545,15 +545,16 @@ async function finished(spec: string, app: AppKey | undefined): Promise<Finished
   const found = progressOn(spec);
   const listed = sentences(asked.body);
   const { landed: landedAs, tries, fixed = [] } = found.progress;
-  if (landedAs !== undefined && tries !== undefined) return closedFrom(spec, app, listed, { tries, fixed }, landedAs);
-  if (landedAs !== undefined) {
-    gitRead(["checkout", "--quiet", "-B", specBranch(spec), "origin/main"], `${specBranch(spec)} could not be checked out at origin/main, so its done check was not run`);
-    return finishedWith(landedAs, () => doneCheck(spec, app));
-  }
-  if (gitRead(["rev-list", "--count", PAST_MAIN], UNREAD) === "0") {
+  if (landedAs === undefined && gitRead(["rev-list", "--count", PAST_MAIN], UNREAD) === "0") {
     stoppedAt("unfinishable", `${said} holds nothing past main on its integration branch, ${unchanged}`);
     return {};
   }
+  if (landedAs !== undefined && tries === undefined) {
+    gitRead(["checkout", "--quiet", "-B", specBranch(spec), "origin/main"], `${specBranch(spec)} could not be checked out at origin/main, so its done check was not run`);
+    return finishedWith(landedAs, () => doneCheck(spec, app));
+  }
+  mark(spec, CHECKING);
+  if (landedAs !== undefined && tries !== undefined) return closedFrom(spec, app, listed, { tries, fixed }, landedAs);
   const run: Run = { spec, said, app, listed, reasons: new Map(), later: [], left: new Map(), trees: { roots: [], made: [], readied: new Set() } };
   const ended = await (async () => {
     try {
