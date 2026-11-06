@@ -242,3 +242,19 @@ describe("bin/issue-links reads and adds blocked-by links and sub-issue parents 
     expect(linking({ parentless }).links("parent", HERE, "931").stdout).toBe(said);
   });
 });
+
+describe("bin/reconcile closes a checking ticket whose PR merged without GitHub closing it, as Mezzanine#2426 sat after #2434 merged", () => {
+  it("closes the one whose ticket branch PR merged and leaves the one with none open", () => {
+    const { reconcile, calls } = linking({
+      tickets: [
+        { number: 2426, labels: ["ticket", "checking"], blockers: [], merged: 2434 },
+        { number: 2427, labels: ["ticket", "checking"], blockers: [] },
+      ],
+    });
+
+    const result = reconcile();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(calls().filter((args) => args[0] === "issue" && args[1] === "close").map((args) => args.slice(0, 5))).toEqual([["issue", "close", "2426", "--repo", HERE]]);
+  });
+});

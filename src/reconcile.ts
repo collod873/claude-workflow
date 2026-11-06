@@ -1,8 +1,8 @@
 import { admission } from "./admit.ts";
 import { type ChecksWait, checkedRuns, checksWaitOf, waitedLine, waitedOf, waitsLine } from "./checks-wait.ts";
 import { type Blocker, blockersOf, dependentsOf } from "./issue-links.ts";
-import { ghRead, Stopped } from "./post.ts";
-import { BUILDING, HELD, OWNER, STUCK, TICKET, WAITING } from "./spelled.ts";
+import { ghRead, Stopped, ticketBranch } from "./post.ts";
+import { BUILDING, CHECKING, HELD, OWNER, STUCK, TICKET, WAITING } from "./spelled.ts";
 
 export interface IssueState {
   repo: string;
@@ -16,6 +16,7 @@ export interface IssueState {
   restarted?: boolean;
   refused?: boolean;
   admissible?: boolean;
+  merged?: number | undefined;
 }
 
 export type Action =
@@ -23,7 +24,8 @@ export type Action =
   | { kind: "waited"; repo: string; number: number; wait: ChecksWait; runs: number[] }
   | { kind: "restart"; repo: string; number: number }
   | { kind: "admit"; repo: string; number: number }
-  | { kind: "flag"; repo: string; number: number };
+  | { kind: "flag"; repo: string; number: number }
+  | { kind: "close"; repo: string; number: number; pr: number };
 
 const STALE_AFTER = 3_600_000;
 const RESTARTED = "<!-- reconcile: restarted -->";
@@ -51,7 +53,11 @@ function admitRule({ repo, number, labels, refused, admissible }: IssueState): A
   return [{ kind: "admit", repo, number }];
 }
 
-export const reconcile = (states: IssueState[], now = Date.now()): Action[] => states.flatMap((state) => [...waitRule(state), ...staleRule(state, now), ...admitRule(state)]);
+function mergedRule({ repo, number, merged }: IssueState): Action[] {
+  return merged === undefined ? [] : [{ kind: "close", repo, number, pr: merged }];
+}
+
+export const reconcile = (states: IssueState[], now = Date.now()): Action[] => states.flatMap((state) => [...waitRule(state), ...staleRule(state, now), ...admitRule(state), ...mergedRule(state)]);
 
 interface Listed {
   number: number;
@@ -109,7 +115,13 @@ function waitedOn(repo: string, number: number, wait: ChecksWait, runs: number[]
   console.log(`reconcile: ${repo}#${number} waited on ${wait.count} full checks of ${wait.repo}: runs ${runs.join(", ")}`);
 }
 
+function close(repo: string, number: number, pr: number): void {
+  ghRead(["issue", "close", String(number), "--repo", repo, "--reason", "completed", "--comment", `Reconcile closed #${number}: its PR #${pr} merged but GitHub never closed it.`], `${repo}#${number} could not be closed after its PR #${pr} merged`);
+  console.log(`reconcile: ${repo}#${number} closed, as its PR #${pr} merged`);
+}
+
 function apply(action: Action): void {
+  if (action.kind === "close") return close(action.repo, action.number, action.pr);
   if (action.kind === "waited") return waitedOn(action.repo, action.number, action.wait, action.runs);
   if (action.kind === "restart") return restart(action.repo, action.number);
   if (action.kind === "admit") return readmit(action.repo, action.number);
@@ -151,6 +163,11 @@ function buildOf(number: number, live: string[], events: Event[]): Pick<IssueSta
   return { buildingSince: since === undefined ? undefined : Date.parse(since), liveRun: live.some((title) => named.test(title)), restarted };
 }
 
+function mergedOf(repo: string, number: number): number | undefined {
+  const pr = ghRead(["pr", "list", "--repo", repo, "--head", ticketBranch(String(number)), "--state", "merged", "--json", "number", "--jq", ".[0].number"], `the merged PR of ${repo}#${number} could not be read, so nothing is reconciled`);
+  return pr === "" ? undefined : Number(pr);
+}
+
 const openWith = (repo: string, label: string): Listed[] =>
   JSON.parse(ghRead(["issue", "list", "--repo", repo, "--label", label, "--state", "open", "--limit", "1000", "--json", "number,labels,body"], `the open ${label}s of ${repo} could not be read, so nothing is reconciled`)) as Listed[];
 
@@ -171,7 +188,7 @@ function statesOf(repo: string): IssueState[] {
   return listed.map(({ number, labels, body }) => {
     const names = labels.map(({ name }) => name);
     const events = timelineOf(repo, number);
-    return { repo, number, labels: names, blockers: blockersOf(repo, number), ...waitOf(body), ...(names.includes(BUILDING) ? buildOf(number, live, events) : admitOf(repo, number, events)) };
+    return { repo, number, labels: names, blockers: blockersOf(repo, number), ...waitOf(body), ...(names.includes(BUILDING) ? buildOf(number, live, events) : admitOf(repo, number, events)), ...(names.includes(CHECKING) ? { merged: mergedOf(repo, number) } : {}) };
   }).concat(waitingStatesOf(repo, listed));
 }
 

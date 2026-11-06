@@ -108,3 +108,9 @@ describe("reconcile holds a ticket waiting on another repo's full checks until t
     expect(reconcile([{ ...ticket(["ticket", "waiting"], []), waited: true }])).toEqual([{ kind: "remove-label", repo: REPO, number: 931, label: "waiting" }]);
   });
 });
+
+describe("reconcile closes a ticket whose PR merged but stayed open, where Mezzanine#2426 sat checking after #2434 merged", () => {
+  it("closes a checking ticket naming its merged PR, and leaves one with no merged PR alone", () => {
+    expect(reconcile([{ ...ticket(["ticket", "checking"], []), merged: 2434 }, { ...ticket(["ticket", "checking"], []), number: 932 }])).toEqual([{ kind: "close", repo: REPO, number: 931, pr: 2434 }]);
+  });
+});
