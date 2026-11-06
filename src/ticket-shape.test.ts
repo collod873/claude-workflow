@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { handedOn as builderBrief } from "./builder.ts";
-import { BUG_SHAPE, BUILD_SHAPE, DONE_SENTENCES, IDEA_SHAPE, SPEC_CAP, SPEC_SHAPE, WHY_SHAPE, bugRefusals, noteRefusals, specRefusals, ticketRefusals } from "./ticket-shape.ts";
+import { BUG_SHAPE, BUILD_SHAPE, DONE_SENTENCES, IDEA_SHAPE, SPEC_CAP, SPEC_SHAPE, WHY_SHAPE, bugRefusals, noteRefusals, sentences, specRefusals, ticketRefusals } from "./ticket-shape.ts";
 
 const QUOTED = 'The owner, in session: "file a ticket the machine can build".';
 const SIGNAL = "The Signals of the session read:\n\n> hookkit: check-gate crashed 3 times: TypeError: Cannot read properties of undefined";
@@ -235,5 +235,19 @@ describe("the builder's split and bin/file-issue --help ask for a Done when as w
     ["the builder's split", builderBrief({ ticket: "1", body: body() })],
   ])("%s names no count of sentences", (_, text) => {
     expect(text).not.toMatch(/\d+ to \d+/);
+  });
+});
+
+describe("the done check tries a spec's user stories as well as its sentences, so a story no screen reaches cannot close the spec", () => {
+  it("lists each sentence, then each numbered story without its number", () => {
+    const body = specBody({
+      stories: ["1. As the owner, I can file a spec before any ticket exists.", "2) As a tech, I can unbook a visit nobody started."],
+      sentences: ["- [ ] see a spec land as its own issue"],
+    });
+    expect(sentences(body).map(({ said }) => said)).toEqual([
+      "see a spec land as its own issue",
+      "As the owner, I can file a spec before any ticket exists.",
+      "As a tech, I can unbook a visit nobody started.",
+    ]);
   });
 });

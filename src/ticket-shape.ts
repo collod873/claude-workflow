@@ -27,6 +27,7 @@ export const NEXT_HEADING = /^##[ \t]/m;
 const ITEM = /^[ \t]*-[ \t]*\[[ xX]\][ \t]*/;
 const OWNER_WORDS = /"[^"\n]{4,}"|^>[ \t]*\S/m;
 const NUMBERED_ITEM = /^[ \t]*\d+[.)][ \t]/m;
+const STORY = /^[ \t]*\d+[.)][ \t]+/;
 const QUOTE = 80;
 
 export const DONE_SENTENCES = "what is true once it is done";
@@ -137,7 +138,8 @@ export interface Sentence {
 }
 
 export function sentences(body: string): Sentence[] {
-  return itemsUnder(body.replaceAll(/\r\n?/g, "\n"), SENTENCES).map((said) => ({ said }));
+  const text = body.replaceAll(/\r\n?/g, "\n");
+  return [...itemsUnder(text, SENTENCES), ...itemsUnder(text, USER_STORIES, STORY)].map((said) => ({ said }));
 }
 
 export const specProblem = (body: string) => section(body.replaceAll(/\r\n?/g, "\n"), PROBLEM_STATEMENT);

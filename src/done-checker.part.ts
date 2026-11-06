@@ -12,14 +12,15 @@ export const TRYING_SESSION = "trying-session";
 
 export const BUG_FILED = "https://github.com/collod873/claude-workflow/issues/990";
 
-export function specWith(sentences: string[]): string {
-  const [head] = wellFormedSpec.split("## I'll know it works when I can");
-  return `${head}## I'll know it works when I can\n\n${sentences.map((sentence) => `- [ ] ${sentence}`).join("\n")}\n`;
+export function specWith(sentences: string[], stories: string[] = []): string {
+  const [head = ""] = wellFormedSpec.split("## I'll know it works when I can");
+  const told = stories.length === 0 ? "Told by the sentences below." : stories.map((story, at) => `${at + 1}. ${story}`).join("\n");
+  return `${head.replace(/## User Stories\n\n[\s\S]*?\n\n(?=## )/, `## User Stories\n\n${told}\n\n`)}## I'll know it works when I can\n\n${sentences.map((sentence) => `- [ ] ${sentence}`).join("\n")}\n`;
 }
 
 export function doneChecking({
   labels = ["spec"],
-  body = wellFormedSpec,
+  body = specWith(["see a spec land as its own issue, labelled spec"]),
   tries = [{ sentence: 1, outcome: "held", tried: "read the spec issue and saw the spec label on it" }] as { sentence: number; outcome: string; tried: string }[],
   gh = "",
   said = [] as Said[],
