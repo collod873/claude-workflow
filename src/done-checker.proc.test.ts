@@ -41,6 +41,23 @@ describe("bin/done-check tries a spec's sentences and closes it only when every 
   });
 });
 
+describe("bin/done-check tries each numbered user story after the sentences, where a back end only a test reached passed every checkbox (Mezzanine#2396)", () => {
+  it("hands the story numbered after the sentences and files it as a bug when it did not hold", () => {
+    const story = "As a dispatcher, I can unbook a visit nobody has started.";
+    const tries = [
+      { sentence: 1, outcome: "held", tried: "saw the first wave under it" },
+      { sentence: 2, outcome: "missed", tried: "found no button that unbooks a visit" },
+    ];
+    const checked = doneChecking({ body: specWith([SENTENCES[0] ?? ""], [story]), tries });
+
+    expect(heard(checked.run())).toEqual({ status: 0, stderr: "", lines: [`done-check: #974 did not hold sentence 2, filed as ${BUG_FILED}, and is closed: ${DONE_CHECK_POSTED}`] });
+    expect(checked.handed()).toContain(`2. ${story}`);
+    const [comment = ""] = checked.comments();
+    expect(comment).toContain(`2. **Did not hold**: ${story}`);
+    expect(bodyIn(checked.created()[0] ?? [])).toContain("> found no button that unbooks a visit");
+  });
+});
+
 describe("bin/done-check files each sentence that did not hold as a bug and closes the spec, where #1689 sat stuck 78 min on a second check of the same code", () => {
   it("files the miss as a bug quoting what the checker saw, with the sentence as its done, then closes the spec", () => {
     const tries = [

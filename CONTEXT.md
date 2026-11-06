@@ -167,8 +167,8 @@ its issue, a dispatch's rerun or probe, as `.github/caller.yml` spells each.
 _Avoid_: run title, display name
 
 **Done check**:
-The stage that tries each of a spec's "I'll know it works when I can ___" sentences on its
-integration branch before it lands, in its own tree, port and Postgres, beside the full check. It
+The stage that tries each of a spec's "I'll know it works when I can ___" sentences, then each of
+its numbered user stories, on its integration branch before it lands, in its own tree, port and Postgres, beside the full check. It
 refuses nothing: its misses go once to the last reviewer, a fixed one lands with the spec, and the
 rest are filed as bugs quoting what it saw once the spec has landed, when it also comments and
 closes the spec. A sentence put to the owner holds nothing open: it is filed as an owner step saying

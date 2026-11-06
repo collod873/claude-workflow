@@ -120,7 +120,7 @@ export function onTheSpec(changes: Changes, { spec, title, body, commitlint, bri
   const built =
     "Builders built the spec below slice by slice on its integration branch, each slice to its brief under `## Its slices`. You did not build it: read the spec, the briefs, its commit messages and its diff, over the whole branch, as its reviewer on the spec.";
   const fix =
-    "Where the branch misses what the spec asks, builds what it rules out of scope, or leaves any story or any sentence under `## I'll know it works when I can` short of whole, build the rest here yourself: nothing goes back to a builder. Once you answer, a fresh done check tries each of those sentences on the app this branch builds.";
+    "Where the branch misses what the spec asks, builds what it rules out of scope, or leaves any story or any sentence under `## I'll know it works when I can` short of whole, build the rest here yourself: nothing goes back to a builder. Once you answer, a fresh done check tries each of those stories and sentences on the app this branch builds.";
   return [
     `# Hold spec #${spec} to what it asks before it lands`,
     `${built} A reviewer on the code standard reads the branch after you, your fixes with it.`,
