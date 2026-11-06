@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { listedFiles } from "./files.mjs";
 import { knipBase } from "./knip.base.mjs";
 import { refused, stage } from "./stages.mjs";
@@ -11,6 +11,7 @@ import { pinnedTools } from "./tools.mjs";
 const ROOT_CONFIG = "knip.config.ts";
 const OTHER_CONFIG = /(?:^|\/)\.?knip\.(?:jsonc?|[cm]?[jt]s)$/;
 const PINNED = pinnedTools.knip;
+const KNIP_BASE = fileURLToPath(new URL("./knip.base.mjs", import.meta.url));
 
 function otherConfigRefusals(root, files) {
   const others = files
@@ -60,7 +61,9 @@ function installedKnip(root) {
 }
 
 function runCache(root) {
-  const key = createHash("sha256").update(root).digest("hex").slice(0, 16);
+  const hash = createHash("sha256").update(root);
+  for (const config of [join(root, ROOT_CONFIG), KNIP_BASE]) hash.update(readFileSync(config));
+  const key = hash.digest("hex").slice(0, 16);
   return join(homedir(), ".cache", "agent-hooks", "knip-runs", key);
 }
 

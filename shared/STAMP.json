@@ -1,5 +1,5 @@
 {
- "source": "collod873/agent-hooks@2d57b2a3acdad3fb951bef8f8515174c90dfc354",
+ "source": "collod873/agent-hooks@83ccffa506ba3117981770d0bca0bc2d836952cc",
  "layer": "typescript",
  "files": {
   "ci.yml": "bdf08e9c95c81f75c7dacf568092ef577decf32f36486c969f58af14ee147259",
@@ -33,7 +33,7 @@
   "typescript/typecheck": "cc0064c5f823e62b3aa55dd2eddd700a30cf539cfddab8fc4ee2df74b64e509f",
   "typescript/typecheck.mjs": "52acd3f61290604355608d690b33636051a9ebaec8cd2f2084f890bbbd2a0a63",
   "typescript/unused": "a5bd5916965b9e5fb8e61463c4c7ed52296ed55ee4643d972d67579c2a91e4be",
-  "typescript/unused.mjs": "fa012a0c9bf915e5f6d5fc9d8fb10a4e4c5aefd7ef7f33d529cea249f0d3e2e6",
+  "typescript/unused.mjs": "5805c33f579adc4886bd8d3ae784d8a3e4ea2bdff6182455d03fbefb519fb57c",
   "typescript/verify.mjs": "b775afb3cd95ab67ad1c5a3175af2ca39c3b6114d0fe18262dcceab42722a0c9",
   "typescript/vitest.mjs": "df7efca6435c758f0cc8c9b4f530891210ff4064ee1fa98f3f1c79718fb086ae"
  },
