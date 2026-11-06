@@ -11,6 +11,7 @@ interface Ticket {
   body?: string;
   blockers: { repo: string; number: number; state: string }[];
   timeline?: object[];
+  merged?: number;
 }
 
 export type Issues = Record<string, { user: { login: string }; body: string }>;
@@ -63,6 +64,8 @@ export function linking({ checks = NO_CHECKS, landed = LANDED, tickets = [] as T
       `  "issue list"*"--label waiting "*) cat "${join(root, "waiting.json")}" ;;`,
       ...(closing === undefined ? [] : [`  *"issues/${closing.number}/dependencies/blocking"*) cat "${join(root, "blocking.json")}" ;;`]),
       ...(alreadyLinked ? ['  *"--method POST"*"blocked_by"*) printf \'gh: An error occurred while adding the blocking issue to the issue. Validation failed: Target issue has already been taken (HTTP 422)\\n\' >&2; exit 1 ;;'] : []),
+      ...tickets.flatMap(({ number, merged }) => (merged === undefined ? [] : [`  "pr list"*"--head ticket/${number} "*) printf '${merged}\\n' ;;`])),
+      `  "pr list"*) ;;`,
       `  "issue list"*) cat "${join(root, "listed.json")}" ;;`,
       ...cases,
       ...opened,
