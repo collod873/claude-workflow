@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -12,6 +12,7 @@ const ROOT_CONFIG = "knip.config.ts";
 const OTHER_CONFIG = /(?:^|\/)\.?knip\.(?:jsonc?|[cm]?[jt]s)$/;
 const PINNED = pinnedTools.knip;
 const KNIP_BASE = fileURLToPath(new URL("./knip.base.mjs", import.meta.url));
+const KNIP_PLUGIN_CACHE = /^plugins-/;
 
 function otherConfigRefusals(root, files) {
   const others = files
@@ -67,6 +68,14 @@ function runCache(root) {
   return join(homedir(), ".cache", "agent-hooks", "knip-runs", key);
 }
 
+function withoutPluginVerdicts(cache) {
+  if (!existsSync(cache)) return cache;
+  for (const entry of readdirSync(cache)) {
+    if (KNIP_PLUGIN_CACHE.test(entry)) rmSync(join(cache, entry));
+  }
+  return cache;
+}
+
 const root = process.cwd();
 const refusals = [...(await configRefusals(root, listedFiles(root))), ...installedKnip(root)];
 if (refused("typescript", refusals, "unused")) process.exit(1);
@@ -74,7 +83,7 @@ const knipArgs = [
   "--no-progress",
   "--cache",
   "--cache-location",
-  runCache(root),
+  withoutPluginVerdicts(runCache(root)),
   ...process.argv.slice(2),
 ];
 const knipScript = join(root, "node_modules", "knip", "bin", "knip.js");
