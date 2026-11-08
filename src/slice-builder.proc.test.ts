@@ -1,12 +1,15 @@
+import { spawnSync } from "node:child_process";
 import { generateKeyPairSync } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { setTimeout } from "node:timers/promises";
+import { describe, expect, it, onTestFinished } from "vitest";
+import { onDisk } from "./brief.ts";
 import { CHECK_PASSES } from "./builder.part.ts";
 import { BRIEF, BUILDS, KIT_FILED, ONTO, SLICE, SLICE_SESSION, SPEC, slicing } from "./slice-builder.part.ts";
 import { fromLine } from "./post.ts";
 import { BIN, bodyIn, execute, scratch } from "./scenarios.ts";
-import { OUT_OF_TIME } from "./slice-builder.ts";
+import { OUT_OF_TIME, reapedUnder } from "./slice-builder.ts";
 
 const ending = (stdout: string) => JSON.parse(stdout.trim().split("\n").at(-1) ?? "") as { outcome: string; left: string; reason: string; session: string };
 const envOf = (dump: string | undefined, name: string) => new RegExp(`^${name}=(.*)$`, "m").exec(dump ?? "")?.[1];
@@ -453,5 +456,40 @@ describe("a slice's builder holds a fresh App token after each model run, as the
     expect(first).toBe("job-token");
     expect(second).toMatch(/^minted-\d+$/);
     expect(envs("claude").join("")).not.toContain(privateKey.split("\n")[1]);
+  });
+});
+
+const leftBehind = (cwd: string, temp: string) => {
+  const pid = Number(spawnSync("bash", ["-c", "setsid sleep 300 </dev/null >/dev/null 2>&1 & echo $!"], { cwd, env: { ...process.env, TMPDIR: temp }, encoding: "utf8" }).stdout.trim());
+  onTestFinished(() => {
+    if (running(pid)) process.kill(pid, "SIGKILL");
+  });
+  return pid;
+};
+
+const running = (pid: number) => {
+  const state = /^\d+ \(.*\) (\S)/.exec(onDisk(`/proc/${pid}/stat`) ?? "")?.[1];
+  return state !== undefined && state !== "Z";
+};
+
+async function goneWithin(pid: number, seconds: number): Promise<boolean> {
+  for (const until = Date.now() + seconds * 1000; running(pid); await setTimeout(50)) if (Date.now() > until) return false;
+  return true;
+}
+
+describe("a stage that ends leaves no process it started running, since a dev server orphaned past its stage held gigabytes until the job ended", () => {
+  it("kills a detached process left with its working directory or TMPDIR under the stage's folders, and keeps one of the same user's started elsewhere", async () => {
+    const tree = scratch("stage-tree-");
+    const elsewhere = scratch("elsewhere-");
+    const inTree = leftBehind(tree, elsewhere);
+    const withTemp = leftBehind(elsewhere, join(tree, "slice-own"));
+    const another = leftBehind(elsewhere, elsewhere);
+    expect([inTree, withTemp, another].every(running)).toBe(true);
+
+    reapedUnder([tree]);
+
+    expect(await goneWithin(inTree, 5)).toBe(true);
+    expect(await goneWithin(withTemp, 5)).toBe(true);
+    expect(running(another)).toBe(true);
   });
 });

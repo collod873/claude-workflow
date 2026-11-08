@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { DIFF_CAP, LIST_CAP, TAIL_CAP } from "./brief.ts";
+import { DIFF_CAP, LIST_CAP, onDisk, TAIL_CAP } from "./brief.ts";
 import { specWith } from "./done-checker.part.ts";
 import { BRIEFS_CAP, ONE_REVIEWER_CAP, onTheCode, onTheSpec, SLICE_CAP } from "./finish.ts";
 import { authored, BIN, execute, labelsJson, linesIn, ghArgv, git, key, nulSplit, plant, type Said, scratch, script } from "./scenarios.ts";
@@ -36,6 +36,7 @@ export function finishing({
   contract = undefined as string | undefined,
   overlapped = false,
   tryRefused = false,
+  tryLeavesServer = false,
 } = {}) {
   const root = scratch("finish-");
   const session = join(root, "session");
@@ -85,6 +86,7 @@ export function finishing({
       `  { pwd; git rev-parse HEAD; printf '%s\\n' "\${DATABASE_URL:-}" "\${PORT:-}" "\${TMPDIR:-}"; } >"${triesDir}/$TRY.where"`,
       "  flock -u 9",
       ...(overlapped ? [`  touch "${join(root, "trying")}"`, `  for _ in $(seq 100); do [ -f "${join(root, "checked")}" ] && break; sleep 0.1; done`] : []),
+      ...(tryLeavesServer ? [`  setsid sleep 300 </dev/null >/dev/null 2>&1 9>&- & printf '%s\\n' "$!" >"${join(root, "server-pid")}"`] : []),
       ...(tryRefused ? ["  exit 3"] : []),
       `  cat <<'TRIES'\n${answering({ tries })}TRIES`,
       "  exit 0",
@@ -126,7 +128,8 @@ export function finishing({
   script(join(bin, "check"), `printf '%s\\n' "$*" >>"${checks}"\n${overlap}${check}`);
   script(join(bin, "docker"), `printf '%s\\n' "$*" >>"${join(root, "docker-calls")}"\ncase $1 in\n  port) printf '127.0.0.1:49153\\n' ;;\nesac\n`);
   script(join(bin, "mark"), `printf '%s\\n' "$*" >>"${marks}"\n`);
-  script(join(bin, "land"), `ls "${join(root, "gh-argv")}" | wc -l >>"${join(root, "gh-calls-at-land")}"\nprintf '%s %s %s\\n' "\${GH_TOKEN:-}" "$(git rev-parse HEAD)" "$1 $2" >>"${lands}"\nprintf '%s\\0' "$4" >>"${approvals}"\n${land}\nprintf 'Landed ${FINISHED_PR}\\n'\n`);
+  const serverAtLand = `[ -f "${join(root, "server-pid")}" ] && ps -o stat= -p "$(cat "${join(root, "server-pid")}")" >"${join(root, "server-at-land")}" || true\n`;
+  script(join(bin, "land"), `${serverAtLand}ls "${join(root, "gh-argv")}" | wc -l >>"${join(root, "gh-calls-at-land")}"\nprintf '%s %s %s\\n' "\${GH_TOKEN:-}" "$(git rev-parse HEAD)" "$1 $2" >>"${lands}"\nprintf '%s\\0' "$4" >>"${approvals}"\n${land}\nprintf 'Landed ${FINISHED_PR}\\n'\n`);
   const keyFile = join(root, "app-key.json");
   if (appKeyed) plant(root, "app-key.json", JSON.stringify({ clientId: "Iv1.finish", key: key() }));
   const listed = linesIn;
@@ -140,6 +143,8 @@ export function finishing({
     ghCallsAtLand: () => listed(join(root, "gh-calls-at-land")).map(Number),
     overlapped: () => existsSync(join(root, "checked")),
     dockered: () => linesIn(join(root, "docker-calls")),
+    serverAtLand: () => onDisk(join(root, "server-at-land"))?.trim(),
+    serverPid: () => Number(onDisk(join(root, "server-pid"))),
     wheres: () => numbered(wheres).map((where) => where.trim()),
     hired: () => numbered(hires).map((argv) => argv.split("\0").filter((part) => part !== "")),
     landed: () => listed(lands).map((line) => line.split(" ")),
