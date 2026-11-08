@@ -25,7 +25,7 @@ const ONE_JOB = "ACTIONS_RUNNER_INPUT_ONCE=true";
 const confinement = (unit: string) =>
   ["[Service]", "OOMPolicy=continue", "KillMode=mixed", `Environment=${ONE_JOB}`, "Restart=always", "RestartSec=2", `ExecCondition=/usr/bin/systemctl is-enabled --quiet ${unit}`, ""].join("\n");
 const EARLYOOM = "/etc/default/earlyoom";
-const earlyoom = 'EARLYOOM_ARGS="-r 3600 -m 10,5 -s 10,5"\n';
+const earlyoom = 'EARLYOOM_ARGS="-r 3600 -m 10,5 -s 10,5 --avoid ^(systemd|wslmon|dbus-daemon|earlyoom|cron)$"\n';
 const NOT_FOUND = /\(HTTP 404\)|not found/i;
 
 class Refused extends Error {}
