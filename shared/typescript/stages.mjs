@@ -4,7 +4,7 @@ import { appendFileSync, existsSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { configShaped, LINTABLE, listedFiles } from "./files.mjs";
+import { LINTABLE, listedFiles, sha } from "./files.mjs";
 
 const require = createRequire(import.meta.url);
 
@@ -44,61 +44,77 @@ function eslintRun(root, files) {
 }
 
 const LOCKFILES = ["package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock"];
+const TSCONFIG = /(?:^|\/)[jt]sconfig[^/]*\.json$/;
+const ESLINT_CONFIG = /^eslint\.config\.[cm]?[jt]s$/;
 
-async function lintDigests(root, engine, listed, candidates) {
-  const ruleCode = createHash("sha256");
-  for (const file of listed.filter((name) => configShaped(name) || LOCKFILES.includes(name)))
-    ruleCode.update(`${file}\0`).update(readFileSync(join(root, file)));
-  const shared = ruleCode.digest("hex");
+const trees = new Map();
+
+async function treeFacts(root) {
+  const { importClosures } = await import("./closure.mjs");
+  const listed = listedFiles(root);
+  const toolchain = createHash("sha256");
+  for (const file of listed.filter((name) => LOCKFILES.includes(name) || TSCONFIG.test(name)))
+    toolchain.update(`${file}\0`).update(readFileSync(join(root, file)));
+  return {
+    listed,
+    toolchainDigest: toolchain.digest("hex"),
+    ...importClosures(
+      root,
+      listed.filter((file) => LINTABLE.test(file)),
+    ),
+  };
+}
+
+function receiptTree(root) {
+  if (!trees.has(root)) trees.set(root, treeFacts(root));
+  return trees.get(root);
+}
+
+async function lintDigests(root, engine, candidates) {
+  const { listed, toolchainDigest, closureOf, contentOf } = await receiptTree(root);
+  const configs = listed.filter((file) => ESLINT_CONFIG.test(file));
+  const shared = sha(
+    JSON.stringify([toolchainDigest, configs.map((file) => [file, closureOf(file)])]),
+  );
   const configDigests = new Map();
   const digested = await Promise.all(
     candidates.map(async (file) => {
       const path = join(root, file);
       if (await engine.isPathIgnored(path)) return undefined;
       const config = await engine.calculateConfigForFile(path);
-      if (!configDigests.has(config)) {
-        const text = JSON.stringify(config).replaceAll(root, "<root>");
-        configDigests.set(config, createHash("sha256").update(text).digest("hex"));
-      }
-      const content = createHash("sha256").update(readFileSync(path)).digest("hex");
-      const key = JSON.stringify([shared, configDigests.get(config), file, content]);
-      return [file, createHash("sha256").update(key).digest("hex")];
+      if (!configDigests.has(config))
+        configDigests.set(config, sha(JSON.stringify(config).replaceAll(root, "<root>")));
+      const content = contentOf.get(file) ?? sha(readFileSync(path, "utf8"));
+      return [file, sha(JSON.stringify([shared, configDigests.get(config), file, content]))];
     }),
   );
-  const digests = new Map(digested.filter(Boolean));
-  return digests;
+  return new Map(digested.filter(Boolean));
+}
+
+async function receiptedRun(handed, digests, run) {
+  const held = new Set(readFileSync(join(handed, "held"), "utf8").split("\n"));
+  const due = [...digests].filter(([, digest]) => !held.has(digest));
+  if (due.length === 0) return true;
+  const clean = await run(due.map(([file]) => file));
+  if (clean)
+    appendFileSync(join(handed, "passed"), due.map(([, digest]) => `${digest}\n`).join(""));
+  return clean;
 }
 
 export async function eslintStage(root, files, eslint) {
   const handed = process.env.CHECK_FILE_RECEIPTS;
   if (!handed) return eslintRun(root, files);
   const engine = eslint ?? new (await import("eslint")).ESLint({ cwd: root });
-  const listed = listedFiles(root);
-  const candidates = (files.length > 0 ? files : listed).filter((file) => LINTABLE.test(file));
-  const digests = await lintDigests(root, engine, listed, candidates);
-  const held = new Set(readFileSync(join(handed, "held"), "utf8").split("\n"));
-  const due = [...digests].filter(([, digest]) => !held.has(digest));
-  if (due.length === 0) return true;
-  const clean = await eslintRun(
-    root,
-    due.map(([file]) => file),
+  const candidates = (files.length > 0 ? files : (await receiptTree(root)).listed).filter((file) =>
+    LINTABLE.test(file),
   );
-  if (clean)
-    appendFileSync(join(handed, "passed"), due.map(([, digest]) => `${digest}\n`).join(""));
-  return clean;
+  const digests = await lintDigests(root, engine, candidates);
+  return receiptedRun(handed, digests, (due) => eslintRun(root, due));
 }
 
 const OXLINT_CONFIG = join(dirname(fileURLToPath(import.meta.url)), "oxlint.json");
 
-export async function oxlintStage(root, files, eslint) {
-  const candidates = (files.length > 0 ? files : listedFiles(root)).filter((file) =>
-    /\.[cm]?tsx?$/.test(file),
-  );
-  const engine = eslint ?? new (await import("eslint")).ESLint({ cwd: root });
-  const ignored = await Promise.all(
-    candidates.map((file) => engine.isPathIgnored(join(root, file))),
-  );
-  const typed = candidates.filter((_, index) => !ignored[index]);
+function oxlintRun(root, typed) {
   if (typed.length === 0) return true;
   return stageAsync(
     "oxlint",
@@ -107,6 +123,28 @@ export async function oxlintStage(root, files, eslint) {
     root,
     { OXLINT_TSGOLINT_PATH: packageBin("oxlint-tsgolint", "bin/tsgolint.js") },
   );
+}
+
+async function typeAwareDigests(root, typed) {
+  const { toolchainDigest, closureOf, ambientDigest } = await receiptTree(root);
+  const shared = sha(
+    JSON.stringify(["oxlint", sha(readFileSync(OXLINT_CONFIG)), toolchainDigest, ambientDigest]),
+  );
+  return new Map(typed.map((file) => [file, sha(JSON.stringify([shared, file, closureOf(file)]))]));
+}
+
+export async function oxlintStage(root, files, eslint) {
+  const handed = process.env.CHECK_FILE_RECEIPTS;
+  const pool =
+    files.length > 0 ? files : handed ? (await receiptTree(root)).listed : listedFiles(root);
+  const candidates = pool.filter((file) => /\.[cm]?tsx?$/.test(file));
+  const engine = eslint ?? new (await import("eslint")).ESLint({ cwd: root });
+  const ignored = await Promise.all(
+    candidates.map((file) => engine.isPathIgnored(join(root, file))),
+  );
+  const typed = candidates.filter((_, index) => !ignored[index]);
+  if (!handed) return oxlintRun(root, typed);
+  return receiptedRun(handed, await typeAwareDigests(root, typed), (due) => oxlintRun(root, due));
 }
 
 export function refused(layer, refusals, verb = "lint") {

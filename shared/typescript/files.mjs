@@ -1,6 +1,9 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join, matchesGlob } from "node:path";
+
+export const sha = (text) => createHash("sha256").update(text).digest("hex");
 
 export const LINTABLE = /\.(?:[cm]?[jt]s|[jt]sx)$/;
 

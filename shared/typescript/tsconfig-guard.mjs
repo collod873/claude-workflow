@@ -3,7 +3,7 @@ import ts from "typescript";
 
 const ALWAYS_OWN = new Set(["paths", "pathsBasePath", "configFilePath"]);
 
-function parsed(file) {
+export function parsedTsconfig(file) {
   const host = { ...ts.sys, onUnRecoverableConfigFileDiagnostic: () => {} };
   return ts.getParsedCommandLineOfConfigFile(file, {}, host);
 }
@@ -18,8 +18,8 @@ export function tsconfigRefusals(root, { ownsFileList }) {
   const raw = ts.readConfigFile(config, ts.sys.readFile).config ?? {};
   const parent = sharedParent(root, raw);
   if (!parent) return ["tsconfig.json does not extend a config in shared/"];
-  const theirs = parsed(config).options;
-  const ours = parsed(parent).options;
+  const theirs = parsedTsconfig(config).options;
+  const ours = parsedTsconfig(parent).options;
   const changed = [...new Set([...Object.keys(theirs), ...Object.keys(ours)])].filter(
     (key) => !ALWAYS_OWN.has(key) && JSON.stringify(theirs[key]) !== JSON.stringify(ours[key]),
   );
