@@ -1,7 +1,7 @@
 import { fromOf } from "./post.ts";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import { finishing, type Slice } from "./finish.part.ts";
 import { bodyIn, createdIssues, git, heard, schemaIn, TAKEN_STEP } from "./scenarios.ts";
 import { HELD, OWNER } from "./spelled.ts";
@@ -169,6 +169,20 @@ describe("bin/finish tries the spec's sentences on its integration branch before
     const dockered = finished.dockered();
     expect(dockered.some((call) => /^run .*postgres:16$/.test(call))).toBe(true);
     expect(dockered.at(-1)).toMatch(/^rm --force database-/);
+  });
+
+  it("stops every process its done checker left running in its tree before the spec lands, where a done check's `next dev` held gigabytes for the rest of the spec's job", () => {
+    const finished = finishing({ tryLeavesServer: true });
+    onTestFinished(() => {
+      const pid = finished.serverPid();
+      if (pid > 1 && existsSync(`/proc/${pid}`)) process.kill(pid, "SIGKILL");
+    });
+
+    const ran = heard(finished.run());
+
+    expect(ran.status, ran.stderr).toBe(0);
+    expect(finished.serverPid()).toBeGreaterThan(1);
+    expect(finished.serverAtLand()).toMatch(/^Z?$/);
   });
 
   it("hands the sentences the done check missed to the last reviewer as one round in its own session, files as bugs only those it did not name fixed, and posts the fixed ones as fixed, where 26 of 39 misses in a week were pages and forms nothing tested", () => {

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
 import { capped, listedCapped, NO_EM_DASH, onDisk, tailOf } from "./brief.ts";
 import { askedOn, authoredOn, commentOnTicket, followUpBody, fromHere, fromLine, FOREIGN, gh, mark, OWNER, post, readOrStop, STUCK, stoodDown, type Asked } from "./post.ts";
-import { freePort, isolated } from "./slice-builder.ts";
+import { freePort, isolated, reapedUnder } from "./slice-builder.ts";
 import { CONTRACT, hireIn, opened, setupRefusal, setupRefusedIn, type Spent, unsetKeys } from "./stage.ts";
 import { CHECKING, SPEC } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
@@ -56,7 +56,7 @@ const answered = (replies: string) =>
 const RUNNING_HERE =
   "For this repo the running system is the landed code in this checkout, which no Actions run has used yet: run its stages against stand-ins, such as a throwaway clone and a fake `gh`, and read its earlier Actions runs and the issues and PRs they touched with `gh` for how it behaves live. What only a live run can show goes to the owner.";
 const BROWSER =
-  "Settle what a sentence rests on by calling the app's server directly, its routes and actions, which answers in a fraction of a second, and open a page only for what the page itself must show. Drive one page at a time with `ui-check` (`ui-check open <url>`, `goto`, `click`, `eval`, `screenshot`, `--device`). To try sentences that do not depend on each other side by side, or a flow `ui-check` cannot script, open them as pages of one Playwright script that requires `$(npm root -g)/playwright-core` and launches `channel: \"chrome\"`. Install no browser or driver of your own. `tools <words>` finds any other tool here.";
+  "Start the app only with `preview url [path] [--as role]`, which starts this checkout's dev server once, reuses it after and prints the page's signed-in URL; never start `pnpm dev`, `next dev` or any server yourself. Run `preview stop` once your last try is done. Settle what a sentence rests on by calling the app's server directly, its routes and actions, which answers in a fraction of a second, and open a page only for what the page itself must show. Drive one page at a time with `ui-check` (`ui-check open <url>`, `goto`, `click`, `eval`, `screenshot`, `--device`). To try sentences that do not depend on each other side by side, or a flow `ui-check` cannot script, open them as pages of one Playwright script that requires `$(npm root -g)/playwright-core` and launches `channel: \"chrome\"`. Install no browser or driver of your own. `tools <words>` finds any other tool here.";
 const RUNNING_THERE = `Here the running system is this checkout of the repo, readied by its contract's setup, and its Actions runs and the issues and PRs they touched, read with \`gh\`.\n\n${BROWSER}`;
 const SELF =
   " `self`, without trying it, for a sentence about the spec closing itself or the owner being told which sentence did not hold: this run is the one that closes the spec and files each miss, so the machine settles it from the other sentences.";
@@ -226,7 +226,8 @@ export async function triedIn(tree: string, issue: string): Promise<Try[] | { re
   const unready = setupFailed(await setupRefusedIn(tree, onDisk(join(tree, CONTRACT)) ?? "", { ...isolation }));
   if (unready !== undefined) return { refusal: unready };
   const spend = hireIn(tree, "done-check", issue, HIRE, { ...isolation });
-  return triesIn(await spend(handedFor({ asked, listed, replies: repliesOn(issue) })), listed);
+  const spent = await spend(handedFor({ asked, listed, replies: repliesOn(issue) })).finally(() => reapedUnder([tree, isolation.TMPDIR]));
+  return triesIn(spent, listed);
 }
 
 if (import.meta.main) {

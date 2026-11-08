@@ -1,5 +1,5 @@
 import { execFile, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer, type AddressInfo } from "node:net";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -206,9 +206,44 @@ async function ownDatabase(container: string): Promise<{ DATABASE_URL: string } 
   return { DATABASE_URL: `postgres://postgres:postgres@localhost:${port}/postgres` };
 }
 
+const GONE_MID_READ = new Set(["ENOENT", "ESRCH", "EACCES"]);
+
+const unlessGone = <Read>(read: () => Read): Read | undefined => {
+  try {
+    return read();
+  } catch (error) {
+    if (GONE_MID_READ.has((error as NodeJS.ErrnoException).code ?? "")) return undefined;
+    throw error;
+  }
+};
+
+const under = (roots: string[], at: string | undefined) => at !== undefined && roots.some((root) => at === root || at.startsWith(`${root}/`));
+
+const parentOf = (pid: number) => Number(/^PPid:\s+(\d+)$/m.exec(unlessGone(() => readFileSync(`/proc/${pid}/status`, "utf8")) ?? "")?.[1] ?? 0);
+
+function ancestry(): Set<number> {
+  const lineage = new Set<number>();
+  for (let at = process.pid; at > 1; at = parentOf(at)) lineage.add(at);
+  return lineage;
+}
+
+function startedUnder(pid: number, roots: string[]): boolean {
+  const proc = `/proc/${pid}`;
+  if (unlessGone(() => statSync(proc).uid) !== process.getuid?.()) return false;
+  const temp = unlessGone(() => readFileSync(`${proc}/environ`, "utf8"))?.split("\0").find((entry) => entry.startsWith("TMPDIR="))?.slice("TMPDIR=".length);
+  return under(roots, unlessGone(() => readlinkSync(`${proc}/cwd`))) || under(roots, temp);
+}
+
+export function reapedUnder(roots: string[]): void {
+  const lineage = ancestry();
+  const pids = readdirSync("/proc").filter((name) => /^\d+$/.test(name)).map(Number);
+  for (const pid of pids) if (!lineage.has(pid) && startedUnder(pid, roots)) unlessGone(() => process.kill(pid, "SIGKILL"));
+}
+
 export async function isolated(tree: string, names: string[], port: number): Promise<Isolation | string> {
   const own = mkdtempSync(join(tmpdir(), "slice-"));
   onLeaving(() => rmSync(own, { recursive: true, force: true }));
+  onLeaving(() => reapedUnder([own]));
   const isolation = { TMPDIR: own, PORT: String(port) };
   if (!treeNeeds(onDisk(join(tree, CONTRACT)) ?? "").database) return isolation;
   const database = await ownDatabase(named("database", process.env.GITHUB_REPOSITORY ?? "", process.env.RUNNER_NAME ?? "", ...names));
