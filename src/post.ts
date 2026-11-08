@@ -1,4 +1,6 @@
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { text as read } from "node:stream/consumers";
 import { added, filedLine, likelyMatches, matchRefusals, NEW, unlisted } from "./door.ts";
@@ -33,10 +35,36 @@ export interface Posting {
 export type Gh = (args: string[]) => { status: number | null; stdout: string; stderr: string };
 
 const GITHUB = join(import.meta.dirname, "..", "bin", "github");
+const ARGUMENT_BYTES = 65536;
+
+function bodiesInFiles(args: string[], dir: () => string): string[] {
+  const moved = [...args];
+  for (const [at, arg] of args.entries()) {
+    if (at === 0 || Buffer.byteLength(arg) < ARGUMENT_BYTES) continue;
+    const file = join(dir(), `body-${String(at)}`);
+    if (args[at - 1] === "--body") {
+      writeFileSync(file, arg);
+      moved.splice(at - 1, 2, "--body-file", file);
+    } else if (args[at - 1] === "-f" && arg.startsWith("body=")) {
+      writeFileSync(file, arg.slice("body=".length));
+      moved.splice(at - 1, 2, "-F", `body=@${file}`);
+    }
+  }
+  return moved;
+}
+
 export const ghAs =
   (env: NodeJS.ProcessEnv): Gh =>
-  (args) =>
-    spawnSync(GITHUB, args, { encoding: "utf8", maxBuffer: Infinity, env, stdio: ["pipe", "pipe", "pipe", 2] });
+  (args) => {
+    let held: string | undefined;
+    const dir = () => (held ??= mkdtempSync(join(tmpdir(), "gh-body-")));
+    try {
+      const ran = spawnSync(GITHUB, bodiesInFiles(args, dir), { encoding: "utf8", maxBuffer: Infinity, env, stdio: ["pipe", "pipe", "pipe", 2] });
+      return { status: ran.status, stdout: ran.stdout ?? "", stderr: ran.stderr || (ran.error?.message ?? "") };
+    } finally {
+      if (held !== undefined) rmSync(held, { recursive: true, force: true });
+    }
+  };
 export const gh = ghAs(process.env);
 export const git = (args: string[], input?: string) => spawnSync("git", args, { input, encoding: "utf8", maxBuffer: Infinity });
 
