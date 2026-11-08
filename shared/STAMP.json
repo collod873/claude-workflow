@@ -1,5 +1,5 @@
 {
- "source": "collod873/agent-hooks@36f248316497b9b43a56b04b34f93b8ebff1c380",
+ "source": "collod873/agent-hooks@ed1008281e0899a9f620bd950b0cf3d66cc94396",
  "layer": "typescript",
  "files": {
   "ci.yml": "bdf08e9c95c81f75c7dacf568092ef577decf32f36486c969f58af14ee147259",
@@ -7,7 +7,7 @@
   "security/secrets": "986e3f8ce1d4b6b2034a6add4219de01c41e6924cee8b2334c0d95769616c860",
   "security/tools.py": "3cf205dc74550decbd04f9d35f9ceda812d50bcee14400cc642b1817049e6de0",
   "security/vulns": "39541ea74fbc9ce44c964a0ba826a4abfa2873267895b906bbbb56d0692c9b66",
-  "typescript/closure.mjs": "edcf9ccdb90c210be5d847f2b6963f2c41112a1190068f38fefad1aaf830c133",
+  "typescript/closure.mjs": "272a84948ff025cb1967fa36d3f0e99cb94991e4237bf31de3505250bd075f18",
   "typescript/files.mjs": "30813286d1d77817a585a2de6c4439713e2b159204b3a31f5833fe211107d4e8",
   "typescript/index.mjs": "3f85b9c89df8587ebd20a9273cb2279845241c77889a4bae24cdeb7070c320bd",
   "typescript/knip.base.d.mts": "0d59f036962b278fc0bec872969eea08bf899384ac80c36297102ddb5583dc1b",
@@ -27,7 +27,7 @@
   "typescript/run.mjs": "d2be6c1aa8121a5c2e6b8ae0f8be712dd5f3ad102e74a35983d177651bebc23b",
   "typescript/setup": "efbc5bf33e8de96614cbe47a3c0ca12dae0077dec59843ed72569af1311c9d09",
   "typescript/setup.mjs": "0e5dd76a07c999f71ea2518e4681882a002799b0206d26ce0e6d181c18085221",
-  "typescript/stages.mjs": "7df92e11937fd1f2d0f071e4faa7ded88cd0f7436b7d9739f72ce17c5dfc2223",
+  "typescript/stages.mjs": "3c15ac08be9a4a994c3792211ace992f09709d64391b9fbda3bbcc57c76c50c7",
   "typescript/tools.mjs": "6017f6a2208773bf7245638f65451b07fb8a09165e7475d8c82040cd4b876125",
   "typescript/tsconfig-guard.mjs": "1bdbc17ddec29c8201310007ece6d12f8d1ed4e8ba7bf5de6ef290740014f63c",
   "typescript/tsconfig.base.json": "cbc394788f18ca8975d4047a94d340e7d74b0c965e948f2c853234acb34e6638",

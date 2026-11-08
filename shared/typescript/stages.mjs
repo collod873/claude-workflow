@@ -61,6 +61,7 @@ async function treeFacts(root) {
     ...importClosures(
       root,
       listed.filter((file) => LINTABLE.test(file)),
+      new Set(listed),
     ),
   };
 }
@@ -68,6 +69,12 @@ async function treeFacts(root) {
 function receiptTree(root) {
   if (!trees.has(root)) trees.set(root, treeFacts(root));
   return trees.get(root);
+}
+
+function unfollowed(_key, value) {
+  return value !== null && typeof value === "object" && value.followsImports === true
+    ? undefined
+    : value;
 }
 
 async function lintDigests(root, engine, candidates) {
@@ -83,8 +90,11 @@ async function lintDigests(root, engine, candidates) {
       if (await engine.isPathIgnored(path)) return undefined;
       const config = await engine.calculateConfigForFile(path);
       if (!configDigests.has(config))
-        configDigests.set(config, sha(JSON.stringify(config).replaceAll(root, "<root>")));
-      const content = contentOf.get(file) ?? sha(readFileSync(path, "utf8"));
+        configDigests.set(
+          config,
+          sha(JSON.stringify(config, unfollowed).replaceAll(root, "<root>")),
+        );
+      const content = closureOf(file) ?? contentOf.get(file) ?? sha(readFileSync(path, "utf8"));
       return [file, sha(JSON.stringify([shared, configDigests.get(config), file, content]))];
     }),
   );
