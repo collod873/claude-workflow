@@ -10,7 +10,7 @@ const LOOKS = `case "$*" in\n  *"issue list"*) printf '[]\\n'; exit 0 ;;\n  *con
 const RECORDS = `${LOOKS}python3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "$@" >>"$PWD/gh-argv"\nprintf '%s\\n' ${URL}\n`;
 const REFUSES = `${LOOKS}printf 'nothing filed\\n' >&2\nexit 1\n`;
 const UNSTAMPED = "file-issue: CLAUDE_CODE_SESSION_ID is empty, so the filing names no session\n";
-const USAGE = "file-issue: usage: file-issue idea|look-into|build|bug|spec|owner --title <title> --body-file <path> [--new] [--repo <owner/name>]\n       file-issue add <number> --body-file <path> [--repo <owner/name>]";
+const USAGE = "file-issue: usage: file-issue idea|look-into|build|bug|spec|owner --title <title> --body-file <path> [--new] [--repo <owner/name>] [--blocked-by <[owner/name]#number>]...\n       file-issue add <number> --body-file <path> [--repo <owner/name>]";
 const WAITS = "this repo is not enrolled: a build, bug or spec waits for a session to take it.\n";
 const NOTE_CALL = ["idea", "--title", "What the audit found", "--body-file", "body.md"];
 const BUG_CALL = ["bug", "--title", "check-gate crashes on a contract with no steps", "--body-file", "body.md"];
@@ -279,5 +279,53 @@ describe("bin/file-issue --help runs no gh, since gh writes its state under HOME
     const { run } = filing({ gh: "exit 1\n", body: wellFormedTicket });
 
     expect(run(["--help"]).stdout).toMatch(/^--repo <owner\/name>: /m);
+  });
+});
+
+const BLOCKERS = `case "$*" in\n  "api repos/collod873/Mezzanine/issues/2419 "*) printf '901 open\\n'; exit 0 ;;\n  "api repos/collod873/claude-workflow/issues/12 "*) printf '902 closed\\n'; exit 0 ;;\n  "api repos/collod873/claude-workflow/issues/13 "*) printf 'gh: Not Found (HTTP 404)\\n' >&2; exit 1 ;;\nesac\n${RECORDS}`;
+const CLAUDE_WORKFLOW = "https://github.com/collod873/claude-workflow.git";
+const SPEC_CALL = ["spec", "--title", "Leads and estimates", "--body-file", "body.md"];
+const blockedBy = (id: string) => ["api", "--method", "POST", "repos/collod873/claude-workflow/issues/700/dependencies/blocked_by", "-F", `issue_id=${id}`];
+
+describe("bin/file-issue spec --blocked-by files a spec that waits in line behind other issues, in any repo (#1675)", () => {
+  it("files it labelled waiting, links it blocked by each, and only then labels it spec, so the wake sees waiting and starts nothing", () => {
+    const { repo, run } = filing({ gh: BLOCKERS, body: wellFormedSpec, origin: CLAUDE_WORKFLOW });
+
+    expect(run([...SPEC_CALL, "--blocked-by", "collod873/Mezzanine#2419", "--blocked-by", "#12"])).toMatchObject({ status: 0, stdout: `${URL}\n` });
+    const { labels, then } = filedAs(ghSaw(repo));
+    expect(labels).toEqual(["waiting"]);
+    expect(then.slice(1)).toEqual([blockedBy("901"), blockedBy("902"), ["issue", "edit", "700", "--add-label", "spec"]]);
+  });
+
+  it("files it labelled spec at once, still linked, when every blocker is already closed", () => {
+    const { repo, run } = filing({ gh: BLOCKERS, body: wellFormedSpec, origin: CLAUDE_WORKFLOW });
+
+    expect(run([...SPEC_CALL, "--blocked-by", "12"])).toMatchObject({ status: 0, stdout: `${URL}\n` });
+    const { labels, then } = filedAs(ghSaw(repo));
+    expect(labels).toEqual(["spec"]);
+    expect(then.slice(1)).toEqual([blockedBy("902")]);
+  });
+
+  it("creates the spec label in a repo that lacks it, since gh issue edit refuses an unknown label, and labels the parked spec again", () => {
+    const lacksSpec = `case "$*" in\n  "issue edit 700 --add-label spec") [ -e "$PWD/spec-label" ] || { printf "failed to update ${URL}: 'spec' not found\\n" >&2; exit 1; } ;;\n  "label create spec "*) : >"$PWD/spec-label" ;;\nesac\n${BLOCKERS}`;
+    const { repo, run } = filing({ gh: lacksSpec, body: wellFormedSpec, origin: CLAUDE_WORKFLOW });
+
+    expect(run([...SPEC_CALL, "--blocked-by", "collod873/Mezzanine#2419"])).toMatchObject({ status: 0, stdout: `${URL}\n` });
+    expect(filedAs(ghSaw(repo)).then.slice(2).map((call) => call.slice(0, 4))).toEqual([["label", "create", "spec", "--color"], ["issue", "edit", "700", "--add-label"]]);
+  });
+
+  it("files nothing when a blocker cannot be read", () => {
+    const { repo, run } = filing({ gh: BLOCKERS, body: wellFormedSpec, origin: CLAUDE_WORKFLOW });
+
+    expect(run([...SPEC_CALL, "--blocked-by", "#12", "--blocked-by", "#13"])).toMatchObject({ status: 1, stdout: "", stderr: "collod873/claude-workflow#13 could not be read, so nothing is filed\n" });
+    expect(ghSaw(repo)).toEqual([]);
+  });
+
+  it("refuses a blocker that names no issue, and a blocker on any kind but a spec, filing nothing", () => {
+    const { repo, run } = filing({ gh: BLOCKERS, body: wellFormedTicket, origin: CLAUDE_WORKFLOW });
+
+    expect(run([...SPEC_CALL, "--blocked-by", "collod873/Mezzanine2419"])).toMatchObject({ status: 2, stderr: `${USAGE}\n` });
+    expect(run(["build", "--title", "A ticket", "--body-file", "body.md", "--blocked-by", "#12"])).toMatchObject({ status: 1, stderr: "--blocked-by <[owner/name]#number> parks only a spec, so this ticket is not filed\n" });
+    expect(ghSaw(repo)).toEqual([]);
   });
 });

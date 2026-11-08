@@ -41,8 +41,13 @@ export const blockersOf = (repo: string, number: number): Blocker[] => dependenc
 export const dependentsOf = (repo: string, number: number): Dependent[] =>
   dependencies(repo, number, "blocking", `the issues ${named(repo, number)} blocks could not be read`).map((issue) => ({ ...linkedOf(issue), labels: (issue.labels ?? []).map(({ name }) => name), body: issue.body ?? "" }));
 
-export function addBlocker(repo: string, number: number, blockerRepo: string, blockerNumber: number): void {
-  linked(`${issuePath(repo, number)}/dependencies/blocked_by`, "issue_id", idOf(blockerRepo, blockerNumber), `${named(repo, number)} could not be marked blocked by ${named(blockerRepo, blockerNumber)}`);
+export function addBlocker(repo: string, number: number, blockerRepo: string, blockerNumber: number, blockerId = idOf(blockerRepo, blockerNumber)): void {
+  linked(`${issuePath(repo, number)}/dependencies/blocked_by`, "issue_id", blockerId, `${named(repo, number)} could not be marked blocked by ${named(blockerRepo, blockerNumber)}`);
+}
+
+export function blockingOf(repo: string, number: number): Blocker & { id: string } {
+  const [id = "", state] = ghRead(["--missing-answers", "api", issuePath(repo, number), "--jq", '"\\(.id) \\(.state)"'], `${named(repo, number)} could not be read, so nothing is filed`).split(" ");
+  return { repo, number, open: state === "open", id };
 }
 
 export function park(issue: string, blockers: Omit<Blocker, "open">[]): void {
@@ -60,7 +65,7 @@ export function addParent(repo: string, number: number, parentRepo: string, pare
   linked(`${issuePath(parentRepo, parentNumber)}/sub_issues`, "sub_issue_id", idOf(repo, number), `${named(repo, number)} could not be filed under ${named(parentRepo, parentNumber)}`);
 }
 
-const FILED_ISSUE = /github\.com\/(([^/\s]+)\/[^/\s]+)\/issues\/(\d+)\s*$/;
+export const FILED_ISSUE = /github\.com\/(([^/\s]+)\/[^/\s]+)\/issues\/(\d+)\s*$/;
 const ownerOf = (repo: string) => repo.split("/")[0];
 
 export function postedUnderOrigin(posting: Posting, poster: Gh): ReturnType<typeof post> {

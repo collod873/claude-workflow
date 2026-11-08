@@ -22,6 +22,7 @@ import {
   ticketRefusals,
 } from "./ticket-shape.ts";
 import { BUG, HELD, LABELS, MACHINE, NOTE, OWNER, OWNER_STEP, RESEARCH, SPEC, STUCK, TICKET, TICKET_PREFIX, WAITING, type LabelName, type MarkedLabel } from "./spelled.ts";
+import { addBlocker, blockingOf, FILED_ISSUE } from "./issue-links.ts";
 import { type Stop, stoppedAt } from "./stops.ts";
 
 export interface Posting {
@@ -173,6 +174,8 @@ export function followUpBody(whyLines: string[], done: string[]): string {
 
 export { OWNER, RESEARCH, STUCK, WAITING, type MarkedLabel };
 
+const PARKED_SPEC = "parked-spec";
+
 const KINDS: Record<string, Kind> = {
   ticket: filed(ticketRefusals, [TICKET]),
   bug: filed(bugRefusals, [TICKET, BUG]),
@@ -180,11 +183,13 @@ const KINDS: Record<string, Kind> = {
   research: filed(noteRefusals, [NOTE, RESEARCH]),
   owner: filed(noteRefusals, [NOTE, OWNER_STEP]),
   spec: filed(specRefusals, [SPEC]),
+  [PARKED_SPEC]: filed(specRefusals, [WAITING]),
 };
 
 interface DoorKind {
   files: string;
   says: string;
+  parks?: string;
 }
 
 const DOOR: Record<string, DoorKind> = {
@@ -192,12 +197,13 @@ const DOOR: Record<string, DoorKind> = {
   "look-into": { files: "research", says: LOOK_INTO_SHAPE },
   build: { files: "ticket", says: BUILD_SHAPE },
   bug: { files: "bug", says: BUG_SHAPE },
-  spec: { files: "spec", says: SPEC_SHAPE },
+  spec: { files: "spec", says: SPEC_SHAPE, parks: PARKED_SPEC },
   owner: { files: "owner", says: OWNER_SHAPE },
 };
 
 const REPO = "--repo <owner/name>";
-const DOOR_USAGE = `file-issue: usage: file-issue ${Object.keys(DOOR).join("|")} --title <title> --body-file <path> [${NEW}] [${REPO}]\n       file-issue add <number> --body-file <path> [${REPO}]`;
+const BLOCKED_BY = "--blocked-by <[owner/name]#number>";
+const DOOR_USAGE = `file-issue: usage: file-issue ${Object.keys(DOOR).join("|")} --title <title> --body-file <path> [${NEW}] [${REPO}] [${BLOCKED_BY}]...\n       file-issue add <number> --body-file <path> [${REPO}]`;
 
 const doorHelp = (): string[] => [
   `file-issue: file a GitHub issue of one kind (${Object.keys(DOOR).join(", ")}) on the repo you're in.`,
@@ -208,6 +214,7 @@ const doorHelp = (): string[] => [
   "add: your new evidence goes onto an open issue as a comment, for a match that is the same job.",
   `${NEW}: files anyway, for a match that is a different job.`,
   `${REPO}: files on that repo instead of the one this clone's origin names, whatever GH_REPO says.`,
+  `${BLOCKED_BY}: a spec only, once per blocker, any repo, a bare #number meaning the spec's own: links the spec blocked by each and, while any is open, files it \`${WAITING}\` so it starts only once reconcile sees every one closed.`,
   ...Object.entries(DOOR).map(([kind, { says }]) => `${kind}: ${says}`),
 ];
 
@@ -343,10 +350,10 @@ function prepared(posting: Posting): { refusals: string[]; args: string[]; text:
 
 export const postRefusals = (posting: Posting): string[] => prepared(posting).refusals;
 
-const LABEL_MISSING = /could not add label: '[^']+' not found/;
+const LABEL_MISSING = /(?:could not add label|failed to update \S+): '[^']+' not found/;
 
 function labelsCreated(args: string[], gh: Gh): void {
-  const named = new Set(args.filter((_, at) => args[at - 1] === "--label"));
+  const named = new Set(args.filter((_, at) => args[at - 1] === "--label" || args[at - 1] === "--add-label"));
   for (const { name, colour, description } of LABELS.filter(({ name }) => named.has(name))) gh(["label", "create", name, "--color", colour, "--description", description]);
 }
 
@@ -362,6 +369,36 @@ export function post(posting: Posting, gh: Gh): { refusals: string[]; said: stri
   if (refusals.length > 0) return { refusals, said: "" };
   const created = createdLabelled(args, gh);
   return created.refusals.length > 0 ? created : linkedToSessions(posting, text, created.said, gh);
+}
+
+const BLOCKER_REF = /^(?:([\w.-]+\/[\w.-]+)?#)?(\d+)$/;
+
+function postBehind(posting: Posting, refs: string[], parks: string | undefined, poster: Gh): { refusals: string[]; said: string } {
+  if (refs.length > 0 && parks === undefined) return { refusals: [`${BLOCKED_BY} parks only a spec, so this ${posting.kind} is not filed`], said: "" };
+  let blockers: ReturnType<typeof blockingOf>[];
+  try {
+    blockers = refs.map((ref) => {
+      const [, repo = process.env.GH_REPO || "{owner}/{repo}", number = ""] = BLOCKER_REF.exec(ref) ?? [];
+      return blockingOf(repo, Number(number));
+    });
+  } catch (error) {
+    if (!(error instanceof Stopped)) throw error;
+    return { refusals: [error.message], said: "" };
+  }
+  const parked = blockers.some(({ open }) => open);
+  const posted = post({ ...posting, kind: (parked && parks) || posting.kind }, poster);
+  const [, repo, , number = ""] = FILED_ISSUE.exec(posted.said) ?? [];
+  if (posted.refusals.length > 0 || blockers.length === 0) return posted;
+  if (repo === undefined) return { refusals: [`${posted.said} names no issue, so it is linked to no blocker`], said: posted.said };
+  try {
+    for (const blocker of blockers) addBlocker(repo, Number(number), blocker.repo, blocker.number, blocker.id);
+  } catch (error) {
+    if (!(error instanceof Stopped)) throw error;
+    return { refusals: [`${posted.said} was filed, but ${error.message}${parked ? `, so it stays \`${WAITING}\` and unlabelled \`${SPEC}\`: link it and label it \`${SPEC}\` by hand` : ""}`], said: posted.said };
+  }
+  if (!parked) return posted;
+  const started = createdLabelled(["issue", "edit", number, "--add-label", SPEC], poster);
+  return started.refusals.length > 0 ? { refusals: started.refusals.map((refusal) => `${posted.said} was filed \`${WAITING}\` and linked, but ${refusal}, so label it \`${SPEC}\` by hand`), said: posted.said } : posted;
 }
 
 if (import.meta.main) {
@@ -388,7 +425,7 @@ if (import.meta.main) {
       process.exit(1);
     }
   }
-  const { refusals, said } = post({ kind: door.files, text, title, sessionId }, gh);
+  const { refusals, said } = postBehind({ kind: door.files, text, title, sessionId }, process.argv.slice(6), door.parks, gh);
   for (const refusal of refusals) console.error(refusal);
   if (said !== "") console.log(said);
   const line = refusals.length > 0 ? undefined : filedLine(kind, gh);
