@@ -47,7 +47,8 @@ jobs:
             (.issue.state != "closed") as $open
             | (.sender.login == $MACHINE) as $machine
             | (any(.issue.labels[]?.name; IN($PAUSED, $STUCK)) | not) as $free
-            | "spec=\(any(.issue.labels[]?.name; . == $SPEC) and $open and $free and ((.action == "labeled" and .label.name == $SPEC) or (.action == "unlabeled" and (.label.name | if $machine then . == $WAITING else IN($PAUSED, $STUCK, $WAITING) end))))",
+            | (any(.issue.labels[]?.name; . == $WAITING) | not) as $unparked
+            | "spec=\(any(.issue.labels[]?.name; . == $SPEC) and $open and $free and $unparked and ((.action == "labeled" and .label.name == $SPEC) or (.action == "unlabeled" and (.label.name | if $machine then . == $WAITING else IN($PAUSED, $STUCK, $WAITING) end))))",
               "research=\(any(.issue.labels[]?.name; . == $RESEARCH) and $open and ((.action == "labeled" and .label.name == $RESEARCH) or (.action == "unlabeled" and (.label.name | IN($PAUSED, $STUCK)) and $free and ($machine | not))))"
           ' "$GITHUB_EVENT_PATH" | tee -a "$GITHUB_OUTPUT"
 

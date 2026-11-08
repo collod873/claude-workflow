@@ -18,6 +18,7 @@ title=""
 body=""
 new=""
 repo=""
+blocked=()
 if [[ $kind == add ]]; then
   title=${1:-}
   shift 2>/dev/null
@@ -30,6 +31,7 @@ while (( $# > 0 )); do
     --body-file) body=${2:-}; shift 2 || break ;;
     --new) [[ $kind == add ]] && break; new=--new; shift ;;
     --repo) repo=${2:-}; [[ $repo =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || break; shift 2 ;;
+    --blocked-by) [[ ${2:-} =~ ^(([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#)?[0-9]+$ ]] || break; blocked+=("$2"); shift 2 ;;
     *) break ;;
   esac
 done
@@ -52,7 +54,7 @@ out=$(mktemp)
 err=$(mktemp)
 trap 'rm -f "$out" "$err"' EXIT
 
-node "$src/post.ts" "$kind" "$title" "${CLAUDE_CODE_SESSION_ID:-}" $new <"$body" >"$out" 2>"$err"
+node "$src/post.ts" "$kind" "$title" "${CLAUDE_CODE_SESSION_ID:-}" "$new" "${blocked[@]}" <"$body" >"$out" 2>"$err"
 status=$?
 
 if (( status == 0 )); then
