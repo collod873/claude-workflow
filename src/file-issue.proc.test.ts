@@ -306,6 +306,14 @@ describe("bin/file-issue spec --blocked-by files a spec that waits in line behin
     expect(then.slice(1)).toEqual([blockedBy("902")]);
   });
 
+  it("creates the spec label in a repo that lacks it, since gh issue edit refuses an unknown label, and labels the parked spec again", () => {
+    const lacksSpec = `case "$*" in\n  "issue edit 700 --add-label spec") [ -e "$PWD/spec-label" ] || { printf "failed to update ${URL}: 'spec' not found\\n" >&2; exit 1; } ;;\n  "label create spec "*) : >"$PWD/spec-label" ;;\nesac\n${BLOCKERS}`;
+    const { repo, run } = filing({ gh: lacksSpec, body: wellFormedSpec, origin: CLAUDE_WORKFLOW });
+
+    expect(run([...SPEC_CALL, "--blocked-by", "collod873/Mezzanine#2419"])).toMatchObject({ status: 0, stdout: `${URL}\n` });
+    expect(filedAs(ghSaw(repo)).then.slice(2).map((call) => call.slice(0, 4))).toEqual([["label", "create", "spec", "--color"], ["issue", "edit", "700", "--add-label"]]);
+  });
+
   it("files nothing when a blocker cannot be read", () => {
     const { repo, run } = filing({ gh: BLOCKERS, body: wellFormedSpec, origin: CLAUDE_WORKFLOW });
 

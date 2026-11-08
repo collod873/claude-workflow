@@ -350,10 +350,10 @@ function prepared(posting: Posting): { refusals: string[]; args: string[]; text:
 
 export const postRefusals = (posting: Posting): string[] => prepared(posting).refusals;
 
-const LABEL_MISSING = /could not add label: '[^']+' not found/;
+const LABEL_MISSING = /(?:could not add label|failed to update \S+): '[^']+' not found/;
 
 function labelsCreated(args: string[], gh: Gh): void {
-  const named = new Set(args.filter((_, at) => args[at - 1] === "--label"));
+  const named = new Set(args.filter((_, at) => args[at - 1] === "--label" || args[at - 1] === "--add-label"));
   for (const { name, colour, description } of LABELS.filter(({ name }) => named.has(name))) gh(["label", "create", name, "--color", colour, "--description", description]);
 }
 
