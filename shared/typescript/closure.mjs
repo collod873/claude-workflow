@@ -66,11 +66,11 @@ function strongComponents(nodes, edges) {
   return components;
 }
 
-export function importClosures(root, entries) {
+export function importClosures(root, entries, held) {
   const { options, programFiles } = compilerSetup(root);
   const cache = ts.createModuleResolutionCache(root, (name) => name, options);
   const nameOf = (path) => relative(root, path);
-  const program = new Set(programFiles.map(nameOf));
+  const program = new Set(programFiles.map(nameOf).filter((file) => held.has(file)));
   const contentOf = new Map();
   const edges = new Map();
   const ambient = [];
@@ -96,12 +96,16 @@ export function importClosures(root, entries) {
         ts.sys,
         cache,
       ).resolvedModule;
-      if (resolved && !resolved.isExternalLibraryImport)
+      if (
+        resolved &&
+        !resolved.isExternalLibraryImport &&
+        held.has(nameOf(resolved.resolvedFileName))
+      )
         targets.add(nameOf(resolved.resolvedFileName));
     }
     for (const referenced of info.referencedFiles) {
       const target = nameOf(join(path, "..", referenced.fileName));
-      if (existsSync(join(root, target))) targets.add(target);
+      if (held.has(target)) targets.add(target);
     }
     edges.set(file, [...targets].sort());
     pending.push(...targets);
