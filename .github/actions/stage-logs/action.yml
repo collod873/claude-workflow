@@ -72,8 +72,9 @@ runs:
             missing="$missing $id"
             continue
           fi
-          mkdir -p "$logs/claude/$(basename "$(dirname "$found")")"
-          cp "$found" "$logs/claude/$(basename "$(dirname "$found")")/"
+          project=$(dirname "$found")
+          mkdir -p "$logs/claude/$(basename "$project")"
+          cp -r "$found" "$project/$id" "$logs/claude/$(basename "$project")/" 2>/dev/null || cp "$found" "$logs/claude/$(basename "$project")/"
         done
         if [ -n "$missing" ]; then
           printf '::error::Claude ran session(s)%s but no session file was found under %s/projects or %s/.claude/projects\n' "$missing" "${CLAUDE_CONFIG_DIR:-$HOME/.claude}" "$HOME"

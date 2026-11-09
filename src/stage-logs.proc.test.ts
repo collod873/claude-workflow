@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { parse } from "yaml";
@@ -69,31 +69,41 @@ describe("a stage job's uploaded machine logs carry its check logs and the owner
     expect(stepWithId("stage-logs", "hook-logs").if).toBe("always()");
   });
 
-  it("carries the Claude Code session logs this job wrote, and none a cache restored from an earlier run", () => {
+  const sessionRun = (root: string, home: string) =>
+    spawnSync("bash", ["-e", "-o", "pipefail", "-c", stepWithId("stage-logs", "session-logs").run ?? ""], { cwd: root, env: { ...process.env, HOME: home }, encoding: "utf8" });
+
+  it("carries the Claude Code session each stage printed, and none a cache restored from an earlier run", () => {
     const root = scratch("stage-logs-");
     const home = join(root, "home");
     const project = join(home, ".claude", "projects", "-home-runner-work-Lumaria-Lumaria");
-    const event = join(root, "event.json");
     mkdirSync(join(root, ".git", "machine-logs"), { recursive: true });
     mkdirSync(join(project, "a1b2c3d4", "subagents"), { recursive: true });
     writeFileSync(join(project, "0ld5e551.jsonl"), "{}\n");
-    utimesSync(join(project, "0ld5e551.jsonl"), new Date("2026-10-01"), new Date("2026-10-01"));
-    writeFileSync(event, "{}");
-    utimesSync(event, new Date("2026-10-07T10:00:00Z"), new Date("2026-10-07T10:00:00Z"));
     writeFileSync(join(project, "a1b2c3d4.jsonl"), '{"type":"user"}\n');
     writeFileSync(join(project, "a1b2c3d4", "subagents", "agent-9f.jsonl"), '{"type":"assistant"}\n');
+    writeFileSync(join(root, ".git", "machine-logs", "fix-7.jsonl"), '{"type":"system","session_id":"a1b2c3d4"}\nnot json\n');
 
-    const kept = spawnSync("bash", ["-e", "-c", stepWithId("stage-logs", "hook-logs").run ?? ""], {
-      cwd: root,
-      env: { ...process.env, HOME: home, GITHUB_EVENT_PATH: event, HOOK_LOG_DIR: join(root, "absent") },
-      encoding: "utf8",
-    });
+    const kept = sessionRun(root, home);
 
     const claude = join(root, ".git", "machine-logs", "claude", "-home-runner-work-Lumaria-Lumaria");
     expect(kept.status, kept.stderr).toBe(0);
     expect(readFileSync(join(claude, "a1b2c3d4.jsonl"), "utf8")).toContain("user");
     expect(readFileSync(join(claude, "a1b2c3d4", "subagents", "agent-9f.jsonl"), "utf8")).toContain("assistant");
     expect(existsSync(join(claude, "0ld5e551.jsonl"))).toBe(false);
+  });
+
+  it("fails visibly when a stage printed a session whose file is nowhere, and is not best-effort", () => {
+    const root = scratch("stage-logs-");
+    const home = join(root, "home");
+    mkdirSync(join(home, ".claude", "projects"), { recursive: true });
+    mkdirSync(join(root, ".git", "machine-logs"), { recursive: true });
+    writeFileSync(join(root, ".git", "machine-logs", "fix-7.jsonl"), '{"type":"system","session_id":"gone1234"}\n');
+
+    const kept = sessionRun(root, home);
+
+    expect(kept.status).toBe(1);
+    expect(kept.stdout).toContain("gone1234");
+    expect(stepWithId("stage-logs", "session-logs")["continue-on-error"]).toBeUndefined();
   });
 
   it("points the owner's hooks at a log folder the job keeps, rather than the runner's home it throws away", () => {
