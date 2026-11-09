@@ -340,6 +340,7 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
     secret(KEY, "actions"),
     secret(KEY, "dependabot"),
     secret("CLAUDE_CODE_OAUTH_TOKEN", "actions"),
+    secret("CLAUDE_CODE_OAUTH_TOKEN_2", "actions"),
     {
       name: "the machine's labels",
       held: () => made().every(({ name }) => labels().includes(name)) && drifted().length === 0,

@@ -143,8 +143,8 @@ describe("a repo's tickets build through one caller file that holds only trigger
   it("enrols one repo on dispatch with every secret it sets, so a session enrols a repo with no step from the owner", () => {
     const step = workflowJobs("enrol.yml")["enrol-one"]?.steps.find(({ run }) => /bin\/enrol\b/.test(run ?? ""));
 
-    expect(step?.run).toBe('CLAUDE_CODE_OAUTH_TOKEN="$TOKEN_TO_SET" bin/enrol "$REPO"');
-    expect(Object.keys(step?.env ?? {}).sort()).toEqual(["CORE_APP_PRIVATE_KEY", "GH_TOKEN", "REPO", "TOKEN_TO_SET"]);
+    expect(step?.run).toBe('CLAUDE_CODE_OAUTH_TOKEN="$TOKEN_TO_SET" CLAUDE_CODE_OAUTH_TOKEN_2="$SECOND_TOKEN_TO_SET" bin/enrol "$REPO"');
+    expect(Object.keys(step?.env ?? {}).sort()).toEqual(["CORE_APP_PRIVATE_KEY", "GH_TOKEN", "REPO", "SECOND_TOKEN_TO_SET", "TOKEN_TO_SET"]);
   });
 
   it("hands a run whose stage job ended red, was cancelled or timed out to a dispatch of the caller file, and on that dispatch only re-runs it or calls the owner, no build starting (#1225)", () => {

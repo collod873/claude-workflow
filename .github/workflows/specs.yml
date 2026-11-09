@@ -152,6 +152,7 @@ jobs:
           APP_KEY_FILE: ${{ runner.temp }}/app-key.json
           GH_TOKEN: ${{ steps.app.outputs.token }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          CLAUDE_CODE_OAUTH_TOKEN_2: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_2 }}
           STAGE_MINUTES: 45
           CALLED_FROM: ${{ github.workflow_ref }}
         run: |
@@ -275,6 +276,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          CLAUDE_CODE_OAUTH_TOKEN_2: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_2 }}
           STAGE_MINUTES: 40
         run: |
           tail --pid=$$ -n +1 -F .git/machine-logs/research-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
