@@ -58,9 +58,27 @@ runs:
           mkdir -p "$logs/hooks"
           cp -r "$HOOK_LOG_DIR/." "$logs/hooks/"
         fi
-        if [ -d "$HOME/.claude/projects" ] && [ -f "${GITHUB_EVENT_PATH:-}" ]; then
-          mkdir -p "$logs/claude"
-          (cd "$HOME/.claude/projects" && find . -type f -newer "$GITHUB_EVENT_PATH" -exec cp --parents {} "$logs/claude/" \;)
+
+    - id: session-logs
+      if: always()
+      shell: bash
+      run: |
+        logs=$(cd .git/machine-logs && pwd -P) || exit 0
+        ids=$(cat "$logs"/*.jsonl 2>/dev/null | jq -Rr 'fromjson? | .session_id? // empty' | sort -u)
+        missing=""
+        for id in $ids; do
+          found=$(find -L "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects" "$HOME/.claude/projects" -type f -name "$id.jsonl" 2>/dev/null | head -n 1)
+          if [ -z "$found" ]; then
+            missing="$missing $id"
+            continue
+          fi
+          mkdir -p "$logs/claude/$(basename "$(dirname "$found")")"
+          cp "$found" "$logs/claude/$(basename "$(dirname "$found")")/"
+        done
+        if [ -n "$missing" ]; then
+          printf '::error::Claude ran session(s)%s but no session file was found under %s/projects or %s/.claude/projects\n' "$missing" "${CLAUDE_CONFIG_DIR:-$HOME/.claude}" "$HOME"
+          find "${CLAUDE_CONFIG_DIR:-$HOME/.claude}" "$HOME/.claude" -maxdepth 3 2>/dev/null | head -40
+          exit 1
         fi
 
     - if: always()
