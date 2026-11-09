@@ -43,7 +43,7 @@ function scripted(text: string, output: string): number {
 }
 
 function spoken(key: string, text: string, output: string): number | string {
-  const spent = hire("probe", key, { name: "probe", model: "opus" })(asked(text));
+  const spent = hire("probe", key, { name: "probe", model: "haiku", effort: "low" })(asked(text));
   writeFileSync(output, spent.refusal ?? resultOf(spent.stdout));
   return spent.refusal ?? 0;
 }

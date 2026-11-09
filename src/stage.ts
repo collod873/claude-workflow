@@ -28,7 +28,7 @@ const FOREGROUND_ONLY = {
   permissions: { deny: ["Agent", "Monitor", "Workflow", "ScheduleWakeup", "CronCreate", "RemoteTrigger"] },
 };
 
-const stageArgv = (model: string) => ["--print", "--model", model, "--setting-sources", "user,project", "--settings", JSON.stringify({ disableAllHooks: false, ...FOREGROUND_ONLY }), "--permission-mode", "bypassPermissions"];
+const stageArgv = ({ model, effort }: Pick<Hire, "model" | "effort">) => ["--print", "--model", model, "--effort", effort, "--setting-sources", "user,project", "--settings", JSON.stringify({ disableAllHooks: false, ...FOREGROUND_ONLY }), "--permission-mode", "bypassPermissions"];
 
 function events(stdout: string): unknown[] {
   return stdout
@@ -86,10 +86,13 @@ function capped(argv: string[], minutes: number, leftMs: number): [string, ...st
   return ["timeout", `--kill-after=${GRACE_SECONDS}`, String(left), ...launcher(), ...argv];
 }
 
+type Effort = "low" | "medium" | "high";
+
 export interface Hire {
   name: string;
   transcript: string;
-  model: string;
+  model: "opus" | "sonnet" | "haiku";
+  effort: Effort;
   answers?: object;
   writeUp?: { minutes: number; told: string };
 }
@@ -155,7 +158,7 @@ function spending(hire: Hire): Spending {
   const minutes = Number(process.env.STAGE_MINUTES);
   const budget = minutes * 60_000;
   let used = 0;
-  const argv = [...stageArgv(hire.model), ...(hire.answers === undefined ? [] : ["--json-schema", JSON.stringify(hire.answers)])];
+  const argv = [...stageArgv(hire), ...(hire.answers === undefined ? [] : ["--json-schema", JSON.stringify(hire.answers)])];
   rmSync(hire.transcript, { force: true });
   const writeUpKept = (hire.writeUp?.minutes ?? 0) * 60_000;
   const handed = `${hire.transcript.replace(/\.jsonl$/, "")}.handed.md`;
@@ -255,7 +258,7 @@ interface Opening<Carried, Own extends string> {
   tried?: boolean;
   hire: Omit<Hire, "transcript">;
   stoppedAt: (stop: Stop, line: string) => Own;
-  ready: (asked: Asked) => { carrying: Carried; tried?: boolean; unmarked?: boolean } | Own | undefined;
+  ready: (asked: Asked) => { carrying: Carried; tried?: boolean; unmarked?: boolean; effort?: Effort } | Own | undefined;
 }
 
 export interface Opened<Carried> {
@@ -275,7 +278,7 @@ export function opened<Carried, Own extends string>({ stage, issue, state, tried
   }
   const readied = ready(asked);
   if (typeof readied !== "object") return readied;
-  const spend = hire(stage, issue, hiring);
+  const spend = hire(stage, issue, { ...hiring, effort: readied.effort ?? hiring.effort });
   if (readied.unmarked !== true) mark(issue, state, ...((readied.tried ?? tried) === true ? (["--try"] as const) : []));
   return { asked, carried: readied.carrying, spend };
 }

@@ -81,7 +81,7 @@ function researched(issue: string): Stop | undefined {
     issue,
     state: RESEARCHING,
     stoppedAt,
-    hire: { name: "researcher", model: "opus", answers: FINDINGS, writeUp: { minutes: WRITE_UP_MINUTES, told: OUT_OF_TIME } },
+    hire: { name: "researcher", model: "opus", effort: "medium", answers: FINDINGS, writeUp: { minutes: WRITE_UP_MINUTES, told: OUT_OF_TIME } },
     ready: (asked) => (asked.labels.has(RESEARCH) ? { carrying: {} } : stoppedAt("notResearch", `${said} is not a research note, so nothing answered or closed it`)),
   });
   if (typeof opening !== "object") return opening;

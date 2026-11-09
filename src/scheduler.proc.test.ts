@@ -29,7 +29,15 @@ describe("bin/schedule runs a spec from its first cut to its landing, one slice 
     expect(optionOf(argv, "--slice")).toBe("seam");
     expect(optionOf(argv, "--onto")).toBe(SPEC_BRANCH);
     expect(argv).not.toContain("--resume");
+    expect(optionOf(argv, "--model")).toBe("opus");
     expect(run.seen("seam")).toContain(`branch=slice/${SPEC_ISSUE}-seam`);
+  });
+
+  it("builds every slice of a spec labelled sonnet-builders on Sonnet, the trial of Sonnet builders against Opus (#1647)", () => {
+    const run = scheduling({ labels: ["spec", "sonnet-builders"], cuts: [[sliceOf("seam")], []] });
+
+    expect(run.run().status).toBe(0);
+    expect(optionOf(run.built("seam"), "--model")).toBe("sonnet");
   });
 
   it("builds each slice in a worktree outside the repo's .git, since Vite serves no file under a .git path and every DOM test there fails to load (Lumaria#1439)", () => {

@@ -1,4 +1,4 @@
-type LabelKind = "kind" | "state" | "parked" | "held" | "try";
+type LabelKind = "kind" | "state" | "parked" | "held" | "try" | "trial";
 
 interface Label {
   name: string;
@@ -24,6 +24,7 @@ export const LABELS = [
   { name: "waiting", kind: "parked", colour: "fbca04", description: "Waits for other tickets, or another repo's full checks, before it builds" },
   { name: "paused", kind: "held", colour: "0e8a16", description: "The owner paused it; the machine never adds or removes it" },
   { name: "stuck", kind: "held", colour: "b60205", description: "The machine stopped and needs the owner; the machine never removes it" },
+  { name: "sonnet-builders", kind: "trial", colour: "5319e7", description: "The first spec filed in a repo since builders could run on Sonnet: its slices build on Sonnet, to judge Sonnet builders against Opus" },
   { name: "try-", kind: "try", colour: "f66a0a", description: "A builder run after a failure, or a spec's fix pass" },
 ] as const satisfies readonly Label[];
 
@@ -43,6 +44,7 @@ export const RESEARCHING = "researching" as const satisfies MarkedLabel;
 export const WAITING = "waiting" as const satisfies MarkedLabel;
 export const PAUSED = "paused" as const satisfies LabelName;
 export const STUCK = "stuck" as const satisfies MarkedLabel;
+export const SONNET_BUILDERS = "sonnet-builders" as const satisfies LabelName;
 export const HELD = [PAUSED, STUCK] as const;
 export const TICKET_PREFIX = "ticket/";
 export const SPEC_PREFIX = "spec/";
@@ -51,7 +53,7 @@ export const MACHINE = "collod873-machine[bot]";
 export const OWNER_CALL = "owner call";
 type SpelledAs<Key extends string> = Lowercase<Key> extends `${infer Head}_${infer Tail}` ? `${Head}-${Tail}` : Lowercase<Key>;
 const namedAsSpelled = <Keyed extends { [Key in keyof Keyed & string]: SpelledAs<Key> }>(keyed: Keyed): Keyed => keyed;
-const LABEL_KEYS = namedAsSpelled({ TICKET, BUG, SPEC, NOTE, RESEARCH, OWNER_STEP, BUILDING, CHECKING, SLICING, RESEARCHING, WAITING, PAUSED, STUCK });
+const LABEL_KEYS = namedAsSpelled({ TICKET, BUG, SPEC, NOTE, RESEARCH, OWNER_STEP, BUILDING, CHECKING, SLICING, RESEARCHING, WAITING, PAUSED, STUCK, SONNET_BUILDERS });
 const KEYED: Record<string, string> = { ...LABEL_KEYS, TICKET_PREFIX, SPEC_PREFIX, OWNER, MACHINE, OWNER_CALL };
 
 export const SPELLINGS: [key: string, spelling: string][] = [

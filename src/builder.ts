@@ -440,7 +440,7 @@ function ownTicket(ticket: string, app: AppKey | undefined): number {
     issue: ticket,
     state: BUILDING,
     stoppedAt,
-    hire: { name: "builder", model: "opus", answers: ANSWER },
+    hire: { name: "builder", model: "opus", effort: "medium", answers: ANSWER },
     ready: (asked) => owned(ticket, asked.body),
   });
   if (typeof owning !== "object") return exitFor(owning);

@@ -4,7 +4,7 @@ import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
 import { capped, listedCapped, NO_EM_DASH, onDisk, tailOf } from "./brief.ts";
 import { askedOn, authoredOn, commentOnTicket, followUpBody, fromHere, fromLine, FOREIGN, gh, mark, OWNER, post, readOrStop, STUCK, stoodDown, type Asked } from "./post.ts";
 import { freePort, isolated, reapedUnder } from "./slice-builder.ts";
-import { CONTRACT, hireIn, opened, setupRefusal, setupRefusedIn, type Spent, unsetKeys } from "./stage.ts";
+import { CONTRACT, type Hire, hireIn, opened, setupRefusal, setupRefusedIn, type Spent, unsetKeys } from "./stage.ts";
 import { CHECKING, SPEC } from "./spelled.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { quoted, type Sentence, sentences, SPEC_CAP } from "./ticket-shape.ts";
@@ -93,7 +93,7 @@ const listing = (missed: [number, string, Try][], between: string) => missed.map
 const closedWith = (putToOwner: [number, string, Try][]) => `Closed with sentence ${listing(putToOwner, ", ")} put to the owner, each filed as an owner step saying what the owner could try; the owner files a miss he sees live as a new ticket.`;
 
 const SAID = (issue: string) => `done-check: #${issue}`;
-const HIRE = { name: "done checker", model: "opus", answers: TRIES, writeUp: { minutes: WRITE_UP_MINUTES, told: OUT_OF_TIME } };
+const HIRE: Omit<Hire, "transcript"> = { name: "done checker", model: "opus", effort: "medium", answers: TRIES, writeUp: { minutes: WRITE_UP_MINUTES, told: OUT_OF_TIME } };
 
 interface Read {
   asked: Asked;

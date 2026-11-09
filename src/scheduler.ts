@@ -9,7 +9,8 @@ import { park } from "./issue-links.ts";
 import { askedOn, commentEdited, commentOnTicket, gh, ghRead, git, gitRead, standingOn, stoodDown, machineBin, mark, OWNER, readOrStop, rebuiltOnMain, rebuiltRef, STUCK, unread } from "./post.ts";
 import type { Try } from "./done-checker.ts";
 import type { Slice } from "./slicer.ts";
-import { BUILDING, MACHINE, SPEC, SPEC_PREFIX } from "./spelled.ts";
+import { BUILDING, MACHINE, SONNET_BUILDERS, SPEC, SPEC_PREFIX } from "./spelled.ts";
+import type { Hire } from "./stage.ts";
 import { exitFor, stopsOf } from "./stops.ts";
 import { filedOutOfScope, quoted } from "./ticket-shape.ts";
 
@@ -221,9 +222,9 @@ interface Hiring {
   answer?: { outcome: string; reason: string; left?: string };
 }
 
-function building(spec: string, tracked: Tracked, dir: string, brief: string, log: string, env: NodeJS.ProcessEnv, how: Hiring): Promise<Built> {
+function building(spec: string, tracked: Tracked, dir: string, brief: string, log: string, env: NodeJS.ProcessEnv, how: Hiring & { model: Hire["model"] }): Promise<Built> {
   const args = [
-    ...["--spec", spec, "--slice", tracked.id, "--brief", brief, "--onto", specBranch(spec)],
+    ...["--spec", spec, "--slice", tracked.id, "--brief", brief, "--onto", specBranch(spec), "--model", how.model],
     ...(how.resume === undefined ? [] : ["--resume", how.resume]),
     ...(how.told === undefined ? [] : ["--told", how.told]),
     ...(how.outOfTime === true ? ["--out-of-time"] : []),
@@ -366,7 +367,7 @@ async function scheduled(spec: string, app: AppKey | undefined): Promise<Stop | 
     const tried = how.answer === undefined;
     running.set(
       tracked.id,
-      building(spec, tracked, dir, brief, join(logs, `build-slice-${spec}-${tracked.id}.out`), keyed(join(root, `slice-${tracked.id}-app-key.json`), app), how).then((built) => ({ ...built, tried })),
+      building(spec, tracked, dir, brief, join(logs, `build-slice-${spec}-${tracked.id}.out`), keyed(join(root, `slice-${tracked.id}-app-key.json`), app), { ...how, model: asked.labels.has(SONNET_BUILDERS) ? "sonnet" : "opus" }).then((built) => ({ ...built, tried })),
     );
   };
   const standsDown = (after: string) => {

@@ -12,9 +12,9 @@ import { FAST_CHECK } from "./checks.ts";
 import { LEFT_CAP } from "./scheduler.ts";
 import { SLICE_ID } from "./slicer.ts";
 import { fromLine, gh, git, gitRead, rebuiltOnMain, rebuiltRef, Stopped, unread } from "./post.ts";
-import { commitlinted, committed, CONTRACT, hire, setupRefusal, treeNeeds, unsetKeys } from "./stage.ts";
+import { commitlinted, committed, CONTRACT, hire, type Hire, setupRefusal, treeNeeds, unsetKeys } from "./stage.ts";
 
-const USAGE = "build-slice: usage: build-slice --spec <N> --slice <id> --brief <file> --onto <integration ref> [--resume <session>] [--told <text> | --out-of-time | --answer <its answer's JSON, to land again>]";
+const USAGE = "build-slice: usage: build-slice --spec <N> --slice <id> --brief <file> --onto <ref> [--model sonnet] [--resume <session>] [--told <text> | --out-of-time | --answer <its answer's JSON, to land again>]";
 
 const OUTCOMES = ["built", "partial", "done", "stuck", "owned"] as const;
 
@@ -48,6 +48,7 @@ interface Ending {
 
 interface Slicing {
   spec: string;
+  model: Hire["model"];
   slice: string;
   brief: string;
   onto: string;
@@ -112,22 +113,24 @@ const named = (...parts: string[]) =>
     .map((part) => part.replace(/[^A-Za-z0-9_.-]/g, "-"))
     .join("-");
 
+const isSliceModel = (model: string): model is "opus" | "sonnet" => model === "opus" || model === "sonnet";
+
 function slicingOf(args: string[]): Slicing | undefined {
   const option = { type: "string" } as const;
   const parsed = (() => {
     try {
-      return parseArgs({ args, strict: true, options: { spec: option, slice: option, brief: option, onto: option, resume: option, told: option, answer: option, "out-of-time": { type: "boolean" } } }).values;
+      return parseArgs({ args, strict: true, options: { spec: option, slice: option, brief: option, onto: option, model: option, resume: option, told: option, answer: option, "out-of-time": { type: "boolean" } } }).values;
     } catch {
       return undefined;
     }
   })();
   if (parsed === undefined) return undefined;
-  const { spec, slice, brief, onto, resume, told, answer, "out-of-time": outOfTime = false } = parsed;
-  if (spec === undefined || !/^\d+$/.test(spec) || slice === undefined || !SLICE_ID.test(slice) || brief === undefined || onto === undefined || onto === "") return undefined;
+  const { spec, slice, brief, onto, model = "opus", resume, told, answer, "out-of-time": outOfTime = false } = parsed;
+  if (spec === undefined || !/^\d+$/.test(spec) || slice === undefined || !SLICE_ID.test(slice) || brief === undefined || onto === undefined || onto === "" || !isSliceModel(model)) return undefined;
   const given = answer === undefined ? undefined : answerIn(answer);
   const resumedHow = [answer !== undefined, told !== undefined, outOfTime].filter((given) => given).length;
   if (resumedHow > 1 || (answer !== undefined && given === undefined)) return undefined;
-  return { spec, slice, brief: resolve(brief), onto, outOfTime, ...(resume === undefined ? {} : { resume }), ...(told === undefined ? {} : { told }), ...(given === undefined ? {} : { answer: given }) };
+  return { spec, slice, brief: resolve(brief), onto, model, outOfTime, ...(resume === undefined ? {} : { resume }), ...(told === undefined ? {} : { told }), ...(given === undefined ? {} : { answer: given }) };
 }
 
 function answerIn(json: string): Answer | undefined {
@@ -328,9 +331,9 @@ function handedToItsRepo({ spec }: Slicing, { repo, tickets }: Answer): { red: s
 const ended = (outcome: Ending["outcome"], reason: string, session: string | undefined, left = ""): Ending => ({ outcome, left, reason, session: session ?? "" });
 
 function built(slicing: Slicing, app: AppKey | undefined): Ending {
-  const { spec, slice, onto } = slicing;
+  const { spec, slice, onto, model } = slicing;
   const file = sessionFile(slicing);
-  const spend = hire("build-slice", named(spec, slice), { name: "slice builder", model: "opus", answers: ANSWER, writeUp: { minutes: WRITE_UP_MINUTES, told: OUT_OF_TIME } });
+  const spend = hire("build-slice", named(spec, slice), { name: "slice builder", model, effort: "medium", answers: ANSWER, writeUp: { minutes: WRITE_UP_MINUTES, told: OUT_OF_TIME } });
   const brief = onDisk(slicing.brief) ?? unread(`the brief ${slicing.brief} could not be read, so no builder was hired`);
   const opening = handedOn({ ...slicing, brief, commitlint: commitlinted(), unset: unsetKeys() });
   let session = slicing.resume ?? savedSession(file);

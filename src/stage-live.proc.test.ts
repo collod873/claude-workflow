@@ -25,16 +25,17 @@ afterEach(() => {
 });
 
 describe("a stage runs as the owner's own session does (ADR-0011)", () => {
-  it("loads the owner's settings beside the repo's, on the model it was hired on, with full access", () => {
+  it("loads the owner's settings beside the repo's, on the model and effort it was hired on, with full access", () => {
     const root = onThisPc();
     const cwd = process.cwd();
     process.chdir(root);
     try {
-      hired({ name: "reviewer", model: "opus", transcript: join(root, "transcript.jsonl") })("review it");
+      hired({ name: "reviewer", model: "opus", effort: "medium", transcript: join(root, "transcript.jsonl") })("review it");
 
       const argv = JSON.parse(readFileSync(join(root, "argv.json"), "utf8")) as string[];
       expect(argv[argv.indexOf("--setting-sources") + 1]).toBe("user,project");
       expect(argv[argv.indexOf("--model") + 1]).toBe("opus");
+      expect(argv[argv.indexOf("--effort") + 1]).toBe("medium");
       expect(argv[argv.indexOf("--permission-mode") + 1]).toBe("bypassPermissions");
       expect(argv).not.toContain("--tools");
       expect(argv).not.toContain("--add-dir");
@@ -48,7 +49,7 @@ describe("a stage runs as the owner's own session does (ADR-0011)", () => {
     const cwd = process.cwd();
     process.chdir(root);
     try {
-      const stage = hired({ name: "builder", model: "opus", transcript: join(root, "fix-7.jsonl") });
+      const stage = hired({ name: "builder", model: "opus", effort: "medium", transcript: join(root, "fix-7.jsonl") });
       stage("# Ticket #7\n\nbuild it");
       stage("## How it failed\n\ncheck: red unit");
 

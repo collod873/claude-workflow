@@ -21,7 +21,7 @@ import {
   specRefusals,
   ticketRefusals,
 } from "./ticket-shape.ts";
-import { BUG, HELD, LABELS, MACHINE, NOTE, OWNER, OWNER_STEP, RESEARCH, SPEC, STUCK, TICKET, TICKET_PREFIX, WAITING, type LabelName, type MarkedLabel } from "./spelled.ts";
+import { BUG, HELD, LABELS, MACHINE, NOTE, OWNER, OWNER_STEP, RESEARCH, SONNET_BUILDERS, SPEC, STUCK, TICKET, TICKET_PREFIX, WAITING, type LabelName, type MarkedLabel } from "./spelled.ts";
 import { addBlocker, blockingOf, FILED_ISSUE } from "./issue-links.ts";
 import { type Stop, stoppedAt } from "./stops.ts";
 
@@ -373,6 +373,9 @@ export function post(posting: Posting, gh: Gh): { refusals: string[]; said: stri
 
 const BLOCKER_REF = /^(?:([\w.-]+\/[\w.-]+)?#)?(\d+)$/;
 
+const sonnetTrial = (parks: string | undefined, poster: Gh): LabelName[] =>
+  parks === undefined || poster(["issue", "list", "--state", "all", "--label", SONNET_BUILDERS, "--limit", "1", "--json", "number", "--jq", "length"]).stdout.trim() !== "0" ? [] : [SONNET_BUILDERS];
+
 function postBehind(posting: Posting, refs: string[], parks: string | undefined, poster: Gh): { refusals: string[]; said: string } {
   if (refs.length > 0 && parks === undefined) return { refusals: [`${BLOCKED_BY} parks only a spec, so this ${posting.kind} is not filed`], said: "" };
   let blockers: ReturnType<typeof blockingOf>[];
@@ -386,7 +389,7 @@ function postBehind(posting: Posting, refs: string[], parks: string | undefined,
     return { refusals: [error.message], said: "" };
   }
   const parked = blockers.some(({ open }) => open);
-  const posted = post({ ...posting, kind: (parked && parks) || posting.kind }, poster);
+  const posted = post({ ...posting, kind: (parked && parks) || posting.kind, labels: [...(posting.labels ?? []), ...sonnetTrial(parks, poster)] }, poster);
   const [, repo, , number = ""] = FILED_ISSUE.exec(posted.said) ?? [];
   if (posted.refusals.length > 0 || blockers.length === 0) return posted;
   if (repo === undefined) return { refusals: [`${posted.said} names no issue, so it is linked to no blocker`], said: posted.said };
