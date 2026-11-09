@@ -177,7 +177,7 @@ export function reviewedAndLanded(ticket: string, { body, alongside, said }: { b
   const commits = gitRead(["log", "--reverse", "--format=- %s%n%n%b", "origin/main..HEAD"], "the commits past main could not be read, so nothing is reviewed");
   const diff = gitRead(["diff", "origin/main...HEAD"], "the diff from main could not be read, so nothing is reviewed");
   const stat = gitRead(["diff", "--stat", "origin/main...HEAD"], "the diff from main could not be read, so nothing is reviewed");
-  const spend = hire("review", ticket, { name: "reviewer", model: "opus", answers: ANSWER });
+  const spend = hire("review", ticket, { name: "reviewer", model: "opus", effort: "medium", answers: ANSWER });
   let input = handedOn({ ticket, body, commits, diff, stat, alongside, said, commitlint: commitlinted() });
   const reasons: string[] = [];
   let named: Gathered | undefined;

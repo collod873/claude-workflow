@@ -24,6 +24,7 @@ const KEYS = [
   ["WAITING", "waiting"],
   ["PAUSED", "paused"],
   ["STUCK", "stuck"],
+  ["SONNET_BUILDERS", "sonnet-builders"],
 ] as const;
 const SPELLED = [...KEYS, ["TICKET_PREFIX", "ticket/"], ["SPEC_PREFIX", "spec/"], ["OWNER", "collod873"], ["MACHINE", "collod873-machine[bot]"], ["OWNER_CALL", "owner call"]] as const;
 const USAGE = `spelled: usage: spelled labels | <key>\nspelled: keys: ${SPELLED.map(([key]) => key).join("|")}\n`;

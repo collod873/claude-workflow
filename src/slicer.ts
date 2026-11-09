@@ -190,12 +190,12 @@ function sliced(spec: string) {
     issue: spec,
     state: SLICING,
     stoppedAt,
-    hire: { name: "slicer", model: "opus", answers: ANSWERS },
+    hire: { name: "slicer", model: "opus", effort: "medium", answers: ANSWERS },
     ready: (asked) => {
       if (!asked.labels.has(SPEC)) return stoppedAt("notSpec", `${said} is not a spec, so nothing sliced it`);
       const { progress } = progressOn(spec);
       const cut: Cut = progress.slices.length === 0 ? "first" : "replan";
-      return { carrying: { progress, handed: { cut, slices: slicesSoFar(progress), built: builtSoFar(spec) } } };
+      return { carrying: { progress, handed: { cut, slices: slicesSoFar(progress), built: builtSoFar(spec) } }, effort: cut === "first" ? "high" : "medium" };
     },
   });
   if (typeof opening !== "object") return opening;

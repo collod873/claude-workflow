@@ -304,6 +304,13 @@ each try again, before the call fails; a call for which a not-found is the answe
 missing parent, says `--missing-answers`. A blip is absorbed at its call, a rerun at its run.
 _Avoid_: flake, glitch
 
+**Sonnet builders trial**:
+The one spec per repo labelled `sonnet-builders`: the first spec filed after the trial began, which
+`file-issue` labels while no issue in the repo carries it. The scheduler hires its slice builders
+on Sonnet; every other stage stays on the model and effort its hire names. It is judged against
+Opus builders on red checks, holds' fixes per slice and cost per slice (#1647).
+_Avoid_: experiment, A/B, canary
+
 **Account failover**:
 The owner's two Claude subscriptions, one token each in `CLAUDE_CODE_OAUTH_TOKEN` and
 `CLAUDE_CODE_OAUTH_TOKEN_2`. A hire whose model ends on a usage limit is launched again at once on

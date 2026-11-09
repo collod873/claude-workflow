@@ -139,6 +139,17 @@ describe("bin/file-issue files a ticket, or refuses it and files nothing (#662)"
     expect(filedAs(ghSaw(repo))).toEqual({ title: "Give the slicer something to read", labels: ["spec"], body: wellFormedSpec, then: [edit(linked(wellFormedSpec, "## Solution"))] });
   });
 
+  it("labels a repo's first spec since the Sonnet builders trial began sonnet-builders, and no later spec, so one spec judges Sonnet builders (#1647)", () => {
+    const trialled = (count: number) => `case "$*" in\n  *"issue list"*"sonnet-builders"*) printf '${count}\\n'; exit 0 ;;\nesac\n${RECORDS}`;
+    const first = filing({ gh: trialled(0), body: wellFormedSpec });
+    const later = filing({ gh: trialled(1), body: wellFormedSpec });
+
+    expect(first.run(["spec", "--title", "A spec", "--body-file", "body.md"]).status).toBe(0);
+    expect(later.run(["spec", "--title", "A spec", "--body-file", "body.md"]).status).toBe(0);
+    expect(filedAs(ghSaw(first.repo)).labels).toEqual(["spec", "sonnet-builders"]);
+    expect(filedAs(ghSaw(later.repo)).labels).toEqual(["spec"]);
+  });
+
   it("files a spec, stamping the session id under '## Problem Statement' as a ticket's is stamped under '## Why', and links its sessions page beside it", () => {
     const stamped = filing({ gh: RECORDS, body: wellFormedSpec, sessionId: "sess-abc" });
 

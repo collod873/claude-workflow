@@ -467,7 +467,7 @@ async function reviews(run: Run, { title, body }: { title: string; body: string 
   const commitlint = commitlinted();
   const briefs = briefsOf(progress);
   const reviewer = (seat: string, on: "spec" | "code standard", answers: object, { tree = top, slices }: { tree?: string; slices?: string[] | undefined } = {}): Reviewer => ({
-    spend: hireIn(tree, "finish", seat, { name: `reviewer on the ${on}`, model: "opus", answers }),
+    spend: hireIn(tree, "finish", seat, { name: `reviewer on the ${on}`, model: "opus", effort: "medium", answers }),
     seat,
     on: `On the ${on}${slices === undefined ? "" : `, ${slicesNamed(slices)}`}`,
     slices: slices ?? [],

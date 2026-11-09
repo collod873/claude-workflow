@@ -42,6 +42,14 @@ const isolationOf = (builder: ReturnType<typeof slicing>) => {
 };
 
 describe("a fresh builder builds one slice of a spec in its own worktree until its branch fast-forwards the integration branch (ADR-0013)", () => {
+  it("hires the builder on the model the scheduler names, Sonnet for a spec on the Sonnet builders trial (#1647)", () => {
+    const { run, hired } = slicing();
+
+    expect(run("--model", "sonnet").status).toBe(0);
+    const [argv = []] = hired();
+    expect(argv[argv.indexOf("--model") + 1]).toBe("sonnet");
+  });
+
   it("hires a fresh Opus builder with the slice's brief and tdd, runs only the fast check, and ends on a built line once its branch fast-forwards the integration branch", () => {
     const { run, hired, handed, checked, log } = slicing();
 
@@ -52,6 +60,7 @@ describe("a fresh builder builds one slice of a spec in its own worktree until i
     expect(ending(result.stdout)).toEqual({ outcome: "built", left: "", reason: "a job time shows in the tenant's zone", session: SLICE_SESSION });
     const [argv = []] = hired();
     expect(argv[argv.indexOf("--model") + 1]).toBe("opus");
+    expect(argv[argv.indexOf("--effort") + 1]).toBe("medium");
     expect(argv).not.toContain("--resume");
     expect(handed()[0]).toContain(BRIEF);
     expect(handed()[0]).toContain("Call the Skill tool with `tdd`");
@@ -267,10 +276,10 @@ describe("a fresh builder builds one slice of a spec in its own worktree until i
     expect(calls().filter((args) => args[1] === "create")).toEqual([]);
   });
 
-  it("refuses a call missing what it needs, or naming a slice id that is not kebab-case, before it hires anything", () => {
+  it("refuses a call missing what it needs, naming a slice id that is not kebab-case, or a model builders do not run on, before it hires anything", () => {
     const { run, hired, tree } = slicing();
 
-    for (const extra of [["--slice", "Not Kebab"], ["--spec", "next"], ["--unknown", "x"]]) {
+    for (const extra of [["--slice", "Not Kebab"], ["--spec", "next"], ["--unknown", "x"], ["--model", "haiku"]]) {
       const refused = run(...extra);
       expect(refused.status, extra.join(" ")).toBe(2);
       expect(refused.stderr).toContain("build-slice: usage:");

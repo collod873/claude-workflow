@@ -9,7 +9,7 @@ const progressed = (slices: object[]) => machineComment(3, `## Spec run\n\n<!-- 
 const tracked = (id: string, state: string, extra: object = {}) => ({ ...slice(id), state, tries: 1, ...extra });
 
 describe("bin/slice answers the scheduler with the spec's next slices, never filing a ticket (#1509, ADR-0013)", () => {
-  it("prints the slices as one JSON line on stdout, says one line on stderr, and marks the spec slicing before hiring opus with the slices schema", () => {
+  it("prints the slices as one JSON line on stdout, says one line on stderr, and marks the spec slicing before hiring opus on high effort for a first cut, with the slices schema", () => {
     const sliced = slicing({ answers: [{ slices: [slice("seam"), slice("reader", ["seam"])] }] });
 
     const ran = sliced.run();
@@ -19,6 +19,7 @@ describe("bin/slice answers the scheduler with the spec's next slices, never fil
     expect(sliced.marked()).toEqual([`${SPEC_ISSUE} slicing before the model`]);
     const [hired = []] = sliced.hired();
     expect(hired[hired.indexOf("--model") + 1]).toBe("opus");
+    expect(hired[hired.indexOf("--effort") + 1]).toBe("high");
     expect(hired[hired.indexOf("--json-schema") + 1]).toContain('"leftOf"');
     expect(sliced.calls().filter(([command, action]) => command === "issue" && action === "create")).toEqual([]);
   });
@@ -43,7 +44,7 @@ describe("bin/slice answers the scheduler with the spec's next slices, never fil
     expect(sliced.comments().at(-1)?.body).toContain(`@collod873 the slicer of #${SPEC_ISSUE} cut nothing and needs you: its first cut carried no slice`);
   });
 
-  it("hands a later slicer the integration branch as built, each commit with its slice, and every slice so far with its state", () => {
+  it("hands a later slicer the integration branch as built, each commit with its slice, and every slice so far with its state, on medium effort", () => {
     const sliced = slicing({ built: ["seam"], comments: [progressed([tracked("seam", "merged"), tracked("reader", "hired", { blockedBy: ["seam"] })])], answers: [{ slices: [] }] });
 
     const ran = sliced.run();
@@ -54,6 +55,8 @@ describe("bin/slice answers the scheduler with the spec's next slices, never fil
     expect(handed).toContain("- Build seam (seam)");
     expect(handed).toContain("- `seam` (merged): Build seam.");
     expect(handed).toContain("- `reader` (hired): Build reader. Blocked by `seam`.\n  Done when: reader holds.");
+    const [hired = []] = sliced.hired();
+    expect(hired[hired.indexOf("--effort") + 1]).toBe("medium");
   });
 
   it("has each slicer cut again, once, what a partial slice left, naming it in leftOf, and sends back a cut that leaves it or cuts it twice", () => {
