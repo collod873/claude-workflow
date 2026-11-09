@@ -187,6 +187,12 @@ One unit of a spec, cut at its last responsible moment: a seam, the shared code 
 into, or after the seams one tracer bullet through the spec; never a ticket.
 _Avoid_: piece, task
 
+**Seam migration**:
+The one migration a spec's first cut plans for the whole spec's schema, as one seam slice the later
+slices build on. A later slice adds its own only for a change the seam missed, and says why in its
+`why`; nothing is refused over it.
+_Avoid_: schema slice, per-slice migration
+
 **Frontier**:
 The slices whose blockers have all merged; only these get a builder.
 _Avoid_: ready queue
