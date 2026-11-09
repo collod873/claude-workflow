@@ -8,9 +8,9 @@ reversal: Stages would run fenced again, without the owner's own rules and tools
 # Every stage runs as the owner's own session does
 
 A stage loads what the owner's interactive session loads: his global CLAUDE.md, hooks and skills,
-and the target repo's own rules. It runs with full access, on the model the owner names for it,
-given with no version so it takes the newest, and takes defaults where a session would ask him
-(ADR-0005). It may write to any repo through `bin/land` and that repo's full check, the machine's
+and the target repo's own rules. It runs with full access, on the model and effort the owner names
+for it at its hire, never the effort his own session last set, the model given with no version so
+it takes the newest, and takes defaults where a session would ask him (ADR-0005). It may write to any repo through `bin/land` and that repo's full check, the machine's
 own code included. A guard is added only against a stall, such as a stage answering while work it
 started still runs (0b95278b).
 
