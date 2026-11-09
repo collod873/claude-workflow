@@ -31,8 +31,9 @@ jobs:
           GH_TOKEN: ${{ secrets.ENROL_PAT }}
           CORE_APP_PRIVATE_KEY: ${{ secrets.CORE_APP_PRIVATE_KEY }}
           TOKEN_TO_SET: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          SECOND_TOKEN_TO_SET: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_2 }}
           REPO: ${{ inputs.repo }}
-        run: CLAUDE_CODE_OAUTH_TOKEN="$TOKEN_TO_SET" bin/enrol "$REPO"
+        run: CLAUDE_CODE_OAUTH_TOKEN="$TOKEN_TO_SET" CLAUDE_CODE_OAUTH_TOKEN_2="$SECOND_TOKEN_TO_SET" bin/enrol "$REPO"
 
   enrol:
     if: github.event_name == 'push'

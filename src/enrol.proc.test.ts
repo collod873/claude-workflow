@@ -20,7 +20,7 @@ describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#11
     const after = held();
     expect(after.reached).toContain(REPO);
     expect(after.variables).toEqual(["CORE_APP_CLIENT_ID"]);
-    expect(after.secrets.sort()).toEqual(["CLAUDE_CODE_OAUTH_TOKEN", "CORE_APP_PRIVATE_KEY"]);
+    expect(after.secrets.sort()).toEqual(["CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN_2", "CORE_APP_PRIVATE_KEY"]);
     expect(after.dependabot).toEqual(["CORE_APP_PRIVATE_KEY"]);
     expect(after.labels).toEqual(expect.arrayContaining(["bug", "ticket", "spec", "note", "research", "building", "checking", "waiting", "stuck"]));
     expect(after.labels).not.toContain("try-");
@@ -28,7 +28,7 @@ describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#11
     expect(after.rules.map(({ type }) => type)).toEqual(expect.arrayContaining(["pull_request", "required_status_checks"]));
     expect(JSON.stringify(after.rules)).toContain('"context":"check"');
     expect(JSON.stringify(after.rules)).not.toContain(ENROLLED_REVIEW);
-    expect(result.stdout).toBe(`enrol: ${REPO} enrolled, 9 settings set\n${OFFER}`);
+    expect(result.stdout).toBe(`enrol: ${REPO} enrolled, 10 settings set\n${OFFER}`);
   });
 
   it("writes .github/caller.yml as it stands, since it hears no CI run (#1447)", () => {
@@ -58,6 +58,7 @@ describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#11
 
     expect(held().writes.filter((args) => args[0] === "secret").map((args) => `${args[2]} ${args.includes("dependabot") ? "dependabot " : ""}${args.at(-1)}`).sort()).toEqual([
       "CLAUDE_CODE_OAUTH_TOKEN value sk-token",
+      "CLAUDE_CODE_OAUTH_TOKEN_2 value sk-token-2",
       `CORE_APP_PRIVATE_KEY dependabot value ${key()}`,
       `CORE_APP_PRIVATE_KEY value ${key()}`,
     ]);
@@ -98,8 +99,9 @@ describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#11
 
     expect(result.status).toBe(1);
     expect(result.stderr.trimEnd().split("\n")).toEqual([
-      `enrol: ${REPO} is not enrolled, 3 could not be set and 6 were:`,
+      `enrol: ${REPO} is not enrolled, 4 could not be set and 6 were:`,
       "- CLAUDE_CODE_OAUTH_TOKEN: no CLAUDE_CODE_OAUTH_TOKEN in the environment to set it from",
+      "- CLAUDE_CODE_OAUTH_TOKEN_2: no CLAUDE_CODE_OAUTH_TOKEN_2 in the environment to set it from",
       "- auto-merge: gh: Must have admin rights to Repository. (HTTP 403)",
       "- the caller file, check-job rule and pre-push: auto-merge is off, so a PR for it would never merge on its own",
     ]);
@@ -114,10 +116,10 @@ describe("bin/enrol leaves a repo with everything Lumaria was given by hand (#11
 
     expect(result.status).toBe(1);
     const [headline, ...shown] = result.stderr.trimEnd().split("\n");
-    expect(headline).toBe(`enrol: ${REPO} is not enrolled, 11 could not be set and 0 were:`);
+    expect(headline).toBe(`enrol: ${REPO} is not enrolled, 12 could not be set and 0 were:`);
     expect(shown).toHaveLength(5);
     for (const line of shown.slice(0, 4)) expect(line).toMatch(/^- .+: gh: Bad credentials \(HTTP 401\)$/);
-    expect(shown[4]).toBe("- and 7 more");
+    expect(shown[4]).toBe("- and 8 more");
   });
 
   it("refuses the caller file when no one workflow runs a check job on pull requests, naming them", () => {
@@ -295,7 +297,7 @@ describe("bin/enrol keeps an enrolled repo current with the owner's own login (#
     const pr = `https://github.com/${REPO}/pull/900 merges on its own once check passes`;
     const waiting = `- the caller file, check-job rule and pre-push: ${pr}`;
 
-    expect(run().stdout).toBe(`enrol: ${REPO} is enrolled once its PR merges, 7 settings set:\n${waiting}\n${OFFER}`);
+    expect(run().stdout).toBe(`enrol: ${REPO} is enrolled once its PR merges, 8 settings set:\n${waiting}\n${OFFER}`);
     const before = held().writes.length;
 
     expect(run()).toEqual({ status: 0, stdout: `enrol: ${REPO} is enrolled once its PR merges, 0 settings set:\n${waiting}\n${OFFER}`, stderr: "" });

@@ -304,6 +304,13 @@ each try again, before the call fails; a call for which a not-found is the answe
 missing parent, says `--missing-answers`. A blip is absorbed at its call, a rerun at its run.
 _Avoid_: flake, glitch
 
+**Account failover**:
+The owner's two Claude subscriptions, one token each in `CLAUDE_CODE_OAUTH_TOKEN` and
+`CLAUDE_CODE_OAUTH_TOKEN_2`. A hire whose model ends on a usage limit is launched again at once on
+the other account, and every later hire in that run stays there; it ends red only when both are
+spent. `claude-token-to-gh --second` fills the second slot, `bin/enrol` sets both.
+_Avoid_: backup token, second key
+
 **Resume**:
 Setting a held issue going again. Taking `waiting` off a ticket resumes its build; reconcile takes it
 off once every issue it is blocked by has closed. Taking `paused`

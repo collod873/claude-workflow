@@ -12,6 +12,16 @@ const STREAM = ["--output-format", "stream-json", "--verbose"];
 const TIMED_OUT = 124;
 const GRACE_SECONDS = "30";
 const RETRY_WAIT_SECONDS = "5";
+const ACCOUNT_SECRETS = ["CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN_2"] as const;
+const OUT_OF_USAGE = /usage limit reached|hit your (\w+ )?limit|limit reached|out of extra usage/i;
+
+const accounts = () => [...new Set(ACCOUNT_SECRETS.map((name) => process.env[name] ?? "").filter((token) => token !== ""))];
+let account = 0;
+const accountEnv = (): Record<string, string> => {
+  const token = accounts()[account];
+  return token === undefined ? {} : { CLAUDE_CODE_OAUTH_TOKEN: token };
+};
+const outOfUsage = ({ status, stderr, stdout }: Exited & { stdout: string }) => status !== 0 && OUT_OF_USAGE.test(`${stderr}\n${resultIn(stdout)}`);
 
 const FOREGROUND_ONLY = {
   env: { CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1", BASH_DEFAULT_TIMEOUT_MS: "600000", BASH_MAX_TIMEOUT_MS: "1200000" },
@@ -40,6 +50,15 @@ function answerIn(stdout: string): unknown {
     if (type === "result" && structured_output !== undefined) answer = structured_output;
   }
   return answer;
+}
+
+function resultIn(stdout: string): string {
+  let said = "";
+  for (const event of events(stdout)) {
+    const { type, result } = (event ?? {}) as { type?: unknown; result?: unknown };
+    if (type === "result" && typeof result === "string") said = result;
+  }
+  return said;
 }
 
 function sessionOf(stdout: string): string | undefined {
@@ -122,6 +141,7 @@ interface Launch {
   input: string;
   streamed: number;
   waitFirst: boolean;
+  env: Record<string, string>;
 }
 
 interface Exited {
@@ -141,11 +161,19 @@ function spending(hire: Hire): Spending {
   const handed = `${hire.transcript.replace(/\.jsonl$/, "")}.handed.md`;
   rmSync(handed, { force: true });
   function* attempt(input: string, resume?: string, kept = writeUpKept, waitFirst = false): Generator<Launch, Exited & { stdout: string }, Exited> {
+    let got = yield* launch(input, resume, kept, waitFirst);
+    while (outOfUsage(got) && account < accounts().length - 1) {
+      account++;
+      got = yield* launch(input, resume, kept, false);
+    }
+    return got;
+  }
+  function* launch(input: string, resume: string | undefined, kept: number, waitFirst: boolean): Generator<Launch, Exited & { stdout: string }, Exited> {
     appendFileSync(handed, `${input}\n\n`);
     const from = existsSync(hire.transcript) ? statSync(hire.transcript).size : 0;
     const streamed = openSync(hire.transcript, "a");
     const started = Date.now();
-    const exited = yield { argv: capped([...argv, ...(resume === undefined ? [] : ["--resume", resume]), ...STREAM], minutes, budget - used - kept), input, streamed, waitFirst };
+    const exited = yield { argv: capped([...argv, ...(resume === undefined ? [] : ["--resume", resume]), ...STREAM], minutes, budget - used - kept), input, streamed, waitFirst, env: accountEnv() };
     used += Date.now() - started;
     closeSync(streamed);
     return { ...exited, stdout: readFileSync(hire.transcript).subarray(from).toString("utf8") };
@@ -158,7 +186,7 @@ function spending(hire: Hire): Spending {
   return function* (input, resume) {
     let got = yield* attempt(input, resume);
     let refusal = refusalFor(got);
-    if (refusal !== undefined && got.status !== TIMED_OUT) {
+    if (refusal !== undefined && got.status !== TIMED_OUT && !outOfUsage(got)) {
       got = yield* attempt(input, resume, writeUpKept, true);
       refusal = refusalFor(got);
     }
@@ -172,18 +200,18 @@ function spending(hire: Hire): Spending {
   };
 }
 
-function launchedHere({ argv: [command, ...args], input, streamed, waitFirst }: Launch): Exited {
+function launchedHere({ argv: [command, ...args], input, streamed, waitFirst, env }: Launch): Exited {
   if (waitFirst) spawnSync("sleep", [RETRY_WAIT_SECONDS]);
-  const spent = spawnSync(command, args, { input, env: treePathed(), stdio: ["pipe", streamed, "pipe"], encoding: "utf8", maxBuffer: Infinity });
+  const spent = spawnSync(command, args, { input, env: treePathed({ ...process.env, ...env }), stdio: ["pipe", streamed, "pipe"], encoding: "utf8", maxBuffer: Infinity });
   return { status: spent.status, stderr: String(spent.stderr ?? "") };
 }
 
 const launchedIn =
   (tree: string, env: Record<string, string>) =>
-  async ({ argv: [command, ...args], input, streamed, waitFirst }: Launch): Promise<Exited> => {
+  async ({ argv: [command, ...args], input, streamed, waitFirst, env: chosen }: Launch): Promise<Exited> => {
     if (waitFirst) await setTimeout(Number(RETRY_WAIT_SECONDS) * 1000);
     return new Promise((resolve) => {
-      const child = spawn(command, args, { cwd: tree, env: treePathed({ ...process.env, ...env }), stdio: ["pipe", streamed, "pipe"] });
+      const child = spawn(command, args, { cwd: tree, env: treePathed({ ...process.env, ...env, ...chosen }), stdio: ["pipe", streamed, "pipe"] });
       let stderr = "";
       child.stderr?.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
       child.stdin?.on("error", () => undefined);

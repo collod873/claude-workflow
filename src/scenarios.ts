@@ -1013,7 +1013,7 @@ export const home = () =>
     files: Object.fromEntries([".github/workflows/check.yml", ".github/workflows/machine.yml", ".github/workflows/tickets.yml"].map((path) => [path, readFileSync(join(SRC, "..", path), "utf8")])),
   });
 
-export function enrolling(held: Held, env: Record<string, string> = { CORE_APP_PRIVATE_KEY: key(), CLAUDE_CODE_OAUTH_TOKEN: "sk-token" }) {
+export function enrolling(held: Held, env: Record<string, string> = { CORE_APP_PRIVATE_KEY: key(), CLAUDE_CODE_OAUTH_TOKEN: "sk-token", CLAUDE_CODE_OAUTH_TOKEN_2: "sk-token-2" }) {
   const root = scratch("enrol-");
   const state = join(root, "held.json");
   writeFileSync(state, JSON.stringify(held));
@@ -1021,7 +1021,7 @@ export function enrolling(held: Held, env: Record<string, string> = { CORE_APP_P
   chmodSync(join(root, "gh"), 0o755);
   const now = () => JSON.parse(readFileSync(state, "utf8")) as Held;
   return {
-    run: (...args: string[]) => execute(join(BIN, "enrol"), root, { PATH: `${root}:${process.env.PATH}`, HELD: state, CORE_APP_PRIVATE_KEY: "", CLAUDE_CODE_OAUTH_TOKEN: "", ...env }, args.length === 0 ? [held.repo] : args),
+    run: (...args: string[]) => execute(join(BIN, "enrol"), root, { PATH: `${root}:${process.env.PATH}`, HELD: state, CORE_APP_PRIVATE_KEY: "", CLAUDE_CODE_OAUTH_TOKEN: "", CLAUDE_CODE_OAUTH_TOKEN_2: "", ...env }, args.length === 0 ? [held.repo] : args),
     held: now,
     writes: () => now().writes.map((args) => args.slice(0, 3).join(" ")),
   };

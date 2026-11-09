@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { PROBE_RUN, probing } from "./probe.part.ts";
+import { PROBE_RUN, probing, SPENT_ACCOUNT } from "./probe.part.ts";
 import { probeOutput, probeRunName } from "./probe.ts";
 
 describe("a probe runs one command or prompt in a stage's real environment and ends, with no ticket (#1251)", () => {
@@ -36,6 +36,20 @@ describe("a probe runs one command or prompt in a stage's real environment and e
     expect(probe.hired()).not.toContain("--tools");
     expect(probe.transcripts()).toEqual([`probe-${PROBE_RUN}.jsonl`]);
     expect(probe.kept()).toBe("check took 6.2s");
+  });
+
+  it("moves a hire to the second Claude account when the first is out of usage, and ends red only when both are", () => {
+    const failsOver = probing({ said: "check took 6.2s", accounts: { CLAUDE_CODE_OAUTH_TOKEN: SPENT_ACCOUNT, CLAUDE_CODE_OAUTH_TOKEN_2: "sk-fresh" } });
+    const bothSpent = probing({ accounts: { CLAUDE_CODE_OAUTH_TOKEN: SPENT_ACCOUNT, CLAUDE_CODE_OAUTH_TOKEN_2: SPENT_ACCOUNT } });
+
+    const moved = failsOver.run("claude", "Run check and say how long it took");
+    const spent = bothSpent.run("claude", "Run check");
+
+    expect(moved.status, moved.stderr).toBe(0);
+    expect(failsOver.accountsTried()).toEqual([SPENT_ACCOUNT, "sk-fresh"]);
+    expect(failsOver.kept()).toBe("check took 6.2s");
+    expect(spent.status).toBe(1);
+    expect(bothSpent.accountsTried()).toEqual([SPENT_ACCOUNT]);
   });
 
   it("ends a claude probe red when its session does, keeping why", () => {

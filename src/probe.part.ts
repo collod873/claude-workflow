@@ -7,7 +7,10 @@ import { declareStage, HANDED_ON } from "./stages.ts";
 export const PROBE_RUN = "4417";
 const PROBE_URL = `https://github.com/collod873/Lumaria/actions/runs/${PROBE_RUN}`;
 
-export function probing({ contract = undefined as string | undefined, said = "the check fits its budget", claudeEnds = 0, concluded = "success", listed = true, keptOutput = true, treePath = NO_FILES } = {}) {
+export const SPENT_ACCOUNT = "sk-spent";
+const LIMIT_RESULT = { type: "result", subtype: "success", is_error: true, result: "You've hit your limit · resets 6pm (America/New_York)" };
+
+export function probing({ accounts = {}, contract = undefined as string | undefined, said = "the check fits its budget", claudeEnds = 0, concluded = "success", listed = true, keptOutput = true, treePath = NO_FILES } = {}) {
   const root = scratch("probe-");
   const tree = join(root, "tree");
   const hires = join(root, "claude-argv");
@@ -17,7 +20,7 @@ export function probing({ contract = undefined as string | undefined, said = "th
   git(tree, "init", "--quiet", "--initial-branch=main");
   if (contract !== undefined) plant(tree, ".claude/contract.json", contract);
   const result = { type: "result", subtype: "success", is_error: false, session_id: "sess-probe", result: said };
-  script(join(root, "bin", "claude"), [`printf '%s\\0' "$@" >"${hires}/argv"`, `cat >"${handed}"`, `printf '%s\\n' '${JSON.stringify(result)}'`, `exit ${claudeEnds}`, ""].join("\n"));
+  script(join(root, "bin", "claude"), [`printf '%s\\n' "$CLAUDE_CODE_OAUTH_TOKEN" >>"${hires}/accounts"`, `[ "$CLAUDE_CODE_OAUTH_TOKEN" = ${SPENT_ACCOUNT} ] && { cat >/dev/null; printf '%s\\n' '${JSON.stringify(LIMIT_RESULT).replaceAll("'", "'\\''")}'; exit 1; }`, `printf '%s\\0' "$@" >"${hires}/argv"`, `cat >"${handed}"`, `printf '%s\\n' '${JSON.stringify(result)}'`, `exit ${claudeEnds}`, ""].join("\n"));
   for (const [name, body] of Object.entries(treePath)) script(join(root, "tree-bin", name), body);
   const { setup, calls } = ghArgv(join(root, "gh-argv"));
   const title = (by: Probe, text: string) => probeRunName(by, text).replaceAll("'", "'\\''");
@@ -34,12 +37,13 @@ export function probing({ contract = undefined as string | undefined, said = "th
         "",
       ].join("\n"),
     );
-  const env = { PATH: `${join(root, "bin")}:${process.env.PATH}`, PROBE_FIND_SECONDS: "0", PROBE_WATCH_SECONDS: "1", GITHUB_RUN_ID: PROBE_RUN, ...(Object.keys(treePath).length === 0 ? {} : { TREE_PATH: join(root, "tree-bin") }) };
+  const env = { ...accounts, PATH: `${join(root, "bin")}:${process.env.PATH}`, PROBE_FIND_SECONDS: "0", PROBE_WATCH_SECONDS: "1", GITHUB_RUN_ID: PROBE_RUN, ...(Object.keys(treePath).length === 0 ? {} : { TREE_PATH: join(root, "tree-bin") }) };
   const logs = join(tree, ".git", "machine-logs");
   return {
     calls,
     hired: () => readFileSync(join(hires, "argv"), "utf8").split("\0").filter((part) => part !== ""),
     handed: () => readFileSync(handed, "utf8"),
+    accountsTried: () => readFileSync(join(hires, "accounts"), "utf8").split("\n").filter(Boolean),
     kept: () => (existsSync(join(logs, probeOutput(PROBE_RUN))) ? readFileSync(join(logs, probeOutput(PROBE_RUN)), "utf8") : undefined),
     transcripts: () => (existsSync(logs) ? readdirSync(logs).filter((name) => name.endsWith(".jsonl")) : []),
     run: (by: Probe, text: string) => execute(join(BIN, "probe"), tree, env, [by, text]),
@@ -57,6 +61,7 @@ declareStage({
     { label: "probing a script", run: () => probing().run("script", "printf 'check: ok\\n'") },
     { label: "probing a script that ends red", run: () => probing().run("script", "printf 'check: red typecheck\\n'; exit 3") },
     { label: "probing through claude", run: () => probing().run("claude", "Run check and say how long it took") },
+    { label: "probing through claude on an account out of usage", run: () => probing({ accounts: { CLAUDE_CODE_OAUTH_TOKEN: SPENT_ACCOUNT, CLAUDE_CODE_OAUTH_TOKEN_2: "sk-fresh" } }).run("claude", "Run check") },
     { label: "with the tree's setup failing", run: () => probing({ contract: '{ "setup": "printf \'npm ci: lockfile out of date\\\\n\' >&2; exit 1" }' }).run("script", "true") },
     { label: "dispatching a probe and reading its output", run: () => probing().dispatch("script", "check") },
     { label: "dispatching a probe that ends red", run: () => probing({ concluded: "failure" }).dispatch("script", "check") },
