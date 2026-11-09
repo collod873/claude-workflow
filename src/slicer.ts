@@ -59,13 +59,13 @@ export interface Handed {
 
 const WATCHED = "Read the repo as you need. No one is watching and no one will answer a question: where the spec is silent, choose, and say what you chose in the slice's `why`.";
 
-const SLICING_IS = `Each slice after the seams is one tracer bullet through the spec. A fresh builder builds each slice in its own worktree off the spec's integration branch, up to ${MOST_BUILDERS} at once, and it is merged by fast-forward once its fast check is green. Builders never read the spec, so each slice carries what its builder needs.`;
+const SLICING_IS = `Each slice after the seams is one tracer bullet through the spec. A fresh builder builds each slice in its own worktree off the spec's integration branch, up to ${MOST_BUILDERS} at once, and it is merged by fast-forward once its fast check is green. Builders never read the spec, so each slice carries what its builder needs. A slice extends the module, table or screen that already does the work and never adds a parallel one beside it.`;
 
 const NOT_CUT_AGAIN = "Not cut again yet";
 
 const CUTS: Record<Cut, { lead: string; end: string }> = {
   first: {
-    lead: "Cut this filed spec's first slices. Cut the seams first: the shared code other slices plug into, named in the words of the repo's `CONTEXT.md` where it has one. Then cut each other slice you can already plan without guessing at a name or a file a seam will settle; leave the rest for a later slicer, who reads them off the branch as built.",
+    lead: "Cut this filed spec's first slices. Before cutting, read main and find the existing modules, tables and screens this spec extends, in the words of the repo's `CONTEXT.md` where it has one: the slices extend those. Cut the seams first: the shared code other slices plug into, named in the same words. The spec's schema changes are a seam: plan them once, as one seam slice carrying one migration for the whole spec, which later slices build on instead of adding their own; a later slice that truly needs a schema change that seam missed may add one, and says why in that slice's `why`. Then cut each other slice you can already plan without guessing at a name or a file a seam will settle; leave the rest for a later slicer, who reads them off the branch as built.",
     end: "Cut the spec whole: every story and every sentence it asks for lives in some slice's `done`, now or once a later slicer cuts it, or in a `why` as what you ruled out and the spec line that rules it out. Answer no slice only when main already does the whole spec: the spec then stops for its owner.",
   },
   replan: {
@@ -76,7 +76,7 @@ const CUTS: Record<Cut, { lead: string; end: string }> = {
 
 const fields = [
   "`id`: kebab-case and unique within the spec, never one used before.",
-  '`why`: what the slice is for in the spec, quoting in straight "..." quotes or a `> ` line the spec\'s words it serves.',
+  '`why`: what the slice is for in the spec, quoting in straight "..." quotes or a `> ` line the spec\'s words it serves; then, after `extends:`, the existing module, table or screen it extends, in `CONTEXT.md` words, or `extends: nothing` when it adds new ground. A slice that adds a database migration says why the spec\'s seam migration missed it.',
   "`decisions`: each of the spec's Implementation or Testing Decisions this slice must follow, in the spec's words.",
   "`done`: the sentences true once the slice is built, each one its builder can show on the branch; at least one.",
   "`blockedBy`: the ids of the slices it needs merged first, from this answer or the slices so far.",

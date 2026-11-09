@@ -35,6 +35,16 @@ describe("bin/slice answers the scheduler with the spec's next slices, never fil
     expect(handed).not.toContain("Answer no slice when nothing is left");
   });
 
+  it("tells the first slicer to name what existing code the spec extends and to cut the spec's schema changes once, as one seam slice with one migration", () => {
+    const sliced = slicing({ answers: [ANSWERED] });
+
+    expect(sliced.run().status).toBe(0);
+    const [handed = ""] = sliced.handed();
+    expect(handed).toContain("the existing modules, tables and screens this spec extends");
+    expect(handed).toContain("one seam slice carrying one migration for the whole spec");
+    expect(handed).toContain("says why in that slice's `why`");
+  });
+
   it("stops at once on a first cut with no slice, marking the spec stuck and calling the owner, since nothing of the spec would be built", () => {
     const sliced = slicing({ answers: [{ slices: [] }] });
 
@@ -52,6 +62,8 @@ describe("bin/slice answers the scheduler with the spec's next slices, never fil
     expect(ran).toMatchObject({ status: 0, stdout: '{"slices":[]}\n', stderr: `slice: #${SPEC_ISSUE} cut 0 slices\n` });
     const [handed = ""] = sliced.handed();
     expect(handed).toContain("cut each slice now at its last responsible moment");
+    expect(handed).toContain("the existing module, table or screen it extends");
+    expect(handed).toContain("A slice that adds a database migration says why the spec's seam migration missed it");
     expect(handed).toContain("- Build seam (seam)");
     expect(handed).toContain("- `seam` (merged): Build seam.");
     expect(handed).toContain("- `reader` (hired): Build reader. Blocked by `seam`.\n  Done when: reader holds.");
