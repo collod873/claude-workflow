@@ -17,8 +17,8 @@ concurrency:
 
 jobs:
   check:
-    name: "${{ startsWith(github.head_ref, 'land/') && 'judged on the owner PC before the push (ADR-0008)' || github.event.sender.login == 'collod873-machine[bot]' && !startsWith(github.head_ref, 'enrol/') && 'judged by the machine before its push (#1345)' || 'check' }}"
-    if: ${{ !startsWith(github.head_ref, 'land/') && !(github.event.sender.login == 'collod873-machine[bot]' && !startsWith(github.head_ref, 'enrol/')) }}
+    name: "${{ github.event_name == 'push' && vars.CI_SHIP_GATED == 'true' && 'not run on a push: this repo ships through a gate, which runs the whole check (CI_SHIP_GATED)' || startsWith(github.head_ref, 'land/') && 'judged on the owner PC before the push (ADR-0008)' || github.event.sender.login == 'collod873-machine[bot]' && !startsWith(github.head_ref, 'enrol/') && 'judged by the machine before its push (#1345)' || 'check' }}"
+    if: ${{ !startsWith(github.head_ref, 'land/') && !(github.event.sender.login == 'collod873-machine[bot]' && !startsWith(github.head_ref, 'enrol/')) && !(github.event_name == 'push' && vars.CI_SHIP_GATED == 'true') }}
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 30
     permissions:

@@ -1,8 +1,8 @@
 {
- "source": "collod873/agent-hooks@51a038e0ff5667e48e0c9654ef16dea0b897f8b4",
+ "source": "collod873/agent-hooks@71366b6a83ac376dc76a220a44d16e0e7efd2430",
  "layer": "typescript",
  "files": {
-  "ci.yml": "e806ee0a760b10c04996473e9dd1e3a884003fd1540cae01090377810efaa8a6",
+  "ci.yml": "bea63aa685617bc3f40983c8bc26ebd5795f6bb8afe5945f0828623736b3fa1b",
   "run": "6508cd65d739f035f30a91a0b2a1b3b88fc433cf01d1c284f3a9ad65c956fc99",
   "security/secrets": "986e3f8ce1d4b6b2034a6add4219de01c41e6924cee8b2334c0d95769616c860",
   "security/tools.py": "3cf205dc74550decbd04f9d35f9ceda812d50bcee14400cc642b1817049e6de0",
