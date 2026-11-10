@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parts, type Part } from "./parts.ts";
-import { bare, CONTRACT, LINE_LIMIT, MOST_LINES, coveredByCheck, enrolling, execute, filing, githubCall, landSession, marking, overLimit, scratch, script, sessionExtras, watching, wellFormedTicket, wellFormedNote, misshapenSpec, switching } from "./scenarios.ts";
+import { bare, CONTRACT, FULL_CHECK_PASSED, shipping, type Run, type ShipRun, LINE_LIMIT, MOST_LINES, coveredByCheck, enrolling, execute, filing, githubCall, landSession, marking, overLimit, scratch, script, sessionExtras, watching, wellFormedTicket, wellFormedNote, misshapenSpec, switching } from "./scenarios.ts";
 import { stages, type Scenario } from "./stages.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
@@ -10,6 +10,12 @@ const NOISE = "a line a tool prints that nobody needed to read\n".repeat(40).tri
 const URL = "https://github.com/collod873/claude-workflow/pull/1";
 const FILED = `printf '%s\\n' ${URL}\n`;
 const NOTE_CALL = ["idea", "--title", "What the audit found", "--body-file", "body.md"];
+
+const shippingNext = (runs: ShipRun[] | null): Run => {
+  const app = shipping();
+  app.land("next", runs);
+  return app.run();
+};
 
 const listed: Record<string, Scenario[]> = {
   "bin/land": [
@@ -43,6 +49,12 @@ const listed: Record<string, Scenario[]> = {
   "bin/runner-watch": [
     { label: "flipping a repo whose PC runners went offline", run: () => watching([{ name: "collod873/chess", runners: [{ status: "offline", labels: ["pc"] }], variable: "pc" }]).run("flip") },
     { label: "with GitHub refusing the billing usage", run: () => watching([{ name: "collod873/chess" }]).run("minutes", "collod873", "2026-10-28") },
+  ],
+  "bin/ship": [
+    { label: "shipping a commit that passed the full check", run: () => shippingNext(FULL_CHECK_PASSED) },
+    { label: "holding a commit whose full check is red", run: () => shippingNext(null) },
+    { label: "refusing a daily run with no health URL", run: () => shipping().run(["--daily"]) },
+    { label: "showing its help", run: () => shipping().run(["--help"]) },
   ],
   "bin/mark": [
     { label: "moving a ticket to a state", run: () => marking({ labels: { "811": ["ticket", "checking", "try-2"] }, pr: "900" }).run("811", "building", "--try") },

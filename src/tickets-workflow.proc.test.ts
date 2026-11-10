@@ -633,8 +633,8 @@ describe("this repo reaches the machine through the caller file bin/enrol writes
     expect(twice).toEqual([]);
   });
 
-  it("names in its stage code no workflow file but one this repo holds, so no stage dispatches a deleted workflow", () => {
-    const held = new Set([...readdirSync(WORKFLOWS), "action.yml", "caller.yml"]);
+  it("names in its stage code no workflow file but one this repo holds, or the CI an app's ship dispatches, so no stage dispatches a deleted workflow", () => {
+    const held = new Set([...readdirSync(WORKFLOWS), "action.yml", "caller.yml", "ci.yml"]);
     const code = [
       ...readdirSync(join(REPO, "src"))
         .filter((file) => /\.ts$/.test(file) && !/\.test\.ts$|^scenarios\.ts$/.test(file))
