@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parts, type Part } from "./parts.ts";
-import { bare, CONTRACT, FULL_CHECK_PASSED, shipping, type Run, type ShipRun, LINE_LIMIT, MOST_LINES, coveredByCheck, enrolling, execute, filing, githubCall, landSession, marking, overLimit, scratch, script, sessionExtras, watching, wellFormedTicket, wellFormedNote, misshapenSpec, switching } from "./scenarios.ts";
+import { bare, callerWith, clocking, CONTRACT, FULL_CHECK_PASSED, shipping, type Run, type ShipRun, LINE_LIMIT, MOST_LINES, coveredByCheck, enrolling, execute, filing, githubCall, landSession, marking, overLimit, scratch, script, sessionExtras, watching, wellFormedTicket, wellFormedNote, misshapenSpec, switching } from "./scenarios.ts";
 import { stages, type Scenario } from "./stages.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
@@ -45,6 +45,10 @@ const listed: Record<string, Scenario[]> = {
   "bin/runner": [
     { label: "installing a repo's PC runners and sending its jobs there", run: () => switching().run("pc") },
     { label: "refusing a public repo", run: () => switching({ isPrivate: false }).run("pc") },
+  ],
+  "bin/ship-clock": [
+    { label: "installing three apps' ship clocks", run: () => clocking({ "collod873/Mezzanine": callerWith("0 8 * * *"), "collod873/PW-Zone2": callerWith("20 8 * * *"), "collod873/workout-tracker": callerWith("40 8 * * *") }).run() },
+    { label: "refusing a cron that is not daily", run: () => clocking({ "collod873/Mezzanine": callerWith("*/15 * * * *") }).run() },
   ],
   "bin/runner-watch": [
     { label: "flipping a repo whose PC runners went offline", run: () => watching([{ name: "collod873/chess", runners: [{ status: "offline", labels: ["pc"] }], variable: "pc" }]).run("flip") },

@@ -5,8 +5,9 @@ async function shippingApp() {
   const app = shipping();
   const production = await servingProduction(app.live);
   const ship = (...args: string[]) => app.runAsync(args, { SHIP_HEALTH_URL: production.healthUrl });
+  const shipOnSchedule = () => app.runAsync(["--daily"], { SHIP_HEALTH_URL: production.healthUrl, GITHUB_EVENT_NAME: "schedule" });
   const shipWithoutWaiting = (...args: string[]) => app.runAsync(args, { SHIP_HEALTH_URL: production.healthUrl, SHIP_CHECK_DEADLINE_SECONDS: "0" });
-  return { ...app, production, ship, shipWithoutWaiting };
+  return { ...app, production, ship, shipWithoutWaiting, shipOnSchedule };
 }
 
 describe("bin/ship moves production by pushing a commit that passed the full check to the release branch, and holds when the check is red", () => {
@@ -357,5 +358,33 @@ describe("bin/ship runs from whichever app is the current directory, with that a
     expect(release()).toBe(live);
     expect(dispatched()).toEqual([]);
     expect(issues()).toEqual([]);
+  });
+});
+
+describe("bin/ship --daily on GitHub's schedule is the backstop for the PC's ship clock, since GitHub fires a schedule hours late", () => {
+  const hoursAgo = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOString();
+
+  it("ships nothing once a dispatched Ship ran in the last 20 hours, so a late schedule moves no production mid-day", async () => {
+    const { land, shipOnSchedule, release, live, shipDispatchedAt } = await shippingApp();
+    land("tip", FULL_CHECK_PASSED);
+    shipDispatchedAt(hoursAgo(9));
+
+    const skipped = await shipOnSchedule();
+
+    expect(skipped.status, skipped.stderr).toBe(0);
+    expect(skipped.stdout).toContain("already ran");
+    expect(release()).toBe(live);
+  });
+
+  it("still ships when the newest dispatched Ship is older than 20 hours, as when the PC was off at its time", async () => {
+    const { land, shipOnSchedule, release, production, shipDispatchedAt } = await shippingApp();
+    const tip = land("tip", FULL_CHECK_PASSED);
+    production.build = tip;
+    shipDispatchedAt(hoursAgo(25));
+
+    const shipped = await shipOnSchedule();
+
+    expect(shipped.status, shipped.stderr).toBe(0);
+    expect(release()).toBe(tip);
   });
 });
