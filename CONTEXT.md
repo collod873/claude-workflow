@@ -334,8 +334,8 @@ _Avoid_: experiment, A/B, canary
 **Account failover**:
 The owner's two Claude subscriptions, one token each in `CLAUDE_CODE_OAUTH_TOKEN` and
 `CLAUDE_CODE_OAUTH_TOKEN_2`. A hire whose model ends on a usage limit is launched again at once on
-the other account, and every later hire in that run stays there; it ends red only when both are
-spent. `claude-token-to-gh --second` fills the second slot, `bin/enrol` sets both.
+the other account, and every later hire in that run stays there, as does a hire already running on
+the spent one when another moved first; it ends red only when both are spent. `claude-token-to-gh --second` fills the second slot, `bin/enrol` sets both.
 _Avoid_: backup token, second key
 
 **Resume**:
