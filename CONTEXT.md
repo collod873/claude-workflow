@@ -72,7 +72,11 @@ _Avoid_: onboard, install, register
 `release` branch its host deploys, once a full check that CI's own dispatch ran has passed on that
 commit; a push or pull request run never counts. A red check, or one still waiting at its deadline,
 holds the ship and files a "Ship held" bug. Each app carries a **ship caller file**: its once-a-day
-cron and `health-url`, calling `ship.yml` here (`.github/ship-caller.yml` is its text). `bin/enrol`
+cron and `health-url`, calling `ship.yml` here (`.github/ship-caller.yml` is its text). The **ship
+clock**, `bin/ship-clock` run once on the PC, turns each caller's cron into a systemd timer that
+dispatches it on time, caught up at boot when the PC was off: GitHub fires this account's schedules
+hours late (Mezzanine's 08:00 ship started 14:26 to 17:51, and 15-minute crons fire every 4 to 7
+hours), so a late GitHub run ships only when no dispatched Ship ran in the last 20 hours. `bin/enrol`
 does not write it, since both differ per app and not every enrolled repo deploys from a release
 branch. No app keeps a copy of the code (ADR-0004).
 _Avoid_: deploy script, promote, release job

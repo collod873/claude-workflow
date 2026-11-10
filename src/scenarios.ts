@@ -1191,6 +1191,10 @@ if (command === "workflow") {
   writeFileSync(state + "/runs/" + head, JSON.stringify([...earlier, ...added]));
   process.exit(0);
 }
+if (process.argv.some((arg) => arg.includes("/actions/workflows/ship.yml/runs"))) {
+  console.log(JSON.stringify({ workflow_runs: read(state + "/ship-dispatches", []) }));
+  process.exit(0);
+}
 if (command === "run" && subcommand === "view") {
   console.log("PASS src/server/db/index.integration.test.ts\\n${RED_TEST_LINE}");
   process.exit(0);
@@ -1228,7 +1232,7 @@ export function shipping() {
   mkdirSync(join(root, "bin"));
   writeFileSync(join(root, "bin", "gh"), SHIP_GH, { mode: 0o755 });
   script(join(root, "bin", "deploy-wait"), `printf %s "$1" >${JSON.stringify(waited)}\n`);
-  const shipEnv = (extra: Record<string, string>) => ({ PATH: `${join(root, "bin")}:${process.env.PATH}`, SHIP_GH_STATE: state, SHIP_DEPLOY_DEADLINE_SECONDS: "0", GITHUB_REPOSITORY_OWNER: "owner-login", ...extra });
+  const shipEnv = (extra: Record<string, string>) => ({ PATH: `${join(root, "bin")}:${process.env.PATH}`, SHIP_GH_STATE: state, SHIP_DEPLOY_DEADLINE_SECONDS: "0", GITHUB_REPOSITORY_OWNER: "owner-login", GITHUB_RUN_ID: "", GITHUB_EVENT_NAME: "", ...extra });
   const recorded = (name: string) => (existsSync(join(state, name)) ? readFileSync(join(state, name), "utf8").trim().split("\n") : []);
   const land = (name: string, runs: ShipRun[] | null, file = name): string => {
     plant(session, file, name);
@@ -1246,6 +1250,7 @@ export function shipping() {
     land,
     fullCheckWillBe: (sha: string, ...conclusions: (string | null)[]) => writeFileSync(join(state, "plans", sha), JSON.stringify(conclusions.map((conclusion) => ({ conclusion })))),
     openIssue: (number: number) => writeFileSync(join(state, "open-issues"), `${number}\n`),
+    shipDispatchedAt: (createdAt: string) => writeFileSync(join(state, "ship-dispatches"), JSON.stringify([{ created_at: createdAt, event: "workflow_dispatch" }])),
     run: (args: string[] = [], extra: Record<string, string> = {}) => execute(join(BIN, "ship"), session, shipEnv(extra), args),
     runAsync: (args: string[] = [], extra: Record<string, string> = {}) =>
       new Promise<Run>((resolve) => {
@@ -1261,4 +1266,27 @@ export function shipping() {
     dispatched: () => recorded("dispatch-log").filter(Boolean),
     issues: () => recorded("issue-calls").filter(Boolean).map((line) => JSON.parse(line) as string[]),
   };
+}
+
+export const callerWith = (cron: string) => ["on:", "  schedule:", `    - cron: "${cron}"`, "  workflow_dispatch:", "jobs:", "  ship:", "    uses: collod873/claude-workflow/.github/workflows/ship.yml@main", ""].join("\n");
+
+export function clocking(callers: Record<string, string>) {
+  const root = scratch("ship-clock-");
+  const callersDir = join(root, "callers");
+  for (const [repo, text] of Object.entries(callers)) plant(root, `callers/${repo.replace("/", "-")}`, text);
+  script(
+    join(root, "bin", "gh"),
+    [
+      `if [[ $1 == repo ]]; then printf '%s\\n' ${["collod873/Lumaria", ...Object.keys(callers)].join(" ")}; exit 0; fi`,
+      'repo=$(printf %s "$2" | sed -E "s#^repos/([^/]+/[^/]+)/contents/.*#\\1#")',
+      `file="${callersDir}/\${repo/\\//-}"`,
+      '[[ -f $file ]] || { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }',
+      'cat "$file"',
+      "",
+    ].join("\n"),
+  );
+  const sudoLog = join(root, "sudo-calls");
+  script(join(root, "bin", "sudo"), `{ printf '%s\\n' "$*"; cat; printf '\\n--\\n'; } >>"${sudoLog}"\n`);
+  const run = () => execute(join(BIN, "ship-clock"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}` });
+  return { run, sudo: () => (linesIn(sudoLog).length ? readFileSync(sudoLog, "utf8") : "") };
 }

@@ -9,6 +9,8 @@ const POLL_SECONDS = 15;
 const CI_WORKFLOW = "ci.yml";
 const CHECK_DEADLINE_SECONDS = Number(process.env.SHIP_CHECK_DEADLINE_SECONDS ?? 3600);
 const FAILING_LINES = 30;
+const SHIP_WORKFLOW = "ship.yml";
+const DISPATCH_COVERS_HOURS = 20;
 
 const USAGE = `ship: put main's newest green commit on production by moving the release branch Railway deploys.
 
@@ -23,7 +25,9 @@ const USAGE = `ship: put main's newest green commit on production by moving the 
                        and opens an issue (or comments on the open one) for the repo owner
 
 Merging to main deploys nothing. Production moves only here, and once a day from the app's
-.github/workflows/ship.yml, which passes SHIP_HEALTH_URL. Run it from any checkout of the app.`;
+.github/workflows/ship.yml, which passes SHIP_HEALTH_URL. The PC's ship-clock dispatches that
+workflow at its cron time; GitHub's own schedule fires hours late, so its run ships nothing when a
+dispatched Ship ran in the last ${DISPATCH_COVERS_HOURS} hours. Run it from any checkout of the app.`;
 
 interface CiRun {
   id: number;
@@ -266,6 +270,20 @@ async function moveRelease(): Promise<{ release: string; moved: boolean }> {
   return { release: target, moved: true };
 }
 
+function dispatchedShipCovers(): string | undefined {
+  const done = run("gh", ["api", `repos/{owner}/{repo}/actions/workflows/${SHIP_WORKFLOW}/runs?event=workflow_dispatch&per_page=1`]);
+  if (done.status !== 0) die(`✗ ship: could not read this app's dispatched Ship runs.\n${done.stderr.trim()}`);
+  const newest = (JSON.parse(done.stdout) as { workflow_runs: { created_at: string }[] }).workflow_runs[0]?.created_at;
+  return newest !== undefined && Date.now() - Date.parse(newest) < DISPATCH_COVERS_HOURS * 3_600_000 ? newest : undefined;
+}
+
+if (daily && process.env.GITHUB_EVENT_NAME === "schedule") {
+  const covered = dispatchedShipCovers();
+  if (covered !== undefined) {
+    console.log(`A dispatched Ship already ran at ${covered}, so GitHub's late schedule run ships nothing.`);
+    process.exit(0);
+  }
+}
 if (daily && HEALTH === "") die("✗ ship: --daily needs SHIP_HEALTH_URL, the app's /api/health URL, and none is set.");
 const { release, moved } = await moveRelease();
 if (daily) {

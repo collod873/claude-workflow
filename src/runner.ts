@@ -19,7 +19,7 @@ const UV_RELEASES = "https://github.com/astral-sh/uv/releases/download";
 const RUNNER_RELEASES = "https://github.com/actions/runner/releases/download";
 const WAIT_SECONDS = Number(process.env.RUNNER_WAIT_SECONDS ?? "60");
 const PROC = process.env.RUNNER_PROC ?? "/proc";
-const UNITS = "/etc/systemd/system";
+export const UNITS = "/etc/systemd/system";
 const unitsOf = (repo: string) => `actions.runner.${repo.replace("/", "-")}.`;
 const ONE_JOB = "ACTIONS_RUNNER_INPUT_ONCE=true";
 const confinement = (unit: string) =>
