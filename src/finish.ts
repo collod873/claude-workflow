@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { capped, DIFF_CAP, diffOverCap, LIST_CAP, listedCapped, NO_EM_DASH, onDisk, TAIL_CAP, tailOf } from "./brief.ts";
-import { checkedByAsync, type Red, starvedFault } from "./builder.ts";
+import { checkedByAsync, type Red, machineFault } from "./builder.ts";
 import { PUBLISHED_CHECK } from "./checks.ts";
 import { type Checked, type Stop, calledOwner as doneCheckCalledOwner, doneCheck, paired, postedOn, triedIn, type Try } from "./done-checker.ts";
 import { askedOn, commentOnTicket, fromHere, fromLine, gh, git, gitRead, standingOn, stoodDown, mark, OWNER, readOrStop, STUCK, Stopped, unread } from "./post.ts";
@@ -21,7 +21,7 @@ const stoppedAt = stopsOf({
   unchecked: "Finish: the full check stayed red, and two rounds in a row of the reviewer handed it changed nothing",
   reviewerStuck: "Finish: a reviewer answered `stuck`, so the spec is marked `stuck` and the owner is called",
   unmerged: "Finish: a pack's reviewer left its commits conflicting with the integration branch, and two rounds in a row of it changed nothing",
-  machineStarved: "Finish: the full check went red only on steps the machine starved of memory, so the spec is marked `stuck` and the owner is called",
+  machineFault: "Finish: the full check went red only on steps the machine starved of memory, or SIGTERM ended it on every rerun, so the spec is marked `stuck` and the owner is called",
   unready: "Finish: a reviewer's tree would not set up, so that reviewer was not hired",
   unfiled: "Finish: the reviewer on the spec answered the same owner steps that filing refuses twice in a row",
 });
@@ -353,19 +353,19 @@ async function rounds<Done>(run: Run, reviewer: Reviewer, { failed, stop, commit
   }
 }
 
-function starved({ spec, said }: Run, red: Red | undefined): boolean {
-  const fault = starvedFault(red);
+function stoppedByMachine({ spec, said }: Run, red: Red | undefined): boolean {
+  const fault = machineFault(red);
   if (fault === undefined) return false;
   mark(spec, STUCK);
   commentOnTicket(spec, `@${OWNER} the finisher of #${spec} stopped and needs you: ${fault}`, gh);
-  stoppedAt("machineStarved", `${said} marked ${STUCK}, ${fault}`);
+  stoppedAt("machineFault", `${said} marked ${STUCK}, ${fault}`);
   return true;
 }
 
 const greened = (run: Run, reviewer: Reviewer, commit: string) =>
   rounds(run, reviewer, { failed: "stayed red on its full check", stop: "unchecked", commit, kept: (approved) => run.later.push(`After its full check went red: ${approved.reason}`) }, async () => {
     const red = await checkedByAsync(PUBLISHED_CHECK);
-    if (starved(run, red)) return { done: undefined };
+    if (stoppedByMachine(run, red)) return { done: undefined };
     return red === undefined ? { done: true } : { refused: red.verdict, told: stillRedOnReview(red) };
   });
 
@@ -497,7 +497,7 @@ async function reviews(run: Run, { title, body }: { title: string; body: string 
   for (const { ofPack, answer } of onSpec) run.reasons.set(ofPack.seat, `${ofPack.on}: ${answer.reason}`);
   run.trying = triedOnBranch(run);
   const red = await checkedByAsync(PUBLISHED_CHECK);
-  if (starved(run, red)) return undefined;
+  if (stoppedByMachine(run, red)) return undefined;
   const [first, ...rest] = (await reviewedInPacks("code standard", red)) ?? [];
   if (first === undefined) return undefined;
   for (const { ofPack, answer } of [first, ...rest]) run.reasons.set(ofPack.seat, `${ofPack.on}: ${answer.reason}`);

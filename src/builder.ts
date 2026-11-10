@@ -131,15 +131,31 @@ function checkEnv(): NodeJS.ProcessEnv {
   return treePathed(onGitHub === undefined ? rest : { ...rest, GITHUB_ACTIONS: UNANNOTATED_GITHUB_ACTIONS });
 }
 
-export function checkedBy(check: string): Red | undefined {
+const ENDED_RERUNS = 3;
+const ENDED_BY_SIGTERM = /^check: ended by SIGTERM\b/;
+const endedBySigterm = (red: Red | undefined) => red !== undefined && ENDED_BY_SIGTERM.test(red.verdict);
+
+function checkedOnceSync(check: string): Red | undefined {
   const { stdout, stderr } = spawnSync("bash", ["-c", check], { env: checkEnv(), encoding: "utf8" });
   return redOf(stdout, stderr);
 }
 
-export const checkedByAsync = (check: string) =>
+export function checkedBy(check: string): Red | undefined {
+  let red = checkedOnceSync(check);
+  for (let rerun = 0; rerun < ENDED_RERUNS && endedBySigterm(red); rerun++) red = checkedOnceSync(check);
+  return red;
+}
+
+const checkedOnce = (check: string) =>
   new Promise<Red | undefined>((resolved) => {
     execFile("bash", ["-c", check], { env: checkEnv(), encoding: "utf8", maxBuffer: Infinity }, (_error, stdout, stderr) => resolved(redOf(stdout, stderr)));
   });
+
+export async function checkedByAsync(check: string): Promise<Red | undefined> {
+  let red = await checkedOnce(check);
+  for (let rerun = 0; rerun < ENDED_RERUNS && endedBySigterm(red); rerun++) red = await checkedOnce(check);
+  return red;
+}
 
 function redOf(stdout: string, stderr: string): Red | undefined {
   const verdict = stdout.trim().split("\n").at(-1) ?? "";
@@ -159,8 +175,12 @@ function starvedOnly(verdict: string): boolean {
   return steps.every((step) => step.includes(MACHINE_RAN_SHORT));
 }
 
-export const starvedFault = (red: Red | undefined): string | undefined =>
-  red !== undefined && starvedOnly(red.verdict) ? `the machine is at fault, not the code: \`${PUBLISHED_CHECK}\` went red only on steps killed because ${MACHINE_RAN_SHORT}, after the check reran them once other work on the runner ended: \`${red.verdict}\`` : undefined;
+export function machineFault(red: Red | undefined): string | undefined {
+  if (red === undefined) return undefined;
+  const atFault = (what: string) => `the machine is at fault, not the code: ${what}: \`${red.verdict}\``;
+  if (endedBySigterm(red)) return atFault(`SIGTERM ended \`${PUBLISHED_CHECK}\` on its first run and on all ${String(ENDED_RERUNS)} reruns, each picking up from the receipts the last kept`);
+  return starvedOnly(red.verdict) ? atFault(`\`${PUBLISHED_CHECK}\` went red only on steps killed because ${MACHINE_RAN_SHORT}, after the check reran them once other work on the runner ended`) : undefined;
+}
 
 export const repaired = ({ verdict, failed }: Red) =>
   [`\`${PUBLISHED_CHECK}\` ran on your answer and went red: \`${verdict}\`. What each red step printed, from the end of its part of that log:`, tailOf(failed, TAIL_CAP), "Make it pass, commit, and answer again.", ""].join("\n\n");
@@ -423,7 +443,7 @@ function judged(ticket: string): Round {
   const lost = mergesCarryingWork();
   if (lost.length > 0) return { red: `You answered \`code\`, and a rebase drops merge commits, so these past main would land without the work they carry beyond a clean merge of their parents: ${lost.join(", ")}. Leave that work out of merge commits and add its work as plain commits on top of main, such as with \`git reset --soft origin/main\` and a fresh commit.` };
   const red = checkedBy(PUBLISHED_CHECK);
-  const fault = starvedFault(red);
+  const fault = machineFault(red);
   if (fault !== undefined) return { ended: calledOwner(ticket, "builder", fault) };
   return red === undefined ? {} : { red: repaired(red) };
 }
