@@ -199,6 +199,32 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
     expect(ticketComments().at(-1)).toContain("the machine ran short");
   });
 
+  const ENDED = "printf 'check: ended by SIGTERM from systemd (pid 1) while no step ran; kept receipts for lint, test; running it again picks up where it stopped\\n'; exit 143";
+
+  it("reruns a full check SIGTERM ended, since it resumes from its receipts, and lands without handing the builder a red (#1688)", () => {
+    const endedTwice = ["n=$(cat ../ended 2>/dev/null || echo 0)", `[ "$n" -ge 2 ] && { ${CHECK_PASSES.trim()}; exit 0; }`, "echo $((n + 1)) >../ended", ENDED].join("\n");
+    const { run, handed, landed } = fixing({ claude: FIXES, check: endedTwice });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(handed()).toHaveLength(2);
+    expect(handed()[1]).not.toContain("ended by SIGTERM");
+    expect(landed()).toHaveLength(1);
+  });
+
+  it("calls the owner, naming the check's sender, when SIGTERM ends every rerun, never handing it back (#1688)", () => {
+    const { run, handed, landed, marked, ticketComments } = fixing({ claude: SPENT_BY_THE_THIRD_ROUND, check: ENDED, stageMinutes: "1" });
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(handed()).toHaveLength(1);
+    expect(landed()).toEqual([]);
+    expect(marked()).toContain("811 stuck");
+    expect(ticketComments().at(-1)).toContain("from systemd (pid 1)");
+  });
+
   it("hands back a red where one step failed on its own beside a step the machine starved", () => {
     const mixed = "printf 'check: red build killed for memory (the machine ran short; next at 5120 MiB), test src/stops.test.ts:4; log .git/check/logs/full.log\\n'; exit 1";
     const { run, handed } = fixing({ claude: SPENT_BY_THE_THIRD_ROUND, check: mixed, stageMinutes: "1" });
