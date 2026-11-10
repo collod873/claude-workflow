@@ -85,7 +85,6 @@ const FIXED: Part[] = [
     file: "bin/ship-clock",
     stops: "https://github.com/collod873/claude-workflow/issues/1692",
     lines: 6,
-    clock: true,
   },
   {
     name: "bin/runner",

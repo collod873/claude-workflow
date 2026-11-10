@@ -55,7 +55,7 @@ const twoDigits = (value: number) => String(value).padStart(2, "0");
 const timeOf = ({ hour, minute }: ShipClock) => `${twoDigits(hour)}:${twoDigits(minute)}`;
 
 function serviceText(clock: ShipClock, user: string, ghPath: string): string {
-  return ["[Unit]", `Description=Dispatch ${clock.repo}'s daily Ship`, "", "[Service]", "Type=oneshot", `User=${user}`, `ExecStart=${ghPath} workflow run ship.yml -R ${clock.repo}`, ""].join("\n");
+  return ["[Unit]", `Description=Dispatch ${clock.repo}'s daily Ship`, "Wants=network-online.target", "After=network-online.target", "", "[Service]", "Type=oneshot", `User=${user}`, `ExecStart=${ghPath} workflow run ship.yml -R ${clock.repo}`, ""].join("\n");
 }
 
 function timerText(clock: ShipClock): string {

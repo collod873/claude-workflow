@@ -15,6 +15,7 @@ describe("bin/ship-clock has this PC dispatch each app's daily Ship at its cron 
     expect(written).toContain("OnCalendar=*-*-* 08:00:00 UTC");
     expect(written).toContain("OnCalendar=*-*-* 08:20:00 UTC");
     expect(written).toContain("Persistent=true");
+    expect(written).toContain("After=network-online.target");
     expect(written).toMatch(/ExecStart=\/\S+\/gh workflow run ship\.yml -R collod873\/PW-Zone2/);
     expect(written).toContain("systemctl enable --now ship-collod873-Mezzanine.timer ship-collod873-PW-Zone2.timer");
   });
