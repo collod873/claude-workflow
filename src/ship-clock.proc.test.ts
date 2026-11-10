@@ -30,4 +30,20 @@ describe("bin/ship-clock has this PC dispatch each app's daily Ship at its cron 
     expect(ran.stderr).toContain("0 8 * * 1-5");
     expect(sudo()).toBe("");
   });
+
+  it("installs one machine clock every 15 minutes that dispatches each enrolled repo's reconcile and this repo's runner watch, each dispatch tried even when one before it fails", () => {
+    const { run, sudo } = clocking({ "collod873/Mezzanine": callerWith("0 8 * * *") }, ["collod873/Mezzanine", "collod873/claude-workflow"]);
+
+    const ran = run();
+
+    expect(ran.stderr).toBe("");
+    expect(ran.stdout).toContain("ship-clock: every 15 minutes the machine clock dispatches reconcile in collod873/Mezzanine, collod873/claude-workflow and the runner watch in collod873/claude-workflow");
+    const written = sudo();
+    expect(written).toContain("OnCalendar=*:0/15");
+    expect(written).toMatch(/ExecStart=-\/\S+\/gh workflow run machine\.yml -R collod873\/Mezzanine -f ticket=0\n/);
+    expect(written).toMatch(/ExecStart=-\/\S+\/gh workflow run machine\.yml -R collod873\/claude-workflow -f ticket=0\n/);
+    expect(written).toMatch(/ExecStart=-\/\S+\/gh workflow run runner-watch\.yml -R collod873\/claude-workflow -f minutes=false\n/);
+    expect(written).not.toContain("Lumaria");
+    expect(written).toContain("machine-clock.timer");
+  });
 });

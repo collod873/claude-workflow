@@ -237,7 +237,9 @@ runs at once act once. `waiting` is its projection of the ticket's blocked-by li
 wait, written and never read as state; a ticket with neither is left alone. Any other open issue labelled
 `waiting`, a spec included, has `waiting` taken off once every blocker closed. When an issue closes,
 the pass in its repo also reconciles each issue it blocked in another repo, so a cross-repo wait
-ends on the close; the 15-minute clock is the last resort. The builder and the scheduler park
+ends on the close; the 15-minute clock is the last resort. The **machine clock**, a
+`bin/ship-clock` timer, dispatches it and the runner watch every 15 minutes; a cron run after one
+in the last 20 minutes does nothing. The builder and the scheduler park
 through `park`, which links each blocker, then marks `waiting`; a link already there counts as linked.
 _Avoid_: sweeper, poller
 

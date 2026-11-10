@@ -258,3 +258,25 @@ describe("bin/reconcile closes a checking ticket whose PR merged without GitHub 
     expect(calls().filter((args) => args[0] === "issue" && args[1] === "close").map((args) => args.slice(0, 5))).toEqual([["issue", "close", "2426", "--repo", HERE]]);
   });
 });
+
+describe("bin/reconcile on GitHub's schedule is the backstop for the PC's machine clock, since GitHub fires a schedule hours late (#1695)", () => {
+  const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
+  const waking = { tickets: [{ number: 931, labels: ["ticket", "waiting"], blockers: [{ repo: ELSEWHERE, number: 7, state: "closed" as const }] }], scheduled: true };
+
+  it("reconciles nothing when the machine clock's dispatched Reconcile ran in the last 20 minutes, a newer rerun dispatch beside it", () => {
+    const { reconcile, calls } = linking({ ...waking, dispatched: [{ created_at: minutesAgo(1), display_title: "Rerun of run 5" }, { created_at: minutesAgo(9), display_title: "Reconcile" }] });
+
+    const result = reconcile();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("already ran");
+    expect(edits(calls())).toEqual([]);
+  });
+
+  it("still reconciles when the newest dispatched Reconcile is older than 20 minutes, as when the PC is off", () => {
+    const { reconcile, calls } = linking({ ...waking, dispatched: [{ created_at: minutesAgo(40), display_title: "Reconcile" }] });
+
+    expect(reconcile().status).toBe(0);
+    expect(edits(calls())).toEqual([["issue", "edit", "931", "--repo", HERE, "--remove-label", "waiting"]]);
+  });
+});

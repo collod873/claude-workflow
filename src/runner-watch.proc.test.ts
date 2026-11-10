@@ -1,5 +1,8 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { watching } from "./scenarios.ts";
+import { parse } from "yaml";
+import { holds, watching } from "./scenarios.ts";
 
 const pc = (status: string) => ({ status, labels: ["self-hosted", "pc"] });
 
@@ -84,5 +87,38 @@ describe("bin/runner-watch keeps private repos off paid minutes without Collin w
 
     expect(watch.run("minutes", "collod873", "2026-10-29")).toEqual({ status: 0, stdout: "", stderr: "" });
     expect(watch.issue()).toBeUndefined();
+  });
+});
+
+describe("bin/runner-watch flip on GitHub's schedule is the backstop for the PC's machine clock, since GitHub fires a schedule hours late (#1695)", () => {
+  const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
+  const offline = [{ name: "collod873/chess", runners: [pc("offline")], variable: "pc" }];
+
+  it("flips nothing when the machine clock's dispatched runner watch ran in the last 20 minutes", () => {
+    const watch = watching(offline, [], {}, { scheduled: true, dispatched: [{ created_at: minutesAgo(9), display_title: "Runner watch" }] });
+
+    const ran = watch.run("flip");
+
+    expect(ran.status, ran.stderr).toBe(0);
+    expect(ran.stdout).toContain("already ran");
+    expect(watch.variable("collod873/chess")).toBe("pc");
+  });
+
+  it("still flips when the newest dispatched runner watch is older than 20 minutes, as when the PC is off", () => {
+    const watch = watching(offline, [], {}, { scheduled: true, dispatched: [{ created_at: minutesAgo(40), display_title: "Runner watch" }] });
+
+    expect(watch.run("flip").status).toBe(0);
+    expect(watch.variable("collod873/chess")).toBe("ubuntu-latest");
+  });
+
+  it("files the day's minutes on its daily schedule and a dispatch by hand, never on the machine clock's dispatch every 15 minutes", () => {
+    const steps = (parse(readFileSync(join(import.meta.dirname, "..", ".github", "workflows", "runner-watch.yml"), "utf8")) as { jobs: { watch: { steps: { if?: string; run?: string }[] } } }).jobs.watch.steps;
+    const minutesIf = steps.find(({ run }) => run?.includes("runner-watch minutes"))?.if ?? "";
+    const files = (fired: { event: string; inputs?: Record<string, string>; schedule?: string }) => holds(minutesIf, fired);
+
+    expect(holds(minutesIf.replace("github.event.schedule", "'17 6 * * *'"), { event: "schedule" })).toBe(true);
+    expect(holds(minutesIf.replace("github.event.schedule", "'*/15 * * * *'"), { event: "schedule" })).toBe(false);
+    expect(files({ event: "workflow_dispatch", inputs: { minutes: "true" } })).toBe(true);
+    expect(files({ event: "workflow_dispatch", inputs: { minutes: "false" } })).toBe(false);
   });
 });

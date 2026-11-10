@@ -1,7 +1,8 @@
 import { admission } from "./admit.ts";
+import { DISPATCH_COVERS_MINUTES, dispatchedSince, onGitHubSchedule } from "./dispatched.ts";
 import { type ChecksWait, checkedRuns, checksWaitOf, waitedLine, waitedOf, waitsLine } from "./checks-wait.ts";
 import { type Blocker, blockersOf, dependentsOf } from "./issue-links.ts";
-import { ghRead, Stopped, ticketBranch } from "./post.ts";
+import { ENROLLED_CALLER, ghRead, Stopped, ticketBranch } from "./post.ts";
 import { BUILDING, CHECKING, HELD, OWNER, STUCK, TICKET, WAITING } from "./spelled.ts";
 
 export interface IssueState {
@@ -192,9 +193,23 @@ function statesOf(repo: string): IssueState[] {
   }).concat(waitingStatesOf(repo, listed));
 }
 
+function machineClockCovers(repo: string): string | undefined {
+  try {
+    return dispatchedSince(repo, ENROLLED_CALLER, DISPATCH_COVERS_MINUTES, "Reconcile");
+  } catch (error) {
+    console.error(`reconcile: ${error instanceof Error ? error.message : String(error)}, so this scheduled pass reconciles anyway`);
+    return undefined;
+  }
+}
+
 if (import.meta.main) {
   const [named, closed] = process.argv.slice(2);
   const repo = named ?? ghRead(["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"], "the repo could not be read, so nothing is reconciled");
+  const covered = onGitHubSchedule() ? machineClockCovers(repo) : undefined;
+  if (covered !== undefined) {
+    console.log(`reconcile: the machine clock's dispatched Reconcile already ran at ${covered}, so GitHub's late schedule run reconciles nothing`);
+    process.exit(0);
+  }
   try {
     const dependents = closed === undefined ? [] : dependentStatesOf(repo, Number(closed));
     for (const action of reconcile([...statesOf(repo), ...dependents])) apply(action);

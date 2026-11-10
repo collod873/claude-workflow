@@ -31,7 +31,7 @@ const LANDED = "2026-11-04T04:53:38Z";
 
 const NO_CHECKS: Checks = { lastBefore: 0, ledgered: [] };
 
-export function linking({ checks = NO_CHECKS, landed = LANDED, tickets = [] as Ticket[], waiting = [] as Ticket[], closing = undefined as { number: number; blocking: Dependent[] } | undefined, alreadyLinked = false, parentless = false, refused = false, liveTitles = [] as string[], issues = {} } = {}) {
+export function linking({ checks = NO_CHECKS, landed = LANDED, tickets = [] as Ticket[], waiting = [] as Ticket[], closing = undefined as { number: number; blocking: Dependent[] } | undefined, alreadyLinked = false, parentless = false, refused = false, liveTitles = [] as string[], issues = {}, scheduled = false, dispatched = [] as { created_at: string; display_title: string }[] } = {}) {
   const root = scratch("reconcile-");
   const { setup, calls } = ghArgv(join(root, "gh-argv"));
   const listed = (issues: Ticket[]) => JSON.stringify(issues.map(({ number, labels, body = "" }) => ({ number, body, labels: labels.map((name) => ({ name })) })));
@@ -40,6 +40,7 @@ export function linking({ checks = NO_CHECKS, landed = LANDED, tickets = [] as T
   plant(root, "blocking.json", JSON.stringify([(closing?.blocking ?? []).map(({ repo, number, labels, body = "" }) => ({ ...linked({ repo, number, state: "open" }), body, labels: labels.map((name) => ({ name })) }))]));
   plant(root, "live", liveTitles.join("\n"));
   plant(root, "ledgered", checks.ledgered.join("\n"));
+  plant(root, "dispatched.json", JSON.stringify({ workflow_runs: dispatched }));
   const cases = [...tickets, ...waiting, ...(closing?.blocking ?? [])].flatMap(({ number, labels, blockers, timeline = [], body = "" }) => {
     plant(root, `blockers-${number}.json`, JSON.stringify([blockers.map(linked)]));
     plant(root, `body-${number}`, body);
@@ -57,6 +58,7 @@ export function linking({ checks = NO_CHECKS, landed = LANDED, tickets = [] as T
       setup,
       'case "$*" in',
       ...(refused ? ['  *"--method POST"*) printf \'gh: Forbidden (HTTP 403)\\n\' >&2; exit 1 ;;', '  *"issue edit"*) printf \'gh: Forbidden (HTTP 403)\\n\' >&2; exit 1 ;;'] : []),
+      `  *"/actions/workflows/machine.yml/runs?event=workflow_dispatch"*) cat "${join(root, "dispatched.json")}" ;;`,
       `  *"/commits/"*"/pulls"*) printf '${landed}\\n' ;;`,
       `  *"/actions/runs?created=<${LANDED}&per_page=1"*) printf '${checks.lastBefore}\\n' ;;`,
       `  *"/actions/artifacts?name=check-logs&"*) cat "${join(root, "ledgered")}" ;;`,
@@ -75,7 +77,7 @@ export function linking({ checks = NO_CHECKS, landed = LANDED, tickets = [] as T
       "",
     ].join("\n"),
   );
-  const env = { PATH: `${join(root, "bin")}:${process.env.PATH}`, GH_RETRY_SECONDS: "0" };
+  const env = { PATH: `${join(root, "bin")}:${process.env.PATH}`, GH_RETRY_SECONDS: "0", GITHUB_EVENT_NAME: scheduled ? "schedule" : "" };
   return {
     calls,
     reconcile: (...args: string[]) => execute(join(BIN, "reconcile"), root, env, ["--repo", HERE, ...args]),

@@ -5,6 +5,10 @@ name: Runner watch
     - cron: "*/15 * * * *"
     - cron: "17 6 * * *"
   workflow_dispatch:
+    inputs:
+      minutes:
+        type: boolean
+        default: true
 
 permissions: {}
 
@@ -35,7 +39,7 @@ jobs:
         shell: bash
         run: bin/runner-watch flip | tee -a "$GITHUB_STEP_SUMMARY"
 
-      - if: github.event.schedule == '17 6 * * *' || github.event_name == 'workflow_dispatch'
+      - if: github.event.schedule == '17 6 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.minutes != 'false')
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           BILLING_TOKEN: ${{ secrets.BILLING_PAT }}
