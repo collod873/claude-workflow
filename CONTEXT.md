@@ -67,6 +67,16 @@ labels nothing marks (ADR-0012). This repo's `Enrol` workflow re-enrols them on 
 `bin/enrol <repo>` sets what is missing and names what it could not set.
 _Avoid_: onboard, install, register
 
+**Ship**:
+`bin/ship`, run from an app's checkout, moves that app's production by pushing a commit to the
+`release` branch its host deploys, once a full check that CI's own dispatch ran has passed on that
+commit; a push or pull request run never counts. A red check, or one still waiting at its deadline,
+holds the ship and files a "Ship held" bug. Each app carries a **ship caller file**: its once-a-day
+cron and `health-url`, calling `ship.yml` here (`.github/ship-caller.yml` is its text). `bin/enrol`
+does not write it, since both differ per app and not every enrolled repo deploys from a release
+branch. No app keeps a copy of the code (ADR-0004).
+_Avoid_: deploy script, promote, release job
+
 **PC runner**:
 A `pc` runner, where a private repo's `CI_RUNNER` sends every job but reconcile's, else GitHub's. Reconcile's
 job takes the repo's one `pc-reconcile` runner, so a wake never queues behind a builder; its concurrency group

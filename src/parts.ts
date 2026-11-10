@@ -75,6 +75,12 @@ const FIXED: Part[] = [
     lines: 6,
   },
   {
+    name: "bin/ship",
+    file: "bin/ship",
+    stops: "https://github.com/collod873/Mezzanine/issues/2495",
+    printsData: true,
+  },
+  {
     name: "bin/runner",
     file: "bin/runner",
     stops: "https://github.com/collod873/claude-workflow/issues/1257",

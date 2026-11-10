@@ -1,0 +1,66 @@
+name: Ship
+
+"on":
+  workflow_call:
+    inputs:
+      health-url:
+        description: The app's /api/health URL, which reports the commit it serves as build
+        required: true
+        type: string
+      service:
+        description: The Railway service whose deploy log a failed deploy's issue names
+        required: false
+        type: string
+        default: web
+
+permissions: {}
+
+jobs:
+  ship:
+    concurrency:
+      group: ship
+      cancel-in-progress: false
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 90
+    permissions:
+      contents: write
+      actions: write
+      statuses: read
+      issues: write
+    env:
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - id: machine
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/claude-workflow
+          ref: main
+          token: ${{ steps.app.outputs.token }}
+          persist-credentials: false
+
+      - id: checkout
+        uses: actions/checkout@v4
+        with:
+          path: tree
+          fetch-depth: 0
+
+      - id: setup-node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - id: ship
+        working-directory: tree
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHIP_HEALTH_URL: ${{ inputs.health-url }}
+          SHIP_SERVICE: ${{ inputs.service }}
+          SHIP_CHECK_DEADLINE_SECONDS: "2400"
+        run: '"$GITHUB_WORKSPACE/bin/ship" --daily'

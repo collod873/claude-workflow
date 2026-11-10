@@ -1,0 +1,18 @@
+name: Ship
+
+"on":
+  schedule:
+    - cron: "0 8 * * *"
+  workflow_dispatch:
+
+jobs:
+  ship:
+    uses: collod873/claude-workflow/.github/workflows/ship.yml@main
+    secrets: inherit
+    permissions:
+      contents: write
+      actions: write
+      statuses: read
+      issues: write
+    with:
+      health-url: https://app.getmezzanine.com/api/health
