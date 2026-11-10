@@ -352,16 +352,20 @@ export const postRefusals = (posting: Posting): string[] => prepared(posting).re
 
 const LABEL_MISSING = /(?:could not add label|failed to update \S+): '[^']+' not found/;
 
-function labelsCreated(args: string[], gh: Gh): void {
+export const ALREADY_EXISTS = /already exists/i;
+
+function labelsCreated(args: string[], gh: Gh): string[] {
   const named = new Set(args.filter((_, at) => args[at - 1] === "--label" || args[at - 1] === "--add-label"));
-  for (const { name, colour, description } of LABELS.filter(({ name }) => named.has(name))) gh(["label", "create", name, "--color", colour, "--description", description]);
+  return LABELS.filter(({ name }) => named.has(name))
+    .flatMap(({ name, colour, description }) => written(gh, ["label", "create", name, "--color", colour, "--description", description]).refusals)
+    .filter((refusal) => !ALREADY_EXISTS.test(refusal));
 }
 
 function createdLabelled(args: string[], gh: Gh): { refusals: string[]; said: string } {
   const created = written(gh, args);
   if (!created.refusals.some((refusal) => LABEL_MISSING.test(refusal))) return created;
-  labelsCreated(args, gh);
-  return written(gh, args);
+  const unmade = labelsCreated(args, gh);
+  return unmade.length > 0 ? { refusals: unmade, said: "" } : written(gh, args);
 }
 
 export function post(posting: Posting, gh: Gh): { refusals: string[]; said: string } {

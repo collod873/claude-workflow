@@ -4,7 +4,7 @@ import { basename, join } from "node:path";
 import { isMap, isScalar, type Node, parse, parseDocument } from "yaml";
 import { appJwt } from "./app-token.ts";
 import { FAST_CHECK, FULL_CHECK } from "./checks.ts";
-import { ENROLLED_CALLER } from "./post.ts";
+import { ALREADY_EXISTS, ENROLLED_CALLER } from "./post.ts";
 import { LABELS, MACHINE } from "./spelled.ts";
 
 const ROOT = join(import.meta.dirname, "..");
@@ -284,7 +284,7 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
     try {
       gh(["api", "-X", "POST", `repos/${repo}/git/refs`, "-f", `ref=refs/heads/${BRANCH}`, "-f", `sha=${main}`]);
     } catch (error) {
-      if (!(error instanceof Refused && /already exists/i.test(error.message))) throw error;
+      if (!(error instanceof Refused && ALREADY_EXISTS.test(error.message))) throw error;
       gh(["api", "-X", "PATCH", `repos/${repo}/git/refs/heads/${BRANCH}`, "-f", `sha=${main}`, "-F", "force=true"]);
     }
   };

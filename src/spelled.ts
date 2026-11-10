@@ -24,7 +24,7 @@ export const LABELS = [
   { name: "waiting", kind: "parked", colour: "fbca04", description: "Waits for other tickets, or another repo's full checks, before it builds" },
   { name: "paused", kind: "held", colour: "0e8a16", description: "The owner paused it; the machine never adds or removes it" },
   { name: "stuck", kind: "held", colour: "b60205", description: "The machine stopped and needs the owner; the machine never removes it" },
-  { name: "sonnet-builders", kind: "trial", colour: "5319e7", description: "The first spec filed in a repo since builders could run on Sonnet: its slices build on Sonnet, to judge Sonnet builders against Opus" },
+  { name: "sonnet-builders", kind: "trial", colour: "5319e7", description: "A repo's first spec since the Sonnet builders trial began: its slices build on Sonnet, not Opus" },
   { name: "try-", kind: "try", colour: "f66a0a", description: "A builder run after a failure, or a spec's fix pass" },
 ] as const satisfies readonly Label[];
 
