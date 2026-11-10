@@ -17,8 +17,8 @@ const OUT_OF_USAGE = /usage limit reached|hit your (\w+ )?limit|limit reached|ou
 
 const accounts = () => [...new Set(ACCOUNT_SECRETS.map((name) => process.env[name] ?? "").filter((token) => token !== ""))];
 let account = 0;
-const accountEnv = (): Record<string, string> => {
-  const token = accounts()[account];
+const accountEnv = (on: number): Record<string, string> => {
+  const token = accounts()[on];
   return token === undefined ? {} : { CLAUDE_CODE_OAUTH_TOKEN: token };
 };
 const outOfUsage = ({ status, stderr, stdout }: Exited & { stdout: string }) => status !== 0 && OUT_OF_USAGE.test(`${stderr}\n${resultIn(stdout)}`);
@@ -164,19 +164,21 @@ function spending(hire: Hire): Spending {
   const handed = `${hire.transcript.replace(/\.jsonl$/, "")}.handed.md`;
   rmSync(handed, { force: true });
   function* attempt(input: string, resume?: string, kept = writeUpKept, waitFirst = false): Generator<Launch, Exited & { stdout: string }, Exited> {
-    let got = yield* launch(input, resume, kept, waitFirst);
-    while (outOfUsage(got) && account < accounts().length - 1) {
-      account++;
-      got = yield* launch(input, resume, kept, false);
+    let on = account;
+    let got = yield* launch(input, resume, kept, waitFirst, on);
+    while (outOfUsage(got) && Math.max(account, on + 1) < accounts().length) {
+      account = Math.max(account, on + 1);
+      on = account;
+      got = yield* launch(input, resume, kept, false, on);
     }
     return got;
   }
-  function* launch(input: string, resume: string | undefined, kept: number, waitFirst: boolean): Generator<Launch, Exited & { stdout: string }, Exited> {
+  function* launch(input: string, resume: string | undefined, kept: number, waitFirst: boolean, on: number): Generator<Launch, Exited & { stdout: string }, Exited> {
     appendFileSync(handed, `${input}\n\n`);
     const from = existsSync(hire.transcript) ? statSync(hire.transcript).size : 0;
     const streamed = openSync(hire.transcript, "a");
     const started = Date.now();
-    const exited = yield { argv: capped([...argv, ...(resume === undefined ? [] : ["--resume", resume]), ...STREAM], minutes, budget - used - kept), input, streamed, waitFirst, env: accountEnv() };
+    const exited = yield { argv: capped([...argv, ...(resume === undefined ? [] : ["--resume", resume]), ...STREAM], minutes, budget - used - kept), input, streamed, waitFirst, env: accountEnv(on) };
     used += Date.now() - started;
     closeSync(streamed);
     return { ...exited, stdout: readFileSync(hire.transcript).subarray(from).toString("utf8") };
