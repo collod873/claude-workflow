@@ -151,6 +151,7 @@ jobs:
         if: steps.probe.outputs.due == 'true'
         env:
           FRESH: ${{ inputs.fresh }}
+          CHECK_CALLER: ${{ github.event_name == 'workflow_dispatch' && 'ship' || '' }}
         run: ~/bin/check --full --publish $([ "$FRESH" = true ] && echo --fresh)
 
       - name: Keep this run's check row for the transcripts (agent-hooks#258)
