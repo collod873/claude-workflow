@@ -58,7 +58,7 @@ const machine = (dir: string): string[] =>
 const rows = () => heard(spelled("labels")).lines.map((line) => line.split("\t"));
 
 describe("bin/spelled prints the machine's labels from one typed set, so no script types its own list (#1100)", () => {
-  it("prints every machine label once as name, kind, colour and description, tab separated", () => {
+  it("prints every machine label once as name, kind, colour and a description GitHub takes, 100 characters at most, tab separated (#1686)", () => {
     const printed = rows();
 
     expect(printed.map(([name, kind]) => `${name} ${kind}`)).toEqual(LABELS.map(({ name, kind }) => `${name} ${kind}`));
@@ -66,6 +66,7 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
       expect(row, row.join(" ")).toHaveLength(4);
       expect(row[2], row.join(" ")).toMatch(/^[0-9a-f]{6}$/);
       expect(row[3], row.join(" ")).not.toBe("");
+      expect(row[3]?.length, row.join(" ")).toBeLessThanOrEqual(100);
     }
   });
 

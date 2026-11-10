@@ -9,6 +9,8 @@ const PAGE = "[sessions](https://github.com/collod873/transcripts/blob/main/issu
 const LOOKS = `case "$*" in\n  *"issue list"*) printf '[]\\n'; exit 0 ;;\n  *contents/*) printf 'gh: Not Found (HTTP 404)\\n' >&2; exit 1 ;;\nesac\n`;
 const RECORDS = `${LOOKS}python3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "$@" >>"$PWD/gh-argv"\nprintf '%s\\n' ${URL}\n`;
 const REFUSES = `${LOOKS}printf 'nothing filed\\n' >&2\nexit 1\n`;
+const LACKS_TRIAL = (created: string) =>
+  `case "$*" in\n  *"issue list"*"sonnet-builders"*) printf '0\\n'; exit 0 ;;\n  "label create sonnet-builders "*) ${created}; exit 0 ;;\n  "label create "*) exit 0 ;;\n  *"issue create"*"--label sonnet-builders"*) [ -e "$PWD/trial-label" ] || { printf "could not add label: 'sonnet-builders' not found\\n" >&2; exit 1; } ;;\nesac\n${RECORDS}`;
 const UNSTAMPED = "file-issue: CLAUDE_CODE_SESSION_ID is empty, so the filing names no session\n";
 const USAGE = "file-issue: usage: file-issue idea|look-into|build|bug|spec|owner --title <title> --body-file <path> [--new] [--repo <owner/name>] [--blocked-by <[owner/name]#number>]...\n       file-issue add <number> --body-file <path> [--repo <owner/name>]";
 const WAITS = "this repo is not enrolled: a build, bug or spec waits for a session to take it.\n";
@@ -148,6 +150,19 @@ describe("bin/file-issue files a ticket, or refuses it and files nothing (#662)"
     expect(later.run(["spec", "--title", "A spec", "--body-file", "body.md"]).status).toBe(0);
     expect(filedAs(ghSaw(first.repo)).labels).toEqual(["spec", "sonnet-builders"]);
     expect(filedAs(ghSaw(later.repo)).labels).toEqual(["spec"]);
+  });
+
+  it("creates sonnet-builders in a repo that lacks it, its description inside GitHub's 100 characters, so a repo's first spec files (#1686)", () => {
+    const { repo, run } = filing({ gh: LACKS_TRIAL(`[ \${#7} -le 100 ] || { printf 'HTTP 422: description is too long (maximum is 100 characters)\\n' >&2; exit 1; }; : >"$PWD/trial-label"`), body: wellFormedSpec });
+
+    expect(run(["spec", "--title", "A spec", "--body-file", "body.md"])).toMatchObject({ status: 0, stdout: `${URL}\n` });
+    expect(filedAs(ghSaw(repo)).labels).toEqual(["spec", "sonnet-builders"]);
+  });
+
+  it("names GitHub's refusal of a missing label's creation, not only that the label is missing (#1686)", () => {
+    const { run } = filing({ gh: LACKS_TRIAL(`printf 'HTTP 403: Resource not accessible by integration\\n' >&2; exit 1`), body: wellFormedSpec });
+
+    expect(run(["spec", "--title", "A spec", "--body-file", "body.md"])).toMatchObject({ status: 1, stderr: expect.stringContaining("HTTP 403: Resource not accessible by integration") });
   });
 
   it("files a spec, stamping the session id under '## Problem Statement' as a ticket's is stamped under '## Why', and links its sessions page beside it", () => {
