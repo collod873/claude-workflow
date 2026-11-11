@@ -91,11 +91,13 @@ describe("a repo's tickets build through one caller file that holds only trigger
     expect(jobsRun({ event: "pull_request", action: "closed", merged: true }, "specs.yml")).toEqual([]);
   });
 
-  it("reconciles every 15 minutes and on every machine event, one pass at a time per repo, so a ticket whose blockers closed builds whatever order the events came in (#1606)", () => {
+  it("reconciles every 15 minutes, on the machine clock's dispatch that names no rerun or probe, and on every machine event, one pass at a time per repo, so a ticket whose blockers closed builds whatever order the events came in (#1606)", () => {
     expect(caller().on.schedule).toEqual([{ cron: "*/15 * * * *" }]);
     expect(jobsRun({ event: "schedule" })).toEqual(["reconcile"]);
     expect(jobsRun({ event: "schedule" }, "specs.yml")).toEqual([]);
-    expect(jobsRun({ event: "workflow_dispatch", inputs: { ticket: "1" } }).includes("reconcile")).toBe(false);
+    expect(jobsRun({ event: "workflow_dispatch", inputs: { ticket: "0" } })).toEqual(["reconcile"]);
+    expect(jobsRun({ event: "workflow_dispatch", inputs: { ticket: "1", rerun: "77" } }).includes("reconcile")).toBe(false);
+    expect(jobsRun({ event: "workflow_dispatch", inputs: { ticket: "0", probe: "ls" } }).includes("reconcile")).toBe(false);
     const { concurrency, steps } = workflowJobs("tickets.yml").reconcile ?? { steps: [] };
     expect(concurrency).toEqual({ group: "reconcile-${{ github.repository }}", "cancel-in-progress": false });
     expect(steps.some(({ run }) => /bin\/reconcile\b/.test(run ?? ""))).toBe(true);

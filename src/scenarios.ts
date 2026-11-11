@@ -1047,10 +1047,11 @@ export const pcRunner = (name: string, status = "online", busy = false, labels =
 
 type WatchedRepo = { name: string; private?: boolean; runners?: { status: string; labels: string[] }[]; variable?: string };
 
-export function watching(repos: WatchedRepo[], billing: object[] = [], runs: Record<string, ({ jobs: object[] } & Record<string, unknown>)[]> = {}) {
+export function watching(repos: WatchedRepo[], billing: object[] = [], runs: Record<string, ({ jobs: object[] } & Record<string, unknown>)[]> = {}, { scheduled = false, dispatched = [] as { created_at: string; display_title: string }[] } = {}) {
   const root = scratch("runner-watch-");
   const at = (name: string) => join(root, name);
-  const lines = ['case "$*" in', `  "api installation/repositories --paginate --jq .repositories[].full_name") printf '%s\\n' ${repos.map(({ name }) => `'${name}'`).join(" ")} ;;`];
+  writeFileSync(at("dispatched.json"), JSON.stringify({ workflow_runs: dispatched }));
+  const lines = ['case "$*" in', `  "api installation/repositories --paginate --jq .repositories[].full_name") printf '%s\\n' ${repos.map(({ name }) => `'${name}'`).join(" ")} ;;`, `  "api repos/collod873/claude-workflow/actions/workflows/runner-watch.yml/runs?event=workflow_dispatch&per_page=20") cat "${at("dispatched.json")}" ;;`];
   for (const repo of repos) {
     const file = at(`var-${repo.name.replace("/", "-")}`);
     if (repo.variable !== undefined) writeFileSync(file, repo.variable);
@@ -1076,7 +1077,7 @@ export function watching(repos: WatchedRepo[], billing: object[] = [], runs: Rec
     "esac",
   );
   script(at("bin/gh"), `BILLING_TOKEN_SEEN=\${GH_TOKEN:-}\n${lines.join("\n")}\n`);
-  const env = { PATH: `${at("bin")}:${process.env.PATH ?? ""}`, GH_TOKEN: "app", BILLING_TOKEN: "pat", GH_REPO: "collod873/claude-workflow" };
+  const env = { PATH: `${at("bin")}:${process.env.PATH ?? ""}`, GH_TOKEN: "app", BILLING_TOKEN: "pat", GH_REPO: "collod873/claude-workflow", GITHUB_EVENT_NAME: scheduled ? "schedule" : "" };
   return {
     refuse: (repo: string) => {
       const gh = readFileSync(at("bin/gh"), "utf8").replace(" ;;\n", ` '${repo}' ;;\n  "api repos/${repo}/actions/runners") printf 'HTTP 403\\n' >&2; exit 1 ;;\n`);
@@ -1270,16 +1271,18 @@ export function shipping() {
 
 export const callerWith = (cron: string) => ["on:", "  schedule:", `    - cron: "${cron}"`, "  workflow_dispatch:", "jobs:", "  ship:", "    uses: collod873/claude-workflow/.github/workflows/ship.yml@main", ""].join("\n");
 
-export function clocking(callers: Record<string, string>) {
+export function clocking(callers: Record<string, string>, enrolled: string[] = []) {
   const root = scratch("ship-clock-");
   const callersDir = join(root, "callers");
-  for (const [repo, text] of Object.entries(callers)) plant(root, `callers/${repo.replace("/", "-")}`, text);
+  for (const [repo, text] of Object.entries(callers)) plant(root, `callers/${repo.replace("/", "-")}-ship.yml`, text);
+  for (const repo of enrolled) plant(root, `callers/${repo.replace("/", "-")}-machine.yml`, readFileSync(join(SRC, "..", ".github", "caller.yml"), "utf8"));
   script(
     join(root, "bin", "gh"),
     [
-      `if [[ $1 == repo ]]; then printf '%s\\n' ${["collod873/Lumaria", ...Object.keys(callers)].join(" ")}; exit 0; fi`,
+      `if [[ $1 == repo ]]; then printf '%s\\n' ${[...new Set(["collod873/Lumaria", ...Object.keys(callers), ...enrolled])].join(" ")}; exit 0; fi`,
       'repo=$(printf %s "$2" | sed -E "s#^repos/([^/]+/[^/]+)/contents/.*#\\1#")',
-      `file="${callersDir}/\${repo/\\//-}"`,
+      'workflow=${2##*/}',
+      `file="${callersDir}/\${repo/\\//-}-\${workflow}"`,
       '[[ -f $file ]] || { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }',
       'cat "$file"',
       "",

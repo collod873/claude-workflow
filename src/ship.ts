@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { dispatchedSince, onGitHubSchedule } from "./dispatched.ts";
 
 const MIGRATIONS = "src/server/db/migrations/*.sql";
 const HOLD = "refs/tags/release-hold";
@@ -271,13 +272,14 @@ async function moveRelease(): Promise<{ release: string; moved: boolean }> {
 }
 
 function dispatchedShipCovers(): string | undefined {
-  const done = run("gh", ["api", `repos/{owner}/{repo}/actions/workflows/${SHIP_WORKFLOW}/runs?event=workflow_dispatch&per_page=1`]);
-  if (done.status !== 0) die(`✗ ship: could not read this app's dispatched Ship runs.\n${done.stderr.trim()}`);
-  const newest = (JSON.parse(done.stdout) as { workflow_runs: { created_at: string }[] }).workflow_runs[0]?.created_at;
-  return newest !== undefined && Date.now() - Date.parse(newest) < DISPATCH_COVERS_HOURS * 3_600_000 ? newest : undefined;
+  try {
+    return dispatchedSince("{owner}/{repo}", SHIP_WORKFLOW, DISPATCH_COVERS_HOURS * 60);
+  } catch (error) {
+    die(`✗ ship: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
-if (daily && process.env.GITHUB_EVENT_NAME === "schedule") {
+if (daily && onGitHubSchedule()) {
   const covered = dispatchedShipCovers();
   if (covered !== undefined) {
     console.log(`A dispatched Ship already ran at ${covered}, so GitHub's late schedule run ships nothing.`);

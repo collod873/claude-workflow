@@ -1,5 +1,7 @@
 import { execFile, spawnSync } from "node:child_process";
 import { promisify } from "node:util";
+import { DISPATCH_COVERS_MINUTES, dispatchedSince, onGitHubSchedule } from "./dispatched.ts";
+import { MACHINE_REPO } from "./post.ts";
 import { LABEL as PC, RECONCILE_LABEL, VARIABLE } from "./runner.ts";
 
 const GITHUB_HOSTED = "ubuntu-latest";
@@ -32,7 +34,21 @@ function variableOf(repo: string): string | undefined {
   throw new Error(`gh variable get ${VARIABLE} -R ${repo}: ${ran.stderr.trim()}`);
 }
 
+function machineClockCovers(): string | undefined {
+  try {
+    return dispatchedSince(MACHINE_REPO, "runner-watch.yml", DISPATCH_COVERS_MINUTES);
+  } catch (error) {
+    console.error(`runner-watch: ${error instanceof Error ? error.message : String(error)}, so this scheduled pass flips anyway`);
+    return undefined;
+  }
+}
+
 function flip(): void {
+  const covered = onGitHubSchedule() ? machineClockCovers() : undefined;
+  if (covered !== undefined) {
+    console.log(`runner-watch: the machine clock's dispatched runner watch already ran at ${covered}, so GitHub's late schedule run flips nothing`);
+    return;
+  }
   const repos = gh(["api", "installation/repositories", "--paginate", "--jq", ".repositories[].full_name"]).split("\n").filter(Boolean);
   const failed: string[] = [];
   for (const repo of repos) {

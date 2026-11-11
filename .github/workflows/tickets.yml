@@ -400,7 +400,7 @@ jobs:
           token: ${{ steps.app.outputs.token }}
 
   reconcile:
-    if: ${{ github.event_name != 'workflow_dispatch' }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (!github.event.inputs.rerun && !github.event.inputs.probe) }}
     concurrency:
       group: reconcile-${{ github.repository }}
       cancel-in-progress: false
