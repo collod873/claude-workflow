@@ -85,7 +85,7 @@ describe("bin/done-check files each sentence that did not hold as a bug and clos
 });
 
 describe("bin/done-check closes the spec when every sentence held or was put to the owner, saying what the owner could try (#1213)", () => {
-  it("closes the spec, its comment listing what the owner could try for each sentence put to the owner, each filed as an owner step (#1626), and marks no asked", () => {
+  it("closes the spec, its comment alone listing what the owner could try for each sentence put to the owner, filing nothing for them, and marks no asked", () => {
     const tries = [
       { sentence: 1, outcome: "held", tried: "saw the first wave under it" },
       { sentence: 2, outcome: "owner", tried: "open a ticket it filed on your phone" },
@@ -98,8 +98,8 @@ describe("bin/done-check closes the spec when every sentence held or was put to 
     const [comment = ""] = checked.comments();
     expect(comment).toContain(`2. **Put to the owner**: ${SENTENCES[1]}\n   open a ticket it filed on your phone`);
     expect(comment).toContain(`3. **Put to the owner**: ${SENTENCES[2]}\n   watch the next red run re-run`);
-    expect(comment).toContain("Closed with sentence 2, 3 put to the owner, each filed as an owner step saying what the owner could try; the owner files a miss he sees live as a new ticket.");
-    expect(checked.created().map((args) => args[args.indexOf("--title") + 1])).toEqual([`Try on the running app: ${SENTENCES[1]}`, `Try on the running app: ${SENTENCES[2]}`]);
+    expect(comment).toContain("Closed with sentence 2, 3 put to the owner, said here and filed nowhere; the owner files a miss he sees live as a new ticket.");
+    expect(checked.created()).toEqual([]);
     expect(checked.marked()).toEqual(["974 checking"]);
   });
 });

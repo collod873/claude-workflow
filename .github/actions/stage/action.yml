@@ -32,7 +32,6 @@ runs:
         fi
 
     - id: skills-app
-      continue-on-error: true
       uses: actions/create-github-app-token@v3
       with:
         client-id: ${{ inputs.client-id }}
@@ -46,12 +45,18 @@ runs:
         SKILLS_TOKEN: ${{ steps.skills-app.outputs.token }}
       run: |
         skills="$RUNNER_TEMP/agent-skills"
-        if git clone --quiet --depth 1 "https://x-access-token:$SKILLS_TOKEN@github.com/$GITHUB_REPOSITORY_OWNER/agent-skills" "$skills"; then
-          rm -rf "$skills/.git"
-          printf '%s\n' "$skills/bin" >>"$GITHUB_PATH"
-        else
-          printf '::warning::%s\n' "A job cannot fetch the owner's skills, so its stages run without the owner's skills and bin tools"
-        fi
+        attempt=1
+        until git clone --quiet --depth 1 "https://x-access-token:$SKILLS_TOKEN@github.com/$GITHUB_REPOSITORY_OWNER/agent-skills" "$skills"; do
+          rm -rf "$skills"
+          if [ "$attempt" -ge 3 ]; then
+            printf '%s\n' "A job cannot fetch the owner's skills after 3 tries, and a stage without his skills and bin tools hands the owner what it could not try" >&2
+            exit 1
+          fi
+          sleep $((attempt * 5))
+          attempt=$((attempt + 1))
+        done
+        rm -rf "$skills/.git"
+        printf '%s\n' "$skills/bin" >>"$GITHUB_PATH"
 
     - id: config-app
       uses: actions/create-github-app-token@v3

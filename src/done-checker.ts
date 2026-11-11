@@ -2,7 +2,7 @@ import { postedUnderOrigin } from "./issue-links.ts";
 import { join } from "node:path";
 import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
 import { capped, listedCapped, NO_EM_DASH, onDisk, tailOf } from "./brief.ts";
-import { askedOn, authoredOn, commentOnTicket, followUpBody, fromHere, fromLine, FOREIGN, gh, mark, OWNER, post, readOrStop, STUCK, stoodDown, type Asked } from "./post.ts";
+import { askedOn, authoredOn, commentOnTicket, followUpBody, fromHere, fromLine, FOREIGN, gh, mark, OWNER, readOrStop, STUCK, stoodDown, type Asked } from "./post.ts";
 import { freePort, isolated, reapedUnder } from "./slice-builder.ts";
 import { CONTRACT, type Hire, hireIn, opened, setupRefusal, setupRefusedIn, type Spent, unsetKeys } from "./stage.ts";
 import { CHECKING, SPEC } from "./spelled.ts";
@@ -90,7 +90,7 @@ const posted = (tried: [number, string, Try][], after: string[] = []) =>
   [DONE_CHECK_HEADING, "", ...tried.map(([number, sentence, one]) => `${number}. **${OUTCOMES[one.outcome]}**: ${sentence}\n   ${one.tried}`), ...after.flatMap((line) => ["", line]), ""].join("\n");
 
 const listing = (missed: [number, string, Try][], between: string) => missed.map(([number]) => number).join(between);
-const closedWith = (putToOwner: [number, string, Try][]) => `Closed with sentence ${listing(putToOwner, ", ")} put to the owner, each filed as an owner step saying what the owner could try; the owner files a miss he sees live as a new ticket.`;
+const closedWith = (putToOwner: [number, string, Try][]) => `Closed with sentence ${listing(putToOwner, ", ")} put to the owner, said here and filed nowhere; the owner files a miss he sees live as a new ticket.`;
 
 const SAID = (issue: string) => `done-check: #${issue}`;
 const HIRE: Omit<Hire, "transcript"> = { name: "done checker", model: "opus", effort: "medium", answers: TRIES, writeUp: { minutes: WRITE_UP_MINUTES, told: OUT_OF_TIME } };
@@ -175,9 +175,6 @@ export interface Checked {
   missed: number[];
 }
 
-const ownerStepText = (issue: string, sentence: string, one: Try) =>
-  ["## Why", "", fromLine(fromHere(issue), "done-check"), "", `The done check of #${issue} could not try "${sentence}" itself, since only the owner can.`, "", `> ${one.tried}`, ""].join("\n");
-
 export function postedOn(issue: string, listed: Sentence[], tries: Try[], fixed: number[]): Checked | Stop {
   const found = settled(paired(listed, tries).map(([number, sentence, given]): [number, string, Try] => {
     const one = given ?? { sentence: number, outcome: "missed", tried: "the done check gave no try for it" };
@@ -187,13 +184,9 @@ export function postedOn(issue: string, listed: Sentence[], tries: Try[], fixed:
   const putToOwner = found.filter(([, , one]) => one.outcome === "owner");
   const comment = commented(issue, posted(found, missed.length > 0 || putToOwner.length === 0 ? [] : [closedWith(putToOwner)]));
   if (typeof comment === "string") return comment;
-  const filed = [
-    ...missed.map(([number, sentence, one]) => ({ number, ...postedUnderOrigin({ kind: "bug", title: quoted(sentence), text: followUpBody([fromLine(fromHere(issue), "done-check"), "", `> ${one.tried}`], [sentence]) }, gh) })),
-    ...putToOwner.map(([number, sentence, one]) => ({ number, ...post({ kind: "owner", title: `Try on the running app: ${sentence}`, text: ownerStepText(issue, sentence, one) }, gh) })),
-  ];
-  const refused = filed.find(({ refusals }) => refusals.length > 0);
-  if (refused !== undefined) return calledOwner(issue, "unrecorded", `sentence ${refused.number} would not file: ${quoted(refused.refusals[0] ?? "")}`, `Its comment is posted: file each miss as a bug and each sentence put to the owner as an owner step, and close #${issue} by hand.`);
-  const bugs = filed.slice(0, missed.length);
+  const bugs = missed.map(([number, sentence, one]) => ({ number, ...postedUnderOrigin({ kind: "bug", title: quoted(sentence), text: followUpBody([fromLine(fromHere(issue), "done-check"), "", `> ${one.tried}`], [sentence]) }, gh) }));
+  const refused = bugs.find(({ refusals }) => refusals.length > 0);
+  if (refused !== undefined) return calledOwner(issue, "unrecorded", `sentence ${refused.number} would not file: ${quoted(refused.refusals[0] ?? "")}`, `Its comment is posted: file each miss as a bug, and close #${issue} by hand.`);
   const held =
     missed.length > 0
       ? `did not hold sentence ${listing(missed, ", ")}, filed as ${bugs.map(({ said }) => said.trim()).join(", ")},`
