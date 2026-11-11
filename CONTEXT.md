@@ -186,8 +186,9 @@ The stage that tries each of a spec's "I'll know it works when I can ___" senten
 its numbered user stories, on its integration branch before it lands, in its own tree, port and Postgres, beside the full check. It
 refuses nothing: its misses go once to the last reviewer, a fixed one lands with the spec, and the
 rest are filed as bugs quoting what it saw once the spec has landed, when it also comments and
-closes the spec. A sentence put to the owner holds nothing open: it is filed as an owner step saying
-what the owner could try, and a miss seen live later is a new ticket.
+closes the spec. A sentence put to the owner holds nothing open and files nothing: the closing
+comment says what the owner could try, and a miss seen live later is a new ticket. An owner step is
+missing work, never a try (agent-hooks#83).
 _Avoid_: audit, acceptance test, verification
 
 **Integration branch**:

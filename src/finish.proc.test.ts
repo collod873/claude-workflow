@@ -218,14 +218,13 @@ describe("bin/finish tries the spec's sentences on its integration branch before
     expect(finished.handed()).toHaveLength(2);
   });
 
-  it("files each sentence put to the owner as an owner step once the spec lands, saying what the owner could try", () => {
+  it("files nothing for a sentence put to the owner once the spec lands, its closing comment alone saying what the owner could try (agent-hooks#83)", () => {
     const finished = finishing({ sentences: SENTENCES, tries: [{ sentence: 1, outcome: "held", tried: "saw it" }, { sentence: 2, outcome: "owner", tried: "needs a text to a real phone: text the shop number and see the reply" }] });
 
     expect(finished.run().status).toBe(0);
-    const [step] = createdIssues(finished.calls());
-    expect(step?.labels).toContain("owner-step");
-    expect(step?.title).toContain(SENTENCES[1]);
-    expect(step?.body).toContain("text the shop number and see the reply");
+    expect(createdIssues(finished.calls())).toEqual([]);
+    const [comment = ""] = bodies(finished.calls()).filter((body) => body.startsWith("## Done check"));
+    expect(comment).toContain(`2. **Put to the owner**: ${SENTENCES[1]}\n   needs a text to a real phone: text the shop number and see the reply`);
     expect(finished.calls().filter((args) => args[1] === "close")).toEqual([["issue", "close", "974", "--reason", "completed"]]);
   });
 

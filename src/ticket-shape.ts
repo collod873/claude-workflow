@@ -45,7 +45,7 @@ export const BUILD_SHAPE = [
 export const BUG_SHAPE = `a fault still standing; its ## ${NAMED.why} quotes the evidence, such as a log line, a failing test or error text. Adds ## ${NAMED.doneWhen}: what working looks like. In an enrolled repo it builds the moment it is filed.`;
 export const IDEA_SHAPE = "something Collin floated, kept for him to decide.";
 export const LOOK_INTO_SHAPE = "a question Collin wants answered before deciding; a research agent answers it.";
-export const OWNER_SHAPE = `a step only Collin can take before shipped work can run, such as a dashboard setting, a key or a sign-in. Its ## ${NAMED.why} says what to do, where, and what waits on it.`;
+export const OWNER_SHAPE = `a step only Collin can take before shipped work can run, such as a dashboard setting, a key or a sign-in, never a hand test or a look after deploy. Its ## ${NAMED.why} says what to do, where, and what waits on it.`;
 export const SPEC_SHAPE = [
   "a big job Collin asked for: his own words state its point, you write the spec from them, and the machine cuts it into slices and lands it as one.",
   `  ## ${NAMED.problem} quoting the owner, ## ${NAMED.solution}, ## ${NAMED.stories} numbered, ## ${NAMED.decisions} naming no file paths,`,
