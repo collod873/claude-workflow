@@ -61,7 +61,7 @@ _Avoid_: self-checkout, same tree
 Give a repo everything its tickets need to build: in one PR, the caller file,
 the **check-job rule** (`check.yml`'s `check` job `if` and `name`; enrol's own PR still runs it) on
 that CI's, and no pre-push, since `bin/land` is the gate; the App's reach, client id and keys, every label the
-machine spells, auto-merge, and main taking changes only by a PR passing `check`, here too. It drops the
+machine spells, auto-merge, and main taking changes only by a PR passing `check`. It drops the
 `tickets / review` and `review` checks no job posts, and the `queued`, `resolving` and `landing`
 labels nothing marks (ADR-0012). This repo's `Enrol` workflow re-enrols them on each push to main.
 `bin/enrol <repo>` sets what is missing and names what it could not set.
@@ -75,8 +75,7 @@ holds the ship and files a "Ship held" bug. Each app carries a **ship caller fil
 cron and `health-url`, calling `ship.yml` here (`.github/ship-caller.yml` is its text). The **ship
 clock**, `bin/ship-clock` run once on the PC, turns each caller's cron into a systemd timer that
 dispatches it on time, caught up at boot when the PC was off: GitHub fires this account's schedules
-hours late (Mezzanine's 08:00 ship started 14:26 to 17:51, and 15-minute crons fire every 4 to 7
-hours), so a late GitHub run ships only when no dispatched Ship ran in the last 20 hours. `bin/enrol`
+hours late (Mezzanine's 08:00 ship started 14:26 to 17:51), so a late GitHub run ships only when no dispatched Ship ran in the last 20 hours. `bin/enrol`
 does not write it, since both differ per app and not every enrolled repo deploys from a release
 branch. No app keeps a copy of the code (ADR-0004).
 _Avoid_: deploy script, promote, release job
@@ -84,7 +83,7 @@ _Avoid_: deploy script, promote, release job
 **PC runner**:
 A `pc` runner, where a private repo's `CI_RUNNER` sends every job but reconcile's, else GitHub's. Reconcile's
 job takes the repo's one `pc-reconcile` runner, so a wake never queues behind a builder; its concurrency group
-runs one pass at a time, so one is enough, and on GitHub's a pass of seconds per ticket event bills a minute. It caps neither memory
+runs one pass at a time, and on GitHub's a pass of seconds per ticket event bills a minute. It caps neither memory
 nor CPU: its full checks take turns in the machine's one check slot, as the owner's do, so each gets
 every core. While a repo's PC runners are all offline, the runner watch sets its `CI_RUNNER` to
 `ubuntu-latest`, and back to `pc` once one returns; an unset `CI_RUNNER` is a hand switch it leaves.
@@ -126,8 +125,8 @@ check puts a sentence resting on one to the owner.
 _Avoid_: env, credentials, test keys
 
 **Meter**:
-A rule that reports in the PR body what it would have refused, and refuses nothing. None is added any
-more, and none runs (ADR-0006, ADR-0012).
+A rule that reports in the PR body what it would have refused, and refuses nothing. None runs any more
+(ADR-0006, ADR-0012).
 _Avoid_: soft gate, warning, advisory check
 
 **Refusal**:
@@ -225,7 +224,7 @@ The unit the machine builds: an issue labelled `ticket` carrying `## Why` in the
 `## Done when`, what done looks like in its own repo, and any `## Follow-ups`, one line per other
 repo, filed there as a build by whoever lands it. Adding `ticket` to an open issue builds,
 reviews and lands it in one run (ADR-0012), as `spec` slices and `research` answers; opening starts
-nothing, and taking `ticket` off and adding it back builds it again. Its PR merging closes it.
+nothing, and taking `ticket` off and adding it back builds it again.
 A build reads its ticket's labels again at admit, so one queued behind the build before it stands
 down once that build marked it `waiting`, `paused` or `stuck`, or closed it.
 _Avoid_: issue, sub-issue, card, item
@@ -237,9 +236,8 @@ runs at once act once. `waiting` is its projection of the ticket's blocked-by li
 wait, written and never read as state; a ticket with neither is left alone. Any other open issue labelled
 `waiting`, a spec included, has `waiting` taken off once every blocker closed. When an issue closes,
 the pass in its repo also reconciles each issue it blocked in another repo, so a cross-repo wait
-ends on the close; the 15-minute clock is the last resort. The **machine clock**, a
-`bin/ship-clock` timer, dispatches it and the runner watch every 15 minutes; a cron run after one
-in the last 20 minutes does nothing. The builder and the scheduler park
+ends on the close. The last resort is the **machine clock**, a `bin/ship-clock` timer dispatching
+it and the runner watch every 15 minutes; a cron run within 20 minutes of one does nothing. The builder and the scheduler park
 through `park`, which links each blocker, then marks `waiting`; a link already there counts as linked.
 _Avoid_: sweeper, poller
 
