@@ -111,10 +111,10 @@ const triggers = (on: unknown): string[] => (typeof on === "string" ? [on] : Arr
 
 const sourceOf = (text: string, path: string[]) => {
   const node = parseDocument(text).getIn(path, true) as Node | undefined;
-  if (node?.range === undefined || node.range === null) throw new Error(`no ${path.join(".")} in this repo's Check`);
+  if (node?.range === undefined || node.range === null) throw new Error(`no ${path.join(".")} in agent-hooks shared/ci.yml`);
   return { value: String(node.toJSON()), text: text.slice(node.range[0], node.range[1]) };
 };
-const CHECK_TEXT = readFileSync(join(ROOT, WORKFLOWS, "check.yml"), "utf8");
+const CHECK_TEXT = readFileSync(join(ROOT, "shared", "ci.yml"), "utf8");
 const RULE = { name: sourceOf(CHECK_TEXT, ["jobs", CHECK, "name"]), if: sourceOf(CHECK_TEXT, ["jobs", CHECK, "if"]) };
 
 const isCheck = (id: string, job: Job | null) => id === CHECK || job?.name === CHECK || job?.name === RULE.name.value;

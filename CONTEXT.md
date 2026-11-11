@@ -59,7 +59,7 @@ _Avoid_: self-checkout, same tree
 
 **Enrol**:
 Give a repo everything its tickets need to build: in one PR, the caller file,
-the **check-job rule** (`check.yml`'s `check` job `if` and `name`; enrol's own PR still runs it) on
+the **check-job rule** (`shared/ci.yml`'s `check` job `if` and `name`; enrol's own PR still runs it) on
 that CI's, and no pre-push, since `bin/land` is the gate; the App's reach, client id and keys, every label the
 machine spells, auto-merge, and main taking changes only by a PR passing `check`. It drops the
 `tickets / review` and `review` checks no job posts, and the `queued`, `resolving` and `landing`

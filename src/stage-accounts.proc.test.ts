@@ -33,6 +33,7 @@ describe("account failover across hires running at once", () => {
     chmodSync(join(root, "bin", "claude"), 0o755);
     vi.stubEnv("PATH", `${join(root, "bin")}:${process.env.PATH}`);
     vi.stubEnv("STAGE_MINUTES", undefined);
+    vi.stubEnv("TREE_PATH", undefined);
     vi.stubEnv("ACCOUNTS_TRIED", join(root, "accounts"));
     vi.stubEnv("CLAUDE_CODE_OAUTH_TOKEN", SPENT);
     vi.stubEnv("CLAUDE_CODE_OAUTH_TOKEN_2", FRESH);
