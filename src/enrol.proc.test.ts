@@ -372,6 +372,10 @@ describe("bin/enrol says what a repo needs before its jobs suit this PC's runner
 const LANDED = { rules: HELD_FOR_CHECK, allow_auto_merge: true };
 const TWO_JOBS = CI_ON_EVERY_PR.replace("jobs:\n", "jobs:\n  lint: # kept as written\n    runs-on: 'ubuntu-latest'\n    steps:\n      - run: npm run lint\n");
 const RULED_TWO_JOBS = TWO_JOBS.replace("  check:\n", ["  check:", ...checkJobRule(), ""].join("\n"));
+const SHIP_GATED_RULE = [
+  `    name: "\${{ github.event_name == 'push' && vars.CI_SHIP_GATED == 'true' && 'not run on a push: this repo ships through a gate, which runs the whole check (CI_SHIP_GATED)' || startsWith(github.head_ref, 'land/') && 'judged on the owner PC before the push (ADR-0008)' || github.event.sender.login == 'collod873-machine[bot]' && !startsWith(github.head_ref, 'enrol/') && 'judged by the machine before its push (#1345)' || 'check' }}"`,
+  `    if: \${{ !startsWith(github.head_ref, 'land/') && !(github.event.sender.login == 'collod873-machine[bot]' && !startsWith(github.head_ref, 'enrol/')) && !(github.event_name == 'push' && vars.CI_SHIP_GATED == 'true') }}`,
+];
 const EARLIER_RULE = checkJobRule().map((line) => line.replaceAll(" && !startsWith(github.head_ref, 'enrol/')", ""));
 const EARLIER_TWO_JOBS = TWO_JOBS.replace("  check:\n", ["  check:", ...EARLIER_RULE, ""].join("\n"));
 
@@ -399,6 +403,14 @@ describe("bin/enrol brings an enrolled repo's CI check job to this repo's and ta
 
   it("leaves a repo alone whose main already carries the caller file and the rule, and no pre-push", () => {
     const { run, held } = enrolling(bare({ ...LANDED, files: { ".github/workflows/ci.yml": RULED_TWO_JOBS, ".github/workflows/machine.yml": CALLER.replace("[CI]", "[Gate]") } }), {});
+
+    expect(run(REPO, "--caller")).toEqual({ status: 0, stdout: `enrol: ${REPO} was already enrolled, nothing changed\n`, stderr: "" });
+    expect(held().writes).toEqual([]);
+  });
+
+  it("leaves alone a CI whose check job carries agent-hooks shared/ci.yml's CI_SHIP_GATED gate, so enrol and lint-sync stop undoing each other (Mezzanine#2825)", () => {
+    const shipGated = TWO_JOBS.replace("  check:\n", ["  check:", ...SHIP_GATED_RULE, ""].join("\n"));
+    const { run, held } = enrolling(bare({ ...LANDED, files: { ".github/workflows/ci.yml": shipGated, ".github/workflows/machine.yml": CALLER.replace("[CI]", "[Gate]") } }), {});
 
     expect(run(REPO, "--caller")).toEqual({ status: 0, stdout: `enrol: ${REPO} was already enrolled, nothing changed\n`, stderr: "" });
     expect(held().writes).toEqual([]);
