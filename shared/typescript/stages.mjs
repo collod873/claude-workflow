@@ -71,39 +71,133 @@ function receiptTree(root) {
   return trees.get(root);
 }
 
-function unfollowed(_key, value) {
-  return value !== null && typeof value === "object" && value.followsImports === true
-    ? undefined
-    : value;
+function sharedPart(_key, value) {
+  if (value === null || typeof value !== "object") return value;
+  if (value.followsImports === true) return undefined;
+  if (value.namesInFile === true) return { ...value, names: undefined };
+  return value;
+}
+
+function sharedConfig(config) {
+  const plain = JSON.parse(JSON.stringify(config));
+  if (plain.settings === undefined) return plain;
+  return { ...plain, settings: JSON.parse(JSON.stringify(plain.settings, sharedPart)) };
+}
+
+const IDENTIFIER = /^[A-Za-z_$][\w$]*$/;
+const IDENTIFIER_WORD = /[A-Za-z_$][\w$]*/g;
+
+function checkedNames(path, names) {
+  const pairs = Array.isArray(names)
+    ? names.map((name) => [name, null])
+    : names !== null && typeof names === "object"
+      ? Object.entries(names)
+      : undefined;
+  if (
+    pairs === undefined ||
+    pairs.some(([name]) => typeof name !== "string" || !IDENTIFIER.test(name))
+  )
+    throw new Error(
+      `${path}.names must be a list of identifiers or a map of identifiers to values`,
+    );
+  return new Map(pairs);
+}
+
+function namesHeldIn(named, text) {
+  const words = new Set(text.match(IDENTIFIER_WORD));
+  return named.map(([path, names]) => [
+    path,
+    [...names].filter(([name]) => words.has(name)).sort(([a], [b]) => (a < b ? -1 : 1)),
+  ]);
+}
+
+const FULL_CLOSURE = Symbol("full closure");
+
+function markedSettings(value, path, found) {
+  if (value === null || typeof value !== "object") return found;
+  if (value.followsImports === true || value.namesInFile === true) return [...found, [path, value]];
+  return Object.entries(value).reduce(
+    (inner, [key, child]) => markedSettings(child, `${path}.${key}`, inner),
+    found,
+  );
+}
+
+function checkedReads(path, reads) {
+  if (reads === null || typeof reads !== "object" || Array.isArray(reads))
+    throw new Error(`${path}.reads must be an object naming clientBoundary or content`);
+  const { clientBoundary = false, content = [], ...unknown } = reads;
+  const misnamed = Object.keys(unknown);
+  if (misnamed.length > 0)
+    throw new Error(
+      `${path}.reads names ${misnamed.join(", ")}; a followsImports setting reads clientBoundary or content`,
+    );
+  if (typeof clientBoundary !== "boolean")
+    throw new Error(`${path}.reads.clientBoundary must be true or false`);
+  if (!Array.isArray(content) || content.some((pattern) => typeof pattern !== "string"))
+    throw new Error(`${path}.reads.content must be a list of file patterns`);
+  return { clientBoundary, content };
+}
+
+function importedReads(marked) {
+  const followed = marked.filter(([, setting]) => setting.followsImports === true);
+  if (followed.length === 0) return undefined;
+  if (followed.some(([, setting]) => setting.reads === undefined)) return FULL_CLOSURE;
+  const each = followed.map(([path, setting]) => checkedReads(path, setting.reads));
+  return {
+    clientBoundary: each.some((reads) => reads.clientBoundary),
+    content: [...new Set(each.flatMap((reads) => reads.content))].sort(),
+  };
+}
+
+function settingFacts(marked) {
+  return {
+    reads: importedReads(marked),
+    named: marked
+      .filter(([, setting]) => setting.followsImports !== true)
+      .map(([path, setting]) => [path, checkedNames(path, setting.names)]),
+  };
 }
 
 async function lintDigests(root, engine, candidates) {
-  const { listed, toolchainDigest, closureOf, contentOf } = await receiptTree(root);
+  const { listed, toolchainDigest, closureOf, contentOf, readsClosureOf } = await receiptTree(root);
   const configs = listed.filter((file) => ESLINT_CONFIG.test(file));
   const shared = sha(
     JSON.stringify([toolchainDigest, configs.map((file) => [file, closureOf(file)])]),
   );
-  const configDigests = new Map();
+  const configFacts = new Map();
   const digested = await Promise.all(
     candidates.map(async (file) => {
       const path = join(root, file);
       if (await engine.isPathIgnored(path)) return undefined;
       const config = await engine.calculateConfigForFile(path);
-      if (!configDigests.has(config))
-        configDigests.set(
-          config,
-          sha(JSON.stringify(config, unfollowed).replaceAll(root, "<root>")),
-        );
-      const content = closureOf(file) ?? contentOf.get(file) ?? sha(readFileSync(path, "utf8"));
-      return [file, sha(JSON.stringify([shared, configDigests.get(config), file, content]))];
+      if (!configFacts.has(config))
+        configFacts.set(config, {
+          digest: sha(JSON.stringify(sharedConfig(config)).replaceAll(root, "<root>")),
+          ...settingFacts(markedSettings(config.settings, "settings", [])),
+        });
+      const { digest, reads, named } = configFacts.get(config);
+      const text =
+        contentOf.has(file) && named.length === 0 ? undefined : readFileSync(path, "utf8");
+      const own = contentOf.get(file) ?? sha(text);
+      const imported =
+        reads === undefined
+          ? null
+          : reads === FULL_CLOSURE
+            ? closureOf(file)
+            : readsClosureOf(reads)(file);
+      const parts = [shared, digest, file, own, imported ?? null];
+      if (named.length > 0) parts.push(namesHeldIn(named, text));
+      return [file, sha(JSON.stringify(parts))];
     }),
   );
   return new Map(digested.filter(Boolean));
 }
 
-async function receiptedRun(handed, digests, run) {
+async function receiptedRun(handed, stage, digests, run) {
   const held = new Set(readFileSync(join(handed, "held"), "utf8").split("\n"));
   const due = [...digests].filter(([, digest]) => !held.has(digest));
+  const tally = { stage, ran: due.length, covered: digests.size - due.length };
+  appendFileSync(join(handed, "linted"), `${JSON.stringify(tally)}\n`);
   if (due.length === 0) return true;
   const clean = await run(due.map(([file]) => file));
   if (clean)
@@ -119,7 +213,7 @@ export async function eslintStage(root, files, eslint) {
     LINTABLE.test(file),
   );
   const digests = await lintDigests(root, engine, candidates);
-  return receiptedRun(handed, digests, (due) => eslintRun(root, due));
+  return receiptedRun(handed, "eslint", digests, (due) => eslintRun(root, due));
 }
 
 const OXLINT_CONFIG = join(dirname(fileURLToPath(import.meta.url)), "oxlint.json");
@@ -154,7 +248,9 @@ export async function oxlintStage(root, files, eslint) {
   );
   const typed = candidates.filter((_, index) => !ignored[index]);
   if (!handed) return oxlintRun(root, typed);
-  return receiptedRun(handed, await typeAwareDigests(root, typed), (due) => oxlintRun(root, due));
+  return receiptedRun(handed, "oxlint", await typeAwareDigests(root, typed), (due) =>
+    oxlintRun(root, due),
+  );
 }
 
 export function refused(layer, refusals, verb = "lint") {
