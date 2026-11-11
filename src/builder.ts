@@ -301,7 +301,13 @@ function waitedOn(ticket: string, body: string, answer: Answer): Round {
   const on = [...new Set((answer.on ?? []).map(String))].filter((number) => number !== ticket);
   const wait = answer.checks === undefined ? undefined : answeredWait(answer.checks);
   if (on.length === 0 && wait === undefined) return { red: "Your `waits` answer was refused: it names the open tickets this one depends on as `on`, or the full checks it measures as `checks`." };
-  const closed = on.filter((number) => ghRead(["issue", "view", number, "--json", "state", "--jq", ".state"], `the state of #${number} could not be read, ${NOTHING_MARKED}`) !== "OPEN");
+  const read = on.map((number) => {
+    const [state = "", url = ""] = ghRead(["issue", "view", number, "--json", "state,url", "--jq", '.state + " " + .url'], `the state of #${number} could not be read, ${NOTHING_MARKED}`).split(" ");
+    return { number, open: state === "OPEN", pull: url.includes("/pull/") };
+  });
+  const pulls = read.filter(({ pull }) => pull).map(({ number }) => `#${number}`);
+  if (pulls.length > 0) return { red: `Your \`waits\` answer was refused: ${pulls.join(", ")} is a pull request, and a ticket waits only on issues. Wait for it here (\`gh pr checks <n> --watch\`) and build once it merges, or name the issue it closes.` };
+  const closed = read.filter(({ open }) => !open).map(({ number }) => number);
   if (closed.length > 0) return { red: `Your \`waits\` answer was refused: ${closed.map((number) => `#${number}`).join(", ")} is closed already, so build on what it left.` };
   const ran = wait === undefined ? undefined : checksRefusal(wait);
   if (ran !== undefined) return { red: ran };

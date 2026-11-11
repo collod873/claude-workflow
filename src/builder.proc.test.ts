@@ -353,6 +353,14 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
     expect(handed().join("\n")).toContain("#1590 is closed already");
   });
 
+  it("refuses a `waits` answer on a pull request, which no issue can be blocked by, where Mezzanine#2808 went stuck waiting on kit-sync PR #2807", () => {
+    const { run, marked, handed } = fixing({ answer: { outcome: "waits", on: [2807], reason: "it needs the kit sync in PR #2807" }, claude: SPENT_BY_THE_THIRD_ROUND, stageMinutes: "1" });
+
+    run();
+    expect(marked()).not.toContain("811 waiting");
+    expect(handed().join("\n")).toContain("#2807 is a pull request");
+  });
+
   it("hands a `code` answer on a branch with no commits past main back as nothing to land (#1195)", () => {
     const { run, landed, handed } = fixing({ claude: `${SPENT_BY_THE_THIRD_ROUND}git reset --quiet --hard main\n`, stageMinutes: "1" });
 
