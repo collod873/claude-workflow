@@ -9,12 +9,11 @@ import { capped, LIST_CAP, listedCapped, NO_EM_DASH, onDisk, TAIL_CAP, tailOf, T
 import { PUBLISHED_CHECK } from "./checks.ts";
 import { type ChecksWait, checkedRuns, checksNamed, waitedLine, withWait } from "./checks-wait.ts";
 import { park, postedUnderOrigin } from "./issue-links.ts";
-import { commentOnTicket, commentsRead, FOREIGN, fromLine, followUpBody, gh, ghRead, git, gitRead, MACHINE_REPO, mark, NOTHING_MARKED, OWNER, postRefusals, readOrStop, rewriteTicket, FILED_IN, Stopped, ticketBranch, unread } from "./post.ts";
+import { calledOwner, type Caller, commentOnTicket, commentsRead, endedRed, FOREIGN, fromLine, followUpBody, gh, ghRead, git, gitRead, MACHINE_REPO, mark, NOTHING_MARKED, OWNER, postRefusals, readOrStop, rewriteTicket, FILED_IN, Stopped, ticketBranch, unread } from "./post.ts";
 import { reviewedAndLanded } from "./reviewer.ts";
-import { calledOwner, committed, commitlinted, CONTRACT, FILED, opened, setupRefusal, type Spent, treePathed, unsetKeys } from "./stage.ts";
+import { committed, commitlinted, CONTRACT, FILED, opened, setupRefusal, type Spent, treePathed, unsetKeys } from "./stage.ts";
 import { dedashed } from "./em-dash.ts";
 import { BUILDING, SPEC, TICKET } from "./spelled.ts";
-import { exitFor, stopsOf } from "./stops.ts";
 import { doneWhen, quoted, specProblem, specRefusals, why } from "./ticket-shape.ts";
 
 export const OWNED_ANSWER = {
@@ -73,7 +72,7 @@ interface Answer {
   tickets?: Piece[];
 }
 
-const stoppedAt = stopsOf({ unadmitted: "Build refused: the ticket's checks would run as shell with the App's token" });
+const builderCaller = (ticket: string): Caller => ({ who: "the builder", said: `fix: #${ticket} needs the owner` });
 
 export const builderOf = (ticket: string) => `The builder of #${ticket}`;
 const rewroteAsSpec = (ticket: string) => `${builderOf(ticket)} rewrote it as a spec, which the slicer cuts:`;
@@ -256,8 +255,8 @@ function keepSession(ticket: string, session: string | undefined): void {
 function closedAs(ticket: string, reason: "completed" | "not planned", said: string): number {
   const posted = commentOnTicket(ticket, said, gh);
   const [refusal] = posted.refusals;
-  if (refusal !== undefined) return calledOwner(ticket, "builder", `its closing reason was refused: ${quoted(refusal)}`);
-  if (gh(["issue", "close", ticket, "--reason", reason]).status !== 0) return calledOwner(ticket, "builder", "it ruled the ticket closed and the ticket would not close");
+  if (refusal !== undefined) return calledOwner(ticket, builderCaller(ticket), `its closing reason was refused: ${quoted(refusal)}`);
+  if (gh(["issue", "close", ticket, "--reason", reason]).status !== 0) return calledOwner(ticket, builderCaller(ticket), "it ruled the ticket closed and the ticket would not close");
   console.log(`fix: #${ticket} closed ${reason}: ${said}`);
   return 0;
 }
@@ -272,12 +271,12 @@ function rewrittenAsSpec(ticket: string, body: string, answer: Answer): Round {
   const refused = specRefused(body, answer.body);
   if (refused.length > 0 || answer.body === undefined) return { red: ["Your spec was refused, and nothing changed:", ...refused.map((refusal) => `- ${refusal}`)].join("\n") };
   const written = gh(["issue", "edit", ticket, "--body", dedashed(answer.body)]);
-  if (written.status !== 0) return { ended: calledOwner(ticket, "builder", `its spec would not save: ${quoted((written.stderr || written.stdout).trim().split("\n")[0] ?? "")}`) };
+  if (written.status !== 0) return { ended: calledOwner(ticket, builderCaller(ticket), `its spec would not save: ${quoted((written.stderr || written.stdout).trim().split("\n")[0] ?? "")}`) };
   commentOnTicket(ticket, `${rewroteAsSpec(ticket)} ${answer.reason}`, gh);
   git(["reset", "--quiet", "--hard", "origin/main"]);
   git(["push", "--quiet", "origin", "--delete", ticketBranch(ticket)]);
   const relabelled = gh(["issue", "edit", ticket, "--remove-label", TICKET, "--remove-label", BUILDING, "--add-label", SPEC]);
-  if (relabelled.status !== 0) return { ended: calledOwner(ticket, "builder", `its spec saved and its labels would not swap to \`${SPEC}\`: ${quoted((relabelled.stderr || relabelled.stdout).trim().split("\n")[0] ?? "")}`) };
+  if (relabelled.status !== 0) return { ended: calledOwner(ticket, builderCaller(ticket), `its spec saved and its labels would not swap to \`${SPEC}\`: ${quoted((relabelled.stderr || relabelled.stdout).trim().split("\n")[0] ?? "")}`) };
   console.log(`fix: #${ticket} rewritten as a spec`);
   return { ended: 0 };
 }
@@ -315,7 +314,7 @@ function waitedOn(ticket: string, body: string, answer: Answer): Round {
   const named = [...on.map((number) => `${here}#${number}`), ...(wait === undefined ? [] : [checksNamed(wait)])];
   if (wait !== undefined) {
     const written = gh(["issue", "edit", ticket, "--body", withWait(body, wait)]);
-    if (written.status !== 0) return { ended: calledOwner(ticket, "builder", `the full checks it waits on would not save to the ticket: ${quoted((written.stderr || written.stdout).trim().split("\n")[0] ?? "")}`) };
+    if (written.status !== 0) return { ended: calledOwner(ticket, builderCaller(ticket), `the full checks it waits on would not save to the ticket: ${quoted((written.stderr || written.stdout).trim().split("\n")[0] ?? "")}`) };
   }
   park(ticket, on.map((number) => ({ repo: here, number: Number(number) })));
   commentOnTicket(ticket, `${parkedBehind(ticket, named)} ${answer.reason}`, gh);
@@ -364,7 +363,7 @@ function filedToWaitOn(ticket: string, answer: Answer, { repo, filedFrom, unfile
   const handed = named.length > 0 && (answer.tickets ?? []).length === 0 ? { filed: [], all: true } : filedInRepo(repo, filedFrom(`${process.env.GH_REPO ?? ""}#${ticket}`), answer.outcome, unfiled, answer.tickets);
   if ("red" in handed) return { red: handed.red };
   const { filed, all } = handed;
-  if (!all) return { ended: calledOwner(ticket, "builder", `it filed ${filed.length} of ${answer.tickets?.length ?? 0} tickets in ${repo} to wait on`) };
+  if (!all) return { ended: calledOwner(ticket, builderCaller(ticket), `it filed ${filed.length} of ${answer.tickets?.length ?? 0} tickets in ${repo} to wait on`) };
   const numbers = [...named, ...filed.map((url) => Number(FILED_NUMBER.exec(url)?.[1]))];
   park(ticket, numbers.map((number) => ({ repo, number })));
   commentOnTicket(ticket, `${parkedBehind(ticket, numbers.map((number) => `${repo}#${number}`))} ${answer.reason}`, gh);
@@ -407,7 +406,7 @@ function outcomeOf(ticket: string, body: string, answer: Answer | undefined, mai
   if (answer === undefined) return { red: "You gave no outcome. Answer one." };
   if (answer.outcome === "done") return { ended: closedAs(ticket, "completed", `${builderOf(ticket)} found its work already on main and closed it: ${answer.reason}`) };
   if (answer.outcome === "close") return { ended: closedAs(ticket, "not planned", `@${OWNER} the builder closed #${ticket} unbuilt and kept its branch: ${answer.reason}`) };
-  if (answer.outcome === "stuck") return { ended: calledOwner(ticket, "builder", answer.reason) };
+  if (answer.outcome === "stuck") return { ended: calledOwner(ticket, builderCaller(ticket), answer.reason) };
   if (answer.outcome === "spec") return rewrittenAsSpec(ticket, body, answer);
   if (answer.outcome === "waits") return waitedOn(ticket, body, answer);
   if (answer.outcome === "machine" && FOREIGN) return filedForMachine(ticket, answer);
@@ -450,13 +449,13 @@ function judged(ticket: string): Round {
   if (lost.length > 0) return { red: `You answered \`code\`, and a rebase drops merge commits, so these past main would land without the work they carry beyond a clean merge of their parents: ${lost.join(", ")}. Leave that work out of merge commits and add its work as plain commits on top of main, such as with \`git reset --soft origin/main\` and a fresh commit.` };
   const red = checkedBy(PUBLISHED_CHECK);
   const fault = machineFault(red);
-  if (fault !== undefined) return { ended: calledOwner(ticket, "builder", fault) };
+  if (fault !== undefined) return { ended: calledOwner(ticket, builderCaller(ticket), fault) };
   return red === undefined ? {} : { red: repaired(red) };
 }
 
 function owned(ticket: string, body: string) {
   const refused = admission(ticket, NOTHING_MARKED);
-  if (refused !== undefined) return stoppedAt("unadmitted", `fix: ${doesNotBuild(ticket, refused)}`);
+  if (refused !== undefined) return endedRed(`fix: ${doesNotBuild(ticket, refused)}`);
   return { carrying: { onTicket: commentsRead(ticket, `the comments on #${ticket} could not be read, ${NOTHING_MARKED}`, gh), alongside: onTheSameFiles(ticket, body) } };
 }
 
@@ -465,16 +464,15 @@ function ownTicket(ticket: string, app: AppKey | undefined): number {
     stage: "fix",
     issue: ticket,
     state: BUILDING,
-    stoppedAt,
     hire: { name: "builder", model: "opus", effort: "medium", answers: ANSWER },
     ready: (asked) => owned(ticket, asked.body),
   });
-  if (typeof owning !== "object") return exitFor(owning);
+  if (typeof owning !== "object") return owning;
   const { asked, spend } = owning;
   let body = asked.body;
   let session = savedSession(ticket);
   const unready = setupRefusal(onDisk(join(process.cwd(), CONTRACT)) ?? "");
-  if (unready !== undefined) return calledOwner(ticket, "builder", `its tree's setup failed: ${quoted(unready)}`);
+  if (unready !== undefined) return calledOwner(ticket, builderCaller(ticket), `its tree's setup failed: ${quoted(unready)}`);
   const opening = handedOn({
     ticket,
     body,
@@ -492,7 +490,7 @@ function ownTicket(ticket: string, app: AppKey | undefined): number {
     session = spent.session ?? session;
     keepSession(ticket, session);
     if (app !== undefined) freshAppToken(app, gh, `so the build of #${ticket} is not acted on`);
-    if (spent.refusal !== undefined) return calledOwner(ticket, "builder", spent.refusal);
+    if (spent.refusal !== undefined) return calledOwner(ticket, builderCaller(ticket), spent.refusal);
     const answer = spent.answer as Answer | undefined;
     if (answer?.outcome === "code") said.push(answer.reason);
     const round = outcomeOf(ticket, body, answer, mainBefore);
@@ -512,5 +510,5 @@ if (import.meta.main) {
   if (ticket === undefined) throw new Error("no ticket number in the arguments");
   const app = takenAppKey();
   const ended = readOrStop("fix", () => ownTicket(ticket, app));
-  process.exit(typeof ended === "number" ? ended : 1);
+  process.exit(ended);
 }

@@ -5,26 +5,14 @@ import { join } from "node:path";
 import { capped, DIFF_CAP, diffOverCap, LIST_CAP, listedCapped, NO_EM_DASH, onDisk, TAIL_CAP, tailOf } from "./brief.ts";
 import { checkedByAsync, type Red, machineFault } from "./builder.ts";
 import { PUBLISHED_CHECK } from "./checks.ts";
-import { type Checked, type Stop, calledOwner as doneCheckCalledOwner, doneCheck, paired, postedOn, triedIn, type Try } from "./done-checker.ts";
-import { askedOn, commentOnTicket, fromHere, fromLine, gh, git, gitRead, standingOn, stoodDown, mark, OWNER, readOrStop, STUCK, Stopped, unread } from "./post.ts";
+import { type Checked, doneCheck, doneCheckCalledOwner, paired, postedOn, triedIn, type Try } from "./done-checker.ts";
+import { askedOn, calledOwner, commentOnTicket, endedRed, fromHere, fromLine, gh, git, gitRead, standingOn, stoodDown, mark, readOrStop, STUCK, Stopped, unread } from "./post.ts";
 import { afterRefused, approvedOn, firstTimeNamed, gathered, landing, type Routed, ROUTED, ROUTED_REQUIRED, routedFiled } from "./reviewer.ts";
 import { fastForwarded, landedOn, MOST_BUILDERS, type Progress, progressOn, removed, specBranch, triedOn, worktree } from "./scheduler.ts";
 import { fastForwards, rebaseStopped, sliceTrailed } from "./slice-builder.ts";
 import { committed, commitlinted, CONTRACT, head, hireIn, MOST_FIXES, type OwnerStep, OWNER_STEPS, setupRefusedIn, type Spent, stepsUnfileable } from "./stage.ts";
 import { CHECKING, SPEC } from "./spelled.ts";
-import { stopsOf } from "./stops.ts";
 import { quoted, type Sentence, sentences, SPEC_CAP } from "./ticket-shape.ts";
-
-const stoppedAt = stopsOf({
-  unfinishable: "Finish refused: the issue is not labelled `spec`, or its integration branch holds nothing past main",
-  unlanded: "Finish: `bin/land` refused the integration branch, and two rounds in a row of its last reviewer changed nothing",
-  unchecked: "Finish: the full check stayed red, and two rounds in a row of the reviewer handed it changed nothing",
-  reviewerStuck: "Finish: a reviewer answered `stuck`, so the spec is marked `stuck` and the owner is called",
-  unmerged: "Finish: a pack's reviewer left its commits conflicting with the integration branch, and two rounds in a row of it changed nothing",
-  machineFault: "Finish: the full check went red only on steps the machine starved of memory, or SIGTERM ended it on every rerun, so the spec is marked `stuck` and the owner is called",
-  unready: "Finish: a reviewer's tree would not set up, so that reviewer was not hired",
-  unfiled: "Finish: the reviewer on the spec answered the same owner steps that filing refuses twice in a row",
-});
 
 const PAST_MAIN = "origin/main..HEAD";
 const FROM_MAIN = "origin/main...HEAD";
@@ -256,19 +244,17 @@ interface Run {
 function reviewed(spec: string, said: string, spent: Spent, app: AppKey | undefined): Approved | undefined {
   if (app !== undefined) freshAppToken(app, gh, `so the review of #${spec} is not acted on`);
   if (spent.refusal !== undefined) {
-    stoppedAt("modelRun", `${said} ended red, ${spent.refusal}`);
+    endedRed(`${said} ended red, ${spent.refusal}`);
     return undefined;
   }
   const answer = spent.answer as ({ outcome?: unknown; reason?: unknown; steps?: OwnerStep[]; fixed?: number[] } & Routed) | undefined;
   const reason = typeof answer?.reason === "string" ? answer.reason.trim() : "";
   if (reason === "") {
-    stoppedAt("modelRun", `${said} ended red, its reviewer gave no reason`);
+    endedRed(`${said} ended red, its reviewer gave no reason`);
     return undefined;
   }
   if (answer?.outcome === "stuck") {
-    mark(spec, STUCK);
-    commentOnTicket(spec, `@${OWNER} a reviewer of #${spec} stopped and needs you: ${reason}`, gh);
-    stoppedAt("reviewerStuck", `${said} marked ${STUCK}, ${reason}`);
+    calledOwner(spec, { who: "a reviewer", said: `${said} marked ${STUCK}` }, reason);
     return undefined;
   }
   return { reason, steps: answer?.steps ?? [], fixes: answer?.fixes, risks: answer?.risks, fixed: answer?.fixed };
@@ -335,10 +321,10 @@ function broughtBack(spec: string, { tree, branch }: Reviewer, rebuilt: boolean)
   return undefined;
 }
 
-async function rounds<Done>(run: Run, reviewer: Reviewer, { failed, stop, commit, kept }: { failed: string; stop: "unlanded" | "unchecked" | "unmerged"; commit: string; kept: (approved: Approved) => void }, attempt: () => Round<Done> | Promise<Round<Done>>): Promise<Done | undefined> {
+async function rounds<Done>(run: Run, reviewer: Reviewer, { failed, rebuilt = false, commit, kept }: { failed: string; rebuilt?: boolean; commit: string; kept: (approved: Approved) => void }, attempt: () => Round<Done> | Promise<Round<Done>>): Promise<Done | undefined> {
   let idle = false;
   for (;;) {
-    const tried = broughtBack(run.spec, reviewer, stop === "unlanded") ?? (await attempt());
+    const tried = broughtBack(run.spec, reviewer, rebuilt) ?? (await attempt());
     if ("done" in tried) return tried.done;
     const before = inTree(reviewer.tree, head);
     const approved = await answered(run, reviewer, tried.told, commit);
@@ -346,7 +332,7 @@ async function rounds<Done>(run: Run, reviewer: Reviewer, { failed, stop, commit
     kept(approved);
     const changed = inTree(reviewer.tree, head) !== before;
     if (!changed && idle) {
-      stoppedAt(stop, `${run.said} ${failed}, and two rounds in a row of its reviewer changed nothing: ${quoted(tried.refused.split("\n").at(-1) ?? "")}`);
+      endedRed(`${run.said} ${failed}, and two rounds in a row of its reviewer changed nothing: ${quoted(tried.refused.split("\n").at(-1) ?? "")}`);
       return undefined;
     }
     idle = !changed;
@@ -356,14 +342,12 @@ async function rounds<Done>(run: Run, reviewer: Reviewer, { failed, stop, commit
 function stoppedByMachine({ spec, said }: Run, red: Red | undefined): boolean {
   const fault = machineFault(red);
   if (fault === undefined) return false;
-  mark(spec, STUCK);
-  commentOnTicket(spec, `@${OWNER} the finisher of #${spec} stopped and needs you: ${fault}`, gh);
-  stoppedAt("machineFault", `${said} marked ${STUCK}, ${fault}`);
+  calledOwner(spec, { who: "the finisher", said: `${said} marked ${STUCK}` }, fault);
   return true;
 }
 
 const greened = (run: Run, reviewer: Reviewer, commit: string) =>
-  rounds(run, reviewer, { failed: "stayed red on its full check", stop: "unchecked", commit, kept: (approved) => run.later.push(`After its full check went red: ${approved.reason}`) }, async () => {
+  rounds(run, reviewer, { failed: "stayed red on its full check", commit, kept: (approved) => run.later.push(`After its full check went red: ${approved.reason}`) }, async () => {
     const red = await checkedByAsync(PUBLISHED_CHECK);
     if (stoppedByMachine(run, red)) return { done: undefined };
     return red === undefined ? { done: true } : { refused: red.verdict, told: stillRedOnReview(red) };
@@ -375,7 +359,7 @@ async function stepsWhole(run: Run, reviewer: Reviewer, commit: string): Promise
     const refused = stepsUnfileable(run.left.get(reviewer.seat)?.steps ?? []);
     if (refused === undefined) return true;
     if (refused === told) {
-      stoppedAt("unfiled", `${run.said} landed nothing, its reviewer on the spec answered the same refused owner steps again: ${refused}`);
+      endedRed(`${run.said} landed nothing, its reviewer on the spec answered the same refused owner steps again: ${refused}`);
       return false;
     }
     told = refused;
@@ -383,7 +367,7 @@ async function stepsWhole(run: Run, reviewer: Reviewer, commit: string): Promise
   }
 }
 
-const merged = (run: Run, reviewer: Reviewer, commit: string) => rounds(run, reviewer, { failed: "left a pack's commits conflicting with its integration branch", stop: "unmerged", commit, kept: () => undefined }, () => ({ done: true }));
+const merged = (run: Run, reviewer: Reviewer, commit: string) => rounds(run, reviewer, { failed: "left a pack's commits conflicting with its integration branch", commit, kept: () => undefined }, () => ({ done: true }));
 
 async function treeMade(run: Run, reviewer: Reviewer): Promise<boolean> {
   const { spec, said, trees } = run;
@@ -395,7 +379,7 @@ async function treeMade(run: Run, reviewer: Reviewer): Promise<boolean> {
   }
   const unready = await setupRefusedIn(reviewer.tree, onDisk(join(reviewer.tree, CONTRACT)) ?? "");
   if (unready === undefined) return true;
-  stoppedAt("unready", `${said} ended red, the tree for ${reviewer.branch ?? specBranch(spec)} would not set up: ${unready}`);
+  endedRed(`${said} ended red, the tree for ${reviewer.branch ?? specBranch(spec)} would not set up: ${unready}`);
   return false;
 }
 
@@ -432,7 +416,7 @@ async function heldAfterRound(run: Run, last: Reviewer, tries: Try[] | { refusal
   const held = await rounds(
     run,
     last,
-    { failed: "left its commits conflicting with its integration branch after the done check's round", stop: "unmerged", commit: `Make what the done check missed on #${run.spec} hold`, kept: (approved) => {
+    { failed: "left its commits conflicting with its integration branch after the done check's round", commit: `Make what the done check missed on #${run.spec} hold`, kept: (approved) => {
       fixed = approved.fixed ?? [];
       run.later.push(`After the done check: ${approved.reason}`);
     } },
@@ -509,7 +493,7 @@ async function reviews(run: Run, { title, body }: { title: string; body: string 
 
 function landed(run: Run, { last }: Reviewed): Promise<string | undefined> {
   const { spec, said, reasons, later, left } = run;
-  return rounds(run, last, { failed: "did not land", stop: "unlanded", commit: `Fix what bin/land refused for #${spec}`, kept: (approved) => later.push(afterRefused(approved.reason)) }, (): Round<string | undefined> => {
+  return rounds(run, last, { failed: "did not land", rebuilt: true, commit: `Fix what bin/land refused for #${spec}`, kept: (approved) => later.push(afterRefused(approved.reason)) }, (): Round<string | undefined> => {
     const stood = stoodDown(standingOn(spec, gh));
     if (stood !== undefined) {
       console.log(`${said} ${stood}, so its reviewed branch does not land`);
@@ -534,7 +518,7 @@ async function finished(spec: string, app: AppKey | undefined): Promise<Finished
   const unchanged = "so nothing was reviewed or landed";
   const asked = askedOn(spec, unchanged);
   if (!asked.labels.has(SPEC)) {
-    stoppedAt("unfinishable", `${said} is not a spec, ${unchanged}`);
+    endedRed(`${said} is not a spec, ${unchanged}`);
     return {};
   }
   const stood = stoodDown(asked);
@@ -546,7 +530,7 @@ async function finished(spec: string, app: AppKey | undefined): Promise<Finished
   const listed = sentences(asked.body);
   const { landed: landedAs, tries, fixed = [] } = found.progress;
   if (landedAs === undefined && gitRead(["rev-list", "--count", PAST_MAIN], UNREAD) === "0") {
-    stoppedAt("unfinishable", `${said} holds nothing past main on its integration branch, ${unchanged}`);
+    endedRed(`${said} holds nothing past main on its integration branch, ${unchanged}`);
     return {};
   }
   if (landedAs !== undefined && tries === undefined) {
@@ -572,13 +556,13 @@ async function finished(spec: string, app: AppKey | undefined): Promise<Finished
   leftFiled(spec, [...run.left.values()]);
   const { pr, tried } = ended;
   if ("refusal" in tried) {
-    readOrStop("done-check", () => doneCheckCalledOwner(spec, "modelRun", tried.refusal));
+    readOrStop("done-check", () => doneCheckCalledOwner(spec, tried.refusal));
     return { landed: pr };
   }
   return closedFrom(spec, app, listed, tried, pr);
 }
 
-function finishedWith(pr: string, check: () => Checked | Stop | undefined): Finished {
+function finishedWith(pr: string, check: () => Checked | number): Finished {
   const checked = readOrStop("done-check", check);
   return { landed: pr, missed: typeof checked === "object" ? checked.missed : undefined };
 }

@@ -22,7 +22,7 @@ export const ownerCall = (issue: string, run: string): Annotation => ({ title: O
 
 export const red = (...annotations: Annotation[]): Ended => ({ conclusion: "failure", annotations: [ownerCall("902", "the slice run"), ...annotations] });
 
-export function rerunning({ attempt = "1", jobs = [red()], labels = ["spec"], refused = "", markRefused = undefined as string | undefined, blip = "", pending = 0, latest = undefined as string | undefined, dispatchRefused = "", calledFrom = "" } = {}) {
+export function rerunning({ attempt = "1", jobs = [red()], labels = ["spec"], refused = "", markRefused = undefined as string | undefined, blip = "", pending = 0, latest = undefined as string | undefined, dispatchRefused = "", commentRefused = "", calledFrom = "" } = {}) {
   const root = scratch("rerun-");
   const { setup, calls } = ghArgv(join(root, "gh-argv"));
   writeFileSync(join(root, "jobs.json"), JSON.stringify({ jobs: [{ id: 1, name: "labelled", conclusion: "success" }, ...jobs.map(({ conclusion }, at) => ({ id: at + 10, name: "slice", conclusion }))] }));
@@ -40,6 +40,7 @@ export function rerunning({ attempt = "1", jobs = [red()], labels = ["spec"], re
       `  *"rerun-failed-jobs"*) ${refused === "" ? "exit 0" : `printf '%s\\n' '${refused}' >&2; exit 1`} ;;`,
       `  *"actions/runs/4417/attempts/${attempt} "*) polled=$(cat "${join(root, "polled")}" 2>/dev/null || echo 0); echo $((polled + 1)) >"${join(root, "polled")}"; ((polled < ${pending})) && echo in_progress || echo completed ;;`,
       `  *"actions/runs/4417 "*) printf '%s %s\\n' '${latest ?? attempt}' '${RUN_URL}' ;;`,
+      `  *"issue comment"*) ${commentRefused === "" ? "exit 0" : `printf '%s\\n' '${commentRefused}' >&2; exit 1`} ;;`,
       `  *"issue view"*) printf '%s\\n' '${JSON.stringify({ state: "OPEN", labels: labels.map((name) => ({ name })) })}' ;;`,
       "esac",
       "",

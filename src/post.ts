@@ -23,7 +23,6 @@ import {
 } from "./ticket-shape.ts";
 import { BUG, HELD, LABELS, MACHINE, NOTE, OWNER, OWNER_STEP, RESEARCH, SONNET_BUILDERS, SPEC, STUCK, TICKET, TICKET_PREFIX, WAITING, type LabelName, type MarkedLabel } from "./spelled.ts";
 import { addBlocker, blockingOf, FILED_ISSUE } from "./issue-links.ts";
-import { type Stop, stoppedAt } from "./stops.ts";
 
 export interface Posting {
   kind: string;
@@ -70,17 +69,17 @@ export const ghAs =
 export const gh = ghAs(process.env);
 export const git = (args: string[], input?: string) => spawnSync("git", args, { input, encoding: "utf8", maxBuffer: Infinity });
 
-export class Stopped extends Error {
-  readonly stop: Stop;
+export class Stopped extends Error {}
 
-  constructor(stop: Stop, line: string) {
-    super(line);
-    this.stop = stop;
-  }
+const RED = 1;
+
+export function endedRed(line: string): number {
+  console.error(line);
+  return RED;
 }
 
 export const unread = (line: string): never => {
-  throw new Stopped("unread", line);
+  throw new Stopped(line);
 };
 
 const readOrUnread = (got: ReturnType<Gh>, line: string): string => (got.status === 0 ? got.stdout.trim() : unread(line));
@@ -88,11 +87,11 @@ const readOrUnread = (got: ReturnType<Gh>, line: string): string => (got.status 
 export const ghRead = (args: string[], line: string) => readOrUnread(gh(args), line);
 export const gitRead = (args: string[], line: string, input?: string) => readOrUnread(git(args, input), line);
 
-export function readOrStop<Ended>(stage: string, run: () => Ended): Ended | Stop {
+export function readOrStop<Ended>(stage: string, run: () => Ended): Ended | number {
   try {
     return run();
   } catch (error) {
-    if (error instanceof Stopped) return stoppedAt(error.stop, `${stage}: ${error.message}`);
+    if (error instanceof Stopped) return endedRed(`${stage}: ${error.message}`);
     throw error;
   }
 }
@@ -101,8 +100,22 @@ export const machineBin = (command: string) => join(process.env.MACHINE_BIN ?? j
 
 export const mark = (issue: string, label: MarkedLabel, ...count: ("--try" | "--untry")[]) => {
   const marked = spawnSync(machineBin("mark"), [issue, label, ...count], { stdio: ["ignore", "ignore", "inherit"] });
-  if (marked.status !== 0) throw new Stopped("unwritten", `bin/mark #${issue} ${label} ended non-zero, so nothing after it is posted, closed, marked or hired`);
+  if (marked.status !== 0) throw new Stopped(`bin/mark #${issue} ${label} ended non-zero, so nothing after it is posted, closed, marked or hired`);
 };
+
+export interface Caller {
+  who: string;
+  said: string;
+  stopped?: string;
+}
+
+export function calledOwner(issue: string, { who, said, stopped = "stopped" }: Caller, why: string, follows?: string): number {
+  mark(issue, STUCK);
+  const { refusals } = commentOnTicket(issue, `@${OWNER} ${who} of #${issue} ${stopped} and needs you: ${why}${follows === undefined ? "" : `. ${follows}`}`, gh);
+  for (const refusal of refusals) console.error(`${said}, and its call to the owner would not post: ${refusal}`);
+  return endedRed(`${said}, ${why}`);
+}
+
 export interface Held {
   has(label: LabelName): boolean;
 }

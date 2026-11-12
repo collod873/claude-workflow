@@ -1,9 +1,9 @@
 import { spawnSync } from "node:child_process";
 import { type AppKey, freshAppToken } from "./app-token.ts";
 import { capped, DIFF_CAP, diffOverCap, LIST_CAP, NO_EM_DASH, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
-import { commentOnTicket, fromHere, fromLine, gh, gitRead, standingOn, stoodDown, machineBin, mark } from "./post.ts";
+import { calledOwner, type Caller, commentOnTicket, fromHere, fromLine, gh, gitRead, standingOn, stoodDown, machineBin, mark } from "./post.ts";
 import { CHECKING } from "./spelled.ts";
-import { calledOwner, committed, commitlinted, type Filed, type Fix, FOLLOW_UPS, head, hire, MOST_FIXES, type OwnerStep, OWNER_STEPS, stepsAndFixesFiled, stepsUnfileable } from "./stage.ts";
+import { committed, commitlinted, type Filed, type Fix, FOLLOW_UPS, head, hire, MOST_FIXES, type OwnerStep, OWNER_STEPS, stepsAndFixesFiled, stepsUnfileable } from "./stage.ts";
 import { quoted } from "./ticket-shape.ts";
 
 const ENDS = { fixed: "fixed here", nothing: "needs nothing" } as const;
@@ -148,6 +148,7 @@ export function handedOn({ ticket, body, commits, diff, stat, alongside, said, c
 }
 
 const reviewedBy = (ticket: string) => `Review #${ticket} as its reviewer`;
+const reviewerCaller = (ticket: string): Caller => ({ who: "the reviewer", said: `fix: #${ticket} needs the owner` });
 
 function filedOnceLanded(ticket: string, answer: Gathered): string {
   const filed = [
@@ -190,7 +191,7 @@ export function reviewedAndLanded(ticket: string, { body, alongside, said }: { b
     if (spent.refusal !== undefined) return triedAgainLater(ticket, spent.refusal);
     if (app !== undefined) freshAppToken(app, gh, `so the review of #${ticket} is not acted on`);
     const answer = spent.answer as Answer | undefined;
-    if (answer?.outcome === "stuck") return calledOwner(ticket, "reviewer", answer.reason);
+    if (answer?.outcome === "stuck") return calledOwner(ticket, reviewerCaller(ticket), answer.reason);
     committed(reviewedBy(ticket), "fix");
     const changed = head() !== before;
     const stood = stoodDown(standingOn(ticket, gh));
@@ -209,7 +210,7 @@ export function reviewedAndLanded(ticket: string, { body, alongside, said }: { b
       console.log(`review: #${ticket} landed as PR #${landed.pr}${filed}`);
       return 0;
     }
-    if (!changed && idle) return calledOwner(ticket, "reviewer", `two rounds in a row changed nothing: ${quoted(landed.refused.split("\n").at(-1) ?? "")}`);
+    if (!changed && idle) return calledOwner(ticket, reviewerCaller(ticket), `two rounds in a row changed nothing: ${quoted(landed.refused.split("\n").at(-1) ?? "")}`);
     idle = !changed;
     input = answer === undefined || unfileable !== undefined ? landed.refused : landRefused(landed.refused);
   }

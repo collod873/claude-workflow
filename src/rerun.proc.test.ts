@@ -67,7 +67,7 @@ describe("bin/rerun re-runs a red run once by itself, and only a second red mark
     expect(result.status, result.stderr).toBe(0);
     expect(reruns(calls())).toEqual([]);
     expect(marks()).toEqual(["902 stuck"]);
-    expect(comments(calls())).toEqual([["issue", "comment", "902", "--body", expect.stringContaining(`@${OWNER} the slice run ended red`)]]);
+    expect(comments(calls())).toEqual([["issue", "comment", "902", "--body", expect.stringContaining(`@${OWNER} the slice run of #902 ended red twice and needs you`)]]);
     const [[, , , , body = ""] = []] = comments(calls());
     expect(body).toContain(`${RUN_URL}/attempts/1`);
     expect(body).toContain(`${RUN_URL}/attempts/2`);
@@ -78,7 +78,7 @@ describe("bin/rerun re-runs a red run once by itself, and only a second red mark
     const { calls, run } = rerunning({ attempt: "2", jobs: [{ conclusion: "cancelled", annotations: [ownerCall("902", "the slice run"), { message: OUT_OF_TIME }] }] });
 
     expect(run().status).toBe(0);
-    expect(comments(calls())).toEqual([["issue", "comment", "902", "--body", expect.stringContaining("the slice run ran out of time")]]);
+    expect(comments(calls())).toEqual([["issue", "comment", "902", "--body", expect.stringContaining("the slice run of #902 ran out of time twice")]]);
   });
 
   it.each(HELD)("does nothing on a second attempt when the issue is already labelled %s", (held) => {
@@ -89,12 +89,24 @@ describe("bin/rerun re-runs a red run once by itself, and only a second red mark
     expect(comments(calls())).toEqual([]);
   });
 
-  it("still labels the issue through gh and comments when bin/mark refuses", () => {
+  it("ends red and posts nothing when bin/mark refuses, as every stage stops once its mark is refused (ab948bff)", () => {
     const { calls, run } = rerunning({ attempt: "2", markRefused: "mark: #902 not labelled stuck: HTTP 403" });
 
-    expect(run().status).toBe(0);
-    expect(calls()).toContainEqual(["issue", "edit", "902", "--add-label", "stuck"]);
-    expect(comments(calls())).toHaveLength(1);
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("bin/mark #902 stuck ended non-zero");
+    expect(calls().filter((args) => args[0] === "issue" && args[1] === "edit")).toEqual([]);
+    expect(comments(calls())).toEqual([]);
+  });
+
+  it("logs GitHub's refusal when the owner's comment would not post", () => {
+    const { marks, run } = rerunning({ attempt: "2", commentRefused: "HTTP 403: comment refused" });
+
+    const result = run();
+
+    expect(marks()).toEqual(["902 stuck"]);
+    expect(result.stderr).toContain("would not post: gh issue comment failed: HTTP 403: comment refused");
   });
 
   it("ends red naming GitHub's refusal when the re-run is refused", () => {
