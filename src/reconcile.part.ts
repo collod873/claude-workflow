@@ -101,3 +101,8 @@ declarePart({
     { label: "with the link refused", run: () => linking({ refused: true }).links("add-parent", HERE, "931", ELSEWHERE, "12") },
   ],
 });
+
+declarePart({
+  part: { name: "reconcile schedule", file: ".github/workflows/machine.yml", stops: "https://github.com/collod873/claude-workflow/issues/1606", clock: true },
+  scenarios: [],
+});

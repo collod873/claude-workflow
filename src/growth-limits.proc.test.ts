@@ -13,6 +13,7 @@ const MOST_PARTS = 40;
 const WORKFLOWS = ".github/workflows/*.y*ml";
 const MODULE = /\.(m|c)?[jt]s$/;
 const WIRING = [".claude/*.json", WORKFLOWS, ".husky/*", "package.json"];
+const PART_FILE = /\.part\.ts$/;
 const SRC_OR_BIN = /(src|bin)\/[\w.-]+(\/[\w.-]+)*/g;
 const REASONED_DROP = /^Test count drop: \S/m;
 const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_") && !name.startsWith("VITEST")));
@@ -56,7 +57,7 @@ function unlinkedParts(repo: string, registry: Part[]): string[] {
   const wired = wiredIn(repo);
   const unregistered = files
     .filter((path) => !registered.has(path))
-    .filter((path) => (statSync(join(repo, path)).mode & 0o111) !== 0 || wired.has(path) || !(covered(path) || imported.has(path) || runByPart.has(path)))
+    .filter((path) => (statSync(join(repo, path)).mode & 0o111) !== 0 || wired.has(path) || !(covered(path) || PART_FILE.test(path) || imported.has(path) || runByPart.has(path)))
     .sort()
     .map((path) => `${path} can run but is not a registered part`);
   const unlinked = registry.filter((part) => !FAILURE_LINK.test(part.stops)).map((part) => `${part.name} links no failure: ${part.stops}`);

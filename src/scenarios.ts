@@ -498,6 +498,7 @@ export function agedLogs(logs: string, tool: string) {
 }
 
 export const LANDED_PR = "https://github.com/collod873/claude-workflow/pull/1";
+export const NOISE = "a line a tool prints that nobody needed to read\n".repeat(40).trim();
 export const MERGE_REFUSAL = "GraphQL: Pull Request is not mergeable (mergePullRequest)";
 export const MAIN_RACED = "GraphQL: Base branch was modified. Review and try the merge again. (mergePullRequest)";
 export const GITHUB_ERRED = "GraphQL: Something went wrong while executing your query. Please include `C0B4:2D8E:1A2B3C:1D4E5F:671234AB` when reporting this issue.";
