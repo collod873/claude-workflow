@@ -291,8 +291,6 @@ export function opened<Carried>({ stage, issue, state, tried, hire: hiring, read
   return { asked, carried: readied.carrying, spend };
 }
 
-export const FILED = /\/issues\/(\d+)\s*$/;
-
 const COMMITLINT = /^(\.commitlintrc(\.\w+)?|commitlint\.config\.[cm]?[jt]s)$/;
 const COMMITLINT_KEY = /"commitlint"\s*:/;
 export const commitlinted = () => readdirSync(process.cwd()).some((name) => COMMITLINT.test(name)) || COMMITLINT_KEY.test(onDisk(join(process.cwd(), "package.json")) ?? "");

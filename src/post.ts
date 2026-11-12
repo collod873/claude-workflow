@@ -67,6 +67,7 @@ export const ghAs =
     }
   };
 export const gh = ghAs(process.env);
+export const FILED = /\/issues\/(\d+)\s*$/;
 export const git = (args: string[], input?: string) => spawnSync("git", args, { input, encoding: "utf8", maxBuffer: Infinity });
 
 export class Stopped extends Error {}

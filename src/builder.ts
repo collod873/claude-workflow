@@ -9,9 +9,9 @@ import { capped, LIST_CAP, listedCapped, NO_EM_DASH, onDisk, TAIL_CAP, tailOf, T
 import { PUBLISHED_CHECK } from "./checks.ts";
 import { type ChecksWait, checkedRuns, checksNamed, waitedLine, withWait } from "./checks-wait.ts";
 import { park, postedUnderOrigin } from "./issue-links.ts";
-import { calledOwner, type Caller, commentOnTicket, commentsRead, endedRed, FOREIGN, fromLine, followUpBody, gh, ghRead, git, gitRead, MACHINE_REPO, mark, NOTHING_MARKED, OWNER, postRefusals, readOrStop, rewriteTicket, FILED_IN, Stopped, ticketBranch, unread } from "./post.ts";
+import { calledOwner, type Caller, commentOnTicket, commentsRead, endedRed, FILED, FOREIGN, fromLine, followUpBody, gh, ghRead, git, gitRead, MACHINE_REPO, mark, NOTHING_MARKED, OWNER, postRefusals, readOrStop, rewriteTicket, FILED_IN, Stopped, ticketBranch, unread } from "./post.ts";
 import { reviewedAndLanded } from "./reviewer.ts";
-import { committed, commitlinted, CONTRACT, FILED, opened, setupRefusal, type Spent, treePathed, unsetKeys } from "./stage.ts";
+import { committed, commitlinted, CONTRACT, opened, setupRefusal, type Spent, treePathed, unsetKeys } from "./stage.ts";
 import { dedashed } from "./em-dash.ts";
 import { BUILDING, SPEC, TICKET } from "./spelled.ts";
 import { doneWhen, quoted, specProblem, specRefusals, why } from "./ticket-shape.ts";

@@ -1,7 +1,6 @@
 import { NO_EM_DASH } from "./brief.ts";
 import { addBlocker, postedUnderOrigin } from "./issue-links.ts";
-import { commentOnTicket, followUpBody, gh, heardIn, LABELLED_WAITING, nothingHears, OWNER, post, WAITING } from "./post.ts";
-import { FILED } from "./stage.ts";
+import { commentOnTicket, FILED, followUpBody, gh, heardIn, LABELLED_WAITING, nothingHears, OWNER, post, WAITING } from "./post.ts";
 
 const DIRECT_LINK = /^https:\/\/\S+$/;
 
