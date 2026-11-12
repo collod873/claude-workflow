@@ -82,6 +82,23 @@ describe("bin/runner-watch keeps private repos off paid minutes without Collin w
     expect(watch.issue()).toContain("Busy: 150 minutes");
   });
 
+  it("rides out a job list GitHub answers with HTTP 502 once, and names gh's own line when one keeps failing (#1711)", () => {
+    const hosted = { labels: ["ubuntu-latest"], started_at: "2026-10-29T10:00:00Z", completed_at: "2026-10-29T10:01:30Z" };
+    const day = (): ReturnType<typeof watching> => watching([{ name: "collod873/chess" }], [{ product: "actions", unitType: "Minutes", quantity: 2, repositoryName: "chess" }], { "collod873/chess": [{ name: "CI", jobs: [hosted] }] });
+    const jobs = "api repos/collod873/chess/actions/runs/0/jobs?per_page=100";
+
+    const blipped = day();
+    blipped.fails(jobs, "HTTP 502: Bad Gateway", 1);
+    expect(blipped.run("minutes", "collod873", "2026-10-29").status).toBe(0);
+    expect(blipped.issue()).toContain("CI: 2 minutes");
+
+    const refused = day();
+    refused.fails(jobs, "HTTP 403: Resource not accessible by integration", 9);
+    const ran = refused.run("minutes", "collod873", "2026-10-29");
+    expect(ran.status).toBe(1);
+    expect(ran.stderr).toContain(`runner-watch: gh ${jobs}: HTTP 403: Resource not accessible by integration\n`);
+  });
+
   it("files nothing on a day no private repo used GitHub-hosted minutes", () => {
     const watch = watching([{ name: "collod873/chess" }], [{ product: "actions", unitType: "Minutes", quantity: 0, repositoryName: "collod873/chess" }]);
 

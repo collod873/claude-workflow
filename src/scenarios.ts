@@ -1085,6 +1085,11 @@ export function watching(repos: WatchedRepo[], billing: object[] = [], runs: Rec
       const gh = readFileSync(at("bin/gh"), "utf8").replace(" ;;\n", ` '${repo}' ;;\n  "api repos/${repo}/actions/runners") printf 'HTTP 403\\n' >&2; exit 1 ;;\n`);
       writeFileSync(at("bin/gh"), gh);
     },
+    fails: (call: string, said: string, times: number) => {
+      const count = at(`fails-${String(times)}-${call.replace(/\W/g, "-")}`);
+      const gh = readFileSync(at("bin/gh"), "utf8").replace('case "$*" in\n', `if [[ "$*" == '${call}' ]] && (( $(cat "${count}" 2>/dev/null || echo 0) < ${String(times)} )); then echo $(( $(cat "${count}" 2>/dev/null || echo 0) + 1 )) >"${count}"; printf '%s\\n' '${said}' >&2; exit 1; fi\ncase "$*" in\n`);
+      writeFileSync(at("bin/gh"), gh);
+    },
     run: (...args: string[]) => execute(join(BIN, "runner-watch"), root, env, args),
     variable: (repo: string) => (existsSync(at(`var-${repo.replace("/", "-")}`)) ? readFileSync(at(`var-${repo.replace("/", "-")}`), "utf8") : undefined),
     issue: () => (existsSync(at("issue")) ? readFileSync(at("issue"), "utf8") : undefined),

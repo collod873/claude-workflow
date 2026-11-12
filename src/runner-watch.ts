@@ -1,37 +1,45 @@
-import { execFile, spawnSync } from "node:child_process";
-import { promisify } from "node:util";
+import { type ChildProcessByStdio, spawn } from "node:child_process";
+import type { Readable } from "node:stream";
+import { text } from "node:stream/consumers";
 import { DISPATCH_COVERS_MINUTES, dispatchedSince, onGitHubSchedule } from "./dispatched.ts";
-import { MACHINE_REPO } from "./post.ts";
+import { ghAs, GITHUB, MACHINE_REPO } from "./post.ts";
 import { LABEL as PC, RECONCILE_LABEL, VARIABLE } from "./runner.ts";
 
 const GITHUB_HOSTED = "ubuntu-latest";
 const MINUTE = 60_000;
-const OUTPUT_LIMIT = 512 * 1024 * 1024;
 const JOB_LISTS_AT_ONCE = 16;
 
 type Runner = { status: string; labels: { name: string }[] };
 type Job = { labels: string[]; started_at: string | null; completed_at: string | null };
 type UsageItem = { product: string; unitType: string; quantity: number; repositoryName: string };
 
+const failedLine = (args: string[], stderr: string) => `gh ${args.join(" ")}: ${stderr.trim()}`;
+
 function gh(args: string[], token?: string): string {
-  const ran = spawnSync("gh", args, { encoding: "utf8", maxBuffer: OUTPUT_LIMIT, env: token === undefined ? process.env : { ...process.env, GH_TOKEN: token } });
-  if (ran.status !== 0) throw new Error(`gh ${args.join(" ")}: ${ran.error?.message ?? (ran.stderr || ran.stdout).trim()}`);
+  const ran = ghAs(token === undefined ? process.env : { ...process.env, GH_TOKEN: token })(args);
+  if (ran.status !== 0) throw new Error(failedLine(args, ran.stderr || ran.stdout));
   return ran.stdout;
 }
 
 async function ghAtOnce(args: string[]): Promise<string> {
-  try {
-    return (await promisify(execFile)("gh", args, { encoding: "utf8", maxBuffer: OUTPUT_LIMIT })).stdout;
-  } catch (error) {
-    throw new Error(`gh ${args.join(" ")}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
-  }
+  const child = spawn(GITHUB, args, { stdio: ["ignore", "pipe", "pipe", 2] }) as ChildProcessByStdio<null, Readable, Readable>;
+  const [stdout, stderr, status] = await Promise.all([
+    text(child.stdout),
+    text(child.stderr),
+    new Promise<number | null>((resolve, reject) => {
+      child.on("error", reject);
+      child.on("close", resolve);
+    }),
+  ]);
+  if (status !== 0) throw new Error(failedLine(args, stderr || stdout));
+  return stdout;
 }
 
 function variableOf(repo: string): string | undefined {
-  const ran = spawnSync("gh", ["variable", "get", VARIABLE, "-R", repo], { encoding: "utf8" });
+  const ran = ghAs(process.env)(["--missing-answers", "variable", "get", VARIABLE, "-R", repo]);
   if (ran.status === 0) return ran.stdout.trim();
   if (/not found|HTTP 404/i.test(ran.stderr)) return undefined;
-  throw new Error(`gh variable get ${VARIABLE} -R ${repo}: ${ran.stderr.trim()}`);
+  throw new Error(failedLine(["variable", "get", VARIABLE, "-R", repo], ran.stderr));
 }
 
 function machineClockCovers(): string | undefined {

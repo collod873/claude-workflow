@@ -35,7 +35,7 @@ export interface Posting {
 
 export type Gh = (args: string[]) => { status: number | null; stdout: string; stderr: string };
 
-const GITHUB = join(import.meta.dirname, "..", "bin", "github");
+export const GITHUB = join(import.meta.dirname, "..", "bin", "github");
 const ARGUMENT_BYTES = 65536;
 
 function bodiesInFiles(args: string[], dir: () => string): string[] {
