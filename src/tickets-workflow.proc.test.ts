@@ -644,7 +644,7 @@ describe("this repo reaches the machine through the caller file bin/enrol writes
     const held = new Set([...readdirSync(WORKFLOWS), "action.yml", "caller.yml", "ci.yml"]);
     const code = [
       ...readdirSync(join(REPO, "src"))
-        .filter((file) => /\.ts$/.test(file) && !/\.test\.ts$|^scenarios\.ts$/.test(file))
+        .filter((file) => /\.ts$/.test(file) && !/\.test\.ts$|\.part\.ts$|^scenarios\.ts$/.test(file))
         .map((file) => join(REPO, "src", file)),
       ...readdirSync(join(REPO, "bin")).map((file) => join(REPO, "bin", file)),
     ];
