@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { deserialize, serialize } from "node:v8";
 import { listedFiles } from "./files.mjs";
 import { knipBase } from "./knip.base.mjs";
 import { refused, stage } from "./stages.mjs";
@@ -68,10 +69,30 @@ function runCache(root) {
   return join(homedir(), ".cache", "agent-hooks", "knip-runs", key);
 }
 
-function withoutPluginVerdicts(cache) {
+function readableEntries(fileCache) {
+  try {
+    return deserialize(readFileSync(fileCache));
+  } catch {
+    rmSync(fileCache);
+    return new Map();
+  }
+}
+
+function withoutUnresolvedImports(fileCache) {
+  const entries = readableEntries(fileCache);
+  const unresolving = [...entries]
+    .filter(([, entry]) => entry.data?.imports?.unresolved?.size)
+    .map(([file]) => file);
+  if (unresolving.length === 0) return;
+  for (const file of unresolving) entries.delete(file);
+  writeFileSync(fileCache, serialize(entries));
+}
+
+function withoutStaleVerdicts(cache) {
   if (!existsSync(cache)) return cache;
   for (const entry of readdirSync(cache)) {
     if (KNIP_PLUGIN_CACHE.test(entry)) rmSync(join(cache, entry));
+    else withoutUnresolvedImports(join(cache, entry));
   }
   return cache;
 }
@@ -83,7 +104,7 @@ const knipArgs = [
   "--no-progress",
   "--cache",
   "--cache-location",
-  withoutPluginVerdicts(runCache(root)),
+  withoutStaleVerdicts(runCache(root)),
   ...process.argv.slice(2),
 ];
 const knipScript = join(root, "node_modules", "knip", "bin", "knip.js");
