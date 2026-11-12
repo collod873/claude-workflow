@@ -2,8 +2,17 @@ import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parts, type Part } from "./parts.ts";
-import { CONTRACT, LINE_LIMIT, MOST_LINES, coveredByCheck, execute, overLimit, scratch, script } from "./scenarios.ts";
+import { CONTRACT, coveredByCheck, execute, scratch, script } from "./scenarios.ts";
 import { partFiles, type Scenario } from "./part-files.ts";
+
+const LINE_LIMIT = 200;
+const MOST_LINES = 6;
+
+function overLimit(said: string, allowed: number): string[] {
+  const spoken = said.replace(/\n$/, "").split("\n");
+  const long = spoken.filter((line) => line.length > LINE_LIMIT).map((line) => `said a line of ${line.length} characters, over ${LINE_LIMIT}`);
+  return spoken.length > allowed ? [...long, `said ${spoken.length} lines, over ${allowed}`] : long;
+}
 
 const REPO = resolve(import.meta.dirname, "..");
 const URL = "https://github.com/collod873/claude-workflow/pull/1";

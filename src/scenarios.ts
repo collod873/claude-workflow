@@ -1,6 +1,6 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { generateKeyPairSync } from "node:crypto";
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, matchesGlob } from "node:path";
 import { parse } from "yaml";
@@ -8,15 +8,6 @@ import { onTestFinished } from "vitest";
 import vitest from "../vitest.config.ts";
 import { MACHINE, OWNER } from "./spelled.ts";
 import { woken, type IssuePayload } from "./wake.ts";
-
-export const LINE_LIMIT = 200;
-export const MOST_LINES = 6;
-
-export function overLimit(said: string, allowed: number): string[] {
-  const spoken = said.replace(/\n$/, "").split("\n");
-  const long = spoken.filter((line) => line.length > LINE_LIMIT).map((line) => `said a line of ${line.length} characters, over ${LINE_LIMIT}`);
-  return spoken.length > allowed ? [...long, `said ${spoken.length} lines, over ${allowed}`] : long;
-}
 
 export const CONTRACT = ".claude/contract.json";
 
@@ -481,9 +472,6 @@ export function openedCases(root: string, opener: string, body: string, parent: 
   return [`  *"api"*"issues/${ticket}/parent") ${parentSays(root, parent)} ;;`, `  *"api"*"issues/${ticket}") cat "${join(root, "opened.json")}" ;;`];
 }
 
-export const gitRefusing = (root: string, unreadable: string) =>
-  script(join(root, "bin", "git"), `case "$*" in\n  ${unreadable}) printf 'fatal: unable to read\\n' >&2; exit 128 ;;\nesac\nPATH="\${PATH#*:}" exec git "$@"\n`);
-
 function parentSays(root: string, parent: Parent): string {
   plant(root, "parent.json", JSON.stringify(parent ?? {}));
   if (parent === undefined) return "printf 'gh: Not Found (HTTP 404)\\n' >&2; exit 1";
@@ -515,9 +503,3 @@ export const PC_RUNS_ON = "${{ vars.CI_RUNNER || 'ubuntu-latest' }}";
 let appKey: { publicKey: string; privateKey: string } | undefined;
 export const appKeys = () => (appKey ??= generateKeyPairSync("rsa", { modulusLength: 2048, publicKeyEncoding: { type: "spki", format: "pem" }, privateKeyEncoding: { type: "pkcs8", format: "pem" } }));
 export const key = () => appKeys().privateKey;
-
-export function onPath(tool: string): string {
-  const dir = (process.env.PATH ?? "").split(":").find((folder) => existsSync(join(folder, tool)));
-  if (dir === undefined) throw new Error(`${tool} is not on PATH`);
-  return realpathSync(join(dir, tool));
-}
