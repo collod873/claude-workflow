@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { stage } from "./stages.mjs";
 
@@ -27,6 +27,8 @@ function setup(root) {
     .digest("hex");
   const keyPath = join(root, KEY);
   if (!existsSync(keyPath) || readFileSync(keyPath, "utf8") !== wanted) {
+    const modules = join(root, "node_modules");
+    if (lstatSync(modules, { throwIfNoEntry: false })?.isSymbolicLink()) unlinkSync(modules);
     if (!ran(root, installer.install)) return 1;
     mkdirSync(join(root, "node_modules"), { recursive: true });
     writeFileSync(keyPath, wanted);
