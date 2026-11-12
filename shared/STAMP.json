@@ -1,9 +1,9 @@
 {
- "source": "collod873/agent-hooks@c40d8f3a090dda3c712d5f7779420131f4545f5f",
+ "source": "collod873/agent-hooks@ce6a8f10378b7122b109959167c06f32af630149",
  "layer": "typescript",
  "files": {
   "ci.yml": "bea63aa685617bc3f40983c8bc26ebd5795f6bb8afe5945f0828623736b3fa1b",
-  "run": "6508cd65d739f035f30a91a0b2a1b3b88fc433cf01d1c284f3a9ad65c956fc99",
+  "run": "3fd3fb152e55d1e47bc3c401c866ac9fa7763a1f20afef4cf4b3a5a4459bf68e",
   "security/secrets": "986e3f8ce1d4b6b2034a6add4219de01c41e6924cee8b2334c0d95769616c860",
   "security/tools.py": "3cf205dc74550decbd04f9d35f9ceda812d50bcee14400cc642b1817049e6de0",
   "security/vulns": "39541ea74fbc9ce44c964a0ba826a4abfa2873267895b906bbbb56d0692c9b66",
