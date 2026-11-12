@@ -14,7 +14,8 @@ async function problemWith(gh: string, link: string): Promise<string | undefined
   const endpoint = kind === undefined ? undefined : ENDPOINT[kind];
   if (repo === undefined || endpoint === undefined || number === undefined) return "which is not a link to a GitHub issue, pull request, or run";
   try {
-    const { stdout } = await run(gh, ["api", `repos/${repo}/${endpoint}/${number}`]);
+    const linksToken = process.env.LINKS_GH_TOKEN || undefined;
+    const { stdout } = await run(gh, ["api", `repos/${repo}/${endpoint}/${number}`], linksToken === undefined ? {} : { env: { ...process.env, GH_TOKEN: linksToken } });
     if (kind !== "actions/runs") return undefined;
     const { status, conclusion } = JSON.parse(stdout) as { status: string; conclusion: string | null };
     return conclusion === "failure" ? undefined : `a run that did not fail (${conclusion ?? status})`;
