@@ -1,13 +1,19 @@
 import { generateKeyPairSync } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { fixing } from "./builder.part.ts";
 import { rerunning } from "./rerun.part.ts";
-import { execute, holds, onPath, scratch, script, skippedAll, wakeOutputs, workflowJobs, type WorkflowStep } from "./scenarios.ts";
+import { execute, holds, scratch, script, skippedAll, wakeOutputs, workflowJobs, type WorkflowStep } from "./scenarios.ts";
 import { MACHINE, OWNER } from "./spelled.ts";
 import { ENROLLED_CALLER } from "./post.ts";
+
+function onPath(tool: string): string {
+  const dir = (process.env.PATH ?? "").split(":").find((folder) => existsSync(join(folder, tool)));
+  if (dir === undefined) throw new Error(`${tool} is not on PATH`);
+  return realpathSync(join(dir, tool));
+}
 
 const REPO = join(import.meta.dirname, "..");
 const CALLER = join(REPO, ".github", "caller.yml");
@@ -638,7 +644,7 @@ describe("this repo reaches the machine through the caller file bin/enrol writes
     const held = new Set([...readdirSync(WORKFLOWS), "action.yml", "caller.yml", "ci.yml"]);
     const code = [
       ...readdirSync(join(REPO, "src"))
-        .filter((file) => /\.ts$/.test(file) && !/\.test\.ts$|^scenarios\.ts$/.test(file))
+        .filter((file) => /\.ts$/.test(file) && !/\.test\.ts$|\.part\.ts$|^scenarios\.ts$/.test(file))
         .map((file) => join(REPO, "src", file)),
       ...readdirSync(join(REPO, "bin")).map((file) => join(REPO, "bin", file)),
     ];

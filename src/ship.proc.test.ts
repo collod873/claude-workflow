@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FULL_CHECK_PASSED, RED_TEST_LINE, servingProduction, shipping } from "./scenarios.ts";
+import { FULL_CHECK_PASSED, RED_TEST_LINE, servingProduction, shipping } from "./ship.part.ts";
 
 async function shippingApp() {
   const app = shipping();

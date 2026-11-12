@@ -5,7 +5,7 @@ import { specWith } from "./done-checker.part.ts";
 import { BRIEFS_CAP, ONE_REVIEWER_CAP, onTheCode, onTheSpec, SLICE_CAP } from "./finish.ts";
 import { authored, BIN, execute, labelsJson, linesIn, ghArgv, git, key, nulSplit, plant, type Said, scratch, script } from "./scenarios.ts";
 import { PAUSED } from "./spelled.ts";
-import { declareStage, HANDED_ON } from "./stages.ts";
+import { declarePart, HANDED_ON } from "./part-files.ts";
 import { SPEC_CAP } from "./ticket-shape.ts";
 
 const FINISHED_PR = "https://github.com/collod873/claude-workflow/pull/9974";
@@ -163,7 +163,7 @@ export function finishing({
 const SLOTTED = ["slice", "commits", "diff", "stat"];
 const changesOf = (filled: Record<string, string>) => ({ slices: [filled.slice ?? ""], commits: filled.commits ?? "", diff: filled.diff ?? "", stat: filled.stat ?? "" });
 
-declareStage({
+declarePart({
   part: { name: "bin/finish", file: "bin/finish", stops: "https://github.com/collod873/claude-workflow/issues/1509", lines: 3, printsData: true },
   prompts: [
     {

@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { BIN, execute, ghArgv, plant, scratch, script } from "./scenarios.ts";
-import { declareStage } from "./stages.ts";
+import { declarePart } from "./part-files.ts";
 
 export const HERE = "collod873/Lumaria";
 export const ELSEWHERE = "collod873/design-kit";
@@ -85,7 +85,7 @@ export function linking({ checks = NO_CHECKS, landed = LANDED, tickets = [] as T
   };
 }
 
-declareStage({
+declarePart({
   part: { name: "bin/reconcile", file: "bin/reconcile", stops: "https://github.com/collod873/claude-workflow/issues/1606" },
   scenarios: [
     { label: "waking a ticket whose blockers closed", run: () => linking({ tickets: [{ number: 931, labels: ["ticket", "waiting"], blockers: [{ repo: ELSEWHERE, number: 7, state: "closed" }] }] }).reconcile() },
@@ -94,10 +94,15 @@ declareStage({
   ],
 });
 
-declareStage({
+declarePart({
   part: { name: "bin/issue-links", file: "bin/issue-links", stops: "https://github.com/collod873/claude-workflow/issues/1606" },
   scenarios: [
     { label: "adding a blocker in another repo", run: () => linking().links("add-blocker", HERE, "931", ELSEWHERE, "7") },
     { label: "with the link refused", run: () => linking({ refused: true }).links("add-parent", HERE, "931", ELSEWHERE, "12") },
   ],
+});
+
+declarePart({
+  part: { name: "reconcile schedule", file: ".github/workflows/machine.yml", stops: "https://github.com/collod873/claude-workflow/issues/1606", clock: true },
+  scenarios: [],
 });

@@ -3,9 +3,12 @@ import { join } from "node:path";
 import { handedOn, repaired } from "./builder.ts";
 import { handedOn as reviewing } from "./reviewer.ts";
 import { DIFF_CAP, LIST_CAP, TAIL_CAP, TICKET_CAP } from "./brief.ts";
-import { authored, BIN, bodyIn, execute, labelsJson, linesIn, FIXED_TICKET, ghArgv, git, gitRefusing, NO_FILES, nulSplit, openedCases, type Parent, plant, refusedMark, type Said, scratch, script } from "./scenarios.ts";
+import { authored, BIN, bodyIn, execute, labelsJson, linesIn, FIXED_TICKET, ghArgv, git, NO_FILES, nulSplit, openedCases, type Parent, plant, refusedMark, type Said, scratch, script } from "./scenarios.ts";
 import { OWNER } from "./spelled.ts";
-import { declareStage, HANDED_ON } from "./stages.ts";
+import { declarePart, HANDED_ON } from "./part-files.ts";
+
+const gitRefusing = (root: string, unreadable: string) =>
+  script(join(root, "bin", "git"), `case "$*" in\n  ${unreadable}) printf 'fatal: unable to read\\n' >&2; exit 128 ;;\nesac\nPATH="\${PATH#*:}" exec git "$@"\n`);
 
 export const CHECK_PASSES = "printf 'check: ok, 8 steps in 1.0s\\n'\n";
 export const CHECK_RED = "printf 'check: red test src/stops.test.ts:4; log /nowhere/check-full.log\\n'\nexit 1\n";
@@ -219,7 +222,7 @@ export function fixing({
   };
 }
 
-declareStage({
+declarePart({
   part: { name: "bin/fix", file: "bin/fix", stops: "https://github.com/collod873/claude-workflow/issues/663", lines: 2 },
   prompts: [
     {

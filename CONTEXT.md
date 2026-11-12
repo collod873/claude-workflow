@@ -26,45 +26,43 @@ _Avoid_: core, new core, v2
 
 **Caller file**:
 The one workflow another repo carries to have its tickets built and its specs and research notes
-run: its triggers and calls to `tickets.yml` and `specs.yml` here, nothing else, so no part of the
+run: its triggers and calls to `tickets.yml` and `specs.yml` here, nothing else, so none of the
 machine is copied into it. `.github/caller.yml` is its text. Its specs are tried on its own checkout,
 readied by its contract's setup. Reconcile wakes a builder by taking `waiting` off its ticket, which
-the caller's `issues: unlabeled` hears from the caller's default branch alone, so the file lands on
+the caller's `issues: unlabeled` hears from its default branch alone, so the file lands on
 main before any ticket there builds. A builder it reaches passes a check red only for
-`(needs ...)` steps, which the machine's runner lacks, or unpublished receipts; that repo's own CI
+`(needs ...)` steps, which the machine's runner lacks, or unpublished receipts; that repo's CI
 judges its PR. A `DATABASE_URL` step is not one: the builder's job starts Postgres.
 _Avoid_: shim, wrapper, vendored workflow
 
 **Home**:
-A stage run is home when it has no caller file, or when its caller file (named by `CALLED_FROM`)
-is in the machine's own repo; it is foreign only when the caller file is in another repo. A home run
+A stage run is home when it has no caller file or its caller file (named by `CALLED_FROM`)
+is in the machine's own repo, foreign when it is in another repo. A home run
 behaves exactly as this repo's own stage workflows did before Gaps first: the builder lands a `machine` outcome on
 main and fails a check on any red step, `(needs ...)` ones included; the done check gets this repo's running-system line.
 _Avoid_: local, own-repo mode
 
 **Gaps first**:
-How this repo moved onto the caller file: every gap on the reusable path closed first, then one PR
-swapped its stage workflows for `machine.yml`. See `docs/adr/0001-cutover.md`.
+How this repo moved onto the caller file: every gap closed first, then one PR swapped its stage
+workflows for `machine.yml` (`docs/adr/0001-cutover.md`).
 _Avoid_: migration, switchover
 
 **No caller, same file**:
-A stage run with no caller file reaches the machine through `machine.yml`, the name `bin/enrol`
-writes: reruns start through it.
+A stage run with no caller file reaches the machine through `machine.yml`, which `bin/enrol`
+writes; reruns start through it.
 _Avoid_: default caller, fallback workflow
 
 **One checkout**:
-Here the machine's and the target's checkouts are two clones of this repo at main, kept apart as in
-any enrolled repo.
+Here the machine's and the target's checkouts are two clones of this repo at main, kept apart as in an enrolled repo.
 _Avoid_: self-checkout, same tree
 
 **Enrol**:
 Give a repo everything its tickets need to build: in one PR, the caller file,
 the **check-job rule** (`shared/ci.yml`'s `check` job `if` and `name`; enrol's own PR still runs it) on
-that CI's, and no pre-push, since `bin/land` is the gate; the App's reach, client id and keys, every label the
-machine spells, auto-merge, and main taking changes only by a PR passing `check`. It drops the
+that CI's, and no pre-push, since `bin/land` is the gate; the App's reach, client id and keys, every label the machine spells, auto-merge, and main taking changes only by a PR passing `check`. It drops the
 `tickets / review` and `review` checks no job posts, and the `queued`, `resolving` and `landing`
 labels nothing marks (ADR-0012). This repo's `Enrol` workflow re-enrols them on each push to main.
-`bin/enrol <repo>` sets what is missing and names what it could not set.
+`bin/enrol <repo>` sets what is missing and names what it could not.
 _Avoid_: onboard, install, register
 
 **Ship**:
@@ -75,17 +73,15 @@ holds the ship and files a "Ship held" bug. Each app carries a **ship caller fil
 cron and `health-url`, calling `ship.yml` here (`.github/ship-caller.yml` is its text). The **ship
 clock**, `bin/ship-clock` run once on the PC, turns each caller's cron into a systemd timer that
 dispatches it on time, caught up at boot when the PC was off: GitHub fires this account's schedules
-hours late (Mezzanine's 08:00 ship started 14:26 to 17:51), so a late GitHub run ships only when no dispatched Ship ran in the last 20 hours. `bin/enrol`
-does not write it, since both differ per app and not every enrolled repo deploys from a release
-branch. No app keeps a copy of the code (ADR-0004).
+hours late, so a late GitHub run ships only when no dispatched Ship ran in the last 20 hours. `bin/enrol`
+does not write it: both differ per app, and not every enrolled repo deploys from a release branch. No app keeps a copy of the code (ADR-0004).
 _Avoid_: deploy script, promote, release job
 
 **PC runner**:
 A `pc` runner, where a private repo's `CI_RUNNER` sends every job but reconcile's, else GitHub's. Reconcile's
 job takes the repo's one `pc-reconcile` runner, so a wake never queues behind a builder; its concurrency group
-runs one pass at a time, and on GitHub's a pass of seconds per ticket event bills a minute. It caps neither memory
-nor CPU: its full checks take turns in the machine's one check slot, as the owner's do, so each gets
-every core. While a repo's PC runners are all offline, the runner watch sets its `CI_RUNNER` to
+runs one pass at a time and on GitHub's a pass bills a minute per ticket event. It caps neither memory
+nor CPU: its full checks take turns in the machine's one check slot, so each gets every core. While a repo's PC runners are all offline, the runner watch sets its `CI_RUNNER` to
 `ubuntu-latest`, and back to `pc` once one returns; an unset `CI_RUNNER` is a hand switch it leaves.
 _Avoid_: local runner, quick lane
 
@@ -125,7 +121,7 @@ check puts a sentence resting on one to the owner.
 _Avoid_: env, credentials, test keys
 
 **Meter**:
-A rule that reports in the PR body what it would have refused, and refuses nothing. None runs any more
+A rule that reports in the PR body what it would have refused, and refuses nothing. None runs now
 (ADR-0006, ADR-0012).
 _Avoid_: soft gate, warning, advisory check
 
@@ -144,8 +140,7 @@ _Avoid_: fixer, mechanic, fresh eyes, repair agent
 
 **Reviewer**:
 A fresh agent with the builder's access, in the builder's run: it reads the ticket, commit messages
-and diff, fixes what it finds or approves, and lands it with `bin/land`, which hands back what it
-refuses. Nothing goes back to the builder (ADR-0012). It files owner steps as `owner-step` notes
+and diff, fixes what it finds or approves, and lands it with `bin/land`, which hands back what it refuses. Nothing goes back to the builder (ADR-0012). It files owner steps as `owner-step` notes
 and what it lets through as research does. A spec gets two in series at its finish: one on the spec over
 the whole branch, handed each slice's brief, then one on the code standard, last so it holds what the
 first wrote. Each works in a tree the contract's setup readied. Only a diff over 200 KB splits either
@@ -157,15 +152,15 @@ _Avoid_: review job, judge, second builder
 **Closing**:
 No stage closes, queues or merges by itself: waking what a closed issue blocked is reconcile's alone (#1606). A ticket closes on its PR's `Closes #N`, which `bin/land --ticket`
 writes, and a session's commit may close an issue the same way, since `bin/land` merges only past
-the full check. A spec closes on landing, from its done check's tries, so `bin/land --spec` refuses a
-commit that closes it by keyword. Every stage stands down on a closed issue as on a held one.
+the full check. A spec closes on landing, from its done check's tries; `bin/land --spec` refuses a
+commit that closes it by keyword. Every stage stands down on a closed or held issue.
 _Avoid_: closer, merger, queue, landing job
 
 ### The work
 
 **Spec**:
 The whole statement of a piece of work, filed as an issue labelled `spec`. One spec, one issue;
-a spec in a file or a conversation has not been published yet. A spec, build or bug filed blocked
+a spec in a file or conversation is unpublished. A spec, build or bug filed blocked
 by an open issue is parked: filed `waiting`, linked, then labelled `spec` or `ticket`.
 _Avoid_: PRD document, requirements doc, brief
 
@@ -258,14 +253,22 @@ _Avoid_: idea, bug, backlog item, memo
 
 **Stage**:
 One agent process in a pipeline run, with no memory of other stages. Not an Actions job or step: a
-stage is a context boundary and they are not. Each stage declares its part row, prompt caps and
-quiet-output scenarios in its own part file, `src/<stage>.part.ts`, and its own stops in its own
+stage is a context boundary and they are not. Each stage declares itself in its own **Part file**, `src/<stage>.part.ts`, and its own stops in its own
 code; every growth limit finds them by scanning, so no two stages share a list. Its prompt is in its
 **own words**: written for its job in its own module, sharing no prose with another stage's, and
 pointing at a skill for any rule a skill holds; the prompts step refuses two stages' prompts that
 say the same eight words, imported or pasted, while shared code (schemas, caps, filing, the check
 runner) stays shared.
 _Avoid_: phase, pass, step, job
+
+**Part file**:
+A part's row, prompt caps, quiet-output scenarios and the fakes only it uses, in `src/<name>.part.ts`.
+_Avoid_: stage file
+
+**Shared harness**:
+`src/scenarios.ts`: GitHub's `if` evaluator, the labelled-step simulation, the process harness,
+scratch repos and git helpers, and fixtures many parts use.
+_Avoid_: helpers
 
 **Stage opening**:
 How a stage starts on its issue, in `src/stage.ts` beside the hire: it reads the issue once, ends red
@@ -314,8 +317,8 @@ step, and the step's close wakes it through reconcile in the step's repo.
 _Avoid_: upstream, other repo, dependency
 
 **Probe**:
-A script or prompt `bin/probe --in <repo>` runs in the builder's environment, with no ticket or
-GitHub token; nothing runs after it.
+A script or prompt `bin/probe --in <repo>` runs in the builder's environment with no ticket or
+GitHub token; nothing runs after.
 _Avoid_: dry run, smoke test
 
 **Blip**:
@@ -329,20 +332,19 @@ _Avoid_: flake, glitch
 The one spec per repo labelled `sonnet-builders`: the first spec filed after the trial began, which
 `file-issue` labels while no issue in the repo carries it. The scheduler hires its slice builders
 on Sonnet; every other stage stays on the model and effort its hire names. It is judged against
-Opus builders on red checks, holds' fixes per slice and cost per slice (#1647).
+Opus builders on red checks, holds' fixes and cost per slice (#1647).
 _Avoid_: experiment, A/B, canary
 
 **Account failover**:
-The owner's two Claude subscriptions, one token each in `CLAUDE_CODE_OAUTH_TOKEN` and
-`CLAUDE_CODE_OAUTH_TOKEN_2`. A hire whose model ends on a usage limit is launched again at once on
-the other account, and every later hire in that run stays there, as does a hire already running on
+The owner's two Claude subscriptions, one token each in `CLAUDE_CODE_OAUTH_TOKEN` and `_2`. A hire whose model ends on a usage limit is launched again at once on
+the other account, as is every later hire in that run, and a hire already running on
 the spent one when another moved first; it ends red only when both are spent. `claude-token-to-gh --second` fills the second slot, `bin/enrol` sets both.
 _Avoid_: backup token, second key
 
 **Resume**:
-Setting a held issue going again. Taking `waiting` off a ticket resumes its build; reconcile takes it
-off once every issue it is blocked by has closed. Taking `paused`
-or `stuck` off a ticket that then holds neither builds it again on the branch its last run kept,
+Setting a held issue going again. Taking `waiting` off a ticket resumes its build; reconcile does it
+once every issue blocking it has closed. Taking `paused`
+or `stuck` off a ticket that then holds neither builds it again on its last branch,
 its builder resuming its session. Taking either off an open spec that then holds neither runs its
 scheduler again from its integration branch and progress comment, resuming each out slice's builder with the reason it stopped.
 _Avoid_: unpause, restart, unblock

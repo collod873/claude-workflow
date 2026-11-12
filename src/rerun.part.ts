@@ -2,7 +2,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { BIN, execute, ghArgv, scratch, script, stubbedMark } from "./scenarios.ts";
 import { OWNER_CALL } from "./spelled.ts";
-import { declareStage } from "./stages.ts";
+import { declarePart } from "./part-files.ts";
 
 export const RUN_URL = "https://github.com/collod873/claude-workflow/actions/runs/4417";
 export const OUT_OF_TIME = "The job has exceeded the maximum execution time of 1h0m0s";
@@ -50,7 +50,7 @@ export function rerunning({ attempt = "1", jobs = [red()], labels = ["spec"], re
   return { calls, marks, run: () => execute(join(BIN, "rerun"), root, env, ["4417", attempt]), dispatch: () => execute(join(BIN, "rerun"), root, env, ["--dispatch", "4417", attempt]) };
 }
 
-declareStage({
+declarePart({
   part: { name: "bin/rerun", file: "bin/rerun", stops: "https://github.com/collod873/claude-workflow/issues/1178" },
   scenarios: [
     { label: "re-running a first red attempt", run: () => rerunning().run() },

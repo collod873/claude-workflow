@@ -1,7 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { filedAs, filing, misshapenSpec, wellFormedBug, wellFormedNote, wellFormedSpec, wellFormedTicket } from "./scenarios.ts";
+import { filing, misshapenSpec, wellFormedBug, wellFormedTicket } from "./file-issue.part.ts";
+import { filedAs, wellFormedNote, wellFormedSpec } from "./scenarios.ts";
 import { why } from "./ticket-shape.ts";
 
 const URL = "https://github.com/collod873/claude-workflow/issues/700";

@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { BIN, execute, ghArgv, plant, scratch, script } from "./scenarios.ts";
-import { declareStage } from "./stages.ts";
+import { declarePart } from "./part-files.ts";
 
 export const HERE = "collod873/Lumaria";
 export const MACHINE = "collod873/claude-workflow";
@@ -43,7 +43,7 @@ export function migrating({ waiting = [] as Waiting[], parented = [] as string[]
   return { calls, migrate: () => execute(join(BIN, "migrate-waiting"), root, env, [HERE]) };
 }
 
-declareStage({
+declarePart({
   part: { name: "bin/migrate-waiting", file: "bin/migrate-waiting", stops: "https://github.com/collod873/claude-workflow/issues/1606" },
   scenarios: [
     { label: "converting a ticket parked in prose", run: () => migrating({ waiting: [{ number: 931, body: "## Why\n\nx\n", comments: ["The builder of #931 found it depends on #5, still open. y"] }] }).migrate() },

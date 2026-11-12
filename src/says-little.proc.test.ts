@@ -1,91 +1,23 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parts, type Part } from "./parts.ts";
-import { bare, callerWith, clocking, CONTRACT, FULL_CHECK_PASSED, shipping, type Run, type ShipRun, LINE_LIMIT, MOST_LINES, coveredByCheck, enrolling, execute, filing, githubCall, landSession, marking, overLimit, scratch, script, sessionExtras, watching, wellFormedTicket, wellFormedNote, misshapenSpec, switching } from "./scenarios.ts";
-import { stages, type Scenario } from "./stages.ts";
+import { CONTRACT, coveredByCheck, execute, scratch, script } from "./scenarios.ts";
+import { partFiles, type Scenario } from "./part-files.ts";
 
-const REPO = resolve(import.meta.dirname, "..");
-const NOISE = "a line a tool prints that nobody needed to read\n".repeat(40).trim();
-const URL = "https://github.com/collod873/claude-workflow/pull/1";
-const FILED = `printf '%s\\n' ${URL}\n`;
-const NOTE_CALL = ["idea", "--title", "What the audit found", "--body-file", "body.md"];
+const LINE_LIMIT = 200;
+const MOST_LINES = 6;
 
-function woke(event: string): Run {
-  const root = scratch("wake-");
-  writeFileSync(join(root, "event.json"), event);
-  return execute(join(REPO, "bin", "wake"), root, { GITHUB_EVENT_PATH: join(root, "event.json"), GITHUB_OUTPUT: join(root, "output") });
+function overLimit(said: string, allowed: number): string[] {
+  const spoken = said.replace(/\n$/, "").split("\n");
+  const long = spoken.filter((line) => line.length > LINE_LIMIT).map((line) => `said a line of ${line.length} characters, over ${LINE_LIMIT}`);
+  return spoken.length > allowed ? [...long, `said ${spoken.length} lines, over ${allowed}`] : long;
 }
 
-const shippingNext = (runs: ShipRun[] | null): Run => {
-  const app = shipping();
-  app.land("next", runs);
-  return app.run();
-};
+const REPO = resolve(import.meta.dirname, "..");
+const URL = "https://github.com/collod873/claude-workflow/pull/1";
 
-const listed: Record<string, Scenario[]> = {
-  "bin/land": [
-    { label: "landing while gh chatters", run: () => landSession({ gh: `cat >&2 <<'NOISE'\n${NOISE}\nNOISE\n[[ $2 == create ]] && echo ${URL}\nexit 0\n` }).run() },
-    { label: "with GitHub refusing the merge while gh chatters", run: () => landSession({ gh: `cat >&2 <<'NOISE'\n${NOISE}\nNOISE\n[[ $2 == create ]] && echo ${URL}\n[[ $2 == view ]] && echo BLOCKED\n[[ $2 == merge ]] && exit 1\nexit 0\n` }).run() },
-    { label: "with gh pr create failing", run: () => landSession({ gh: `[[ $2 == create ]] || exit 0\ncat >&2 <<'NOISE'\n${NOISE}\nNOISE\nexit 1\n` }).run() },
-    { label: "with the push refused", run: () => landSession({ gh: "exit 0\n", remoteRefuses: NOISE }).run() },
-    { label: "refusing an em dash in a commit message", run: () => landSession({ gh: "exit 0\n", messages: ["change \u2014 dashed"] }).run() },
-  ],
-  "bin/session-extras": [
-    { label: "with every reminder due", run: () => sessionExtras({ mainMoves: "package-lock.json", live: 1, gh: `printf '#${"1".repeat(6)}\\n%.0s' {1..40}\nexit 0\n` }).run() },
-    { label: "with the land PR lookup refused", run: () => sessionExtras({ gh: "printf 'gh: authentication required\\n' >&2\nexit 4\n" }).run() },
-  ],
-  "bin/file-issue": [
-    { label: "filing a ticket", run: () => filing({ gh: FILED, body: wellFormedTicket }).run() },
-    { label: "refusing a body with one defect", run: () => filing({ gh: FILED, body: wellFormedTicket.replace("## Why", "## Background") }).run() },
-    { label: "refusing a body defective more ways than it shows", run: () => filing({ gh: FILED, body: misshapenSpec }).run(["spec", "--title", "A spec", "--body-file", "body.md"]) },
-    { label: "refusing a call it does not file", run: () => filing({ gh: FILED, body: wellFormedTicket }).run(["judgement", "--title", "A judgement"]) },
-    { label: "filing a note", run: () => filing({ gh: FILED, body: wellFormedNote }).run(NOTE_CALL) },
-    { label: "refusing a note that says no why", run: () => filing({ gh: FILED, body: "Four proposals, with no heading over them.\n" }).run(NOTE_CALL) },
-    { label: "showing its help", run: () => filing({ gh: FILED, body: wellFormedTicket }).run(["--help"]) },
-  ],
-  "bin/enrol": [
-    { label: "enrolling a bare repo", run: () => enrolling(bare()).run() },
-    { label: "with GitHub refusing every call", run: () => enrolling(bare({ refused: { "": NOISE } })).run() },
-  ],
-  "bin/runner": [
-    { label: "installing a repo's PC runners and sending its jobs there", run: () => switching().run("pc") },
-    { label: "refusing a public repo", run: () => switching({ isPrivate: false }).run("pc") },
-  ],
-  "bin/ship-clock": [
-    { label: "installing three apps' ship clocks", run: () => clocking({ "collod873/Mezzanine": callerWith("0 8 * * *"), "collod873/PW-Zone2": callerWith("20 8 * * *"), "collod873/workout-tracker": callerWith("40 8 * * *") }).run() },
-    { label: "refusing a cron that is not daily", run: () => clocking({ "collod873/Mezzanine": callerWith("*/15 * * * *") }).run() },
-  ],
-  "bin/runner-watch": [
-    { label: "flipping a repo whose PC runners went offline", run: () => watching([{ name: "collod873/chess", runners: [{ status: "offline", labels: ["pc"] }], variable: "pc" }]).run("flip") },
-    { label: "with GitHub refusing the billing usage", run: () => watching([{ name: "collod873/chess" }]).run("minutes", "collod873", "2026-10-28") },
-  ],
-  "bin/ship": [
-    { label: "shipping a commit that passed the full check", run: () => shippingNext(FULL_CHECK_PASSED) },
-    { label: "holding a commit whose full check is red", run: () => shippingNext(null) },
-    { label: "refusing a daily run with no health URL", run: () => shipping().run(["--daily"]) },
-    { label: "showing its help", run: () => shipping().run(["--help"]) },
-  ],
-  "bin/mark": [
-    { label: "moving a ticket to a state", run: () => marking({ labels: { "811": ["ticket", "checking", "try-2"] }, pr: "900" }).run("811", "building", "--try") },
-    { label: "with GitHub refusing the label", run: () => marking({ gh: `cat >&2 <<'NOISE'\n${NOISE}\nNOISE\nexit 1\n` }).run("811", "stuck") },
-  ],
-  "bin/github": [
-    { label: "answering after two blips", run: () => githubCall(["gh: Server Error (HTTP 502)", "gh: Server Error (HTTP 502)"]).run() },
-    { label: "refused, not on a blip", run: () => githubCall([NOISE.split("\n")[0] ?? ""]).run() },
-    { label: "refused past a blip", run: () => githubCall(["gh: Server Error (HTTP 502)", "gh: Server Error (HTTP 502)", "gh: Server Error (HTTP 502)"]).run() },
-  ],
-  "bin/spelled": [
-    { label: "printing the labels", run: () => execute(join(REPO, "bin", "spelled"), scratch("spelled-"), {}, ["labels"]) },
-    { label: "refusing a list it does not hold", run: () => execute(join(REPO, "bin", "spelled"), scratch("spelled-"), {}, ["owners"]) },
-  ],
-  "bin/wake": [
-    { label: "answering an event", run: () => woke(JSON.stringify({ action: "labeled", label: { name: "ticket" }, sender: { login: "collod873" }, issue: { labels: [{ name: "ticket" }] } })) },
-    { label: "with an event it cannot read", run: () => woke("{") },
-  ],
-};
-
-const scenarios: Record<string, Scenario[]> = { ...listed, ...Object.fromEntries((await stages()).map((stage) => [stage.part.file, stage.scenarios])) };
+const scenarios: Record<string, Scenario[]> = Object.fromEntries((await partFiles()).map((partFile) => [partFile.part.file, partFile.scenarios]));
 
 function speakers(registry: Part[], contract: string): string[] {
   const covered = coveredByCheck(contract);

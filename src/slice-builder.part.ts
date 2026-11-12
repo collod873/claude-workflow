@@ -4,7 +4,7 @@ import { CHECK_PASSES } from "./builder.part.ts";
 import { LIST_CAP, onDisk, TAIL_CAP, TICKET_CAP } from "./brief.ts";
 import { builtNotDone, CARRY_ON, conflicted, handedOn, LEFT_UNNAMED, mergesRefused, nothingBuilt, ontoMovedSinceRebuild, OUT_OF_TIME, repaired, unrebased } from "./slice-builder.ts";
 import { BIN, execute, ghArgv, git, plant, scratch, script } from "./scenarios.ts";
-import { declareStage, HANDED_ON } from "./stages.ts";
+import { declarePart, HANDED_ON } from "./part-files.ts";
 
 export const SPEC = "1509";
 export const SLICE = "tenant-time-zone";
@@ -116,7 +116,7 @@ export function slicing({
   };
 }
 
-declareStage({
+declarePart({
   part: { name: "bin/build-slice", file: "bin/build-slice", stops: "https://github.com/collod873/claude-workflow/issues/1509", lines: 2, printsData: true },
   prompts: [
     {

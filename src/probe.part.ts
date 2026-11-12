@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { asked, PROBE_CAP, probeOutput, probeRunName, type Probe } from "./probe.ts";
 import { BIN, execute, ghArgv, git, NO_FILES, plant, scratch, script } from "./scenarios.ts";
-import { declareStage, HANDED_ON } from "./stages.ts";
+import { declarePart, HANDED_ON } from "./part-files.ts";
 
 export const PROBE_RUN = "4417";
 const PROBE_URL = `https://github.com/collod873/Lumaria/actions/runs/${PROBE_RUN}`;
@@ -56,7 +56,7 @@ export function probing({ accounts = {}, contract = undefined as string | undefi
   };
 }
 
-declareStage({
+declarePart({
   part: { name: "bin/probe", file: "bin/probe", stops: "https://github.com/collod873/claude-workflow/issues/1251" },
   prompts: [{ name: "probe", file: "src/probe.ts", cap: PROBE_CAP + HANDED_ON, slots: ["text"], build: (filled) => asked(filled.text ?? "") }],
   scenarios: [

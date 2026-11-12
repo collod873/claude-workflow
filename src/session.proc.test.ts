@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sessionExtras } from "./scenarios.ts";
+import { sessionExtras } from "./session-extras.part.ts";
 
 describe("bin/session-extras keeps what only Workflow needs at session start beside the shared launcher (#869)", () => {
   it("says nothing and installs nothing when package-lock.json did not move and no land PR is stuck", () => {
