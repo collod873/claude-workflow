@@ -88,7 +88,9 @@ runs:
         ln -s "$HOME/.claude/projects" "$config/projects"
         jq 'del(.hooks) | .env.CLAUDE_CODE_TMPDIR = env.TMPDIR | .env.CLAUDE_WORKFLOW_ROOT = env.GITHUB_WORKSPACE' "$config/settings.json" >"$RUNNER_TEMP/unregistered.json"
         mv "$RUNNER_TEMP/unregistered.json" "$config/settings.json"
-        python3 "$RUNNER_TEMP/agent-hooks/hookcheck.py" --root "$RUNNER_TEMP/agent-hooks" --settings "$config/settings.json" --write-settings --graded
+        python3 "$RUNNER_TEMP/agent-hooks/hookcheck.py" --root "$RUNNER_TEMP/agent-hooks" --settings "$config/settings.json" --emit-settings >"$RUNNER_TEMP/hooks.json"
+        jq --slurpfile emitted "$RUNNER_TEMP/hooks.json" '.hooks = $emitted[0].hooks' "$config/settings.json" >"$RUNNER_TEMP/registered.json"
+        mv "$RUNNER_TEMP/registered.json" "$config/settings.json"
         printf 'CLAUDE_CONFIG_DIR=%s\n' "$config" >>"$GITHUB_ENV"
 
     - id: captures-app
