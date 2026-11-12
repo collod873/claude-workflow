@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { deserialize, serialize } from "node:v8";
 import { listedFiles } from "./files.mjs";
 import { knipBase } from "./knip.base.mjs";
+import { withoutStaleVerdicts } from "./knip-cache.mjs";
 import { refused, stage } from "./stages.mjs";
 import { pinnedTools } from "./tools.mjs";
 
@@ -13,7 +13,6 @@ const ROOT_CONFIG = "knip.config.ts";
 const OTHER_CONFIG = /(?:^|\/)\.?knip\.(?:jsonc?|[cm]?[jt]s)$/;
 const PINNED = pinnedTools.knip;
 const KNIP_BASE = fileURLToPath(new URL("./knip.base.mjs", import.meta.url));
-const KNIP_PLUGIN_CACHE = /^plugins-/;
 
 function otherConfigRefusals(root, files) {
   const others = files
@@ -67,34 +66,6 @@ function runCache(root) {
   for (const config of [join(root, ROOT_CONFIG), KNIP_BASE]) hash.update(readFileSync(config));
   const key = hash.digest("hex").slice(0, 16);
   return join(homedir(), ".cache", "agent-hooks", "knip-runs", key);
-}
-
-function readableEntries(fileCache) {
-  try {
-    return deserialize(readFileSync(fileCache));
-  } catch {
-    rmSync(fileCache);
-    return new Map();
-  }
-}
-
-function withoutUnresolvedImports(fileCache) {
-  const entries = readableEntries(fileCache);
-  const unresolving = [...entries]
-    .filter(([, entry]) => entry.data?.imports?.unresolved?.size)
-    .map(([file]) => file);
-  if (unresolving.length === 0) return;
-  for (const file of unresolving) entries.delete(file);
-  writeFileSync(fileCache, serialize(entries));
-}
-
-function withoutStaleVerdicts(cache) {
-  if (!existsSync(cache)) return cache;
-  for (const entry of readdirSync(cache)) {
-    if (KNIP_PLUGIN_CACHE.test(entry)) rmSync(join(cache, entry));
-    else withoutUnresolvedImports(join(cache, entry));
-  }
-  return cache;
 }
 
 const root = process.cwd();
