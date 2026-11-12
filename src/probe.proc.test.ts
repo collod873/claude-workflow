@@ -52,14 +52,15 @@ describe("a probe runs one command or prompt in a stage's real environment and e
     expect(bothSpent.accountsTried()).toEqual([SPENT_ACCOUNT]);
   });
 
-  it("ends a claude probe red when its session does, keeping why", () => {
-    const probe = probing({ claudeEnds: 1 });
+  it("ends a claude probe red when its session does, keeping the reason its last result gave, never a raw transcript line (#1714)", () => {
+    const probe = probing({ claudeEnds: 1, said: "the commit hook refused the tree" });
 
     const ended = probe.run("claude", "Commit a change and see the hook fire");
 
     expect(ended.status).toBe(1);
-    expect(ended.stderr).toMatch(/^probe: the claude probe stopped: the probe ended 1/);
-    expect(probe.kept()).toMatch(/^the probe ended 1/);
+    expect(ended.stderr).toMatch(/^probe: the claude probe stopped: the probe ended 1: the commit hook refused the tree/);
+    expect(ended.stderr).not.toContain('{"type"');
+    expect(probe.kept()).toMatch(/^the probe ended 1: the commit hook refused the tree/);
   });
 
   it("dispatches a probe to a repo's caller file, finds its run by name, waits for it and points at its output", () => {

@@ -10,6 +10,8 @@ const PROBE_URL = `https://github.com/collod873/Lumaria/actions/runs/${PROBE_RUN
 export const SPENT_ACCOUNT = "sk-spent";
 const LIMIT_RESULT = { type: "result", subtype: "success", is_error: true, result: "You've hit your limit · resets 6pm (America/New_York)" };
 
+const HOOK_STARTED = { type: "system", subtype: "hook_started", hook_id: "cdebad43", hook_name: "SessionStart:startup" };
+
 export function probing({ accounts = {}, contract = undefined as string | undefined, said = "the check fits its budget", claudeEnds = 0, concluded = "success", listed = true, keptOutput = true, treePath = NO_FILES } = {}) {
   const root = scratch("probe-");
   const tree = join(root, "tree");
@@ -20,7 +22,7 @@ export function probing({ accounts = {}, contract = undefined as string | undefi
   git(tree, "init", "--quiet", "--initial-branch=main");
   if (contract !== undefined) plant(tree, ".claude/contract.json", contract);
   const result = { type: "result", subtype: "success", is_error: false, session_id: "sess-probe", result: said };
-  script(join(root, "bin", "claude"), [`printf '%s\\n' "$CLAUDE_CODE_OAUTH_TOKEN" >>"${hires}/accounts"`, `[ "$CLAUDE_CODE_OAUTH_TOKEN" = ${SPENT_ACCOUNT} ] && { cat >/dev/null; printf '%s\\n' '${JSON.stringify(LIMIT_RESULT).replaceAll("'", "'\\''")}'; exit 1; }`, `printf '%s\\0' "$@" >"${hires}/argv"`, `cat >"${handed}"`, `printf '%s\\n' '${JSON.stringify(result)}'`, `exit ${claudeEnds}`, ""].join("\n"));
+  script(join(root, "bin", "claude"), [`printf '%s\\n' "$CLAUDE_CODE_OAUTH_TOKEN" >>"${hires}/accounts"`, `[ "$CLAUDE_CODE_OAUTH_TOKEN" = ${SPENT_ACCOUNT} ] && { cat >/dev/null; printf '%s\\n' '${JSON.stringify(LIMIT_RESULT).replaceAll("'", "'\\''")}'; exit 1; }`, `printf '%s\\0' "$@" >"${hires}/argv"`, `cat >"${handed}"`, `printf '%s\\n' '${JSON.stringify(HOOK_STARTED)}' '${JSON.stringify(result)}'`, `exit ${claudeEnds}`, ""].join("\n"));
   for (const [name, body] of Object.entries(treePath)) script(join(root, "tree-bin", name), body);
   const { setup, calls } = ghArgv(join(root, "gh-argv"));
   const title = (by: Probe, text: string) => probeRunName(by, text).replaceAll("'", "'\\''");
