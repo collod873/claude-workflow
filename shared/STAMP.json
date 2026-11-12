@@ -1,5 +1,5 @@
 {
- "source": "collod873/agent-hooks@ce6a8f10378b7122b109959167c06f32af630149",
+ "source": "collod873/agent-hooks@27ac6d501d7c284eb0c9ddb164880cb286e57f48",
  "layer": "typescript",
  "files": {
   "ci.yml": "bea63aa685617bc3f40983c8bc26ebd5795f6bb8afe5945f0828623736b3fa1b",
@@ -9,7 +9,7 @@
   "security/vulns": "39541ea74fbc9ce44c964a0ba826a4abfa2873267895b906bbbb56d0692c9b66",
   "typescript/closure.mjs": "7331ac21505d07c748f95057c05e01051be870b9e2e88b1bf731f9d9c0362ddb",
   "typescript/files.mjs": "30813286d1d77817a585a2de6c4439713e2b159204b3a31f5833fe211107d4e8",
-  "typescript/index.mjs": "3f85b9c89df8587ebd20a9273cb2279845241c77889a4bae24cdeb7070c320bd",
+  "typescript/index.mjs": "48e2243a3558ffca7eeec4e3aae8737621016346e3bae337406e9367d238c40b",
   "typescript/knip.base.d.mts": "0d59f036962b278fc0bec872969eea08bf899384ac80c36297102ddb5583dc1b",
   "typescript/knip.base.mjs": "c1f41b311346b57281798d47b1548bc677c6a3b81c419fbfb360089e4c10c8b3",
   "typescript/node.json": "d09d82902169f4272754dfab63a99bfaecb6be95521369f33e67e33f7822f7d9",
