@@ -58,8 +58,8 @@ function callOwner(call: Call, url: string, attempt: string): void {
   calledOwner(
     call.issue,
     { who: call.run, stopped: `${call.ended} twice`, said: `rerun: #${call.issue} is labelled ${STUCK}, as ${call.run} ${call.ended} on its re-run` },
-    `the machine re-ran it once by itself and it stopped again: the first run is ${url}/attempts/1 and the re-run is ${url}/attempts/${attempt}`,
-    `Look at the re-run to see what stopped it, and take \`${STUCK}\` off once the cause is fixed: that picks #${call.issue} up again.`,
+    "the machine re-ran it once by itself and it stopped again",
+    `The first run is ${url}/attempts/1 and the re-run is ${url}/attempts/${attempt}. Look at the re-run to see what stopped it, and take \`${STUCK}\` off once the cause is fixed: that picks #${call.issue} up again.`,
   );
 }
 
