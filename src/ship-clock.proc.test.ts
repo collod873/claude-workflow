@@ -20,6 +20,16 @@ describe("bin/ship-clock has this PC dispatch each app's daily Ship at its cron 
     expect(written).toContain("systemctl enable --now ship-collod873-Mezzanine.timer ship-collod873-PW-Zone2.timer");
   });
 
+  it.each(["--help", "-h"])("answers %s with what it installs and installs nothing", (flag) => {
+    const { run, sudo } = clocking({ "collod873/Mezzanine": callerWith("0 8 * * *") });
+
+    const ran = run([flag]);
+
+    expect(ran.status).toBe(0);
+    expect(ran.stdout).toContain("ship-clock:");
+    expect(sudo()).toBe("");
+  });
+
   it("refuses a cron that is not once a day and installs nothing, rather than dispatching at a wrong time", () => {
     const { run, sudo } = clocking({ "collod873/Mezzanine": callerWith("0 8 * * 1-5") });
 
