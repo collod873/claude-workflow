@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { heard, marking } from "./scenarios.ts";
+import { marking } from "./mark.part.ts";
+import { heard } from "./scenarios.ts";
 import { LABELS } from "./spelled.ts";
 
 const colourOf = (name: string) => LABELS.find((label) => name.startsWith(label.name))?.colour;

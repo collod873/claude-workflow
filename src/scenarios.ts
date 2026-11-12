@@ -364,32 +364,6 @@ export function execute(file: string, cwd: string, extra: Record<string, string>
   return { status, stdout, stderr };
 }
 
-export const wellFormedTicket = [
-  "## Why",
-  "",
-  'The owner, in session: "a ticket is the only way in, so its shape is where intent survives".',
-  "",
-  "## Done when",
-  "",
-  "- Filing a misshapen body files nothing and names each defect.",
-  "",
-].join("\n");
-
-export const misshapenSpec = "## Nothing to slice\n";
-
-export const wellFormedBug = [
-  "## Why",
-  "",
-  "The Signals of session 7a2c read:",
-  "",
-  '> hookkit: check-gate crashed 3 times: "TypeError: Cannot read properties of undefined (reading \'steps\')"',
-  "",
-  "## Done when",
-  "",
-  "- check-gate reads a contract with no steps and says so instead of crashing.",
-  "",
-].join("\n");
-
 export const TOKEN_PAGE = "https://github.com/settings/personal-access-tokens/new?name=BILLING_PAT&target_name=collod873&expires_in=366&plan=read";
 export const HANDED_OVER = "In a terminal, run `gh secret set BILLING_PAT --repo collod873/claude-workflow` and paste the token at its prompt, never into a chat";
 export const OPENED_TOKEN_PAGE = { action: "Open the pre-filled token page", at: TOKEN_PAGE, picks: [{ field: "Expiration", value: "366 days" }, { field: "Repository access", value: "Public repositories" }, { field: "Plan", value: "Read-only" }] };
@@ -435,35 +409,6 @@ export const wellFormedSpec = [
   "- [ ] see a spec land as its own issue, labelled spec",
   "",
 ].join("\n");
-
-export function filing({
-  gh,
-  body,
-  title = "A ticket the machine can build",
-  sessionId,
-  origin,
-  ghRepo,
-}: {
-  gh: string;
-  body: string;
-  title?: string;
-  sessionId?: string;
-  origin?: string;
-  ghRepo?: string;
-}) {
-  const root = scratch("file-issue-");
-  const repo = join(root, "repo");
-  mkdirSync(repo, { recursive: true });
-  git(repo, "init", "--quiet", "--initial-branch=main");
-  if (origin !== undefined) git(repo, "remote", "add", "origin", origin);
-  writeFileSync(join(repo, "body.md"), body);
-  script(join(root, "bin", "gh"), gh);
-  return {
-    repo,
-    run: (args = ["build", "--title", title, "--body-file", "body.md"]) =>
-      execute(join(BIN, "file-issue"), repo, { PATH: `${join(root, "bin")}:${process.env.PATH}`, ...(sessionId === undefined ? {} : { CLAUDE_CODE_SESSION_ID: sessionId }), GH_REPO: ghRepo ?? "" }, args),
-  };
-}
 
 export function cloned(root: string, ...commits: string[]) {
   return clonedOn(root, "main", commits);
@@ -546,40 +491,6 @@ function parentSays(root: string, parent: Parent): string {
   return `cat "${join(root, "parent.json")}"`;
 }
 
-export function marking({ gh = "", labels = {}, pr = "", repo = [] }: { gh?: string; labels?: Record<string, string[]>; pr?: string; repo?: string[] } = {}) {
-  const root = scratch("mark-");
-  const calls = join(root, "gh-calls");
-  const held = (number: string) => join(root, "labels", number);
-  mkdirSync(join(root, "labels"));
-  for (const [number, names] of Object.entries(labels)) writeFileSync(held(number), names.map((name) => `${name}\n`).join(""));
-  writeFileSync(join(root, "repo"), repo.map((name) => `${name} ededed\n`).join(""));
-  script(
-    join(root, "bin", "gh"),
-    [
-      `printf '%s\\n' "$*" >>"${calls}"`,
-      gh,
-      `dir="${root}"`,
-      'if [[ $1 == label && $2 == create ]]; then grep -q "^$3 " "$dir/repo" && exit 1; printf \'%s %s\\n\' "$3" "$5" >>"$dir/repo"; exit 0; fi',
-      `[[ $1 == pr && $2 == list ]] && { printf '%s' '${pr}'; exit 0; }`,
-      "[[ $1 == api ]] || exit 0",
-      "if [[ $2 == -X ]]; then method=$3 path=$4; shift 4; else method=GET path=$2; shift 2; fi",
-      'number=${path#repos/?owner?/?repo?/issues/}; number=${number%%/*}; file="$dir/labels/$number"; touch "$file"',
-      "case $method in",
-      '  GET) cat "$file" ;;',
-      '  POST) while (($#)); do [[ $1 == -f ]] && printf \'%s\\n\' "${2#labels[]=}" >>"$file"; shift; done ;;',
-      '  DELETE) grep -vxF "${path##*/}" "$file" >"$file.left"; mv "$file.left" "$file" ;;',
-      "esac",
-      "",
-    ].join("\n"),
-  );
-  return {
-    calls: () => linesIn(calls),
-    labels: (number: string) => (existsSync(held(number)) ? readFileSync(held(number), "utf8").split("\n").filter(Boolean).sort() : []),
-    made: () => readFileSync(join(root, "repo"), "utf8").split("\n").filter(Boolean),
-    run: (...args: string[]) => execute(join(BIN, "mark"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, args),
-  };
-}
-
 export function issueStage(prefix: string, issue: object, answer: object, posted: string, gh: string, cutOff = "") {
   const root = scratch(prefix);
   const { setup, calls } = ghArgv(join(root, "gh-argv"));
@@ -600,49 +511,10 @@ export function issueStage(prefix: string, issue: object, answer: object, posted
   };
 }
 
-export function sessionExtras({
-  gh = "exit 0\n",
-  npm = "exit 0\n",
-  mainMoves = "moved.txt",
-  live = 0,
-}: { gh?: string; npm?: string; mainMoves?: string; live?: number } = {}) {
-  const root = scratch("session-extras-");
-  const { remote, session: main } = cloned(root, "base");
-  const was = git(main, "rev-parse", "HEAD");
-  const other = join(root, "other");
-  git(root, "clone", "--quiet", remote, other);
-  git(other, "config", "user.email", "other@test");
-  git(other, "config", "user.name", "other");
-  plant(other, mainMoves, "moved\n");
-  git(other, "add", mainMoves);
-  git(other, "commit", "--quiet", "-m", "a merge since the last session");
-  git(other, "push", "--quiet", "origin", "main");
-  git(main, "pull", "--quiet", "--ff-only", "origin", "main");
-  const installed = join(root, "npm");
-  script(join(root, "bin", "npm"), `printf '%s\\n' "$PWD" "$@" >"${installed}"\n${npm}`);
-  script(join(root, "bin", "gh"), gh);
-  return {
-    main,
-    npm: () => (existsSync(installed) ? readFileSync(installed, "utf8").trimEnd().split("\n") : undefined),
-    run: () => execute(join(BIN, "session-extras"), main, { PATH: `${join(root, "bin")}:${process.env.PATH}`, SESSION_MAIN_WAS: was, SESSION_LIVE: String(live) }, []),
-  };
-}
-
 export const PC_RUNS_ON = "${{ vars.CI_RUNNER || 'ubuntu-latest' }}";
 let appKey: { publicKey: string; privateKey: string } | undefined;
 export const appKeys = () => (appKey ??= generateKeyPairSync("rsa", { modulusLength: 2048, publicKeyEncoding: { type: "spki", format: "pem" }, privateKeyEncoding: { type: "pkcs8", format: "pem" } }));
 export const key = () => appKeys().privateKey;
-
-export function githubCall(refusals: string[], args = ["issue", "edit", "1202", "--add-label", "landing"]) {
-  const root = scratch("github-");
-  const { setup, calls } = ghArgv(join(root, "gh-argv"));
-  script(
-    join(root, "bin", "gh"),
-    [setup, `refusals=(${refusals.map((refusal) => `'${refusal}'`).join(" ")})`, "refusal=${refusals[$((n - 1))]:-}", '[[ -z $refusal ]] && { printf "answered\\n"; exit 0; }', 'printf "partial\\n"', 'printf "%s\\n" "$refusal" >&2', "exit 1", ""].join("\n"),
-  );
-  const run = () => execute(join(BIN, "github"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}`, GH_RETRY_SECONDS: "0" }, args);
-  return { run, calls };
-}
 
 export function onPath(tool: string): string {
   const dir = (process.env.PATH ?? "").split(":").find((folder) => existsSync(join(folder, tool)));

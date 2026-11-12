@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { githubCall } from "./scenarios.ts";
+import { githubCall } from "./github.part.ts";
 
 function github(refusals: string[], args?: string[]) {
   const { run, calls } = githubCall(refusals, args);
