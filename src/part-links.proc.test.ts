@@ -7,12 +7,13 @@ import { scratch, script } from "./scenarios.ts";
 
 const REPO = "https://github.com/collod873/claude-workflow";
 
-function recordedGh(): { gh: string; calls: () => string[] } {
+function recordedGh(): { gh: string; calls: () => string[]; tokens: () => string[] } {
   const dir = scratch("part-links-");
   const log = join(dir, "calls");
   const api = "repos/collod873/claude-workflow";
   script(join(dir, "gh"), [
     `printf '%s\\n' "$*" >>${JSON.stringify(log)}`,
+    `printf '%s\\n' "\${GH_TOKEN:-none}" >>${JSON.stringify(`${log}-tokens`)}`,
     "case $2 in",
     `  ${api}/issues/1) echo '{"number":1}' ;;`,
     `  ${api}/pulls/2) echo '{"number":2}' ;;`,
@@ -24,7 +25,7 @@ function recordedGh(): { gh: string; calls: () => string[] } {
     "esac",
     "",
   ].join("\n"));
-  return { gh: join(dir, "gh"), calls: () => readFileSync(log, "utf8").trim().split("\n") };
+  return { gh: join(dir, "gh"), calls: () => readFileSync(log, "utf8").trim().split("\n"), tokens: () => readFileSync(`${log}-tokens`, "utf8").trim().split("\n") };
 }
 
 const part = (name: string, stops: string): Part => ({ name, file: `core/${name}`, stops });
@@ -62,5 +63,16 @@ describe("every part's failure link resolves on GitHub to an issue, a PR or a ru
 
     expect(await refusedLinks([part("one", `${REPO}/issues/1`), part("two", `${REPO}/issues/1`)], gh)).toEqual([]);
     expect(calls()).toEqual(["api repos/collod873/claude-workflow/issues/1"]);
+  });
+
+  it("reads with LINKS_GH_TOKEN when set, since a CI run's own token sees only this repo and a part may link another repo's failure", async () => {
+    const { gh, tokens } = recordedGh();
+    process.env.LINKS_GH_TOKEN = "links-token";
+    try {
+      expect(await refusedLinks([part("one", `${REPO}/issues/1`)], gh)).toEqual([]);
+    } finally {
+      delete process.env.LINKS_GH_TOKEN;
+    }
+    expect(tokens()).toEqual(["links-token"]);
   });
 });

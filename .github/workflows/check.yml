@@ -40,9 +40,21 @@ jobs:
           node-version: 24
           cache: npm
 
+      - id: links-app
+        continue-on-error: true
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          permission-issues: read
+          permission-pull-requests: read
+          permission-actions: read
+
       - id: check
         env:
           GH_TOKEN: ${{ github.token }}
+          LINKS_GH_TOKEN: ${{ steps.links-app.outputs.token }}
         run: |
           set -o pipefail
           check --full --publish | tee "$RUNNER_TEMP/check.out"
