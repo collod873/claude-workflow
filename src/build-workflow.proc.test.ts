@@ -302,7 +302,7 @@ describe("every job that spends a model is watched as it goes, read after it end
       expect(minted).toBeGreaterThan(hooks);
       expect(handed).toBeGreaterThan(minted);
       expect(handed).toBeLessThan(steps.findIndex(spendsModel));
-      expect(steps[handed]?.run).toContain("--write-settings --graded");
+      expect(steps[handed]?.run).toContain("--emit-settings");
     }
   });
 
@@ -316,7 +316,7 @@ describe("every job that spends a model is watched as it goes, read after it end
     const bin = join(runnerTemp, "bin");
     mkdirSync(bin);
     mkdirSync(join(runnerTemp, "agent-hooks"));
-    writeFileSync(join(runnerTemp, "agent-hooks", "hookcheck.py"), "");
+    writeFileSync(join(runnerTemp, "agent-hooks", "hookcheck.py"), `print('{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "stop-hook"}]}]}}')`);
     writeFileSync(
       join(bin, "git"),
       `#!/bin/sh\nfor last; do :; done\nmkdir -p "$last"\nprintf '%s' '{"env":{"CLAUDE_CODE_TMPDIR":"/home/collin/.cache/claude-tmp","CLAUDE_WORKFLOW_ROOT":"/home/collin/Claude Projects/Workflow","EFFORT":"low"},"hooks":{}}' >"$last/settings.json"\n`,
@@ -326,10 +326,11 @@ describe("every job that spends a model is watched as it goes, read after it end
     const fetched = ranStep(fetching ?? {}, runnerTemp, { PATH: `${bin}:${process.env.PATH}`, RUNNER_TEMP: runnerTemp, TMPDIR: ownTemp, GITHUB_WORKSPACE: workspace, HOME: join(runnerTemp, "home"), GITHUB_ENV: join(runnerTemp, "github-env") });
 
     expect(fetched.status, fetched.stderr).toBe(0);
-    const { env } = JSON.parse(readFileSync(join(runnerTemp, "claude-config", "settings.json"), "utf8")) as { env: Record<string, string> };
+    const { env, hooks } = JSON.parse(readFileSync(join(runnerTemp, "claude-config", "settings.json"), "utf8")) as { env: Record<string, string>; hooks: unknown };
     expect(env.CLAUDE_CODE_TMPDIR).toBe(ownTemp);
     expect(env.CLAUDE_WORKFLOW_ROOT).toBe(workspace);
     expect(env.EFFORT).toBe("low");
+    expect(hooks).toEqual({ Stop: [{ hooks: [{ type: "command", command: "stop-hook" }] }] });
   });
 
   it("every job files its stages' captures into the transcripts repo whatever ended it, with a write token minted only after the model is done", () => {
