@@ -1,4 +1,4 @@
-import { execFile, execFileSync, spawn, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { generateKeyPairSync } from "node:crypto";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
@@ -7,7 +7,8 @@ import { dirname, join, matchesGlob } from "node:path";
 import { parse } from "yaml";
 import { onTestFinished } from "vitest";
 import vitest from "../vitest.config.ts";
-import { MACHINE, OWNER, SPELLINGS } from "./spelled.ts";
+import { MACHINE, OWNER } from "./spelled.ts";
+import { woken, type IssuePayload } from "./wake.ts";
 
 export const LINE_LIMIT = 200;
 export const MOST_LINES = 6;
@@ -86,72 +87,41 @@ export interface IssueEvent {
 
 export const workflowJobs = (file: string) => (parse(readFileSync(join(WORKFLOWS, file), "utf8")) as { jobs: Record<string, WorkflowJob> }).jobs;
 
-const labelledIn = (job: WorkflowJob | undefined) => job?.steps.find(({ id }) => id === "labelled");
+const wakeIn = (job: WorkflowJob | undefined) => job?.steps.find(({ id }) => id === "wake");
 
 export function gateOf(file: string, job: string): string {
   const jobs = workflowJobs(file);
-  const gate = [job, ...[jobs[job]?.needs ?? []].flat()].find((name) => labelledIn(jobs[name]) !== undefined);
-  if (gate === undefined) throw new Error(`no labelled step in the ${job} job of ${file} or a job it needs`);
+  const gate = [job, ...[jobs[job]?.needs ?? []].flat()].find((name) => wakeIn(jobs[name]) !== undefined);
+  if (gate === undefined) throw new Error(`no wake step in the ${job} job of ${file} or a job it needs`);
   return gate;
 }
 
-export function labelledStep(file: string, job: string): WorkflowStep {
-  const step = labelledIn(workflowJobs(file)[gateOf(file, job)]);
-  if (step === undefined) throw new Error(`no labelled step in the ${job} job of ${file}`);
+export function wakeStep(file: string, job: string): WorkflowStep {
+  const step = wakeIn(workflowJobs(file)[gateOf(file, job)]);
+  if (step === undefined) throw new Error(`no wake step in the ${job} job of ${file}`);
   return step;
 }
 
-export const afterLabelled = (steps: WorkflowStep[]) => steps.slice(steps.findIndex(({ id }) => id === "labelled") + 1);
-
-export const labelledAs = (steps: WorkflowStep[], held: string | undefined): Record<string, StepOutcome> => ({
-  ...Object.fromEntries(steps.flatMap(({ id }) => (id === undefined ? [] : [[id, { outcome: "skipped", conclusion: "skipped", outputs: {} }]]))),
-  labelled: { outcome: "success", conclusion: "success", outputs: held === undefined ? {} : { held } },
+export const payloadOf = ({ labels, action = "opened", label = "", sender = OWNER, state }: IssueEvent): IssuePayload => ({
+  action,
+  sender: { login: sender },
+  ...(label === "" ? {} : { label: { name: label } }),
+  ...(labels === undefined ? {} : { issue: { labels: labels.map((name) => ({ name })), ...(state === undefined ? {} : { state }) } }),
 });
 
-export function labelledOutputs(step: WorkflowStep, cwd: string, { labels, action = "opened", label = "", sender = OWNER, head, state }: IssueEvent): Promise<{ failed: boolean; outputs: Record<string, string> }> {
-  const root = scratch("labelled-");
-  const event = join(root, "event.json");
-  const output = join(root, "output");
-  writeFileSync(event, JSON.stringify({ action, sender: { login: sender }, ...(label === "" ? {} : { label: { name: label } }), ...(labels === undefined ? {} : { issue: { labels: labels.map((name) => ({ name })), ...(state === undefined ? {} : { state }) } }), ...(head === undefined ? {} : { pull_request: { head: { ref: head } } }) }));
-  return new Promise((resolve) => {
-    execFile("bash", ["-e", "-c", step.run ?? ""], { cwd, env: { ...env, GITHUB_EVENT_PATH: event, GITHUB_OUTPUT: output } }, (error) => {
-      const written = existsSync(output) ? readFileSync(output, "utf8") : "";
-      resolve({ failed: error !== null, outputs: Object.fromEntries([...written.matchAll(/^([\w-]+)=(.*)$/gm)].map(([, name = "", value = ""]) => [name, value])) });
-    });
-  });
-}
+export const wakeOutputs = (event: IssueEvent): Record<string, string> => Object.fromEntries(Object.entries(woken(payloadOf(event))).map(([stage, starting]) => [stage, String(starting)]));
 
-export const heldBy = async (step: WorkflowStep, cwd: string, event: IssueEvent): Promise<{ failed: boolean; held: string | undefined }> => {
-  const { failed, outputs } = await labelledOutputs(step, cwd, event);
-  return { failed, held: outputs.held };
-};
+export const skippedAll = (steps: WorkflowStep[]): Record<string, StepOutcome> => Object.fromEntries(steps.flatMap(({ id }) => (id === undefined ? [] : [[id, { outcome: "skipped", conclusion: "skipped", outputs: {} }]])));
 
-const HELD = new Map<string, ReturnType<typeof labelledOutputs>>();
-let spelledOnce: string | undefined;
-
-function answeredOnce(): string {
-  if (spelledOnce !== undefined) return spelledOnce;
-  const root = mkdtempSync(join(tmpdir(), "spelled-once-"));
-  const known = SPELLINGS.filter(([key]) => key !== "labels").map(([key, spelling]) => `  ${key}) printf '%s\\n' '${spelling.replaceAll("'", "'\\''")}'; exit 0 ;;`);
-  script(join(root, "bin", "spelled"), ['[ "$#" -eq 1 ] && case "$1" in', ...known, "esac", `exec "${join(BIN, "spelled")}" "$@"`, ""].join("\n"));
-  return (spelledOnce = root);
-}
-
-export async function starts(file: string, gated: string, event: IssueEvent): Promise<boolean> {
+export function starts(file: string, gated: string, event: IssueEvent): boolean {
   const jobs = workflowJobs(file);
   const job = jobs[gated];
   if (job === undefined) throw new Error(`no ${gated} job in ${file}`);
   const gate = gateOf(file, gated);
+  if (gate === gated) throw new Error(`the ${gated} job of ${file} wakes itself, so no job it needs answers whether it starts`);
   const { labels, ...rest } = event;
   if (!holds(jobs[gate]?.if ?? "true", rest)) return false;
-  const seen = `${file} ${gate} ${JSON.stringify([labels, rest.sender, rest.action, rest.label, rest.head, rest.state])}`;
-  const heard = HELD.get(seen) ?? labelledOutputs(labelledStep(file, gate), answeredOnce(), { ...rest, labels });
-  HELD.set(seen, heard);
-  const { failed, outputs } = await heard;
-  if (failed || Object.keys(outputs).length === 0) throw new Error(`the labelled step of ${file} ended red on ${JSON.stringify(labels)}`);
-  if (gate !== gated) return holds(job.if ?? "success()", { ...rest, needs: { [gate]: { result: "success", outputs } } });
-  const [next] = afterLabelled(job.steps);
-  return holds(next?.if ?? "success()", { steps: labelledAs(job.steps, outputs.held) });
+  return holds(job.if ?? "success()", { ...rest, labels, needs: { [gate]: { result: "success", outputs: wakeOutputs(event) } } });
 }
 
 export type Said = string | { author: string; type: string; body: string };

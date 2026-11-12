@@ -128,6 +128,13 @@ const FIXED: Part[] = [
     printsData: true,
   },
   {
+    name: "bin/wake",
+    file: "bin/wake",
+    stops: "https://github.com/collod873/claude-workflow/issues/1713",
+    lines: 3,
+    printsData: true,
+  },
+  {
     name: "tickets.yml",
     file: ".github/workflows/tickets.yml",
     stops: "https://github.com/collod873/claude-workflow/issues/387",

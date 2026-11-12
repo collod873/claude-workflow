@@ -13,8 +13,8 @@ jobs:
     env:
       GH_REPO: ${{ github.repository }}
     outputs:
-      spec: ${{ steps.labelled.outputs.spec }}
-      research: ${{ steps.labelled.outputs.research }}
+      spec: ${{ steps.wake.outputs.spec }}
+      research: ${{ steps.wake.outputs.research }}
     steps:
       - id: app
         uses: actions/create-github-app-token@v3
@@ -36,21 +36,8 @@ jobs:
         with:
           node-version: 24
 
-      - id: labelled
-        run: |
-          spec=$(bin/spelled SPEC)
-          research=$(bin/spelled RESEARCH)
-          paused=$(bin/spelled PAUSED)
-          stuck=$(bin/spelled STUCK)
-          waiting=$(bin/spelled WAITING)
-          jq -r --arg MACHINE "$(bin/spelled MACHINE)" --arg SPEC "$spec" --arg RESEARCH "$research" --arg PAUSED "$paused" --arg STUCK "$stuck" --arg WAITING "$waiting" '
-            (.issue.state != "closed") as $open
-            | (.sender.login == $MACHINE) as $machine
-            | (any(.issue.labels[]?.name; IN($PAUSED, $STUCK)) | not) as $free
-            | (any(.issue.labels[]?.name; . == $WAITING) | not) as $unparked
-            | "spec=\(any(.issue.labels[]?.name; . == $SPEC) and $open and $free and $unparked and ((.action == "labeled" and .label.name == $SPEC) or (.action == "unlabeled" and (.label.name | if $machine then . == $WAITING else IN($PAUSED, $STUCK, $WAITING) end))))",
-              "research=\(any(.issue.labels[]?.name; . == $RESEARCH) and $open and ((.action == "labeled" and .label.name == $RESEARCH) or (.action == "unlabeled" and (.label.name | IN($PAUSED, $STUCK)) and $free and ($machine | not))))"
-          ' "$GITHUB_EVENT_PATH" | tee -a "$GITHUB_OUTPUT"
+      - id: wake
+        run: bin/wake
 
       - if: ${{ failure() || cancelled() }}
         uses: ./.github/actions/call-owner
