@@ -165,8 +165,8 @@ _Avoid_: closer, merger, queue, landing job
 
 **Spec**:
 The whole statement of a piece of work, filed as an issue labelled `spec`. One spec, one issue;
-a spec in a file or a conversation has not been published yet. One filed blocked by an open issue
-is parked: filed `waiting`, linked, then labelled `spec`, and a spec labelled `waiting` never starts.
+a spec in a file or a conversation has not been published yet. A spec, build or bug filed blocked
+by an open issue is parked: filed `waiting`, linked, then labelled `spec` or `ticket`.
 _Avoid_: PRD document, requirements doc, brief
 
 **Slicer**:
