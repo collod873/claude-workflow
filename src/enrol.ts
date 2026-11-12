@@ -5,13 +5,12 @@ import { isMap, isScalar, type Node, parse, parseDocument } from "yaml";
 import { appJwt } from "./app-token.ts";
 import { FAST_CHECK, FULL_CHECK } from "./checks.ts";
 import { ALREADY_EXISTS, ENROLLED_CALLER } from "./post.ts";
+import { flowOf, type Flow, type Job, offPc, PC_RUNS_ON, runnerJobs, WORKFLOW_FILE, WORKFLOWS } from "./pc-runner.ts";
 import { LABELS, MACHINE } from "./spelled.ts";
 
 const ROOT = join(import.meta.dirname, "..");
 const CALLER_TEXT = readFileSync(join(ROOT, ".github", "caller.yml"), "utf8");
 const PRE_PUSH = ".husky/pre-push";
-const WORKFLOWS = ".github/workflows";
-const TICKETS = `${WORKFLOWS}/tickets.yml`;
 const CALLER = `${WORKFLOWS}/${ENROLLED_CALLER}`;
 const CHECK = FAST_CHECK;
 const BRANCH = "enrol/caller";
@@ -29,8 +28,6 @@ const CALLER_ONLY = "--caller";
 const LINE_LIMIT = 200;
 const SHOWN = 4;
 const MOST_SHOWN = 5;
-const BUILD_RUNS_ON = flowOf(readFileSync(join(ROOT, TICKETS), "utf8"))?.jobs?.build?.["runs-on"];
-const PC_RUNS_ON = typeof BUILD_RUNS_ON === "string" ? BUILD_RUNS_ON : "";
 const ON_MAIN = { ref_name: { include: ["~DEFAULT_BRANCH"], exclude: [] } };
 const PC_SWITCH = /vars\.(\w+)/.exec(PC_RUNS_ON)?.[1] ?? "";
 const THROUGH_PR: Rule[] = [
@@ -49,21 +46,6 @@ interface Setting {
   waits?: () => string | undefined;
   held: () => boolean;
   set: () => { waits: string; opened: boolean } | void;
-}
-
-interface Job {
-  name?: string;
-  if?: unknown;
-  uses?: string;
-  "runs-on"?: unknown;
-  steps?: { run?: unknown }[];
-  services?: Record<string, { ports?: unknown[] } | null>;
-}
-
-interface Flow {
-  name?: string;
-  on?: unknown;
-  jobs?: Record<string, Job | null>;
 }
 
 interface RequiredCheck {
@@ -119,14 +101,6 @@ const RULE = { name: sourceOf(CHECK_TEXT, ["jobs", CHECK, "name"]), if: sourceOf
 
 const isCheck = (id: string, job: Job | null) => id === CHECK || job?.name === CHECK || job?.name === RULE.name.value;
 
-function flowOf(text: string): Flow | undefined {
-  try {
-    return parse(text) as Flow;
-  } catch {
-    return undefined;
-  }
-}
-
 const checkJobs = (flow: Flow | undefined) =>
   flow !== undefined && triggers(flow.on).some((on) => on === "pull_request" || on === "pull_request_target") ? Object.entries(flow.jobs ?? {}).flatMap(([id, job]) => (isCheck(id, job) ? [id] : [])) : [];
 
@@ -160,19 +134,15 @@ function ruled(path: string, text: string): string {
 }
 
 function pcGaps(path: string, text: string): string[] {
-  const flow = flowOf(text);
-  if (flow === undefined) return [];
   const file = basename(path);
   const runsCi = checkRunner(text);
-  return Object.entries(flow.jobs ?? {}).flatMap(([id, job]) => {
-    if (job === null || job.uses !== undefined) return [];
-    const runsOn = typeof job["runs-on"] === "string" ? job["runs-on"] : (JSON.stringify(job["runs-on"]) ?? "nothing");
+  return runnerJobs(text).flatMap(({ id, job }) => {
     const skipsSlots = runsCi && isCheck(id, job) && !(job.steps ?? []).some(({ run }) => new RegExp(`\\b${FULL_CHECK}\\b`).test(typeof run === "string" ? run : ""));
     const pinned = Object.entries(job.services ?? {}).flatMap(([service, held]) =>
       (held?.ports ?? []).map(String).flatMap((port) => (port.includes(":") ? [`- ${file}'s ${id} job pins host port ${port.split(":").at(-2)} for ${service}, which two PC runners cannot share`] : [])),
     );
     return [
-      ...(runsOn === PC_RUNS_ON ? [] : [`- ${file}'s ${id} job runs on ${runsOn}, not ${PC_RUNS_ON}, so it stays on GitHub's runners`]),
+      ...offPc(file, id, job).map((line) => `- ${line}`),
       ...(skipsSlots ? [`- ${file}'s ${id} job runs its check without check, so it skips the PC's check slots`] : []),
       ...pinned,
     ];
@@ -196,7 +166,7 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
   const held = once(() => read<{ id: number; allow_auto_merge: boolean; default_branch: string }>(["api", `repos/${repo}`]));
   const flows = once(() =>
     (found<{ path: string; type: string }[]>(["api", `repos/${repo}/contents/${WORKFLOWS}`]) ?? [])
-      .filter(({ path, type }) => type === "file" && path !== CALLER && /\.ya?ml$/.test(path))
+      .filter(({ path, type }) => type === "file" && path !== CALLER && WORKFLOW_FILE.test(path))
       .map(({ path }) => ({ path, text: textOf(path)?.text ?? "" })),
   );
   const ci = once(() => {

@@ -570,7 +570,8 @@ export function landSession({
   treeNode = false,
   required = [],
   hold,
-}: { hold?: LandStage; gh?: string; remoteRefuses?: string; messages?: string[]; merges?: Merge[]; views?: string[]; mainMovesOnRefusal?: Record<string, string>; rounds?: string; covered?: boolean; green?: boolean; changes?: Record<string, string>; defaultBranch?: string; openPr?: boolean; treeNode?: boolean; required?: RequiredChecks[] } = {}) {
+  privateRepo = false,
+}: { hold?: LandStage; privateRepo?: boolean; gh?: string; remoteRefuses?: string; messages?: string[]; merges?: Merge[]; views?: string[]; mainMovesOnRefusal?: Record<string, string>; rounds?: string; covered?: boolean; green?: boolean; changes?: Record<string, string>; defaultBranch?: string; openPr?: boolean; treeNode?: boolean; required?: RequiredChecks[] } = {}) {
   const root = scratch("land-");
   const { remote, session } = clonedOn(root, defaultBranch, ["base"]);
   git(remote, "config", "user.email", "github@test");
@@ -599,6 +600,7 @@ export function landSession({
         `pending=(${required.map((checks) => REQUIRED_CHECKS_EXIT[checks]).join(" ")})`,
         'case "$1 $2" in',
         `  "issue view") echo ${JSON.stringify(TICKET_TITLE)} ;;`,
+        `  "api repos/{owner}/{repo}") echo ${String(privateRepo)} ;;`,
         ...(openPr
           ? ['  "pr list") echo ' + LANDED_PR + " ;;", `  "pr create") printf 'a pull request for branch "%s" into branch "${defaultBranch}" already exists:\\n%s\\n' "$5" ${LANDED_PR} >&2; exit 1 ;;`]
           : [`  "pr create") echo ${LANDED_PR} ;;`]),
