@@ -225,6 +225,13 @@ describe("bin/file-issue --help keeps a build's Done when to its own repo (#1467
   });
 });
 
+describe("bin/file-issue --help has a build that needs another issue closed first link its blockers at filing, before an enrolled repo starts it (#1733)", () => {
+  it("names --blocked-by and never a link added after filing", () => {
+    expect(BUILD_SHAPE).toContain("--blocked-by");
+    expect(BUILD_SHAPE).not.toContain("add-blocker");
+  });
+});
+
 describe("the builder's split and bin/file-issue --help ask for a Done when as what is true once built, never a count of sentences (#1004)", () => {
   it("has bin/file-issue --help say a build's Done when in its one phrase", () => {
     expect(BUILD_SHAPE).toContain(DONE_SENTENCES);
