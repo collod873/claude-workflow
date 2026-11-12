@@ -283,7 +283,7 @@ _Avoid_: on hold, frozen, blocked
 
 **Stuck**:
 An issue the machine labelled `stuck`, its last resort: a stage that cannot go on or rules itself
-stuck marks it at once, and a run that dies only when its re-run dies too.
+stuck marks it at once; a dead run marks it only when its re-run dies too.
 Its comment names the run that stopped, red or out of time, links both runs, and asks the owner
 to read the re-run and take `stuck` off once it is fixed.
 Like `paused` it is `held`, so every stage stands down on it; the machine adds it but never
