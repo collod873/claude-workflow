@@ -347,11 +347,41 @@ describe("bin/file-issue spec --blocked-by files a spec that waits in line behin
     expect(ghSaw(repo)).toEqual([]);
   });
 
-  it("refuses a blocker that names no issue, and a blocker on any kind but a spec, filing nothing", () => {
-    const { repo, run } = filing({ gh: BLOCKERS, body: wellFormedTicket, origin: CLAUDE_WORKFLOW });
+  it("refuses a blocker that names no issue, filing nothing", () => {
+    const { repo, run } = filing({ gh: BLOCKERS, body: wellFormedSpec, origin: CLAUDE_WORKFLOW });
 
     expect(run([...SPEC_CALL, "--blocked-by", "collod873/Mezzanine2419"])).toMatchObject({ status: 2, stderr: `${USAGE}\n` });
-    expect(run(["build", "--title", "A ticket", "--body-file", "body.md", "--blocked-by", "#12"])).toMatchObject({ status: 1, stderr: "--blocked-by <[owner/name]#number> parks only a spec, so this ticket is not filed\n" });
     expect(ghSaw(repo)).toEqual([]);
+  });
+});
+
+const TRIAL_OPEN = `case "$*" in\n  *"issue list"*"sonnet-builders"*) printf '0\\n'; exit 0 ;;\nesac\n${BLOCKERS}`;
+
+describe("bin/file-issue build and bug --blocked-by file a ticket that waits in line behind other issues, so a batch filed at once starts in order (#1722)", () => {
+  it("files a build labelled waiting, links it blocked by each, and only then labels it ticket, never sonnet-builders, so the wake sees waiting and starts nothing", () => {
+    const { repo, run } = filing({ gh: TRIAL_OPEN, body: wellFormedTicket, origin: CLAUDE_WORKFLOW });
+
+    expect(run(["build", "--title", "A ticket", "--body-file", "body.md", "--blocked-by", "collod873/Mezzanine#2419", "--blocked-by", "#12"])).toMatchObject({ status: 0, stdout: `${URL}\n` });
+    const { labels, then } = filedAs(ghSaw(repo));
+    expect(labels).toEqual(["waiting"]);
+    expect(then.slice(1)).toEqual([blockedBy("901"), blockedBy("902"), ["issue", "edit", "700", "--add-label", "ticket"]]);
+  });
+
+  it("files a bug labelled bug and waiting, then labels it ticket once linked", () => {
+    const { repo, run } = filing({ gh: BLOCKERS, body: wellFormedBug, origin: CLAUDE_WORKFLOW });
+
+    expect(run([...BUG_CALL, "--blocked-by", "collod873/Mezzanine#2419"])).toMatchObject({ status: 0, stdout: `${URL}\n` });
+    const { labels, then } = filedAs(ghSaw(repo));
+    expect(labels).toEqual(["bug", "waiting"]);
+    expect(then.slice(1)).toEqual([blockedBy("901"), ["issue", "edit", "700", "--add-label", "ticket"]]);
+  });
+
+  it("files a build labelled ticket at once, still linked, when every blocker is already closed", () => {
+    const { repo, run } = filing({ gh: BLOCKERS, body: wellFormedTicket, origin: CLAUDE_WORKFLOW });
+
+    expect(run(["build", "--title", "A ticket", "--body-file", "body.md", "--blocked-by", "#12"])).toMatchObject({ status: 0, stdout: `${URL}\n` });
+    const { labels, then } = filedAs(ghSaw(repo));
+    expect(labels).toEqual(["ticket"]);
+    expect(then.slice(1)).toEqual([blockedBy("902")]);
   });
 });
