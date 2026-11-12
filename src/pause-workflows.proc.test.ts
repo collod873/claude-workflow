@@ -38,16 +38,16 @@ describe.each(["tickets.yml"])("%s builds nothing on a pause and builds the tick
     for (const kind of ["spec", "note"]) expect(stepsRun(file, owner("labeled", PAUSED, [kind, PAUSED])), kind).toEqual([]);
   });
 
-  it.each(HELD)("taking %s off a ticket builds it, as taking waiting off does", async (held) => {
+  it.each(HELD)("taking %s off a ticket builds it, as taking waiting off does", (held) => {
     expect(stepsRun(file, owner("unlabeled", held))).toEqual(["start", "fix"]);
   });
 
-  it.each(HELD)("taking %s off a ticket that still carries the other held label does nothing", async (held) => {
+  it.each(HELD)("taking %s off a ticket that still carries the other held label does nothing", (held) => {
     expect(stepsRun(file, owner("unlabeled", held, [other(held)]))).toEqual([]);
     expect(starts(file, "build", owner("unlabeled", held, [other(held)]))).toBe(false);
   });
 
-  it.each(HELD)("taking %s off a closed ticket resumes nothing", async (held) => {
+  it.each(HELD)("taking %s off a closed ticket resumes nothing", (held) => {
     expect(stepsRun(file, { ...owner("unlabeled", held), state: "closed" })).toEqual([]);
   });
 
