@@ -658,6 +658,17 @@ describe("every risk a spec's reviewer names ends somewhere, as a ticket's revie
     expect(afterRefusal).toContain(`- needs nothing: ${NEEDS_NOTHING.risk} ${NEEDS_NOTHING.why}`);
   });
 
+  it("files every fix the landed comment promises, four across a refused landing though one answer holds at most three, where #1712's fourth was promised and dropped", () => {
+    const named = (letter: string) => ({ ...FIX, title: `${FIX.title} ${letter}` });
+    const finished = finishing({ land: REFUSES_ONCE, answer: { outcome: "approve", reason: "reason $CALL", fixes: ["A", "B", "C"].map(named), risks: [] }, answerFrom: { call: 3, answer: { outcome: "approve", reason: "reason $CALL", fixes: [named("D")], risks: [] } } });
+
+    expect(finished.run().status).toBe(0);
+    const titles = ["A", "B", "C", "D"].map((letter) => named(letter).title);
+    expect(createdIssues(finished.calls()).map(({ title }) => title)).toEqual(titles);
+    const promised = [...(finished.approved().at(-1) ?? "").matchAll(/filed as the ticket "([^"]+)"/g)].map(([, title]) => title);
+    expect(promised).toEqual(titles);
+  });
+
   it("asks each reviewer for its risks, files each fix once in all though both name it, once the spec lands, and posts each risk with where it ends", () => {
     const finished = finishing({ answer: { outcome: "approve", reason: "reason $CALL", fixes: [FIX], risks: [NEEDS_NOTHING] } });
 
