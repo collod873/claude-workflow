@@ -53,7 +53,6 @@ function settle(options) {
     boundaryMocks: options.boundaryMocks,
     sandbox: options.sandbox,
     useClient: options.useClient,
-    defaultProject: options.defaultProject ?? [],
   };
 }
 
