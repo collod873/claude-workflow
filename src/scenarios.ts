@@ -1290,6 +1290,6 @@ export function clocking(callers: Record<string, string>, enrolled: string[] = [
   );
   const sudoLog = join(root, "sudo-calls");
   script(join(root, "bin", "sudo"), `{ printf '%s\\n' "$*"; cat; printf '\\n--\\n'; } >>"${sudoLog}"\n`);
-  const run = () => execute(join(BIN, "ship-clock"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}` });
+  const run = (args: string[] = []) => execute(join(BIN, "ship-clock"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, args);
   return { run, sudo: () => (linesIn(sudoLog).length ? readFileSync(sudoLog, "utf8") : "") };
 }
