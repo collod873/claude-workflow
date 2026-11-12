@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 import hashlib
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 STAMP = "STAMP.json"
-VERBS = ("run", "typecheck", "setup", "licenses", "notices", "unused", "test", "secrets", "vulns")
-SECURITY_VERBS = {"secrets", "vulns"}
 CACHES = {"node_modules", "__pycache__", ".ruff_cache", ".eslintcache"}
 
 
@@ -26,6 +25,11 @@ def drift(stamp: dict) -> list[str]:
     return found
 
 
+def verbs(layer: str) -> dict[str, Path]:
+    return {path.name: path for folder in ("security", layer) if (HERE / folder).is_dir()
+            for path in (HERE / folder).iterdir() if path.is_file() and os.access(path, os.X_OK)}
+
+
 def main() -> int:
     stamp = json.loads((HERE / STAMP).read_text())
     found = drift(stamp)
@@ -34,10 +38,12 @@ def main() -> int:
         print(f"✗ shared/ is synced from {stamp['source']} and takes no local edits; fix it there, or run lint-sync install")
         return 1
     verb = sys.argv[1] if len(sys.argv) > 1 else "run"
-    if verb not in VERBS:
-        print(f"✗ shared/run takes {' or '.join(v for v in VERBS if v != 'run')} or nothing, not {verb}")
+    taken = verbs(stamp["layer"])
+    if verb not in taken:
+        named = " or ".join(sorted(name for name in taken if name != "run"))
+        print(f"✗ shared/run for the {stamp['layer']} layer takes {named} or nothing, not {verb}")
         return 2
-    return subprocess.run([str(HERE / ("security" if verb in SECURITY_VERBS else stamp["layer"]) / verb), *sys.argv[2:]], check=False).returncode
+    return subprocess.run([str(taken[verb]), *sys.argv[2:]], check=False).returncode
 
 
 if __name__ == "__main__":
