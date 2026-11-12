@@ -230,6 +230,14 @@ describe("bin/schedule runs a spec from its first cut to its landing, one slice 
     expect(run.finished()).toEqual([]);
   });
 
+  it("finishes the builders in flight and hires none after when the spec is marked waiting mid-run", () => {
+    const run = scheduling({ cuts: [[sliceOf("parker"), sliceOf("later", ["parker"])], []], plans: { parker: [{ then: "printf 'waiting\\n' >>\"$ROOT/labels\"" }] } });
+
+    expect(run.run()).toMatchObject({ status: 0, stdout: `schedule: #${SPEC_ISSUE} is marked waiting, so its builders finished and merged and nothing more was hired\n` });
+    expect(stateOf(run)).toEqual({ parker: "merged", later: "cut" });
+    expect(run.finished()).toEqual([]);
+  });
+
   it("ends once the spec lands and its done check files a miss as a bug, slicing nothing more and calling no owner, where #1689 sat stuck after a fix pass that fixed nothing", () => {
     const run = scheduling({ cuts: [[sliceOf("seam")], []], finishes: [{ missed: "2" }] });
 
@@ -337,6 +345,13 @@ describe("bin/schedule runs a spec from its first cut to its landing, one slice 
     const run = scheduling({ labels: ["spec", "paused"] });
 
     expect(run.run()).toMatchObject({ status: 0, stdout: `schedule: #${SPEC_ISSUE} is marked paused, so nothing was hired\n` });
+    expect(run.order()).toEqual([]);
+  });
+
+  it("stands down green on a spec labelled waiting, slicing, hiring and marking nothing, where a rerun of a red spec run started a spec parked behind its blockers", () => {
+    const run = scheduling({ labels: ["spec", "waiting"], cuts: [[sliceOf("seam")]] });
+
+    expect(run.run()).toMatchObject({ status: 0, stdout: `schedule: #${SPEC_ISSUE} is marked waiting, so nothing was hired\n` });
     expect(run.order()).toEqual([]);
   });
 
