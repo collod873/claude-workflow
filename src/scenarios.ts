@@ -532,7 +532,7 @@ export const MERGE_REFUSAL = "GraphQL: Pull Request is not mergeable (mergePullR
 export const MAIN_RACED = "GraphQL: Base branch was modified. Review and try the merge again. (mergePullRequest)";
 export const GITHUB_ERRED = "GraphQL: Something went wrong while executing your query. Please include `C0B4:2D8E:1A2B3C:1D4E5F:671234AB` when reporting this issue.";
 
-const REFUSALS = { refused: MERGE_REFUSAL, raced: MAIN_RACED, erred: GITHUB_ERRED };
+const REFUSALS = { refused: MERGE_REFUSAL, raced: MAIN_RACED, erred: GITHUB_ERRED, blip: "HTTP 502: Bad Gateway (https://api.github.com/graphql)" };
 
 const REQUIRED_CHECKS_EXIT = { pending: 8, passed: 0, failed: 1 };
 

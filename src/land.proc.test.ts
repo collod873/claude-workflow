@@ -167,6 +167,20 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
     ]);
   });
 
+  it("lands on bin/github's retry when GitHub answers the merge with a blip, never reading the PR as refused", () => {
+    const { head, branch, run, calls, merged } = sessionAheadOfMain(1, { merges: ["blip", "merged"] });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toBe(`Landed ${PR}\n`);
+    expect(calls().filter(merged)).toEqual([
+      ["pr", "merge", branch, "--merge", "--match-head-commit", head],
+      ["pr", "merge", branch, "--merge", "--match-head-commit", head],
+    ]);
+    expect(calls().some((call) => call[1] === "view")).toBe(false);
+  });
+
   it("lands without trying again when GitHub merged the PR but answered with its transient error (#1503)", () => {
     const { remote, session, run, calls, merged, checked } = sessionAheadOfMain(1, { merges: ["mergedErred"], rounds: "1" });
 

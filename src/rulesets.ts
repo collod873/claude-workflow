@@ -1,6 +1,5 @@
-import { execFileSync } from "node:child_process";
 import { FAST_CHECK } from "./checks.ts";
-import { MACHINE_REPO } from "./post.ts";
+import { gh as github, MACHINE_REPO } from "./post.ts";
 
 const HOME = MACHINE_REPO;
 export const CHECK = FAST_CHECK;
@@ -50,7 +49,9 @@ export function refusals(live: Live[], appliesToMe: string[]): string[] {
 }
 
 function gh(path: string): unknown {
-  return JSON.parse(execFileSync("gh", ["api", path], { encoding: "utf8" }));
+  const ran = github(["api", path]);
+  if (ran.status !== 0) throw new Error(`gh api ${path}: ${ran.stderr.trim()}`);
+  return JSON.parse(ran.stdout);
 }
 
 const live = () => (gh(`repos/${HOME}/rulesets`) as { id: number }[]).map(({ id }) => gh(`repos/${HOME}/rulesets/${id}`) as Live);
