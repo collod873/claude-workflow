@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { handedOn, NOTE_CAP, OUT_OF_TIME } from "./researcher.ts";
 import { BIN, createdIssues, execute, issueStage, stubbedMark, wellFormedNote } from "./scenarios.ts";
 import { PAUSED, STUCK } from "./spelled.ts";
-import { declareStage, HANDED_ON } from "./stages.ts";
+import { declarePart, HANDED_ON } from "./part-files.ts";
 
 export const READING_SESSION = "reading-session";
 
@@ -33,7 +33,7 @@ export function researching({
   };
 }
 
-declareStage({
+declarePart({
   part: { name: "bin/research", file: "bin/research", stops: "https://github.com/collod873/claude-workflow/issues/902" },
   prompts: [
     {

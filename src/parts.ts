@@ -1,4 +1,4 @@
-import { stages } from "./stages.ts";
+import { partFiles } from "./part-files.ts";
 
 export interface Part {
   name: string;
@@ -121,13 +121,6 @@ const FIXED: Part[] = [
     lines: 4,
   },
   {
-    name: "bin/spelled",
-    file: "bin/spelled",
-    stops: "https://github.com/collod873/claude-workflow/issues/1100",
-    lines: 2,
-    printsData: true,
-  },
-  {
     name: "bin/wake",
     file: "bin/wake",
     stops: "https://github.com/collod873/claude-workflow/issues/1713",
@@ -156,4 +149,4 @@ const FIXED: Part[] = [
   },
 ];
 
-export const parts: Part[] = [...FIXED, ...(await stages()).map((stage) => stage.part)];
+export const parts: Part[] = [...FIXED, ...(await partFiles()).map((partFile) => partFile.part)];

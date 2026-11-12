@@ -5,7 +5,7 @@ import { BIN, cloned, execute, git, plant, scratch, script, stubbedMark, wellFor
 import { type Comment, specIssue, SPEC_ISSUE } from "./scheduler.part.ts";
 import { BUILT_CAP, handedOn, sentBack, SLICES_CAP } from "./slicer.ts";
 import { PAUSED } from "./spelled.ts";
-import { declareStage, HANDED_ON } from "./stages.ts";
+import { declarePart, HANDED_ON } from "./part-files.ts";
 import { SPEC_CAP } from "./ticket-shape.ts";
 
 export const SLICING_SESSION = "slicing-session";
@@ -52,7 +52,7 @@ const SLICER_CAP = SPEC_CAP + BUILT_CAP + SLICES_CAP + 4 * HANDED_ON;
 const filledSpec = (filled: Record<string, string>) => [filled.title ?? "", filled.body ?? ""] as const;
 export const ANSWERED = { slices: [{ id: "seam", title: "Cut the seam", why: 'The spec asks: "a spec is filed once".', decisions: [], done: ["The seam holds."], blockedBy: [], leftOf: [] }] };
 
-declareStage({
+declarePart({
   part: { name: "bin/slice", file: "bin/slice", stops: "https://github.com/collod873/claude-workflow/issues/674", printsData: true },
   prompts: [
     {

@@ -3,7 +3,7 @@ import { LIST_CAP } from "./brief.ts";
 import { handedOn, OUT_OF_TIME, REPLIES_CAP } from "./done-checker.ts";
 import { authored, BIN, execute, issueStage, plant, type Said, stubbedMark, wellFormedSpec } from "./scenarios.ts";
 import { PAUSED, STUCK } from "./spelled.ts";
-import { declareStage, HANDED_ON } from "./stages.ts";
+import { declarePart, HANDED_ON } from "./part-files.ts";
 import { SPEC_CAP } from "./ticket-shape.ts";
 
 export const DONE_CHECK_POSTED = "https://github.com/collod873/claude-workflow/issues/974#issuecomment-1";
@@ -48,7 +48,7 @@ export function doneChecking({
   };
 }
 
-declareStage({
+declarePart({
   part: { name: "bin/done-check", file: "bin/done-check", stops: "https://github.com/collod873/claude-workflow/issues/1023" },
   prompts: [
     {

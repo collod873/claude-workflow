@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { BIN, bodyIn, execute, FIXED_TICKET, ghArgv, openedCases, type Parent, plant, scratch, script } from "./scenarios.ts";
 import { MACHINE, OWNER } from "./spelled.ts";
-import { declareStage } from "./stages.ts";
+import { declarePart } from "./part-files.ts";
 
 interface Origin {
   repo: string;
@@ -53,7 +53,7 @@ export function admitting({ opener = OWNER, body = FIXED_TICKET, parent = undefi
   };
 }
 
-declareStage({
+declarePart({
   part: { name: "bin/admit", file: "bin/admit", stops: "https://github.com/collod873/claude-workflow/issues/1022" },
   scenarios: [
     { label: "admitting a ticket", run: () => admitting().run() },

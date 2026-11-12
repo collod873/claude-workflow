@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { cutMark } from "./brief.ts";
-import { stages } from "./stages.ts";
+import { partFiles } from "./part-files.ts";
 
 const HIRES = /(spawn|execFile)\w*\(\s*"claude"/;
 const STAGED = /from "\.\/stage\.ts"/;
@@ -16,7 +16,7 @@ export interface Prompt {
   build: (filled: Record<string, string>) => string;
 }
 
-const PROMPTS: Prompt[] = (await stages()).flatMap((stage) => stage.prompts ?? []);
+const PROMPTS: Prompt[] = (await partFiles()).flatMap((partFile) => partFile.prompts ?? []);
 
 function ownWords(prompt: Prompt): number {
   return Buffer.byteLength(prompt.build({}));

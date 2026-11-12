@@ -5,7 +5,7 @@ import { BIN, cloned, execute, linesIn, git, key, plant, scratch, script, wellFo
 import { type Progress, resumedAfterStop } from "./scheduler.ts";
 import type { Slice } from "./slicer.ts";
 import { MACHINE } from "./spelled.ts";
-import { declareStage, HANDED_ON } from "./stages.ts";
+import { declarePart, HANDED_ON } from "./part-files.ts";
 
 export const SPEC_ISSUE = "968";
 export const LANDED = "1600";
@@ -195,7 +195,7 @@ export function scheduling({
   };
 }
 
-declareStage({
+declarePart({
   part: { name: "bin/schedule", file: "bin/schedule", stops: "https://github.com/collod873/claude-workflow/issues/1509" },
   prompts: [
     {

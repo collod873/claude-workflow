@@ -3,7 +3,7 @@ import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parts, type Part } from "./parts.ts";
 import { bare, callerWith, clocking, CONTRACT, FULL_CHECK_PASSED, shipping, type Run, type ShipRun, LINE_LIMIT, MOST_LINES, coveredByCheck, enrolling, execute, filing, githubCall, landSession, marking, overLimit, scratch, script, sessionExtras, watching, wellFormedTicket, wellFormedNote, misshapenSpec, switching } from "./scenarios.ts";
-import { stages, type Scenario } from "./stages.ts";
+import { partFiles, type Scenario } from "./part-files.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
 const NOISE = "a line a tool prints that nobody needed to read\n".repeat(40).trim();
@@ -75,17 +75,13 @@ const listed: Record<string, Scenario[]> = {
     { label: "refused, not on a blip", run: () => githubCall([NOISE.split("\n")[0] ?? ""]).run() },
     { label: "refused past a blip", run: () => githubCall(["gh: Server Error (HTTP 502)", "gh: Server Error (HTTP 502)", "gh: Server Error (HTTP 502)"]).run() },
   ],
-  "bin/spelled": [
-    { label: "printing the labels", run: () => execute(join(REPO, "bin", "spelled"), scratch("spelled-"), {}, ["labels"]) },
-    { label: "refusing a list it does not hold", run: () => execute(join(REPO, "bin", "spelled"), scratch("spelled-"), {}, ["owners"]) },
-  ],
   "bin/wake": [
     { label: "answering an event", run: () => woke(JSON.stringify({ action: "labeled", label: { name: "ticket" }, sender: { login: "collod873" }, issue: { labels: [{ name: "ticket" }] } })) },
     { label: "with an event it cannot read", run: () => woke("{") },
   ],
 };
 
-const scenarios: Record<string, Scenario[]> = { ...listed, ...Object.fromEntries((await stages()).map((stage) => [stage.part.file, stage.scenarios])) };
+const scenarios: Record<string, Scenario[]> = { ...listed, ...Object.fromEntries((await partFiles()).map((partFile) => [partFile.part.file, partFile.scenarios])) };
 
 function speakers(registry: Part[], contract: string): string[] {
   const covered = coveredByCheck(contract);

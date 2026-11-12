@@ -12,19 +12,19 @@ export interface Scenario {
   run: () => Run;
 }
 
-export interface Stage {
+export interface PartFile {
   part: Part;
   prompts?: Prompt[];
   scenarios: Scenario[];
 }
 
-const declared: Stage[] = [];
+const declared: PartFile[] = [];
 
-export function declareStage(stage: Stage): void {
-  declared.push(stage);
+export function declarePart(partFile: PartFile): void {
+  declared.push(partFile);
 }
 
-export async function stages(): Promise<Stage[]> {
+export async function partFiles(): Promise<PartFile[]> {
   const src = import.meta.dirname;
   await readdirSync(src)
     .filter((name) => PART_FILE.test(name))
