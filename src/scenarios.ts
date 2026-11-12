@@ -912,7 +912,14 @@ else if (args[0] === "api" && method === "POST" && route === "repos/" + repo + "
   save();
   out({});
 }
-else if (args[0] === "api" && method === "PATCH" && route.startsWith("repos/" + repo + "/git/refs/heads/")) { wrote(); held.branches[route.slice(("repos/" + repo + "/git/refs/heads/").length)] = { ...held.files }; save(); out({}); }
+else if (args[0] === "api" && method === "PATCH" && route.startsWith("repos/" + repo + "/git/refs/heads/")) {
+  wrote();
+  const branch = route.slice(("repos/" + repo + "/git/refs/heads/").length);
+  held.branches[branch] = { ...held.files };
+  held.prs = held.prs.filter(({ head }) => head !== branch);
+  save();
+  out({});
+}
 else if (args[0] === "api" && method === "DELETE" && route.startsWith("repos/" + repo + "/git/refs/heads/")) { wrote(); delete held.branches[route.slice(("repos/" + repo + "/git/refs/heads/").length)]; save(); }
 else if (args[0] === "pr" && args[1] === "list") out(held.prs.filter(({ head }) => head === flag("--head")).map(({ number }) => ({ number, url: "https://github.com/" + repo + "/pull/" + number })));
 else if (args[0] === "pr" && args[1] === "close") { wrote(); held.prs = held.prs.filter(({ head }) => head !== args[2]); if (args.includes("--delete-branch")) delete held.branches[args[2]]; save(); }
@@ -920,7 +927,8 @@ else if (args[0] === "pr" && args[1] === "create") { wrote(); const number = 900
 else if (args[0] === "pr" && args[1] === "merge") {
   wrote();
   const pr = held.prs.find(({ number, head }) => String(number) === args[2] || head === args[2]);
-  if (pr === undefined || !held.allow_auto_merge || !args.includes("--auto")) { process.stderr.write("GraphQL: Auto merge is not allowed for this repository (enablePullRequestAutoMerge)\n"); process.exit(1); }
+  if (pr === undefined) { process.stderr.write("GraphQL: Pull request Pull request is closed (enablePullRequestAutoMerge)\n"); process.exit(1); }
+  if (!held.allow_auto_merge || !args.includes("--auto")) { process.stderr.write("GraphQL: Auto merge is not allowed for this repository (enablePullRequestAutoMerge)\n"); process.exit(1); }
   pr.auto = true;
   if (held.pending) { save(); process.exit(0); }
   held.files = { ...held.branches[pr.head] };
