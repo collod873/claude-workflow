@@ -1,7 +1,8 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { agedLogs, git, GITHUB_ERRED, landSession, LANDED_PR as PR, MAIN_RACED, MERGE_REFUSAL as REFUSAL, PC_RUNS_ON, plant, TICKET_TITLE, type LandStage, type Merge } from "./scenarios.ts";
+import { agedLogs, GITHUB_ERRED, landSession, MAIN_RACED, MERGE_REFUSAL as REFUSAL, TICKET_TITLE, type LandStage, type Merge } from "./land.part.ts";
+import { git, LANDED_PR as PR, PC_RUNS_ON, plant } from "./scenarios.ts";
 
 const JUDGED_CHECK = "description=judged by land on the commit before the push (ADR-0008)";
 const DASH = "\u2014";
