@@ -401,6 +401,16 @@ describe("bin/enrol brings an enrolled repo's CI check job to this repo's and ta
     expect(after.files[".husky/pre-push"]).toBe("pnpm check\n");
   });
 
+  it("commits onto a stale enrol/caller under its open PR and sets that PR to auto-merge, since resetting the branch to main makes GitHub close the PR (#1710)", () => {
+    const { run, held } = enrolling(bare({ ...LANDED, pending: true, files: STALE_MAIN, branches: { "enrol/caller": CALLER_ONLY_BRANCH }, prs: [{ number: 900, head: "enrol/caller", auto: false }] }), {});
+
+    const result = run(REPO, "--caller");
+
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+    expect(held().prs).toEqual([{ number: 900, head: "enrol/caller", auto: true }]);
+  });
+
   it("leaves a repo alone whose main already carries the caller file and the rule, and no pre-push", () => {
     const { run, held } = enrolling(bare({ ...LANDED, files: { ".github/workflows/ci.yml": RULED_TWO_JOBS, ".github/workflows/machine.yml": CALLER.replace("[CI]", "[Gate]") } }), {});
 

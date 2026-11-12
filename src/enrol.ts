@@ -263,7 +263,7 @@ function enrolling(repo: string): { settings: Setting[]; forPc: () => string[] }
     const open = openPr();
     if (open !== undefined && carries(BRANCH)) return { waits: open.url, opened: false };
     if (!read<{ allow_auto_merge: boolean }>(["api", `repos/${repo}`]).allow_auto_merge) throw new Refused("auto-merge is off, so a PR for it would never merge on its own");
-    branchFromMain();
+    if (open === undefined) branchFromMain();
     let url: string;
     try {
       write(BRANCH);
