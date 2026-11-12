@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join, matchesGlob, relative } from "node:path";
 import ts from "typescript";
 import { sha } from "./files.mjs";
 import { parsedTsconfig } from "./tsconfig-guard.mjs";
@@ -7,6 +7,8 @@ import { parsedTsconfig } from "./tsconfig-guard.mjs";
 const MODULE_SYNTAX = /^\s*(?:import|export)\b/m;
 const AUGMENTS = /\bdeclare\s+(?:global|module)\b/;
 const RESOLVES_EVERY_LOCAL_FILE = { allowJs: true, resolveJsonModule: true };
+const SCRIPT = /\.[cm]?[jt]sx?$/;
+const MAY_CROSS_CLIENT_BOUNDARY = /use client|\bexport\b[^;]*?\bfrom\b/;
 
 function compilerSetup(root) {
   const config = join(root, "tsconfig.json");
@@ -66,6 +68,40 @@ function strongComponents(nodes, edges) {
   return components;
 }
 
+function declaresUseClient(statements) {
+  for (const statement of statements) {
+    if (!ts.isExpressionStatement(statement) || !ts.isStringLiteral(statement.expression))
+      return false;
+    if (statement.expression.text === "use client") return true;
+  }
+  return false;
+}
+
+function clientBoundaryOf(file, text) {
+  if (!SCRIPT.test(file) || !MAY_CROSS_CLIENT_BOUNDARY.test(text)) return [false, []];
+  const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, false);
+  const reexports = source.statements
+    .filter((statement) => ts.isExportDeclaration(statement) && statement.moduleSpecifier)
+    .map((statement) => statement.getText(source));
+  return [declaresUseClient(source.statements), reexports];
+}
+
+function digestsOverComponents(components, edges, partOf) {
+  const componentOf = new Map();
+  const componentDigest = new Map();
+  for (const members of components) {
+    const id = members[0];
+    for (const member of members) componentOf.set(member, id);
+    const outward = new Set();
+    for (const member of members)
+      for (const next of edges.get(member))
+        if (componentOf.get(next) !== id) outward.add(componentDigest.get(componentOf.get(next)));
+    const own = members.map((member) => `${member}\0${partOf(member)}`).sort();
+    componentDigest.set(id, sha(JSON.stringify([own, [...outward].sort()])));
+  }
+  return (file) => componentDigest.get(componentOf.get(file));
+}
+
 export function importClosures(root, entries, held) {
   const { options, programFiles } = compilerSetup(root);
   const cache = ts.createModuleResolutionCache(root, (name) => name, options);
@@ -110,19 +146,37 @@ export function importClosures(root, entries, held) {
     edges.set(file, [...targets].sort());
     pending.push(...targets);
   }
-  const componentOf = new Map();
-  const componentDigest = new Map();
-  for (const members of strongComponents([...edges.keys()].sort(), edges)) {
-    const id = members[0];
-    for (const member of members) componentOf.set(member, id);
-    const outward = new Set();
-    for (const member of members)
-      for (const next of edges.get(member))
-        if (componentOf.get(next) !== id) outward.add(componentDigest.get(componentOf.get(next)));
-    const own = members.map((member) => `${member}\0${contentOf.get(member)}`).sort();
-    componentDigest.set(id, sha(JSON.stringify([own, [...outward].sort()])));
-  }
-  const closureOf = (file) => componentDigest.get(componentOf.get(file));
+  const components = strongComponents([...edges.keys()].sort(), edges);
+  const closureOf = digestsOverComponents(components, edges, (file) => contentOf.get(file));
   const ambientDigest = sha(JSON.stringify(ambient.sort().map((file) => [file, closureOf(file)])));
-  return { closureOf, contentOf, ambientDigest };
+  const boundaries = new Map();
+  const boundaryOf = (file) => {
+    if (!boundaries.has(file))
+      boundaries.set(file, clientBoundaryOf(file, readFileSync(join(root, file), "utf8")));
+    return boundaries.get(file);
+  };
+  const readsClosures = new Map();
+  const readsClosureOf = ({ clientBoundary, content }) => {
+    const key = JSON.stringify([clientBoundary, content]);
+    if (!readsClosures.has(key)) {
+      const unmatched = content.filter(
+        (pattern) => ![...edges.keys()].some((file) => matchesGlob(file, pattern)),
+      );
+      if (unmatched.length > 0)
+        throw new Error(
+          `reads.content pattern ${unmatched.join(", ")} matches no file; a pattern matches the whole path from the repo root, as **/*.tsx`,
+        );
+      readsClosures.set(
+        key,
+        digestsOverComponents(components, edges, (file) =>
+          JSON.stringify([
+            clientBoundary ? boundaryOf(file) : null,
+            content.some((pattern) => matchesGlob(file, pattern)) ? contentOf.get(file) : null,
+          ]),
+        ),
+      );
+    }
+    return readsClosures.get(key);
+  };
+  return { closureOf, contentOf, ambientDigest, readsClosureOf };
 }
