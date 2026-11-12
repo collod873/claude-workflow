@@ -7,7 +7,7 @@ import { scratch, script } from "./scenarios.ts";
 
 const REPO = "https://github.com/collod873/claude-workflow";
 
-function recordedGh(): { gh: string; calls: () => string[]; tokens: () => string[] } {
+function recordedGh(): { env: NodeJS.ProcessEnv; calls: () => string[]; tokens: () => string[] } {
   const dir = scratch("part-links-");
   const log = join(dir, "calls");
   const api = "repos/collod873/claude-workflow";
@@ -25,14 +25,14 @@ function recordedGh(): { gh: string; calls: () => string[]; tokens: () => string
     "esac",
     "",
   ].join("\n"));
-  return { gh: join(dir, "gh"), calls: () => readFileSync(log, "utf8").trim().split("\n"), tokens: () => readFileSync(`${log}-tokens`, "utf8").trim().split("\n") };
+  return { env: { ...process.env, PATH: `${dir}:${process.env.PATH ?? ""}` }, calls: () => readFileSync(log, "utf8").trim().split("\n"), tokens: () => readFileSync(`${log}-tokens`, "utf8").trim().split("\n") };
 }
 
 const part = (name: string, stops: string): Part => ({ name, file: `core/${name}`, stops });
 
 describe("every part's failure link resolves on GitHub to an issue, a PR or a run that failed (#682)", () => {
   it("passes an issue, a PR and a failed run, and refuses a commit, a missing issue or PR, a run that did not fail, and a link it cannot check", async () => {
-    const { gh, calls } = recordedGh();
+    const { env, calls } = recordedGh();
     const registry = [
       part("issue", `${REPO}/issues/1`),
       part("pull", `${REPO}/pull/2`),
@@ -46,7 +46,7 @@ describe("every part's failure link resolves on GitHub to an issue, a PR or a ru
       part("said", "the owner said so"),
     ];
 
-    expect(await refusedLinks(registry, gh)).toEqual([
+    expect(await refusedLinks(registry, env)).toEqual([
       `cleanup links a commit, which records a change and never a failure: ${REPO}/commit/c7fa969`,
       `missing links ${REPO}/issues/404, which does not exist`,
       `unopened links ${REPO}/pull/1, which does not exist`,
@@ -59,17 +59,17 @@ describe("every part's failure link resolves on GitHub to an issue, a PR or a ru
   });
 
   it("asks GitHub once per link, however many parts share it", async () => {
-    const { gh, calls } = recordedGh();
+    const { env, calls } = recordedGh();
 
-    expect(await refusedLinks([part("one", `${REPO}/issues/1`), part("two", `${REPO}/issues/1`)], gh)).toEqual([]);
+    expect(await refusedLinks([part("one", `${REPO}/issues/1`), part("two", `${REPO}/issues/1`)], env)).toEqual([]);
     expect(calls()).toEqual(["api repos/collod873/claude-workflow/issues/1"]);
   });
 
   it("reads with LINKS_GH_TOKEN when set, since a CI run's own token sees only this repo and a part may link another repo's failure", async () => {
-    const { gh, tokens } = recordedGh();
+    const { env, tokens } = recordedGh();
     process.env.LINKS_GH_TOKEN = "links-token";
     try {
-      expect(await refusedLinks([part("one", `${REPO}/issues/1`)], gh)).toEqual([]);
+      expect(await refusedLinks([part("one", `${REPO}/issues/1`)], env)).toEqual([]);
     } finally {
       delete process.env.LINKS_GH_TOKEN;
     }

@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { parts, type Part } from "./parts.ts";
-import { MISSING } from "./post.ts";
+import { GITHUB, MISSING } from "./post.ts";
 
 export const FAILURE_LINK = /^https:\/\/github\.com\/(collod873\/[\w.-]+)\/(issues|pull|actions\/runs)\/(\d+)$/;
 const COMMIT_LINK = /^https:\/\/github\.com\/collod873\/[\w.-]+\/commit\/[0-9a-f]{7,40}$/;
@@ -9,13 +9,13 @@ const ENDPOINT: Record<string, string> = { issues: "issues", pull: "pulls", "act
 
 const run = promisify(execFile);
 
-async function problemWith(gh: string, link: string): Promise<string | undefined> {
+async function problemWith(env: NodeJS.ProcessEnv, link: string): Promise<string | undefined> {
   const [, repo, kind, number] = FAILURE_LINK.exec(link) ?? [];
   const endpoint = kind === undefined ? undefined : ENDPOINT[kind];
   if (repo === undefined || endpoint === undefined || number === undefined) return "which is not a link to a GitHub issue, pull request, or run";
   try {
     const linksToken = process.env.LINKS_GH_TOKEN || undefined;
-    const { stdout } = await run(gh, ["api", `repos/${repo}/${endpoint}/${number}`], linksToken === undefined ? {} : { env: { ...process.env, GH_TOKEN: linksToken } });
+    const { stdout } = await run(GITHUB, ["--missing-answers", "api", `repos/${repo}/${endpoint}/${number}`], { env: linksToken === undefined ? env : { ...env, GH_TOKEN: linksToken } });
     if (kind !== "actions/runs") return undefined;
     const { status, conclusion } = JSON.parse(stdout) as { status: string; conclusion: string | null };
     return conclusion === "failure" ? undefined : `a run that did not fail (${conclusion ?? status})`;
@@ -25,9 +25,9 @@ async function problemWith(gh: string, link: string): Promise<string | undefined
   }
 }
 
-export async function refusedLinks(registry: Part[], gh = "gh"): Promise<string[]> {
+export async function refusedLinks(registry: Part[], env = process.env): Promise<string[]> {
   const links = [...new Set(registry.map((part) => part.stops).filter((link) => FAILURE_LINK.test(link)))];
-  const problems = new Map(await Promise.all(links.map(async (link) => [link, await problemWith(gh, link)] as const)));
+  const problems = new Map(await Promise.all(links.map(async (link) => [link, await problemWith(env, link)] as const)));
   return registry.flatMap((part) => {
     if (COMMIT_LINK.test(part.stops)) return [`${part.name} links a commit, which records a change and never a failure: ${part.stops}`];
     if (!FAILURE_LINK.test(part.stops)) return [`${part.name} links no issue, PR or run: ${part.stops}`];
