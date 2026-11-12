@@ -1,16 +1,9 @@
 import { capped, LIST_CAP, NO_EM_DASH, TICKET_CAP } from "./brief.ts";
-import { commentOnTicket, gh, gitRead, mark, OWNER, readOrStop, STUCK } from "./post.ts";
+import { calledOwner, type Caller, endedRed, gitRead, readOrStop, STUCK } from "./post.ts";
 import { briefOf, MOST_BUILDERS, type Progress, progressOn, specBranch } from "./scheduler.ts";
 import { SLICING, SPEC } from "./spelled.ts";
 import { opened, type Spent } from "./stage.ts";
-import { exitFor, stopsOf } from "./stops.ts";
 import { quoted, SPEC_CAP, ticketRefusals } from "./ticket-shape.ts";
-
-const stoppedAt = stopsOf({
-  notSpec: "Slice refused: the issue is not labelled `spec`",
-  unsliced: "Slice: the slices are still refused after two rounds back, so the spec is marked `stuck`",
-  uncut: "Slice: the first cut carried no slice, so the spec is marked `stuck`",
-});
 
 const ROUNDS_BACK = 2;
 export const BUILT_CAP = 8 * 1024;
@@ -177,22 +170,17 @@ function isAnswer(answer: unknown): answer is { slices: Slice[] } {
   return Array.isArray(slices) && slices.every((slice: Partial<Slice>) => typeof slice.id === "string" && typeof slice.title === "string" && typeof slice.why === "string" && Array.isArray(slice.decisions) && Array.isArray(slice.done) && Array.isArray(slice.blockedBy) && Array.isArray(slice.leftOf));
 }
 
-function calledOwner(spec: string, stop: "unsliced" | "uncut", why: string) {
-  mark(spec, STUCK);
-  commentOnTicket(spec, `@${OWNER} the slicer of #${spec} cut nothing and needs you: ${why}`, gh);
-  return stoppedAt(stop, `slice: #${spec} marked ${STUCK}, ${why}`);
-}
+const slicerOf = (spec: string): Caller => ({ who: "the slicer", stopped: "cut nothing", said: `slice: #${spec} marked ${STUCK}` });
 
-function sliced(spec: string) {
+function sliced(spec: string): number {
   const said = `slice: #${spec}`;
   const opening = opened({
     stage: "slice",
     issue: spec,
     state: SLICING,
-    stoppedAt,
     hire: { name: "slicer", model: "opus", effort: "medium", answers: ANSWERS },
     ready: (asked) => {
-      if (!asked.labels.has(SPEC)) return stoppedAt("notSpec", `${said} is not a spec, so nothing sliced it`);
+      if (!asked.labels.has(SPEC)) return endedRed(`${said} is not a spec, so nothing sliced it`);
       const { progress } = progressOn(spec);
       const cut: Cut = progress.slices.length === 0 ? "first" : "replan";
       return { carrying: { progress, handed: { cut, slices: slicesSoFar(progress), built: builtSoFar(spec) } }, effort: cut === "first" ? "high" : "medium" };
@@ -202,17 +190,17 @@ function sliced(spec: string) {
   const { asked, spend, carried: { progress, handed } } = opening;
   let spent: Spent = spend(handedOn(asked.title, asked.body, handed));
   for (let round = 0; ; round++) {
-    if (spent.refusal !== undefined) return stoppedAt("modelRun", `${said} ended red, ${spent.refusal}`);
-    if (!isAnswer(spent.answer)) return stoppedAt("modelRun", `${said} ended red, the slicer gave no slices`);
+    if (spent.refusal !== undefined) return endedRed(`${said} ended red, ${spent.refusal}`);
+    if (!isAnswer(spent.answer)) return endedRed(`${said} ended red, the slicer gave no slices`);
     const { slices } = spent.answer;
-    if (handed.cut === "first" && slices.length === 0) return calledOwner(spec, "uncut", "its first cut carried no slice, so nothing of the spec would be built: main may already do all of it, or the spec may say too little to cut");
+    if (handed.cut === "first" && slices.length === 0) return calledOwner(spec, slicerOf(spec), "its first cut carried no slice, so nothing of the spec would be built: main may already do all of it, or the spec may say too little to cut");
     const refusals = sliceRefusals(slices, progress, asked.body);
     if (refusals.length === 0) {
       console.error(`${said} cut ${slices.length} ${slices.length === 1 ? "slice" : "slices"}${slices.length === 0 ? "" : `: ${slices.map(({ id }) => id).join(", ")}`}`);
       console.log(JSON.stringify({ slices }));
-      return undefined;
+      return 0;
     }
-    if (round === ROUNDS_BACK) return calledOwner(spec, "unsliced", `its slices were still refused after ${ROUNDS_BACK} rounds back: ${quoted(refusals[0] ?? "")}`);
+    if (round === ROUNDS_BACK) return calledOwner(spec, slicerOf(spec), `its slices were still refused after ${ROUNDS_BACK} rounds back: ${quoted(refusals[0] ?? "")}`);
     spent = spend(sentBack(refusals), spent.session);
   }
 }
@@ -220,5 +208,5 @@ function sliced(spec: string) {
 if (import.meta.main) {
   const [spec] = process.argv.slice(2);
   if (spec === undefined) throw new Error("no spec number in the arguments");
-  process.exit(exitFor(readOrStop("slice", () => sliced(spec))));
+  process.exit(readOrStop("slice", () => sliced(spec)));
 }

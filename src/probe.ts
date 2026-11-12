@@ -5,7 +5,6 @@ import { join } from "node:path";
 import { capped, onDisk } from "./brief.ts";
 import { ENROLLED_CALLER, gh, ghRead, readOrStop } from "./post.ts";
 import { CONTRACT, hire, machineLogs, setupRefusal, treePathed } from "./stage.ts";
-import { exitFor } from "./stops.ts";
 import { quoted } from "./ticket-shape.ts";
 
 export const PROBE_CAP = 8 * 1024;
@@ -107,5 +106,5 @@ if (import.meta.main) {
   const [repo, by, text] = given[0] === "--in" ? given.slice(1) : [undefined, ...given];
   if (!PROBES.includes(by as Probe) || text === undefined) throw new Error("no probe in the arguments");
   const ended = readOrStop("probe", () => (repo === undefined ? probedHere(by as Probe, text) : probedIn(repo, by as Probe, text)));
-  process.exit(typeof ended === "number" ? ended : exitFor(ended));
+  process.exit(ended);
 }

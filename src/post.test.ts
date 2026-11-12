@@ -240,7 +240,7 @@ describe("src/post.ts reads what GitHub holds, stopping at unread itself, so no 
     const error = console.error;
     console.error = (text: string) => said.push(text);
     try {
-      expect(readOrStop("read", run)).toBe("unread");
+      expect(readOrStop("read", run)).toBe(1);
     } finally {
       console.error = error;
     }

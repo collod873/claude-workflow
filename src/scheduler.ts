@@ -6,22 +6,12 @@ import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
 import { capped, LIST_CAP } from "./brief.ts";
 import { parkedBehind } from "./builder.ts";
 import { park } from "./issue-links.ts";
-import { askedOn, commentEdited, commentOnTicket, gh, ghRead, git, gitRead, standingOn, stoodDownOrWaiting, machineBin, mark, OWNER, readOrStop, rebuiltOnMain, rebuiltRef, STUCK, unread } from "./post.ts";
+import { askedOn, calledOwner, commentEdited, commentOnTicket, endedRed, gh, ghRead, git, gitRead, standingOn, stoodDownOrWaiting, machineBin, mark, readOrStop, rebuiltOnMain, rebuiltRef, STUCK, unread } from "./post.ts";
 import type { Try } from "./done-checker.ts";
 import type { Slice } from "./slicer.ts";
 import { BUILDING, MACHINE, SONNET_BUILDERS, SPEC, SPEC_PREFIX } from "./spelled.ts";
 import type { Hire } from "./stage.ts";
-import { exitFor, stopsOf } from "./stops.ts";
 import { filedOutOfScope, quoted } from "./ticket-shape.ts";
-
-const stoppedAt = stopsOf({
-  notSpec: "Schedule refused: the issue is not labelled `spec`",
-  unsliced: "Schedule: the slicer ended red or gave no slices, so nothing more is hired",
-  unmoved: "Schedule: no slice can move and none is left to build, so the spec is marked `stuck`",
-  unfinished: "Schedule: bin/finish ended red, so the spec did not land",
-  unchecked: "Schedule: bin/finish ended red after the spec landed, before its done check finished, so a rerun goes straight to the done check",
-});
-type Stop = ReturnType<typeof stoppedAt>;
 
 export const MOST_BUILDERS = 3;
 const MOST_TRIES = 2;
@@ -296,12 +286,6 @@ function finished(spec: string, root: string, logs: string, app: AppKey | undefi
   return { status: ran.status, landed: given("landed") || undefined, missed: given("missed") ?? "" };
 }
 
-function calledOwner(spec: string, stop: Stop, why: string): Stop {
-  mark(spec, STUCK);
-  commentOnTicket(spec, `@${OWNER} the spec run of #${spec} stopped and needs you: ${why}`, gh);
-  return stoppedAt(stop, `schedule: #${spec} marked ${STUCK}, ${why}`);
-}
-
 function retried(spec: string, { session, outOfTime, stopped }: Tracked): Hiring {
   if (session === undefined) return {};
   return outOfTime === true ? { resume: session, outOfTime } : { resume: session, told: resumedAfterStop(spec, stopped ?? "") };
@@ -311,7 +295,7 @@ const FILED_IN_REPO = /^https:\/\/github\.com\/([^/]+\/[^/]+)\/issues\/(\d+)$/;
 
 const hasEnded = (url: string) => /^(CLOSED|MERGED)/.test(ghRead(["issue", "view", url, "--json", "state", "--jq", ".state"], `the state of ${url} could not be read, so no waiting slice was woken`));
 
-function parked(spec: string, waiting: Tracked[]): undefined {
+function parked(spec: string, waiting: Tracked[]): number {
   const filed = [...new Set(waiting.flatMap(({ filed = [] }) => filed))];
   const blockers = filed.flatMap((url) => {
     const [, repo, number] = FILED_IN_REPO.exec(url) ?? [];
@@ -321,7 +305,7 @@ function parked(spec: string, waiting: Tracked[]): undefined {
   const said = parkedBehind(spec, blockers.map(({ repo, number }) => `${repo}#${number}`));
   commentOnTicket(spec, `${said} ${waiting.map(({ id }) => `\`${id}\``).join(", ")} build once they close.`, gh);
   console.log(`schedule: #${spec} waits on ${filed.join(", ")}, which its slices handed off`);
-  return undefined;
+  return 0;
 }
 
 const unmovedWhy = (progress: Progress) => {
@@ -330,14 +314,14 @@ const unmovedWhy = (progress: Progress) => {
   return `no slice can move. ${out.join("; ") || "No slice is out"}. ${blocked.length === 0 ? "Nothing waits on them." : `Waiting on them: ${blocked.join(", ")}.`}`;
 };
 
-async function scheduled(spec: string, app: AppKey | undefined): Promise<Stop | undefined> {
+async function scheduled(spec: string, app: AppKey | undefined): Promise<number> {
   const said = `schedule: #${spec}`;
   const asked = askedOn(spec, "so nothing was hired");
-  if (!asked.labels.has(SPEC)) return stoppedAt("notSpec", `${said} is not a spec, so nothing was hired`);
+  if (!asked.labels.has(SPEC)) return endedRed(`${said} is not a spec, so nothing was hired`);
   const stoodAtStart = stoodDownOrWaiting(asked);
   if (stoodAtStart !== undefined) {
     console.log(`${said} ${stoodAtStart}, so nothing was hired`);
-    return undefined;
+    return 0;
   }
   const found = progressOn(spec);
   const { progress } = found;
@@ -407,26 +391,26 @@ async function scheduled(spec: string, app: AppKey | undefined): Promise<Stop | 
     if (running.size === 0) {
       if (held !== undefined) {
         console.log(`${said} ${held}, so its builders finished and merged and nothing more was hired`);
-        return undefined;
+        return 0;
       }
       if (slicerStopped) {
-        if (standsDown("its slicer stood down and nothing more was hired")) return undefined;
-        return stoppedAt("unsliced", `${said} ended red, its slicer ended red or gave no slices, so nothing more was hired`);
+        if (standsDown("its slicer stood down and nothing more was hired")) return 0;
+        return endedRed(`${said} ended red, its slicer ended red or gave no slices, so nothing more was hired`);
       }
       const waiting = progress.slices.filter(({ state }) => state === "handed");
       if (waiting.length > 0 && !progress.slices.some(({ state }) => state === "out")) return parked(spec, waiting);
-      if (!cutNothing || progress.slices.some(({ state }) => state !== "merged")) return calledOwner(spec, "unmoved", unmovedWhy(progress));
+      if (!cutNothing || progress.slices.some(({ state }) => state !== "merged")) return calledOwner(spec, { who: "the spec run", said: `${said} marked ${STUCK}` }, unmovedWhy(progress));
       const ended = finished(spec, root, logs, app);
       fresh("bin/finish");
       if (ended.status !== 0) {
         const unchecked = ended.landed === undefined ? undefined : `the spec landed as #${ended.landed}, with its done check unfinished`;
-        if (standsDown(unchecked === undefined ? "bin/finish stood down and the spec did not land" : `it stood down after ${unchecked}`)) return undefined;
-        if (unchecked !== undefined) return stoppedAt("unchecked", `${said} ended red, bin/finish ${spec} ended ${String(ended.status)} after ${unchecked}, so a rerun goes straight to the done check`);
-        return stoppedAt("unfinished", `${said} ended red, bin/finish ${spec} ended ${String(ended.status)}`);
+        if (standsDown(unchecked === undefined ? "bin/finish stood down and the spec did not land" : `it stood down after ${unchecked}`)) return 0;
+        if (unchecked !== undefined) return endedRed(`${said} ended red, bin/finish ${spec} ended ${String(ended.status)} after ${unchecked}, so a rerun goes straight to the done check`);
+        return endedRed(`${said} ended red, bin/finish ${spec} ended ${String(ended.status)}`);
       }
       progress.landed = undefined;
       console.log(`${said} landed as #${ended.landed ?? "?"}, and its done check ${ended.missed === "" ? "found every sentence held or put to the owner" : `filed sentence ${ended.missed} as bugs`}`);
-      return undefined;
+      return 0;
     }
     const built = await Promise.race(running.values());
     running.delete(built.id);
@@ -470,5 +454,5 @@ if (import.meta.main) {
       throw error;
     }),
   );
-  process.exit(exitFor(ended));
+  process.exit(ended);
 }

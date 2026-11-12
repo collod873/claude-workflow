@@ -12,7 +12,7 @@ import { FAST_CHECK } from "./checks.ts";
 import { LEFT_CAP } from "./scheduler.ts";
 import { SLICE_ID } from "./slicer.ts";
 import { fromLine, gh, git, gitRead, rebuiltOnMain, rebuiltRef, Stopped, unread } from "./post.ts";
-import { commitlinted, committed, CONTRACT, hire, type Hire, setupRefusal, treeNeeds, unsetKeys } from "./stage.ts";
+import { commitlinted, committed, CONTRACT, hire, type Hire, setupRefusal, treeNeeds, unsetKeys, WRITE_UP_MINUTES } from "./stage.ts";
 
 const USAGE = "build-slice: usage: build-slice --spec <N> --slice <id> --brief <file> --onto <ref> [--model sonnet] [--resume <session>] [--told <text> | --out-of-time | --answer <its answer's JSON, to land again>]";
 
@@ -59,7 +59,6 @@ interface Slicing {
 }
 
 const DATABASE_WAIT_SECONDS = 60;
-const WRITE_UP_MINUTES = 5;
 const PAST_ONTO_UNREAD = "the commits past the integration branch could not be read";
 
 export const CARRY_ON = "Your last run on this slice stopped before it answered. Carry on from where this branch stands, and answer.";

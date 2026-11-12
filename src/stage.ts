@@ -3,8 +3,7 @@ import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readdirSync
 import { join } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import { NO_EM_DASH, onDisk } from "./brief.ts";
-import { type Asked, askedOn, commentOnTicket, followUpBody, gh, git, gitRead, heardIn, stoodDown, LABELLED_WAITING, mark, nothingHears, OWNER, post, STUCK, WAITING, type MarkedLabel } from "./post.ts";
-import type { Stop } from "./stops.ts";
+import { type Asked, askedOn, commentOnTicket, followUpBody, gh, git, gitRead, heardIn, stoodDown, LABELLED_WAITING, mark, nothingHears, OWNER, post, WAITING, type MarkedLabel } from "./post.ts";
 import { addBlocker, postedUnderOrigin } from "./issue-links.ts";
 import { quoted } from "./ticket-shape.ts";
 
@@ -94,6 +93,8 @@ function capped(argv: string[], minutes: number, leftMs: number): [string, ...st
 }
 
 type Effort = "low" | "medium" | "high";
+
+export const WRITE_UP_MINUTES = 5;
 
 export interface Hire {
   name: string;
@@ -260,14 +261,13 @@ export function hireIn(tree: string, stage: string, key: string, hiring: Omit<Hi
   };
 }
 
-interface Opening<Carried, Own extends string> {
+interface Opening<Carried> {
   stage: string;
   issue: string;
   state: MarkedLabel;
   tried?: boolean;
   hire: Omit<Hire, "transcript">;
-  stoppedAt: (stop: Stop, line: string) => Own;
-  ready: (asked: Asked) => { carrying: Carried; tried?: boolean; unmarked?: boolean; effort?: Effort } | Own | undefined;
+  ready: (asked: Asked) => { carrying: Carried; tried?: boolean; unmarked?: boolean; effort?: Effort } | number;
 }
 
 export interface Opened<Carried> {
@@ -276,14 +276,14 @@ export interface Opened<Carried> {
   spend: (input: string, resume?: string) => Spent;
 }
 
-export function opened<Carried, Own extends string>({ stage, issue, state, tried, hire: hiring, ready }: Opening<Carried, Own>): Opened<Carried> | Own | undefined {
+export function opened<Carried>({ stage, issue, state, tried, hire: hiring, ready }: Opening<Carried>): Opened<Carried> | number {
   const said = `${stage}: #${issue}`;
   const unchanged = "so no label changed and no model was hired";
   const asked = askedOn(issue, unchanged);
   const stood = stoodDown(asked);
   if (stood !== undefined) {
     console.log(`${said} ${stood}, ${unchanged}`);
-    return undefined;
+    return 0;
   }
   const readied = ready(asked);
   if (typeof readied !== "object") return readied;
@@ -485,13 +485,6 @@ export const commitlinted = () => readdirSync(process.cwd()).some((name) => COMM
 const conventional = (type: string, message: string) => `${type}: ${message.charAt(0).toLowerCase()}${message.slice(1)}`;
 
 export const head = () => gitRead(["rev-parse", "HEAD"], "the head of this branch could not be read");
-
-export function calledOwner(ticket: string, by: "builder" | "reviewer", why: string): number {
-  mark(ticket, STUCK);
-  commentOnTicket(ticket, `@${OWNER} the ${by} of #${ticket} stopped and needs you: ${why}`, gh);
-  console.error(`fix: #${ticket} needs the owner, ${why}`);
-  return 1;
-}
 
 export function committed(message: string, type: "feat" | "fix"): void {
   if (gitRead(["status", "--porcelain"], "what was changed could not be read") === "") return;

@@ -1,10 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { CALLER_FILE, commentOnTicket, gh, ghRead, standingOn, stoodDown, machineBin, OWNER, readOrStop, STUCK, unread } from "./post.ts";
+import { calledOwner, CALLER_FILE, endedRed, gh, ghRead, standingOn, stoodDown, readOrStop, STUCK, unread } from "./post.ts";
 import { OWNER_CALL } from "./spelled.ts";
-import { exitFor, stopsOf } from "./stops.ts";
-
-const stoppedAt = stopsOf({ unrerun: "Rerun: GitHub refuses to re-run a red run's failed jobs" });
-type Stop = ReturnType<typeof stoppedAt>;
 
 interface Job {
   id: number;
@@ -59,15 +55,12 @@ function callOwner(call: Call, url: string, attempt: string): void {
     console.log(`rerun: #${call.issue} ${stood}, so nothing is marked or posted`);
     return;
   }
-  if (spawnSync(machineBin("mark"), [call.issue, STUCK], { stdio: ["ignore", "ignore", "inherit"] }).status !== 0) gh(["issue", "edit", call.issue, "--add-label", STUCK]);
-  const text = [
-    `@${OWNER} ${call.run} ${call.ended} twice, so #${call.issue} is labelled \`${STUCK}\`.`,
-    `The machine re-ran it once by itself and it stopped again: the first run is ${url}/attempts/1 and the re-run is ${url}/attempts/${attempt}.`,
+  calledOwner(
+    call.issue,
+    { who: call.run, stopped: `${call.ended} twice`, said: `rerun: #${call.issue} is labelled ${STUCK}, as ${call.run} ${call.ended} on its re-run` },
+    `the machine re-ran it once by itself and it stopped again: the first run is ${url}/attempts/1 and the re-run is ${url}/attempts/${attempt}`,
     `Look at the re-run to see what stopped it, and take \`${STUCK}\` off once the cause is fixed: that picks #${call.issue} up again.`,
-  ].join(" ");
-  const { refusals } = commentOnTicket(call.issue, text, gh);
-  for (const refusal of refusals) console.error(`rerun: ${refusal}`);
-  console.log(`rerun: #${call.issue} is labelled ${STUCK}, as ${call.run} ${call.ended} on its re-run`);
+  );
 }
 
 function waitFor(run: string, attempt: string): void {
@@ -75,11 +68,11 @@ function waitFor(run: string, attempt: string): void {
   while (ghRead(["api", `repos/{owner}/{repo}/actions/runs/${run}/attempts/${attempt}`, "--jq", ".status"], line).trim() !== "completed") spawnSync("sleep", [String(WAIT_SECONDS)]);
 }
 
-function handOn(run: string, attempt: string): undefined {
+function handOn(run: string, attempt: string): number {
   const handed = gh(["workflow", "run", CALLER_FILE, "-f", `ticket=${process.env.TICKET || "none"}`, "-f", `rerun=${run}/${attempt}`]);
   if (handed.status !== 0) console.error(`rerun: run ${run} could not be handed to ${CALLER_FILE}, so it is not re-run: ${firstLine(handed)}`);
   else console.log(`rerun: run ${run} ended red on attempt ${attempt}, so ${CALLER_FILE} is dispatched to re-run it`);
-  return undefined;
+  return 0;
 }
 
 function ended(run: string, attempt: string): string | undefined {
@@ -92,27 +85,27 @@ function ended(run: string, attempt: string): string | undefined {
 
 const rerunFailed = (run: string) => gh(["api", "-X", "POST", `repos/{owner}/{repo}/actions/runs/${run}/rerun-failed-jobs`]);
 
-function rerun(run: string, attempt: string): Stop | undefined {
+function rerun(run: string, attempt: string): number {
   const url = ended(run, attempt);
-  if (url === undefined) return undefined;
+  if (url === undefined) return 0;
   const calls = callsOf(run, attempt);
   if (calls.length === 0) {
     console.log(`rerun: no job of run ${run} that ended red or ran out of time called the owner, so nothing is re-run or marked`);
-    return undefined;
+    return 0;
   }
   if (attempt === "1") {
     const again = rerunFailed(run);
-    if (again.status !== 0) return stoppedAt("unrerun", `rerun: run ${run} could not be re-run, so ${calls.map(({ run: named }) => named).join(" and ")} stays stopped: ${firstLine(again)}`);
+    if (again.status !== 0) return endedRed(`rerun: run ${run} could not be re-run, so ${calls.map(({ run: named }) => named).join(" and ")} stays stopped: ${firstLine(again)}`);
     console.log(`rerun: ${calls.map(({ run: named, ended: how }) => `${named} ${how}`).join(" and ")} on its first attempt, so run ${run} re-runs its failed jobs once`);
-    return undefined;
+    return 0;
   }
   for (const call of calls) callOwner(call, url, attempt);
-  return undefined;
+  return 0;
 }
 
 if (import.meta.main) {
   const mode = process.argv[2] === "--dispatch" ? handOn : undefined;
   const [run, attempt] = process.argv.slice(mode === undefined ? 2 : 3);
   if (run === undefined || attempt === undefined) throw new Error("no run id and attempt in the arguments");
-  process.exit(exitFor(readOrStop("rerun", () => (mode ?? rerun)(run, attempt))));
+  process.exit(readOrStop("rerun", () => (mode ?? rerun)(run, attempt)));
 }

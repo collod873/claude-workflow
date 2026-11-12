@@ -1,7 +1,6 @@
 import { type Admission, commentOnTicket, commentsRead, type From, fromOf, gh, type Gh, ghAs, heldOf, type Opened, opened, OWNER, readOrStop, RESEARCH, stoodDownOrWaiting, unread } from "./post.ts";
 import { dedashed } from "./em-dash.ts";
 import { parentOf } from "./issue-links.ts";
-import { exitFor } from "./stops.ts";
 
 export const doesNotBuild = (ticket: string, refused: string) =>
   `#${ticket} does not build, since its checks would run as shell with the App's token and ${refused}. A ticket the App opens builds only as research's follow-up from a research note the owner opened, as what a reviewer let through on a ticket that builds, as what a done check found on a spec that builds, or as a first step or machine fault its builder filed from a ticket that builds in its own repo.`;
@@ -88,28 +87,28 @@ function stoodDownBy(asked: Opened | "missing"): string | undefined {
   return stoodDownOrWaiting({ labels: heldOf(asked.labels), closed: asked.state === "closed" });
 }
 
-function admit(ticket: string): undefined {
+function admit(ticket: string): number {
   const so = "so nothing was admitted";
   const asked = opened(ticket, `#${ticket} could not be read, ${so}`, gh);
   const stood = stoodDownBy(asked);
   if (stood !== undefined) {
     console.error(`admit: #${ticket} ${stood}, so its build stands down`);
     console.log("admitted=false");
-    return undefined;
+    return 0;
   }
   const { refused, from } = admitted(HERE, ticket, so, MOST_READS, unread, asked);
   if (refused !== undefined) {
     toldOnce(ticket, doesNotBuild(ticket, refused), gh, `#${ticket}`);
     waitingTold(ticket, from, refused);
     console.log("admitted=false");
-    return undefined;
+    return 0;
   }
   console.log("admitted=true");
-  return undefined;
+  return 0;
 }
 
 if (import.meta.main) {
   const [ticket] = process.argv.slice(2);
   if (ticket === undefined) throw new Error("no ticket number in the arguments");
-  process.exit(exitFor(readOrStop("admit", () => admit(ticket))));
+  process.exit(readOrStop("admit", () => admit(ticket)));
 }

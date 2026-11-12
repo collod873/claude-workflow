@@ -269,7 +269,7 @@ _Avoid_: phase, pass, step, job
 
 **Stage opening**:
 How a stage starts on its issue, in `src/stage.ts` beside the hire: it reads the issue once, ends red
-at `unread` when it cannot, ends green in one line on `paused` or `stuck` with no label changed and
+when it cannot, ends green in one line on `paused` or `stuck` with no label changed and
 no model hired, then marks the stage's state, makes the log directory and hires. The slicer, the
 researcher, the builder and the done check open through it.
 _Avoid_: preamble, setup, bootstrap
