@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { dispatchedSince, onGitHubSchedule } from "./dispatched.ts";
+import { gh } from "./post.ts";
 
 const MIGRATIONS = "src/server/db/migrations/*.sql";
 const HOLD = "refs/tags/release-hold";
@@ -88,7 +89,7 @@ function isAncestor(older: string, newer: string): boolean {
 }
 
 function ghApi(path: string, sha: string): unknown {
-  const done = run("gh", ["api", path]);
+  const done = gh(["api", path]);
   if (done.status !== 0) die(`✗ ship: could not read CI or the check status for ${sha.slice(0, 7)}.\n${done.stderr.trim()}`);
   return JSON.parse(done.stdout);
 }
@@ -131,7 +132,7 @@ async function fullCheckOf(sha: string, live: string): Promise<FullCheck> {
     );
   }
   const already = new Set(ciRuns(sha).map((ciRun) => ciRun.id));
-  const started = run("gh", ["workflow", "run", CI_WORKFLOW, "--ref", "main"]);
+  const started = gh(["workflow", "run", CI_WORKFLOW, "--ref", "main"]);
   if (started.status !== 0) die(`✗ ship: could not start the full check for ${sha.slice(0, 7)}.\n${started.stderr.trim()}`);
   const deadline = Date.now() + CHECK_DEADLINE_SECONDS * 1000;
   for (;;) {
@@ -146,10 +147,10 @@ async function fullCheckOf(sha: string, live: string): Promise<FullCheck> {
 }
 
 function fileOrComment(title: string, body: string): string {
-  const open = run("gh", ["issue", "list", "--state", "open", "--search", `"${title}" in:title`, "--json", "number", "--jq", ".[].number"]);
+  const open = gh(["issue", "list", "--state", "open", "--search", `"${title}" in:title`, "--json", "number", "--jq", ".[].number"]);
   if (open.status !== 0) die(`✗ ship: ${title}, and listing issues failed.\n${open.stderr.trim()}`);
   const existing = open.stdout.trim().split("\n")[0];
-  const filed = existing ? run("gh", ["issue", "comment", existing, "--body", body]) : run("gh", ["issue", "create", "--title", title, "--body", body]);
+  const filed = existing ? gh(["issue", "comment", existing, "--body", body]) : gh(["issue", "create", "--title", title, "--body", body]);
   if (filed.status !== 0) die(`✗ ship: ${title}, and filing it failed.\n${filed.stderr.trim()}`);
   return filed.stdout.trim() || `#${existing}`;
 }
@@ -160,7 +161,7 @@ function owner(): string {
 }
 
 function failingTests(runId: number | undefined): string {
-  const log = runId ? run("gh", ["run", "view", String(runId), "--log-failed"]).stdout : "";
+  const log = runId ? gh(["run", "view", String(runId), "--log-failed"]).stdout : "";
   return log
     .split("\n")
     .filter((line) => /\bFAIL\b|✗|×/.test(line))

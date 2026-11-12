@@ -33,7 +33,7 @@ export interface Posting {
   withheld?: LabelName | undefined;
 }
 
-export type Gh = (args: string[]) => { status: number | null; stdout: string; stderr: string };
+export type Gh = (args: string[], input?: string) => { status: number | null; stdout: string; stderr: string };
 
 export const GITHUB = join(import.meta.dirname, "..", "bin", "github");
 const ARGUMENT_BYTES = 65536;
@@ -56,11 +56,11 @@ function bodiesInFiles(args: string[], dir: () => string): string[] {
 
 export const ghAs =
   (env: NodeJS.ProcessEnv): Gh =>
-  (args) => {
+  (args, input) => {
     let held: string | undefined;
     const dir = () => (held ??= mkdtempSync(join(tmpdir(), "gh-body-")));
     try {
-      const ran = spawnSync(GITHUB, bodiesInFiles(args, dir), { encoding: "utf8", maxBuffer: Infinity, env, stdio: ["pipe", "pipe", "pipe", 2] });
+      const ran = spawnSync(GITHUB, bodiesInFiles(args, dir), { input, encoding: "utf8", maxBuffer: Infinity, env, stdio: ["pipe", "pipe", "pipe", 2] });
       return { status: ran.status, stdout: ran.stdout ?? "", stderr: ran.stderr || (ran.error?.message ?? "") };
     } finally {
       if (held !== undefined) rmSync(held, { recursive: true, force: true });

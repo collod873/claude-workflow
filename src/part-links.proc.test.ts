@@ -7,7 +7,7 @@ import { scratch, script } from "./scenarios.ts";
 
 const REPO = "https://github.com/collod873/claude-workflow";
 
-function recordedGh(): { gh: string; calls: () => string[]; tokens: () => string[] } {
+function recordedGh(): { gh: NodeJS.ProcessEnv; calls: () => string[]; tokens: () => string[] } {
   const dir = scratch("part-links-");
   const log = join(dir, "calls");
   const api = "repos/collod873/claude-workflow";
@@ -25,7 +25,7 @@ function recordedGh(): { gh: string; calls: () => string[]; tokens: () => string
     "esac",
     "",
   ].join("\n"));
-  return { gh: join(dir, "gh"), calls: () => readFileSync(log, "utf8").trim().split("\n"), tokens: () => readFileSync(`${log}-tokens`, "utf8").trim().split("\n") };
+  return { gh: { ...process.env, PATH: `${dir}:${process.env.PATH ?? ""}`, GH_RETRY_SECONDS: "0" }, calls: () => readFileSync(log, "utf8").trim().split("\n"), tokens: () => readFileSync(`${log}-tokens`, "utf8").trim().split("\n") };
 }
 
 const part = (name: string, stops: string): Part => ({ name, file: `core/${name}`, stops });
@@ -67,12 +67,7 @@ describe("every part's failure link resolves on GitHub to an issue, a PR or a ru
 
   it("reads with LINKS_GH_TOKEN when set, since a CI run's own token sees only this repo and a part may link another repo's failure", async () => {
     const { gh, tokens } = recordedGh();
-    process.env.LINKS_GH_TOKEN = "links-token";
-    try {
-      expect(await refusedLinks([part("one", `${REPO}/issues/1`)], gh)).toEqual([]);
-    } finally {
-      delete process.env.LINKS_GH_TOKEN;
-    }
+    expect(await refusedLinks([part("one", `${REPO}/issues/1`)], { ...gh, LINKS_GH_TOKEN: "links-token" })).toEqual([]);
     expect(tokens()).toEqual(["links-token"]);
   });
 });

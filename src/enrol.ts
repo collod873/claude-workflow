@@ -1,10 +1,9 @@
-import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { isMap, isScalar, type Node, parse, parseDocument } from "yaml";
 import { appJwt } from "./app-token.ts";
 import { FAST_CHECK, FULL_CHECK } from "./checks.ts";
-import { ALREADY_EXISTS, ENROLLED_CALLER } from "./post.ts";
+import { ALREADY_EXISTS, ENROLLED_CALLER, gh as github } from "./post.ts";
 import { flowOf, type Flow, type Job, offPc, PC_RUNS_ON, runnerJobs, WORKFLOW_FILE, WORKFLOWS } from "./pc-runner.ts";
 import { LABELS, MACHINE } from "./spelled.ts";
 
@@ -68,7 +67,7 @@ interface Ruleset {
 }
 
 function gh(args: string[], input?: string): string {
-  const ran = spawnSync("gh", args, { encoding: "utf8", input });
+  const ran = github(args, input);
   if (ran.status !== 0) throw new Refused((ran.stderr || ran.stdout).trim().split("\n")[0] || `gh ${args.join(" ")} failed`);
   return ran.stdout;
 }
@@ -82,7 +81,7 @@ function once<T>(make: () => T): () => T {
 
 function found<T>(args: string[]): T | undefined {
   try {
-    return read<T>(args);
+    return read<T>(["--missing-answers", ...args]);
   } catch (error) {
     if (error instanceof Refused && NOT_FOUND.test(error.message)) return undefined;
     throw error;

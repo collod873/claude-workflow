@@ -17,6 +17,7 @@ elif [[ $# -ne 0 ]]; then
   exit 2
 fi
 
+github="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/github"
 head=$(git rev-parse HEAD) || exit 1
 top=$(git rev-parse --show-toplevel)
 log="$(git rev-parse --path-format=absolute --git-common-dir)/machine-logs/land-${head:0:7}-${top##*/}.log"
@@ -100,7 +101,7 @@ onto_default_branch() {
       checkout=$(git symbolic-ref --quiet --short HEAD || git rev-parse --short HEAD)
       pr_left=${url:+$url is left open and }
       if [[ -n $url && $branch == land/* ]]; then
-        call "gh pr close" gh pr close "$url"
+        call "gh pr close" "$github" pr close "$url"
         call "git push --delete" git push --quiet origin --delete "$branch"
         pr_left="$url is closed, since the next landing opens its own, and "
       fi
@@ -115,7 +116,7 @@ onto_default_branch() {
 onto_default_branch
 
 posted() {
-  call "gh api statuses" gh api -X POST "repos/{owner}/{repo}/statuses/$head" -f state=success -f "context=$1" -f "description=$2"
+  call "gh api statuses" "$github" api -X POST "repos/{owner}/{repo}/statuses/$head" -f state=success -f "context=$1" -f "description=$2"
   posted_head=$head
 }
 
@@ -126,7 +127,7 @@ fi
 
 closing_keyword='\b(close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)\b:?[ \t]+#'"$spec"'\b'
 
-src="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../src" && pwd)"
+src="$(cd "${github%/*}/../src" && pwd)"
 for commit in $(git rev-list "origin/$default_branch..HEAD"); do
   message=$(git log -1 --format=%B "$commit")
   node "$src/em-dash.ts" <<<"$message"
@@ -152,7 +153,7 @@ off_pc=$(node "$src/pc-runner.ts" "$top")
 case $? in
   0) ;;
   3)
-    call "gh api repos" gh api "repos/{owner}/{repo}" --jq .private
+    call "gh api repos" "$github" api "repos/{owner}/{repo}" --jq .private
     if [[ $said == true ]]; then
       printf 'land: %s, which bill this private repo by the minute, so nothing landed; give it that runs-on\n' "$off_pc" >&2
       exit 1
@@ -175,7 +176,7 @@ if [[ -n $issue ]]; then
     branch="$said$spec"
     approver="The reviewers"
   fi
-  call "gh issue view" gh issue view "$issue" --json title --jq .title
+  call "gh issue view" "$github" issue view "$issue" --json title --jq .title
   title=$said
   [[ -n $ticket ]] && body="Closes #$ticket"$'\n\n' || body="Builds #$spec"$'\n\n'
 else
@@ -201,21 +202,21 @@ for (( round = 1; ; round++ )); do
   call "git push" git push --quiet --force origin "HEAD:refs/heads/$branch"
   posted check "$judged"
   if [[ -z $url ]]; then
-    call "gh pr list" gh pr list --head "$branch" --base "$default_branch" --state open --json url --jq '.[0].url // empty'
+    call "gh pr list" "$github" pr list --head "$branch" --base "$default_branch" --state open --json url --jq '.[0].url // empty'
     url=$said
   fi
   if [[ -z $url ]]; then
-    call "gh pr create" gh pr create --base "$default_branch" --head "$branch" \
+    call "gh pr create" "$github" pr create --base "$default_branch" --head "$branch" \
       --title "${title:-$(git log -1 --format=%s HEAD)}" \
       --body "$body$(git log --reverse --format='- %s' "origin/$default_branch..HEAD")"
     url=$said
   fi
   if [[ -n $approved ]]; then
-    call "gh pr comment" gh pr comment "$url" --body "$approver approved #$issue: $approved"
+    call "gh pr comment" "$github" pr comment "$url" --body "$approver approved #$issue: $approved"
     approved=
   fi
   stage="merge wait"
-  if { gh pr merge "$branch" --merge --match-head-commit "$head" >/dev/null; } 2>"$err"; then
+  if { "$github" pr merge "$branch" --merge --match-head-commit "$head" >/dev/null; } 2>"$err"; then
     break
   fi
   { printf -- '--- gh pr merge %s ---\n' "$branch"; cat "$err"; } >>"$log"
@@ -223,11 +224,11 @@ for (( round = 1; ; round++ )); do
   if grep -qE 'Base branch was modified|Something went wrong while executing your query' "$err"; then
     state=RACED
   else
-    state=$(gh pr view "$branch" --json mergeStateStatus --jq .mergeStateStatus 2>>"$log") || state=unread
+    state=$("$github" pr view "$branch" --json mergeStateStatus --jq .mergeStateStatus 2>>"$log") || state=unread
   fi
-  if [[ $state == BLOCKED ]] && { gh pr checks "$branch" --required >/dev/null; (( $? == 8 )); } 2>>"$log" \
-    && { gh pr checks "$branch" --required --watch --fail-fast >/dev/null; } 2>>"$log" \
-    && { gh pr merge "$branch" --merge --match-head-commit "$head" >/dev/null; } 2>>"$log"; then
+  if [[ $state == BLOCKED ]] && { "$github" pr checks "$branch" --required >/dev/null; (( $? == 8 )); } 2>>"$log" \
+    && { "$github" pr checks "$branch" --required --watch --fail-fast >/dev/null; } 2>>"$log" \
+    && { "$github" pr merge "$branch" --merge --match-head-commit "$head" >/dev/null; } 2>>"$log"; then
     break
   fi
   case $state in

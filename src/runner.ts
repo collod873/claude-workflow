@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { hostname } from "node:os";
+import { gh as github } from "./post.ts";
 
 export const VARIABLE = "CI_RUNNER";
 export const LABEL = "pc";
@@ -63,7 +64,11 @@ function run(command: string, args: string[], input?: string): string {
   return ran.stdout;
 }
 
-const gh = (args: string[]) => run("gh", args);
+function gh(args: string[]): string {
+  const ran = github(args);
+  if (ran.status !== 0) throw new Refused((ran.stderr || ran.stdout).trim().split("\n")[0] || `gh ${args.join(" ")} failed`);
+  return ran.stdout;
+}
 const asRunnerUser = (script: string, input?: string) => run("sudo", ["-u", USER, "bash", "-c", script], input);
 const asRoot = (script: string, input?: string) => run("sudo", ["bash", "-c", script], input);
 const quoted = (text: string) => `'${text.replace(/'/g, "'\\''")}'`;
@@ -77,7 +82,7 @@ function onRepo(repo: string) {
   const pcRunners = () => runners().filter(onPc);
   const read = (variable: string) => {
     try {
-      return gh(["variable", "get", variable, "-R", repo]).trim();
+      return gh(["--missing-answers", "variable", "get", variable, "-R", repo]).trim();
     } catch (error) {
       if (error instanceof Refused && NOT_FOUND.test(error.message)) return undefined;
       throw error;
