@@ -271,7 +271,7 @@ _Avoid_: phase, pass, step, job
 How a stage starts on its issue, in `src/stage.ts` beside the hire: it reads the issue once, ends red
 at `unread` when it cannot, ends green in one line on `paused` or `stuck` with no label changed and
 no model hired, then marks the stage's state, makes the log directory and hires. The slicer, the
-researcher and the done check open through it.
+researcher, the builder and the done check open through it.
 _Avoid_: preamble, setup, bootstrap
 
 **Paused**:
@@ -282,11 +282,11 @@ paused ticket or spec does not land: its reviewer reads the label before `bin/la
 _Avoid_: on hold, frozen, blocked
 
 **Stuck**:
-An issue the machine labelled `stuck`, its last resort: a stage that cannot go on marks it, and a
-stage run marks it only when its re-run stops too.
-Its comment names the run that stopped, ended red or out of time, links the first run and the
-re-run, and asks the owner to look at the re-run and take `stuck` off once the cause is fixed.
-Like `paused` it is `held`, so every stage stands down on it, and the machine adds it but never
+An issue the machine labelled `stuck`, its last resort: a stage that cannot go on or rules itself
+stuck marks it at once, and a run that dies only when its re-run dies too.
+Its comment names the run that stopped, red or out of time, links both runs, and asks the owner
+to read the re-run and take `stuck` off once it is fixed.
+Like `paused` it is `held`, so every stage stands down on it; the machine adds it but never
 removes it.
 _Avoid_: blocked, failed
 

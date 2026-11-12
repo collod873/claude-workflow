@@ -16,8 +16,7 @@ reshape or scrap. `docs/root-causes.md` is what an audit Collin runs found; only
   `bin/`. knip runs with no baseline and counts no test as a caller: wire it to one or delete it.
 - The why goes in the commit message, or in `CONTEXT.md` when it is vocabulary. Commit messages
   carry no em dash.
-- The steps live in `.claude/contract.json`: turn end and commit run the fast check, and
-  `bin/land`, the builder and the closer the full one.
+- The steps live in `.claude/contract.json`; its `fast` flags say which run at turn end and commit.
 - Land a commit with `bin/land`: it refuses a tree that differs from the commit, rebases, runs the
   full check on the commit before the push, posts that pass as the commit's `check` status, the
   whole gate, and merges its PR at once. `main` takes no direct push.

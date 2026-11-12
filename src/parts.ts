@@ -26,8 +26,8 @@ const FIXED: Part[] = [
     stops: "https://github.com/collod873/claude-workflow/issues/183",
   },
   {
-    name: "clones step",
-    file: ".claude/contract.json",
+    name: "clones rule",
+    file: "shared/ci.yml",
     stops: "https://github.com/collod873/claude-workflow/actions/runs/34630928220",
   },
   {
