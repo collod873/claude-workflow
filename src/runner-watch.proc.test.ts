@@ -2,7 +2,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { holds, watching } from "./scenarios.ts";
+import { watching } from "./runner-watch.part.ts";
+import { holds } from "./scenarios.ts";
 
 const pc = (status: string) => ({ status, labels: ["self-hosted", "pc"] });
 

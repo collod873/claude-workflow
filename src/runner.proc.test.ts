@@ -2,7 +2,8 @@ import { spawn } from "node:child_process";
 import { chmodSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { execute, PC_HOST as HOST, PC_REPO as REPO, PC_RUNNER_COUNT, PC_RUNS_ON, pcRunner, scratch, script, switching, workflowJobs } from "./scenarios.ts";
+import { PC_HOST as HOST, PC_REPO as REPO, PC_RUNNER_COUNT, pcRunner, switching } from "./runner.part.ts";
+import { execute, PC_RUNS_ON, scratch, script, workflowJobs } from "./scenarios.ts";
 
 const SOCKET_PATH_MAX = 107;
 
