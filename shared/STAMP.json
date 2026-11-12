@@ -1,5 +1,5 @@
 {
- "source": "collod873/agent-hooks@df041f7f012d3ee9fedafed94523881d6f182832",
+ "source": "collod873/agent-hooks@990ed77a81ffc589ee522d0f90ada236c8c0aca6",
  "layer": "typescript",
  "files": {
   "ci.yml": "bea63aa685617bc3f40983c8bc26ebd5795f6bb8afe5945f0828623736b3fa1b",
@@ -10,6 +10,7 @@
   "typescript/closure.mjs": "7331ac21505d07c748f95057c05e01051be870b9e2e88b1bf731f9d9c0362ddb",
   "typescript/files.mjs": "30813286d1d77817a585a2de6c4439713e2b159204b3a31f5833fe211107d4e8",
   "typescript/index.mjs": "48e2243a3558ffca7eeec4e3aae8737621016346e3bae337406e9367d238c40b",
+  "typescript/knip-cache.mjs": "622e4f840c363b4ec16924624b22d68aedc33d85f9cc386051ce3bd959e819d3",
   "typescript/knip.base.d.mts": "0d59f036962b278fc0bec872969eea08bf899384ac80c36297102ddb5583dc1b",
   "typescript/knip.base.mjs": "c1f41b311346b57281798d47b1548bc677c6a3b81c419fbfb360089e4c10c8b3",
   "typescript/node.json": "d09d82902169f4272754dfab63a99bfaecb6be95521369f33e67e33f7822f7d9",
@@ -34,7 +35,7 @@
   "typescript/typecheck": "cc0064c5f823e62b3aa55dd2eddd700a30cf539cfddab8fc4ee2df74b64e509f",
   "typescript/typecheck.mjs": "52acd3f61290604355608d690b33636051a9ebaec8cd2f2084f890bbbd2a0a63",
   "typescript/unused": "a5bd5916965b9e5fb8e61463c4c7ed52296ed55ee4643d972d67579c2a91e4be",
-  "typescript/unused.mjs": "326e50dd0875580224e50ad1bd4337bc00ef940dd4b0f9d0a68b12ce0630796f",
+  "typescript/unused.mjs": "2c0242c55c15d4dc5b8b23e8df4c6cdd50cf3ec2945c620aa538e2e30a58c8e1",
   "typescript/verify.mjs": "b775afb3cd95ab67ad1c5a3175af2ca39c3b6114d0fe18262dcceab42722a0c9",
   "typescript/vitest.mjs": "df7efca6435c758f0cc8c9b4f530891210ff4064ee1fa98f3f1c79718fb086ae"
  },
