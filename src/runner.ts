@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { hostname } from "node:os";
+import { type Gh, gh as github } from "./post.ts";
 
 export const VARIABLE = "CI_RUNNER";
 export const LABEL = "pc";
@@ -57,13 +58,13 @@ const clearing = (repo: string, name: string, unit: string) =>
     "",
   ].join("\n");
 
-function run(command: string, args: string[], input?: string): string {
-  const ran = spawnSync(command, args, { encoding: "utf8", input });
-  if (ran.status !== 0) throw new Refused((ran.stderr || ran.stdout).trim().split("\n")[0] || `${command} ${args.join(" ")} failed`);
+const refusedUnless = (ran: ReturnType<Gh>, said: string): string => {
+  if (ran.status !== 0) throw new Refused((ran.stderr || ran.stdout).trim().split("\n")[0] || `${said} failed`);
   return ran.stdout;
-}
+};
 
-const gh = (args: string[]) => run("gh", args);
+const run = (command: string, args: string[], input?: string) => refusedUnless(spawnSync(command, args, { encoding: "utf8", input }), `${command} ${args.join(" ")}`);
+const gh = (args: string[]) => refusedUnless(github(args), `gh ${args.join(" ")}`);
 const asRunnerUser = (script: string, input?: string) => run("sudo", ["-u", USER, "bash", "-c", script], input);
 const asRoot = (script: string, input?: string) => run("sudo", ["bash", "-c", script], input);
 const quoted = (text: string) => `'${text.replace(/'/g, "'\\''")}'`;
@@ -77,7 +78,7 @@ function onRepo(repo: string) {
   const pcRunners = () => runners().filter(onPc);
   const read = (variable: string) => {
     try {
-      return gh(["variable", "get", variable, "-R", repo]).trim();
+      return gh(["--missing-answers", "variable", "get", variable, "-R", repo]).trim();
     } catch (error) {
       if (error instanceof Refused && NOT_FOUND.test(error.message)) return undefined;
       throw error;

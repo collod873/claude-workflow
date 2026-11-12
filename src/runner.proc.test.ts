@@ -336,6 +336,14 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
     expect(run().stdout).toBe(`runner: ${REPO} runs on this PC, 1 of 2 PC runners online\n`);
     expect(gh().filter((call) => /variable (set|delete)/.test(call))).toEqual([]);
   });
+
+  it("tries a GitHub call again when it blips, and reads a repo with no runner switch once as on GitHub's runners", () => {
+    const { run, gh } = switching({ blipsOnce: true });
+
+    expect(run().stdout).toBe(`runner: ${REPO} runs on GitHub's runners, 0 of 0 PC runners online\n`);
+    expect(gh().filter((call) => call === `api repos/${REPO}`)).toHaveLength(2);
+    expect(gh().filter((call) => call.startsWith("variable get"))).toHaveLength(1);
+  });
 });
 
 describe("the machine's jobs run where the repo's switch says", () => {

@@ -1096,7 +1096,7 @@ export function watching(repos: WatchedRepo[], billing: object[] = [], runs: Rec
   };
 }
 
-export function switching({ isPrivate = true, runners = [] as object[], variable = "", startsOnline = true, slowToStart = [] as string[], stoppedByHand = [] as string[], manyJobs = [] as string[], userExists = true } = {}) {
+export function switching({ isPrivate = true, runners = [] as object[], variable = "", startsOnline = true, slowToStart = [] as string[], stoppedByHand = [] as string[], manyJobs = [] as string[], userExists = true, blipsOnce = false } = {}) {
   const root = scratch("runner-");
   const at = (name: string) => join(root, name);
   writeFileSync(at("runners.json"), JSON.stringify({ runners }));
@@ -1105,12 +1105,13 @@ export function switching({ isPrivate = true, runners = [] as object[], variable
     at("bin/gh"),
     [
       `printf '%s\\n' "$*" >>"${at("gh-calls")}"`,
+      blippingOnce(blipsOnce, at("blipped")),
       'case "$*" in',
       `  "api repos/${PC_REPO}/actions/runners") cat "${at("runners.json")}" ;;`,
       `  "api -X POST repos/${PC_REPO}/actions/runners/"*/labels*) id=\${4#repos/${PC_REPO}/actions/runners/}; jq -c --argjson id "\${id%/labels}" --arg label "\${@: -1}" '.runners |= map(if .id == $id then .labels += [{name: ($label | ltrimstr("labels[]="))}] else . end)' "${at("runners.json")}" >"${at("runners.next")}" && mv "${at("runners.next")}" "${at("runners.json")}" ;;`,
       `  "api repos/${PC_REPO}") printf '{"full_name":"%s","private":${isPrivate}}\\n' "${PC_REPO}" ;;`,
       `  "api repos/collod873/Old-Name") printf '{"full_name":"%s","private":${isPrivate}}\\n' "${PC_REPO}" ;;`,
-      `  "variable get"*) [ -f "${at("variable-")}$3" ] || { printf 'variable %s was not found\\n' "$3" >&2; exit 1; }; cat "${at("variable-")}$3" ;;`,
+      `  "variable get"*) [ -f "${at("variable-")}$3" ] || { printf 'failed to get variable %s: HTTP 404: Not Found\\n' "$3" >&2; exit 1; }; cat "${at("variable-")}$3" ;;`,
       `  "variable set"*) printf '%s' "\${@: -1}" >"${at("variable-")}$3" ;;`,
       `  "variable delete"*) rm "${at("variable-")}$3" ;;`,
       '  *cli/cli/releases/latest*) printf "v2.96.0\\n" ;;',
@@ -1278,7 +1279,9 @@ export function shipping() {
 
 export const callerWith = (cron: string) => ["on:", "  schedule:", `    - cron: "${cron}"`, "  workflow_dispatch:", "jobs:", "  ship:", "    uses: collod873/claude-workflow/.github/workflows/ship.yml@main", ""].join("\n");
 
-export function clocking(callers: Record<string, string>, enrolled: string[] = []) {
+const blippingOnce = (blips: boolean, marker: string) => (blips ? `[[ -f "${marker}" ]] || { touch "${marker}"; echo "HTTP 502: Bad Gateway" >&2; exit 1; }` : "");
+
+export function clocking(callers: Record<string, string>, enrolled: string[] = [], { blipsOnce = false } = {}) {
   const root = scratch("ship-clock-");
   const callersDir = join(root, "callers");
   for (const [repo, text] of Object.entries(callers)) plant(root, `callers/${repo.replace("/", "-")}-ship.yml`, text);
@@ -1286,6 +1289,8 @@ export function clocking(callers: Record<string, string>, enrolled: string[] = [
   script(
     join(root, "bin", "gh"),
     [
+      `printf '%s\\n' "$*" >>"${join(root, "gh-calls")}"`,
+      blippingOnce(blipsOnce, join(root, "blipped")),
       `if [[ $1 == repo ]]; then printf '%s\\n' ${[...new Set(["collod873/Lumaria", ...Object.keys(callers), ...enrolled])].join(" ")}; exit 0; fi`,
       'repo=$(printf %s "$2" | sed -E "s#^repos/([^/]+/[^/]+)/contents/.*#\\1#")',
       'workflow=${2##*/}',
@@ -1298,5 +1303,5 @@ export function clocking(callers: Record<string, string>, enrolled: string[] = [
   const sudoLog = join(root, "sudo-calls");
   script(join(root, "bin", "sudo"), `{ printf '%s\\n' "$*"; cat; printf '\\n--\\n'; } >>"${sudoLog}"\n`);
   const run = (args: string[] = []) => execute(join(BIN, "ship-clock"), root, { PATH: `${join(root, "bin")}:${process.env.PATH}` }, args);
-  return { run, sudo: () => (linesIn(sudoLog).length ? readFileSync(sudoLog, "utf8") : "") };
+  return { run, sudo: () => (linesIn(sudoLog).length ? readFileSync(sudoLog, "utf8") : ""), gh: () => linesIn(join(root, "gh-calls")) };
 }

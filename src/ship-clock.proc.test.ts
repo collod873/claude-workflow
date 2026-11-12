@@ -56,4 +56,15 @@ describe("bin/ship-clock has this PC dispatch each app's daily Ship at its cron 
     expect(written).not.toContain("Lumaria");
     expect(written).toContain("machine-clock.timer");
   });
+
+  it("tries a GitHub call again when it blips, and reads a repo with no ship.yml once as not on a ship clock", () => {
+    const { run, gh } = clocking({ "collod873/Mezzanine": callerWith("0 8 * * *") }, [], { blipsOnce: true });
+
+    const ran = run();
+
+    expect(ran.status).toBe(0);
+    expect(ran.stdout).toContain("collod873/Mezzanine dispatches Ship daily at 08:00 UTC");
+    expect(gh().filter((call) => call.startsWith("repo list"))).toHaveLength(2);
+    expect(gh().filter((call) => call.includes("repos/collod873/Lumaria/contents/.github/workflows/ship.yml"))).toHaveLength(1);
+  });
 });

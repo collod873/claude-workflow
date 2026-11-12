@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { userInfo } from "node:os";
 import { parse } from "yaml";
-import { ENROLLED_CALLER, MACHINE_REPO } from "./post.ts";
+import { ENROLLED_CALLER, gh as github, MACHINE_REPO } from "./post.ts";
 import { UNITS } from "./runner.ts";
 
 const CALLER = ".github/workflows/ship.yml";
@@ -28,13 +28,13 @@ function run(command: string, args: string[], input?: string): { status: number 
 }
 
 function gh(args: string[]): string {
-  const ran = run("gh", args);
+  const ran = github(args);
   if (ran.status !== 0) throw new Refused(`gh ${args.join(" ")}: ${ran.stderr.trim()}`);
   return ran.stdout;
 }
 
 function workflowOf(repo: string, path: string): string | undefined {
-  const ran = run("gh", ["api", `repos/${repo}/contents/${path}`, "-H", "Accept: application/vnd.github.raw"]);
+  const ran = github(["--missing-answers", "api", `repos/${repo}/contents/${path}`, "-H", "Accept: application/vnd.github.raw"]);
   if (ran.status !== 0) {
     if (NOT_FOUND.test(ran.stderr)) return undefined;
     throw new Refused(`reading ${repo}'s ${path}: ${ran.stderr.trim()}`);
