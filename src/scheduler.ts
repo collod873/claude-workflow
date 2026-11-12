@@ -6,7 +6,7 @@ import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
 import { capped, LIST_CAP } from "./brief.ts";
 import { parkedBehind } from "./builder.ts";
 import { park } from "./issue-links.ts";
-import { askedOn, commentEdited, commentOnTicket, gh, ghRead, git, gitRead, standingOn, stoodDown, machineBin, mark, OWNER, readOrStop, rebuiltOnMain, rebuiltRef, STUCK, unread } from "./post.ts";
+import { askedOn, commentEdited, commentOnTicket, gh, ghRead, git, gitRead, standingOn, stoodDownOrWaiting, machineBin, mark, OWNER, readOrStop, rebuiltOnMain, rebuiltRef, STUCK, unread } from "./post.ts";
 import type { Try } from "./done-checker.ts";
 import type { Slice } from "./slicer.ts";
 import { BUILDING, MACHINE, SONNET_BUILDERS, SPEC, SPEC_PREFIX } from "./spelled.ts";
@@ -334,7 +334,7 @@ async function scheduled(spec: string, app: AppKey | undefined): Promise<Stop | 
   const said = `schedule: #${spec}`;
   const asked = askedOn(spec, "so nothing was hired");
   if (!asked.labels.has(SPEC)) return stoppedAt("notSpec", `${said} is not a spec, so nothing was hired`);
-  const stoodAtStart = stoodDown(asked);
+  const stoodAtStart = stoodDownOrWaiting(asked);
   if (stoodAtStart !== undefined) {
     console.log(`${said} ${stoodAtStart}, so nothing was hired`);
     return undefined;
@@ -371,7 +371,7 @@ async function scheduled(spec: string, app: AppKey | undefined): Promise<Stop | 
     );
   };
   const standsDown = (after: string) => {
-    const stood = stoodDown(standingOn(spec, gh));
+    const stood = stoodDownOrWaiting(standingOn(spec, gh));
     if (stood !== undefined) console.log(`${said} ${stood}, so ${after}`);
     return stood !== undefined;
   };
@@ -381,7 +381,7 @@ async function scheduled(spec: string, app: AppKey | undefined): Promise<Stop | 
   let slicerStopped = false;
   let markedBuilding = false;
   for (;;) {
-    const held = stoodDown(standingOn(spec, gh));
+    const held = stoodDownOrWaiting(standingOn(spec, gh));
     if (held === undefined && plan && !slicerStopped) {
       rebasedOntoMain(spec);
       const cut = cutBySlicer(spec, logs);

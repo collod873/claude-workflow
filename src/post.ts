@@ -123,6 +123,8 @@ export const stoodDown = ({ labels, closed }: Standing): string | undefined => {
   return held === undefined ? undefined : `is marked ${held}`;
 };
 
+export const stoodDownOrWaiting = (standing: Standing): string | undefined => stoodDown(standing) ?? (standing.labels.has(WAITING) ? `is marked ${WAITING}` : undefined);
+
 export function standingOn(issue: string, gh: Gh): Standing {
   const unreadLine = `the labels of #${issue} could not be read, ${NOTHING_MARKED}`;
   const got = gh(["issue", "view", issue, "--json", "labels,state"]);
