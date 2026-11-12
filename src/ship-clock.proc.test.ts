@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { callerWith, clocking } from "./scenarios.ts";
+import { callerWith, clocking } from "./ship-clock.part.ts";
 
 describe("bin/ship-clock has this PC dispatch each app's daily Ship at its cron time, since GitHub fires a schedule hours late", () => {
   it("installs a timer per app calling the shared Ship, at its cron time in UTC, caught up after the PC was off, that dispatches its ship.yml", () => {
