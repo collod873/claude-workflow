@@ -82,7 +82,7 @@ function onRepo(repo: string) {
   const pcRunners = () => runners().filter(onPc);
   const read = (variable: string) => {
     try {
-      return gh(["variable", "get", variable, "-R", repo]).trim();
+      return gh(["--missing-answers", "variable", "get", variable, "-R", repo]).trim();
     } catch (error) {
       if (error instanceof Refused && NOT_FOUND.test(error.message)) return undefined;
       throw error;
