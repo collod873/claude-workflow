@@ -1,7 +1,8 @@
 import { capped, NO_EM_DASH } from "./brief.ts";
 import { commentOnTicket, endedRed, fromHere, fromLine, gh, readOrStop, RESEARCH } from "./post.ts";
 import { RESEARCHING } from "./spelled.ts";
-import { type Fix, FOLLOW_UPS, followedUp, MOST_FIXES, opened, type OwnerStep, OWNER_STEPS, type Spent, stepsUnfileable, WRITE_UP_MINUTES } from "./stage.ts";
+import { type Answered, filed, FOLLOW_UPS, type FollowUps, gathered, MOST_FIXES, OWNER_STEPS, stepsUnfileable } from "./follow-ups.ts";
+import { opened, type Spent, WRITE_UP_MINUTES } from "./stage.ts";
 import { quoted } from "./ticket-shape.ts";
 
 export const NOTE_CAP = 16 * 1024;
@@ -20,11 +21,8 @@ const FINDINGS = {
   additionalProperties: false,
 };
 
-interface Findings {
+interface Findings extends Answered {
   findings?: string;
-  fixes?: Fix[];
-  asks?: string[];
-  steps?: OwnerStep[];
 }
 
 const fetched = (sources: string) =>
@@ -47,13 +45,11 @@ export function handedOn(title: string, body: string, sources?: string): string 
 
 const researchFound = (note: string) => fromLine(fromHere(note), "researched");
 
-const carried = <Named>(named: (one: Named) => string, earlier: Named[], later: Named[] = []) => [...earlier.filter((one) => !later.some((again) => named(again) === named(one))), ...later];
-
-function stepsAnswered(said: string, spend: (input: string, resume?: string) => Spent, input: string): Required<Findings> | number {
+function stepsAnswered(said: string, spend: (input: string, resume?: string) => Spent, input: string): { findings: string; followUps: FollowUps } | number {
   let session: string | undefined;
   let told: string | undefined;
   let handed = input;
-  let kept: Pick<Required<Findings>, "fixes" | "asks" | "steps"> = { fixes: [], asks: [], steps: [] };
+  let kept = gathered();
   for (;;) {
     const spent = spend(handed, session);
     session = spent.session ?? session;
@@ -61,9 +57,9 @@ function stepsAnswered(said: string, spend: (input: string, resume?: string) => 
     const answer = (spent.answer ?? {}) as Findings;
     const { findings } = answer;
     if (typeof findings !== "string" || findings.trim() === "") return endedRed(`${said} ended red, the researcher gave no findings`);
-    kept = { fixes: carried(({ title }) => title, kept.fixes, answer.fixes), asks: carried((ask) => ask, kept.asks, answer.asks), steps: carried(({ title }) => title, kept.steps, answer.steps) };
+    kept = gathered(kept, answer);
     const refused = stepsUnfileable(kept.steps);
-    if (refused === undefined) return { findings, ...kept };
+    if (refused === undefined) return { findings, followUps: kept };
     if (refused === told) return endedRed(`${said} is answered but its researcher gave the same refused owner steps again, so nothing is posted or filed and it stays open: ${refused}`);
     told = handed = refused;
   }
@@ -82,16 +78,16 @@ function researched(issue: string): number {
   const { asked, spend } = opening;
   const answer = stepsAnswered(said, spend, handedOn(asked.title, asked.body, process.env.RESEARCH_SOURCES || undefined));
   if (typeof answer !== "object") return answer;
-  const { findings, fixes, asks, steps } = answer;
+  const { findings, followUps } = answer;
   const posted = commentOnTicket(issue, findings, gh);
   const [refusal] = posted.refusals;
   if (refusal !== undefined) return endedRed(`${said} ended red, its findings would not post: ${quoted(refusal)}`);
-  const filed = followedUp(researchFound(issue), fixes, asks, { title: `Your call after #${issue}: ${asked.title}`, by: `#${issue}'s research`, steps, left: `Left to the owner by #${issue}'s research.` });
-  const refused = filed.flatMap(({ refusals }) => refusals.slice(0, 1));
+  const followedUp = filed(followUps, { found: researchFound(issue), left: `Left to the owner by #${issue}'s research.`, asked: { title: `Your call after #${issue}: ${asked.title}`, by: `#${issue}'s research` } });
+  const refused = followedUp.flatMap(({ refusals }) => refusals.slice(0, 1));
   if (refused.length > 0) return endedRed(`${said} is answered but its follow-ups were refused, so it stays open: ${refused.map(quoted).join("; ")}`);
   if (gh(["issue", "close", issue, "--reason", "completed"]).status !== 0) return endedRed(`${said} is answered but would not close: ${posted.said}`);
-  const followUps = filed.map(({ said }) => said).filter((url) => url !== "");
-  console.log(`${said} is answered and closed: ${posted.said}${followUps.length > 0 ? `; follow-ups filed: ${followUps.join(" ")}` : ""}`);
+  const urls = followedUp.map(({ said }) => said).filter((url) => url !== "");
+  console.log(`${said} is answered and closed: ${posted.said}${urls.length > 0 ? `; follow-ups filed: ${urls.join(" ")}` : ""}`);
   return 0;
 }
 

@@ -3,40 +3,9 @@ import { type AppKey, freshAppToken } from "./app-token.ts";
 import { capped, DIFF_CAP, diffOverCap, LIST_CAP, NO_EM_DASH, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
 import { calledOwner, type Caller, commentOnTicket, fromHere, fromLine, gh, gitRead, standingOn, stoodDown, machineBin, mark } from "./post.ts";
 import { CHECKING } from "./spelled.ts";
-import { committed, commitlinted, type Filed, type Fix, FOLLOW_UPS, head, hire, MOST_FIXES, type OwnerStep, OWNER_STEPS, stepsAndFixesFiled, stepsUnfileable } from "./stage.ts";
+import { type Answered, approvedOn, filed, type FollowUps, gathered, MOST_FIXES, OWNER_STEPS, ROUTED, ROUTED_REQUIRED, stepsUnfileable } from "./follow-ups.ts";
+import { committed, commitlinted, head, hire } from "./stage.ts";
 import { quoted } from "./ticket-shape.ts";
-
-const ENDS = { fixed: "fixed here", nothing: "needs nothing" } as const;
-
-export const ROUTED = {
-  fixes: FOLLOW_UPS.fixes,
-  risks: {
-    type: "array",
-    items: {
-      type: "object",
-      properties: {
-        risk: { type: "string", pattern: NO_EM_DASH },
-        ends: { enum: Object.keys(ENDS) },
-        why: { type: "string", pattern: NO_EM_DASH },
-      },
-      required: ["risk", "ends", "why"],
-      additionalProperties: false,
-    },
-  },
-};
-
-export const ROUTED_REQUIRED = ["risks"];
-
-interface Risk {
-  risk: string;
-  ends: keyof typeof ENDS;
-  why: string;
-}
-
-export interface Routed {
-  fixes?: Fix[] | undefined;
-  risks?: Risk[] | undefined;
-}
 
 const ANSWER = {
   type: "object",
@@ -50,49 +19,12 @@ const ANSWER = {
   additionalProperties: false,
 };
 
-interface Answer extends Routed {
+interface Answer extends Answered {
   outcome: "approve" | "stuck";
   reason: string;
-  steps?: OwnerStep[];
 }
 
-function routedOn(routed: Routed[]): string[] {
-  const ended = routed.flatMap(({ fixes = [], risks = [] }) => [
-    ...fixes.map(({ fault, title }) => `- filed as the ticket "${title}" once it lands: ${fault}`),
-    ...risks.map(({ risk, ends, why }) => `- ${ENDS[ends]}: ${risk} ${why}`),
-  ]);
-  return ended.length === 0 ? [] : [`Where each risk its reviewer saw ends:\n\n${ended.join("\n")}`];
-}
-
-export function firstTimeNamed(): (said: string) => boolean {
-  const named = new Set<string>();
-  return (said) => {
-    const key = said.trim().toLowerCase();
-    if (named.has(key)) return false;
-    named.add(key);
-    return true;
-  };
-}
-
-export function routedFiled(found: string, left: string, steps: OwnerStep[], routed: Routed[]): Filed[] {
-  const unfiled = firstTimeNamed();
-  return stepsAndFixesFiled(found, left, steps, routed.flatMap(({ fixes = [] }) => fixes.slice(0, MOST_FIXES).filter(({ title }) => unfiled(title))));
-}
-
-export const approvedOn = (reviewed: string[], later: string[], routed: Routed[]) => [...reviewed, ...later, ...routedOn(routed)].join("\n\n");
 export const afterRefused = (reason: string) => `After \`bin/land\` refused it: ${reason}`;
-
-const latestBy = <Named>(named: (one: Named) => string, ...rounds: (Named[] | undefined)[]) => [...new Map(rounds.flatMap((round) => round ?? []).map((one) => [named(one).trim().toLowerCase(), one])).values()];
-
-export interface Gathered extends Routed {
-  steps: OwnerStep[];
-}
-
-export const gathered = (earlier: Gathered | undefined, later: Routed & { steps?: OwnerStep[] }): Gathered => ({
-  fixes: latestBy(({ title }) => title, earlier?.fixes, later.fixes),
-  risks: latestBy(({ risk }) => risk, earlier?.risks, later.risks),
-  steps: latestBy(({ title }) => title, earlier?.steps, later.steps),
-});
 
 const LANDED = /^Landed \S+\/pull\/(\d+)/m;
 
@@ -150,13 +82,11 @@ export function handedOn({ ticket, body, commits, diff, stat, alongside, said, c
 const reviewedBy = (ticket: string) => `Review #${ticket} as its reviewer`;
 const reviewerCaller = (ticket: string): Caller => ({ who: "the reviewer", said: `fix: #${ticket} needs the owner` });
 
-function filedOnceLanded(ticket: string, answer: Gathered): string {
-  const filed = [
-    ...routedFiled(fromLine(fromHere(ticket), "review"), `Left to the owner by the run that built #${ticket}, which closed.`, answer.steps, [answer]),
-  ];
-  const refused = filed.filter(({ refusals }) => refusals.length > 0);
+function filedOnceLanded(ticket: string, named: FollowUps): string {
+  const followUps = filed(named, { found: fromLine(fromHere(ticket), "review"), left: `Left to the owner by the run that built #${ticket}, which closed.` });
+  const refused = followUps.filter(({ refusals }) => refusals.length > 0);
   if (refused.length > 0) commentOnTicket(ticket, [`What the reviewer of #${ticket} left that could not be filed:`, "", ...refused.map(({ named, refusals }) => `- ${named} (${quoted(refusals[0] ?? "")})`), ""].join("\n"), gh);
-  return filed.length === 0 ? "" : `; filed: ${filed.map(({ said }) => said.trim()).filter((said) => said !== "").join(" ") || "none"}`;
+  return followUps.length === 0 ? "" : `; filed: ${followUps.map(({ said }) => said.trim()).filter((said) => said !== "").join(" ") || "none"}`;
 }
 
 export function landing(named: ["--ticket" | "--spec", string], reason: string): { pr: string } | { refused: string } {
@@ -181,7 +111,7 @@ export function reviewedAndLanded(ticket: string, { body, alongside, said }: { b
   const spend = hire("review", ticket, { name: "reviewer", model: "opus", effort: "medium", answers: ANSWER });
   let input = handedOn({ ticket, body, commits, diff, stat, alongside, said, commitlint: commitlinted() });
   const reasons: string[] = [];
-  let named: Gathered | undefined;
+  let named: FollowUps | undefined;
   let session: string | undefined;
   let idle = false;
   for (;;) {
@@ -204,7 +134,7 @@ export function reviewedAndLanded(ticket: string, { body, alongside, said }: { b
       named = gathered(named, answer);
     }
     const unfileable = stepsUnfileable(named?.steps ?? []);
-    const landed = named === undefined ? { refused: "You gave no outcome. Answer one." } : unfileable !== undefined ? { refused: unfileable } : landing(["--ticket", ticket], approvedOn(reasons.slice(0, 1), reasons.slice(1).map(afterRefused), [named]));
+    const landed = named === undefined ? { refused: "You gave no outcome. Answer one." } : unfileable !== undefined ? { refused: unfileable } : landing(["--ticket", ticket], approvedOn([...reasons.slice(0, 1), ...reasons.slice(1).map(afterRefused)], named));
     if ("pr" in landed) {
       const filed = named === undefined ? "" : filedOnceLanded(ticket, named);
       console.log(`review: #${ticket} landed as PR #${landed.pr}${filed}`);

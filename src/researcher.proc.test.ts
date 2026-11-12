@@ -191,7 +191,7 @@ describe("bin/research files what its findings call for, so a closed note leaves
 
   it("files each owner step as its own note, and a fix that needs one files waiting on that note, blocked by that note, so reconcile builds the fix once the owner has taken it (#1565, #1606)", () => {
     const step = { title: "Add the Stripe key to Lumaria's Railway variables", why: "The charge path reads STRIPE_KEY, and only the owner holds it.", needs: "STRIPE_KEY", ...TAKEN_STEP };
-    const answered = researching({ steps: [step], fixes: [{ ...fix, waits: step.title }, fix], gh: "[[ $2 == create ]] && { printf 'https://github.com/collod873/claude-workflow/issues/1700\\n'; exit 0; }" });
+    const answered = researching({ steps: [step], fixes: [{ ...fix, waits: step.title }, { ...fix, title: `${fix.title} at once` }], gh: "[[ $2 == create ]] && { printf 'https://github.com/collod873/claude-workflow/issues/1700\\n'; exit 0; }" });
 
     expect(answered.run().status).toBe(0);
     const [note, waiting, atOnce] = answered.filed();
@@ -259,7 +259,7 @@ describe("bin/research files what its findings call for, so a closed note leaves
       { ...token, clicks: [{ ...OPENED_TOKEN_PAGE, at: "https://github.com/settings/personal-access-tokens/new?name=BILLING_PAT&target_name=collod873&expires_in=366" }], handover: HANDED_OVER },
       { ...token, handover: " ", clicks: TAKEN_STEP.clicks },
     ];
-    const answered = researching({ steps });
+    const answered = researching({ steps: steps.map((step, index) => ({ ...step, title: `${step.title} ${index + 1}` })) });
 
     const { status, stderr } = answered.run();
 
@@ -298,11 +298,11 @@ describe("bin/research files what its findings call for, so a closed note leaves
     expect(answered.comments().at(-1)).toBe("#1701 waits on #1700, labelled `waiting`. @collod873 collod873/claude-workflow carries no caller file, so nothing hears it close: take `waiting` off #1701 once every one of them closes: #1700");
   });
 
-  it("files no more than three fixes, however many the researcher gives", () => {
-    const answered = researching({ fixes: [fix, fix, fix, fix] });
+  it("files a fix once, however often the researcher names it, since the schema caps each answer and filing reads what was gathered", () => {
+    const answered = researching({ fixes: [fix, { ...fix, title: ` ${fix.title.toUpperCase()} ` }] });
 
     expect(answered.run().status).toBe(0);
-    expect(answered.filed()).toHaveLength(3);
+    expect(answered.filed()).toHaveLength(1);
   });
 
   it("leaves the note open and ends red when a follow-up is refused, so the finding is not closed away", () => {

@@ -7,10 +7,11 @@ import { checkedByAsync, type Red, machineFault } from "./builder.ts";
 import { PUBLISHED_CHECK } from "./checks.ts";
 import { type Checked, doneCheck, doneCheckCalledOwner, paired, postedOn, triedIn, type Try } from "./done-checker.ts";
 import { askedOn, calledOwner, commentOnTicket, endedRed, fromHere, fromLine, gh, git, gitRead, standingOn, stoodDown, mark, readOrStop, STUCK, Stopped, unread } from "./post.ts";
-import { afterRefused, approvedOn, firstTimeNamed, gathered, landing, type Routed, ROUTED, ROUTED_REQUIRED, routedFiled } from "./reviewer.ts";
+import { type Answered, approvedOn, filed, type FollowUps, gathered, MOST_FIXES, type OwnerStep, OWNER_STEPS, ROUTED, ROUTED_REQUIRED, stepsUnfileable } from "./follow-ups.ts";
+import { afterRefused, landing } from "./reviewer.ts";
 import { fastForwarded, landedOn, MOST_BUILDERS, type Progress, progressOn, removed, specBranch, triedOn, worktree } from "./scheduler.ts";
 import { fastForwards, rebaseStopped, sliceTrailed } from "./slice-builder.ts";
-import { committed, commitlinted, CONTRACT, head, hireIn, MOST_FIXES, type OwnerStep, OWNER_STEPS, setupRefusedIn, type Spent, stepsUnfileable } from "./stage.ts";
+import { committed, commitlinted, CONTRACT, head, hireIn, setupRefusedIn, type Spent } from "./stage.ts";
 import { CHECKING, SPEC } from "./spelled.ts";
 import { quoted, type Sentence, sentences, SPEC_CAP } from "./ticket-shape.ts";
 
@@ -216,7 +217,7 @@ interface Finished {
   missed?: number[] | undefined;
 }
 
-interface Approved extends Routed {
+interface Approved extends Answered {
   reason: string;
   steps: OwnerStep[];
   fixed?: number[] | undefined;
@@ -247,7 +248,7 @@ function reviewed(spec: string, said: string, spent: Spent, app: AppKey | undefi
     endedRed(`${said} ended red, ${spent.refusal}`);
     return undefined;
   }
-  const answer = spent.answer as ({ outcome?: unknown; reason?: unknown; steps?: OwnerStep[]; fixed?: number[] } & Routed) | undefined;
+  const answer = spent.answer as ({ outcome?: unknown; reason?: unknown; fixed?: number[] } & Answered) | undefined;
   const reason = typeof answer?.reason === "string" ? answer.reason.trim() : "";
   if (reason === "") {
     endedRed(`${said} ended red, its reviewer gave no reason`);
@@ -499,17 +500,16 @@ function landed(run: Run, { last }: Reviewed): Promise<string | undefined> {
       console.log(`${said} ${stood}, so its reviewed branch does not land`);
       return { done: undefined };
     }
-    const attempt = landing(["--spec", spec], approvedOn([...reasons.values()], later, [...left.values()]));
+    const attempt = landing(["--spec", spec], approvedOn([...reasons.values(), ...later], followUpsOf(left)));
     if ("pr" in attempt) return { done: attempt.pr };
     return { refused: attempt.refused, told: last.branch === undefined ? landRefused(attempt.refused) : [WHOLE_BRANCH, landRefused(attempt.refused)].join("\n\n") };
   });
 }
 
-function leftFiled(spec: string, approved: Approved[]): void {
-  const unfiled = firstTimeNamed();
-  const once = approved.flatMap(({ steps }) => steps).filter(({ title }) => unfiled(title));
-  const filed = routedFiled(fromLine(fromHere(spec), "review"), `Left to the owner by the run that landed spec #${spec}.`, once, approved);
-  const refused = filed.filter(({ refusals }) => refusals.length > 0);
+const followUpsOf = (left: Map<string, Approved>): FollowUps => gathered(...left.values());
+
+function leftFiled(spec: string, followUps: FollowUps): void {
+  const refused = filed(followUps, { found: fromLine(fromHere(spec), "review"), left: `Left to the owner by the run that landed spec #${spec}.` }).filter(({ refusals }) => refusals.length > 0);
   if (refused.length > 0) commentOnTicket(spec, [`What the reviewers of #${spec} left that could not be filed:`, "", ...refused.map(({ named, refusals }) => `- ${named} (${quoted(refusals[0] ?? "")})`), ""].join("\n"), gh);
 }
 
@@ -553,7 +553,7 @@ async function finished(spec: string, app: AppKey | undefined): Promise<Finished
   })();
   if (ended === undefined) return {};
   landedOn(spec, found, ended.pr);
-  leftFiled(spec, [...run.left.values()]);
+  leftFiled(spec, followUpsOf(run.left));
   const { pr, tried } = ended;
   if ("refusal" in tried) {
     readOrStop("done-check", () => doneCheckCalledOwner(spec, tried.refusal));

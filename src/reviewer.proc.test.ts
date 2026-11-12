@@ -1,6 +1,6 @@
 import { fromOf } from "./post.ts";
 import { describe, expect, it } from "vitest";
-import { fixing } from "./builder.part.ts";
+import { BUILDER_SESSION, fixing } from "./builder.part.ts";
 import { createdIssues, schemaIn } from "./scenarios.ts";
 
 const FIXES = "printf 'export const shaped = 2;\\n' >src/ticket-shape.ts\n";
@@ -92,5 +92,18 @@ describe("after bin/land refuses, the PR's approve comment still carries the who
 
     expect(scenario.run().status).toBe(0);
     expect(scenario.approved()).toEqual(["it builds the Why", "it builds the Why\n\nAfter `bin/land` refused it: the rebase conflict is fixed"]);
+  });
+
+  it("files every fix the landed comment promises, four across two rounds though one answer holds at most three, where #1712's fourth was promised and dropped", () => {
+    const named = (letter: string) => ({ ...FIX, title: `${FIX.title} ${letter}` });
+    const round = (fixes: object[], reason: string) => JSON.stringify({ type: "result", subtype: "success", is_error: false, session_id: BUILDER_SESSION, structured_output: { outcome: "approve", reason, fixes, risks: [] } });
+    const fourth = `  [ -f ../reviewed ] && cat >../review.jsonl <<'ROUND'\n${round([named("D")], "the rebase conflict is fixed")}\nROUND\n  touch ../reviewed\n  printf 'export const shaped = %s;\\n' "$CALL" >src/ticket-shape.ts\n`;
+    const scenario = fixing({ claude: FIXES, review: { outcome: "approve", reason: "it builds the Why", fixes: ["A", "B", "C"].map(named), risks: [] }, reviewer: fourth, land: LAND_REFUSES_ONCE });
+
+    expect(scenario.run().status).toBe(0);
+    const titles = ["A", "B", "C", "D"].map((letter) => named(letter).title);
+    expect(createdIssues(scenario.calls()).map(({ title }) => title)).toEqual(titles);
+    const promised = [...(scenario.approved().at(-1) ?? "").matchAll(/filed as the ticket "([^"]+)"/g)].map(([, title]) => title);
+    expect(promised).toEqual(titles);
   });
 });
