@@ -1,4 +1,8 @@
 #!/bin/bash
 set -uo pipefail
+if [[ ${1:-} == -h || ${1:-} == --help ]]; then
+  printf '%s\n' "ship-clock: usage: ship-clock; it installs a systemd timer per app that dispatches its daily Ship at the caller's cron time in UTC, and one machine clock that dispatches each enrolled repo's reconcile and the runner watch every 15 minutes, asking for sudo"
+  exit 0
+fi
 src="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../src" && pwd)"
 exec node "$src/ship-clock.ts" "$@"
