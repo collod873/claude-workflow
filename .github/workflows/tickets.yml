@@ -13,7 +13,7 @@ jobs:
     env:
       GH_REPO: ${{ github.repository }}
     outputs:
-      held: ${{ steps.labelled.outputs.held }}
+      build: ${{ steps.wake.outputs.build }}
     steps:
       - id: app
         uses: actions/create-github-app-token@v3
@@ -35,19 +35,8 @@ jobs:
         with:
           node-version: 24
 
-      - id: labelled
-        run: |
-          waiting=$(bin/spelled WAITING)
-          ticket=$(bin/spelled TICKET)
-          note=$(bin/spelled NOTE)
-          spec=$(bin/spelled SPEC)
-          paused=$(bin/spelled PAUSED)
-          stuck=$(bin/spelled STUCK)
-          jq -r --arg WAITING "$waiting" --arg TICKET "$ticket" --arg NOTE "$note" --arg SPEC "$spec" --arg PAUSED "$paused" --arg STUCK "$stuck" '
-            (any(.issue.labels[]?.name; . == $TICKET) and (any(.issue.labels[]?.name; IN($NOTE, $SPEC)) | not)) as $ticket
-            | (any(.issue.labels[]?.name; IN($WAITING, $PAUSED, $STUCK)) | not) as $free
-            | "held=\(((.action == "labeled" and .label.name == $TICKET) or (.action == "unlabeled" and IN(.label.name; $WAITING, $PAUSED, $STUCK))) and .issue.state != "closed" and $ticket and $free)"
-          ' "$GITHUB_EVENT_PATH" | tee -a "$GITHUB_OUTPUT"
+      - id: wake
+        run: bin/wake
 
       - if: ${{ failure() || cancelled() }}
         uses: ./.github/actions/call-owner
@@ -58,7 +47,7 @@ jobs:
 
   build:
     needs: wake
-    if: ${{ needs.wake.outputs.held == 'true' }}
+    if: ${{ needs.wake.outputs.build == 'true' }}
     concurrency:
       group: build-${{ github.event.issue.number }}
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}

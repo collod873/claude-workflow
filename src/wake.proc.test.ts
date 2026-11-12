@@ -1,8 +1,9 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { afterLabelled, BIN, copyMark, execute, gateOf, holds, labelledAs, labelledOutputs, labelledStep, scratch, script, starts, workflowJobs, type IssueEvent } from "./scenarios.ts";
-import { MACHINE, OWNER } from "./spelled.ts";
+import { BIN, copyMark, execute, gateOf, holds, payloadOf, scratch, starts, wakeStep, workflowJobs, type IssueEvent } from "./scenarios.ts";
+import { MACHINE, OWNER, PAUSED, SPEC, STUCK, TICKET, WAITING } from "./spelled.ts";
+import { woken } from "./wake.ts";
 
 const GITHUB = join(BIN, "..", ".github");
 const files = () => [
@@ -11,9 +12,9 @@ const files = () => [
 ];
 
 const BEFORE = {
-  build: "${{ ((github.event.action == 'labeled' && github.event.label.name == 'ticket') || (github.event.action == 'unlabeled' && (github.event.label.name == 'waiting' || github.event.label.name == 'paused' || github.event.label.name == 'stuck'))) && github.event.issue.state != 'closed' && (github.event.sender.login == github.repository_owner || (github.event.sender.login == 'collod873-machine[bot]' && (github.event.action == 'unlabeled' || github.event.action == 'labeled'))) && contains(github.event.issue.labels.*.name, 'ticket') && !contains(github.event.issue.labels.*.name, 'note') && !contains(github.event.issue.labels.*.name, 'spec') && !contains(github.event.issue.labels.*.name, 'waiting') && !contains(github.event.issue.labels.*.name, 'paused') && !contains(github.event.issue.labels.*.name, 'stuck') }}",
+  build: "${{ ((github.event.action == 'labeled' && github.event.label.name == 'ticket') || (github.event.action == 'unlabeled' && (github.event.label.name == 'waiting' || (github.event.sender.login == github.repository_owner && (github.event.label.name == 'paused' || github.event.label.name == 'stuck'))))) && github.event.issue.state != 'closed' && (github.event.sender.login == github.repository_owner || (github.event.sender.login == 'collod873-machine[bot]' && (github.event.action == 'unlabeled' || github.event.action == 'labeled'))) && contains(github.event.issue.labels.*.name, 'ticket') && !contains(github.event.issue.labels.*.name, 'note') && !contains(github.event.issue.labels.*.name, 'spec') && !contains(github.event.issue.labels.*.name, 'waiting') && !contains(github.event.issue.labels.*.name, 'paused') && !contains(github.event.issue.labels.*.name, 'stuck') }}",
   spec: "${{ contains(github.event.issue.labels.*.name, 'spec') && github.event.issue.state != 'closed' && !contains(github.event.issue.labels.*.name, 'paused') && !contains(github.event.issue.labels.*.name, 'stuck') && !contains(github.event.issue.labels.*.name, 'waiting') && (((github.event.sender.login == github.repository_owner || github.event.sender.login == 'collod873-machine[bot]') && github.event.action == 'labeled' && github.event.label.name == 'spec') || (github.event.sender.login == github.repository_owner && github.event.action == 'unlabeled' && (github.event.label.name == 'paused' || github.event.label.name == 'stuck' || github.event.label.name == 'waiting')) || (github.event.sender.login == 'collod873-machine[bot]' && github.event.action == 'unlabeled' && github.event.label.name == 'waiting')) }}",
-  research: "${{ contains(github.event.issue.labels.*.name, 'research') && github.event.issue.state != 'closed' && (((github.event.sender.login == github.repository_owner || github.event.sender.login == 'collod873-machine[bot]') && github.event.action == 'labeled' && github.event.label.name == 'research') || (github.event.sender.login == github.repository_owner && github.event.action == 'unlabeled' && (github.event.label.name == 'paused' || github.event.label.name == 'stuck') && !contains(github.event.issue.labels.*.name, 'paused') && !contains(github.event.issue.labels.*.name, 'stuck'))) }}",
+  research: "${{ contains(github.event.issue.labels.*.name, 'research') && github.event.issue.state != 'closed' && !contains(github.event.issue.labels.*.name, 'paused') && !contains(github.event.issue.labels.*.name, 'stuck') && (((github.event.sender.login == github.repository_owner || github.event.sender.login == 'collod873-machine[bot]') && github.event.action == 'labeled' && github.event.label.name == 'research') || (github.event.sender.login == github.repository_owner && github.event.action == 'unlabeled' && (github.event.label.name == 'paused' || github.event.label.name == 'stuck') && !contains(github.event.issue.labels.*.name, 'paused') && !contains(github.event.issue.labels.*.name, 'stuck'))) }}",
 };
 
 const each = (senders: string[], actions: Omit<IssueEvent, "labels" | "sender">[], labelSets: string[][]): IssueEvent[] =>
@@ -31,23 +32,26 @@ const GATED = [
   { file: "specs.yml", job: "research", before: BEFORE.research, events: each([OWNER, MACHINE, "stranger"], [{ action: "opened" }, { action: "reopened" }, { action: "labeled", label: "research" }, { action: "labeled", label: "note" }, { action: "labeled", label: "research", state: "closed" }, { action: "unlabeled", label: "stuck", state: "closed" }, { action: "unlabeled", label: "stuck" }, { action: "unlabeled", label: "paused" }, { action: "unlabeled", label: "researching" }, { action: "labeled", label: "stuck" }], [[], ["note"], ["note", "research"], ["note", "research", "stuck"], ["note", "research", "paused"]]) },
 ];
 
-describe("the workflows ask spelled for each label they test, so a renamed label cannot pass unseen (#1108)", () => {
+describe("both workflows wake through bin/wake, so a ticket, a spec and a research note start on one rule (#1108, #1730)", () => {
   for (const { file, job, before, events } of GATED) {
-    it(`${file} starts or skips ${job} on the same labels as before`, async () => {
+    it(`${file} starts or skips ${job} on the same labels as before`, () => {
       const said = (event: IssueEvent) => `${event.sender ?? ""} ${event.action ?? ""}${event.label === undefined ? "" : ` -${event.label}`} [${(event.labels ?? []).join(",")}]${event.state === undefined ? "" : ` ${event.state}`}`;
-      const now = await Promise.all(events.map(async (event) => `${said(event)} ${String(await starts(file, job, event))}`));
+      const now = events.map((event) => `${said(event)} ${String(starts(file, job, event))}`);
 
       expect(now).toEqual(events.map((event) => `${said(event)} ${String(holds(before, event))}`));
     });
   }
 
-  it("ends the labelled step red, holding nothing, when spelled cannot answer", async () => {
-    for (const { file, job } of GATED) {
-      const root = scratch("unspelled-");
-      script(join(root, "bin", "spelled"), "printf 'node: not found\\n' >&2\nexit 127\n");
+  it("writes each stage's answer to the step's outputs, and ends red writing nothing on an event it cannot read", () => {
+    const root = scratch("wake-");
+    const [event, output, broken] = ["event.json", "output", "broken.json"].map((name) => join(root, name)) as [string, string, string];
+    writeFileSync(event, JSON.stringify(payloadOf({ action: "labeled", label: "spec", labels: ["spec"] })));
+    writeFileSync(broken, "{");
+    const woke = execute(join(BIN, "wake"), root, { GITHUB_EVENT_PATH: event, GITHUB_OUTPUT: output });
 
-      expect(await labelledOutputs(labelledStep(file, job), root, { labels: ["spec"] }), file).toEqual({ failed: true, outputs: {} });
-    }
+    expect({ status: woke.status, written: readFileSync(output, "utf8") }).toEqual({ status: 0, written: "build=false\nspec=true\nresearch=false\n" });
+    expect(execute(join(BIN, "wake"), root, { GITHUB_EVENT_PATH: broken, GITHUB_OUTPUT: join(root, "unwritten") }).status).toBe(1);
+    expect(readdirSync(root)).not.toContain("unwritten");
   });
 
   it("asks spelled only for keys it holds", () => {
@@ -65,20 +69,18 @@ describe("the workflows ask spelled for each label they test, so a renamed label
     }
   });
 
-  it("asks spelled in each gated job's first step past checkout and Node, or in a job it needs, and runs nothing after it on a label it does not start on, green or red", () => {
+  it("wakes each gated job in a job it needs, whose wake step runs bin/wake past only checkout and Node, and starts no job on a false answer, green or red", () => {
     for (const { file, job } of GATED) {
       const gate = gateOf(file, job);
       const { steps } = workflowJobs(file)[gate] ?? { steps: [] };
-      const at = steps.findIndex(({ id }) => id === "labelled");
-      const before = steps.slice(0, at);
-      const gated = gate === job ? afterLabelled(steps).map((step) => ({ name: step.id ?? step.uses ?? "", if: step.if, context: { steps: labelledAs(steps, "false") } })) : [{ name: job, if: workflowJobs(file)[job]?.if, context: { needs: { [gate]: { result: "success", outputs: Object.fromEntries(Object.keys(workflowJobs(file)[gate]?.outputs ?? {}).map((output) => [output, "false"])) } } } }];
+      const before = steps.slice(0, steps.findIndex(({ id }) => id === "wake"));
+      const answered = { [gate]: { result: "success", outputs: Object.fromEntries(Object.keys(workflowJobs(file)[gate]?.outputs ?? {}).map((output) => [output, "false"])) } };
 
+      expect(gate, `${file} ${job}`).not.toBe(job);
+      expect(wakeStep(file, job).run, `${file} ${job}`).toBe("bin/wake");
       expect(before.every((step) => step.uses?.startsWith("actions/") === true), `${file} ${job}`).toBe(true);
       expect(before.some((step) => step.uses?.startsWith("actions/setup-node@") === true), `${file} ${job}`).toBe(true);
-      expect(gated.length, `${file} ${job}`).toBeGreaterThan(0);
-      for (const { name, if: condition, context } of gated) {
-        for (const failed of [false, true]) expect(holds(condition ?? "success()", { ...context, failed }), `${file} ${job} ${name}`).toBe(false);
-      }
+      for (const failed of [false, true]) expect(holds(workflowJobs(file)[job]?.if ?? "success()", { needs: answered, failed }), `${file} ${job}`).toBe(false);
     }
   });
 
@@ -88,9 +90,24 @@ describe("the workflows ask spelled for each label they test, so a renamed label
 });
 
 describe("tickets.yml builds only an issue labelled ticket, so one opened by hand without it is kept and never built (collod873/agent-hooks#38)", () => {
-  it("builds what file-issue files as build or bug, and nothing the owner opens bare or another tool files under its own labels", async () => {
+  it("builds what file-issue files as build or bug, and nothing the owner opens bare or another tool files under its own labels", () => {
     const opened = (labels: string[]) => starts("tickets.yml", "build", { sender: OWNER, action: "opened", labels });
 
-    expect(await opened(["bug", "from-app"])).toBe(false);
+    expect(opened(["bug", "from-app"])).toBe(false);
   });
+});
+
+describe("bin/wake starts no ticket or spec that carries waiting, paused or stuck, whichever label comes off (#1713)", () => {
+  const PARKED_OR_HELD = [WAITING, PAUSED, STUCK];
+  for (const [kind, stage] of [[TICKET, "build"], [SPEC, "spec"]] as const) {
+    it(`starts no ${stage} on a ${kind} still carrying one`, () => {
+      for (const sender of [OWNER, MACHINE]) {
+        for (const carried of PARKED_OR_HELD) {
+          for (const event of [{ action: "labeled", label: kind }, ...PARKED_OR_HELD.map((label) => ({ action: "unlabeled", label }))]) {
+            expect(woken(payloadOf({ ...event, sender, labels: [kind, carried] }))[stage], `${sender} ${event.action} ${event.label} on [${kind},${carried}]`).toBe(false);
+          }
+        }
+      }
+    });
+  }
 });

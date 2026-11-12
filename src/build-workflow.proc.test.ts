@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { cloned, copyMark, gateOf, git, holds, labelledAs, scratch, script, starts as startsJob, type IssueEvent, type StepOutcome } from "./scenarios.ts";
+import { cloned, copyMark, gateOf, git, holds, scratch, skippedAll, script, starts as startsJob, type IssueEvent, type StepOutcome } from "./scenarios.ts";
 import * as spelledKeys from "./spelled.ts";
 import { HELD, MACHINE, OWNER, OWNER_CALL } from "./spelled.ts";
 
@@ -58,7 +58,7 @@ function stageStep(job: Job, stage: Stage): Step {
 }
 
 function stagesRun(job: Job, failing: Stage | undefined, given: Record<string, Record<string, string>> = {}): Stage[] {
-  const outputs: Record<string, Record<string, string>> = { labelled: { held: "true" }, admit: { admitted: "true" }, ...given };
+  const outputs: Record<string, Record<string, string>> = { admit: { admitted: "true" }, ...given };
   const outcomes: Record<string, StepOutcome> = {};
   for (const step of job.steps) if (step.id !== undefined) outcomes[step.id] = { outcome: "skipped", conclusion: "skipped", outputs: {} };
   const red = failing === undefined ? undefined : stageStep(job, failing);
@@ -78,61 +78,61 @@ function stagesRun(job: Job, failing: Stage | undefined, given: Record<string, R
 describe("tickets.yml builds a ticket the moment ticket is added, so filing with it builds once (#826, #1464)", () => {
   const starts = ({ labels = ["ticket"], action = "labeled", label = "ticket", ...event }: IssueEvent) => startsJob("tickets.yml", "build", { ...event, action, label, labels });
 
-  it("an issue not labelled ticket, or labelled note, starts no build (collod873/agent-hooks#38)", async () => {
+  it("an issue not labelled ticket, or labelled note, starts no build (collod873/agent-hooks#38)", () => {
     const { on } = workflow();
 
     expect(on.issues?.types).toContain("labeled");
-    expect(await starts({ labels: [] })).toBe(false);
-    expect(await starts({ labels: ["ticket"] })).toBe(true);
-    expect(await starts({ labels: ["note"] })).toBe(false);
-    expect(await starts({ labels: ["ticket", "note"] })).toBe(false);
+    expect(starts({ labels: [] })).toBe(false);
+    expect(starts({ labels: ["ticket"] })).toBe(true);
+    expect(starts({ labels: ["note"] })).toBe(false);
+    expect(starts({ labels: ["ticket", "note"] })).toBe(false);
   });
 
-  it("an issue labelled spec starts no build", async () => {
-    expect(await starts({ labels: ["spec"] })).toBe(false);
-    expect(await starts({ labels: ["ticket", "spec"] })).toBe(false);
+  it("an issue labelled spec starts no build", () => {
+    expect(starts({ labels: ["spec"] })).toBe(false);
+    expect(starts({ labels: ["ticket", "spec"] })).toBe(false);
   });
 
-  it("ticket added by a stranger starts no build, since its checks run as shell with the App's token", async () => {
-    expect(await starts({ sender: "collod873" })).toBe(true);
-    expect(await starts({ sender: "stranger" })).toBe(false);
+  it("ticket added by a stranger starts no build, since its checks run as shell with the App's token", () => {
+    expect(starts({ sender: "collod873" })).toBe(true);
+    expect(starts({ sender: "stranger" })).toBe(false);
   });
 
-  it("builds on ticket added by the App, and on nothing opened or reopened, so filing with the label builds once", async () => {
-    expect(await starts({ sender: "collod873-machine[bot]" })).toBe(true);
+  it("builds on ticket added by the App, and on nothing opened or reopened, so filing with the label builds once", () => {
+    expect(starts({ sender: "collod873-machine[bot]" })).toBe(true);
     for (const sender of ["collod873", "collod873-machine[bot]"]) {
-      for (const action of ["opened", "reopened"]) expect(await starts({ sender, action }), `${sender} ${action}`).toBe(false);
+      for (const action of ["opened", "reopened"]) expect(starts({ sender, action }), `${sender} ${action}`).toBe(false);
     }
-    expect(await starts({ state: "closed" }), "ticket added to a closed issue").toBe(false);
-    expect(await starts({ sender: "collod873-machine[bot]", action: "unlabeled", label: "waiting" })).toBe(true);
+    expect(starts({ state: "closed" }), "ticket added to a closed issue").toBe(false);
+    expect(starts({ sender: "collod873-machine[bot]", action: "unlabeled", label: "waiting" })).toBe(true);
   });
 
-  it("a ticket split by its builder builds what waited once `waiting` comes off, and no other label change but paused or stuck coming off starts a build (#910, #1174)", async () => {
+  it("a ticket split by its builder builds what waited once `waiting` comes off, and no other label change but paused or stuck coming off starts a build (#910, #1174)", () => {
     const unlabeled = (sender: string, label: string) => starts({ sender, action: "unlabeled", label });
 
     expect(workflow().on.issues?.types).toContain("unlabeled");
-    expect(await unlabeled("collod873-machine[bot]", "waiting")).toBe(true);
-    expect(await unlabeled("collod873", "waiting")).toBe(true);
-    expect(await unlabeled("collod873-machine[bot]", "building")).toBe(false);
-    for (const held of HELD) expect(await unlabeled("collod873", held), held).toBe(true);
-    expect(await unlabeled("stranger", "waiting")).toBe(false);
-    expect(await starts({ sender: "collod873-machine[bot]", action: "unlabeled", label: "waiting", labels: ["note"] })).toBe(false);
+    expect(unlabeled("collod873-machine[bot]", "waiting")).toBe(true);
+    expect(unlabeled("collod873", "waiting")).toBe(true);
+    expect(unlabeled("collod873-machine[bot]", "building")).toBe(false);
+    for (const held of HELD) expect(unlabeled("collod873", held), held).toBe(true);
+    expect(unlabeled("stranger", "waiting")).toBe(false);
+    expect(starts({ sender: "collod873-machine[bot]", action: "unlabeled", label: "waiting", labels: ["note"] })).toBe(false);
   });
 
-  it("the job holding the build-<issue> group runs on no label change the build makes itself, so none cancels an unpause queued behind a running build (#1445)", async () => {
+  it("the job holding the build-<issue> group runs on no label change the build makes itself, so none cancels an unpause queued behind a running build (#1445)", () => {
     const [grouped = "", job] = Object.entries(ticketsJobs()).find(([, one]) => String(one.concurrency?.group ?? "").startsWith("build-")) ?? [];
-    const queued = async ({ labels = ["ticket"], ...event }: IssueEvent) => (gateOf("tickets.yml", grouped) === grouped ? holds(job?.if ?? "success()", event) : startsJob("tickets.yml", grouped, { ...event, labels }));
+    const queued = ({ labels = ["ticket"], ...event }: IssueEvent) => (gateOf("tickets.yml", grouped) === grouped ? holds(job?.if ?? "success()", event) : startsJob("tickets.yml", grouped, { ...event, labels }));
 
     expect(grouped).toBe("build");
-    for (const label of ["building", "checking", "try-2"]) expect(await queued({ sender: MACHINE, action: "unlabeled", label, labels: ["ticket", label === "building" ? "checking" : "building"] }), label).toBe(false);
-    expect(await queued({ sender: OWNER, action: "labeled", label: "paused", labels: ["ticket", "building", "paused"] })).toBe(false);
-    expect(await queued({ sender: OWNER, action: "unlabeled", label: "paused", labels: ["ticket", "building"] })).toBe(true);
-    expect(await queued({ sender: MACHINE, action: "unlabeled", label: "waiting" })).toBe(true);
+    for (const label of ["building", "checking", "try-2"]) expect(queued({ sender: MACHINE, action: "unlabeled", label, labels: ["ticket", label === "building" ? "checking" : "building"] }), label).toBe(false);
+    expect(queued({ sender: OWNER, action: "labeled", label: "paused", labels: ["ticket", "building", "paused"] })).toBe(false);
+    expect(queued({ sender: OWNER, action: "unlabeled", label: "paused", labels: ["ticket", "building"] })).toBe(true);
+    expect(queued({ sender: MACHINE, action: "unlabeled", label: "waiting" })).toBe(true);
   });
 
-  it("a ticket the App files labelled `waiting` starts no build when opened, only once `waiting` comes off (#1033)", async () => {
-    expect(await starts({ sender: "collod873-machine[bot]", action: "opened", labels: ["ticket", "waiting"] })).toBe(false);
-    expect(await starts({ sender: "collod873-machine[bot]", action: "unlabeled", label: "waiting" })).toBe(true);
+  it("a ticket the App files labelled `waiting` starts no build when opened, only once `waiting` comes off (#1033)", () => {
+    expect(starts({ sender: "collod873-machine[bot]", action: "opened", labels: ["ticket", "waiting"] })).toBe(false);
+    expect(starts({ sender: "collod873-machine[bot]", action: "unlabeled", label: "waiting" })).toBe(true);
   });
 
   it("admits the ticket before start marks it, and a refused ticket runs neither start nor its builder, ending green so no Fix starts (#1022)", () => {
@@ -342,8 +342,8 @@ describe("every job that spends a model is watched as it goes, read after it end
       expect(minted).toBeGreaterThan(lastModel);
       expect(filed).toBeGreaterThan(minted);
       for (const ended of [{}, { failed: true }, { cancelled: true }]) {
-        expect(holds(steps[minted]?.if ?? "success()", { steps: labelledAs(steps, "true"), ...ended })).toBe(true);
-        expect(holds(steps[filed]?.if ?? "success()", { steps: labelledAs(steps, "true"), ...ended })).toBe(true);
+        expect(holds(steps[minted]?.if ?? "success()", { steps: skippedAll(steps), ...ended })).toBe(true);
+        expect(holds(steps[filed]?.if ?? "success()", { steps: skippedAll(steps), ...ended })).toBe(true);
       }
     }
   });

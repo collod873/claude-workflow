@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { fixing } from "./builder.part.ts";
 import { rerunning } from "./rerun.part.ts";
-import { execute, heldBy, holds, labelledAs, labelledOutputs, labelledStep, onPath, scratch, script, workflowJobs, type WorkflowStep } from "./scenarios.ts";
+import { execute, holds, onPath, scratch, script, skippedAll, wakeOutputs, workflowJobs, type WorkflowStep } from "./scenarios.ts";
 import { MACHINE, OWNER } from "./spelled.ts";
 import { ENROLLED_CALLER } from "./post.ts";
 
@@ -75,11 +75,11 @@ describe("a repo's tickets build through one caller file that holds only trigger
   });
 
   it("answers each trigger the caller holds: a ticket labelled builds, lands and closes in its own run, a closed issue is stripped and reconciled, reconcile alone waking what it blocked (ADR-0012, #1606)", () => {
-    const woken = { wake: { held: "true" } };
+    const woken = { wake: { build: "true" } };
     expect(jobsRun({ event: "issues", action: "labeled", outputs: woken })).toEqual(["wake", "build", "reconcile"]);
     expect(jobsRun({ event: "issues", action: "labeled", sender: MACHINE, outputs: woken })).toEqual(["wake", "build", "reconcile"]);
     expect(jobsRun({ event: "issues", action: "unlabeled", sender: MACHINE, outputs: woken })).toEqual(["wake", "build", "reconcile"]);
-    expect(jobsRun({ event: "issues", action: "unlabeled", sender: MACHINE, outputs: { wake: { held: "false" } } })).toEqual(["wake", "reconcile"]);
+    expect(jobsRun({ event: "issues", action: "unlabeled", sender: MACHINE, outputs: { wake: { build: "false" } } })).toEqual(["wake", "reconcile"]);
     expect(jobsRun({ event: "issues", action: "opened", sender: MACHINE })).toEqual(["reconcile"]);
     expect(jobsRun({ event: "issues", action: "labeled", sender: "stranger" })).toEqual(["reconcile"]);
     expect(jobsRun({ event: "issues", action: "closed" })).toEqual(["strip", "reconcile"]);
@@ -150,7 +150,7 @@ describe("a repo's tickets build through one caller file that holds only trigger
   });
 
   it("hands a run whose stage job ended red, was cancelled or timed out to a dispatch of the caller file, and on that dispatch only re-runs it or calls the owner, no build starting (#1225)", () => {
-    const named = { which: { ticket: "828" }, wake: { held: "true" } };
+    const named = { which: { ticket: "828" }, wake: { build: "true" } };
     const handed = { event: "workflow_dispatch", action: "", inputs: { ticket: "828", rerun: "4417/1" }, outputs: named };
 
     expect(jobsRun({ event: "issues", action: "labeled", sender: OWNER, red: ["wake"] })).toEqual(["wake", "reconcile", "dispatch-rerun"]);
@@ -255,12 +255,12 @@ describe("a repo's tickets build through one caller file that holds only trigger
     expect(builder?.env?.CALLED_FROM).toBe("${{ github.workflow_ref }}");
   });
 
-  it("ends taking waiting off Lumaria #828 with its PR open in Lumaria: the build job starts and holds, its fix step runs, and the builder, given the repo and caller the workflow resolves there, lands it through the real check and closes it (#1146, ADR-0012)", async () => {
+  it("ends taking waiting off Lumaria #828 with its PR open in Lumaria: the build job starts and holds, its fix step runs, and the builder, given the repo and caller the workflow resolves there, lands it through the real check and closes it (#1146, ADR-0012)", () => {
     const unlabeled = { action: "unlabeled", label: "waiting", sender: MACHINE, labels: ["ticket"] };
     const { build: job, wake } = workflowJobs("tickets.yml");
     const fix = job?.steps.find(({ id }) => id === "fix");
-    const { held } = await heldBy(labelledStep("tickets.yml", "build"), REPO, unlabeled);
-    const steps = { ...labelledAs(job?.steps ?? [], held), admit: { outcome: "success", conclusion: "success", outputs: { admitted: "true" } }, start: { outcome: "success", conclusion: "success", outputs: { branch: "ticket/828" } } };
+    const { build } = wakeOutputs(unlabeled);
+    const steps = { ...skippedAll(job?.steps ?? []), admit: { outcome: "success", conclusion: "success", outputs: { admitted: "true" } }, start: { outcome: "success", conclusion: "success", outputs: { branch: "ticket/828" } } };
     const lumaria: Record<string, string> = { "github.repository": "collod873/Lumaria", "github.workflow_ref": "collod873/Lumaria/.github/workflows/machine.yml@refs/heads/main" };
     const resolved = (value: unknown) => (typeof value !== "string" ? undefined : value.replace(/^\$\{\{ ([\w.]+) \}\}$/, (_, name: string) => lumaria[name] ?? ""));
     const real = onPath("check");
@@ -268,8 +268,8 @@ describe("a repo's tickets build through one caller file that holds only trigger
     const check = `DATABASE_URL=postgres://localhost/postgres CI=true "${real}" "$@"\n`;
 
     expect(holds(wake?.if ?? "", unlabeled)).toBe(true);
-    expect(held).toBe("true");
-    expect(holds(job?.if ?? "", { ...unlabeled, needs: { wake: { result: "success", outputs: { held: held ?? "" } } } })).toBe(true);
+    expect(build).toBe("true");
+    expect(holds(job?.if ?? "", { ...unlabeled, needs: { wake: { result: "success", outputs: { build: build ?? "" } } } })).toBe(true);
     expect(holds(fix?.if ?? "", { steps })).toBe(true);
     const repo = resolved(job?.env?.GH_REPO);
     const calledFrom = resolved(fix?.env?.CALLED_FROM);
@@ -310,7 +310,7 @@ describe("a repo's tickets build through one caller file that holds only trigger
     for (const [name, job] of saving) {
       expect(job["cache-mode"], `${name} writes the cache`).toBe("write");
       const save = job.steps.find((step) => step.uses?.startsWith("actions/cache/save@") === true);
-      const saves = (outcome: string) => holds(save?.if ?? "success()", { steps: { labelled: { outcome: "success", conclusion: "success", outputs: { held: "true" } }, fix: { outcome, conclusion: outcome } }, failed: outcome === "failure" });
+      const saves = (outcome: string) => holds(save?.if ?? "success()", { steps: { fix: { outcome, conclusion: outcome } }, failed: outcome === "failure" });
       expect([saves("success"), saves("failure"), saves("skipped")], name).toEqual([true, true, false]);
     }
   });
@@ -557,14 +557,13 @@ describe("a repo's specs and research notes run through the same caller file, on
     expect(specs({ event: "issues", action: "unlabeled", sender: "stranger" })).toEqual([]);
   });
 
-  it("resumes a spec reconcile takes `waiting` off once what its slices handed off has closed, and no other label the machine takes off", async () => {
-    const wake = labelledStep("specs.yml", "wake");
-    const resumed = await labelledOutputs(wake, REPO, { action: "unlabeled", label: "waiting", sender: MACHINE, labels: ["spec"] });
-    const building = await labelledOutputs(wake, REPO, { action: "unlabeled", label: "building", sender: MACHINE, labels: ["spec"] });
+  it("resumes a spec reconcile takes `waiting` off once what its slices handed off has closed, and no other label the machine takes off", () => {
+    const resumed = wakeOutputs({ action: "unlabeled", label: "waiting", sender: MACHINE, labels: ["spec"] });
+    const building = wakeOutputs({ action: "unlabeled", label: "building", sender: MACHINE, labels: ["spec"] });
 
     expect(holds(workflowJobs("specs.yml").wake?.if ?? "", { action: "unlabeled", label: "waiting", sender: MACHINE })).toBe(true);
-    expect(resumed.outputs.spec).toBe("true");
-    expect(building.outputs.spec).toBe("false");
+    expect(resumed.spec).toBe("true");
+    expect(building.spec).toBe("false");
   });
 
   it("starts nothing on a ticket's events", () => {

@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parts, type Part } from "./parts.ts";
@@ -10,6 +10,12 @@ const NOISE = "a line a tool prints that nobody needed to read\n".repeat(40).tri
 const URL = "https://github.com/collod873/claude-workflow/pull/1";
 const FILED = `printf '%s\\n' ${URL}\n`;
 const NOTE_CALL = ["idea", "--title", "What the audit found", "--body-file", "body.md"];
+
+function woke(event: string): Run {
+  const root = scratch("wake-");
+  writeFileSync(join(root, "event.json"), event);
+  return execute(join(REPO, "bin", "wake"), root, { GITHUB_EVENT_PATH: join(root, "event.json"), GITHUB_OUTPUT: join(root, "output") });
+}
 
 const shippingNext = (runs: ShipRun[] | null): Run => {
   const app = shipping();
@@ -72,6 +78,10 @@ const listed: Record<string, Scenario[]> = {
   "bin/spelled": [
     { label: "printing the labels", run: () => execute(join(REPO, "bin", "spelled"), scratch("spelled-"), {}, ["labels"]) },
     { label: "refusing a list it does not hold", run: () => execute(join(REPO, "bin", "spelled"), scratch("spelled-"), {}, ["owners"]) },
+  ],
+  "bin/wake": [
+    { label: "answering an event", run: () => woke(JSON.stringify({ action: "labeled", label: { name: "ticket" }, sender: { login: "collod873" }, issue: { labels: [{ name: "ticket" }] } })) },
+    { label: "with an event it cannot read", run: () => woke("{") },
   ],
 };
 
