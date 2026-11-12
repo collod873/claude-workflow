@@ -61,6 +61,13 @@ function resultIn(stdout: string): string {
   return said;
 }
 
+const firstLine = (text: string) => text.trim().split("\n")[0] ?? "";
+
+function reasonGiven({ stderr, stdout }: Exited & { stdout: string }): string {
+  const reason = firstLine(stderr) || firstLine(resultIn(stdout));
+  return reason === "" ? " and gave no reason" : `: ${quoted(reason)}`;
+}
+
 function sessionOf(stdout: string): string | undefined {
   let session: string | undefined;
   for (const event of events(stdout)) {
@@ -185,7 +192,7 @@ function spending(hire: Hire): Spending {
   }
   const refusalFor = (got: Exited & { stdout: string }): string | undefined => {
     if (got.status === TIMED_OUT && minutes > 0) return `the ${hire.name} ran past its ${minutes} minute cap`;
-    if (got.status !== 0) return `the ${hire.name} ended ${got.status}: ${quoted(String(got.stderr || got.stdout).trim().split("\n")[0] ?? "")}`;
+    if (got.status !== 0) return `the ${hire.name} ended ${got.status}${reasonGiven(got)}`;
     return undefined;
   };
   return function* (input, resume) {
