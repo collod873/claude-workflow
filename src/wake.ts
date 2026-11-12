@@ -52,7 +52,7 @@ if (import.meta.main) {
   try {
     event = JSON.parse(readFileSync(eventPath, "utf8")) as IssuePayload;
   } catch (error) {
-    process.stderr.write(`wake: the event at ${eventPath} could not be read, so nothing starts: ${(error as Error).message.split("\n")[0] ?? ""}\n`);
+    process.stderr.write(`wake: the event could not be read, so nothing starts: ${((error as Error).message.split("\n")[0] ?? "").slice(0, 120)}\n`);
     process.exit(1);
   }
   const answer = Object.entries(woken(event)).map(([stage, starting]) => `${stage}=${String(starting)}\n`).join("");
