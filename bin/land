@@ -148,6 +148,22 @@ for commit in $(git rev-list "origin/$default_branch..HEAD"); do
   fi
 done
 
+off_pc=$(node "$src/pc-runner.ts" "$top")
+case $? in
+  0) ;;
+  3)
+    call "gh api repos" gh api "repos/{owner}/{repo}" --jq .private
+    if [[ $said == true ]]; then
+      printf 'land: %s, which bill this private repo by the minute, so nothing landed; give it that runs-on\n' "$off_pc" >&2
+      exit 1
+    fi
+    ;;
+  *)
+    printf 'land: the PC runner check could not read .github/workflows, so nothing landed\n' >&2
+    exit 1
+    ;;
+esac
+
 issue=$ticket$spec
 approver="The reviewer"
 if [[ -n $issue ]]; then

@@ -1,10 +1,11 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { agedLogs, git, GITHUB_ERRED, landSession, LANDED_PR as PR, MAIN_RACED, MERGE_REFUSAL as REFUSAL, plant, TICKET_TITLE, type LandStage, type Merge } from "./scenarios.ts";
+import { agedLogs, git, GITHUB_ERRED, landSession, LANDED_PR as PR, MAIN_RACED, MERGE_REFUSAL as REFUSAL, PC_RUNS_ON, plant, TICKET_TITLE, type LandStage, type Merge } from "./scenarios.ts";
 
 const JUDGED_CHECK = "description=judged by land on the commit before the push (ADR-0008)";
 const DASH = "\u2014";
+const OFF_THE_PC = ["name: Changelog draft", "on:", "  pull_request:", "jobs:", "  draft:", "    runs-on: ubuntu-latest", "    steps:", "      - run: ./draft", "  notes:", `    runs-on: ${PC_RUNS_ON}`, "    steps:", "      - run: ./notes", "  ship:", "    uses: collod873/claude-workflow/.github/workflows/ship.yml@main", ""].join("\n");
 
 const sessionAheadOfMain = (commits: number, options: Omit<Parameters<typeof landSession>[0], "messages"> = {}) => landSession({ messages: Array.from({ length: commits }, (_, n) => `change ${n + 1}`), ...options });
 
@@ -380,6 +381,26 @@ describe("bin/land refuses what must not reach main (#681)", () => {
     expect(result.stderr).toBe(said(refused));
     expect(git(remote, "for-each-ref", "--format=%(refname)")).toBe("refs/heads/main");
     expect(calls()).toEqual([]);
+  });
+
+  it("lands nothing from a private repo whose workflow puts a job on GitHub's runners, naming that job alone, since each of its runs bills minutes (#1624, Mezzanine#1972)", () => {
+    const { remote, run, calls, merged } = landSession({ changes: { ".github/workflows/changelog-draft.yml": OFF_THE_PC }, privateRepo: true });
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toBe(`land: changelog-draft.yml's draft job runs on ubuntu-latest, not ${PC_RUNS_ON}, so it stays on GitHub's runners, which bill this private repo by the minute, so nothing landed; give it that runs-on\n`);
+    expect(git(remote, "for-each-ref", "--format=%(refname)")).toBe("refs/heads/main");
+    expect(calls().filter(merged)).toEqual([]);
+  });
+
+  it("lands that workflow in a public repo, whose runs on GitHub's runners bill nothing", () => {
+    const { run, calls, merged } = landSession({ changes: { ".github/workflows/changelog-draft.yml": OFF_THE_PC }, privateRepo: false });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(calls().filter(merged)).toHaveLength(1);
   });
 
   it("lands a session's commit that closes an issue by keyword, since its merge already passed the full check", () => {
