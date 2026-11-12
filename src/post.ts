@@ -111,7 +111,8 @@ export interface Caller {
 
 export function calledOwner(issue: string, { who, said, stopped = "stopped" }: Caller, why: string, follows?: string): number {
   mark(issue, STUCK);
-  commentOnTicket(issue, `@${OWNER} ${who} of #${issue} ${stopped} and needs you: ${why}${follows === undefined ? "" : `. ${follows}`}`, gh);
+  const { refusals } = commentOnTicket(issue, `@${OWNER} ${who} of #${issue} ${stopped} and needs you: ${why}${follows === undefined ? "" : `. ${follows}`}`, gh);
+  for (const refusal of refusals) console.error(`${said}, and its call to the owner would not post: ${refusal}`);
   return endedRed(`${said}, ${why}`);
 }
 

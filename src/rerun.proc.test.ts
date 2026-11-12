@@ -100,6 +100,15 @@ describe("bin/rerun re-runs a red run once by itself, and only a second red mark
     expect(comments(calls())).toEqual([]);
   });
 
+  it("logs GitHub's refusal when the owner's comment would not post", () => {
+    const { marks, run } = rerunning({ attempt: "2", commentRefused: "HTTP 403: comment refused" });
+
+    const result = run();
+
+    expect(marks()).toEqual(["902 stuck"]);
+    expect(result.stderr).toContain("would not post: gh issue comment failed: HTTP 403: comment refused");
+  });
+
   it("ends red naming GitHub's refusal when the re-run is refused", () => {
     const result = rerunning({ refused: "HTTP 403: Resource not accessible by integration" }).run();
 
