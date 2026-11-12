@@ -72,9 +72,9 @@ export function landSession({
   mkdirSync(state);
   const log = join(state, "argv.jsonl");
   const held = join(state, "held");
-  const holding = (stage: LandStage) => (hold === stage ? `[[ -e ${JSON.stringify(held)} ]] || { touch ${JSON.stringify(held)}; exec sleep 30; }\n` : "");
+  const holding = (stage: LandStage) => (hold === stage ? `[[ -e ${JSON.stringify(held)} ]] || { : >${JSON.stringify(held)}; exec sleep 30; }\n` : "");
   if (hold === "rebase")
-    script(join(root, "bin", "git"), `if [[ $1 == rebase && $2 != --abort && ! -e ${JSON.stringify(held)} ]]; then shift; PATH="\${PATH#*:}" exec git rebase -x ${JSON.stringify(`touch ${held}; sleep 30`)} "$@"; fi\nPATH="\${PATH#*:}" exec git "$@"\n`);
+    script(join(root, "bin", "git"), `if [[ $1 == rebase && $2 != --abort && ! -e ${JSON.stringify(held)} ]]; then shift; PATH="\${PATH#*:}" exec git rebase -x ${JSON.stringify(`: >${held}; exec sleep 30`)} "$@"; fi\nPATH="\${PATH#*:}" exec git "$@"\n`);
   const counted = (name: string) => `$(( $(ls ${JSON.stringify(state)} | grep -c ${name}-) + 1 ))`;
   script(
     join(root, "bin", "gh"),
