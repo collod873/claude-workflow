@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -17,8 +18,8 @@ IGNORES = ".gitleaksignore"
 SUBMODULE = "160000"
 
 
-def config(tree: Path, scratch: Path) -> Path:
-    own = tree / OWN_CONFIG
+def config(rules: Path, scratch: Path) -> Path:
+    own = rules / OWN_CONFIG
     base = f'path = "{own}"' if own.is_file() else "useDefault = true"
     manifests = ", ".join(f"'^{re.escape(name)}$'" for name in SYNC_MANIFESTS)
     written = scratch / "gitleaks.toml"
@@ -51,27 +52,78 @@ class ScanFailed(Exception):
     pass
 
 
-def scanned(root: Path, paths: list[str]) -> list[dict]:
+def scanned(tree: Path, rules: Path, scratch: Path) -> list[dict]:
     try:
         gitleaks = tool("gitleaks")
     except ToolUnavailable as unavailable:
         raise ScanFailed(str(unavailable)) from unavailable
+    report = scratch / "report.json"
+    report.unlink(missing_ok=True)
+    ran = subprocess.run([str(gitleaks), "dir", ".", "--no-banner", "--redact", "--exit-code", "1",
+                          "--report-format", "json", "--report-path", str(report),
+                          "--config", str(config(rules, scratch)), "--gitleaks-ignore-path", str(rules)],
+                         cwd=tree, capture_output=True, text=True, check=False)
+    if ran.returncode not in (0, 1):
+        raise ScanFailed(f"gitleaks failed: {ran.stderr.strip()[-400:]}")
+    return json.loads(report.read_text() or "[]") if report.is_file() else []
+
+
+def checked_out(root: Path, tree: Path, paths: list[str]) -> None:
+    subprocess.run(["git", "checkout-index", "--stdin", "-z", f"--prefix={tree}/"], cwd=root, check=True,
+                   input="".join(f"{path}\0" for path in paths).encode())
+
+
+def staged_leaks(root: Path, paths: list[str]) -> list[dict]:
     with tempfile.TemporaryDirectory(prefix="shared-leaks-") as scratch:
         tree = Path(scratch) / "tree"
-        report = Path(scratch) / "report.json"
-        subprocess.run(["git", "checkout-index", "--stdin", "-z", f"--prefix={tree}/"], cwd=root, check=True,
-                       input="".join(f"{path}\0" for path in paths).encode())
-        ran = subprocess.run([str(gitleaks), "dir", ".", "--no-banner", "--redact", "--exit-code", "1",
-                              "--report-format", "json", "--report-path", str(report),
-                              "--config", str(config(tree, Path(scratch)))],
-                             cwd=tree, capture_output=True, text=True, check=False)
-        if ran.returncode not in (0, 1):
-            raise ScanFailed(f"gitleaks failed: {ran.stderr.strip()[-400:]}")
-        return json.loads(report.read_text() or "[]") if report.is_file() else []
+        checked_out(root, tree, paths)
+        return scanned(tree, tree, Path(scratch))
 
 
-def main() -> int:
-    root = Path.cwd()
+def on_disk(root: Path, paths: list[str]) -> list[str]:
+    return [path for path in paths if (root / path).is_file() and not (root / path).is_symlink()]
+
+
+STAGED_CHANGE = frozenset("MAT")
+EDITED_OR_GONE_SINCE_STAGED = frozenset("MTD")
+
+
+def staged_apart(root: Path, named: list[str]) -> list[str]:
+    status = subprocess.run(["git", "--no-optional-locks", "status", "--porcelain", "-z", "--no-renames",
+                             "--untracked-files=no", "--", *named], cwd=root, capture_output=True, text=True,
+                            check=True).stdout
+    return [entry[3:] for entry in status.split("\0")
+            if entry[:1] in STAGED_CHANGE and entry[1:2] in EDITED_OR_GONE_SINCE_STAGED]
+
+
+def findings(leaks: list[dict], form: str = "") -> list[str]:
+    return [f"✗ {leak['File']}:{leak['StartLine']}: {leak['RuleID']}{form}" for leak in leaks]
+
+
+def handed_findings(root: Path, named: list[str]) -> list[str]:
+    with tempfile.TemporaryDirectory(prefix="shared-leaks-") as scratch:
+        disk, index = Path(scratch) / "disk", Path(scratch) / "index"
+        files = on_disk(root, named)
+        for name in files:
+            (disk / name).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(root / name, disk / name)
+        found = findings(scanned(disk, root, Path(scratch))) if files else []
+        apart = staged_apart(root, named)
+        if apart:
+            checked_out(root, index, apart)
+            found += findings(scanned(index, root, Path(scratch)), " in its staged copy, which a commit takes")
+        return found
+
+
+REMEDY = "✗ leaks: rotate each key, then remove it; a false alarm's fingerprint goes in .gitleaksignore"
+
+
+def verdict(found: list[str], place: str) -> int:
+    print("\n".join([*found, REMEDY] if found else [f"✓ leaks: no secret in {place}"]))
+    return 1 if found else 0
+
+
+def staged_tree(root: Path) -> int:
     handed = Path(os.environ["CHECK_FILE_RECEIPTS"]) if os.environ.get("CHECK_FILE_RECEIPTS") else None
     held = set((handed / "held").read_text().split()) if handed else set()
     blobs = staged(root)
@@ -80,21 +132,23 @@ def main() -> int:
     if handed:
         with (handed / "linted").open("a") as tally:
             tally.write(json.dumps({"stage": "gitleaks", "ran": len(due), "covered": len(keyed) - len(due)}) + "\n")
+    rules = [name for name in (OWN_CONFIG, IGNORES) if name in blobs]
+    found = findings(staged_leaks(root, sorted({*due, *rules}))) if due else []
+    if handed and not found:
+        with (handed / "passed").open("a") as passed:
+            passed.write("".join(f"{keyed[path]}\n" for path in due))
+    return verdict(found, "the committed or staged tree")
+
+
+def main() -> int:
+    root, named = Path.cwd(), sys.argv[1:]
     try:
-        leaks = scanned(root, sorted({*due, *(name for name in (OWN_CONFIG, IGNORES) if name in blobs)})) if due else []
+        if not named:
+            return staged_tree(root)
+        return verdict(handed_findings(root, named), f"the {len(named)} files named, on disk or as staged")
     except ScanFailed as failed:
         print(f"✗ leaks: {failed}")
         return 1
-    for leak in leaks:
-        print(f"✗ {leak['File']}:{leak['StartLine']}: {leak['RuleID']}")
-    if leaks:
-        print("✗ leaks: rotate each key, then remove it; a false alarm's fingerprint goes in .gitleaksignore")
-        return 1
-    if handed:
-        with (handed / "passed").open("a") as passed:
-            passed.write("".join(f"{keyed[path]}\n" for path in due))
-    print("✓ leaks: no secret in the committed or staged tree")
-    return 0
 
 
 if __name__ == "__main__":
