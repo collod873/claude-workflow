@@ -106,6 +106,7 @@ jobs:
           client-id: ${{ vars.CORE_APP_CLIENT_ID }}
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
           prod-database-url: ${{ secrets.PROD_DATABASE_URL }}
+          design-kit: "true"
 
       - id: admit
         timeout-minutes: 2
@@ -314,6 +315,7 @@ jobs:
           client-id: ${{ vars.CORE_APP_CLIENT_ID }}
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
           prod-database-url: ${{ secrets.PROD_DATABASE_URL }}
+          design-kit: "true"
 
       - id: probe-script
         if: github.event.inputs.probe_with != 'claude'

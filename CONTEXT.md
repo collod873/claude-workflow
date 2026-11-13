@@ -320,9 +320,10 @@ lacking the input refuses the dispatch: logged, not red.
 _Avoid_: self-heard rerun, rerun workflow
 
 **Owning repo**:
-The one repo a kind of fix belongs in: this one for the machine, `design-kit` for a kit primitive,
-`agent-skills` for a skill or shared tool. A builder whose ticket's first step belongs there answers
-`owned`: it files that step there as a ticket and its own ticket waits on it, blocked by that step.
+The repo a kind of fix belongs in: this one for the machine, `design-kit` for a kit primitive,
+`agent-skills` for a skill or shared tool. A ticket whose first step belongs there is `owned`: that
+step is filed there to wait on. One moving a name its own app declares into the kit is built
+in that app with kit-land, as `code`.
 _Avoid_: upstream, other repo, dependency
 
 **Probe**:

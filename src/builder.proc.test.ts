@@ -89,6 +89,17 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
     for (const dead of ["Read its Why first", "`gh` reads any run", "Test count drop", "Two rounds in a row", "`ticket`:"]) expect(opening).not.toContain(dead);
   });
 
+  it("answers a move into the kit of a name this tree already declares as `code`, built here with kit-land from `~/Claude Projects/design-kit`, never `owned`, since design-kit's apps step fails the app still declaring it (#1754)", () => {
+    const { run, handed } = fixing({ claude: FIXES });
+
+    expect(run("811").status).toBe(0);
+    const ownedLine = (handed()[0] ?? "").split("\n").find((line) => line.startsWith("- `owned`:")) ?? "";
+    expect(ownedLine).toMatch(/name this tree already declares/);
+    expect(ownedLine).toContain("`kit-land`");
+    expect(ownedLine).toContain("`~/Claude Projects/design-kit`");
+    expect(ownedLine).toMatch(/answer `code`/);
+  });
+
   it("names, by number and title, the open tickets whose body names a file its own body names, where #1464's builder never saw #1462 (#1477)", () => {
     const body = FIXED_TICKET_NAMING("`src/builder.ts:111` and `specs.yml`");
     const openTickets = [
