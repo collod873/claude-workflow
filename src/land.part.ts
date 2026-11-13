@@ -142,6 +142,7 @@ export function landSession({
     remote,
     session,
     head,
+    held,
     branch: `land/${head.slice(0, 12)}`,
     run: (args: string[] = [], from = session) => execute(join(BIN, "land"), from, landEnv, args),
     stoppedWhileHeld: (signal: NodeJS.Signals) => stoppedOnceHeld(join(BIN, "land"), session, { MACHINE_BIN: join(session, "bin"), ...harnessEnv, ...landEnv }, held, signal),

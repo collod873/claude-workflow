@@ -2,7 +2,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "n
 import { isAbsolute, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { agedLogs, GITHUB_ERRED, landSession, MAIN_RACED, MERGE_REFUSAL as REFUSAL, TICKET_TITLE, type LandStage, type Merge } from "./land.part.ts";
-import { git, LANDED_PR as PR, PC_RUNS_ON, plant } from "./scenarios.ts";
+import { CONTRACT, git, LANDED_PR as PR, PC_RUNS_ON, plant, settleMapOf } from "./scenarios.ts";
 
 const JUDGED_CHECK = "description=judged by land on the commit before the push (ADR-0008)";
 const DASH = "\u2014";
@@ -10,17 +10,35 @@ const OFF_THE_PC = ["name: Changelog draft", "on:", "  pull_request:", "jobs:", 
 
 const sessionAheadOfMain = (commits: number, options: Omit<Parameters<typeof landSession>[0], "messages"> = {}) => landSession({ messages: Array.from({ length: commits }, (_, n) => `change ${n + 1}`), ...options });
 
-function landedElsewhere(root: string, remote: string, file: string, content: string): string {
+function mainGained(root: string, remote: string, files: Record<string, string>): string {
   const other = join(root, "other");
   git(root, "clone", "--quiet", remote, other);
   git(other, "config", "user.email", "other@test");
   git(other, "config", "user.name", "other");
-  writeFileSync(join(other, file), content);
-  git(other, "add", file);
+  for (const [file, content] of Object.entries(files)) plant(other, file, content);
+  git(other, "add", "-A");
   git(other, "commit", "--quiet", "-m", "another session's change");
   git(other, "push", "--quiet", "origin", "main");
   return git(other, "rev-parse", "HEAD");
 }
+
+const landedElsewhere = (root: string, remote: string, file: string, content: string) => mainGained(root, remote, { [file]: content });
+
+const APPENDS_PARTS = "ls parts >>derived/index";
+
+function committedBy(session: string, message: string, files: Record<string, string>): string {
+  for (const [file, content] of Object.entries(files)) plant(session, file, content);
+  git(session, "add", "-A");
+  git(session, "commit", "--quiet", "-m", message);
+  return git(session, "rev-parse", "HEAD");
+}
+
+const leftAt = (session: string) => ({
+  head: git(session, "rev-parse", "HEAD"),
+  branch: git(session, "symbolic-ref", "--short", "HEAD"),
+  changed: git(session, "status", "--porcelain", "--untracked-files=all"),
+  rebasing: existsSync(join(session, ".git", "rebase-merge")),
+});
 
 describe("bin/land turns a session's commits into a PR it merges at once, posting the check it passed before the push as the head's status once the push has put the head on GitHub, which takes no status for a commit it lacks (#1344, #1345)", () => {
   it("opens a merge-commit PR from a land branch, posts check as judged for the head after the push and nothing else, merges matching that head, and brings local main up to the merged main (#1386)", () => {
@@ -349,6 +367,98 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
   });
 });
 
+describe("bin/land settles a rebase that conflicts only in files origin/main's settle map names, where 15 of 37 spec finishes were rebuilt on main by hand over two migrations (#1615)", () => {
+  it("takes origin/main's side of the conflicted file, runs the entry's command at the tree's root, and lands what it rebuilt as one commit naming the entry and the base", () => {
+    const { root, remote, session, run } = sessionAheadOfMain(1, { changes: { "parts/mine": "a part\n", "derived/index": "mine\n" } });
+    const moved = mainGained(root, remote, { [CONTRACT]: settleMapOf(APPENDS_PARTS), "derived/index": "theirs\n" });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toBe(`Landed ${PR}\n`);
+    expect(git(remote, "show", "main:derived/index")).toBe("theirs\nmine");
+    expect(git(remote, "log", "--format=%s", `${moved}..main^2`).split("\n")).toEqual([`chore: settle index after rebasing onto origin/main at ${moved.slice(0, 7)}`, "change 1"]);
+    expect(git(remote, "show", "--format=", "--name-only", "main^2")).toBe("derived/index");
+    expect(git(session, "rev-parse", "HEAD")).toBe(git(remote, "rev-parse", "main"));
+  });
+
+  it("settles at each commit that conflicts in the entry's files, skips the commit that leaves empty, and still lands one settle commit", () => {
+    const { root, remote, session, run } = sessionAheadOfMain(0);
+    committedBy(session, "add part one", { "parts/one": "a part\n", "derived/index": "one\n" });
+    committedBy(session, "index part one again", { "derived/index": "one\none again\n" });
+    const moved = mainGained(root, remote, { [CONTRACT]: settleMapOf(APPENDS_PARTS), "derived/index": "theirs\n" });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(git(remote, "show", "main:derived/index")).toBe("theirs\none");
+    expect(git(remote, "log", "--format=%s", `${moved}..main^2`).split("\n")).toEqual([`chore: settle index after rebasing onto origin/main at ${moved.slice(0, 7)}`, "add part one"]);
+  });
+
+  it("lands nothing and leaves the branch head, index and worktree as they were, naming every conflicted file as it does with no settle map, when a later commit conflicts outside the entry's files", () => {
+    const { root, remote, session, run, calls } = sessionAheadOfMain(0);
+    committedBy(session, "add part one", { "parts/one": "a part\n", "derived/index": "one\n" });
+    const head = committedBy(session, "change what both share", { "shared.txt": "mine\n" });
+    mainGained(root, remote, { [CONTRACT]: settleMapOf(APPENDS_PARTS), "derived/index": "theirs\n", "shared.txt": "theirs\n" });
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toBe("land: HEAD does not rebase cleanly onto origin/main, conflicting in derived/index, shared.txt, so nothing landed; this checkout is left on main as it was: run git rebase origin/main and resolve them\n");
+    expect(leftAt(session)).toEqual({ head, branch: "main", changed: "", rebasing: false });
+    expect(calls()).toEqual([]);
+  });
+
+  it("lands nothing and leaves the branch head, index and worktree as they were, naming the command's own last line, when the entry's command fails partway through its rebuild", () => {
+    const { root, remote, session, head, run, calls } = sessionAheadOfMain(1, { changes: { "parts/mine": "a part\n", "derived/index": "mine\n" } });
+    mainGained(root, remote, { [CONTRACT]: settleMapOf("printf 'half\\n' >derived/index; printf 'half\\n' >derived/snapshot; printf 'index: parts/mine has no number\\n' >&2; exit 1"), "derived/index": "theirs\n" });
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe("land: HEAD does not rebase cleanly onto origin/main, conflicting in derived/index, which the settle map's index could not rebuild: index: parts/mine has no number, so nothing landed; this checkout is left on main as it was: run git rebase origin/main and resolve them\n");
+    expect(leftAt(session)).toEqual({ head, branch: "main", changed: "", rebasing: false });
+    expect(git(remote, "for-each-ref", "--format=%(refname)")).toBe("refs/heads/main");
+    expect(calls()).toEqual([]);
+  });
+
+  it("lands nothing and leaves the branch as it was when the entry's command changes a file outside its files, since land lands only a tree that matches its commit", () => {
+    const { root, remote, session, head, run, calls } = sessionAheadOfMain(1, { changes: { "parts/mine": "a part\n", "derived/index": "mine\n" } });
+    mainGained(root, remote, { [CONTRACT]: settleMapOf(`${APPENDS_PARTS}; date >built-at.txt`), "derived/index": "theirs\n" });
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toBe("land: HEAD does not rebase cleanly onto origin/main, conflicting in derived/index, which the settle map's index rebuilt while changing built-at.txt outside its files, so nothing landed; this checkout is left on main as it was: run git rebase origin/main and resolve them\n");
+    expect(leftAt(session)).toEqual({ head, branch: "main", changed: "", rebasing: false });
+    expect(calls()).toEqual([]);
+  });
+
+  it("puts the branch head, index and worktree back, with no settle commit, when stopped while the entry's command is still rebuilding, so the next land settles again instead of landing a half-built file", async () => {
+    const { root, remote, session, head, held, stoppedWhileHeld } = sessionAheadOfMain(1, { changes: { "parts/mine": "a part\n", "derived/index": "mine\n" } });
+    mainGained(root, remote, { [CONTRACT]: settleMapOf(`printf 'half\\n' >derived/index; printf 'half\\n' >derived/snapshot; : >${held}; exec sleep 30`), "derived/index": "theirs\n" });
+
+    const stopped = await stoppedWhileHeld("SIGTERM");
+
+    expect(stopped.status).toBe(143);
+    expect(stopped.stderr).toBe("land: stopped by TERM at the rebase, so main is untouched, no PR is open yet and no check status is posted; run land again and it resumes from there\n");
+    expect(leftAt(session)).toEqual({ head, branch: "main", changed: "", rebasing: false });
+  });
+
+  it("puts the branch head, index and worktree back and lands nothing when the rebase's own process dies while the entry's command is rebuilding", () => {
+    const { root, remote, session, head, run, calls } = sessionAheadOfMain(1, { changes: { "parts/mine": "a part\n", "derived/index": "mine\n" } });
+    mainGained(root, remote, { [CONTRACT]: settleMapOf("printf 'half\\n' >derived/index; printf 'half\\n' >derived/snapshot; kill -KILL $PPID; sleep 1"), "derived/index": "theirs\n" });
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/^land: the rebase onto origin\/main could not run, so nothing landed; log \S+\n$/);
+    expect(leftAt(session)).toEqual({ head, branch: "main", changed: "", rebasing: false });
+    expect(calls()).toEqual([]);
+  });
+});
+
 describe("bin/land stopped by the session limit says where it stopped and leaves a tree the next land resumes from (agent-hooks#411)", () => {
   const NOT_YET = "no PR is open yet and no check status is posted";
   it.each<[LandStage, NodeJS.Signals, boolean, Parameters<typeof landSession>[0], string]>([
@@ -478,7 +588,7 @@ describe("bin/land refuses what must not reach main (#681)", () => {
     expect(commented).toBeLessThan(calls().findIndex(merged));
   });
 
-  it("lands a spec's integration branch from spec/<number>, its PR titled as the spec and saying it builds it, with the reviewers' approve reason commented before it merges (ADR-0013)", () => {
+  it("lands a spec's integration branch from spec/<number>, its PR titled as the spec and saying it builds it, with the review's approve reason commented before it merges (ADR-0013)", () => {
     const REASON = "it builds the spec; the slices share one migration, which I let through";
     const { head, run, calls, merged } = sessionAheadOfMain(1);
 
@@ -486,7 +596,7 @@ describe("bin/land refuses what must not reach main (#681)", () => {
 
     expect(result.status, result.stderr).toBe(0);
     expect(calls()).toContainEqual(["pr", "create", "--base", "main", "--head", "spec/974", "--title", TICKET_TITLE, "--body", "Builds #974\n\n- change 1"]);
-    expect(calls().filter((call) => call[0] === "pr" && call[1] === "comment")).toEqual([["pr", "comment", PR, "--body", `The reviewers approved #974: ${REASON}`]]);
+    expect(calls().filter((call) => call[0] === "pr" && call[1] === "comment")).toEqual([["pr", "comment", PR, "--body", `The review approved #974: ${REASON}`]]);
     expect(calls().filter(merged)).toEqual([["pr", "merge", "spec/974", "--merge", "--match-head-commit", head]]);
     expect(result.stdout).toBe(`Landed ${PR}\n`);
   });

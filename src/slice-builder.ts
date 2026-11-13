@@ -69,7 +69,7 @@ export function handedOn({ brief, onto, commitlint, unset = [] }: { brief: strin
   return [
     capped(brief.trimEnd(), TICKET_CAP),
     "## Build it",
-    "Ship the slice's Why whole on every path you touch, in the smallest diff; `## Done when` is its floor. Settle open choices yourself as its senior engineer. Call the Skill tool with `tdd`, to its end. Commit as you go: a why per message, no em dash, no `Fixes #12`.",
+    "Ship the slice's Why whole on every path you touch, in the smallest diff; `## Done when` is its floor. Settle open choices yourself as its senior engineer. Call the Skill tool with `tdd`, to its end. Commit as you go: a why per message, no em dash, no `Fixes #12`. Each commit's check already runs the typecheck, the linters and the related tests: run a test by hand only to see it red then green, and leave the rest to the commit.",
     ...(commitlint ? ["Commitlint runs here: each message is `type: subject`, a conventional type, lower-case."] : []),
     ...(unset.length === 0 ? [] : [`Unset in this run though the contract wants them: ${listedCapped(unset.map((key) => `\`${key}\``))}. Where code needs one, test it through a stand-in and invent no value; list each in \`reason\` for the owner to set.`]),
     "## Your answer",

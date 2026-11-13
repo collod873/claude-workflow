@@ -3,8 +3,8 @@ import { closeSync, mkdtempSync, openSync, readdirSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { capped, onDisk } from "./brief.ts";
-import { ENROLLED_CALLER, gh, ghRead, readOrStop } from "./post.ts";
-import { CONTRACT, hireIn, machineLogs, setupRefusedIn, treePathed } from "./stage.ts";
+import { ENROLLED_CALLER, gh, ghRead, readOrStop, treePathed } from "./post.ts";
+import { CONTRACT, hireIn, machineLogs, setupRefusedIn } from "./stage.ts";
 import { quoted } from "./ticket-shape.ts";
 
 export const PROBE_CAP = 8 * 1024;

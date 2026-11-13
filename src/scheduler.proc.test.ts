@@ -1,10 +1,15 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { git } from "./scenarios.ts";
+import { git, plant, settleMapOf } from "./scenarios.ts";
 import { KIT_STEP, LANDED, MAIN_MOVES, PAUSES, machineComment, scheduling, sliceOf, SPEC_ISSUE } from "./scheduler.part.ts";
 
 const SPEC_BRANCH = `spec/${SPEC_ISSUE}`;
 const optionOf = (argv: string[] | undefined, name: string) => (argv?.includes(name) ? argv[argv.indexOf(name) + 1] : undefined);
+const INDEXES_A_PART_AS_MAIN_DOES = [
+  'mkdir -p parts derived && printf "a part\\n" >parts/mine && printf "mine\\n" >derived/index && git add -A && git commit --quiet -m "Index a part" -m "Slice: seam"',
+  'tree=$(export GIT_INDEX_FILE="$ROOT/main-index"; git read-tree origin/main && git update-index --add --cacheinfo "100644,$(git hash-object -w "$ROOT/contract.json"),.claude/contract.json" --cacheinfo "100644,$(printf "theirs\\n" | git hash-object -w --stdin),derived/index" && git write-tree)',
+  'sha=$(git commit-tree -p origin/main -m "Main moved" "$tree") && git push --quiet origin "$sha:refs/heads/main"',
+].join("\n");
 const stateOf = (run: ReturnType<typeof scheduling>) => Object.fromEntries((run.progress()?.slices ?? []).map(({ id, state }) => [id, state]));
 
 describe("bin/schedule runs a spec from its first cut to its landing, one slice at a time on an integration branch (#1509, ADR-0013)", () => {
@@ -95,6 +100,18 @@ describe("bin/schedule runs a spec from its first cut to its landing, one slice 
     expect(run.run().status).toBe(0);
     expect(run.sliced()[1]).toContain("Build seam\nMain moved\nStart");
     expect(git(run.remote, "rev-list", "--merges", "--count", SPEC_BRANCH)).toBe("0");
+  });
+
+  it("settles the integration branch onto a main that moved into a conflict only in its settle map's files, readying its tree with the contract's setup before a command that needs what setup installs, so the next slicer reads main's newest, where it built on without it until the finish (#1615)", () => {
+    const run = scheduling({ cuts: [[sliceOf("seam")], []], plans: { seam: [{ then: INDEXES_A_PART_AS_MAIN_DOES }] } });
+    plant(run.root, "contract.json", settleMapOf("[[ -e .git/installed ]] || { printf 'drizzle-kit: not found\\n' >&2; exit 127; }; ls parts >>derived/index", ": >.git/installed"));
+
+    const ended = run.run();
+
+    expect(ended.status, ended.stderr).toBe(0);
+    const moved = git(run.remote, "log", "--format=%H", "--grep=^Main moved$", "main");
+    expect(run.sliced()[1]).toContain(`chore: settle index after rebasing onto origin/main at ${moved.slice(0, 7)}\nIndex a part\nBuild seam\nMain moved\nStart`);
+    expect(git(run.remote, "show", `${SPEC_BRANCH}:derived/index`)).toBe("theirs\nmine");
   });
 
   it("lands a builder's answer again, with no model turn, when its slice no longer fast-forwards because another merged first", () => {

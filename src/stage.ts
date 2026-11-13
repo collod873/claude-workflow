@@ -1,9 +1,9 @@
-import { execFile, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import { onDisk } from "./brief.ts";
-import { type Asked, askedOn, git, gitRead, stoodDown, mark, type MarkedLabel } from "./post.ts";
+import { type Asked, askedOn, commandRefusedIn, git, gitRead, stoodDown, mark, type MarkedLabel, treePathed } from "./post.ts";
 import { quoted } from "./ticket-shape.ts";
 
 const STREAM = ["--output-format", "stream-json", "--verbose"];
@@ -112,8 +112,6 @@ export interface Spent {
   answer?: unknown;
 }
 
-export const treePathed = (env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv => (env.TREE_PATH === undefined || env.TREE_PATH === "" ? env : { ...env, PATH: `${env.TREE_PATH}:${env.PATH ?? ""}` });
-
 export const CONTRACT = join(".claude", "contract.json");
 
 export function treeNeeds(contract: string): { database: boolean; keys: string[] } {
@@ -129,16 +127,9 @@ const setupOf = (contract: string) => {
   return setup === undefined || setup.trim() === "" ? undefined : setup;
 };
 
-const unready = ({ status, stdout, stderr }: { status: number | null; stdout: string; stderr: string }) => (status === 0 ? undefined : `${stderr}${stdout}`.trim().split("\n").at(-1) || `it ended ${status}`);
-
-export function setupRefusedIn(tree: string, contract: string, env: Record<string, string> = {}): Promise<string | undefined> {
+export async function setupRefusedIn(tree: string, contract: string, env: Record<string, string> = {}): Promise<string | undefined> {
   const setup = setupOf(contract);
-  if (setup === undefined) return Promise.resolve(undefined);
-  return new Promise((resolve) => {
-    execFile("bash", ["-c", setup], { cwd: tree, env: treePathed({ ...process.env, ...env }), encoding: "utf8", maxBuffer: Infinity }, (error, stdout, stderr) => {
-      resolve(unready({ status: error === null ? 0 : typeof error.code === "number" ? error.code : null, stdout, stderr }));
-    });
-  });
+  return setup === undefined ? undefined : (await commandRefusedIn(tree, setup, env))?.lastLine;
 }
 
 interface Exited {
