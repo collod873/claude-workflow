@@ -130,7 +130,8 @@ async function spentIsolated(tree: string, issue: string, input: string): Promis
   if (typeof isolation === "string") return { stdout: "", refusal: isolation };
   const unready = setupFailed(await setupRefusedIn(tree, onDisk(join(tree, CONTRACT)) ?? "", { ...isolation }));
   if (unready !== undefined) return { stdout: "", refusal: unready };
-  return hireIn(tree, "done-check", issue, HIRE, { ...isolation })(input).finally(() => reapedUnder([tree, isolation.TMPDIR]));
+  const reaped = tree === process.cwd() ? [isolation.TMPDIR] : [tree, isolation.TMPDIR];
+  return hireIn(tree, "done-check", issue, HIRE, { ...isolation })(input).finally(() => reapedUnder(reaped));
 }
 
 export const paired = (listed: Sentence[], tries: Try[]): [number, string, Try | undefined][] =>
