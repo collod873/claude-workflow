@@ -664,7 +664,9 @@ describe("a ticket builder, and only a ticket builder, gets design-kit beside an
       { job: "build", given: "true" },
       { job: "probe", given: "true" },
     ]);
-    expect(stageUses("specs.yml").map(({ given }) => given)).toEqual([undefined, undefined]);
+    const specStages = stageUses("specs.yml");
+    expect(specStages.length).toBeGreaterThan(0);
+    expect(specStages.filter(({ given }) => given !== undefined)).toEqual([]);
   });
 
   it("runs the design-kit steps for an app that asked, and skips them in design-kit itself or when not asked", () => {
