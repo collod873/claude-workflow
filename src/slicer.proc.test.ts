@@ -30,6 +30,7 @@ describe("bin/slice answers the scheduler with the spec's next slices, never fil
     expect(sliced.run().status).toBe(0);
     const [handed = ""] = sliced.handed();
     expect(handed).toContain("Cut the seams first");
+    expect(handed).toContain("never cut a back end alone for a later slice's screen");
     expect(handed).toContain("a spec is filed once, so the slicer and the done check share one document");
     expect(handed).toContain("(nothing built yet)");
     expect(handed).not.toContain("Answer no slice when nothing is left");
