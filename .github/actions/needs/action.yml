@@ -1,5 +1,5 @@
 name: Needs
-description: Readies what the tree's contract says it needs before a stage starts. Postgres starts when a step or the contract's top-level needs names DATABASE_URL, and its address is handed on as DATABASE_URL once it takes connections. Every other name under the top-level needs is a key, handed on from the repo's secrets, and each one the secrets lack is named in UNSET_KEYS and the log, so the builder and the done check see what the app sees
+description: Readies what the tree's contract says it needs before a stage starts. Postgres starts when a step or the contract's top-level needs names DATABASE_URL, and its address is handed on as DATABASE_URL once it takes connections. Every other name under the top-level needs is a key, handed on from the repo's secrets, and each one the secrets lack is named in UNSET_KEYS and the log, so the builders and a spec's reviewer see what the app sees
 
 inputs:
   secrets:

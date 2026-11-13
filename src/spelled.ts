@@ -18,7 +18,7 @@ export const LABELS = [
   { name: "research", kind: "kind", colour: KIND_GREY, description: "A note the machine answers and closes when filed" },
   { name: "owner-step", kind: "kind", colour: KIND_GREY, description: "A note naming a step only the owner can take; nothing builds or researches it" },
   { name: "building", kind: "state", colour: STATE_BLUE, description: "The builder is writing the ticket's code, or a spec's slices are building" },
-  { name: "checking", kind: "state", colour: STATE_BLUE, description: "Reviewers read a green ticket or spec branch and land it, or the done check tries a spec's sentences" },
+  { name: "checking", kind: "state", colour: STATE_BLUE, description: "A reviewer reads a green ticket or spec branch and lands it, and a landed spec closes" },
   { name: "slicing", kind: "state", colour: STATE_BLUE, description: "The slicer is cutting a spec's next slices" },
   { name: "researching", kind: "state", colour: STATE_BLUE, description: "The researcher is answering this note" },
   { name: "waiting", kind: "parked", colour: "fbca04", description: "Waits for other tickets, or another repo's full checks, before it builds" },

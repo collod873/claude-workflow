@@ -27,8 +27,8 @@ _Avoid_: core, new core, v2
 **Caller file**:
 The one workflow another repo carries to have its tickets built and its specs and research notes
 run: its triggers and calls to `tickets.yml` and `specs.yml` here, nothing else, so none of the
-machine is copied into it. `.github/caller.yml` is its text. Its specs are tried on its own checkout,
-readied by its contract's setup. Reconcile wakes a builder by taking `waiting` off its ticket, which
+machine is copied into it. `.github/caller.yml` is its text. Its specs' closing lines are run on its own
+checkout, readied by its contract's setup. Reconcile wakes a builder by taking `waiting` off its ticket, which
 the caller's `issues: unlabeled` hears from its default branch alone, so the file lands on
 main before any ticket there builds. A builder it reaches passes a check red only for
 `(needs ...)` steps, which the machine's runner lacks, or unpublished receipts; that repo's CI
@@ -39,7 +39,7 @@ _Avoid_: shim, wrapper, vendored workflow
 A stage run is home when it has no caller file or its caller file (named by `CALLED_FROM`)
 is in the machine's own repo, foreign otherwise. A home run
 behaves as this repo's stage workflows did before Gaps first: the builder lands a `machine` outcome on
-main and fails a check on any red step, `(needs ...)` ones included; the done check gets this repo's running-system line.
+main and fails a check on any red step, `(needs ...)` ones included.
 _Avoid_: local, own-repo mode
 
 **Gaps first**:
@@ -115,9 +115,9 @@ _Avoid_: gate (for a step), gauntlet, a repo-local check script, static check
 The secrets a repo's contract names in its `needs` list, beside its steps. That list is what the tree
 needs from outside: `DATABASE_URL` there, or under any step's `needs`, gets its own Postgres, and every
 other name is a key. One `needs` step in every job that runs a stage hands each key the repo's secrets
-hold to its stages, so the builders and the done check see what the app sees, and names the rest in
-`UNSET_KEYS`: a builder proves code resting on one against a stand-in and names the key, and the done
-check puts a sentence resting on one to the owner.
+hold to its stages, so the builders and a spec's reviewer see what the app sees, and names the rest in
+`UNSET_KEYS`: a builder proves code resting on one against a stand-in and names the key, and a spec's
+reviewer answers a closing line resting on one `unrun`, naming the key.
 _Avoid_: env, credentials, test keys
 
 **Settle map**:
@@ -147,18 +147,19 @@ _Avoid_: fixer, mechanic, fresh eyes, repair agent
 **Reviewer**:
 A fresh agent with the builder's access, in the builder's run: it reads the ticket, commit messages
 and diff, fixes what it finds or approves, and lands it with `bin/land`, which hands back what it refuses. Nothing goes back to the builder (ADR-0012). It files owner steps as `owner-step` notes
-and what it lets through as research does. A spec's finish hires one beside its done check: handed
-each slice's brief, it holds the whole branch to the spec and the code standard. The full check
-follows, a red going back to the last until green. It works in a tree the contract's setup readied.
-Only a diff over 200 KB splits it into **packs**: whole slices packed into as few as fit under that
-cap, one reviewer each, at most three at once, each in its own tree on `review/<N>-<k>` and rebased
-onto the integration branch as it answers.
+and what it lets through as research does. A spec's finish hires one over the whole integration
+branch, whatever its size: handed each slice's brief, it holds the branch to the spec and the code
+standard and runs each closing line, making true what is not. It works in that branch's tree, readied
+by the contract's setup, with its own port, Postgres and temp dir; what it leaves running is stopped
+once it answers. The full check follows, a red going back to it until green. `stuck` is for a fault in
+the machine alone: an open choice it makes, builds and names in `reason`.
 _Avoid_: review job, judge, second builder
 
 **Closing**:
 No stage closes, queues or merges by itself: waking what a closed issue blocked is reconcile's alone (#1606). A ticket closes on its PR's `Closes #N`, which `bin/land --ticket`
 writes, and a session's commit may close an issue the same way, since `bin/land` merges only past
-the full check. A spec closes on landing, from its done check's tries; `bin/land --spec` refuses a
+the full check. A spec closes on landing, under one comment listing each closing line and how it
+came out; `bin/land --spec` refuses a
 commit that closes it by keyword. Every stage stands down on a closed or held issue.
 _Avoid_: closer, merger, queue, landing job
 
@@ -181,15 +182,14 @@ The `run-name` the caller file carries, so every run under it names what it does
 its issue, a dispatch's rerun or probe, as `.github/caller.yml` spells each.
 _Avoid_: run title, display name
 
-**Done check**:
-The stage that tries each of a spec's `## Done when` lines, then each of
-its numbered user stories, on its integration branch as built, before it lands, in its own tree, port and Postgres, beside the reviewer. It
-refuses nothing: its misses go once to the last reviewer, a fixed one lands with the spec, and the
-rest are filed as bugs quoting what it saw once the spec has landed, when it also comments and
-closes the spec. A sentence put to the owner holds nothing open and files nothing: the closing
-comment says what the owner could try, and a miss seen live later is a new ticket. An owner step is
-missing work, never a try (agent-hooks#83).
-_Avoid_: audit, acceptance test, verification
+**Closing line**:
+One `- [ ]` item under a spec's `## Done when`: what is true once it is done, which the machine can
+run without the owner. The spec's reviewer runs each before the spec lands and answers `held`,
+`fixed`, `missed` or `unrun`. None holds the spec: a `missed` line lands and is filed as a bug quoting
+what the reviewer ran, once the spec has landed; an `unrun` line, one nothing in the run could run,
+files nothing, the closing comment saying what was missing. A user story is held by reading the code,
+never run. An owner step is missing work, never a line to run (agent-hooks#83).
+_Avoid_: done check, sentence, try, acceptance test, verification
 
 **Integration branch**:
 `spec/<N>`, the one branch a spec builds on; every slice fast-forwards it, it is rebased onto main
@@ -214,10 +214,11 @@ _Avoid_: ready queue
 
 **Scheduler**:
 `bin/schedule`, the code that runs a spec, hiring each fresh slicer and slice builder, at most
-three at once, then `bin/finish` (reviewer and done check, full check, `bin/land`); it holds no
+three at once, then `bin/finish` (reviewer, full check, `bin/land`); it holds no
 model context. Its state is the integration branch and the `## Spec run` progress comment it
-writes, where `bin/finish` stamps the landing alone, so a rerun resumes from them: once the spec has landed, it closes from the tries the progress
-comment recorded, and runs the done check on `main` only when none were recorded.
+writes, where `bin/finish` records each closing line's outcome, then the landing, so a rerun resumes
+from them: a landed spec closes from the outcomes recorded, hiring no one, a line with none listed
+`unrun`.
 _Avoid_: orchestrator
 
 **Ticket**:

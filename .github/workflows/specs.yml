@@ -143,7 +143,7 @@ jobs:
           STAGE_MINUTES: 45
           CALLED_FROM: ${{ github.workflow_ref }}
         run: |
-          tail --pid=$$ -q -n +1 -F .git/machine-logs/slice-${{ github.event.issue.number }}.jsonl .git/machine-logs/done-check-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
+          tail --pid=$$ -q -n +1 -F .git/machine-logs/slice-${{ github.event.issue.number }}.jsonl .git/machine-logs/finish-${{ github.event.issue.number }}.jsonl 2>/dev/null | jq -Rr --unbuffered -f "$FEED" &
           "$GITHUB_WORKSPACE/bin/schedule" ${{ github.event.issue.number }}
 
       - if: always() && steps.schedule.outcome != 'skipped'

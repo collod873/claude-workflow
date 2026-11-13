@@ -156,7 +156,7 @@ for commit in $(git rev-list "origin/$default_branch..HEAD"); do
   esac
 
   if [[ -n $spec ]] && grep -qiE "$closing_keyword" <<<"$message"; then
-    printf 'land: commit %s closes spec #%s by keyword, so nothing landed; only its done check closes it: reword it\n' "$(git rev-parse --short=7 "$commit")" "$spec" >&2
+    printf 'land: commit %s closes spec #%s by keyword, so nothing landed; only bin/finish closes it, once it has landed: reword it\n' "$(git rev-parse --short=7 "$commit")" "$spec" >&2
     exit 1
   fi
 done

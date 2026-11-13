@@ -18,7 +18,7 @@ describe("bin/schedule runs a spec from its first cut to its landing, one slice 
 
     const ended = run.run();
 
-    expect(ended).toMatchObject({ status: 0, stdout: `schedule: #${SPEC_ISSUE} landed as #${LANDED}, and its done check found every sentence held or put to the owner\n` });
+    expect(ended).toMatchObject({ status: 0, stdout: `schedule: #${SPEC_ISSUE} landed as #${LANDED} and closed\n` });
     expect(run.order()).toEqual([`slice ${SPEC_ISSUE}`, `mark ${SPEC_ISSUE} building`, "build seam start", "build seam built", `slice ${SPEC_ISSUE}`, `finish ${SPEC_ISSUE}`]);
     expect(run.onRemote(SPEC_BRANCH)).toEqual(["Build seam", "Start"]);
     expect(run.finished()[0]).toContain(`branch=${SPEC_BRANCH}\nBuild seam\nStart`);
@@ -255,10 +255,10 @@ describe("bin/schedule runs a spec from its first cut to its landing, one slice 
     expect(run.finished()).toEqual([]);
   });
 
-  it("ends once the spec lands and its done check files a miss as a bug, slicing nothing more and calling no owner, where #1689 sat stuck after a fix pass that fixed nothing", () => {
+  it("ends once the spec lands and closes with a closing line filed as a bug, slicing nothing more and calling no owner, where #1689 sat stuck after a fix pass that fixed nothing", () => {
     const run = scheduling({ cuts: [[sliceOf("seam")], []], finishes: [{ missed: "2" }] });
 
-    expect(run.run()).toMatchObject({ status: 0, stdout: `schedule: #${SPEC_ISSUE} landed as #${LANDED}, and its done check filed sentence 2 as bugs\n` });
+    expect(run.run()).toMatchObject({ status: 0, stdout: `schedule: #${SPEC_ISSUE} landed as #${LANDED} and closed, with closing line 2 filed as a bug\n` });
     expect(run.sliced()).toHaveLength(2);
     expect(run.finished()).toHaveLength(1);
     expect(run.order()).not.toContain(`mark ${SPEC_ISSUE} stuck`);
@@ -271,10 +271,10 @@ describe("bin/schedule runs a spec from its first cut to its landing, one slice 
     expect(run.order()).not.toContain(`mark ${SPEC_ISSUE} stuck`);
   });
 
-  it("says the spec landed when its done check stands down marked stuck, rather than that the spec did not land", () => {
+  it("says the spec landed when bin/finish marks it stuck before closing it, rather than that the spec did not land", () => {
     const run = scheduling({ cuts: [[sliceOf("seam")], []], finishes: [{ status: 1, then: "printf 'stuck\\n' >>\"$ROOT/labels\"" }] });
 
-    expect(run.run()).toMatchObject({ status: 0, stdout: `schedule: #${SPEC_ISSUE} is marked stuck, so it stood down after the spec landed as #${LANDED}, with its done check unfinished\n` });
+    expect(run.run()).toMatchObject({ status: 0, stdout: `schedule: #${SPEC_ISSUE} is marked stuck, so it stood down after the spec landed as #${LANDED}, not yet closed\n` });
   });
 
   it("says the spec landed when bin/finish ends red after landing it", () => {
@@ -283,15 +283,15 @@ describe("bin/schedule runs a spec from its first cut to its landing, one slice 
     const ended = run.run();
 
     expect(ended.status).toBe(1);
-    expect(ended.stderr).toContain(`schedule: #${SPEC_ISSUE} ended red, bin/finish ${SPEC_ISSUE} ended 1 after the spec landed as #${LANDED}, with its done check unfinished, so a rerun goes straight to the done check`);
+    expect(ended.stderr).toContain(`schedule: #${SPEC_ISSUE} ended red, bin/finish ${SPEC_ISSUE} ended 1 after the spec landed as #${LANDED}, not yet closed, so a rerun goes straight to closing it`);
   });
 
-  it("goes straight to bin/finish, hiring no slicer and no builder, when its progress comment records the spec landed with its done check unfinished, and clears that record once the done check runs", () => {
+  it("goes straight to bin/finish, hiring no slicer and no builder, when its progress comment records the spec landed and not yet closed, and clears that record once it closes", () => {
     const merged = { ...sliceOf("seam"), state: "merged", tries: 1, session: "session-seam-1" };
     const progress = `## Spec run\n\n<!-- progress: ${JSON.stringify({ landed: LANDED, slices: [merged] })} -->\n`;
     const run = scheduling({ comments: [machineComment(7, progress)], finishes: [{ missed: "2" }] });
 
-    expect(run.run()).toMatchObject({ status: 0, stdout: `schedule: #${SPEC_ISSUE} landed as #${LANDED}, and its done check filed sentence 2 as bugs\n` });
+    expect(run.run()).toMatchObject({ status: 0, stdout: `schedule: #${SPEC_ISSUE} landed as #${LANDED} and closed, with closing line 2 filed as a bug\n` });
     expect(run.order()).toEqual([`finish ${SPEC_ISSUE}`]);
     expect(run.built("seam")).toBeUndefined();
   });
@@ -372,7 +372,7 @@ describe("bin/schedule runs a spec from its first cut to its landing, one slice 
     expect(run.order()).toEqual([]);
   });
 
-  it("stands down green on a closed spec, hiring nothing and running no finish, where #2060's second run resumed after the spec closed and filed a duplicate bug from a second done check", () => {
+  it("stands down green on a closed spec, hiring nothing and running no finish, where #2060's second run resumed after the spec closed and filed a duplicate bug", () => {
     const run = scheduling({ state: "CLOSED", cuts: [[sliceOf("seam")]] });
 
     expect(run.run()).toMatchObject({ status: 0, stdout: `schedule: #${SPEC_ISSUE} is closed, so nothing was hired\n` });

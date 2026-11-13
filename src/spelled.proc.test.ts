@@ -28,7 +28,7 @@ const KEYS = [
 ] as const;
 const SPELLED = [...KEYS, ["TICKET_PREFIX", "ticket/"], ["SPEC_PREFIX", "spec/"], ["OWNER", "collod873"], ["MACHINE", "collod873-machine[bot]"], ["OWNER_CALL", "owner call"]] as const;
 const USAGE = `spelled: usage: spelled labels | <key>\nspelled: keys: ${SPELLED.map(([key]) => key).join("|")}\n`;
-const NAMING = ["post.ts", "slicer.ts", "scheduler.ts", "done-checker.ts", "researcher.ts", "builder.ts"].map((file) => join(BIN, "..", "src", file));
+const NAMING = ["post.ts", "slicer.ts", "scheduler.ts", "finish.ts", "researcher.ts", "builder.ts"].map((file) => join(BIN, "..", "src", file));
 
 function rawLabels(files: string[], names: string[]): string[] {
   const program = ts.createProgram(files, { strict: true, noEmit: true, allowImportingTsExtensions: true, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, target: ts.ScriptTarget.ESNext });
@@ -81,7 +81,7 @@ describe("bin/spelled prints the machine's labels from one typed set, so no scri
     expect(labelled).toEqual(SPELLED.map(([key, name]) => [key, name]));
   });
 
-  it("leaves the GitHub part, the slicer, the scheduler, the done check, the researcher and the builder no raw string or second constant for a label (#1118)", () => {
+  it("leaves the GitHub part, the slicer, the scheduler, the finish, the researcher and the builder no raw string or second constant for a label (#1118)", () => {
     const names = rows().map(([name]) => name ?? "");
     const planted = scratch("spelled-raw-");
     plant(

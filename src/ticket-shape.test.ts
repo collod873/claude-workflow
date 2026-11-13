@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { handedOn as builderBrief } from "./builder.ts";
-import { BUG_SHAPE, BUILD_SHAPE, DONE_SENTENCES, IDEA_SHAPE, SPEC_CAP, SPEC_SHAPE, WHY_SHAPE, bugRefusals, noteRefusals, sentences, specRefusals, ticketRefusals } from "./ticket-shape.ts";
+import { BUG_SHAPE, BUILD_SHAPE, DONE_SENTENCES, IDEA_SHAPE, SPEC_CAP, SPEC_SHAPE, WHY_SHAPE, bugRefusals, noteRefusals, closingLines, specRefusals, ticketRefusals } from "./ticket-shape.ts";
 
 const QUOTED = 'The owner, in session: "file a ticket the machine can build".';
 const SIGNAL = "The Signals of the session read:\n\n> hookkit: check-gate crashed 3 times: TypeError: Cannot read properties of undefined";
@@ -246,23 +246,17 @@ describe("the builder's split and bin/file-issue --help ask for a Done when as w
   });
 });
 
-describe("a spec filed before its closing heading became '## Done when' still runs", () => {
-  it("lists the sentences under its '## I'll know it works when I can'", () => {
+describe("a spec's closing lines are the items under its '## Done when', which its reviewer runs before it lands", () => {
+  it("lists the lines under an earlier spec's '## I'll know it works when I can', so a spec filed before the heading changed still runs", () => {
     const filedEarlier = specBody({ sentences: ["- [ ] see a spec land as its own issue"] }).replace("## Done when", "## I'll know it works when I can");
-    expect(sentences(filedEarlier).map(({ said }) => said)).toContain("see a spec land as its own issue");
+    expect(closingLines(filedEarlier)).toEqual(["see a spec land as its own issue"]);
   });
-});
 
-describe("the done check tries a spec's user stories as well as its sentences, so a story no screen reaches cannot close the spec", () => {
-  it("lists each sentence, then each numbered story without its number", () => {
+  it("lists each '- [ ]' item, a plain line under one folded into it, and no user story, since a story is held by reading the code", () => {
     const body = specBody({
       stories: ["1. As the owner, I can file a spec before any ticket exists.", "2) As a tech, I can unbook a visit nobody started."],
-      sentences: ["- [ ] see a spec land as its own issue"],
+      sentences: ["- [ ] see a spec land as its own issue,", "  labelled spec", "- [x] see it close"],
     });
-    expect(sentences(body).map(({ said }) => said)).toEqual([
-      "see a spec land as its own issue",
-      "As the owner, I can file a spec before any ticket exists.",
-      "As a tech, I can unbook a visit nobody started.",
-    ]);
+    expect(closingLines(body)).toEqual(["see a spec land as its own issue, labelled spec", "see it close"]);
   });
 });
