@@ -21,7 +21,7 @@ _Avoid_: fix, spot fix
 ### The machine
 
 **Machine**:
-This repo: `src/` and `bin/`. There is one machine and this is it.
+This repo's `src/` and `bin/`, the one machine there is.
 _Avoid_: core, new core, v2
 
 **Caller file**:
@@ -32,7 +32,7 @@ readied by its contract's setup. Reconcile wakes a builder by taking `waiting` o
 the caller's `issues: unlabeled` hears from its default branch alone, so the file lands on
 main before any ticket there builds. A builder it reaches passes a check red only for
 `(needs ...)` steps, which the machine's runner lacks, or unpublished receipts; that repo's CI
-judges its PR. A `DATABASE_URL` step is not one: the builder's job starts Postgres.
+judges its PR. A `DATABASE_URL` step is not one.
 _Avoid_: shim, wrapper, vendored workflow
 
 **Home**:
@@ -120,6 +120,12 @@ hold to its stages, so the builders and the done check see what the app sees, an
 check puts a sentence resting on one to the owner.
 _Avoid_: env, credentials, test keys
 
+**Settle map**:
+A contract's `settle` entries, each the derived `files` its `run` rebuilds: a rebase onto main that
+conflicts only in them takes main's side, runs main's entries and commits the rebuild, in `bin/land`
+and the scheduler; any other conflict leaves the branch as it was.
+_Avoid_: conflict resolver, merge driver
+
 **Meter**:
 A rule that reports in the PR body what it would have refused, and refuses nothing. None runs now
 (ADR-0006, ADR-0012).
@@ -165,9 +171,9 @@ by an open issue is parked: filed `waiting`, linked, then labelled `spec` or `ti
 _Avoid_: PRD document, requirements doc, brief
 
 **Slicer**:
-The stage that cuts a spec into slices with their blocked-by edges, the seams first, each slice at
-its last responsible moment. The scheduler hires a fresh one at the start and after each merge,
-reading the integration branch as built and the slices in flight; it files no ticket.
+The stage that cuts a spec into slices with their blocked-by edges, the seams first. The
+scheduler hires a fresh one at the start and after each merge, reading the integration branch as
+built and the slices in flight; it files no ticket.
 _Avoid_: splitter, decomposer, to-tickets, planner
 
 **Run names**:
@@ -187,8 +193,8 @@ _Avoid_: audit, acceptance test, verification
 
 **Integration branch**:
 `spec/<N>`, the one branch a spec builds on; every slice fast-forwards it, it is rebased onto main
-before each slicer, and it lands once (ADR-0013). Each slice builds on `slice/<N>-<id>`, and each
-of its commits carries a `Slice: <id>` trailer.
+before each slicer unless that conflicts past the settle map, and it lands once (ADR-0013). Each
+slice builds on `slice/<N>-<id>`, and each of its commits carries a `Slice: <id>` trailer.
 _Avoid_: spec branch
 
 **Slice**:
@@ -253,7 +259,7 @@ _Avoid_: idea, bug, backlog item, memo
 
 **Stage**:
 One agent process in a pipeline run, with no memory of other stages. Not an Actions job or step: a
-stage is a context boundary and they are not. Each stage declares itself in its own **Part file**, `src/<stage>.part.ts`, and its own stops in its own
+stage is a context boundary and they are not. Each stage declares itself in its own **Part file** and its own stops in its own
 code; every growth limit finds them by scanning, so no two stages share a list. Its prompt is in its
 **own words**: written for its job in its own module, sharing no prose with another stage's, and
 pointing at a skill for any rule a skill holds; the prompts step refuses two stages' prompts that
@@ -273,7 +279,7 @@ _Avoid_: helpers
 **Stage opening**:
 How a stage starts on its issue, in `src/stage.ts`: it reads the issue once, red if it cannot, ends
 green in one line on `paused` or `stuck`, changing and hiring nothing, then marks the stage's state
-and hires. The **stage loop** runs its rounds.
+and hires.
 _Avoid_: preamble, setup, bootstrap
 
 **Stage loop**:
@@ -293,8 +299,7 @@ An issue the machine labelled `stuck`, its last resort: a stage that cannot go o
 stuck marks it at once; a dead run marks it only when its re-run dies too.
 Its comment names the run that stopped, red or out of time, links both runs, and asks the owner
 to read the re-run and take `stuck` off once it is fixed.
-Like `paused` it is `held`, so every stage stands down on it; the machine adds it but never
-removes it.
+Like `paused` it is `held`; the machine adds it but never removes it.
 _Avoid_: blocked, failed
 
 **Rerun**:
@@ -316,8 +321,7 @@ _Avoid_: self-heard rerun, rerun workflow
 **Owning repo**:
 The one repo a kind of fix belongs in: this one for the machine, `design-kit` for a kit primitive,
 `agent-skills` for a skill or shared tool. A builder whose ticket's first step belongs there answers
-`owned`: it files that step there as a ticket and its own ticket waits on it. It is blocked by that
-step, and the step's close wakes it through reconcile in the step's repo.
+`owned`: it files that step there as a ticket and its own ticket waits on it, blocked by that step.
 _Avoid_: upstream, other repo, dependency
 
 **Probe**:
@@ -329,7 +333,7 @@ _Avoid_: dry run, smoke test
 A GitHub call that fails on a server error, a rate limit, a timeout or a not-found. Every call the
 machine makes goes through `bin/github`, which tries a blip up to 3 times, 1s then 2s apart, and logs
 each try again, before the call fails; a call for which a not-found is the answer, like a ticket's
-missing parent, says `--missing-answers`. A blip is absorbed at its call, a rerun at its run.
+missing parent, says `--missing-answers`.
 _Avoid_: flake, glitch
 
 **Sonnet builders trial**:
@@ -346,10 +350,8 @@ the spent one when another moved first; it ends red only when both are spent. `c
 _Avoid_: backup token, second key
 
 **Resume**:
-Setting a held issue going again. Taking `waiting` off a ticket resumes its build; reconcile does it
-once every issue blocking it has closed. Taking `paused`
-or `stuck` off a ticket that then holds neither builds it again on its last branch,
-its builder resuming its session. Taking either off an open spec that then holds neither runs its
+Setting a held issue going again. Taking `waiting` off a ticket resumes its build. Taking `paused`
+or `stuck` off a ticket that then holds neither builds it again on its last branch. Taking either off an open spec that then holds neither runs its
 scheduler again from its integration branch and progress comment, resuming each out slice's builder with the reason it stopped.
 _Avoid_: unpause, restart, unblock
 

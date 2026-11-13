@@ -19,6 +19,8 @@ interface Step {
   why?: string;
 }
 
+export const settleMapOf = (run: string) => JSON.stringify({ settle: { index: { files: ["derived"], run, why: "derived/index lists parts/, so two branches that each add a part both rewrite it" } } });
+
 export function contractSteps(contract: string): Record<string, Step> {
   return (JSON.parse(contract) as { steps?: Record<string, Step> }).steps ?? {};
 }

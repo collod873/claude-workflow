@@ -8,6 +8,7 @@ import { parkedBehind } from "./builder.ts";
 import { park } from "./issue-links.ts";
 import { askedOn, calledOwner, commentEdited, commentOnTicket, endedRed, gh, ghRead, git, gitRead, standingOn, stoodDownOrWaiting, machineBin, mark, readOrStop, rebuiltOnMain, rebuiltRef, STUCK, unread } from "./post.ts";
 import type { Try } from "./done-checker.ts";
+import { rebaseRefusedOnto } from "./settle.ts";
 import type { Slice } from "./slicer.ts";
 import { BUILDING, MACHINE, SONNET_BUILDERS, SPEC, SPEC_PREFIX } from "./spelled.ts";
 import type { Hire } from "./stage.ts";
@@ -138,12 +139,12 @@ function readied(spec: string): void {
   if (!kept) pushed(spec);
 }
 
-function rebasedOntoMain(spec: string): void {
+async function rebasedOntoMain(spec: string): Promise<void> {
   fetchedMain();
   cleaned();
-  if (git(["rebase", "--quiet", "origin/main"]).status !== 0) {
-    git(["rebase", "--abort"]);
-    console.error(`schedule: #${spec}'s ${specBranch(spec)} does not rebase cleanly onto origin/main, so it builds on without main's newest`);
+  const unrebased = await rebaseRefusedOnto("origin/main");
+  if (unrebased !== undefined) {
+    console.error(`schedule: #${spec}'s ${specBranch(spec)} ${unrebased.refusal}, so it builds on without main's newest`);
     return;
   }
   pushed(spec);
@@ -367,7 +368,7 @@ async function scheduled(spec: string, app: AppKey | undefined): Promise<number>
   for (;;) {
     const held = stoodDownOrWaiting(standingOn(spec, gh));
     if (held === undefined && plan && !slicerStopped) {
-      rebasedOntoMain(spec);
+      await rebasedOntoMain(spec);
       const cut = cutBySlicer(spec, logs);
       fresh("its slicer");
       markedBuilding = false;

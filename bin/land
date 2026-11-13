@@ -18,6 +18,7 @@ elif [[ $# -ne 0 ]]; then
 fi
 
 github="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/github"
+src="$(cd "${github%/*}/../src" && pwd)"
 head=$(git rev-parse HEAD) || exit 1
 top=$(git rev-parse --show-toplevel)
 log="$(git rev-parse --path-format=absolute --git-common-dir)/machine-logs/land-${head:0:7}-${top##*/}.log"
@@ -94,10 +95,14 @@ began=$head
 onto_default_branch() {
   if [[ -n $(git rev-list "origin/$default_branch..HEAD") ]] && ! git merge-base --is-ancestor "origin/$default_branch" HEAD; then
     stage=rebase
-    if ! { git rebase --quiet "origin/$default_branch" >/dev/null; } 2>"$err"; then
+    unrebased=$(node "$src/settle.ts" "origin/$default_branch" 2>"$err")
+    rebase_ended=$?
+    if (( rebase_ended != 0 )); then
       { printf -- '--- git rebase origin/%s ---\n' "$default_branch"; cat "$err"; } >>"$log"
-      conflicted=$(git diff --name-only --diff-filter=U | paste -sd, - | sed 's/,/, /g')
-      git rebase --abort >/dev/null 2>&1 # quiet: the rebase's own error is already in the log
+      if (( rebase_ended != 3 )); then
+        printf 'land: the rebase onto origin/%s could not run, so nothing landed; log %s\n' "$default_branch" "$shown" >&2
+        exit 1
+      fi
       checkout=$(git symbolic-ref --quiet --short HEAD || git rev-parse --short HEAD)
       pr_left=${url:+$url is left open and }
       if [[ -n $url && $branch == land/* ]]; then
@@ -105,8 +110,8 @@ onto_default_branch() {
         call "git push --delete" git push --quiet origin --delete "$branch"
         pr_left="$url is closed, since the next landing opens its own, and "
       fi
-      printf 'land: HEAD does not rebase cleanly onto origin/%s%s, so nothing landed; %sthis checkout is left on %s as it was: run git rebase origin/%s and resolve them\n' \
-        "$default_branch" "${conflicted:+, conflicting in $conflicted}" "$pr_left" "$checkout" "$default_branch" >&2
+      printf 'land: HEAD %s, so nothing landed; %sthis checkout is left on %s as it was: run git rebase origin/%s and resolve them\n' \
+        "$unrebased" "$pr_left" "$checkout" "$default_branch" >&2
       exit 1
     fi
     head=$(git rev-parse HEAD)
@@ -127,7 +132,6 @@ fi
 
 closing_keyword='\b(close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)\b:?[ \t]+#'"$spec"'\b'
 
-src="$(cd "${github%/*}/../src" && pwd)"
 for commit in $(git rev-list "origin/$default_branch..HEAD"); do
   message=$(git log -1 --format=%B "$commit")
   node "$src/em-dash.ts" <<<"$message"

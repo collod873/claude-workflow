@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -95,6 +95,17 @@ export async function readOrStop<Ended>(stage: string, run: () => Ended | Promis
     if (error instanceof Stopped) return endedRed(`${stage}: ${error.message}`);
     throw error;
   }
+}
+
+export const treePathed = (env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv => (env.TREE_PATH === undefined || env.TREE_PATH === "" ? env : { ...env, PATH: `${env.TREE_PATH}:${env.PATH ?? ""}` });
+
+export function commandRefusedIn(tree: string, command: string, env: Record<string, string> = {}): Promise<{ lastLine: string; output: string } | undefined> {
+  return new Promise((resolve) => {
+    execFile("bash", ["-c", command], { cwd: tree, env: treePathed({ ...process.env, ...env }), encoding: "utf8", maxBuffer: Infinity }, (error, stdout, stderr) => {
+      const output = `${stderr}${stdout}`;
+      resolve(error === null ? undefined : { lastLine: output.trim().split("\n").at(-1) || `it ended ${typeof error.code === "number" ? error.code : null}`, output });
+    });
+  });
 }
 
 export const machineBin = (command: string) => join(process.env.MACHINE_BIN ?? join(import.meta.dirname, "..", "bin"), command);
