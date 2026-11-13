@@ -35,29 +35,26 @@ function spentThenFresh(error: string, said: string) {
   vi.stubEnv("CLAUDE_CODE_OAUTH_TOKEN_2", FRESH);
   vi.stubEnv("SPENT_ERROR", error);
   vi.stubEnv("SPENT_SAYS", said);
+  process.chdir(tree);
   return { root, tree };
 }
 
+const startedIn = process.cwd();
 afterEach(() => {
+  process.chdir(startedIn);
   vi.unstubAllEnvs();
 });
 
 describe("account failover across hires running at once", () => {
   it("moves every hire that ended on a spent account to the fresh one, where a sibling moving first left the others red (#2749)", async () => {
     const { root, tree } = spentThenFresh("rate_limit", "You've hit your weekly limit · resets 5pm (America/New_York)");
-    const cwd = process.cwd();
-    process.chdir(tree);
-    try {
-      const reviewers = ["974-1", "974-2", "974-3"].map((seat) => hireIn(tree, "finish", seat, { name: "reviewer", model: "opus", effort: "medium" }));
+    const reviewers = ["974-1", "974-2", "974-3"].map((seat) => hireIn(tree, "finish", seat, { name: "reviewer", model: "opus", effort: "medium" }));
 
-      const spent = await Promise.all(reviewers.map((spend) => spend("review it")));
+    const spent = await Promise.all(reviewers.map((spend) => spend("review it")));
 
-      expect(spent.map(({ refusal }) => refusal)).toEqual([undefined, undefined, undefined]);
-      const tried = readFileSync(join(root, "accounts"), "utf8").split("\n").filter(Boolean);
-      expect(tried.filter((token) => token === FRESH)).toHaveLength(3);
-    } finally {
-      process.chdir(cwd);
-    }
+    expect(spent.map(({ refusal }) => refusal)).toEqual([undefined, undefined, undefined]);
+    const tried = readFileSync(join(root, "accounts"), "utf8").split("\n").filter(Boolean);
+    expect(tried.filter((token) => token === FRESH)).toHaveLength(3);
   });
 
   it.each([
