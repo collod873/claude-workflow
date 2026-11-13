@@ -1,15 +1,27 @@
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { appendFileSync, existsSync, readFileSync, rmSync } from "node:fs";
+import {
+  appendFileSync,
+  existsSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+} from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { LINTABLE, listedFiles, sha } from "./files.mjs";
+import { codeKeys, enabledRules } from "./code-keys.mjs";
+import { installedPackageDir, LINTABLE, listedFiles, sha } from "./files.mjs";
 
 const require = createRequire(import.meta.url);
 
+function packageDir(name) {
+  return realpathSync(dirname(require.resolve(`${name}/package.json`)));
+}
+
 export function packageBin(name, bin) {
-  return join(dirname(require.resolve(`${name}/package.json`)), bin);
+  return join(packageDir(name), bin);
 }
 
 export function stage(title, command, args, root, env = {}, verb = "lint") {
@@ -23,7 +35,16 @@ export function stage(title, command, args, root, env = {}, verb = "lint") {
   return result.status === 0;
 }
 
-function eslintRun(root, files) {
+const CODE_KEYED_CACHES = "node_modules/.cache/eslint-code";
+
+function cacheForCode(root, codeDigest) {
+  const caches = join(root, CODE_KEYED_CACHES);
+  for (const entry of existsSync(caches) ? readdirSync(caches) : [])
+    if (entry !== codeDigest) rmSync(join(caches, entry), { recursive: true, force: true });
+  return `${CODE_KEYED_CACHES}/${codeDigest}/`;
+}
+
+function eslintRun(root, files, cacheLocation) {
   const targets = files.length > 0 ? ["--no-warn-ignored", ...files] : ["."];
   return stageAsync(
     "eslint",
@@ -36,7 +57,7 @@ function eslintRun(root, files) {
       "--cache-strategy",
       "content",
       "--cache-location",
-      "node_modules/.cache/eslint/",
+      cacheLocation,
       ...targets,
     ],
     root,
@@ -52,16 +73,18 @@ const trees = new Map();
 async function treeFacts(root) {
   const { importClosures } = await import("./closure.mjs");
   const listed = listedFiles(root);
+  const held = new Set(listed);
   const toolchain = createHash("sha256");
   for (const file of listed.filter((name) => LOCKFILES.includes(name) || TSCONFIG.test(name)))
     toolchain.update(`${file}\0`).update(readFileSync(join(root, file)));
   return {
     listed,
+    held,
     toolchainDigest: toolchain.digest("hex"),
     ...importClosures(
       root,
       listed.filter((file) => LINTABLE.test(file)),
-      new Set(listed),
+      held,
     ),
   };
 }
@@ -158,24 +181,152 @@ function settingFacts(marked) {
   };
 }
 
-async function lintDigests(root, engine, candidates) {
-  const { listed, toolchainDigest, closureOf, contentOf, readsClosureOf } = await receiptTree(root);
-  const configs = listed.filter((file) => ESLINT_CONFIG.test(file));
-  const shared = sha(
-    JSON.stringify([toolchainDigest, configs.map((file) => [file, closureOf(file)])]),
+const TAILWIND_PACKAGE = "eslint-plugin-better-tailwindcss";
+const TAILWIND_SETTINGS = "better-tailwindcss";
+const TAILWIND_ENTRIES = ["entryPoint", "tailwindConfig"];
+const CSS_REFERENCE = /@(import|plugin|config|reference|source)\s+(?:url\(\s*)?["']([^"']+)["']/g;
+const REMOTE = /^[a-z][\w+.-]*:/i;
+const PACKAGE_NAME = /^((?:@[^/@.][^/]*\/)?[^/@.][^/]*)/;
+
+function cssClosure(root, entry, { held, closureOf }) {
+  const reached = new Map();
+  const pending = [[resolve(root, entry), `entry point "${entry}"`, "the lint config"]];
+  for (const [file, reference, from] of pending) {
+    if (reached.has(file)) continue;
+    if (!existsSync(file)) throw new Error(`lint: cannot resolve ${reference} in ${from}`);
+    const name = relative(root, file);
+    const text = readFileSync(file, "utf8");
+    reached.set(name, (held.has(name) && closureOf(name)) || sha(text));
+    if (!file.endsWith(".css")) continue;
+    for (const [, kind, target] of text.matchAll(CSS_REFERENCE)) {
+      if (kind === "source" || REMOTE.test(target)) continue;
+      const label = `@${kind} "${target}"`;
+      if (target.startsWith(".")) {
+        pending.push([resolve(dirname(file), target), label, name]);
+        continue;
+      }
+      const packageName = PACKAGE_NAME.exec(target)?.[1];
+      const dir = packageName && installedPackageDir(dirname(file), packageName);
+      if (!dir) throw new Error(`lint: cannot resolve ${label} in ${name}`);
+      const { version } = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
+      reached.set(label, `${packageName}@${version}`);
+    }
+  }
+  return [...reached].sort();
+}
+
+async function tailwindReads(root, config, code, tree) {
+  const entries = new Set();
+  for (const { id, options, rule } of enabledRules(config)) {
+    if ((await code.packageOf(rule)) !== TAILWIND_PACKAGE) continue;
+    const named = [options[0] ?? {}, config.settings?.[TAILWIND_SETTINGS] ?? {}].flatMap((source) =>
+      TAILWIND_ENTRIES.map((key) => source[key]),
+    );
+    const entry = named.find((value) => typeof value === "string");
+    if (entry === undefined)
+      throw new Error(
+        `lint: ${id} reads Tailwind's CSS, but neither its options nor settings["${TAILWIND_SETTINGS}"] name an ${TAILWIND_ENTRIES.join(" or ")}, so no receipt can key that CSS`,
+      );
+    entries.add(entry);
+  }
+  return [...entries].sort().map((entry) => cssClosure(root, entry, tree));
+}
+
+const DEPENDENCY_LISTS = [
+  "dependencies",
+  "devDependencies",
+  "optionalDependencies",
+  "peerDependencies",
+];
+
+function dependencyNames(root, listed) {
+  return listed
+    .filter((file) => basename(file) === "package.json")
+    .map((file) => {
+      const manifest = JSON.parse(readFileSync(join(root, file), "utf8"));
+      return [file, DEPENDENCY_LISTS.flatMap((list) => Object.keys(manifest[list] ?? {})).sort()];
+    });
+}
+
+function eslintToolchain(root, listed, packages) {
+  return {
+    tsconfigs: listed
+      .filter((file) => TSCONFIG.test(file))
+      .map((file) => [file, sha(readFileSync(join(root, file)))]),
+    dependencies: dependencyNames(root, listed),
+    packages,
+  };
+}
+
+function eslintShared(root, tree, code) {
+  const imported = tree.listed
+    .filter((file) => ESLINT_CONFIG.test(file))
+    .flatMap(tree.packagesImportedBy)
+    .map(([importer, name]) => installedPackageDir(dirname(join(root, importer)), name))
+    .filter(Boolean);
+  return sha(
+    JSON.stringify(
+      eslintToolchain(root, tree.listed, code.packagesFrom([...imported, packageDir("eslint")])),
+    ),
   );
+}
+
+function ruleBearing(block) {
+  if (block.plugins === undefined) return block;
+  const plugins = Object.fromEntries(
+    Object.entries(block.plugins).map(([name, plugin]) => [
+      name,
+      { rules: plugin.rules, processors: plugin.processors },
+    ]),
+  );
+  return { ...block, plugins };
+}
+
+async function codeDigestOf(root, code, tree) {
+  const { loadRootConfig } = await import("./verify.mjs");
+  const { blocks } = await loadRootConfig(root);
+  const keyedBlocks = await code.keyedValue(blocks.map(ruleBearing));
+  const entries = blocks.flatMap((block) => [
+    ...TAILWIND_ENTRIES.map((key) => block.settings?.[TAILWIND_SETTINGS]?.[key]),
+    ...Object.values(block.rules ?? {}).flatMap((setting) =>
+      Array.isArray(setting) ? TAILWIND_ENTRIES.map((key) => setting[1]?.[key]) : [],
+    ),
+  ]);
+  const css = [...new Set(entries.filter((entry) => typeof entry === "string"))]
+    .sort()
+    .map((entry) => cssClosure(root, entry, tree));
+  const resolutions = tree.listed
+    .filter((file) => LINTABLE.test(file))
+    .map((file) => [file, tree.resolutionsOf(file)]);
+  return sha(
+    JSON.stringify([
+      eslintShared(root, tree, code),
+      JSON.parse(JSON.stringify(keyedBlocks, sharedPart)),
+      css,
+      resolutions,
+    ]).replaceAll(root, "<root>"),
+  );
+}
+
+async function lintDigests(root, engine, candidates, code, tree) {
+  const { closureOf, contentOf, readsClosureOf, resolutionsOf } = tree;
   const configFacts = new Map();
-  const digested = await Promise.all(
+  const factsOf = async (config) => ({
+    digest: sha(
+      JSON.stringify([
+        sharedConfig(await code.keyedConfig(config)),
+        await tailwindReads(root, config, code, tree),
+      ]).replaceAll(root, "<root>"),
+    ),
+    ...settingFacts(markedSettings(config.settings, "settings", [])),
+  });
+  const keyed = await Promise.all(
     candidates.map(async (file) => {
       const path = join(root, file);
       if (await engine.isPathIgnored(path)) return undefined;
       const config = await engine.calculateConfigForFile(path);
-      if (!configFacts.has(config))
-        configFacts.set(config, {
-          digest: sha(JSON.stringify(sharedConfig(config)).replaceAll(root, "<root>")),
-          ...settingFacts(markedSettings(config.settings, "settings", [])),
-        });
-      const { digest, reads, named } = configFacts.get(config);
+      if (!configFacts.has(config)) configFacts.set(config, factsOf(config));
+      const { digest, reads, named } = await configFacts.get(config);
       const text =
         contentOf.has(file) && named.length === 0 ? undefined : readFileSync(path, "utf8");
       const own = contentOf.get(file) ?? sha(text);
@@ -185,12 +336,15 @@ async function lintDigests(root, engine, candidates) {
           : reads === FULL_CLOSURE
             ? closureOf(file)
             : readsClosureOf(reads)(file);
-      const parts = [shared, digest, file, own, imported ?? null];
+      const parts = [digest, file, own, imported ?? null, resolutionsOf(file)];
       if (named.length > 0) parts.push(namesHeldIn(named, text));
-      return [file, sha(JSON.stringify(parts))];
+      return [file, parts];
     }),
   );
-  return new Map(digested.filter(Boolean));
+  const shared = eslintShared(root, tree, code);
+  return new Map(
+    keyed.filter(Boolean).map(([file, parts]) => [file, sha(JSON.stringify([shared, ...parts]))]),
+  );
 }
 
 async function receiptedRun(handed, stage, digests, run) {
@@ -207,13 +361,24 @@ async function receiptedRun(handed, stage, digests, run) {
 
 export async function eslintStage(root, files, eslint) {
   const handed = process.env.CHECK_FILE_RECEIPTS;
-  if (!handed) return eslintRun(root, files);
-  const engine = eslint ?? new (await import("eslint")).ESLint({ cwd: root });
-  const candidates = (files.length > 0 ? files : (await receiptTree(root)).listed).filter((file) =>
-    LINTABLE.test(file),
-  );
-  const digests = await lintDigests(root, engine, candidates);
-  return receiptedRun(handed, "eslint", digests, (due) => eslintRun(root, due));
+  const tree = await receiptTree(root);
+  const code = await codeKeys({ root, held: tree.held, closureOf: tree.closureOf });
+  let digests;
+  let cache;
+  try {
+    cache = cacheForCode(root, await codeDigestOf(root, code, tree));
+    if (handed) {
+      const engine = eslint ?? new (await import("eslint")).ESLint({ cwd: root });
+      const candidates = (files.length > 0 ? files : tree.listed).filter((file) =>
+        LINTABLE.test(file),
+      );
+      digests = await lintDigests(root, engine, candidates, code, tree);
+    }
+  } finally {
+    await code.close();
+  }
+  if (!handed) return eslintRun(root, files, cache);
+  return receiptedRun(handed, "eslint", digests, (due) => eslintRun(root, due, cache));
 }
 
 const OXLINT_CONFIG = join(dirname(fileURLToPath(import.meta.url)), "oxlint.json");

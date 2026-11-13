@@ -1,9 +1,18 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
-import { join, matchesGlob } from "node:path";
+import { existsSync, realpathSync } from "node:fs";
+import { basename, dirname, join, matchesGlob } from "node:path";
 
 export const sha = (text) => createHash("sha256").update(text).digest("hex");
+
+export function installedPackageDir(fromDir, name) {
+  for (let dir = fromDir; ; dir = dirname(dir)) {
+    const candidate = join(dir, "node_modules", name);
+    if (basename(dir) !== "node_modules" && existsSync(join(candidate, "package.json")))
+      return realpathSync(candidate);
+    if (dirname(dir) === dir) return undefined;
+  }
+}
 
 export const LINTABLE = /\.(?:[cm]?[jt]s|[jt]sx)$/;
 
