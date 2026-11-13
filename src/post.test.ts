@@ -235,12 +235,12 @@ describe("src/post.ts reads what GitHub holds, stopping at unread itself, so no 
     { read: "the labels", run: (): unknown => standingOn("874", failing), line: "read: the labels of #874 could not be read, so nothing is marked" },
     { read: "the comments", run: () => authoredOn("874", "the comments on #874 could not be read", failing), line: "read: the comments on #874 could not be read" },
     { read: "the issue", run: () => opened("874", "#874 could not be read", failing), line: "read: #874 could not be read" },
-  ])("stops at unread naming the read when GitHub fails $read (#1099)", ({ run, line }) => {
+  ])("stops at unread naming the read when GitHub fails $read (#1099)", async ({ run, line }) => {
     const said: string[] = [];
     const error = console.error;
     console.error = (text: string) => said.push(text);
     try {
-      expect(readOrStop("read", run)).toBe(1);
+      expect(await readOrStop("read", run)).toBe(1);
     } finally {
       console.error = error;
     }

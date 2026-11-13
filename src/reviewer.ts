@@ -4,7 +4,7 @@ import { capped, DIFF_CAP, diffOverCap, LIST_CAP, NO_EM_DASH, TAIL_CAP, tailOf, 
 import { calledOwner, type Caller, commentOnTicket, fromHere, fromLine, gh, gitRead, standingOn, stoodDown, machineBin, mark } from "./post.ts";
 import { CHECKING } from "./spelled.ts";
 import { type Answered, approvedOn, filed, type FollowUps, gathered, MOST_FIXES, OWNER_STEPS, ROUTED, ROUTED_REQUIRED, stepsUnfileable } from "./follow-ups.ts";
-import { committed, commitlinted, head, hire } from "./stage.ts";
+import { committed, commitlinted, head, hireIn } from "./stage.ts";
 import { quoted } from "./ticket-shape.ts";
 
 const ANSWER = {
@@ -103,12 +103,12 @@ function triedAgainLater(ticket: string, refusal: string): number {
   return 1;
 }
 
-export function reviewedAndLanded(ticket: string, { body, alongside, said }: { body: string; alongside: string; said: string }, app: AppKey | undefined): number {
+export async function reviewedAndLanded(ticket: string, { body, alongside, said }: { body: string; alongside: string; said: string }, app: AppKey | undefined): Promise<number> {
   mark(ticket, CHECKING);
   const commits = gitRead(["log", "--reverse", "--format=- %s%n%n%b", "origin/main..HEAD"], "the commits past main could not be read, so nothing is reviewed");
   const diff = gitRead(["diff", "origin/main...HEAD"], "the diff from main could not be read, so nothing is reviewed");
   const stat = gitRead(["diff", "--stat", "origin/main...HEAD"], "the diff from main could not be read, so nothing is reviewed");
-  const spend = hire("review", ticket, { name: "reviewer", model: "opus", effort: "medium", answers: ANSWER });
+  const spend = hireIn(process.cwd(), "review", ticket, { name: "reviewer", model: "opus", effort: "medium", answers: ANSWER });
   let input = handedOn({ ticket, body, commits, diff, stat, alongside, said, commitlint: commitlinted() });
   const reasons: string[] = [];
   let named: FollowUps | undefined;
@@ -116,7 +116,7 @@ export function reviewedAndLanded(ticket: string, { body, alongside, said }: { b
   let idle = false;
   for (;;) {
     const before = head();
-    const spent = spend(input, session);
+    const spent = await spend(input, session);
     session = spent.session ?? session;
     if (spent.refusal !== undefined) return triedAgainLater(ticket, spent.refusal);
     if (app !== undefined) freshAppToken(app, gh, `so the review of #${ticket} is not acted on`);

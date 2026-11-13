@@ -4,7 +4,7 @@ import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
 import { capped, listedCapped, NO_EM_DASH, onDisk, tailOf } from "./brief.ts";
 import { askedOn, authoredOn, calledOwner, commentOnTicket, endedRed, followUpBody, fromHere, fromLine, FOREIGN, gh, OWNER, readOrStop, STUCK, stoodDown, type Asked } from "./post.ts";
 import { freePort, isolated, reapedUnder } from "./slice-builder.ts";
-import { CONTRACT, type Hire, hireIn, opened, setupRefusal, setupRefusedIn, type Spent, unsetKeys, WRITE_UP_MINUTES } from "./stage.ts";
+import { CONTRACT, type Hire, hireIn, opened, setupRefusedIn, type Spent, unsetKeys, WRITE_UP_MINUTES } from "./stage.ts";
 import { CHECKING, SPEC } from "./spelled.ts";
 import { quoted, type Sentence, sentences, SPEC_CAP } from "./ticket-shape.ts";
 
@@ -111,7 +111,7 @@ function repliesOn(issue: string): string {
 
 const setupFailed = (unready: string | undefined) => (unready === undefined ? undefined : `its tree's setup failed: ${quoted(unready)}`);
 
-function read(issue: string): (Read & { spend: (input: string) => Spent }) | number {
+async function read(issue: string): Promise<(Read & { spend: (input: string) => Promise<Spent> }) | number> {
   const spec = opened({
     stage: "done-check",
     issue,
@@ -123,7 +123,7 @@ function read(issue: string): (Read & { spend: (input: string) => Spent }) | num
     },
   });
   if (typeof spec !== "object") return spec;
-  const unready = setupFailed(setupRefusal(onDisk(join(process.cwd(), CONTRACT)) ?? ""));
+  const unready = setupFailed(await setupRefusedIn(process.cwd(), onDisk(join(process.cwd(), CONTRACT)) ?? ""));
   return unready === undefined ? { asked: spec.asked, ...spec.carried, spend: spec.spend } : doneCheckCalledOwner(issue, unready);
 }
 
@@ -185,11 +185,11 @@ export function postedOn(issue: string, listed: Sentence[], tries: Try[], fixed:
   return { missed: missed.map(([number]) => number) };
 }
 
-export function doneCheck(issue: string, app: AppKey | undefined): Checked | number {
-  const spec = read(issue);
+export async function doneCheck(issue: string, app: AppKey | undefined): Promise<Checked | number> {
+  const spec = await read(issue);
   if (typeof spec !== "object") return spec;
   if (app !== undefined) freshAppToken(app, gh, `so the done check of #${issue} is not tried`);
-  const tries = triesIn(spec.spend(handedFor(spec)), spec.listed);
+  const tries = triesIn(await spec.spend(handedFor(spec)), spec.listed);
   if (app !== undefined) freshAppToken(app, gh, `so the done check of #${issue} is not posted`);
   if (!Array.isArray(tries)) return doneCheckCalledOwner(issue, tries.refusal);
   return postedOn(issue, spec.listed, tries, []);
@@ -213,6 +213,6 @@ export async function triedIn(tree: string, issue: string): Promise<Try[] | { re
 if (import.meta.main) {
   const [issue] = process.argv.slice(2);
   if (issue === undefined) throw new Error("no issue number in the arguments");
-  const ended = readOrStop("done-check", () => doneCheck(issue, takenAppKey()));
+  const ended = await readOrStop("done-check", () => doneCheck(issue, takenAppKey()));
   process.exit(typeof ended === "number" ? ended : 0);
 }

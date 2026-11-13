@@ -556,14 +556,14 @@ async function finished(spec: string, app: AppKey | undefined): Promise<Finished
   leftFiled(spec, followUpsOf(run.left));
   const { pr, tried } = ended;
   if ("refusal" in tried) {
-    readOrStop("done-check", () => doneCheckCalledOwner(spec, tried.refusal));
+    await readOrStop("done-check", () => doneCheckCalledOwner(spec, tried.refusal));
     return { landed: pr };
   }
   return closedFrom(spec, app, listed, tried, pr);
 }
 
-function finishedWith(pr: string, check: () => Checked | number): Finished {
-  const checked = readOrStop("done-check", check);
+async function finishedWith(pr: string, check: () => Checked | number | Promise<Checked | number>): Promise<Finished> {
+  const checked = await readOrStop("done-check", check);
   return { landed: pr, missed: typeof checked === "object" ? checked.missed : undefined };
 }
 
@@ -576,11 +576,7 @@ const closedFrom = (spec: string, app: AppKey | undefined, listed: Sentence[], {
 if (import.meta.main) {
   const [spec] = process.argv.slice(2);
   if (spec === undefined) throw new Error("no spec number in the arguments");
-  const ended = await finished(spec, takenAppKey()).catch((error: unknown) =>
-    readOrStop("finish", () => {
-      throw error;
-    }),
-  );
+  const ended = await readOrStop("finish", () => finished(spec, takenAppKey()));
   const { landed: pr = "", missed } = typeof ended === "object" ? ended : {};
   console.log(`landed=${pr}\nmissed=${(missed ?? []).join(",")}`);
   process.exit(pr !== "" && missed !== undefined ? 0 : 1);

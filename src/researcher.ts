@@ -45,13 +45,13 @@ export function handedOn(title: string, body: string, sources?: string): string 
 
 const researchFound = (note: string) => fromLine(fromHere(note), "researched");
 
-function stepsAnswered(said: string, spend: (input: string, resume?: string) => Spent, input: string): { findings: string; followUps: FollowUps } | number {
+async function stepsAnswered(said: string, spend: (input: string, resume?: string) => Promise<Spent>, input: string): Promise<{ findings: string; followUps: FollowUps } | number> {
   let session: string | undefined;
   let told: string | undefined;
   let handed = input;
   let kept = gathered();
   for (;;) {
-    const spent = spend(handed, session);
+    const spent = await spend(handed, session);
     session = spent.session ?? session;
     if (spent.refusal !== undefined) return endedRed(`${said} ended red, ${spent.refusal}`);
     const answer = (spent.answer ?? {}) as Findings;
@@ -65,7 +65,7 @@ function stepsAnswered(said: string, spend: (input: string, resume?: string) => 
   }
 }
 
-function researched(issue: string): number {
+async function researched(issue: string): Promise<number> {
   const said = `research: #${issue}`;
   const opening = opened({
     stage: "research",
@@ -76,7 +76,7 @@ function researched(issue: string): number {
   });
   if (typeof opening !== "object") return opening;
   const { asked, spend } = opening;
-  const answer = stepsAnswered(said, spend, handedOn(asked.title, asked.body, process.env.RESEARCH_SOURCES || undefined));
+  const answer = await stepsAnswered(said, spend, handedOn(asked.title, asked.body, process.env.RESEARCH_SOURCES || undefined));
   if (typeof answer !== "object") return answer;
   const { findings, followUps } = answer;
   const posted = commentOnTicket(issue, findings, gh);
@@ -94,5 +94,5 @@ function researched(issue: string): number {
 if (import.meta.main) {
   const issue = process.argv[2];
   if (issue === undefined) throw new Error("no issue number in the arguments");
-  process.exit(readOrStop("research", () => researched(issue)));
+  process.exit(await readOrStop("research", () => researched(issue)));
 }

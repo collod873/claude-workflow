@@ -449,10 +449,6 @@ if (import.meta.main) {
   if (spec === undefined) throw new Error("no spec number in the arguments");
   const app = takenAppKey();
   delete process.env.APP_KEY_FILE;
-  const ended = await scheduled(spec, app).catch((error: unknown) =>
-    readOrStop("schedule", () => {
-      throw error;
-    }),
-  );
+  const ended = await readOrStop("schedule", () => scheduled(spec, app));
   process.exit(ended);
 }

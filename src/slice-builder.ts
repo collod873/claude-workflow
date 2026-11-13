@@ -12,7 +12,7 @@ import { FAST_CHECK } from "./checks.ts";
 import { LEFT_CAP } from "./scheduler.ts";
 import { SLICE_ID } from "./slicer.ts";
 import { fromLine, gh, git, gitRead, rebuiltOnMain, rebuiltRef, Stopped, unread } from "./post.ts";
-import { commitlinted, committed, CONTRACT, hire, type Hire, setupRefusal, treeNeeds, unsetKeys, WRITE_UP_MINUTES } from "./stage.ts";
+import { commitlinted, committed, CONTRACT, hireIn, type Hire, setupRefusedIn, treeNeeds, unsetKeys, WRITE_UP_MINUTES } from "./stage.ts";
 
 const USAGE = "build-slice: usage: build-slice --spec <N> --slice <id> --brief <file> --onto <ref> [--model sonnet] [--resume <session>] [--told <text> | --out-of-time | --answer <its answer's JSON, to land again>]";
 
@@ -329,10 +329,10 @@ function handedToItsRepo({ spec }: Slicing, { repo, tickets }: Answer): { red: s
 
 const ended = (outcome: Ending["outcome"], reason: string, session: string | undefined, left = ""): Ending => ({ outcome, left, reason, session: session ?? "" });
 
-function built(slicing: Slicing, app: AppKey | undefined): Ending {
+async function built(slicing: Slicing, app: AppKey | undefined): Promise<Ending> {
   const { spec, slice, onto, model } = slicing;
   const file = sessionFile(slicing);
-  const spend = hire("build-slice", named(spec, slice), { name: "slice builder", model, effort: "medium", answers: ANSWER, writeUp: { minutes: WRITE_UP_MINUTES, told: OUT_OF_TIME } });
+  const spend = hireIn(process.cwd(), "build-slice", named(spec, slice), { name: "slice builder", model, effort: "medium", answers: ANSWER, writeUp: { minutes: WRITE_UP_MINUTES, told: OUT_OF_TIME } });
   const brief = onDisk(slicing.brief) ?? unread(`the brief ${slicing.brief} could not be read, so no builder was hired`);
   const opening = handedOn({ ...slicing, brief, commitlint: commitlinted(), unset: unsetKeys() });
   let session = slicing.resume ?? savedSession(file);
@@ -341,7 +341,7 @@ function built(slicing: Slicing, app: AppKey | undefined): Ending {
   for (let answer = slicing.answer; ; answer = undefined) {
     if (answer === undefined) {
       ontoSeen(onto);
-      const spent = spentOn(`build-slice: #${spec} ${slice}`, spend, input, session, opening);
+      const spent = await spentOn(`build-slice: #${spec} ${slice}`, spend, input, session, opening);
       session = spent.session ?? session;
       keepSession(file, session);
       if (app !== undefined) freshAppToken(app, gh, `so slice ${slice} of #${spec} stops`);
@@ -379,7 +379,7 @@ async function builtIn(slicing: Slicing, app: AppKey | undefined, port: number):
   const isolation = await isolated(process.cwd(), [slicing.spec, slicing.slice], port);
   if (typeof isolation === "string") return ended("stopped", isolation, undefined);
   Object.assign(process.env, isolation);
-  const unready = setupRefusal(onDisk(CONTRACT) ?? "");
+  const unready = await setupRefusedIn(process.cwd(), onDisk(CONTRACT) ?? "");
   if (unready !== undefined) return ended("stopped", `its tree's setup failed: ${unready}`, undefined);
   return built(slicing, app);
 }

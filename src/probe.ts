@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { capped, onDisk } from "./brief.ts";
 import { ENROLLED_CALLER, gh, ghRead, readOrStop } from "./post.ts";
-import { CONTRACT, hire, machineLogs, setupRefusal, treePathed } from "./stage.ts";
+import { CONTRACT, hireIn, machineLogs, setupRefusedIn, treePathed } from "./stage.ts";
 import { quoted } from "./ticket-shape.ts";
 
 export const PROBE_CAP = 8 * 1024;
@@ -41,22 +41,22 @@ function scripted(text: string, output: string): number {
   return ran.status ?? 1;
 }
 
-function spoken(key: string, text: string, output: string): number | string {
-  const spent = hire("probe", key, { name: "probe", model: "haiku", effort: "low" })(asked(text));
+async function spoken(key: string, text: string, output: string): Promise<number | string> {
+  const spent = await hireIn(process.cwd(), "probe", key, { name: "probe", model: "haiku", effort: "low" })(asked(text));
   writeFileSync(output, spent.refusal ?? resultOf(spent.stdout));
   return spent.refusal ?? 0;
 }
 
-function probedHere(by: Probe, text: string): number {
+async function probedHere(by: Probe, text: string): Promise<number> {
   const key = process.env.GITHUB_RUN_ID ?? "here";
   const output = join(machineLogs(), probeOutput(key));
-  const unready = setupRefusal(onDisk(join(process.cwd(), CONTRACT)) ?? "");
+  const unready = await setupRefusedIn(process.cwd(), onDisk(join(process.cwd(), CONTRACT)) ?? "");
   if (unready !== undefined) {
     writeFileSync(output, unready);
     console.error(`probe: the tree's setup failed, so nothing was probed: ${quoted(unready)}`);
     return 1;
   }
-  const ended = by === "script" ? scripted(text, output) : spoken(key, text, output);
+  const ended = by === "script" ? scripted(text, output) : await spoken(key, text, output);
   if (typeof ended === "string") {
     console.error(`probe: the ${by} probe stopped: ${ended}; its output is in ${output}`);
     return 1;
@@ -105,6 +105,6 @@ if (import.meta.main) {
   const given = process.argv.slice(2);
   const [repo, by, text] = given[0] === "--in" ? given.slice(1) : [undefined, ...given];
   if (!PROBES.includes(by as Probe) || text === undefined) throw new Error("no probe in the arguments");
-  const ended = readOrStop("probe", () => (repo === undefined ? probedHere(by as Probe, text) : probedIn(repo, by as Probe, text)));
+  const ended = await readOrStop("probe", () => (repo === undefined ? probedHere(by as Probe, text) : probedIn(repo, by as Probe, text)));
   process.exit(ended);
 }

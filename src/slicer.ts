@@ -172,7 +172,7 @@ function isAnswer(answer: unknown): answer is { slices: Slice[] } {
 
 const slicerOf = (spec: string): Caller => ({ who: "the slicer", stopped: "cut nothing", said: `slice: #${spec} marked ${STUCK}` });
 
-function sliced(spec: string): number {
+async function sliced(spec: string): Promise<number> {
   const said = `slice: #${spec}`;
   const opening = opened({
     stage: "slice",
@@ -188,7 +188,7 @@ function sliced(spec: string): number {
   });
   if (typeof opening !== "object") return opening;
   const { asked, spend, carried: { progress, handed } } = opening;
-  let spent: Spent = spend(handedOn(asked.title, asked.body, handed));
+  let spent: Spent = await spend(handedOn(asked.title, asked.body, handed));
   for (let round = 0; ; round++) {
     if (spent.refusal !== undefined) return endedRed(`${said} ended red, ${spent.refusal}`);
     if (!isAnswer(spent.answer)) return endedRed(`${said} ended red, the slicer gave no slices`);
@@ -201,12 +201,12 @@ function sliced(spec: string): number {
       return 0;
     }
     if (round === ROUNDS_BACK) return calledOwner(spec, slicerOf(spec), `its slices were still refused after ${ROUNDS_BACK} rounds back: ${quoted(refusals[0] ?? "")}`);
-    spent = spend(sentBack(refusals), spent.session);
+    spent = await spend(sentBack(refusals), spent.session);
   }
 }
 
 if (import.meta.main) {
   const [spec] = process.argv.slice(2);
   if (spec === undefined) throw new Error("no spec number in the arguments");
-  process.exit(readOrStop("slice", () => sliced(spec)));
+  process.exit(await readOrStop("slice", () => sliced(spec)));
 }

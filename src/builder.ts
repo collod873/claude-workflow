@@ -11,7 +11,7 @@ import { type ChecksWait, checkedRuns, checksNamed, waitedLine, withWait } from 
 import { park, postedUnderOrigin } from "./issue-links.ts";
 import { calledOwner, type Caller, commentOnTicket, commentsRead, endedRed, FILED, FOREIGN, fromLine, followUpBody, gh, ghRead, git, gitRead, MACHINE_REPO, mark, NOTHING_MARKED, OWNER, postRefusals, readOrStop, rewriteTicket, FILED_IN, Stopped, ticketBranch, unread } from "./post.ts";
 import { reviewedAndLanded } from "./reviewer.ts";
-import { committed, commitlinted, CONTRACT, opened, setupRefusal, type Spent, treePathed, unsetKeys } from "./stage.ts";
+import { committed, commitlinted, CONTRACT, opened, setupRefusedIn, type Spent, treePathed, unsetKeys } from "./stage.ts";
 import { dedashed } from "./em-dash.ts";
 import { BUILDING, SPEC, TICKET } from "./spelled.ts";
 import { doneWhen, quoted, specProblem, specRefusals, why } from "./ticket-shape.ts";
@@ -93,7 +93,7 @@ interface Handed {
 
 type Round = { red?: string; ended?: number; body?: string };
 
-type Spend = (input: string, resume?: string) => Spent;
+type Spend = (input: string, resume?: string) => Promise<Spent>;
 
 function captureOf(body: string, captures: string | undefined): string | undefined {
   const session = FILED_IN.exec(body)?.[1];
@@ -415,10 +415,10 @@ function outcomeOf(ticket: string, body: string, answer: Answer | undefined, mai
   return rewritten(ticket, body, answer);
 }
 
-export function spentOn(said: string, spend: Spend, input: string, session: string | undefined, opening: string): Spent {
+export async function spentOn(said: string, spend: Spend, input: string, session: string | undefined, opening: string): Promise<Spent> {
   const fresh = () => spend(input === opening ? input : [opening, input].join("\n\n"));
   if (session === undefined) return fresh();
-  const resumed = spend(input, session);
+  const resumed = await spend(input, session);
   if (resumed.refusal === undefined) return resumed;
   console.error(`${said} could not resume its builder's session ${session}, so it starts fresh: ${resumed.refusal}`);
   return fresh();
@@ -459,7 +459,7 @@ function owned(ticket: string, body: string) {
   return { carrying: { onTicket: commentsRead(ticket, `the comments on #${ticket} could not be read, ${NOTHING_MARKED}`, gh), alongside: onTheSameFiles(ticket, body) } };
 }
 
-function ownTicket(ticket: string, app: AppKey | undefined): number {
+async function ownTicket(ticket: string, app: AppKey | undefined): Promise<number> {
   const owning = opened({
     stage: "fix",
     issue: ticket,
@@ -471,7 +471,7 @@ function ownTicket(ticket: string, app: AppKey | undefined): number {
   const { asked, spend } = owning;
   let body = asked.body;
   let session = savedSession(ticket);
-  const unready = setupRefusal(onDisk(join(process.cwd(), CONTRACT)) ?? "");
+  const unready = await setupRefusedIn(process.cwd(), onDisk(join(process.cwd(), CONTRACT)) ?? "");
   if (unready !== undefined) return calledOwner(ticket, builderCaller(ticket), `its tree's setup failed: ${quoted(unready)}`);
   const opening = handedOn({
     ticket,
@@ -486,7 +486,7 @@ function ownTicket(ticket: string, app: AppKey | undefined): number {
   const said: string[] = [];
   for (;;) {
     const mainBefore = fetchedMain();
-    const spent = spentOn(`fix: #${ticket}`, spend, input, session, opening);
+    const spent = await spentOn(`fix: #${ticket}`, spend, input, session, opening);
     session = spent.session ?? session;
     keepSession(ticket, session);
     if (app !== undefined) freshAppToken(app, gh, `so the build of #${ticket} is not acted on`);
@@ -509,6 +509,6 @@ if (import.meta.main) {
   const [ticket] = process.argv.slice(2);
   if (ticket === undefined) throw new Error("no ticket number in the arguments");
   const app = takenAppKey();
-  const ended = readOrStop("fix", () => ownTicket(ticket, app));
+  const ended = await readOrStop("fix", () => ownTicket(ticket, app));
   process.exit(ended);
 }
