@@ -1,0 +1,17 @@
+#!/bin/bash
+set -uo pipefail
+
+usage="repair: usage: repair <issue number> | repair --unfinished <issue number> <failure|cancelled>"
+
+if [[ ${1:-} == "--help" ]]; then
+  printf '%s\n' "$usage"
+  exit 0
+fi
+
+if ! [[ ($# -eq 1 && $1 =~ ^[0-9]+$) || ($# -eq 3 && $1 == --unfinished && $2 =~ ^[0-9]+$) ]]; then
+  printf '%s\n' "$usage" >&2
+  exit 2
+fi
+
+src="$(cd "${BASH_SOURCE[0]%/*}/../src" && pwd)"
+exec node "$src/repair.ts" "$@"

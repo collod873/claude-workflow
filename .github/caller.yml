@@ -1,5 +1,5 @@
 name: Machine
-run-name: "${{ github.event_name == 'schedule' && 'Reconcile' || github.event_name == 'workflow_dispatch' && (inputs.probe && format('Probe ({0}): {1}', inputs.probe_with || 'script', inputs.probe) || inputs.rerun && format('Rerun of run {0}', inputs.rerun) || 'Reconcile') || format('{0} #{1}: {2}', github.event.action, github.event.issue.number || github.event.pull_request.number, github.event.issue.title || github.event.pull_request.title) }}"
+run-name: "${{ github.event_name == 'schedule' && 'Reconcile' || github.event_name == 'workflow_dispatch' && (inputs.probe && format('Probe ({0}): {1}', inputs.probe_with || 'script', inputs.probe) || inputs.rerun && format('Rerun of run {0}', inputs.rerun) || inputs.repair && format('Repair of #{0}', inputs.repair) || 'Reconcile') || format('{0} #{1}: {2}', github.event.action, github.event.issue.number || github.event.pull_request.number, github.event.issue.title || github.event.pull_request.title) }}"
 
 "on":
   issues:
@@ -20,6 +20,9 @@ run-name: "${{ github.event_name == 'schedule' && 'Reconcile' || github.event_na
         required: false
         type: string
       probe_with:
+        required: false
+        type: string
+      repair:
         required: false
         type: string
 

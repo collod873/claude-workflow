@@ -257,6 +257,66 @@ jobs:
           IFS=/ read -r run attempt <<<"$RERUN"
           bin/rerun "$run" "$attempt"
 
+  repair:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.repair }}
+    concurrency:
+      group: repair-${{ github.event.inputs.repair }}
+    runs-on: pc-repair
+    timeout-minutes: 70
+    env:
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - id: machine
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/claude-workflow
+          ref: main
+          token: ${{ steps.app.outputs.token }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - id: repair
+        timeout-minutes: 55
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          ISSUE: ${{ github.event.inputs.repair }}
+          STAGE_MINUTES: 45
+        run: bin/repair "$ISSUE"
+
+      - id: after-repair-app
+        if: always() && steps.app.outcome == 'success'
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - if: (failure() || cancelled()) && steps.app.outcome == 'success'
+        timeout-minutes: 2
+        env:
+          TOKEN: ${{ steps.after-repair-app.outputs.token || steps.app.outputs.token }}
+          ISSUE: ${{ github.event.inputs.repair }}
+          ENDED: ${{ job.status }}
+        run: GH_TOKEN=$TOKEN bin/repair --unfinished "$ISSUE" "$ENDED"
+
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: machine-logs-repair-${{ github.event.inputs.repair }}
+          path: .git/machine-logs
+          include-hidden-files: true
+          if-no-files-found: ignore
+
   probe:
     if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.probe }}
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
@@ -391,7 +451,7 @@ jobs:
           token: ${{ steps.app.outputs.token }}
 
   reconcile:
-    if: ${{ github.event_name != 'workflow_dispatch' || (!github.event.inputs.rerun && !github.event.inputs.probe) }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (!github.event.inputs.rerun && !github.event.inputs.probe && !github.event.inputs.repair) }}
     concurrency:
       group: reconcile-${{ github.repository }}
       cancel-in-progress: false
