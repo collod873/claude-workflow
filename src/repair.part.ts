@@ -12,7 +12,7 @@ const POSTED = "https://github.com/collod873/Mezzanine/issues/902#issuecomment-7
 export const FIXED = { outcome: "fixed", found: "The builders' Stripe key was for another sandbox than dev's.", changed: "Copied dev's two test keys from .env.local to the repo's secrets.", question: "", recommendation: "" };
 export const ASKS = { outcome: "asks", found: "Only a live Stripe key reads the Connected account.", changed: "", question: "Should the builders get a second test Connected account?", recommendation: "Yes: it keeps live keys out of every builder." };
 
-export function repairing({ answer = FIXED as object, labels = ["ticket", STUCK], comments = [HAND_OFF], refusing = "" } = {}) {
+export function repairing({ answer = FIXED, labels = ["ticket", STUCK], comments = [HAND_OFF], refusing = "" }: { answer?: object; labels?: string[]; comments?: string[]; refusing?: string } = {}) {
   const { root, ...stage } = issueStage(
     "repair-",
     { title: "Pay a vendor from the dashboard", body: wellFormedNote, state: "OPEN", labels: labels.map((name) => ({ name })) },
