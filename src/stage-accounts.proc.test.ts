@@ -156,3 +156,35 @@ describe("a login failure on every account waits 30 minutes at a time and calls 
     expect(readFileSync(join(root, "body"), "utf8")).toBe("Waits for a Claude account until 2026-11-13T20:18Z, login wait 1 of 3.\n");
   });
 });
+
+describe("an account wait past 24 hours calls the owner once and still waits (#1774)", () => {
+  it("names the owner and the reset time in the one comment parking a week-long wait, and calls no one for a wait of 24 hours", async () => {
+    const root = scratch("account-week-");
+    mkdirSync(join(root, "bin"));
+    writeFileSync(join(root, "bin", "gh"), `${GH_HOLDS_A_BODY}printf '%s\\n' "$*" >>"${join(root, "calls")}"\n`);
+    writeFileSync(join(root, "bin", "mark"), `#!/bin/bash\nprintf '%s\\n' "$2" >>"${join(root, "marks")}"\n`);
+    for (const tool of ["gh", "mark"]) chmodSync(join(root, "bin", tool), 0o755);
+    vi.stubEnv("PATH", `${join(root, "bin")}:${process.env.PATH}`);
+    vi.stubEnv("MACHINE_BIN", join(root, "bin"));
+    vi.stubEnv("ISSUE_BODY", join(root, "body"));
+    vi.resetModules();
+    const { parkedOnAccounts } = await import("./account-wait.ts");
+    const said = "You've hit your weekly limit · resets Nov 19, 5pm (America/New_York)";
+    const now = Date.parse("2026-11-13T09:48:00Z");
+    const hours = (count: number) => now + count * 3_600_000;
+    const comments = () => readFileSync(join(root, "calls"), "utf8").split("\n").filter((call) => call.includes("comment"));
+
+    const day = parkedOnAccounts("3030", { until: hours(24), login: false, said }, now);
+    const dayComments = comments();
+    const week = parkedOnAccounts("3030", { until: hours(49) + 60_000, login: false, said }, hours(25));
+    const again = parkedOnAccounts("3030", { until: hours(50), login: false, said }, hours(26));
+
+    expect([day, week, again].map((parking) => "parked" in parking)).toEqual([true, true, true]);
+    expect(dayComments).toHaveLength(1);
+    expect(dayComments[0]).not.toContain("@collod873");
+    const calls = comments().filter((comment) => comment.includes("@collod873"));
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toContain("every Claude account is out until 2026-11-15 10:49 UTC");
+    expect(readFileSync(join(root, "marks"), "utf8")).not.toContain("stuck");
+  });
+});

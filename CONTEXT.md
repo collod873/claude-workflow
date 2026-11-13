@@ -252,8 +252,8 @@ _Avoid_: data wait, delayed ticket
 
 **Account wait**:
 `Waits for a Claude account until <UTC time>.` in an issue's body once every account refused a
-hire: the soonest reset a limit names, or 1 hour; 30 minutes for a login failure. Unlike
-**Stuck**, it calls no one and reconcile ends it then; a fourth login failure in a row is `stuck`.
+hire: the soonest reset a limit names, or 1 hour; 30 minutes for a login failure. Reconcile ends
+it then; it calls the owner once past 24h; a fourth login failure in a row is `stuck`.
 _Avoid_: cooldown
 
 **Note**:
