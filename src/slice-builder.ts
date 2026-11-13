@@ -12,7 +12,7 @@ import { FAST_CHECK } from "./checks.ts";
 import { LEFT_CAP } from "./scheduler.ts";
 import { SLICE_ID } from "./slicer.ts";
 import { fromLine, gh, git, gitRead, rebuiltOnMain, rebuiltRef, Stopped, unread } from "./post.ts";
-import { commitlinted, committed, CONTRACT, hireIn, type Hire, setupRefusedIn, treeNeeds, unsetKeys, WRITE_UP_MINUTES } from "./stage.ts";
+import { commitlinted, committed, CONTRACT, hireIn, type Hire, setupRefusedIn, stageLoop, treeNeeds, unsetKeys, WRITE_UP_MINUTES } from "./stage.ts";
 
 const USAGE = "build-slice: usage: build-slice --spec <N> --slice <id> --brief <file> --onto <ref> [--model sonnet] [--resume <session>] [--told <text> | --out-of-time | --answer <its answer's JSON, to land again>]";
 
@@ -337,40 +337,49 @@ async function built(slicing: Slicing, app: AppKey | undefined): Promise<Ending>
   const opening = handedOn({ ...slicing, brief, commitlint: commitlinted(), unset: unsetKeys() });
   let session = slicing.resume ?? savedSession(file);
   let input = slicing.told ?? (slicing.outOfTime ? OUT_OF_TIME : session === undefined ? opening : CARRY_ON);
+  let pending = slicing.answer;
   let left = "";
-  for (let answer = slicing.answer; ; answer = undefined) {
-    if (answer === undefined) {
-      ontoSeen(onto);
-      const spent = await spentOn(`build-slice: #${spec} ${slice}`, spend, input, session, opening);
-      session = spent.session ?? session;
-      keepSession(file, session);
-      if (app !== undefined) freshAppToken(app, gh, `so slice ${slice} of #${spec} stops`);
-      if (spent.refusal !== undefined) return ended(spent.timedOut === true ? "outOfTime" : "stopped", spent.refusal, session);
-      answer = spent.answer as Answer | undefined;
-    }
-    if (answer === undefined) {
-      input = NO_OUTCOME;
-      continue;
-    }
-    if (answer.outcome === "stuck") return ended("stuck", answer.reason, session);
+  const judgedAnswer = async (answer: Answer): Promise<{ done: Ending } | { handBack: string }> => {
+    if (answer.outcome === "stuck") return { done: ended("stuck", answer.reason, session) };
     if (answer.outcome === "owned") {
       const handed = handedToItsRepo(slicing, answer);
-      if ("filed" in handed) return { ...ended("owned", answer.reason, session), filed: handed.filed };
-      if ("stopped" in handed) return ended("stopped", handed.stopped, session);
-      input = handed.red;
-      continue;
+      if ("filed" in handed) return { done: { ...ended("owned", answer.reason, session), filed: handed.filed } };
+      if ("stopped" in handed) return { done: ended("stopped", handed.stopped, session) };
+      return { handBack: handed.red };
     }
     const leftNow = answer.left?.trim() ?? "";
     if (leftNow !== "") left = leftNow;
     committed(`Build slice ${slice} of #${spec}`, "feat");
     const outcome = answer.outcome === "built" && left !== "" ? "partial" : answer.outcome;
     const red = outcome === "done" ? (pastOnto(onto) === "0" ? undefined : builtNotDone(onto)) : await landable(slicing, outcome, left);
-    if (red === undefined) {
-      rmSync(file, { force: true });
-      return ended(outcome, answer.reason, session, outcome === "partial" ? left : "");
-    }
-    input = red;
-  }
+    if (red !== undefined) return { handBack: red };
+    rmSync(file, { force: true });
+    return { done: ended(outcome, answer.reason, session, outcome === "partial" ? left : "") };
+  };
+  const looped = await stageLoop<Ending>({
+    spend: (handed, carried) => {
+      ontoSeen(onto);
+      return spentOn(`build-slice: #${spec} ${slice}`, spend, handed, carried, opening);
+    },
+    session,
+    stops: [],
+    ahead: async () => {
+      const answer = pending;
+      pending = undefined;
+      return answer === undefined ? { handBack: input } : judgedAnswer(answer);
+    },
+    judged: (spent): { done: Ending } | { changed?: boolean } => {
+      session = spent.session ?? session;
+      keepSession(file, session);
+      if (app !== undefined) freshAppToken(app, gh, `so slice ${slice} of #${spec} stops`);
+      if (spent.refusal !== undefined) return { done: ended(spent.timedOut === true ? "outOfTime" : "stopped", spent.refusal, session) };
+      pending = spent.answer as Answer | undefined;
+      input = NO_OUTCOME;
+      return {};
+    },
+  });
+  if ("done" in looped) return looped.done;
+  return ended("stopped", looped.refused, session);
 }
 
 async function builtIn(slicing: Slicing, app: AppKey | undefined, port: number): Promise<Ending> {

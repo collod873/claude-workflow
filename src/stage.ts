@@ -268,7 +268,7 @@ type Looping<Done> = {
   session?: string | undefined;
   stops: readonly Stop[];
   roundsBack?: number;
-} & ({ input: string; judged: (spent: Spent) => Judged<Done> | Promise<Judged<Done>> } | { ahead: () => Ahead<Done> | Promise<Ahead<Done>>; judged: (spent: Spent) => { done: Done } | { changed?: boolean } });
+} & ({ input: string; judged: (spent: Spent) => Judged<Done> | Promise<Judged<Done>> } | { ahead: () => Handing<Done> | Promise<Handing<Done>>; judged: (spent: Spent) => { done: Done } | { changed?: boolean } });
 
 type Handing<Done> = { done: Done } | { refused?: string; handBack: string };
 
