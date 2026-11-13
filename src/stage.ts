@@ -11,7 +11,7 @@ const TIMED_OUT = 124;
 const GRACE_SECONDS = "30";
 const RETRY_WAIT_MS = 5_000;
 const ACCOUNT_SECRETS = ["CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN_2"] as const;
-const OUT_OF_USAGE = /usage limit reached|hit your (\w+ )?limit|limit reached|out of extra usage/i;
+const OUT_OF_USAGE = /usage limit reached|hit your ([\w-]+ )?limit|limit reached|out of extra usage/i;
 
 const accounts = () => [...new Set(ACCOUNT_SECRETS.map((name) => process.env[name] ?? "").filter((token) => token !== ""))];
 let account = 0;
@@ -19,7 +19,13 @@ const accountEnv = (on: number): Record<string, string> => {
   const token = accounts()[on];
   return token === undefined ? {} : { CLAUDE_CODE_OAUTH_TOKEN: token };
 };
-const outOfUsage = ({ status, stderr, stdout }: Exited & { stdout: string }) => status !== 0 && OUT_OF_USAGE.test(`${stderr}\n${resultIn(stdout)}`);
+const SPENT_ACCOUNT_ERRORS = new Set(["rate_limit", "billing_error"]);
+const accountSpentIn = (stdout: string) =>
+  events(stdout).some((event) => {
+    const { type, error } = (event ?? {}) as { type?: unknown; error?: unknown };
+    return type === "assistant" && typeof error === "string" && SPENT_ACCOUNT_ERRORS.has(error);
+  });
+const outOfUsage = ({ status, stderr, stdout }: Exited & { stdout: string }) => status !== 0 && (accountSpentIn(stdout) || OUT_OF_USAGE.test(`${stderr}\n${resultIn(stdout)}`));
 
 const FOREGROUND_ONLY = {
   env: { CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1", BASH_DEFAULT_TIMEOUT_MS: "600000", BASH_MAX_TIMEOUT_MS: "1200000" },
