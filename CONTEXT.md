@@ -216,7 +216,7 @@ _Avoid_: ready queue
 `bin/schedule`, the code that runs a spec, hiring each fresh slicer and slice builder, at most
 three at once, then `bin/finish` (reviewer, full check, `bin/land`); it holds no
 model context. Its state is the integration branch and the `## Spec run` progress comment it
-writes, where `bin/finish` records each closing line's outcome, then the landing, so a rerun resumes
+writes, where `bin/finish` stamps the landing with each closing line's outcome, so a rerun resumes
 from them: a landed spec closes from the outcomes recorded, hiring no one, a line with none listed
 `unrun`.
 _Avoid_: orchestrator

@@ -298,7 +298,7 @@ const trusted = (said: unknown): said is { author: string; body: string } =>
   typeof said.body === "string" &&
   TRUSTED.has(`${String(said.type)} ${said.author}`);
 
-export function authoredOn(number: string, line: string, gh: Gh): { author: string; body: string }[] {
+export function commentsRead(number: string, line: string, gh: Gh): string[] {
   const got = gh(["api", "--paginate", `repos/{owner}/{repo}/issues/${number}/comments`, "--jq", ".[] | {author: .user.login, type: .user.type, body}"]);
   if (got.status !== 0) return unread(line);
   try {
@@ -307,13 +307,11 @@ export function authoredOn(number: string, line: string, gh: Gh): { author: stri
       .filter((line) => line.trim() !== "")
       .map((line): unknown => JSON.parse(line))
       .filter(trusted)
-      .map(({ author, body }) => ({ author, body }));
+      .map(({ body }) => body);
   } catch {
     return unread(line);
   }
 }
-
-export const commentsRead = (number: string, line: string, gh: Gh): string[] => authoredOn(number, line, gh).map(({ body }) => body);
 
 export interface Opened {
   number?: number;

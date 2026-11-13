@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { authoredOn, commentEdited, commentOnTicket, opened, standingOn, post, readOrStop, type Posting } from "./post.ts";
+import { commentsRead, commentEdited, commentOnTicket, opened, standingOn, post, readOrStop, type Posting } from "./post.ts";
 import { filedAs, wellFormedNote as NOTE, wellFormedSpec as SPEC } from "./scenarios.ts";
 
 const URL = "https://github.com/collod873/claude-workflow/issues/700";
@@ -233,7 +233,7 @@ describe("src/post.ts reads what GitHub holds, stopping at unread itself, so no 
 
   it.each([
     { read: "the labels", run: (): unknown => standingOn("874", failing), line: "read: the labels of #874 could not be read, so nothing is marked" },
-    { read: "the comments", run: () => authoredOn("874", "the comments on #874 could not be read", failing), line: "read: the comments on #874 could not be read" },
+    { read: "the comments", run: () => commentsRead("874", "the comments on #874 could not be read", failing), line: "read: the comments on #874 could not be read" },
     { read: "the issue", run: () => opened("874", "#874 could not be read", failing), line: "read: #874 could not be read" },
   ])("stops at unread naming the read when GitHub fails $read (#1099)", async ({ run, line }) => {
     const said: string[] = [];

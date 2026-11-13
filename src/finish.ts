@@ -7,9 +7,9 @@ import { type Answered, approvedOn, filed, type FollowUps, gathered, MOST_FIXES,
 import { postedUnderOrigin } from "./issue-links.ts";
 import { askedOn, calledOwner, commentOnTicket, endedRed, followUpBody, fromHere, fromLine, gh, gitRead, standingOn, stoodDown, mark, readOrStop, STUCK } from "./post.ts";
 import { afterRefused, landing } from "./reviewer.ts";
-import { landedOn, type LineAnswer, linesOn, type Progress, progressOn, specBranch } from "./scheduler.ts";
+import { landedOn, type LineAnswer, type Progress, progressOn, specBranch } from "./scheduler.ts";
 import { freePort, isolated, reapedUnder } from "./slice-builder.ts";
-import { type Ahead, committed, commitlinted, CONTRACT, head, hireIn, type Looped, setupRefusedIn, type Spent, stageLoop, type Stop, unsetKeys } from "./stage.ts";
+import { type Ahead, committed, commitlinted, CONTRACT, head, hireIn, type Looped, setupRefusedIn, type Spent, stageLoop, type Stop, unsetKeys, WRITE_UP_MINUTES } from "./stage.ts";
 import { CHECKING, SPEC } from "./spelled.ts";
 import { closingLines, quoted, SPEC_CAP } from "./ticket-shape.ts";
 
@@ -97,6 +97,8 @@ export function onTheBranch(changes: Changes, { spec, title, body, closing, comm
     "",
   ].join("\n\n");
 }
+
+export const OUT_OF_TIME = "Time is up on this spec. Stop running and fixing, commit what holds, and answer now: each line under `## Done when` you did not reach is `unrun`, its `ran` saying what was left.\n";
 
 const redOnReview = ({ verdict, failed }: Red) =>
   [`The full check ran on the reviewed branch and ended red: \`${verdict}\`. The end of each red step's part of its log:`, tailOf(failed, TAIL_CAP), "Make it pass, commit, and answer again: it runs again on each answer and holds the spec until it is green.", ""].join("\n\n");
@@ -236,7 +238,7 @@ async function reviewerHired({ spec, said }: Run): Promise<Reviewer | undefined>
     endedRed(`${said} ended red, the tree for ${specBranch(spec)} would not set up: ${unready}`);
     return undefined;
   }
-  const spend = hireIn(tree, "finish", spec, { name: "reviewer", model: "opus", effort: "medium", answers: ANSWER }, { ...isolation });
+  const spend = hireIn(tree, "finish", spec, { name: "reviewer", model: "opus", effort: "medium", answers: ANSWER, writeUp: { minutes: WRITE_UP_MINUTES, told: OUT_OF_TIME } }, { ...isolation });
   return { spend: (input, resume) => spend(input, resume).finally(() => reapedUnder([isolation.TMPDIR])) };
 }
 
@@ -323,10 +325,9 @@ async function finished(spec: string, app: AppKey | undefined): Promise<Finished
   const run: Run = { spec, said, app, closing, reasons: [], followUps: gathered(), lines: [] };
   const reviewer = await reviewedBy(run, asked, found.progress);
   if (reviewer === undefined) return {};
-  linesOn(spec, found, run.lines);
   const pr = await landed(run, reviewer);
   if (pr === undefined) return {};
-  landedOn(spec, found, pr);
+  landedOn(spec, found, pr, run.lines);
   leftFiled(spec, run.followUps);
   return closedAfter(run, closing, run.lines, pr);
 }

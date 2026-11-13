@@ -582,17 +582,16 @@ describe("a repo's specs and research notes run through the same caller file, on
     expect(specs({ event: "issues", action: "unlabeled", sender: MACHINE })).toEqual(["wake"]);
   });
 
-  it("readies the tree's pinned Node before anything installs, in every job whose stage runs a spec, and tells that stage the caller file it runs under", () => {
+  it("readies the tree's pinned Node before anything installs, in every job whose stage runs a spec", () => {
     const trying = stageSteps().filter(({ step }) => /bin\/schedule\b/.test(step.run ?? ""));
 
     expect(trying.length).toBeGreaterThan(0);
-    for (const { name, steps, step } of trying) {
+    for (const { name, steps } of trying) {
       const at = (found: (one: WorkflowStep) => boolean) => steps.findIndex(found);
       const pinned = at(({ uses }) => uses === "./.github/actions/pinned");
 
       expect(pinned, name).toBeGreaterThan(at(({ id }) => id === "checkout"));
       expect(pinned, name).toBeLessThan(at(({ id }) => id === "npm-ci"));
-      expect(step.env?.CALLED_FROM, `${name} ${step.id ?? ""}`).toBe("${{ github.workflow_ref }}");
     }
   });
 

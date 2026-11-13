@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { LIST_CAP, onDisk } from "./brief.ts";
-import { BRIEFS_CAP, ONE_REVIEWER_CAP, onTheBranch } from "./finish.ts";
+import { BRIEFS_CAP, ONE_REVIEWER_CAP, onTheBranch, OUT_OF_TIME } from "./finish.ts";
 import { authored, BIN, execute, labelsJson, linesIn, ghArgv, git, key, nulSplit, plant, type Said, scratch, script, wellFormedSpec } from "./scenarios.ts";
 import { PAUSED } from "./spelled.ts";
 import { declarePart, HANDED_ON } from "./part-files.ts";
@@ -43,6 +43,7 @@ export function finishing({
   contract = undefined as string | undefined,
   unsetKeys = "",
   gh = "",
+  stageMinutes = "",
 } = {}) {
   const root = scratch("finish-");
   const session = join(root, "session");
@@ -146,7 +147,7 @@ export function finishing({
     log: (...args: string[]) => git(session, "log", ...args),
     pushed: () => git(origin, "log", "--format=%s", "spec/974"),
     run: (...args: string[]) =>
-      execute(join(BIN, "finish"), session, { PATH: `${bin}:${process.env.PATH}`, MACHINE_BIN: bin, GH_TOKEN: "job-token", UNSET_KEYS: unsetKeys, ...(appKeyed ? { APP_KEY_FILE: keyFile } : {}) }, args.length === 0 ? ["974"] : args),
+      execute(join(BIN, "finish"), session, { PATH: `${bin}:${process.env.PATH}`, MACHINE_BIN: bin, GH_TOKEN: "job-token", UNSET_KEYS: unsetKeys, STAGE_MINUTES: stageMinutes, ...(appKeyed ? { APP_KEY_FILE: keyFile } : {}) }, args.length === 0 ? ["974"] : args),
   };
 }
 
@@ -164,6 +165,7 @@ declarePart({
           { spec: "", title: filled.title ?? "", body: filled.body ?? "", closing: [filled.closing ?? ""], commitlint: true, briefs: filled.briefs ?? "", unset: [filled.unset ?? "KEY"] },
         ),
     },
+    { name: "spec's reviewer out of time", file: "src/finish.ts", cap: HANDED_ON, slots: [], build: () => OUT_OF_TIME },
   ],
   scenarios: [
     { label: "finishing a spec whose closing line held", run: () => finishing().run() },

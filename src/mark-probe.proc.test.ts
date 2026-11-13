@@ -31,7 +31,7 @@ function probed(gh: string) {
   return { status, said: `${stdout}${stderr}` };
 }
 
-describe("a run on main makes a mark fail on purpose, so the done check sees a failed mark's error in a run log (#1090)", () => {
+describe("a run on main makes a mark fail on purpose, so a run log always shows a failed mark's error (#1090)", () => {
   it("passes with bin/mark's refusal in its log when GitHub answers HTTP 404", () => {
     const { status, said } = probed("printf 'gh: Not Found (HTTP 404)\\n' >&2\nexit 1\n");
 

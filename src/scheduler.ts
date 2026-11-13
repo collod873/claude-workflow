@@ -108,13 +108,9 @@ function posted(spec: string, found: Found): void {
   found.url ??= written.said;
 }
 
-export function linesOn(spec: string, found: Found, lines: LineAnswer[]): void {
-  found.progress.lines = lines.map((one) => ({ ...one, ran: capped(one.ran, LEFT_CAP) }));
-  posted(spec, found);
-}
-
-export function landedOn(spec: string, found: Found, pr: string): void {
+export function landedOn(spec: string, found: Found, pr: string, lines: LineAnswer[]): void {
   found.progress.landed = pr;
+  found.progress.lines = lines.map((one) => ({ ...one, ran: capped(one.ran, LEFT_CAP) }));
   posted(spec, found);
 }
 

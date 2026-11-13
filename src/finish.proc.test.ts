@@ -210,12 +210,40 @@ describe("bin/finish has its one reviewer run each closing line of the spec befo
     expect(review).toContain("`TWILIO_AUTH_TOKEN` and `RESEND_API_KEY`");
   });
 
-  it("records each line's outcome on the progress comment before the spec lands, so a rerun after landing closes from them", () => {
-    const finished = finishing({ said: [SLICED([{ id: "tenant-time-zone", title: "Store each tenant's time zone" }])] });
+  it("stamps on the progress comment each line as the reviewer last answered it, where a line it fixed after bin/land refused stayed recorded missed and a rerun filed a bug for it", () => {
+    const finished = finishing({
+      closing: CLOSING,
+      land: REFUSES_ONCE,
+      lines: [HELD, { line: 2, outcome: "missed", ran: "each save rolled back" }],
+      answerFrom: { call: 2, answer: { outcome: "approve", reason: "reason $CALL", lines: [{ line: 2, outcome: "fixed", ran: "the save now commits" }] } },
+    });
 
     expect(finished.run().status).toBe(0);
-    const [beforeLand = 0] = finished.ghCallsAtLand();
-    expect(finished.calls().slice(0, beforeLand).map(bodyIn).some((body) => body.startsWith("## Spec run") && body.includes('"lines":[{"line":1,"outcome":"held"'))).toBe(true);
+    const stamped = finished.calls().map(bodyIn).filter((body) => body.startsWith("## Spec run") && body.includes('"landed":"9974"')).at(-1) ?? "";
+    expect(stamped).toContain('{"line":1,"outcome":"held"');
+    expect(stamped).toContain('{"line":2,"outcome":"fixed"');
+    expect(stamped).not.toContain('"outcome":"missed"');
+  });
+
+  it("resumes a reviewer that ran past its time to answer with what it reached, and lands the spec with each line it did not reach listed not run, where a finish out of time landed nothing and its rerun ended stuck", () => {
+    const finished = finishing({
+      closing: CLOSING,
+      stageMinutes: "40",
+      reviewer: `  [ "$CALL" = 1 ] && { printf '%s\\n' '${JSON.stringify({ type: "system", session_id: "review-1" })}'; exit 124; }`,
+      lines: [HELD, { line: 2, outcome: "unrun", ran: "time ran out before it was run" }],
+    });
+
+    const ran = heard(finished.run());
+
+    expect(ran.status, ran.stderr).toBe(0);
+    const [review = "", told = "", ...more] = finished.handed();
+    expect(more).toEqual([]);
+    expect(review).toContain("+export const zone = 1;");
+    expect(told).not.toContain("+export const zone = 1;");
+    expect(finished.hired()[1]).toEqual(expect.arrayContaining(["--resume", "review-1"]));
+    expect(finished.checked()).toEqual(["--full --publish"]);
+    expect(finished.landed()).toHaveLength(1);
+    expect(closingComments(finished.calls())[0]).toContain(`2. **Not run**: ${CLOSING[1]}\n   time ran out before it was run`);
   });
 
   it("closes a landed spec from the lines its progress comment recorded, hiring no one and reviewing nothing, when a rerun finds it landed", () => {
@@ -264,6 +292,21 @@ describe("bin/finish has its one reviewer run each closing line of the spec befo
     expect(more).toEqual([]);
     expect(called).toContain("HTTP 422: Validation Failed");
     expect(finished.calls().filter((args) => args[1] === "close")).toEqual([]);
+  });
+
+  it("marks the landed spec stuck and tells the owner to close it by hand when its closing comment posted and the spec would not close, its miss filed once", () => {
+    const finished = finishing({ closing: CLOSING, lines: [HELD, { line: 2, outcome: "missed", ran: "each save rolled back" }], gh: '  *"issue close"*) printf \'HTTP 403: Resource not accessible by integration\\n\' >&2; exit 1 ;;' });
+
+    const ran = heard(finished.run());
+
+    expect(ran.status).toBe(1);
+    expect(ran.lines.slice(-2)).toEqual(["landed=9974", "missed="]);
+    expect(finished.marked()).toEqual(["974 checking", "974 stuck"]);
+    expect(closingComments(finished.calls())).toHaveLength(1);
+    expect(createdIssues(finished.calls()).map(({ title }) => title)).toEqual([CLOSING[1]]);
+    const [called = "", ...more] = finished.calls().map(bodyIn).filter((body) => body.startsWith(`@${OWNER} `));
+    expect(more).toEqual([]);
+    expect(called).toContain("close #974 by hand");
   });
 
   it("readies the reviewer's tree with the contract's setup before hiring it, where five specs' reviewers had no node_modules and could run nothing", () => {
