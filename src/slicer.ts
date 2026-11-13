@@ -2,7 +2,7 @@ import { capped, LIST_CAP, NO_EM_DASH, TICKET_CAP } from "./brief.ts";
 import { calledOwner, type Caller, endedRed, gitRead, readOrStop, STUCK } from "./post.ts";
 import { briefOf, MOST_BUILDERS, type Progress, progressOn, specBranch } from "./scheduler.ts";
 import { SLICING, SPEC } from "./spelled.ts";
-import { opened, type Spent } from "./stage.ts";
+import { opened, stageLoop } from "./stage.ts";
 import { quoted, SPEC_CAP, ticketRefusals } from "./ticket-shape.ts";
 
 const ROUNDS_BACK = 2;
@@ -188,21 +188,24 @@ async function sliced(spec: string): Promise<number> {
   });
   if (typeof opening !== "object") return opening;
   const { asked, spend, carried: { progress, handed } } = opening;
-  let spent: Spent = await spend(handedOn(asked.title, asked.body, handed));
-  for (let round = 0; ; round++) {
-    if (spent.refusal !== undefined) return endedRed(`${said} ended red, ${spent.refusal}`);
-    if (!isAnswer(spent.answer)) return endedRed(`${said} ended red, the slicer gave no slices`);
-    const { slices } = spent.answer;
-    if (handed.cut === "first" && slices.length === 0) return calledOwner(spec, slicerOf(spec), "its first cut carried no slice, so nothing of the spec would be built: main may already do all of it, or the spec may say too little to cut");
-    const refusals = sliceRefusals(slices, progress, asked.body);
-    if (refusals.length === 0) {
+  const looped = await stageLoop<number>({
+    spend,
+    input: handedOn(asked.title, asked.body, handed),
+    stops: [],
+    roundsBack: ROUNDS_BACK,
+    judged: (spent) => {
+      if (spent.refusal !== undefined) return { done: endedRed(`${said} ended red, ${spent.refusal}`) };
+      if (!isAnswer(spent.answer)) return { done: endedRed(`${said} ended red, the slicer gave no slices`) };
+      const { slices } = spent.answer;
+      if (handed.cut === "first" && slices.length === 0) return { done: calledOwner(spec, slicerOf(spec), "its first cut carried no slice, so nothing of the spec would be built: main may already do all of it, or the spec may say too little to cut") };
+      const refusals = sliceRefusals(slices, progress, asked.body);
+      if (refusals.length > 0) return { refused: refusals[0] ?? "", handBack: sentBack(refusals) };
       console.error(`${said} cut ${slices.length} ${slices.length === 1 ? "slice" : "slices"}${slices.length === 0 ? "" : `: ${slices.map(({ id }) => id).join(", ")}`}`);
       console.log(JSON.stringify({ slices }));
-      return 0;
-    }
-    if (round === ROUNDS_BACK) return calledOwner(spec, slicerOf(spec), `its slices were still refused after ${ROUNDS_BACK} rounds back: ${quoted(refusals[0] ?? "")}`);
-    spent = await spend(sentBack(refusals), spent.session);
-  }
+      return { done: 0 };
+    },
+  });
+  return "done" in looped ? looped.done : calledOwner(spec, slicerOf(spec), `its slices were still refused after ${ROUNDS_BACK} rounds back: ${quoted(looped.refused)}`);
 }
 
 if (import.meta.main) {

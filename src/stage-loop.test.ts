@@ -34,3 +34,17 @@ it("stops a stage whose rounds change nothing twice as unchanged, and one refuse
   expect(againHanded).toHaveLength(2);
   expect(refusedAgain("research: #12", refusedIn(again))).toBe("research: #12 is answered but its researcher gave the same refused owner steps again, so nothing is posted or filed and it stays open: step 1 names no owner");
 });
+
+it("stops a stage still refused after its cap of rounds back as capped, on the refusal it fired on", async () => {
+  const handed: [string, string | undefined][] = [];
+  let rounds = 0;
+  const looped = await stageLoop({
+    spend: spender(handed),
+    input: "slice it",
+    stops: [],
+    roundsBack: 2,
+    judged: () => ({ refused: `round ${++rounds} refused`, handBack: `fix round ${rounds}` }),
+  });
+  expect(looped).toEqual({ stop: "capped", refused: "round 3 refused" });
+  expect(handed).toEqual([["slice it", undefined], ["fix round 1", "session-1"], ["fix round 2", "session-2"]]);
+});

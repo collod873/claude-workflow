@@ -257,18 +257,20 @@ type Stop = "unchanged" | "again";
 
 type Judged<Done> = { done: Done } | { refused: string; handBack: string; changed?: boolean };
 
-export type Looped<Done> = { done: Done } | { stop: Stop; refused: string };
+export type Looped<Done> = { done: Done } | { stop: Stop | "capped"; refused: string };
 
 interface Looping<Done> {
   spend: (input: string, resume?: string) => Promise<Spent>;
   input: string;
   session?: string;
   stops: readonly Stop[];
+  roundsBack?: number;
   judged: (spent: Spent) => Judged<Done>;
 }
 
-export async function stageLoop<Done>({ spend, input, session, stops, judged }: Looping<Done>): Promise<Looped<Done>> {
+export async function stageLoop<Done>({ spend, input, session, stops, roundsBack = Infinity, judged }: Looping<Done>): Promise<Looped<Done>> {
   let handed = input;
+  let handedBack = 0;
   let carried = session;
   let last: { refused: string; changed?: boolean } | undefined;
   for (;;) {
@@ -278,8 +280,10 @@ export async function stageLoop<Done>({ spend, input, session, stops, judged }: 
     if ("done" in judging) return judging;
     if (stops.includes("unchanged") && judging.changed === false && last?.changed === false) return { stop: "unchanged", refused: judging.refused };
     if (stops.includes("again") && judging.refused === last?.refused) return { stop: "again", refused: judging.refused };
+    if (handedBack === roundsBack) return { stop: "capped", refused: judging.refused };
     last = judging;
     handed = judging.handBack;
+    handedBack += 1;
   }
 }
 
