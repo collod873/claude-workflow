@@ -314,7 +314,7 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
     expect(landed()).toHaveLength(1);
   });
 
-  it("marks `stuck` with its reason a ticket the builder cannot build even rewritten, and lands nothing", () => {
+  it("marks `stuck` with its reason a ticket a machine fault stops its builder on, and lands nothing", () => {
     const { run, marked, ticketComments, landed } = fixing({ answer: { outcome: "stuck", reason: "the Why needs a runner this repo cannot reach" } });
 
     expect(run().status).toBe(1);

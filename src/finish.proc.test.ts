@@ -53,6 +53,16 @@ describe("bin/finish reviews a spec's integration branch with one reviewer, runs
     expect(review).toContain("tenant-time-zone shows on the branch");
   });
 
+  it("hands the reviewer the owner step a slice's builder named in its commit's trailer, though the commit list is cut before that commit", () => {
+    const later = Array.from({ length: 30 }, (_, at) => ({ id: `later-${at}`, files: { [`src/later-${at}.ts`]: "export {};\n" }, message: `Build later slice ${at}: ${"what it built ".repeat(12)}` }));
+    const finished = finishing({ slices: [{ id: "sandbox-step", files: { "src/sandbox.ts": "export {};\n" }, ownerStep: "Set the builders' Stripe key to the sandbox dev uses" }, ...later] });
+
+    expect(finished.run().status).toBe(0);
+    const [review = ""] = finished.handed();
+    expect(review).toContain("[cut here, at its cap of 4096 bytes]");
+    expect(review).toContain("- Set the builders' Stripe key to the sandbox dev uses");
+  });
+
   it("marks the spec checking before its reviewer is hired, so the issue stops showing slicing or building while finish reviews and lands it (#1663)", () => {
     const finished = finishing({ reviewer: '  [ "$CALL" = 1 ] && cp "$MACHINE_BIN/../marks" "$MACHINE_BIN/../marks-at-first-review"' });
 
