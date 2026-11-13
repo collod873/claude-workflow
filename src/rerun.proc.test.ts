@@ -117,7 +117,7 @@ describe("bin/rerun re-runs a red run once by itself, and only a second red mark
   });
 
   it("calls the owner once for each issue whose job stopped, as a run with two stage jobs can", () => {
-    const { marks, run } = rerunning({ attempt: "2", jobs: [red(), { conclusion: "failure", annotations: [ownerCall("903", "the done check run")] }] });
+    const { marks, run } = rerunning({ attempt: "2", jobs: [red(), { conclusion: "failure", annotations: [ownerCall("903", "the spec run")] }] });
 
     expect(run().status).toBe(0);
     expect(marks()).toEqual(["902 stuck", "903 stuck"]);

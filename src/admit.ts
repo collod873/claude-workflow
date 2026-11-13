@@ -3,7 +3,7 @@ import { dedashed } from "./em-dash.ts";
 import { parentOf } from "./issue-links.ts";
 
 export const doesNotBuild = (ticket: string, refused: string) =>
-  `#${ticket} does not build, since its checks would run as shell with the App's token and ${refused}. A ticket the App opens builds only as research's follow-up from a research note the owner opened, as what a reviewer let through on a ticket that builds, as what a done check found on a spec that builds, or as a first step or machine fault its builder filed from a ticket that builds in its own repo.`;
+  `#${ticket} does not build, since its checks would run as shell with the App's token and ${refused}. A ticket the App opens builds only as research's follow-up from a research note the owner opened, as what a reviewer let through on a ticket or spec that builds, or as a first step or machine fault its builder filed from a ticket that builds in its own repo.`;
 const NO_FOLLOW_UP = "as no follow-up the machine builds";
 const HERE = "{owner}/{repo}";
 const MOST_READS = 8;

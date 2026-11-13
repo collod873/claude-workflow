@@ -63,7 +63,7 @@ const CUTS: Record<Cut, { lead: string; end: string }> = {
   },
   replan: {
     lead: `The spec has slices already. Read the integration branch as built, in the repo you are in, and the slices still in flight, then cut each slice now at its last responsible moment: every name and file it needs is on the branch or settled by a slice in flight. A slice already cut stands, so cut none twice. What a partial slice left, marked \`${NOT_CUT_AGAIN}\`, is yours to cut now, as one slice or more naming it in \`leftOf\`. An \`out\` slice is one whose builder answered \`stuck\`, or stopped on both its tries; it waits on the owner, so block no new slice on it.`,
-    end: "Answer no slice when nothing is left to cut: once every slice has merged, the spec gets its reviewer and its done check, then its full check and `bin/land`.",
+    end: "Answer no slice when nothing is left to cut: once every slice has merged, the spec gets its reviewer, then its full check and `bin/land`.",
   },
 };
 

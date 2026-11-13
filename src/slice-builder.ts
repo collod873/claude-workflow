@@ -252,9 +252,9 @@ export async function isolated(tree: string, names: string[], port: number): Pro
   return typeof database === "string" ? database : { ...isolation, ...database };
 }
 
-export const fastForwards = (onto: string) => git(["merge-base", "--is-ancestor", onto, "HEAD"]).status === 0;
+const fastForwards = (onto: string) => git(["merge-base", "--is-ancestor", onto, "HEAD"]).status === 0;
 
-export function rebaseStopped(onto: string): { files: string; said: string } | undefined {
+function rebaseStopped(onto: string): { files: string; said: string } | undefined {
   const rebased = git(["rebase", "--quiet", onto]);
   if (rebased.status === 0) return undefined;
   const files = git(["diff", "--name-only", "--diff-filter=U"]).stdout.trim();
@@ -268,7 +268,7 @@ function rebasedOnto(onto: string): string | undefined {
   return stopped.files === "" ? unrebased(onto, stopped.said) : conflicted(onto, stopped.files);
 }
 
-export function sliceTrailed(onto: string, slices: string[]): void {
+function sliceTrailed(onto: string, slices: string[]): void {
   const named = slices.map((slice) => `\`Slice: ${slice}\``).join(", ");
   const trailers = gitRead(["log", "--format=%x01%(trailers:key=Slice,valueonly,separator=%x2C)", `${onto}..HEAD`], `the commits past ${onto} could not be read, so none was given its ${named} trailer`);
   const commits = trailers.split("\x01").slice(1);

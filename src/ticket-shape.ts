@@ -27,7 +27,6 @@ export const NEXT_HEADING = /^##[ \t]/m;
 const ITEM = /^[ \t]*-[ \t]*\[[ xX]\][ \t]*/;
 const OWNER_WORDS = /"[^"\n]{4,}"|^>[ \t]*\S/m;
 const NUMBERED_ITEM = /^[ \t]*\d+[.)][ \t]/m;
-const STORY = /^[ \t]*\d+[.)][ \t]+/;
 const QUOTE = 80;
 
 export const DONE_SENTENCES = "what is true once it is done";
@@ -67,10 +66,10 @@ export function section(body: string, heading: RegExp): string {
   return next === null ? rest : rest.slice(0, next.index);
 }
 
-function itemsUnder(body: string, heading: RegExp, item = ITEM): string[] {
+function itemsUnder(body: string, heading: RegExp): string[] {
   const items: string[] = [];
   for (const line of section(body, heading).split("\n")) {
-    if (item.test(line)) items.push(line.replace(item, "").trim());
+    if (ITEM.test(line)) items.push(line.replace(ITEM, "").trim());
     else if (items.length > 0 && line.trim() !== "") items[items.length - 1] += ` ${line.trim()}`;
   }
   return items;
@@ -134,13 +133,9 @@ function builtRefusals(body: string, why: WhyAsked): string[] {
 
 export const SPEC_CAP = 64 * 1024;
 
-export interface Sentence {
-  said: string;
-}
-
-export function sentences(body: string): Sentence[] {
+export function closingLines(body: string): string[] {
   const text = body.replaceAll(/\r\n?/g, "\n");
-  return [...itemsUnder(text, DONE_WHEN), ...itemsUnder(text, EARLIER_CLOSING), ...itemsUnder(text, USER_STORIES, STORY)].map((said) => ({ said }));
+  return [...itemsUnder(text, DONE_WHEN), ...itemsUnder(text, EARLIER_CLOSING)];
 }
 
 export const specProblem = (body: string) => section(body.replaceAll(/\r\n?/g, "\n"), PROBLEM_STATEMENT);

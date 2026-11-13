@@ -7,7 +7,6 @@ import { capped, LIST_CAP, onDisk } from "./brief.ts";
 import { parkedBehind } from "./builder.ts";
 import { park } from "./issue-links.ts";
 import { askedOn, calledOwner, commentEdited, commentOnTicket, endedRed, gh, ghRead, git, gitRead, standingOn, stoodDownOrWaiting, machineBin, mark, readOrStop, rebuiltOnMain, rebuiltRef, STUCK, unread } from "./post.ts";
-import type { Try } from "./done-checker.ts";
 import { rebaseRefusedOnto } from "./settle.ts";
 import type { Slice } from "./slicer.ts";
 import { BUILDING, MACHINE, SONNET_BUILDERS, SPEC, SPEC_PREFIX } from "./spelled.ts";
@@ -30,11 +29,16 @@ interface Tracked extends Slice {
   filed?: string[] | undefined;
 }
 
+export interface LineAnswer {
+  line: number;
+  outcome: "held" | "fixed" | "missed" | "unrun";
+  ran: string;
+}
+
 export interface Progress {
   landed?: string | undefined;
   slices: Tracked[];
-  tries?: Try[] | undefined;
-  fixed?: number[] | undefined;
+  lines?: LineAnswer[] | undefined;
 }
 
 interface Built {
@@ -104,14 +108,9 @@ function posted(spec: string, found: Found): void {
   found.url ??= written.said;
 }
 
-export function triedOn(spec: string, found: Found, { tries, fixed }: { tries: Try[]; fixed: number[] }): void {
-  found.progress.tries = tries.map((one) => ({ ...one, tried: capped(one.tried, LEFT_CAP) }));
-  found.progress.fixed = fixed;
-  posted(spec, found);
-}
-
-export function landedOn(spec: string, found: Found, pr: string): void {
+export function landedOn(spec: string, found: Found, pr: string, lines: LineAnswer[]): void {
   found.progress.landed = pr;
+  found.progress.lines = lines.map((one) => ({ ...one, ran: capped(one.ran, LEFT_CAP) }));
   posted(spec, found);
 }
 
@@ -242,14 +241,14 @@ function building(spec: string, tracked: Tracked, dir: string, brief: string, lo
 
 const sliceTree = (root: string, id: string) => join(root, `slice-${id}`);
 
-export function worktree(spec: string, branch: string, dir: string): string {
+function worktree(spec: string, branch: string, dir: string): string {
   if (existsSync(dir)) return dir;
   removed(branch, dir);
   gitRead(["worktree", "add", "--quiet", "-b", branch, dir, specBranch(spec)], `a worktree for ${branch} could not be made`);
   return dir;
 }
 
-export function removed(branch: string, dir: string): void {
+function removed(branch: string, dir: string): void {
   git(["worktree", "remove", "--force", dir]);
   rmSync(dir, { recursive: true, force: true });
   git(["worktree", "prune"]);
@@ -262,7 +261,7 @@ function rebuiltFromTip(spec: string, branch: string): boolean {
   return seen !== "" && seen === gitRead(["rev-parse", specBranch(spec)], `${specBranch(spec)} could not be read`) && rebuiltOnMain(specBranch(spec), branch);
 }
 
-export function fastForwarded(spec: string, branch: string): boolean {
+function fastForwarded(spec: string, branch: string): boolean {
   const ancestor = git(["merge-base", "--is-ancestor", specBranch(spec), branch]);
   if (ancestor.status !== 0 && ancestor.status !== 1) unread(`${branch} could not be read against ${specBranch(spec)}`);
   const rebuilt = ancestor.status === 1 && rebuiltFromTip(spec, branch);
@@ -369,9 +368,9 @@ async function scheduled(spec: string, app: AppKey | undefined): Promise<number>
     if (stood !== undefined) console.log(`${said} ${stood}, so ${after}`);
     return stood !== undefined;
   };
-  const landedUnchecked = progress.landed !== undefined;
-  let plan = !landedUnchecked;
-  let cutNothing = landedUnchecked;
+  const landedUnclosed = progress.landed !== undefined;
+  let plan = !landedUnclosed;
+  let cutNothing = landedUnclosed;
   let slicerStopped = false;
   let markedBuilding = false;
   for (;;) {
@@ -413,13 +412,13 @@ async function scheduled(spec: string, app: AppKey | undefined): Promise<number>
       const ended = finished(spec, root, logs, app);
       fresh("bin/finish");
       if (ended.status !== 0) {
-        const unchecked = ended.landed === undefined ? undefined : `the spec landed as #${ended.landed}, with its done check unfinished`;
-        if (standsDown(unchecked === undefined ? "bin/finish stood down and the spec did not land" : `it stood down after ${unchecked}`)) return 0;
-        if (unchecked !== undefined) return endedRed(`${said} ended red, bin/finish ${spec} ended ${String(ended.status)} after ${unchecked}, so a rerun goes straight to the done check`);
+        const unclosed = ended.landed === undefined ? undefined : `the spec landed as #${ended.landed}, not yet closed`;
+        if (standsDown(unclosed === undefined ? "bin/finish stood down and the spec did not land" : `it stood down after ${unclosed}`)) return 0;
+        if (unclosed !== undefined) return endedRed(`${said} ended red, bin/finish ${spec} ended ${String(ended.status)} after ${unclosed}, so a rerun goes straight to closing it`);
         return endedRed(`${said} ended red, bin/finish ${spec} ended ${String(ended.status)}`);
       }
       progress.landed = undefined;
-      console.log(`${said} landed as #${ended.landed ?? "?"}, and its done check ${ended.missed === "" ? "found every sentence held or put to the owner" : `filed sentence ${ended.missed} as bugs`}`);
+      console.log(`${said} landed as #${ended.landed ?? "?"} and closed${ended.missed === "" ? "" : `, with closing line ${ended.missed} filed as a bug`}`);
       return 0;
     }
     const built = await Promise.race(running.values());

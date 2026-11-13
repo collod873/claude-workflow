@@ -1,9 +1,8 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { LIST_CAP, onDisk } from "./brief.ts";
-import { specWith } from "./done-checker.part.ts";
-import { BRIEFS_CAP, ONE_REVIEWER_CAP, onTheBranch, SLICE_CAP } from "./finish.ts";
-import { authored, BIN, execute, labelsJson, linesIn, ghArgv, git, key, nulSplit, plant, type Said, scratch, script } from "./scenarios.ts";
+import { BRIEFS_CAP, ONE_REVIEWER_CAP, onTheBranch, OUT_OF_TIME } from "./finish.ts";
+import { authored, BIN, execute, labelsJson, linesIn, ghArgv, git, key, nulSplit, plant, type Said, scratch, script, wellFormedSpec } from "./scenarios.ts";
 import { PAUSED } from "./spelled.ts";
 import { declarePart, HANDED_ON } from "./part-files.ts";
 import { SPEC_CAP } from "./ticket-shape.ts";
@@ -12,6 +11,14 @@ const FINISHED_PR = "https://github.com/collod873/claude-workflow/pull/9974";
 const POSTED = "https://github.com/collod873/claude-workflow/issues/974#issuecomment-1";
 const FILED_NOTE = "https://github.com/collod873/claude-workflow/issues/975";
 const APPROVED: object = { outcome: "approve", reason: "reason $CALL" };
+
+export interface Answered {
+  line: number;
+  outcome: string;
+  ran: string;
+}
+
+const specWith = (closing: string[]) => wellFormedSpec.replace(/- \[ \] .*\n$/, closing.map((line) => `- [ ] ${line}\n`).join(""));
 
 export interface Slice {
   id?: string;
@@ -24,8 +31,8 @@ export function finishing({
   labels = ["spec"] as string[],
   state = "OPEN",
   labelsAtLand = undefined as string[] | undefined,
-  sentences = ["see the spec land on main"],
-  tries = [{ sentence: 1, outcome: "held", tried: "saw it on main" }] as { sentence: number; outcome: string; tried: string }[],
+  closing = ["see the spec land on main"],
+  lines = [{ line: 1, outcome: "held", ran: "saw it on main" }] as Answered[],
   reviewer = "",
   answer = APPROVED,
   answerFrom = undefined as { call: number; answer: object } | undefined,
@@ -34,10 +41,9 @@ export function finishing({
   said = [] as Said[],
   appKeyed = false,
   contract = undefined as string | undefined,
-  triesUntilChecked = false,
-  tryRefused = false,
-  tryLeavesServer = false,
-  tryHangs = false,
+  unsetKeys = "",
+  gh = "",
+  stageMinutes = "",
 } = {}) {
   const root = scratch("finish-");
   const session = join(root, "session");
@@ -48,7 +54,7 @@ export function finishing({
   const tokens = join(root, "tokens");
   const lands = join(root, "lands");
   const approvals = join(root, "approvals");
-  const triesDir = join(root, "tries");
+  const envs = join(root, "envs");
   const checks = join(root, "checks");
   const marks = join(root, "marks");
   const origin = join(root, "origin.git");
@@ -69,35 +75,22 @@ export function finishing({
     git(session, "add", ".");
     git(session, "commit", "--quiet", "-m", id === undefined ? "Build what no slice names" : `${message ?? `Build slice ${id}`}\n\nSlice: ${id}`);
   }
-  plant(root, "issue.json", JSON.stringify({ title: "A spec worth finishing", body: specWith(sentences), labels: labels.map((name) => ({ name })), state }));
+  plant(root, "issue.json", JSON.stringify({ title: "A spec worth finishing", body: specWith(closing), labels: labels.map((name) => ({ name })), state }));
   plant(root, "labels-at-land", (labelsAtLand ?? labels).map((label) => `${label}\n`).join(""));
   plant(root, "comments.json", authored(said));
-  const answering = (output: object) => `${JSON.stringify({ type: "system", session_id: "review-$CALL" })}\n${JSON.stringify({ type: "result", subtype: "success", is_error: false, session_id: "review-$CALL", structured_output: output })}\n`;
+  const answering = (answered: object) =>
+    `${JSON.stringify({ type: "system", session_id: "review-$CALL" })}\n${JSON.stringify({ type: "result", subtype: "success", is_error: false, session_id: "review-$CALL", structured_output: { lines, ...answered } })}\n`;
   script(
     join(bin, "claude"),
     [
-      `mkdir -p "${prompts}" "${hires}" "${wheres}" "${triesDir}"`,
+      `mkdir -p "${prompts}" "${hires}" "${wheres}" "${envs}"`,
       `ASKED=$(mktemp "${root}/asked.XXXXXX")`,
       'cat >"$ASKED"',
-      `exec 9>"${join(root, "claude.lock")}"`,
-      "flock 9",
-      `if grep -q '^Try each sentence' "$ASKED"; then`,
-      `  TRY=$(( $(ls "${triesDir}" | grep -vc '\\.') + 1 ))`,
-      `  mv "$ASKED" "${triesDir}/$TRY"`,
-      `  { pwd; git rev-parse HEAD; printf '%s\\n' "\${DATABASE_URL:-}" "\${PORT:-}" "\${TMPDIR:-}"; } >"${triesDir}/$TRY.where"`,
-      "  flock -u 9",
-      ...(triesUntilChecked ? [`  for _ in $(seq 100); do [ -s "${checks}" ] && break; sleep 0.1; done`, `  [ -s "${checks}" ] && touch "${join(root, "checked-while-trying")}"`] : []),
-      ...(tryLeavesServer ? [`  setsid sleep 300 </dev/null >/dev/null 2>&1 9>&- & printf '%s\\n' "$!" >"${join(root, "server-pid")}"`] : []),
-      ...(tryHangs ? [`  printf '%s\\n' "$$" >"${join(root, "try-pid")}"`, "  exec sleep 300"] : []),
-      ...(tryRefused ? ["  exit 3"] : []),
-      `  cat <<'TRIES'\n${answering({ tries })}TRIES`,
-      "  exit 0",
-      "fi",
       `CALL=$(( $(ls "${prompts}" | wc -l) + 1 ))`,
       `printf '%s\\0' "$@" >"${hires}/$CALL"`,
       `mv "$ASKED" "${prompts}/$CALL"`,
       `pwd >"${wheres}/$CALL"`,
-      "flock -u 9",
+      `printf '%s\\n' "\${DATABASE_URL:-}" "\${PORT:-}" "\${TMPDIR:-}" >"${envs}/$CALL"`,
       `ROOT="${root}"`,
       `PROMPT="${prompts}/$CALL"`,
       reviewer,
@@ -114,6 +107,7 @@ export function finishing({
       `mkdir -p "${tokens}"`,
       `printf '%s' "\${GH_TOKEN:-}" >"${tokens}/$n"`,
       'case "$*" in',
+      gh,
       "  *\"repos/{owner}/{repo}/installation\"*) printf '4242\\n' ;;",
       "  *\"access_tokens\"*) printf 'minted-%s\\n' \"$n\" ;;",
       `  *"issue view"*"title,body,labels"*) cat "${join(root, "issue.json")}" ;;`,
@@ -129,8 +123,7 @@ export function finishing({
   script(join(bin, "check"), `printf '%s\\n' "$*" >>"${checks}"\n${check}`);
   script(join(bin, "docker"), `printf '%s\\n' "$*" >>"${join(root, "docker-calls")}"\ncase $1 in\n  port) printf '127.0.0.1:49153\\n' ;;\nesac\n`);
   script(join(bin, "mark"), `printf '%s\\n' "$*" >>"${marks}"\n`);
-  const serverAtLand = `[ -f "${join(root, "server-pid")}" ] && ps -o stat= -p "$(cat "${join(root, "server-pid")}")" >"${join(root, "server-at-land")}" || true\n`;
-  script(join(bin, "land"), `${serverAtLand}ls "${join(root, "gh-argv")}" | wc -l >>"${join(root, "gh-calls-at-land")}"\nprintf '%s %s %s\\n' "\${GH_TOKEN:-}" "$(git rev-parse HEAD)" "$1 $2" >>"${lands}"\nprintf '%s\\0' "$4" >>"${approvals}"\n${land}\nprintf 'Landed ${FINISHED_PR}\\n'\n`);
+  script(join(bin, "land"), `ls "${join(root, "gh-argv")}" | wc -l >>"${join(root, "gh-calls-at-land")}"\nprintf '%s %s %s\\n' "\${GH_TOKEN:-}" "$(git rev-parse HEAD)" "$1 $2" >>"${lands}"\nprintf '%s\\0' "$4" >>"${approvals}"\n${land}\nprintf 'Landed ${FINISHED_PR}\\n'\n`);
   const keyFile = join(root, "app-key.json");
   if (appKeyed) plant(root, "app-key.json", JSON.stringify({ clientId: "Iv1.finish", key: key() }));
   const listed = linesIn;
@@ -139,14 +132,10 @@ export function finishing({
     root,
     session,
     handed: () => numbered(prompts),
-    tried: () => (existsSync(triesDir) ? readdirSync(triesDir).filter((name) => !name.includes(".")).map((_, at) => readFileSync(join(triesDir, String(at + 1)), "utf8")) : []),
-    triedAt: () => (existsSync(triesDir) ? readdirSync(triesDir).filter((name) => name.endsWith(".where")).map((_, at) => readFileSync(join(triesDir, `${at + 1}.where`), "utf8").trim().split("\n")) : []),
+    isolation: () => numbered(envs).map((env) => env.trimEnd().split("\n")),
     ghCallsAtLand: () => listed(join(root, "gh-calls-at-land")).map(Number),
-    checkedWhileTrying: () => existsSync(join(root, "checked-while-trying")),
     dockered: () => linesIn(join(root, "docker-calls")),
-    serverAtLand: () => onDisk(join(root, "server-at-land"))?.trim(),
     serverPid: () => Number(onDisk(join(root, "server-pid"))),
-    tryPid: () => Number(onDisk(join(root, "try-pid"))),
     wheres: () => numbered(wheres).map((where) => where.trim()),
     hired: () => numbered(hires).map((argv) => argv.split("\0").filter((part) => part !== "")),
     landed: () => listed(lands).map((line) => line.split(" ")),
@@ -158,7 +147,7 @@ export function finishing({
     log: (...args: string[]) => git(session, "log", ...args),
     pushed: () => git(origin, "log", "--format=%s", "spec/974"),
     run: (...args: string[]) =>
-      execute(join(BIN, "finish"), session, { PATH: `${bin}:${process.env.PATH}`, MACHINE_BIN: bin, GH_TOKEN: "job-token", ...(appKeyed ? { APP_KEY_FILE: keyFile } : {}) }, args.length === 0 ? ["974"] : args),
+      execute(join(BIN, "finish"), session, { PATH: `${bin}:${process.env.PATH}`, MACHINE_BIN: bin, GH_TOKEN: "job-token", UNSET_KEYS: unsetKeys, STAGE_MINUTES: stageMinutes, ...(appKeyed ? { APP_KEY_FILE: keyFile } : {}) }, args.length === 0 ? ["974"] : args),
   };
 }
 
@@ -168,13 +157,18 @@ declarePart({
     {
       name: "spec's reviewer",
       file: "src/finish.ts",
-      cap: SPEC_CAP + LIST_CAP + ONE_REVIEWER_CAP + BRIEFS_CAP + SLICE_CAP + 2 * HANDED_ON,
-      slots: ["slice", "commits", "diff", "stat", "title", "body", "briefs"],
-      build: (filled) => onTheBranch({ slices: [filled.slice ?? ""], commits: filled.commits ?? "", diff: filled.diff ?? "", stat: filled.stat ?? "" }, { spec: "", title: filled.title ?? "", body: filled.body ?? "", commitlint: true, briefs: filled.briefs ?? "" }),
+      cap: 2 * SPEC_CAP + 2 * LIST_CAP + ONE_REVIEWER_CAP + BRIEFS_CAP + 2 * HANDED_ON,
+      slots: ["commits", "diff", "stat", "title", "body", "closing", "briefs", "unset"],
+      build: (filled) =>
+        onTheBranch(
+          { commits: filled.commits ?? "", diff: filled.diff ?? "", stat: filled.stat ?? "" },
+          { spec: "", title: filled.title ?? "", body: filled.body ?? "", closing: [filled.closing ?? ""], commitlint: true, briefs: filled.briefs ?? "", unset: [filled.unset ?? "KEY"] },
+        ),
     },
+    { name: "spec's reviewer out of time", file: "src/finish.ts", cap: HANDED_ON, slots: [], build: () => OUT_OF_TIME },
   ],
   scenarios: [
-    { label: "finishing a spec whose sentence held", run: () => finishing().run() },
+    { label: "finishing a spec whose closing line held", run: () => finishing().run() },
     { label: "standing down on paused", run: () => finishing({ labels: ["spec", PAUSED] }).run() },
     { label: "refusing a ticket", run: () => finishing({ labels: ["ticket"] }).run() },
     { label: "refusing a call it does not take", run: () => finishing().run("974", "--now") },

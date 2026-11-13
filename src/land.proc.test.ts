@@ -537,13 +537,13 @@ describe("bin/land refuses what must not reach main (#681)", () => {
     expect(calls().filter(merged)).toHaveLength(1);
   });
 
-  it("lands nothing from a spec whose commit closes the spec by keyword, since only its done check closes it (ADR-0013)", () => {
+  it("lands nothing from a spec whose commit closes the spec by keyword, since only bin/finish closes it, once it has landed (ADR-0013)", () => {
     const { remote, session, run, calls } = landSession({ messages: ["a clean change", "Finish it\n\nCloses #974"] });
 
     const result = run(["--spec", "974"]);
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toBe(`land: commit ${git(session, "rev-parse", "--short=7", "HEAD")} closes spec #974 by keyword, so nothing landed; only its done check closes it: reword it\n`);
+    expect(result.stderr).toBe(`land: commit ${git(session, "rev-parse", "--short=7", "HEAD")} closes spec #974 by keyword, so nothing landed; only bin/finish closes it, once it has landed: reword it\n`);
     expect(git(remote, "for-each-ref", "--format=%(refname)")).toBe("refs/heads/main");
     expect(calls().some(([command, action]) => command === "pr" && action === "create")).toBe(false);
   });

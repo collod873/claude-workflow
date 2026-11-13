@@ -518,7 +518,7 @@ const CALLERS = [
 ];
 const callsOwner = (step: Step) => step.uses === "./.github/actions/call-owner";
 
-describe("a build, research, spec, done check or strip run that ends red leaves its issue and run through one shared step, which bin/rerun reads once the run completes, so a wake that ends red runs again (#1057, #1067, #1178, #1445)", () => {
+describe("a build, research, spec or strip run that ends red leaves its issue and run through one shared step, which bin/rerun reads once the run completes, so a wake that ends red runs again (#1057, #1067, #1178, #1445)", () => {
   const [owned] = (parse(readFileSync(CALLER, "utf8")) as { runs: { steps: Step[] } }).runs.steps;
   const calls = (labels: string, run: string) => {
     const root = scratch("called-");

@@ -246,7 +246,7 @@ export function opened<Carried>({ stage, issue, state, tried, hire: hiring, read
 
 export type Stop = "unchanged" | "again";
 
-export type Refusal = { refused: string; handBack: string };
+type Refusal = { refused: string; handBack: string };
 
 export type Ahead<Done> = { done: Done } | Refusal;
 

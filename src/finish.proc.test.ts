@@ -1,16 +1,17 @@
 import { fromOf } from "./post.ts";
-import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { describe, expect, it, onTestFinished } from "vitest";
-import { finishing, type Slice } from "./finish.part.ts";
+import { type Answered, finishing } from "./finish.part.ts";
 import { bodyIn, createdIssues, git, heard, schemaIn, TAKEN_STEP } from "./scenarios.ts";
-import { HELD, OWNER } from "./spelled.ts";
+import { HELD as HELD_LABELS, OWNER } from "./spelled.ts";
 
-const SENTENCES = ["see the spec land on main", "see each slice's file on main"];
+const CLOSING = ["see the spec land on main", "see each slice's file on main"];
+const HELD: Answered = { line: 1, outcome: "held", ran: "saw it on main" };
+const LEAVES_SERVER = '  setsid sleep 300 </dev/null >/dev/null 2>&1 & printf \'%s\\n\' "$!" >"$ROOT/server-pid"';
+const closingComments = (calls: string[][]) => calls.map(bodyIn).filter((body) => body.startsWith("## Done when"));
 const FIXES_ZONE = '  [ "$CALL" = 1 ] && printf \'export const zone = 2;\\n\' >src/zone.ts';
-const SEES_THE_TRY_START = '  [ "$CALL" = 1 ] && { for _ in $(seq 100); do [ -f "$ROOT/tries/1.where" ] && break; sleep 0.1; done; [ -f "$ROOT/tries/1.where" ] && touch "$ROOT/tried-beside-review"; }';
 const big = (name: string, lines: number) => Array.from({ length: lines }, (_, at) => `export const ${name}${at} = "${name} line ${at}";`).join("\n");
 const RED_CHECK = "printf 'ZONE-TEST-BROKE\\n' >../red.log\nprintf 'check: red test; log %s\\n' \"$(cd .. && pwd)/red.log\"\nexit 1\n";
 const REFUSAL = "land: the full check went red on the commit, so nothing was pushed; fix what it names and land again";
@@ -20,7 +21,7 @@ const ALWAYS_REFUSES = `printf '%s\\n' '${REFUSAL}' >&2\nexit 1`;
 const SLICED = (slices: { id: string; title: string }[], landed?: string) =>
   `## Spec run\n\n<!-- progress: ${JSON.stringify({ landed, slices: slices.map(({ id, title }) => ({ id, title, why: `${title} is why ${id} was cut`, done: [`${id} shows on the branch`], blockedBy: [], state: "merged", tries: 1 })) })} -->`;
 
-describe("bin/finish reviews a spec's integration branch with one reviewer, runs the full check, lands it once and closes it from its done check (ADR-0013)", () => {
+describe("bin/finish reviews a spec's integration branch with one reviewer, runs the full check, lands it once and closes it (ADR-0013)", () => {
   it("hires one reviewer over the whole branch, handed the spec and the diff and pointed at both standards, runs the full check on what it fixed, lands with bin/land --spec, and prints landed and missed last", () => {
     const finished = finishing({ reviewer: FIXES_ZONE, check: "git log -1 --format=%s >../checked-on\nprintf 'check: ok\\n'\n" });
 
@@ -67,58 +68,14 @@ describe("bin/finish reviews a spec's integration branch with one reviewer, runs
     expect(finished.approved()).toEqual(["reason 1"]);
   });
 
-  it("prints the sentences the done check missed and filed as bugs, with the spec closed, exiting 0 since it landed and the check ran", () => {
-    const finished = finishing({ sentences: SENTENCES, tries: [{ sentence: 1, outcome: "held", tried: "saw it" }, { sentence: 2, outcome: "missed", tried: "found no zone file" }] });
-
-    const ran = heard(finished.run());
-
-    expect(ran.status, ran.stderr).toBe(0);
-    expect(ran.lines.slice(-2)).toEqual(["landed=9974", "missed=2"]);
-    expect(finished.calls().filter((args) => args[1] === "close")).toEqual([["issue", "close", "974", "--reason", "completed"]]);
-    expect(finished.marked()).toEqual(["974 checking"]);
-  });
-
-  it("lands though the done check could not finish, since it refuses no landing (#1626), then marks the landed spec stuck and calls the owner with its reason, so the scheduler stands down on stuck rather than leave a landed spec that nothing wakes (ADR-0009)", () => {
-    const finished = finishing({ sentences: SENTENCES, tries: [{ sentence: 1, outcome: "held", tried: "saw it" }] });
-
-    const ran = heard(finished.run());
-
-    expect(ran.status).toBe(1);
-    expect(ran.lines.slice(-2)).toEqual(["landed=9974", "missed="]);
-    expect(finished.landed()).toHaveLength(1);
-    expect(finished.marked()).toEqual(["974 checking", "974 stuck"]);
-    const called = finished.calls().filter((args) => args[1] === "comment").map(bodyIn);
-    expect(called.filter((body) => body.startsWith(`@${OWNER} the done check of #974 stopped and needs you: the done checker gave no try for sentence 2.`))).toHaveLength(1);
-    expect(finished.calls().filter((args) => args[1] === "close")).toEqual([]);
-  });
-
-  it("stamps the spec's landing on its progress comment before the done check runs, so a run stopped after landing is found landed by its rerun", () => {
+  it("stamps the spec's landing on its progress comment before it closes, so a run stopped after landing is found landed by its rerun", () => {
     const finished = finishing({ said: [SLICED([{ id: "tenant-time-zone", title: "Store each tenant's time zone" }])] });
 
     expect(finished.run().status).toBe(0);
     const bodies = finished.calls().map(bodyIn);
     const stamped = bodies.findIndex((body) => body.startsWith("## Spec run") && body.includes('"landed":"9974"'));
     expect(stamped).toBeGreaterThanOrEqual(0);
-    expect(stamped).toBeLessThan(bodies.findIndex((body) => body.startsWith("## Done check")));
-  });
-
-  it("runs the done check alone on a checkout of main, reviewing and landing nothing, when the progress comment records the spec landed and its done check unfinished", () => {
-    const finished = finishing({ said: [SLICED([{ id: "tenant-time-zone", title: "Store each tenant's time zone" }], "9974")] });
-    git(finished.session, "update-ref", "refs/remotes/origin/main", git(finished.session, "commit-tree", "HEAD^{tree}", "-p", "origin/main", "-p", "HEAD", "-m", "Merge the spec"));
-
-    const ran = heard(finished.run());
-
-    expect(finished.landed()).toEqual([]);
-    expect(ran.status, ran.stderr).toBe(0);
-    expect(ran.lines.slice(-2)).toEqual(["landed=9974", "missed="]);
-    const [tried, ...more] = finished.tried();
-    expect(tried).toMatch(/^Try each sentence/);
-    expect(more).toEqual([]);
-    expect(finished.handed()).toEqual([]);
-    expect(finished.log("-1", "--format=%s")).toBe("Merge the spec");
-    expect(git(finished.session, "symbolic-ref", "--short", "HEAD")).toBe("spec/974");
-    expect(finished.marked()).toEqual(["974 checking"]);
-    expect(finished.calls().filter((args) => args[1] === "close")).toEqual([["issue", "close", "974", "--reason", "completed"]]);
+    expect(stamped).toBeLessThan(bodies.findIndex((body) => body.startsWith("## Done when")));
   });
 
   it("lists the newest commits when the commit list is over its cap, and says git log reads the rest", () => {
@@ -133,62 +90,106 @@ describe("bin/finish reviews a spec's integration branch with one reviewer, runs
   });
 });
 
-describe("bin/finish tries the spec's sentences on its integration branch before it lands, and lands whatever they show (#1626, ADR-0006)", () => {
-  const bodies = (calls: string[][]) => calls.map(bodyIn);
-  const RECORDED = (tries: { sentence: number; outcome: string; tried: string }[], fixed: number[] = []) =>
-    `## Spec run\n\n<!-- progress: ${JSON.stringify({ landed: "9974", slices: [{ id: "tenant-time-zone", title: "Store each tenant's time zone", why: "why", done: ["it holds"], blockedBy: [], state: "merged", tries: 1 }], tries, fixed })} -->`;
-
-  it("starts the done check in its own tree on the integration branch as built while the reviewer still works, leaves it trying while the full check runs, and posts nothing of it before the spec lands, where waiting on a reviewer first cost 5 to 12 minutes a spec (#1615)", () => {
-    const finished = finishing({ reviewer: `${FIXES_ZONE}\n${SEES_THE_TRY_START}`, triesUntilChecked: true });
-
-    const ran = heard(finished.run());
-
-    expect(ran.status, ran.stderr).toBe(0);
-    const [[where = "", at = ""] = []] = finished.triedAt();
-    expect(where).not.toBe(finished.session);
-    expect(at).toBe(finished.log("-1", "--format=%H", "--grep", "Build slice tenant-time-zone"));
-    expect(existsSync(join(finished.root, "tried-beside-review"))).toBe(true);
-    expect(finished.checkedWhileTrying()).toBe(true);
-    const [beforeLand = 0] = finished.ghCallsAtLand();
-    expect(bodies(finished.calls().slice(0, beforeLand)).filter((body) => body.startsWith("## Done check"))).toEqual([]);
-    expect(bodies(finished.calls().slice(beforeLand)).filter((body) => body.startsWith("## Done check"))).toHaveLength(1);
-  });
-
-  it("gives the done check its own Postgres, port and temp dir when a step of its contract needs DATABASE_URL, and removes the Postgres after, where Mezzanine#2023 lost all five sentences to a migration on the shared dev database", () => {
-    const finished = finishing({ contract: '{ "steps": { "integration": { "run": "true", "needs": ["DATABASE_URL"] } } }\n' });
-
-    const ran = heard(finished.run());
-
-    expect(ran.status, ran.stderr).toBe(0);
-    const [[, , database, port = "", temp = ""] = []] = finished.triedAt();
-    expect(database).toBe("postgres://postgres:postgres@localhost:49153/postgres");
-    expect(port).toMatch(/^\d+$/);
-    expect(temp).not.toBe("");
-    const dockered = finished.dockered();
-    expect(dockered.some((call) => /^run .*postgres:16$/.test(call))).toBe(true);
-    expect(dockered.at(-1)).toMatch(/^rm --force database-/);
-  });
-
-  it("gives the done check run on main after a landing its own Postgres, port and temp dir too, and removes the Postgres after", () => {
-    const finished = finishing({ said: [SLICED([{ id: "tenant-time-zone", title: "Store each tenant's time zone" }], "9974")], contract: '{ "steps": { "integration": { "run": "true", "needs": ["DATABASE_URL"] } } }\n' });
+describe("bin/finish has its one reviewer run each closing line of the spec before it lands, and lands whatever they show (#1626, ADR-0006)", () => {
+  const RECORDED = (lines: Answered[] | undefined) =>
+    `## Spec run\n\n<!-- progress: ${JSON.stringify({ landed: "9974", slices: [{ id: "tenant-time-zone", title: "Store each tenant's time zone", why: "why", done: ["it holds"], blockedBy: [], state: "merged", tries: 1 }], lines })} -->`;
+  const landedOnMain = (finished: ReturnType<typeof finishing>) =>
     git(finished.session, "update-ref", "refs/remotes/origin/main", git(finished.session, "commit-tree", "HEAD^{tree}", "-p", "origin/main", "-p", "HEAD", "-m", "Merge the spec"));
 
+  it("hands the reviewer the spec's closing lines numbered, its user stories left out of them, and closes the landed spec with one comment listing each line and how it came out, where a second agent trying them took a median 14 minutes a spec and its misses a second fix round", () => {
+    const finished = finishing({ closing: CLOSING, lines: [HELD, { line: 2, outcome: "fixed", ran: "the zone file was missing, so the build now writes it" }] });
+
     const ran = heard(finished.run());
 
     expect(ran.status, ran.stderr).toBe(0);
-    expect(finished.landed()).toEqual([]);
-    const [[, , database, port = "", temp = ""] = []] = finished.triedAt();
+    expect(ran.lines.slice(-2)).toEqual(["landed=9974", "missed="]);
+    const [review = "", ...more] = finished.handed();
+    expect(more).toEqual([]);
+    expect(review).toContain(`1. ${CLOSING[0]}\n2. ${CLOSING[1]}`);
+    expect(review).not.toContain("3. ");
+    const [beforeLand = 0] = finished.ghCallsAtLand();
+    expect(closingComments(finished.calls().slice(0, beforeLand))).toEqual([]);
+    const [comment = "", ...others] = closingComments(finished.calls());
+    expect(others).toEqual([]);
+    expect(comment).toContain(`1. **Held**: ${CLOSING[0]}\n   saw it on main`);
+    expect(comment).toContain(`2. **Fixed before it landed**: ${CLOSING[1]}\n   the zone file was missing, so the build now writes it`);
+    expect(createdIssues(finished.calls())).toEqual([]);
+    expect(finished.calls().filter((args) => args[1] === "close")).toEqual([["issue", "close", "974", "--reason", "completed"]]);
+    expect(finished.marked()).toEqual(["974 checking"]);
+  });
+
+  it("lands a spec with a line its reviewer could not make true, files that line as a bug quoting what it ran once the spec has landed, and prints its number in missed", () => {
+    const finished = finishing({ closing: CLOSING, lines: [HELD, { line: 2, outcome: "missed", ran: "ran the build and each save rolled back in src/zone.ts" }] });
+
+    const ran = heard(finished.run());
+
+    expect(ran.status, ran.stderr).toBe(0);
+    expect(ran.lines.slice(-2)).toEqual(["landed=9974", "missed=2"]);
+    expect(finished.handed()).toHaveLength(1);
+    expect(finished.landed()).toHaveLength(1);
+    const [beforeLand = 0] = finished.ghCallsAtLand();
+    expect(createdIssues(finished.calls().slice(0, beforeLand))).toEqual([]);
+    const [bug, ...more] = createdIssues(finished.calls());
+    expect(more).toEqual([]);
+    expect(bug?.title).toBe(CLOSING[1]);
+    expect(bug?.body).toContain("> ran the build and each save rolled back in src/zone.ts");
+    expect(fromOf(bug?.body ?? "")).toMatchObject({ number: "974", kind: "review" });
+    expect(closingComments(finished.calls())[0]).toContain(`2. **Did not hold**: ${CLOSING[1]}`);
+    expect(finished.calls().filter((args) => args[1] === "close")).toEqual([["issue", "close", "974", "--reason", "completed"]]);
+  });
+
+  it("files nothing for a line nothing in its run could run, its closing comment alone saying what is missing (agent-hooks#83)", () => {
+    const finished = finishing({ closing: CLOSING, lines: [HELD, { line: 2, outcome: "unrun", ran: "needs a text to a real phone" }] });
+
+    const ran = heard(finished.run());
+
+    expect(ran.status, ran.stderr).toBe(0);
+    expect(ran.lines.slice(-2)).toEqual(["landed=9974", "missed="]);
+    expect(createdIssues(finished.calls())).toEqual([]);
+    expect(closingComments(finished.calls())[0]).toContain(`2. **Not run**: ${CLOSING[1]}\n   needs a text to a real phone`);
+    expect(finished.calls().filter((args) => args[1] === "close")).toEqual([["issue", "close", "974", "--reason", "completed"]]);
+  });
+
+  it("hands an answer that skips a closing line back to the reviewer in its own session before anything lands, and keeps the lines it answered first", () => {
+    const finished = finishing({
+      closing: CLOSING,
+      answer: { outcome: "approve", reason: "reason $CALL", lines: [HELD] },
+      answerFrom: { call: 2, answer: { outcome: "approve", reason: "reason $CALL", lines: [{ line: 2, outcome: "held", ran: "listed src/zone.ts" }] } },
+    });
+
+    expect(finished.run().status).toBe(0);
+    const [, handedBack = "", ...more] = finished.handed();
+    expect(more).toEqual([]);
+    expect(handedBack).toContain(`2. ${CLOSING[1]}`);
+    expect(handedBack).not.toContain(`1. ${CLOSING[0]}`);
+    expect(finished.hired()[1]).toEqual(expect.arrayContaining(["--resume", "review-1"]));
+    expect(finished.checked()).toHaveLength(1);
+    const [comment = ""] = closingComments(finished.calls());
+    expect(comment).toContain(`1. **Held**: ${CLOSING[0]}\n   saw it on main`);
+    expect(comment).toContain(`2. **Held**: ${CLOSING[1]}\n   listed src/zone.ts`);
+  });
+
+  it("gives the reviewer its own Postgres, port and temp dir when a step of its contract needs DATABASE_URL, sets its tree up against them, and removes the Postgres after, where Mezzanine#2023 lost all five sentences to a migration on the shared dev database", () => {
+    const setupOn = '"$(git rev-parse --path-format=absolute --git-common-dir)/../../setup-on"';
+    const finished = finishing({ contract: JSON.stringify({ setup: `printf '%s\\n' "$DATABASE_URL" >${setupOn}`, steps: { integration: { run: "true", needs: ["DATABASE_URL"] } } }) });
+
+    const ran = heard(finished.run());
+
+    expect(ran.status, ran.stderr).toBe(0);
+    const [[database, port = "", temp = ""] = []] = finished.isolation();
     expect(database).toBe("postgres://postgres:postgres@localhost:49153/postgres");
     expect(port).toMatch(/^\d+$/);
     expect(dirname(temp)).toBe(tmpdir());
     expect(basename(temp)).toMatch(/^slice-\w{6}$/);
+    expect(readFileSync(join(finished.root, "setup-on"), "utf8").trim()).toBe(database);
+    expect(finished.wheres()).toEqual([finished.session]);
     const dockered = finished.dockered();
     expect(dockered.some((call) => /^run .*postgres:16$/.test(call))).toBe(true);
     expect(dockered.at(-1)).toMatch(/^rm --force database-/);
   });
 
-  it("stops every process its done checker left running in its tree before the spec lands, where a done check's `next dev` held gigabytes for the rest of the spec's job", () => {
-    const finished = finishing({ tryLeavesServer: true });
+  it("stops every process the reviewer left running before the full check starts, where a done check's `next dev` held gigabytes for the rest of the spec's job", () => {
+    const finished = finishing({ reviewer: LEAVES_SERVER, check: 'ps -o stat= -p "$(cat ../server-pid)" >../server-at-check\nprintf \'check: ok\\n\'\n' });
     onTestFinished(() => {
       const pid = finished.serverPid();
       if (pid > 1 && existsSync(`/proc/${pid}`)) process.kill(pid, "SIGKILL");
@@ -198,98 +199,114 @@ describe("bin/finish tries the spec's sentences on its integration branch before
 
     expect(ran.status, ran.stderr).toBe(0);
     expect(finished.serverPid()).toBeGreaterThan(1);
-    expect(finished.serverAtLand()).toMatch(/^Z?$/);
+    expect(readFileSync(join(finished.root, "server-at-check"), "utf8").trim()).toMatch(/^Z?$/);
   });
 
-  it("leaves nothing of the done check running or posted, its Postgres removed, when the reviewer answers stuck while it still tries, and marks the spec stuck all the same, since it now starts before any reviewer answers", () => {
-    const finished = finishing({
-      tryHangs: true,
-      contract: '{ "steps": { "integration": { "run": "true", "needs": ["DATABASE_URL"] } } }\n',
-      reviewer: '  for _ in $(seq 100); do [ -f "$ROOT/try-pid" ] && break; sleep 0.1; done',
-      answer: { outcome: "stuck", reason: "only the owner can say which zones count" },
-    });
-    const running = () => existsSync(`/proc/${finished.tryPid()}`);
-    onTestFinished(() => {
-      if (finished.tryPid() > 1 && running()) process.kill(finished.tryPid(), "SIGKILL");
-    });
+  it("tells the reviewer each key the repo's secrets lack, so a line resting on one is answered unrun naming the key", () => {
+    const finished = finishing({ unsetKeys: "TWILIO_AUTH_TOKEN,RESEND_API_KEY" });
 
-    const ran = heard(finished.run());
-
-    expect(ran.status).toBe(1);
-    expect(finished.marked()).toEqual(["974 checking", "974 stuck"]);
-    expect(finished.tryPid()).toBeGreaterThan(1);
-    for (let waited = 0; waited < 50 && running(); waited++) spawnSync("sleep", ["0.1"]);
-    expect(running()).toBe(false);
-    expect(finished.dockered().at(-1)).toMatch(/^rm --force database-/);
-    expect(bodies(finished.calls()).filter((body) => body.startsWith("## Done check"))).toEqual([]);
-    expect(finished.landed()).toEqual([]);
+    expect(finished.run().status).toBe(0);
+    const [review = ""] = finished.handed();
+    expect(review).toContain("`TWILIO_AUTH_TOKEN` and `RESEND_API_KEY`");
   });
 
-  it("hands the sentences the done check missed to the reviewer as one round in its own session, files as bugs only those it did not name fixed, and posts the fixed ones as fixed, where 26 of 39 misses in a week were pages and forms nothing tested", () => {
+  it("stamps on the progress comment each line as the reviewer last answered it, where a line it fixed after bin/land refused stayed recorded missed and a rerun filed a bug for it", () => {
     const finished = finishing({
-      sentences: SENTENCES,
-      tries: [{ sentence: 1, outcome: "missed", tried: "the zone page never loaded" }, { sentence: 2, outcome: "missed", tried: "each save rolled back" }],
-      answerFrom: { call: 2, answer: { outcome: "approve", reason: "reason $CALL", fixed: [1] } },
+      closing: CLOSING,
+      land: REFUSES_ONCE,
+      lines: [HELD, { line: 2, outcome: "missed", ran: "each save rolled back" }],
+      answerFrom: { call: 2, answer: { outcome: "approve", reason: "reason $CALL", lines: [{ line: 2, outcome: "fixed", ran: "the save now commits" }] } },
+    });
+
+    expect(finished.run().status).toBe(0);
+    const stamped = finished.calls().map(bodyIn).filter((body) => body.startsWith("## Spec run") && body.includes('"landed":"9974"')).at(-1) ?? "";
+    expect(stamped).toContain('{"line":1,"outcome":"held"');
+    expect(stamped).toContain('{"line":2,"outcome":"fixed"');
+    expect(stamped).not.toContain('"outcome":"missed"');
+  });
+
+  it("resumes a reviewer that ran past its time to answer with what it reached, and lands the spec with each line it did not reach listed not run, where a finish out of time landed nothing and its rerun ended stuck", () => {
+    const finished = finishing({
+      closing: CLOSING,
+      stageMinutes: "40",
+      reviewer: `  [ "$CALL" = 1 ] && { printf '%s\\n' '${JSON.stringify({ type: "system", session_id: "review-1" })}'; exit 124; }`,
+      lines: [HELD, { line: 2, outcome: "unrun", ran: "time ran out before it was run" }],
     });
 
     const ran = heard(finished.run());
 
     expect(ran.status, ran.stderr).toBe(0);
-    expect(ran.lines.slice(-2)).toEqual(["landed=9974", "missed=2"]);
-    const [review = [], round = []] = finished.hired();
-    expect(schemaIn(review).properties.fixed).toBeDefined();
-    expect(round[round.indexOf("--resume") + 1]).toBe("review-1");
-    const told = finished.handed()[1] ?? "";
-    expect(told).toContain(`1. ${SENTENCES[0]}`);
-    expect(told).toContain("the zone page never loaded");
-    expect(told).toContain("each save rolled back");
-    expect(told).toContain("`fixed`");
-    expect(createdIssues(finished.calls()).map(({ title }) => title)).toEqual([SENTENCES[1]]);
-    const [comment = ""] = bodies(finished.calls()).filter((body) => body.startsWith("## Done check"));
-    expect(comment).toContain(`1. **Fixed before it landed**: ${SENTENCES[0]}`);
-    expect(comment).toContain(`2. **Did not hold**: ${SENTENCES[1]}`);
+    const [review = "", told = "", ...more] = finished.handed();
+    expect(more).toEqual([]);
+    expect(review).toContain("+export const zone = 1;");
+    expect(told).not.toContain("+export const zone = 1;");
+    expect(finished.hired()[1]).toEqual(expect.arrayContaining(["--resume", "review-1"]));
+    expect(finished.checked()).toEqual(["--full --publish"]);
     expect(finished.landed()).toHaveLength(1);
+    expect(closingComments(finished.calls())[0]).toContain(`2. **Not run**: ${CLOSING[1]}\n   time ran out before it was run`);
   });
 
-  it("hands no round when every sentence held", () => {
-    const finished = finishing({ sentences: SENTENCES, tries: [{ sentence: 1, outcome: "held", tried: "saw it" }, { sentence: 2, outcome: "held", tried: "saw it" }] });
-
-    expect(finished.run().status).toBe(0);
-    expect(finished.handed()).toHaveLength(1);
-  });
-
-  it("files nothing for a sentence put to the owner once the spec lands, its closing comment alone saying what the owner could try (agent-hooks#83)", () => {
-    const finished = finishing({ sentences: SENTENCES, tries: [{ sentence: 1, outcome: "held", tried: "saw it" }, { sentence: 2, outcome: "owner", tried: "needs a text to a real phone: text the shop number and see the reply" }] });
-
-    expect(finished.run().status).toBe(0);
-    expect(createdIssues(finished.calls())).toEqual([]);
-    const [comment = ""] = bodies(finished.calls()).filter((body) => body.startsWith("## Done check"));
-    expect(comment).toContain(`2. **Put to the owner**: ${SENTENCES[1]}\n   needs a text to a real phone: text the shop number and see the reply`);
-    expect(finished.calls().filter((args) => args[1] === "close")).toEqual([["issue", "close", "974", "--reason", "completed"]]);
-  });
-
-  it("closes a landed spec from the tries its progress comment recorded, hiring no done check and reviewing nothing, when a rerun finds it landed", () => {
-    const finished = finishing({ sentences: SENTENCES, said: [RECORDED([{ sentence: 1, outcome: "held", tried: "saw it" }, { sentence: 2, outcome: "missed", tried: "each save rolled back" }], [])] });
-    git(finished.session, "update-ref", "refs/remotes/origin/main", git(finished.session, "commit-tree", "HEAD^{tree}", "-p", "origin/main", "-p", "HEAD", "-m", "Merge the spec"));
+  it("closes a landed spec from the lines its progress comment recorded, hiring no one and reviewing nothing, when a rerun finds it landed", () => {
+    const finished = finishing({ closing: CLOSING, said: [RECORDED([HELD, { line: 2, outcome: "missed", ran: "each save rolled back" }])] });
+    landedOnMain(finished);
 
     const ran = heard(finished.run());
 
     expect(ran.status, ran.stderr).toBe(0);
     expect(ran.lines.slice(-2)).toEqual(["landed=9974", "missed=2"]);
     expect(finished.handed()).toEqual([]);
-    expect(finished.tried()).toEqual([]);
     expect(finished.landed()).toEqual([]);
     expect(finished.marked()).toEqual(["974 checking"]);
-    expect(bodies(finished.calls()).filter((body) => body.startsWith("## Done check"))).toHaveLength(1);
+    expect(closingComments(finished.calls())).toHaveLength(1);
+    expect(createdIssues(finished.calls()).map(({ title }) => title)).toEqual([CLOSING[1]]);
     expect(finished.calls().filter((args) => args[1] === "close")).toEqual([["issue", "close", "974", "--reason", "completed"]]);
   });
 
-  it("records the done check's tries on the progress comment before the spec lands, so a rerun after landing closes from them", () => {
-    const finished = finishing({ said: [SLICED([{ id: "tenant-time-zone", title: "Store each tenant's time zone" }])] });
+  it("closes a landed spec whose progress comment recorded no line, each listed as not recorded, hiring no one and filing nothing, so a spec landed before the lines were recorded still closes on its rerun", () => {
+    const finished = finishing({ closing: CLOSING, said: [RECORDED(undefined)] });
+    landedOnMain(finished);
 
-    expect(finished.run().status).toBe(0);
-    const [beforeLand = 0] = finished.ghCallsAtLand();
-    expect(bodies(finished.calls().slice(0, beforeLand)).some((body) => body.startsWith("## Spec run") && body.includes('"tries":[{"sentence":1,"outcome":"held"'))).toBe(true);
+    const ran = heard(finished.run());
+
+    expect(ran.status, ran.stderr).toBe(0);
+    expect(ran.lines.slice(-2)).toEqual(["landed=9974", "missed="]);
+    expect(finished.handed()).toEqual([]);
+    expect(finished.landed()).toEqual([]);
+    const [comment = ""] = closingComments(finished.calls());
+    expect(comment).toContain(`1. **Not run**: ${CLOSING[0]}`);
+    expect(comment).toContain(`2. **Not run**: ${CLOSING[1]}`);
+    expect(createdIssues(finished.calls())).toEqual([]);
+    expect(finished.calls().filter((args) => args[1] === "close")).toEqual([["issue", "close", "974", "--reason", "completed"]]);
+  });
+
+  it("marks the landed spec stuck and calls the owner with GitHub's refusal when its closing comment will not post, so the scheduler stands down on stuck rather than leave a landed spec that nothing wakes (ADR-0009)", () => {
+    const finished = finishing({ gh: '  *"issue comment"*"## Done when"*) printf \'HTTP 422: Validation Failed\\n\' >&2; exit 1 ;;' });
+
+    const ran = heard(finished.run());
+
+    expect(ran.status).toBe(1);
+    expect(ran.lines.slice(-2)).toEqual(["landed=9974", "missed="]);
+    expect(finished.landed()).toHaveLength(1);
+    expect(finished.marked()).toEqual(["974 checking", "974 stuck"]);
+    const [called = "", ...more] = finished.calls().map(bodyIn).filter((body) => body.startsWith(`@${OWNER} `));
+    expect(more).toEqual([]);
+    expect(called).toContain("HTTP 422: Validation Failed");
+    expect(finished.calls().filter((args) => args[1] === "close")).toEqual([]);
+  });
+
+  it("marks the landed spec stuck and tells the owner to close it by hand when its closing comment posted and the spec would not close, its miss filed once", () => {
+    const finished = finishing({ closing: CLOSING, lines: [HELD, { line: 2, outcome: "missed", ran: "each save rolled back" }], gh: '  *"issue close"*) printf \'HTTP 403: Resource not accessible by integration\\n\' >&2; exit 1 ;;' });
+
+    const ran = heard(finished.run());
+
+    expect(ran.status).toBe(1);
+    expect(ran.lines.slice(-2)).toEqual(["landed=9974", "missed="]);
+    expect(finished.marked()).toEqual(["974 checking", "974 stuck"]);
+    expect(closingComments(finished.calls())).toHaveLength(1);
+    expect(createdIssues(finished.calls()).map(({ title }) => title)).toEqual([CLOSING[1]]);
+    const [called = "", ...more] = finished.calls().map(bodyIn).filter((body) => body.startsWith(`@${OWNER} `));
+    expect(more).toEqual([]);
+    expect(called).toContain("close #974 by hand");
   });
 
   it("readies the reviewer's tree with the contract's setup before hiring it, where five specs' reviewers had no node_modules and could run nothing", () => {
@@ -310,6 +327,20 @@ describe("bin/finish tries the spec's sentences on its integration branch before
     expect(more).toEqual([]);
     expect(review).toContain('+export const wide1499 = "wide line 1499";');
     expect(review).not.toContain("git diff --stat");
+  });
+
+  it("hires one reviewer in the integration branch's own tree for a diff over 200 KB too, handed its stat and every file changed in place of the diff, where splitting it by size put up to three reviewers on one spec", () => {
+    const finished = finishing({ slices: [{ id: "wide", files: { "src/wide.ts": big("wide", 6000) } }, { id: "zone", files: { "src/zone.ts": big("zone", 1500) } }, { files: { "src/loose.ts": big("loose", 1000) } }] });
+
+    expect(finished.run().status).toBe(0);
+    const [review = "", ...more] = finished.handed();
+    expect(more).toEqual([]);
+    expect(finished.wheres()).toEqual([finished.session]);
+    expect(review).toMatch(/src\/wide\.ts +\| 6000 \+/);
+    for (const file of ["src/wide.ts", "src/zone.ts", "src/loose.ts"]) expect(review).toContain(`- ${file}`);
+    expect(review).not.toContain('+export const wide5999 = "wide line 5999";');
+    expect(finished.approved()).toEqual(["reason 1"]);
+    expect(git(join(finished.root, "origin.git"), "for-each-ref", "--format=%(refname:short)", "refs/heads/")).toBe("spec/974");
   });
 });
 
@@ -380,26 +411,26 @@ describe("bin/finish takes a reviewer's stuck and owner steps, as a ticket's rev
   const STEP = { title: "Add the Twilio key $CALL to Railway", why: "Storm alerts text through Twilio, which needs TWILIO_KEY set on the Railway service.", needs: "TWILIO_KEY", ...TAKEN_STEP };
 
   it("marks the spec stuck and calls the owner on a reviewer's stuck, landing nothing", () => {
-    const finished = finishing({ answer: { outcome: "stuck", reason: "only the owner can say which zones count" } });
+    const finished = finishing({ answer: { outcome: "stuck", reason: "the runner has no docker, so no Postgres starts here" } });
 
     const ran = heard(finished.run());
 
     expect(ran.status).toBe(1);
     expect(ran.lines).toEqual(["landed=", "missed="]);
     expect(finished.marked()).toEqual(["974 checking", "974 stuck"]);
-    expect(finished.calls().find((args) => args[1] === "comment")?.join(" ")).toContain("@collod873 a reviewer of #974 stopped and needs you: only the owner can say which zones count");
+    expect(finished.calls().find((args) => args[1] === "comment")?.join(" ")).toContain("@collod873 a reviewer of #974 stopped and needs you: the runner has no docker, so no Postgres starts here");
     expect(finished.handed()).toHaveLength(1);
     expect(finished.landed()).toEqual([]);
   });
 
   it("keeps the reviewer's fix on the integration branch's origin though it answers stuck, so a rerun starts from it", () => {
-    const finished = finishing({ reviewer: FIXES_ZONE, answer: { outcome: "stuck", reason: "only the owner can say which zones count" } });
+    const finished = finishing({ reviewer: FIXES_ZONE, answer: { outcome: "stuck", reason: "the runner has no docker, so no Postgres starts here" } });
 
     expect(finished.run().status).toBe(1);
     expect(finished.pushed().split("\n")[0]).toBe("Review #974");
   });
 
-  it("files the reviewer's owner steps once the spec lands, before its done check closes it", () => {
+  it("files the reviewer's owner steps once the spec lands, before it closes", () => {
     const finished = finishing({ answer: { outcome: "approve", reason: "reason $CALL", steps: [STEP] } });
 
     expect(finished.run().status).toBe(0);
@@ -408,8 +439,7 @@ describe("bin/finish takes a reviewer's stuck and owner steps, as a ticket's rev
     expect(created[0]).toEqual(expect.arrayContaining(["owner-step", "Add the Twilio key 1 to Railway"]));
     expect(created[0]?.join(" ")).toContain("Left to the owner by the run that landed spec #974.");
     const firstCreate = finished.calls().findIndex((args) => args[1] === "create");
-    const doneCheckClose = finished.calls().findIndex((args) => args[1] === "close");
-    expect(firstCreate).toBeLessThan(doneCheckClose);
+    expect(firstCreate).toBeLessThan(finished.calls().findIndex((args) => args[1] === "close"));
   });
 
   const WHOLE = { ...STEP, title: "Add the Twilio key to Railway" };
@@ -443,122 +473,21 @@ describe("bin/finish takes a reviewer's stuck and owner steps, as a ticket's rev
   });
 });
 
-describe("bin/finish packs the review into whole slices under 200 KB, by the commits' Slice trailers, only when the diff is over that cap, and runs three packs at once", () => {
-  const packed: Slice[] = [
-    { id: "wide", files: { "src/wide.ts": big("wide", 6000) } },
-    { id: "zone", files: { "src/zone.ts": big("zone", 1500) } },
-    { files: { "src/loose.ts": big("loose", 1000) } },
-    { id: "clock", files: { "src/clock.ts": big("clock", 1500) } },
-  ];
-  const RESUMED = "printf '%s\\n' \"$@\" | grep -qx -e --resume";
-  type Finishing = ReturnType<typeof finishing>;
-  const resumedIn = (finished: Finishing, at: number) => {
-    const argv = finished.hired()[at] ?? [];
-    return argv.includes("--resume") ? argv[argv.indexOf("--resume") + 1] : undefined;
-  };
-  const handedBack = (finished: Finishing) => finished.handed().flatMap((_, at) => (resumedIn(finished, at) === undefined ? [] : [at]));
-  const packOf = (finished: Finishing, file: string) => finished.handed().findIndex((prompt, at) => resumedIn(finished, at) === undefined && prompt.includes(file));
-  const reviewing = (prompt: string) => ["wide", "zone", "clock", "loose"].filter((name) => prompt.includes(`src/${name}.ts`));
-
-  it("packs whole slices into as few reviewers as fit under the cap, a slice over it alone, each in its own tree and handed the whole spec, every brief and its own slices' commit ids", () => {
-    const finished = finishing({ slices: packed, said: [SLICED([{ id: "wide", title: "Widen it" }, { id: "zone", title: "Store each tenant's time zone" }])] });
-
-    expect(finished.run().status).toBe(0);
-    const handed = finished.handed();
-    expect(handed.map(reviewing).sort()).toEqual([["wide"], ["zone", "clock", "loose"]]);
-    handed.forEach((prompt, at) => {
-      expect(prompt).toContain("- [ ] see the spec land on main");
-      expect(prompt).toContain("`zone`: Store each tenant's time zone");
-      expect(prompt).toContain("`wide`: Widen it");
-      expect(finished.wheres()[at]).not.toBe(finished.session);
-    });
-    const many = handed[packOf(finished, "src/zone.ts")] ?? "";
-    expect(many).toContain("slice `zone`, slice `clock`, and the commits naming no slice");
-    expect(many).toContain(`- ${finished.log("-1", "--format=%h", "--grep", "Build slice clock")} Build slice clock`);
-    expect(many).not.toContain("Build slice wide");
-    expect(finished.approved()[0]).toMatch(/^On slice `wide`: reason \d\n\nOn slice `zone`, slice `clock`, and the commits naming no slice: reason \d$/);
-  });
-
-  it("runs at most three reviewers at once", () => {
-    const wide = (id: string): Slice => ({ id, files: { [`src/${id}.ts`]: big(id, 6000) } });
-    const finished = finishing({ slices: ["north", "south", "east", "west"].map(wide), reviewer: `  printf '+\\n' >>"$ROOT/spans"; sleep 1; printf -- '-\\n' >>"$ROOT/spans"` });
-
-    expect(finished.run().status).toBe(0);
-    const spans = readFileSync(join(finished.root, "spans"), "utf8").trimEnd().split("\n");
-    const running = spans.reduce<number[]>((counts, span) => [...counts, (counts.at(-1) ?? 0) + (span === "+" ? 1 : -1)], []);
-    expect(Math.max(...running)).toBe(3);
-  });
-
-  it("brings each pack's fix back onto the integration branch and its origin, trailed with every slice its pack holds", () => {
-    const finished = finishing({ slices: packed, reviewer: `  grep -q 'src/zone.ts' "$PROMPT" && printf 'export const zoneFixed = 1;\\n' >>src/zone.ts && git commit --quiet -am "Inline the zone helper"` });
-
-    expect(finished.run().status).toBe(0);
-    expect(finished.log("--format=%(trailers:key=Slice,valueonly,separator=%x2C)", "-1", "--grep", "Inline the zone helper")).toBe("zone,clock");
-    expect(finished.pushed()).toContain("Inline the zone helper");
-    expect(finished.handed().some((prompt) => prompt.includes("End each message with the line"))).toBe(false);
-  });
-
-  it("hands a conflict back to the reviewer whose pack came back second, and lands what it resolved", () => {
-    const finished = finishing({
-      slices: packed,
-      reviewer: [
-        `  if ${RESUMED}; then git rebase --quiet spec/974 >/dev/null 2>&1; printf 'both\\n' >README.md; git add README.md; GIT_EDITOR=true git rebase --continue >/dev/null 2>&1`,
-        `  elif grep -q 'src/wide.ts' "$PROMPT"; then printf 'wide\\n' >README.md && git commit --quiet -am "Wide fix"`,
-        "  else until git log --format=%s spec/974 | grep -q 'Wide fix'; do sleep 0.1; done; printf 'zone\\n' >README.md && git commit --quiet -am \"Zone fix\"; fi",
-      ].join("\n"),
-    });
-
-    expect(finished.run().status).toBe(0);
-    const [told = -1, ...more] = handedBack(finished);
-    expect(more).toEqual([]);
-    expect(finished.handed()[told]).toContain("README.md");
-    expect(resumedIn(finished, told)).toBe(`review-${packOf(finished, "src/zone.ts") + 1}`);
-    expect(git(finished.session, "show", "spec/974:README.md")).toBe("both");
-    expect(finished.log("--format=%s", "-3")).toContain("Zone fix");
-  });
-
-  it("hands a red full check to the last pack's reviewer alone, in its own session and tree", () => {
-    const finished = finishing({ slices: packed, check: `[ -f ../checked ] && { printf 'check: ok\\n'; exit 0; }\ntouch ../checked\n${RED_CHECK}` });
-
-    expect(finished.run().status).toBe(0);
-    const [told = -1, ...more] = handedBack(finished);
-    expect(more).toEqual([]);
-    expect(finished.handed()[told]).toContain("ZONE-TEST-BROKE");
-    const last = packOf(finished, "src/zone.ts");
-    expect(resumedIn(finished, told)).toBe(`review-${last + 1}`);
-    expect(finished.wheres()[told]).toBe(finished.wheres()[last]);
-  });
-
-  it("hands bin/land's refusal to the last pack's reviewer, in its own session and tree", () => {
-    const finished = finishing({ slices: packed, land: REFUSES_ONCE });
-
-    expect(finished.run().status).toBe(0);
-    const [told = -1, ...more] = handedBack(finished);
-    expect(more).toEqual([]);
-    expect(finished.handed()[told]).toContain(REFUSAL);
-    const last = packOf(finished, "src/zone.ts");
-    expect(resumedIn(finished, told)).toBe(`review-${last + 1}`);
-    expect(finished.wheres()[told]).toBe(finished.wheres()[last]);
-  });
-
-  it("lands a pack reviewer's rebuild on origin/main as the integration branch whole, where the branch conflicts with main on migrations main took while it built, and keeps every reviewer's commits on origin (#1598)", () => {
+describe("bin/finish hands bin/land's refusal back to its reviewer, as a ticket's review does (ADR-0012)", () => {
+  it("lands the reviewer's rebuild on origin/main as the integration branch whole, where the branch conflicts with main on migrations main took while it built (#1598)", () => {
     const MAIN_TOOK_MIGRATIONS = [
       "if ! git merge-base --is-ancestor main-took HEAD 2>/dev/null; then",
       '  [ -f ../main-moved ] || { touch ../main-moved; took=$(git commit-tree -p origin/main -m "Main took migrations" "$(git rev-parse "origin/main^{tree}")"); git update-ref refs/remotes/origin/main "$took"; git tag main-took "$took"; }',
       "  printf 'land: HEAD does not rebase cleanly onto origin/main, conflicting in drizzle/meta/_journal.json\\n' >&2; exit 1",
       "fi",
     ].join("\n");
-    const finished = finishing({ slices: packed, land: MAIN_TOOK_MIGRATIONS, reviewer: `  ${RESUMED} && git reset --quiet --hard origin/main && printf 'rebuilt\\n' >rebuilt.ts && git add -A && git commit --quiet -m "Rebuild spec on main"` });
+    const finished = finishing({ land: MAIN_TOOK_MIGRATIONS, reviewer: `  [ "$CALL" = 2 ] && git reset --quiet --hard origin/main && printf 'rebuilt\\n' >rebuilt.ts && git add -A && git commit --quiet -m "Rebuild spec on main"` });
 
     expect(finished.run().status).toBe(0);
     expect(finished.pushed().split("\n").slice(0, 2)).toEqual(["Rebuild spec on main", "Main took migrations"]);
-    const kept = git(join(finished.root, "origin.git"), "for-each-ref", "--format=%(refname:short)", "refs/heads/review/");
-    expect(kept.split("\n")).toEqual(["review/974-1", "review/974-2"]);
-    expect(git(join(finished.root, "origin.git"), "log", "--format=%s", "-1", "review/974-2")).toMatch(/Rebuild spec on main|Review #974/);
+    expect(finished.landed()).toHaveLength(2);
   });
-});
 
-describe("bin/finish hands bin/land's refusal back to the last reviewer, as a ticket's review does (ADR-0012)", () => {
   it("resumes the reviewer with what bin/land said, lands what it fixed, and comments its new reason after the review it gave first", () => {
     const finished = finishing({ land: REFUSES_ONCE, reviewer: '  [ "$CALL" = 2 ] && printf \'export const zone = 3;\\n\' >src/zone.ts' });
 
@@ -588,12 +517,11 @@ describe("bin/finish hands bin/land's refusal back to the last reviewer, as a ti
     expect(ran.status).toBe(1);
     expect(ran.stderr).toContain("finish: #974 did not land, and two rounds in a row of its reviewer changed nothing");
     expect(ran.stdout).toBe("landed=\nmissed=\n");
-    expect(finished.handed().some((prompt) => prompt.startsWith("Try each sentence"))).toBe(false);
   });
 });
 
 describe("bin/finish stands down on a held spec, so a pause holds the landing too", () => {
-  it.each(HELD)("hires, checks and lands nothing on a spec marked %s when it starts", (held) => {
+  it.each(HELD_LABELS)("hires, checks and lands nothing on a spec marked %s when it starts", (held) => {
     const finished = finishing({ labels: ["spec", held] });
 
     expect(finished.run()).toEqual({ status: 1, stdout: `finish: #974 is marked ${held}, so nothing was reviewed or landed\nlanded=\nmissed=\n`, stderr: "" });
@@ -602,7 +530,7 @@ describe("bin/finish stands down on a held spec, so a pause holds the landing to
     expect(finished.landed()).toEqual([]);
   });
 
-  it.each(HELD)("lands nothing once the spec is marked %s while its reviewer ran", (held) => {
+  it.each(HELD_LABELS)("lands nothing once the spec is marked %s while its reviewer ran", (held) => {
     const finished = finishing({ labelsAtLand: ["spec", held] });
 
     const ran = heard(finished.run());
@@ -613,7 +541,7 @@ describe("bin/finish stands down on a held spec, so a pause holds the landing to
     expect(finished.landed()).toEqual([]);
   });
 
-  it("reviews, checks and lands nothing on a closed spec, as #2060's second finish ran a second done check after it closed", () => {
+  it("reviews, checks and lands nothing on a closed spec, as #2060's second finish filed a duplicate bug after it closed", () => {
     const finished = finishing({ state: "CLOSED" });
 
     expect(finished.run()).toEqual({ status: 1, stdout: "finish: #974 is closed, so nothing was reviewed or landed\nlanded=\nmissed=\n", stderr: "" });
@@ -639,13 +567,13 @@ describe("bin/finish stands down on a held spec, so a pause holds the landing to
 });
 
 describe("bin/finish acts on a fresh App token after each model run, since a spec's run outlives the job's first token (#1504)", () => {
-  it("lands, and posts the done check, on tokens minted after the model that ran before each", () => {
+  it("lands, and posts the closing comment, on tokens minted after the reviewer answered", () => {
     const finished = finishing({ appKeyed: true });
 
     expect(finished.run().status).toBe(0);
     const [[landedOn = ""] = []] = finished.landed();
     expect(landedOn).toMatch(/^minted-\d+$/);
-    const [postedOn = ""] = finished.tokenOf((args) => args[0] === "issue" && args[1] === "comment" && bodyIn(args).startsWith("## Done check"));
+    const [postedOn = ""] = finished.tokenOf((args) => args[0] === "issue" && args[1] === "comment" && bodyIn(args).startsWith("## Done when"));
     expect(postedOn).toMatch(/^minted-\d+$/);
     expect(postedOn).not.toBe(landedOn);
   });

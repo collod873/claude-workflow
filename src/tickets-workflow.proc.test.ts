@@ -512,7 +512,7 @@ describe("a stage gets each key its repo's contract names under needs, from the 
     expect(env.UNSET_KEYS).toBeUndefined();
   });
 
-  it("names in UNSET_KEYS and the job's log each named key the repo's secrets lack, so the done check puts it to the owner in one line", () => {
+  it("names in UNSET_KEYS and the job's log each named key the repo's secrets lack, so a spec's reviewer answers a closing line resting on one unrun, naming the key", () => {
     const { env, said } = handedKeys('{ "needs": ["STRIPE_SECRET_KEY", "TWILIO_AUTH_TOKEN", "RESEND_API_KEY"] }\n', { STRIPE_SECRET_KEY: "sk_test_1" });
 
     expect(env.UNSET_KEYS).toBe("TWILIO_AUTH_TOKEN,RESEND_API_KEY");
@@ -582,17 +582,16 @@ describe("a repo's specs and research notes run through the same caller file, on
     expect(specs({ event: "issues", action: "unlabeled", sender: MACHINE })).toEqual(["wake"]);
   });
 
-  it("readies the tree's pinned Node before anything installs, in every job whose stage may run the done check, and tells that stage the caller file it runs under", () => {
-    const trying = stageSteps().filter(({ step }) => /bin\/(schedule|done-check)\b/.test(step.run ?? ""));
+  it("readies the tree's pinned Node before anything installs, in every job whose stage runs a spec", () => {
+    const trying = stageSteps().filter(({ step }) => /bin\/schedule\b/.test(step.run ?? ""));
 
     expect(trying.length).toBeGreaterThan(0);
-    for (const { name, steps, step } of trying) {
+    for (const { name, steps } of trying) {
       const at = (found: (one: WorkflowStep) => boolean) => steps.findIndex(found);
       const pinned = at(({ uses }) => uses === "./.github/actions/pinned");
 
       expect(pinned, name).toBeGreaterThan(at(({ id }) => id === "checkout"));
       expect(pinned, name).toBeLessThan(at(({ id }) => id === "npm-ci"));
-      expect(step.env?.CALLED_FROM, `${name} ${step.id ?? ""}`).toBe("${{ github.workflow_ref }}");
     }
   });
 
