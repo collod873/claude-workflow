@@ -38,11 +38,18 @@ rebasing() {
   [[ -d $(git rev-parse --git-path rebase-merge) || -d $(git rev-parse --git-path rebase-apply) ]]
 }
 
-stopped() {
-  if [[ $stage == rebase ]] && rebasing; then
-    git rebase --abort >/dev/null 2>&1 # quiet: the line below says the rebase was stopped
+back_where_it_began() {
+  if rebasing; then
+    git rebase --abort >/dev/null 2>&1 # quiet: the caller's line says the rebase was stopped
   fi
-  if [[ $stage != landed && -n $began && $(git rev-parse HEAD) != "$began" ]]; then
+  git reset --quiet --hard "$began"
+  git clean --quiet -fd
+}
+
+stopped() {
+  if [[ $stage == rebase ]]; then
+    back_where_it_began
+  elif [[ $stage != landed && -n $began && $(git rev-parse HEAD) != "$began" ]]; then
     git reset --quiet --keep "$began"
   fi
   if [[ $stage == landed ]]; then
@@ -100,6 +107,7 @@ onto_default_branch() {
     if (( rebase_ended != 0 )); then
       { printf -- '--- git rebase origin/%s ---\n' "$default_branch"; cat "$err"; } >>"$log"
       if (( rebase_ended != 3 )); then
+        back_where_it_began
         printf 'land: the rebase onto origin/%s could not run, so nothing landed; log %s\n' "$default_branch" "$shown" >&2
         exit 1
       fi

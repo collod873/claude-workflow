@@ -434,6 +434,29 @@ describe("bin/land settles a rebase that conflicts only in files origin/main's s
     expect(leftAt(session)).toEqual({ head, branch: "main", changed: "", rebasing: false });
     expect(calls()).toEqual([]);
   });
+
+  it("puts the branch head, index and worktree back, with no settle commit, when stopped while the entry's command is still rebuilding, so the next land settles again instead of landing a half-built file", async () => {
+    const { root, remote, session, head, held, stoppedWhileHeld } = sessionAheadOfMain(1, { changes: { "parts/mine": "a part\n", "derived/index": "mine\n" } });
+    mainGained(root, remote, { [CONTRACT]: settleMapOf(`printf 'half\\n' >derived/index; printf 'half\\n' >derived/snapshot; : >${held}; exec sleep 30`), "derived/index": "theirs\n" });
+
+    const stopped = await stoppedWhileHeld("SIGTERM");
+
+    expect(stopped.status).toBe(143);
+    expect(stopped.stderr).toBe("land: stopped by TERM at the rebase, so main is untouched, no PR is open yet and no check status is posted; run land again and it resumes from there\n");
+    expect(leftAt(session)).toEqual({ head, branch: "main", changed: "", rebasing: false });
+  });
+
+  it("puts the branch head, index and worktree back and lands nothing when the rebase's own process dies while the entry's command is rebuilding", () => {
+    const { root, remote, session, head, run, calls } = sessionAheadOfMain(1, { changes: { "parts/mine": "a part\n", "derived/index": "mine\n" } });
+    mainGained(root, remote, { [CONTRACT]: settleMapOf("printf 'half\\n' >derived/index; printf 'half\\n' >derived/snapshot; kill -KILL $PPID; sleep 1"), "derived/index": "theirs\n" });
+
+    const result = run();
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/^land: the rebase onto origin\/main could not run, so nothing landed; log \S+\n$/);
+    expect(leftAt(session)).toEqual({ head, branch: "main", changed: "", rebasing: false });
+    expect(calls()).toEqual([]);
+  });
 });
 
 describe("bin/land stopped by the session limit says where it stopped and leaves a tree the next land resumes from (agent-hooks#411)", () => {

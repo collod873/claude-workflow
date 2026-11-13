@@ -3,7 +3,7 @@ import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
-import { capped, LIST_CAP } from "./brief.ts";
+import { capped, LIST_CAP, onDisk } from "./brief.ts";
 import { parkedBehind } from "./builder.ts";
 import { park } from "./issue-links.ts";
 import { askedOn, calledOwner, commentEdited, commentOnTicket, endedRed, gh, ghRead, git, gitRead, standingOn, stoodDownOrWaiting, machineBin, mark, readOrStop, rebuiltOnMain, rebuiltRef, STUCK, unread } from "./post.ts";
@@ -11,7 +11,7 @@ import type { Try } from "./done-checker.ts";
 import { rebaseRefusedOnto } from "./settle.ts";
 import type { Slice } from "./slicer.ts";
 import { BUILDING, MACHINE, SONNET_BUILDERS, SPEC, SPEC_PREFIX } from "./spelled.ts";
-import type { Hire } from "./stage.ts";
+import { CONTRACT, type Hire, setupRefusedIn } from "./stage.ts";
 import { filedOutOfScope, quoted } from "./ticket-shape.ts";
 
 export const MOST_BUILDERS = 3;
@@ -139,10 +139,19 @@ function readied(spec: string): void {
   if (!kept) pushed(spec);
 }
 
+let treeSetUp = false;
+
+async function treeSetupRefused(): Promise<string | undefined> {
+  if (treeSetUp) return undefined;
+  const unready = await setupRefusedIn(process.cwd(), onDisk(CONTRACT) ?? "");
+  treeSetUp = unready === undefined;
+  return unready;
+}
+
 async function rebasedOntoMain(spec: string): Promise<void> {
   fetchedMain();
   cleaned();
-  const unrebased = await rebaseRefusedOnto("origin/main");
+  const unrebased = await rebaseRefusedOnto("origin/main", treeSetupRefused);
   if (unrebased !== undefined) {
     console.error(`schedule: #${spec}'s ${specBranch(spec)} ${unrebased.refusal}, so it builds on without main's newest`);
     return;

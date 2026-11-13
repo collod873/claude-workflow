@@ -30,7 +30,7 @@ function ontoSideTaken(onto: string, paths: string[]): void {
   if (absent.length > 0) gitRead(["--literal-pathspecs", "rm", "--quiet", "--force", "--", ...absent], `${absent.join(", ")}, which ${onto} does not have, could not be removed`);
 }
 
-async function stoppedSettlingOnto(onto: string, untracked: Set<string>): Promise<Stop | undefined> {
+async function stoppedSettlingOnto(onto: string, untracked: Set<string>, setupRefused?: () => Promise<string | undefined>): Promise<Stop | undefined> {
   const conflicted = new Set<string>();
   const settling = new Map<string, Derived>();
   const conflicting = () => (conflicted.size === 0 ? "" : `, conflicting in ${[...conflicted].join(", ")}`);
@@ -48,6 +48,8 @@ async function stoppedSettlingOnto(onto: string, untracked: Set<string>): Promis
   }
   if (settling.size === 0) return undefined;
   const names = [...settling.keys()].join(", ");
+  const unready = await setupRefused?.();
+  if (unready !== undefined) return { why: `${conflicting()}, which the settle map's ${names} could not rebuild: its tree's setup failed: ${quoted(unready)}`, said: "" };
   for (const [name, { run }] of settling) {
     const refused = await commandRefusedIn(process.cwd(), run);
     if (refused !== undefined) return { why: `${conflicting()}, which the settle map's ${name} could not rebuild: ${quoted(refused.lastLine)}`, said: refused.output };
@@ -62,10 +64,10 @@ async function stoppedSettlingOnto(onto: string, untracked: Set<string>): Promis
   return undefined;
 }
 
-export async function rebaseRefusedOnto(onto: string): Promise<{ refusal: string; said: string } | undefined> {
+export async function rebaseRefusedOnto(onto: string, setupRefused?: () => Promise<string | undefined>): Promise<{ refusal: string; said: string } | undefined> {
   const began = gitRead(["rev-parse", "HEAD"], "the head of this branch could not be read");
   const untracked = new Set(untrackedPaths());
-  const stop = await stoppedSettlingOnto(onto, untracked).catch((error: unknown): Stop => ({ why: `: ${error instanceof Error ? error.message : String(error)}`, said: "" }));
+  const stop = await stoppedSettlingOnto(onto, untracked, setupRefused).catch((error: unknown): Stop => ({ why: `: ${error instanceof Error ? error.message : String(error)}`, said: "" }));
   if (stop === undefined) return undefined;
   git(["rebase", "--abort"]);
   if (git(["rev-parse", "HEAD"]).stdout.trim() !== began) gitRead(["reset", "--quiet", "--hard", began], `this branch could not be put back at ${began}`);

@@ -102,9 +102,9 @@ describe("bin/schedule runs a spec from its first cut to its landing, one slice 
     expect(git(run.remote, "rev-list", "--merges", "--count", SPEC_BRANCH)).toBe("0");
   });
 
-  it("settles the integration branch onto a main that moved into a conflict only in its settle map's files, so the next slicer reads main's newest, where it built on without it until the finish (#1615)", () => {
+  it("settles the integration branch onto a main that moved into a conflict only in its settle map's files, readying its tree with the contract's setup before a command that needs what setup installs, so the next slicer reads main's newest, where it built on without it until the finish (#1615)", () => {
     const run = scheduling({ cuts: [[sliceOf("seam")], []], plans: { seam: [{ then: INDEXES_A_PART_AS_MAIN_DOES }] } });
-    plant(run.root, "contract.json", settleMapOf("ls parts >>derived/index"));
+    plant(run.root, "contract.json", settleMapOf("[[ -e .git/installed ]] || { printf 'drizzle-kit: not found\\n' >&2; exit 127; }; ls parts >>derived/index", ": >.git/installed"));
 
     const ended = run.run();
 
