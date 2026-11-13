@@ -397,7 +397,7 @@ export const wellFormedSpec = [
   "",
   "## Further Notes",
   "",
-  "## I'll know it works when I can",
+  "## Done when",
   "",
   "- [ ] see a spec land as its own issue, labelled spec",
   "",

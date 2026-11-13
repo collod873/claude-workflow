@@ -71,7 +71,7 @@ const fields = [
   "`id`: kebab-case and unique within the spec, never one used before.",
   '`why`: what the slice is for in the spec, quoting in straight "..." quotes or a `> ` line the spec\'s words it serves; then, after `extends:`, the existing module, table or screen it extends, in `CONTEXT.md` words, or `extends: nothing` when it adds new ground. A slice that adds a database migration says why the spec\'s seam migration missed it.',
   "`decisions`: each of the spec's Implementation or Testing Decisions this slice must follow, in the spec's words.",
-  "`done`: the sentences true once the slice is built, each one its builder can show on the branch; at least one.",
+  "`done`: the sentences true once the slice is built, each one the machine can run on the slice's branch without the owner; at least one.",
   "`blockedBy`: the ids of the slices it needs merged first, from this answer or the slices so far.",
   `\`leftOf\`: the ids of the slices marked \`${NOT_CUT_AGAIN}\` whose leftover this slice cuts again, and empty for every other slice.`,
 ];

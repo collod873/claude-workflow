@@ -32,7 +32,7 @@ export const OWNER_STEPS = {
   type: "array",
   items: {
     type: "object",
-    description: "Missing work only the owner can do, such as a key, an account or a dashboard setting. Never a try: a hand check on his phone, a look after deploy or a confirm is not a step (agent-hooks#83).",
+    description: "Missing work that needs the owner's own login, money or identity, which no tool here can do. Never a try: a hand check on his phone, a look after deploy or a confirm is not a step (agent-hooks#83).",
     properties: {
       title: { type: "string", pattern: NO_EM_DASH },
       why: { type: "string", pattern: NO_EM_DASH },
