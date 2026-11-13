@@ -9,7 +9,7 @@ const NAMED = {
   testing: "Testing Decisions",
   outOfScope: "Out of Scope",
   furtherNotes: "Further Notes",
-  sentences: "I'll know it works when I can",
+  earlierClosing: "I'll know it works when I can",
   followUps: "Follow-ups",
 } as const;
 export const heading = (name: string): RegExp => new RegExp(`^##[ \\t]+${name.replace("'", "[’']")}[ \\t]*(?=\\r?$)`, "m");
@@ -22,7 +22,7 @@ const IMPLEMENTATION_DECISIONS = heading(NAMED.decisions);
 const TESTING_DECISIONS = heading(NAMED.testing);
 const OUT_OF_SCOPE = heading(NAMED.outOfScope);
 const FURTHER_NOTES = heading(NAMED.furtherNotes);
-const SENTENCES = heading(NAMED.sentences);
+const EARLIER_CLOSING = heading(NAMED.earlierClosing);
 export const NEXT_HEADING = /^##[ \t]/m;
 const ITEM = /^[ \t]*-[ \t]*\[[ xX]\][ \t]*/;
 const OWNER_WORDS = /"[^"\n]{4,}"|^>[ \t]*\S/m;
@@ -31,25 +31,26 @@ const STORY = /^[ \t]*\d+[.)][ \t]+/;
 const QUOTE = 80;
 
 export const DONE_SENTENCES = "what is true once it is done";
+const MACHINE_RUNS = "each line something the machine can run without Collin, since a line that waits on him stops the work";
 export const WHY_SHAPE = [
   `Every filing opens with ## ${NAMED.why}, quoting what set it: Collin's words, a short exchange between him and an agent, a problem an agent found with its evidence, or work a session left unfinished.`,
   "The session and its transcript are linked for you.",
 ].join(" ");
 export const BUILD_SHAPE = [
-  `a decision Collin has made. Adds ## ${NAMED.doneWhen}: what we decided to do, said as ${DONE_SENTENCES}.`,
+  `a decision Collin has made. Adds ## ${NAMED.doneWhen}: what we decided to do, said as ${DONE_SENTENCES}, ${MACHINE_RUNS}.`,
   `Its ${NAMED.doneWhen} names only work its own repo does; what another repo shows as proof may stay.`,
   `What another repo must do once the build lands goes under ## ${NAMED.followUps}, one line per repo, and whoever lands the build files each one there as a build.`,
   "In an enrolled repo a build starts the moment it is filed, so a question still open makes it an idea or a look-into.",
   "One that needs another issue closed first, in any repo, names each blocker with --blocked-by at filing, so it is filed waiting and builds once every blocker closes; linked after filing, it may already have started.",
 ].join(" ");
-export const BUG_SHAPE = `a fault still standing; its ## ${NAMED.why} quotes the evidence, such as a log line, a failing test or error text. Adds ## ${NAMED.doneWhen}: what working looks like. In an enrolled repo it builds the moment it is filed.`;
+export const BUG_SHAPE = `a fault still standing; its ## ${NAMED.why} quotes the evidence, such as a log line, a failing test or error text. Adds ## ${NAMED.doneWhen}: what working looks like, ${MACHINE_RUNS}. In an enrolled repo it builds the moment it is filed.`;
 export const IDEA_SHAPE = "something Collin floated, kept for him to decide.";
 export const LOOK_INTO_SHAPE = "a question Collin wants answered before deciding; a research agent answers it.";
-export const OWNER_SHAPE = `a step only Collin can take before shipped work can run, such as a dashboard setting, a key or a sign-in, never a hand test or a look after deploy. Its ## ${NAMED.why} says what to do, where, and what waits on it.`;
+export const OWNER_SHAPE = `a step that needs Collin's own login, money or identity, filed once no tool here can do it, since each one waits on him; never a hand test or a look after deploy. Its ## ${NAMED.why} says what to do, where, and what waits on it.`;
 export const SPEC_SHAPE = [
   "a big job Collin asked for: his own words state its point, you write the spec from them, and the machine cuts it into slices and lands it as one.",
   `  ## ${NAMED.problem} quoting the owner, ## ${NAMED.solution}, ## ${NAMED.stories} numbered, ## ${NAMED.decisions} naming no file paths,`,
-  `  ## ${NAMED.testing}, ## ${NAMED.outOfScope}, ## ${NAMED.furtherNotes}, and last ## ${NAMED.sentences}, as '- [ ]' items`,
+  `  ## ${NAMED.testing}, ## ${NAMED.outOfScope}, ## ${NAMED.furtherNotes}, and last ## ${NAMED.doneWhen}, as '- [ ]' items: ${DONE_SENTENCES}, ${MACHINE_RUNS}`,
 ].join("\n");
 
 export function matchEnd(found: RegExpMatchArray): number {
@@ -139,7 +140,7 @@ export interface Sentence {
 
 export function sentences(body: string): Sentence[] {
   const text = body.replaceAll(/\r\n?/g, "\n");
-  return [...itemsUnder(text, SENTENCES), ...itemsUnder(text, USER_STORIES, STORY)].map((said) => ({ said }));
+  return [...itemsUnder(text, DONE_WHEN), ...itemsUnder(text, EARLIER_CLOSING), ...itemsUnder(text, USER_STORIES, STORY)].map((said) => ({ said }));
 }
 
 export const specProblem = (body: string) => section(body.replaceAll(/\r\n?/g, "\n"), PROBLEM_STATEMENT);
@@ -159,13 +160,13 @@ export function specRefusals(body: string): string[] {
   if (!OUT_OF_SCOPE.test(text)) refusals.push("the body carries no '## Out of Scope'");
   else if (section(text, OUT_OF_SCOPE).trim() === "") refusals.push("'## Out of Scope' says nothing");
   if (!FURTHER_NOTES.test(text)) refusals.push("the body carries no '## Further Notes'");
-  if (!SENTENCES.test(text)) {
-    refusals.push("the body carries no '## I'll know it works when I can'");
+  if (!DONE_WHEN.test(text)) {
+    refusals.push("the body carries no '## Done when'");
   } else {
-    const found = SENTENCES.exec(text);
+    const found = DONE_WHEN.exec(text);
     const after = found === null ? "" : text.slice(matchEnd(found));
-    if (NEXT_HEADING.test(after)) refusals.push("a heading follows '## I'll know it works when I can', which must be last");
-    if (itemsUnder(text, SENTENCES).length === 0) refusals.push("'## I'll know it works when I can' carries no '- [ ]' item, so the done check has nothing to try");
+    if (NEXT_HEADING.test(after)) refusals.push("a heading follows '## Done when', which must be last");
+    if (itemsUnder(text, DONE_WHEN).length === 0) refusals.push("'## Done when' carries no '- [ ]' item, so nothing says what done looks like");
   }
   const bytes = Buffer.byteLength(text);
   if (bytes > SPEC_CAP) refusals.push(`the body is ${bytes} bytes, over the spec cap of ${SPEC_CAP}: cut at least ${bytes - SPEC_CAP} bytes`);

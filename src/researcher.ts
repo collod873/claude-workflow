@@ -37,7 +37,7 @@ export function handedOn(title: string, body: string, sources?: string): string 
     "## Your findings",
     "`findings`: Markdown the owner reads once. The answer, then its sources with a link or repo path each, then what stays unknown.",
     `\`fixes\`: up to ${MOST_FIXES} faults you found, each with one sure fix: \`fault\` with evidence, \`title\`, \`done\` as what holds once fixed. Each is a ticket.`,
-    "`steps`: what only the owner can do; a fix that waits on one names it in `waits`.",
+    "`steps`: what only the owner's login, money or identity can do; a fix that waits on one names it in `waits`.",
     "`asks`: owner choices, with your pick.",
     "",
   ].join("\n\n");

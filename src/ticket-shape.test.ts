@@ -143,7 +143,7 @@ function specBody({
   ];
   if (furtherNotes !== "") lines.push(furtherNotes, "");
   if (sharedNames !== undefined) lines.push("## Shared names", "", sharedNames, "");
-  lines.push("## I'll know it works when I can", "", ...sentences, "");
+  lines.push("## Done when", "", ...sentences, "");
   return lines.join("\n");
 }
 
@@ -159,7 +159,7 @@ const misshapenSpec: [string, string, unknown[]][] = [
       "the body carries no '## Testing Decisions'",
       "the body carries no '## Out of Scope'",
       "the body carries no '## Further Notes'",
-      "the body carries no '## I'll know it works when I can'",
+      "the body carries no '## Done when'",
     ],
   ],
   [
@@ -173,15 +173,16 @@ const misshapenSpec: [string, string, unknown[]][] = [
     specBody({ stories: ["As the owner, I can file a spec."] }),
     ["'## User Stories' carries no numbered item"],
   ],
+  ["a spec closing on the earlier '## I'll know it works when I can'", specBody().replace("## Done when", "## I'll know it works when I can"), ["the body carries no '## Done when'"]],
   [
-    "a spec with a heading after \"## I'll know it works when I can\"",
+    "a spec with a heading after '## Done when'",
     `${specBody()}## Extra\n\nsomething after the sentences\n`,
-    ["a heading follows '## I'll know it works when I can', which must be last"],
+    ["a heading follows '## Done when', which must be last"],
   ],
   [
-    "a spec with no sentence under \"## I'll know it works when I can\"",
+    "a spec with no '- [ ]' item under '## Done when'",
     specBody({ sentences: [] }),
-    ["'## I'll know it works when I can' carries no '- [ ]' item, so the done check has nothing to try"],
+    ["'## Done when' carries no '- [ ]' item, so nothing says what done looks like"],
   ],
   [
     "a spec over the spec cap, which no stage cuts",
@@ -242,6 +243,13 @@ describe("the builder's split and bin/file-issue --help ask for a Done when as w
     ["the builder's split", builderBrief({ ticket: "1", body: body() })],
   ])("%s names no count of sentences", (_, text) => {
     expect(text).not.toMatch(/\d+ to \d+/);
+  });
+});
+
+describe("a spec filed before its closing heading became '## Done when' still runs", () => {
+  it("lists the sentences under its '## I'll know it works when I can'", () => {
+    const filedEarlier = specBody({ sentences: ["- [ ] see a spec land as its own issue"] }).replace("## Done when", "## I'll know it works when I can");
+    expect(sentences(filedEarlier).map(({ said }) => said)).toContain("see a spec land as its own issue");
   });
 });
 

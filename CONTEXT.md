@@ -182,7 +182,7 @@ its issue, a dispatch's rerun or probe, as `.github/caller.yml` spells each.
 _Avoid_: run title, display name
 
 **Done check**:
-The stage that tries each of a spec's "I'll know it works when I can ___" sentences, then each of
+The stage that tries each of a spec's `## Done when` lines, then each of
 its numbered user stories, on its integration branch as built, before it lands, in its own tree, port and Postgres, beside the reviewer. It
 refuses nothing: its misses go once to the last reviewer, a fixed one lands with the spec, and the
 rest are filed as bugs quoting what it saw once the spec has landed, when it also comments and
@@ -222,8 +222,8 @@ _Avoid_: orchestrator
 
 **Ticket**:
 The unit the machine builds: an issue labelled `ticket` carrying `## Why` in the owner's words,
-`## Done when`, what done looks like in its own repo, and any `## Follow-ups`, one line per other
-repo, filed there as a build by whoever lands it. Adding `ticket` to an open issue builds,
+`## Done when`, what done looks like in its own repo, each line one the machine runs alone, and
+any `## Follow-ups`, one line per other repo, filed there as a build by whoever lands it. Adding `ticket` to an open issue builds,
 reviews and lands it in one run (ADR-0012), as `spec` slices and `research` answers; opening starts
 nothing, and taking `ticket` off and adding it back builds it again.
 A build reads its ticket's labels again at admit, so one queued behind the build before it stands
@@ -254,7 +254,7 @@ _Avoid_: data wait, delayed ticket
 **Note**:
 An issue labelled `note`: filed to be kept, never built, with a `## Why`. A research
 note, labelled `research` too, the machine answers and closes; one labelled `owner-step`, a step
-only the owner can take. `file-issue` files these as `idea`, `look-into` and `owner`.
+needing the owner's own login, money or identity. `file-issue` files these as `idea`, `look-into` and `owner`.
 _Avoid_: idea, bug, backlog item, memo
 
 **Stage**:

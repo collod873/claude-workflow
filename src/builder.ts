@@ -209,7 +209,7 @@ export function handedOn({ ticket, body, capture, alongside, commitlint, foreign
     "## Your answer",
     "Answer one outcome:",
     `- \`code\`: built; the machine commits whatever you left, runs \`${PUBLISHED_CHECK}\` and hands back each red until it passes, then a fresh reviewer reads your diff, fixes what it finds, and lands it with \`bin/land\`. Where its \`## Done when\` was wrong, give the ticket rewritten to hold its whole Why as \`body\`, Why byte-identical; it is posted on the ticket before the check.`,
-    "- `spec`: too big for one build; give it rewritten as a spec in `body`, its Why byte-identical under `## Problem Statement`, its `## Done when` sentences moved into the closing `## I'll know it works when I can`; it is relabelled `spec` and the slicer cuts it.",
+    "- `spec`: too big for one build; give it rewritten as a spec in `body`, its Why byte-identical under `## Problem Statement`, its `## Done when` kept as the closing section, each line a '- [ ]' item; it is relabelled `spec` and the slicer cuts it.",
     "- `done`: main already does what it asks, as when an earlier run landed it and its close failed; it closes completed, and no one is called.",
     "- `close`: the ticket should not exist as written, and nothing should replace it, as for a gate you cannot make pass, since a gate is proven first.",
     "- `waits`: it depends on other open tickets here, as one another builder is still building: name them as `on`; or it measures what another repo's full checks show after a commit lands, and too few have run: name the repo, how many and the commit as `owner/repo@sha` in `checks`. It is marked `waiting` and builds once they all close or have run.",
