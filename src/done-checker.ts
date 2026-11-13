@@ -125,13 +125,12 @@ function read(issue: string): Read | number {
   return typeof spec === "object" ? { asked: spec.asked, ...spec.carried } : spec;
 }
 
-async function spentIsolated(tree: string, issue: string, input: string): Promise<Spent> {
+async function spentIsolated(tree: string, issue: string, input: string, reapedBeside: string[]): Promise<Spent> {
   const isolation = await isolated(tree, [issue, "done-check"], await freePort());
   if (typeof isolation === "string") return { stdout: "", refusal: isolation };
   const unready = setupFailed(await setupRefusedIn(tree, onDisk(join(tree, CONTRACT)) ?? "", { ...isolation }));
   if (unready !== undefined) return { stdout: "", refusal: unready };
-  const reaped = tree === process.cwd() ? [isolation.TMPDIR] : [tree, isolation.TMPDIR];
-  return hireIn(tree, "done-check", issue, HIRE, { ...isolation })(input).finally(() => reapedUnder(reaped));
+  return hireIn(tree, "done-check", issue, HIRE, { ...isolation })(input).finally(() => reapedUnder([...reapedBeside, isolation.TMPDIR]));
 }
 
 export const paired = (listed: Sentence[], tries: Try[]): [number, string, Try | undefined][] =>
@@ -196,7 +195,7 @@ export async function doneCheck(issue: string, app: AppKey | undefined): Promise
   const spec = read(issue);
   if (typeof spec !== "object") return spec;
   if (app !== undefined) freshAppToken(app, gh, `so the done check of #${issue} is not tried`);
-  const tries = triesIn(await spentIsolated(process.cwd(), issue, handedFor(spec)), spec.listed);
+  const tries = triesIn(await spentIsolated(process.cwd(), issue, handedFor(spec), []), spec.listed);
   if (app !== undefined) freshAppToken(app, gh, `so the done check of #${issue} is not posted`);
   if (!Array.isArray(tries)) return doneCheckCalledOwner(issue, tries.refusal);
   return postedOn(issue, spec.listed, tries, []);
@@ -208,7 +207,7 @@ export async function triedIn(tree: string, issue: string): Promise<Try[] | { re
   if (stood !== undefined) return { refusal: `#${issue} ${stood}, so nothing was tried` };
   const listed = unlisted(asked);
   if (!Array.isArray(listed)) return { refusal: `#${issue} ${listed}` };
-  return triesIn(await spentIsolated(tree, issue, handedFor({ asked, listed, replies: repliesOn(issue) })), listed);
+  return triesIn(await spentIsolated(tree, issue, handedFor({ asked, listed, replies: repliesOn(issue) }), [tree]), listed);
 }
 
 if (import.meta.main) {
