@@ -1,5 +1,5 @@
 import { calledOwner, type Caller, commentOnTicket, gh, ghRead, mark } from "./post.ts";
-import { WAITING } from "./spelled.ts";
+import { OWNER, WAITING } from "./spelled.ts";
 import { quoted } from "./ticket-shape.ts";
 
 export interface AccountWait {
@@ -13,6 +13,7 @@ export const UNREAD_RESET_WAIT = 60 * MINUTE;
 export const LOGIN_WAIT = 30 * MINUTE;
 const LOGIN_WAITS_IN_A_ROW = 3;
 const IN_A_ROW_WITHIN = 60 * MINUTE;
+const CALLS_OWNER_PAST = 24 * 60 * MINUTE;
 
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 const RESETS = /resets (?:([a-z]{3})[a-z]* (\d{1,2}),? (?:at )?)?(\d{1,2})(?::(\d{2}))? ?(am|pm) \(([^)]+)\)/i;
@@ -72,14 +73,16 @@ export function parkedOnAccounts(issue: string, wait: AccountWait, now = Date.no
   const loginWaits = wait.login ? inARow + 1 : 0;
   const why = wait.login ? `every Claude account failed to log in: ${quoted(wait.said)}` : `every Claude account is at its usage limit: ${quoted(wait.said)}`;
   if (loginWaits > LOGIN_WAITS_IN_A_ROW) return { stuck: `${why}, after ${LOGIN_WAITS_IN_A_ROW} waits of ${LOGIN_WAIT / MINUTE} minutes in a row` };
-  const parked = `#${issue} waits until ${stamp(wait.until).replace("T", " ").replace("Z", " UTC")}, as ${why}`;
+  const back = stamp(wait.until).replace("T", " ").replace("Z", " UTC");
+  const parked = `#${issue} waits until ${back}, as ${why}`;
   if (before !== undefined && before.until > now) {
     mark(issue, WAITING);
     return { parked };
   }
   ghRead(["issue", "edit", issue, "--body", `${[body.replace(WAITS_ANY, "").trimEnd(), waitsLine(wait.until, loginWaits)].filter((part) => part !== "").join("\n\n")}\n`], `the time #${issue} waits for a Claude account would not save, so it was not parked`);
   mark(issue, WAITING);
-  commentOnTicket(issue, `${parked}. Reconcile takes \`${WAITING}\` off on its first pass after then, and it resumes from where it stopped.`, gh);
+  const call = wait.until - now > CALLS_OWNER_PAST ? `@${OWNER} every Claude account is out until ${back}, so nothing builds until then. ` : "";
+  commentOnTicket(issue, `${call}${parked}. Reconcile takes \`${WAITING}\` off on its first pass after then, and it resumes from where it stopped.`, gh);
   return { parked };
 }
 
