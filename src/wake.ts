@@ -1,6 +1,6 @@
 import { appendFileSync, readFileSync } from "node:fs";
 import { heldOf, stoodDown, stoodDownOrWaiting, type Held, type Standing } from "./post.ts";
-import { HELD, MACHINE, NOTE, OWNER, RESEARCH, SPEC, TICKET, WAITING, type LabelName } from "./spelled.ts";
+import { HELD, MACHINE, NOTE, OWNER, RESEARCH, SPEC, STUCK, TICKET, WAITING, type LabelName } from "./spelled.ts";
 
 export interface IssuePayload {
   action?: string;
@@ -25,6 +25,7 @@ const KINDS = {
 export type Stage = keyof typeof KINDS;
 
 const freedByOwner: readonly string[] = HELD;
+const freedByRepair: readonly string[] = [STUCK];
 
 function starts({ startedBy, is, standsDown, freedBy }: Kind, { action, label, sender, issue }: IssuePayload): boolean {
   const labels = heldOf(issue?.labels);
@@ -32,7 +33,7 @@ function starts({ startedBy, is, standsDown, freedBy }: Kind, { action, label, s
   const by = sender?.login;
   if ((by !== OWNER && by !== MACHINE) || !is(labels) || standsDown({ labels, closed: issue?.state === "closed" }) !== undefined) return false;
   if (action === "labeled") return changed === startedBy;
-  if (action === "unlabeled") return freedBy.includes(changed) || (by === OWNER && freedByOwner.includes(changed));
+  if (action === "unlabeled") return freedBy.includes(changed) || (by === OWNER && freedByOwner.includes(changed)) || (by === MACHINE && freedByRepair.includes(changed));
   return false;
 }
 
