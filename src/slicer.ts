@@ -53,7 +53,7 @@ export interface Handed {
 
 const WATCHED = "Read the repo as you need. No one is watching and no one will answer a question: where the spec is silent, choose, and say what you chose in the slice's `why`.";
 
-const SLICING_IS = `Each slice after the seams is one tracer bullet through the spec. A fresh builder builds each slice in its own worktree off the spec's integration branch, up to ${MOST_BUILDERS} at once, and it is merged by fast-forward once its fast check is green. Builders never read the spec, so each slice carries what its builder needs. A slice extends the module, table or screen that already does the work and never adds a parallel one beside it.`;
+const SLICING_IS = `Each slice after the seams is one tracer bullet through the spec. A fresh builder builds each slice in its own worktree off the spec's integration branch, up to ${MOST_BUILDERS} at once, and it is merged by fast-forward once its fast check is green. Builders never read the spec, so each slice carries what its builder needs. A slice extends the module, table or screen that already does the work and never adds a parallel one beside it. A repo's unused step counts no test as a caller, so a slice that adds an action, export or file also wires it to the screen, route or command that calls it: never cut a back end alone for a later slice's screen.`;
 
 const NOT_CUT_AGAIN = "Not cut again yet";
 
