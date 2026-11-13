@@ -37,6 +37,7 @@ export function finishing({
   triesUntilChecked = false,
   tryRefused = false,
   tryLeavesServer = false,
+  tryHangs = false,
 } = {}) {
   const root = scratch("finish-");
   const session = join(root, "session");
@@ -87,6 +88,7 @@ export function finishing({
       "  flock -u 9",
       ...(triesUntilChecked ? [`  for _ in $(seq 100); do [ -s "${checks}" ] && break; sleep 0.1; done`, `  [ -s "${checks}" ] && touch "${join(root, "checked-while-trying")}"`] : []),
       ...(tryLeavesServer ? [`  setsid sleep 300 </dev/null >/dev/null 2>&1 9>&- & printf '%s\\n' "$!" >"${join(root, "server-pid")}"`] : []),
+      ...(tryHangs ? [`  printf '%s\\n' "$$" >"${join(root, "try-pid")}"`, "  exec sleep 300"] : []),
       ...(tryRefused ? ["  exit 3"] : []),
       `  cat <<'TRIES'\n${answering({ tries })}TRIES`,
       "  exit 0",
@@ -144,6 +146,7 @@ export function finishing({
     dockered: () => linesIn(join(root, "docker-calls")),
     serverAtLand: () => onDisk(join(root, "server-at-land"))?.trim(),
     serverPid: () => Number(onDisk(join(root, "server-pid"))),
+    tryPid: () => Number(onDisk(join(root, "try-pid"))),
     wheres: () => numbered(wheres).map((where) => where.trim()),
     hired: () => numbered(hires).map((argv) => argv.split("\0").filter((part) => part !== "")),
     landed: () => listed(lands).map((line) => line.split(" ")),

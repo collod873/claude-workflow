@@ -478,7 +478,7 @@ describe("bin/land refuses what must not reach main (#681)", () => {
     expect(commented).toBeLessThan(calls().findIndex(merged));
   });
 
-  it("lands a spec's integration branch from spec/<number>, its PR titled as the spec and saying it builds it, with the reviewers' approve reason commented before it merges (ADR-0013)", () => {
+  it("lands a spec's integration branch from spec/<number>, its PR titled as the spec and saying it builds it, with the review's approve reason commented before it merges (ADR-0013)", () => {
     const REASON = "it builds the spec; the slices share one migration, which I let through";
     const { head, run, calls, merged } = sessionAheadOfMain(1);
 
@@ -486,7 +486,7 @@ describe("bin/land refuses what must not reach main (#681)", () => {
 
     expect(result.status, result.stderr).toBe(0);
     expect(calls()).toContainEqual(["pr", "create", "--base", "main", "--head", "spec/974", "--title", TICKET_TITLE, "--body", "Builds #974\n\n- change 1"]);
-    expect(calls().filter((call) => call[0] === "pr" && call[1] === "comment")).toEqual([["pr", "comment", PR, "--body", `The reviewers approved #974: ${REASON}`]]);
+    expect(calls().filter((call) => call[0] === "pr" && call[1] === "comment")).toEqual([["pr", "comment", PR, "--body", `The review approved #974: ${REASON}`]]);
     expect(calls().filter(merged)).toEqual([["pr", "merge", "spec/974", "--merge", "--match-head-commit", head]]);
     expect(result.stdout).toBe(`Landed ${PR}\n`);
   });

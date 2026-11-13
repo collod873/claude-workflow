@@ -174,7 +174,7 @@ if [[ -n $issue ]]; then
   else
     call "spelled" "$src/../bin/spelled" SPEC_PREFIX
     branch="$said$spec"
-    approver="The reviewers"
+    approver="The review"
   fi
   call "gh issue view" "$github" issue view "$issue" --json title --jq .title
   title=$said

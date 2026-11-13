@@ -1,4 +1,5 @@
 import { fromOf } from "./post.ts";
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
@@ -198,6 +199,30 @@ describe("bin/finish tries the spec's sentences on its integration branch before
     expect(ran.status, ran.stderr).toBe(0);
     expect(finished.serverPid()).toBeGreaterThan(1);
     expect(finished.serverAtLand()).toMatch(/^Z?$/);
+  });
+
+  it("leaves nothing of the done check running or posted, its Postgres removed, when the reviewer answers stuck while it still tries, and marks the spec stuck all the same, since it now starts before any reviewer answers", () => {
+    const finished = finishing({
+      tryHangs: true,
+      contract: '{ "steps": { "integration": { "run": "true", "needs": ["DATABASE_URL"] } } }\n',
+      reviewer: '  for _ in $(seq 100); do [ -f "$ROOT/try-pid" ] && break; sleep 0.1; done',
+      answer: { outcome: "stuck", reason: "only the owner can say which zones count" },
+    });
+    const running = () => existsSync(`/proc/${finished.tryPid()}`);
+    onTestFinished(() => {
+      if (finished.tryPid() > 1 && running()) process.kill(finished.tryPid(), "SIGKILL");
+    });
+
+    const ran = heard(finished.run());
+
+    expect(ran.status).toBe(1);
+    expect(finished.marked()).toEqual(["974 checking", "974 stuck"]);
+    expect(finished.tryPid()).toBeGreaterThan(1);
+    for (let waited = 0; waited < 50 && running(); waited++) spawnSync("sleep", ["0.1"]);
+    expect(running()).toBe(false);
+    expect(finished.dockered().at(-1)).toMatch(/^rm --force database-/);
+    expect(bodies(finished.calls()).filter((body) => body.startsWith("## Done check"))).toEqual([]);
+    expect(finished.landed()).toEqual([]);
   });
 
   it("hands the sentences the done check missed to the reviewer as one round in its own session, files as bugs only those it did not name fixed, and posts the fixed ones as fixed, where 26 of 39 misses in a week were pages and forms nothing tested", () => {
