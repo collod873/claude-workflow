@@ -40,7 +40,7 @@ describe("account failover across hires running at once", () => {
     const cwd = process.cwd();
     process.chdir(tree);
     try {
-      const reviewers = ["spec-1", "spec-2", "spec-3"].map((seat) => hireIn(tree, "finish", seat, { name: "reviewer on the spec", model: "opus", effort: "medium" }));
+      const reviewers = ["974-1", "974-2", "974-3"].map((seat) => hireIn(tree, "finish", seat, { name: "reviewer", model: "opus", effort: "medium" }));
 
       const spent = await Promise.all(reviewers.map((spend) => spend("review it")));
 

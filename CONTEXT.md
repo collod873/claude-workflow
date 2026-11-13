@@ -141,12 +141,12 @@ _Avoid_: fixer, mechanic, fresh eyes, repair agent
 **Reviewer**:
 A fresh agent with the builder's access, in the builder's run: it reads the ticket, commit messages
 and diff, fixes what it finds or approves, and lands it with `bin/land`, which hands back what it refuses. Nothing goes back to the builder (ADR-0012). It files owner steps as `owner-step` notes
-and what it lets through as research does. A spec gets two in series at its finish: one on the spec over
-the whole branch, handed each slice's brief, then one on the code standard, last so it holds what the
-first wrote. Each works in a tree the contract's setup readied. Only a diff over 200 KB splits either
-into **packs**: whole slices packed into as few as fit under that cap, one reviewer each, at most three
-at once, each in its own tree on `review/<N>-spec-<k>` or `review/<N>-code-<k>` and rebased onto the
-integration branch as it answers.
+and what it lets through as research does. A spec's finish hires one beside its done check: handed
+each slice's brief, it holds the whole branch to the spec and the code standard. The full check
+follows, a red going back to the last until green. It works in a tree the contract's setup readied.
+Only a diff over 200 KB splits it into **packs**: whole slices packed into as few as fit under that
+cap, one reviewer each, at most three at once, each in its own tree on `review/<N>-<k>` and rebased
+onto the integration branch as it answers.
 _Avoid_: review job, judge, second builder
 
 **Closing**:
@@ -177,7 +177,7 @@ _Avoid_: run title, display name
 
 **Done check**:
 The stage that tries each of a spec's "I'll know it works when I can ___" sentences, then each of
-its numbered user stories, on its integration branch before it lands, in its own tree, port and Postgres, beside the full check. It
+its numbered user stories, on its integration branch as built, before it lands, in its own tree, port and Postgres, beside the reviewer. It
 refuses nothing: its misses go once to the last reviewer, a fixed one lands with the spec, and the
 rest are filed as bugs quoting what it saw once the spec has landed, when it also comments and
 closes the spec. A sentence put to the owner holds nothing open and files nothing: the closing
@@ -208,7 +208,7 @@ _Avoid_: ready queue
 
 **Scheduler**:
 `bin/schedule`, the code that runs a spec, hiring each fresh slicer and slice builder, at most
-three at once, then `bin/finish` (two reviewers, done check, full check, `bin/land`); it holds no
+three at once, then `bin/finish` (reviewer and done check, full check, `bin/land`); it holds no
 model context. Its state is the integration branch and the `## Spec run` progress comment it
 writes, where `bin/finish` stamps the landing alone, so a rerun resumes from them: once the spec has landed, it closes from the tries the progress
 comment recorded, and runs the done check on `main` only when none were recorded.

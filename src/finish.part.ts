@@ -1,8 +1,8 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { DIFF_CAP, LIST_CAP, onDisk, TAIL_CAP } from "./brief.ts";
+import { LIST_CAP, onDisk } from "./brief.ts";
 import { specWith } from "./done-checker.part.ts";
-import { BRIEFS_CAP, ONE_REVIEWER_CAP, onTheCode, onTheSpec, SLICE_CAP } from "./finish.ts";
+import { BRIEFS_CAP, ONE_REVIEWER_CAP, onTheBranch, SLICE_CAP } from "./finish.ts";
 import { authored, BIN, execute, labelsJson, linesIn, ghArgv, git, key, nulSplit, plant, type Said, scratch, script } from "./scenarios.ts";
 import { PAUSED } from "./spelled.ts";
 import { declarePart, HANDED_ON } from "./part-files.ts";
@@ -34,7 +34,7 @@ export function finishing({
   said = [] as Said[],
   appKeyed = false,
   contract = undefined as string | undefined,
-  overlapped = false,
+  triesUntilChecked = false,
   tryRefused = false,
   tryLeavesServer = false,
 } = {}) {
@@ -85,7 +85,7 @@ export function finishing({
       `  mv "$ASKED" "${triesDir}/$TRY"`,
       `  { pwd; git rev-parse HEAD; printf '%s\\n' "\${DATABASE_URL:-}" "\${PORT:-}" "\${TMPDIR:-}"; } >"${triesDir}/$TRY.where"`,
       "  flock -u 9",
-      ...(overlapped ? [`  touch "${join(root, "trying")}"`, `  for _ in $(seq 100); do [ -f "${join(root, "checked")}" ] && break; sleep 0.1; done`] : []),
+      ...(triesUntilChecked ? [`  for _ in $(seq 100); do [ -s "${checks}" ] && break; sleep 0.1; done`, `  [ -s "${checks}" ] && touch "${join(root, "checked-while-trying")}"`] : []),
       ...(tryLeavesServer ? [`  setsid sleep 300 </dev/null >/dev/null 2>&1 9>&- & printf '%s\\n' "$!" >"${join(root, "server-pid")}"`] : []),
       ...(tryRefused ? ["  exit 3"] : []),
       `  cat <<'TRIES'\n${answering({ tries })}TRIES`,
@@ -124,8 +124,7 @@ export function finishing({
       "",
     ].join("\n"),
   );
-  const overlap = overlapped ? `for _ in $(seq 100); do [ -f "${join(root, "trying")}" ] && break; sleep 0.1; done\n[ -f "${join(root, "trying")}" ] && touch "${join(root, "checked")}"\n` : "";
-  script(join(bin, "check"), `printf '%s\\n' "$*" >>"${checks}"\n${overlap}${check}`);
+  script(join(bin, "check"), `printf '%s\\n' "$*" >>"${checks}"\n${check}`);
   script(join(bin, "docker"), `printf '%s\\n' "$*" >>"${join(root, "docker-calls")}"\ncase $1 in\n  port) printf '127.0.0.1:49153\\n' ;;\nesac\n`);
   script(join(bin, "mark"), `printf '%s\\n' "$*" >>"${marks}"\n`);
   const serverAtLand = `[ -f "${join(root, "server-pid")}" ] && ps -o stat= -p "$(cat "${join(root, "server-pid")}")" >"${join(root, "server-at-land")}" || true\n`;
@@ -141,7 +140,7 @@ export function finishing({
     tried: () => (existsSync(triesDir) ? readdirSync(triesDir).filter((name) => !name.includes(".")).map((_, at) => readFileSync(join(triesDir, String(at + 1)), "utf8")) : []),
     triedAt: () => (existsSync(triesDir) ? readdirSync(triesDir).filter((name) => name.endsWith(".where")).map((_, at) => readFileSync(join(triesDir, `${at + 1}.where`), "utf8").trim().split("\n")) : []),
     ghCallsAtLand: () => listed(join(root, "gh-calls-at-land")).map(Number),
-    overlapped: () => existsSync(join(root, "checked")),
+    checkedWhileTrying: () => existsSync(join(root, "checked-while-trying")),
     dockered: () => linesIn(join(root, "docker-calls")),
     serverAtLand: () => onDisk(join(root, "server-at-land"))?.trim(),
     serverPid: () => Number(onDisk(join(root, "server-pid"))),
@@ -160,25 +159,15 @@ export function finishing({
   };
 }
 
-const SLOTTED = ["slice", "commits", "diff", "stat"];
-const changesOf = (filled: Record<string, string>) => ({ slices: [filled.slice ?? ""], commits: filled.commits ?? "", diff: filled.diff ?? "", stat: filled.stat ?? "" });
-
 declarePart({
   part: { name: "bin/finish", file: "bin/finish", stops: "https://github.com/collod873/claude-workflow/issues/1509", lines: 3, printsData: true },
   prompts: [
     {
-      name: "reviewer on the code standard",
+      name: "spec's reviewer",
       file: "src/finish.ts",
-      cap: LIST_CAP + DIFF_CAP + TAIL_CAP + 2 * SLICE_CAP + 2 * HANDED_ON,
-      slots: [...SLOTTED, "red"],
-      build: (filled) => onTheCode(changesOf(filled), { spec: "", red: { verdict: "", failed: filled.red ?? "" }, commitlint: true }),
-    },
-    {
-      name: "reviewer on the spec",
-      file: "src/finish.ts",
-      cap: SPEC_CAP + LIST_CAP + ONE_REVIEWER_CAP + BRIEFS_CAP + 2 * SLICE_CAP + 2 * HANDED_ON,
+      cap: SPEC_CAP + LIST_CAP + ONE_REVIEWER_CAP + BRIEFS_CAP + SLICE_CAP + 2 * HANDED_ON,
       slots: ["slice", "commits", "diff", "stat", "title", "body", "briefs"],
-      build: (filled) => onTheSpec(changesOf(filled), { spec: "", title: filled.title ?? "", body: filled.body ?? "", commitlint: true, briefs: filled.briefs ?? "" }),
+      build: (filled) => onTheBranch({ slices: [filled.slice ?? ""], commits: filled.commits ?? "", diff: filled.diff ?? "", stat: filled.stat ?? "" }, { spec: "", title: filled.title ?? "", body: filled.body ?? "", commitlint: true, briefs: filled.briefs ?? "" }),
     },
   ],
   scenarios: [
