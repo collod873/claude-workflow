@@ -253,6 +253,36 @@ export function opened<Carried>({ stage, issue, state, tried, hire: hiring, read
   return { asked, carried: readied.carrying, spend };
 }
 
+type Stop = "unchanged" | "again";
+
+type Judged<Done> = { done: Done } | { refused: string; handBack: string; changed?: boolean };
+
+export type Looped<Done> = { done: Done } | { stop: Stop; refused: string };
+
+interface Looping<Done> {
+  spend: (input: string, resume?: string) => Promise<Spent>;
+  input: string;
+  session?: string;
+  stops: readonly Stop[];
+  judged: (spent: Spent) => Judged<Done>;
+}
+
+export async function stageLoop<Done>({ spend, input, session, stops, judged }: Looping<Done>): Promise<Looped<Done>> {
+  let handed = input;
+  let carried = session;
+  let last: { refused: string; changed?: boolean } | undefined;
+  for (;;) {
+    const spent = await spend(handed, carried);
+    carried = spent.session ?? carried;
+    const judging = judged(spent);
+    if ("done" in judging) return judging;
+    if (stops.includes("unchanged") && judging.changed === false && last?.changed === false) return { stop: "unchanged", refused: judging.refused };
+    if (stops.includes("again") && judging.refused === last?.refused) return { stop: "again", refused: judging.refused };
+    last = judging;
+    handed = judging.handBack;
+  }
+}
+
 const COMMITLINT = /^(\.commitlintrc(\.\w+)?|commitlint\.config\.[cm]?[jt]s)$/;
 const COMMITLINT_KEY = /"commitlint"\s*:/;
 export const commitlinted = () => readdirSync(process.cwd()).some((name) => COMMITLINT.test(name)) || COMMITLINT_KEY.test(onDisk(join(process.cwd(), "package.json")) ?? "");

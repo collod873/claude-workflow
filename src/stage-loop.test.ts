@@ -1,0 +1,36 @@
+import { expect, it } from "vitest";
+import { refusedAgain } from "./researcher.ts";
+import { idleTwice } from "./reviewer.ts";
+import { type Looped, type Spent, stageLoop } from "./stage.ts";
+
+const refusedIn = (looped: Looped<unknown>) => ("refused" in looped ? looped.refused : "");
+
+const spender = (handed: [string, string | undefined][]) => (input: string, resume?: string): Promise<Spent> => {
+  handed.push([input, resume]);
+  return Promise.resolve({ stdout: "", session: `session-${handed.length}` });
+};
+
+it("stops a stage whose rounds change nothing twice as unchanged, and one refused twice the same way as again, each worded as today", async () => {
+  const idleHanded: [string, string | undefined][] = [];
+  let idleRounds = 0;
+  const idle = await stageLoop({
+    spend: spender(idleHanded),
+    input: "review it",
+    stops: ["unchanged"],
+    judged: () => ({ refused: `bin/land refused\nround ${++idleRounds} is red`, handBack: `fix round ${idleRounds}`, changed: false }),
+  });
+  expect(idle).toEqual({ stop: "unchanged", refused: "bin/land refused\nround 2 is red" });
+  expect(idleHanded).toEqual([["review it", undefined], ["fix round 1", "session-1"]]);
+  expect(idleTwice(refusedIn(idle))).toBe('two rounds in a row changed nothing: round 2 is red');
+
+  const againHanded: [string, string | undefined][] = [];
+  const again = await stageLoop({
+    spend: spender(againHanded),
+    input: "research it",
+    stops: ["again"],
+    judged: () => ({ refused: "step 1 names no owner", handBack: "step 1 names no owner" }),
+  });
+  expect(again).toEqual({ stop: "again", refused: "step 1 names no owner" });
+  expect(againHanded).toHaveLength(2);
+  expect(refusedAgain("research: #12", refusedIn(again))).toBe("research: #12 is answered but its researcher gave the same refused owner steps again, so nothing is posted or filed and it stays open: step 1 names no owner");
+});

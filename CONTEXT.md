@@ -37,8 +37,8 @@ _Avoid_: shim, wrapper, vendored workflow
 
 **Home**:
 A stage run is home when it has no caller file or its caller file (named by `CALLED_FROM`)
-is in the machine's own repo, foreign when it is in another repo. A home run
-behaves exactly as this repo's own stage workflows did before Gaps first: the builder lands a `machine` outcome on
+is in the machine's own repo, foreign otherwise. A home run
+behaves as this repo's stage workflows did before Gaps first: the builder lands a `machine` outcome on
 main and fails a check on any red step, `(needs ...)` ones included; the done check gets this repo's running-system line.
 _Avoid_: local, own-repo mode
 
@@ -66,7 +66,7 @@ labels nothing marks (ADR-0012). This repo's `Enrol` workflow re-enrols them on 
 _Avoid_: onboard, install, register
 
 **Ship**:
-`bin/ship`, run from an app's checkout, moves that app's production by pushing a commit to the
+`bin/ship`, run from an app's checkout, moves its production by pushing a commit to the
 `release` branch its host deploys, once a full check that CI's own dispatch ran has passed on that
 commit; a push or pull request run never counts. A red check, or one still waiting at its deadline,
 holds the ship and files a "Ship held" bug. Each app carries a **ship caller file**: its once-a-day
@@ -74,7 +74,7 @@ cron and `health-url`, calling `ship.yml` here (`.github/ship-caller.yml` is its
 clock**, `bin/ship-clock` run once on the PC, turns each caller's cron into a systemd timer that
 dispatches it on time, caught up at boot when the PC was off: GitHub fires this account's schedules
 hours late, so a late GitHub run ships only when no dispatched Ship ran in the last 20 hours. `bin/enrol`
-does not write it: both differ per app, and not every enrolled repo deploys from a release branch. No app keeps a copy of the code (ADR-0004).
+does not write it: both differ per app, and not all deploys from `release`. No app keeps a copy of the code (ADR-0004).
 _Avoid_: deploy script, promote, release job
 
 **PC runner**:
@@ -271,11 +271,15 @@ scratch repos and git helpers, and fixtures many parts use.
 _Avoid_: helpers
 
 **Stage opening**:
-How a stage starts on its issue, in `src/stage.ts` beside the hire: it reads the issue once, ends red
-when it cannot, ends green in one line on `paused` or `stuck` with no label changed and
-no model hired, then marks the stage's state, makes the log directory and hires. The slicer, the
-researcher, the builder and the done check open through it.
+How a stage starts on its issue, in `src/stage.ts`: it reads the issue once, red if it cannot, ends
+green in one line on `paused` or `stuck`, changing and hiring nothing, then marks the stage's state
+and hires. The **stage loop** runs its rounds.
 _Avoid_: preamble, setup, bootstrap
+
+**Stage loop**:
+`stageLoop`: spend, judge, hand back, repeat, with the stops "changed nothing twice" and "same
+refusal again" written once.
+_Avoid_: retry loop
 
 **Paused**:
 An issue the owner labelled `paused`, a `held` label the machine never adds or removes. Each stage

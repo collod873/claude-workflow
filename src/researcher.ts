@@ -2,7 +2,7 @@ import { capped, NO_EM_DASH } from "./brief.ts";
 import { commentOnTicket, endedRed, fromHere, fromLine, gh, readOrStop, RESEARCH } from "./post.ts";
 import { RESEARCHING } from "./spelled.ts";
 import { type Answered, filed, FOLLOW_UPS, type FollowUps, gathered, MOST_FIXES, OWNER_STEPS, stepsUnfileable } from "./follow-ups.ts";
-import { opened, type Spent, WRITE_UP_MINUTES } from "./stage.ts";
+import { opened, type Spent, stageLoop, WRITE_UP_MINUTES } from "./stage.ts";
 import { quoted } from "./ticket-shape.ts";
 
 export const NOTE_CAP = 16 * 1024;
@@ -45,24 +45,25 @@ export function handedOn(title: string, body: string, sources?: string): string 
 
 const researchFound = (note: string) => fromLine(fromHere(note), "researched");
 
+export const refusedAgain = (said: string, refused: string) => `${said} is answered but its researcher gave the same refused owner steps again, so nothing is posted or filed and it stays open: ${refused}`;
+
 async function stepsAnswered(said: string, spend: (input: string, resume?: string) => Promise<Spent>, input: string): Promise<{ findings: string; followUps: FollowUps } | number> {
-  let session: string | undefined;
-  let told: string | undefined;
-  let handed = input;
   let kept = gathered();
-  for (;;) {
-    const spent = await spend(handed, session);
-    session = spent.session ?? session;
-    if (spent.refusal !== undefined) return endedRed(`${said} ended red, ${spent.refusal}`);
-    const answer = (spent.answer ?? {}) as Findings;
-    const { findings } = answer;
-    if (typeof findings !== "string" || findings.trim() === "") return endedRed(`${said} ended red, the researcher gave no findings`);
-    kept = gathered(kept, answer);
-    const refused = stepsUnfileable(kept.steps);
-    if (refused === undefined) return { findings, followUps: kept };
-    if (refused === told) return endedRed(`${said} is answered but its researcher gave the same refused owner steps again, so nothing is posted or filed and it stays open: ${refused}`);
-    told = handed = refused;
-  }
+  const looped = await stageLoop<{ findings: string; followUps: FollowUps } | number>({
+    spend,
+    input,
+    stops: ["again"],
+    judged: (spent) => {
+      if (spent.refusal !== undefined) return { done: endedRed(`${said} ended red, ${spent.refusal}`) };
+      const answer = (spent.answer ?? {}) as Findings;
+      const { findings } = answer;
+      if (typeof findings !== "string" || findings.trim() === "") return { done: endedRed(`${said} ended red, the researcher gave no findings`) };
+      kept = gathered(kept, answer);
+      const refused = stepsUnfileable(kept.steps);
+      return refused === undefined ? { done: { findings, followUps: kept } } : { refused, handBack: refused };
+    },
+  });
+  return "done" in looped ? looped.done : endedRed(refusedAgain(said, looped.refused));
 }
 
 async function researched(issue: string): Promise<number> {
