@@ -262,10 +262,10 @@ export type Looped<Done> = { done: Done } | { stop: Stop | "capped"; refused: st
 interface Looping<Done> {
   spend: (input: string, resume?: string) => Promise<Spent>;
   input: string;
-  session?: string;
+  session?: string | undefined;
   stops: readonly Stop[];
   roundsBack?: number;
-  judged: (spent: Spent) => Judged<Done>;
+  judged: (spent: Spent) => Judged<Done> | Promise<Judged<Done>>;
 }
 
 export async function stageLoop<Done>({ spend, input, session, stops, roundsBack = Infinity, judged }: Looping<Done>): Promise<Looped<Done>> {
@@ -276,7 +276,7 @@ export async function stageLoop<Done>({ spend, input, session, stops, roundsBack
   for (;;) {
     const spent = await spend(handed, carried);
     carried = spent.session ?? carried;
-    const judging = judged(spent);
+    const judging = await judged(spent);
     if ("done" in judging) return judging;
     if (stops.includes("unchanged") && judging.changed === false && last?.changed === false) return { stop: "unchanged", refused: judging.refused };
     if (stops.includes("again") && judging.refused === last?.refused) return { stop: "again", refused: judging.refused };

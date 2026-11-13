@@ -11,7 +11,7 @@ import { type ChecksWait, checkedRuns, checksNamed, waitedLine, withWait } from 
 import { park, postedUnderOrigin } from "./issue-links.ts";
 import { calledOwner, type Caller, commentOnTicket, commentsRead, endedRed, FILED, FOREIGN, fromLine, followUpBody, gh, ghRead, git, gitRead, MACHINE_REPO, mark, NOTHING_MARKED, OWNER, postRefusals, readOrStop, rewriteTicket, FILED_IN, Stopped, ticketBranch, unread } from "./post.ts";
 import { reviewedAndLanded } from "./reviewer.ts";
-import { committed, commitlinted, CONTRACT, opened, setupRefusedIn, type Spent, treePathed, unsetKeys } from "./stage.ts";
+import { committed, commitlinted, CONTRACT, opened, setupRefusedIn, type Spent, stageLoop, treePathed, unsetKeys } from "./stage.ts";
 import { dedashed } from "./em-dash.ts";
 import { BUILDING, SPEC, TICKET } from "./spelled.ts";
 import { doneWhen, quoted, specProblem, specRefusals, why } from "./ticket-shape.ts";
@@ -459,7 +459,6 @@ async function ownTicket(ticket: string, app: AppKey | undefined): Promise<numbe
   if (typeof owning !== "object") return owning;
   const { asked, spend } = owning;
   let body = asked.body;
-  let session = savedSession(ticket);
   const unready = await setupRefusedIn(process.cwd(), onDisk(join(process.cwd(), CONTRACT)) ?? "");
   if (unready !== undefined) return calledOwner(ticket, builderCaller(ticket), `its tree's setup failed: ${quoted(unready)}`);
   const opening = handedOn({
@@ -471,27 +470,35 @@ async function ownTicket(ticket: string, app: AppKey | undefined): Promise<numbe
     capture: captureOf(body, process.env.SESSION_CAPTURES),
     unset: unsetKeys(),
   });
-  let input = opening;
   const said: string[] = [];
-  for (;;) {
-    const mainBefore = fetchedMain();
-    const spent = await spentOn(`fix: #${ticket}`, spend, input, session, opening);
-    session = spent.session ?? session;
-    keepSession(ticket, session);
-    if (app !== undefined) freshAppToken(app, gh, `so the build of #${ticket} is not acted on`);
-    if (spent.refusal !== undefined) return calledOwner(ticket, builderCaller(ticket), spent.refusal);
-    const answer = spent.answer as Answer | undefined;
-    if (answer?.outcome === "code") said.push(answer.reason);
-    const round = outcomeOf(ticket, body, answer, mainBefore);
-    if (round.ended !== undefined) return round.ended;
-    body = round.body ?? body;
-    committed(builtBy(ticket), "feat");
-    const judgedRound = round.red === undefined ? await judged(ticket) : round;
-    if (judgedRound.ended !== undefined) return judgedRound.ended;
-    const { red } = judgedRound;
-    if (red === undefined) return reviewedAndLanded(ticket, { body, alongside: owning.carried.alongside, said: said.join("\n\n") }, app);
-    input = red;
-  }
+  let mainBefore = "";
+  const looped = await stageLoop<number>({
+    spend: async (handed, carried) => {
+      mainBefore = fetchedMain();
+      const spent = await spentOn(`fix: #${ticket}`, spend, handed, carried, opening);
+      keepSession(ticket, spent.session ?? carried);
+      return spent;
+    },
+    input: opening,
+    session: savedSession(ticket),
+    stops: [],
+    judged: async (spent) => {
+      if (app !== undefined) freshAppToken(app, gh, `so the build of #${ticket} is not acted on`);
+      if (spent.refusal !== undefined) return { done: calledOwner(ticket, builderCaller(ticket), spent.refusal) };
+      const answer = spent.answer as Answer | undefined;
+      if (answer?.outcome === "code") said.push(answer.reason);
+      const round = outcomeOf(ticket, body, answer, mainBefore);
+      if (round.ended !== undefined) return { done: round.ended };
+      body = round.body ?? body;
+      committed(builtBy(ticket), "feat");
+      const judgedRound = round.red === undefined ? await judged(ticket) : round;
+      if (judgedRound.ended !== undefined) return { done: judgedRound.ended };
+      const { red } = judgedRound;
+      if (red === undefined) return { done: await reviewedAndLanded(ticket, { body, alongside: owning.carried.alongside, said: said.join("\n\n") }, app) };
+      return { refused: red, handBack: red };
+    },
+  });
+  return "done" in looped ? looped.done : calledOwner(ticket, builderCaller(ticket), looped.refused);
 }
 
 if (import.meta.main) {
