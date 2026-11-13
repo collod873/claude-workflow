@@ -1,3 +1,4 @@
+import { parkedOnAccounts } from "./account-wait.ts";
 import { execFile, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer, type AddressInfo } from "node:net";
@@ -40,7 +41,7 @@ interface Answer {
 }
 
 interface Ending {
-  outcome: Answer["outcome"] | "stopped" | "outOfTime";
+  outcome: Answer["outcome"] | "stopped" | "outOfTime" | "waits";
   left: string;
   reason: string;
   session: string;
@@ -374,6 +375,10 @@ async function built(slicing: Slicing, app: AppKey | undefined): Promise<Ending>
       session = spent.session ?? session;
       keepSession(file, session);
       if (app !== undefined) freshAppToken(app, gh, `so slice ${slice} of #${spec} stops`);
+      if (spent.accountsBack !== undefined) {
+        const parking = parkedOnAccounts(spec, spent.accountsBack);
+        return { done: "stuck" in parking ? ended("stuck", parking.stuck, session) : ended("waits", parking.parked, session) };
+      }
       if (spent.refusal !== undefined) return { done: ended(spent.timedOut === true ? "outOfTime" : "stopped", spent.refusal, session) };
       pending = spent.answer as Answer | undefined;
       input = NO_OUTCOME;

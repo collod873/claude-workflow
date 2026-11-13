@@ -502,3 +502,33 @@ describe("a stage that ends leaves no process it started running, since a dev se
     expect(running(another)).toBe(true);
   });
 });
+
+const FILM_THIS_SESSIONS = [
+  ["2026-11-10T06:14:52.917Z", "3cc09f78-48fb-45e8-b82a-a29dbf6807c1", "You've hit your weekly limit · resets 5pm (America/New_York)"],
+  ["2026-11-10T06:14:54.975Z", "3635d9a9-2903-4c38-aadf-b0f69e9d3fa4", "You've hit your 5-hour limit · resets 4:20am (America/New_York)"],
+  ["2026-11-10T06:15:01.571Z", "a4de002d-68ac-48c7-93d2-929147b491a0", "You've hit your 5-hour limit · resets 4:20am (America/New_York)"],
+].map(([timestamp, session_id, said]) =>
+  [
+    { type: "assistant", error: "rate_limit", timestamp, session_id, message: { content: [{ type: "text", text: said }] } },
+    { type: "result", subtype: "success", is_error: true, session_id, result: said },
+  ]
+    .map((event) => JSON.stringify(event))
+    .join("\n"),
+);
+
+describe("a slice builder whose every Claude account is at its usage limit parks its spec until one comes back, never stuck (#1765)", () => {
+  it("replays Mezzanine#2772's film-this sessions, weekly limit then 5-hour limit, and leaves the spec waiting until 09:20 UTC, its 4:20am reset", () => {
+    const root = scratch("slice-limits-");
+    FILM_THIS_SESSIONS.forEach((session, call) => writeFileSync(join(root, `limited-${call + 1}.jsonl`), `${session}\n`));
+    const builder = slicing({ root, claude: `cat "${root}/limited-$CALL.jsonl"\nexit 1\n` });
+
+    const result = execute(join(BIN, "build-slice"), builder.tree, { ...builder.env, MACHINE_BIN: BIN, CLAUDE_CODE_OAUTH_TOKEN: "sk-weekly", CLAUDE_CODE_OAUTH_TOKEN_2: "sk-five-hour" }, ["--spec", SPEC, "--slice", SLICE, "--brief", join(root, `brief-${SLICE}.md`), "--onto", ONTO]);
+
+    expect(ending(result.stdout).outcome, result.stderr).toBe("waits");
+    const calls = builder.calls();
+    expect(calls.map(bodyIn).filter((body) => body.includes("Waits for a Claude account"))).toEqual(["Waits for a Claude account until 2026-11-10T09:20Z.\n"]);
+    expect(calls.flat()).toContain("labels[]=waiting");
+    expect(calls.flat()).not.toContain("labels[]=stuck");
+    expect(calls.map(bodyIn).filter((body) => body.includes("@collod873"))).toEqual([]);
+  });
+});

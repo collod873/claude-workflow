@@ -1,3 +1,4 @@
+import { waitedForAccounts } from "./account-wait.ts";
 import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -409,7 +410,7 @@ export async function spentOn(said: string, spend: Spend, input: string, session
   const fresh = () => spend(input === opening ? input : [opening, input].join("\n\n"));
   if (session === undefined) return fresh();
   const resumed = await spend(input, session);
-  if (resumed.refusal === undefined) return resumed;
+  if (resumed.refusal === undefined || resumed.accountsBack !== undefined) return resumed;
   console.error(`${said} could not resume its builder's session ${session}, so it starts fresh: ${resumed.refusal}`);
   return fresh();
 }
@@ -485,6 +486,7 @@ async function ownTicket(ticket: string, app: AppKey | undefined): Promise<numbe
     stops: [],
     judged: async (spent) => {
       if (app !== undefined) freshAppToken(app, gh, `so the build of #${ticket} is not acted on`);
+      if (spent.accountsBack !== undefined) return { done: waitedForAccounts(ticket, builderCaller(ticket), spent.accountsBack) };
       if (spent.refusal !== undefined) return { done: calledOwner(ticket, builderCaller(ticket), spent.refusal) };
       const answer = spent.answer as Answer | undefined;
       if (answer?.outcome === "code") said.push(answer.reason);

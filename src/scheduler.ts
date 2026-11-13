@@ -43,7 +43,7 @@ export interface Progress {
 
 interface Built {
   id: string;
-  outcome: "built" | "partial" | "done" | "stuck" | "stopped" | "outOfTime" | "owned";
+  outcome: "built" | "partial" | "done" | "stuck" | "stopped" | "outOfTime" | "owned" | "waits";
   reason: string;
   left?: string | undefined;
   session?: string | undefined;
@@ -211,7 +211,7 @@ function builtOf(id: string, status: number | null, signal: string | null, line:
   if (status === 0 && (outcome === "built" || outcome === "partial" || outcome === "done")) return { id, outcome, reason, left: text(said?.left), session };
   const filed = Array.isArray(said?.filed) ? said.filed.filter((url): url is string => typeof url === "string") : [];
   if (status === 0 && outcome === "owned" && filed.length > 0) return { id, outcome, reason, session, filed };
-  return { id, outcome: outcome === "stuck" || outcome === "outOfTime" ? outcome : "stopped", reason, session };
+  return { id, outcome: outcome === "stuck" || outcome === "outOfTime" || outcome === "waits" ? outcome : "stopped", reason, session };
 }
 
 interface Hiring {
@@ -426,12 +426,15 @@ async function scheduled(spec: string, app: AppKey | undefined): Promise<number>
     fresh(`the builder of ${built.id}`);
     const tracked = progress.slices.find(({ id }) => id === built.id);
     if (tracked === undefined) continue;
-    if (built.tried) tracked.tries += 1;
+    if (built.tried && built.outcome !== "waits") tracked.tries += 1;
     tracked.session = built.session ?? tracked.session;
     if (built.outcome === "owned") {
       tracked.state = "handed";
       tracked.filed = built.filed;
       removed(sliceBranch(spec, tracked.id), sliceTree(root, tracked.id));
+    } else if (built.outcome === "waits") {
+      tracked.stopped = built.reason;
+      tracked.state = "cut";
     } else if (built.outcome === "stopped" || built.outcome === "outOfTime" || built.outcome === "stuck") {
       tracked.stopped = built.reason;
       tracked.outOfTime = built.outcome === "outOfTime";

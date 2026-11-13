@@ -109,6 +109,20 @@ describe("reconcile holds a ticket waiting on another repo's full checks until t
   });
 });
 
+const RESET = Date.parse("2026-11-10T09:20:00Z");
+const accountBound = (labels: string[]): IssueState => ({ ...ticket(labels, []), number: 2772, accountsBack: RESET });
+
+describe("reconcile holds an issue whose every Claude account refused its hire until the time they come back (#1765)", () => {
+  it("keeps it waiting before the reset, then takes waiting off on the first pass after it", () => {
+    expect(reconcile([accountBound(["spec", "waiting"])], RESET - 60_000)).toEqual([]);
+    expect(reconcile([accountBound(["spec", "waiting"])], RESET + 60_000)).toEqual([{ kind: "remove-label", repo: REPO, number: 2772, label: "waiting" }]);
+  });
+
+  it("leaves an issue alone once its reset has passed and it was woken", () => {
+    expect(reconcile([accountBound(["spec"])], RESET + 60_000)).toEqual([]);
+  });
+});
+
 describe("reconcile closes a ticket whose PR merged but stayed open, where Mezzanine#2426 sat checking after #2434 merged", () => {
   it("closes a checking ticket naming its merged PR, and leaves one with no merged PR alone", () => {
     expect(reconcile([{ ...ticket(["ticket", "checking"], []), merged: 2434 }, { ...ticket(["ticket", "checking"], []), number: 932 }])).toEqual([{ kind: "close", repo: REPO, number: 931, pr: 2434 }]);
