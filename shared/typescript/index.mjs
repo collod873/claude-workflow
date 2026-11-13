@@ -40,10 +40,14 @@ function scoped(name, rule, { files, ignores = [] }, ...options) {
   };
 }
 
+export function rootOf(options) {
+  return resolve(options.root ?? join(HERE, "..", ".."));
+}
+
 function settle(options) {
   const tests = options.tests ?? TESTS;
   return {
-    root: resolve(options.root ?? join(HERE, "..", "..")),
+    root: rootOf(options),
     ignores: options.ignores ?? [],
     tests,
     processTests: options.processTests ?? PROCESS_TESTS,

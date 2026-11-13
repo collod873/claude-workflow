@@ -9,6 +9,7 @@ const AUGMENTS = /\bdeclare\s+(?:global|module)\b/;
 const RESOLVES_EVERY_LOCAL_FILE = { allowJs: true, resolveJsonModule: true };
 const SCRIPT = /\.[cm]?[jt]sx?$/;
 const MAY_CROSS_CLIENT_BOUNDARY = /use client|\bexport\b[^;]*?\bfrom\b/;
+const BARE_PACKAGE = /^(?![./]|node:)((?:@[^/]+\/)?[^/]+)/;
 
 function compilerSetup(root) {
   const config = join(root, "tsconfig.json");
@@ -109,6 +110,8 @@ export function importClosures(root, entries, held) {
   const program = new Set(programFiles.map(nameOf).filter((file) => held.has(file)));
   const contentOf = new Map();
   const edges = new Map();
+  const packagesNamed = new Map();
+  const resolutions = new Map();
   const ambient = [];
   const pending = [...program, ...entries];
   while (pending.length > 0) {
@@ -124,6 +127,8 @@ export function importClosures(root, entries, held) {
       ambient.push(file);
     const info = ts.preProcessFile(text, true, true);
     const targets = new Set();
+    const named = new Set();
+    const resolvedTo = [];
     for (const imported of info.importedFiles) {
       const resolved = ts.resolveModuleName(
         imported.fileName,
@@ -132,13 +137,18 @@ export function importClosures(root, entries, held) {
         ts.sys,
         cache,
       ).resolvedModule;
-      if (
-        resolved &&
-        !resolved.isExternalLibraryImport &&
-        held.has(nameOf(resolved.resolvedFileName))
-      )
-        targets.add(nameOf(resolved.resolvedFileName));
+      const target = resolved && nameOf(resolved.resolvedFileName);
+      if (resolved && !resolved.isExternalLibraryImport && held.has(target)) {
+        targets.add(target);
+        resolvedTo.push([imported.fileName, target]);
+      } else {
+        if (BARE_PACKAGE.test(imported.fileName))
+          named.add(BARE_PACKAGE.exec(imported.fileName)[1]);
+        resolvedTo.push([imported.fileName, resolved ? "external" : null]);
+      }
     }
+    resolutions.set(file, resolvedTo);
+    packagesNamed.set(file, [...named].sort());
     for (const referenced of info.referencedFiles) {
       const target = nameOf(join(path, "..", referenced.fileName));
       if (held.has(target)) targets.add(target);
@@ -178,5 +188,20 @@ export function importClosures(root, entries, held) {
     }
     return readsClosures.get(key);
   };
-  return { closureOf, contentOf, ambientDigest, readsClosureOf };
+  const packagesImportedBy = (file) => {
+    const reached = new Set([file]);
+    for (const member of reached) for (const next of edges.get(member) ?? []) reached.add(next);
+    return [...reached].flatMap((member) =>
+      (packagesNamed.get(member) ?? []).map((name) => [member, name]),
+    );
+  };
+  const resolutionsOf = (file) => resolutions.get(file) ?? null;
+  return {
+    closureOf,
+    contentOf,
+    ambientDigest,
+    readsClosureOf,
+    packagesImportedBy,
+    resolutionsOf,
+  };
 }
