@@ -48,3 +48,31 @@ it("stops a stage still refused after its cap of rounds back as capped, on the r
   expect(looped).toEqual({ stop: "capped", refused: "round 3 refused" });
   expect(handed).toEqual([["slice it", undefined], ["fix round 1", "session-1"], ["fix round 2", "session-2"]]);
 });
+
+it("judges ahead of every spend when a stage judges first, stopping on the refusal it handed before judging a third time", async () => {
+  const handed: [string, string | undefined][] = [];
+  let judgedAhead = 0;
+  const idle = await stageLoop({
+    spend: spender(handed),
+    session: "session-0",
+    stops: ["unchanged"],
+    ahead: () => ({ refused: `still red\nround ${++judgedAhead}`, handBack: `fix round ${judgedAhead}` }),
+    judged: () => ({ changed: false }),
+  });
+  expect(idle).toEqual({ stop: "unchanged", refused: "still red\nround 2" });
+  expect(judgedAhead).toBe(2);
+  expect(handed).toEqual([["fix round 1", "session-0"], ["fix round 2", "session-1"]]);
+
+  const refusedHanded: [string, string | undefined][] = [];
+  const again = await stageLoop({
+    spend: spender(refusedHanded),
+    stops: ["again"],
+    ahead: () => ({ refused: "step 1 names no owner", handBack: "step 1 names no owner" }),
+    judged: () => ({}),
+  });
+  expect(again).toEqual({ stop: "again", refused: "step 1 names no owner" });
+  expect(refusedHanded).toHaveLength(1);
+
+  const greened = await stageLoop({ spend: spender([]), stops: ["unchanged"], ahead: () => ({ done: "green" }), judged: () => ({ changed: true }) });
+  expect(greened).toEqual({ done: "green" });
+});

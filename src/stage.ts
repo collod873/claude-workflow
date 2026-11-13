@@ -253,37 +253,59 @@ export function opened<Carried>({ stage, issue, state, tried, hire: hiring, read
   return { asked, carried: readied.carrying, spend };
 }
 
-type Stop = "unchanged" | "again";
+export type Stop = "unchanged" | "again";
 
-type Judged<Done> = { done: Done } | { refused: string; handBack: string; changed?: boolean };
+export type Refusal = { refused: string; handBack: string };
+
+export type Ahead<Done> = { done: Done } | Refusal;
+
+type Judged<Done> = { done: Done } | (Refusal & { changed?: boolean });
 
 export type Looped<Done> = { done: Done } | { stop: Stop | "capped"; refused: string };
 
-interface Looping<Done> {
+type Looping<Done> = {
   spend: (input: string, resume?: string) => Promise<Spent>;
-  input: string;
   session?: string | undefined;
   stops: readonly Stop[];
   roundsBack?: number;
-  judged: (spent: Spent) => Judged<Done> | Promise<Judged<Done>>;
+} & ({ input: string; judged: (spent: Spent) => Judged<Done> | Promise<Judged<Done>> } | { ahead: () => Ahead<Done> | Promise<Ahead<Done>>; judged: (spent: Spent) => { done: Done } | { changed?: boolean } });
+
+type Handing<Done> = { done: Done } | { refused?: string; handBack: string };
+
+type Judging<Done> = { done: Done } | { refused?: string; changed?: boolean | undefined };
+
+function judgedAhead<Done>(looping: Looping<Done>): { ahead: () => Handing<Done> | Promise<Handing<Done>>; judged: (spent: Spent) => Judging<Done> | Promise<Judging<Done>> } {
+  if ("ahead" in looping) return looping;
+  let handing: Handing<Done> = { handBack: looping.input };
+  return {
+    ahead: () => handing,
+    judged: async (spent) => {
+      const judging = await looping.judged(spent);
+      if (!("done" in judging)) handing = judging;
+      return judging;
+    },
+  };
 }
 
-export async function stageLoop<Done>({ spend, input, session, stops, roundsBack = Infinity, judged }: Looping<Done>): Promise<Looped<Done>> {
-  let handed = input;
+export async function stageLoop<Done>(looping: Looping<Done>): Promise<Looped<Done>> {
+  const { spend, stops, roundsBack = Infinity } = looping;
+  const { ahead, judged } = judgedAhead(looping);
+  let carried = looping.session;
   let handedBack = 0;
-  let carried = session;
-  let last: { refused: string; changed?: boolean } | undefined;
+  let last: { refused?: string | undefined; changed?: boolean | undefined } = {};
   for (;;) {
-    const spent = await spend(handed, carried);
+    const next = await ahead();
+    if ("done" in next) return next;
+    if (stops.includes("again") && next.refused !== undefined && next.refused === last.refused) return { stop: "again", refused: next.refused };
+    if (next.refused !== undefined && handedBack === roundsBack) return { stop: "capped", refused: next.refused };
+    const spent = await spend(next.handBack, carried);
     carried = spent.session ?? carried;
     const judging = await judged(spent);
     if ("done" in judging) return judging;
-    if (stops.includes("unchanged") && judging.changed === false && last?.changed === false) return { stop: "unchanged", refused: judging.refused };
-    if (stops.includes("again") && judging.refused === last?.refused) return { stop: "again", refused: judging.refused };
-    if (handedBack === roundsBack) return { stop: "capped", refused: judging.refused };
-    last = judging;
-    handed = judging.handBack;
-    handedBack += 1;
+    const refused = judging.refused ?? next.refused;
+    if (stops.includes("unchanged") && judging.changed === false && last.changed === false && refused !== undefined) return { stop: "unchanged", refused };
+    last = { refused: next.refused, changed: judging.changed };
+    if (next.refused !== undefined) handedBack += 1;
   }
 }
 

@@ -11,7 +11,7 @@ import { type Answered, approvedOn, filed, type FollowUps, gathered, MOST_FIXES,
 import { afterRefused, landing } from "./reviewer.ts";
 import { fastForwarded, landedOn, MOST_BUILDERS, type Progress, progressOn, removed, specBranch, triedOn, worktree } from "./scheduler.ts";
 import { fastForwards, rebaseStopped, sliceTrailed } from "./slice-builder.ts";
-import { committed, commitlinted, CONTRACT, head, hireIn, setupRefusedIn, type Spent } from "./stage.ts";
+import { type Ahead, committed, commitlinted, CONTRACT, head, hireIn, type Looped, type Refusal, setupRefusedIn, type Spent, stageLoop, type Stop } from "./stage.ts";
 import { CHECKING, SPEC } from "./spelled.ts";
 import { quoted, type Sentence, sentences, SPEC_CAP } from "./ticket-shape.ts";
 
@@ -278,9 +278,7 @@ function inTree<Done>(tree: string, act: () => Done): Done {
   }
 }
 
-async function answered({ spec, said, app, left }: Run, reviewer: Reviewer, input: string, commit: string): Promise<Approved | undefined> {
-  const before = inTree(reviewer.tree, head);
-  const spent = await reviewer.spend(input, reviewer.session);
+function settled({ spec, said, app, left }: Run, reviewer: Reviewer, spent: Spent, commit: string, before: string): Approved | undefined {
   reviewer.session = spent.session ?? reviewer.session;
   inTree(reviewer.tree, () => {
     committed(commit, "fix");
@@ -295,7 +293,29 @@ async function answered({ spec, said, app, left }: Run, reviewer: Reviewer, inpu
   return approved;
 }
 
-type Round<Done> = { done: Done } | { refused: string; told: string };
+async function answered(run: Run, reviewer: Reviewer, input: string, commit: string): Promise<Approved | undefined> {
+  const before = inTree(reviewer.tree, head);
+  return settled(run, reviewer, await reviewer.spend(input, reviewer.session), commit, before);
+}
+
+function reviewerLoop<Done>(run: Run, reviewer: Reviewer, { stops, commit, kept }: { stops: readonly Stop[]; commit: string; kept?: ((approved: Approved) => void) | undefined }, ahead: () => Ahead<Done> | Promise<Ahead<Done>>): Promise<Looped<Done | undefined>> {
+  let before = "";
+  return stageLoop<Done | undefined>({
+    spend: (handed, resume) => {
+      before = inTree(reviewer.tree, head);
+      return reviewer.spend(handed, resume);
+    },
+    session: reviewer.session,
+    stops,
+    ahead,
+    judged: (spent) => {
+      const approved = settled(run, reviewer, spent, commit, before);
+      if (approved === undefined) return { done: undefined };
+      kept?.(approved);
+      return { changed: inTree(reviewer.tree, head) !== before };
+    },
+  });
+}
 
 const packUnrebased = (onto: string, { files, said }: { files: string; said: string }) =>
   [
@@ -305,7 +325,7 @@ const packUnrebased = (onto: string, { files, said }: { files: string; said: str
     "",
   ].join("\n\n");
 
-function broughtBack(spec: string, { tree, branch }: Reviewer, rebuilt: boolean): Round<never> | undefined {
+function broughtBack(spec: string, { tree, branch }: Reviewer, rebuilt: boolean): Refusal | undefined {
   if (branch === undefined) return undefined;
   const onto = specBranch(spec);
   if (rebuilt && !builtOnMain()) {
@@ -317,27 +337,16 @@ function broughtBack(spec: string, { tree, branch }: Reviewer, rebuilt: boolean)
     }
   }
   const stopped = inTree(tree, () => (fastForwards(onto) ? undefined : rebaseStopped(onto)));
-  if (stopped !== undefined) return { refused: `${branch} would not rebase onto ${onto}`, told: packUnrebased(onto, stopped) };
+  if (stopped !== undefined) return { refused: `${branch} would not rebase onto ${onto}`, handBack: packUnrebased(onto, stopped) };
   if (!fastForwarded(spec, branch)) unread(`${onto} would not fast-forward to ${branch} though it was rebased onto it`);
   return undefined;
 }
 
-async function rounds<Done>(run: Run, reviewer: Reviewer, { failed, rebuilt = false, commit, kept }: { failed: string; rebuilt?: boolean; commit: string; kept: (approved: Approved) => void }, attempt: () => Round<Done> | Promise<Round<Done>>): Promise<Done | undefined> {
-  let idle = false;
-  for (;;) {
-    const tried = broughtBack(run.spec, reviewer, rebuilt) ?? (await attempt());
-    if ("done" in tried) return tried.done;
-    const before = inTree(reviewer.tree, head);
-    const approved = await answered(run, reviewer, tried.told, commit);
-    if (approved === undefined) return undefined;
-    kept(approved);
-    const changed = inTree(reviewer.tree, head) !== before;
-    if (!changed && idle) {
-      endedRed(`${run.said} ${failed}, and two rounds in a row of its reviewer changed nothing: ${quoted(tried.refused.split("\n").at(-1) ?? "")}`);
-      return undefined;
-    }
-    idle = !changed;
-  }
+async function rounds<Done>(run: Run, reviewer: Reviewer, { failed, rebuilt = false, commit, kept }: { failed: string; rebuilt?: boolean; commit: string; kept?: (approved: Approved) => void }, attempt: () => Ahead<Done> | Promise<Ahead<Done>>): Promise<Done | undefined> {
+  const looped = await reviewerLoop(run, reviewer, { stops: ["unchanged"], commit, kept }, async () => broughtBack(run.spec, reviewer, rebuilt) ?? (await attempt()));
+  if ("done" in looped) return looped.done;
+  endedRed(`${run.said} ${failed}, and two rounds in a row of its reviewer changed nothing: ${quoted(looped.refused.split("\n").at(-1) ?? "")}`);
+  return undefined;
 }
 
 function stoppedByMachine({ spec, said }: Run, red: Red | undefined): boolean {
@@ -351,24 +360,20 @@ const greened = (run: Run, reviewer: Reviewer, commit: string) =>
   rounds(run, reviewer, { failed: "stayed red on its full check", commit, kept: (approved) => run.later.push(`After its full check went red: ${approved.reason}`) }, async () => {
     const red = await checkedBy(PUBLISHED_CHECK);
     if (stoppedByMachine(run, red)) return { done: undefined };
-    return red === undefined ? { done: true } : { refused: red.verdict, told: stillRedOnReview(red) };
+    return red === undefined ? { done: true } : { refused: red.verdict, handBack: stillRedOnReview(red) };
   });
 
 async function stepsWhole(run: Run, reviewer: Reviewer, commit: string): Promise<boolean> {
-  let told: string | undefined;
-  for (;;) {
+  const looped = await reviewerLoop(run, reviewer, { stops: ["again"], commit }, () => {
     const refused = stepsUnfileable(run.left.get(reviewer.seat)?.steps ?? []);
-    if (refused === undefined) return true;
-    if (refused === told) {
-      endedRed(`${run.said} landed nothing, its reviewer on the spec answered the same refused owner steps again: ${refused}`);
-      return false;
-    }
-    told = refused;
-    if ((await answered(run, reviewer, refused, commit)) === undefined) return false;
-  }
+    return refused === undefined ? { done: true } : { refused, handBack: refused };
+  });
+  if ("done" in looped) return looped.done === true;
+  endedRed(`${run.said} landed nothing, its reviewer on the spec answered the same refused owner steps again: ${looped.refused}`);
+  return false;
 }
 
-const merged = (run: Run, reviewer: Reviewer, commit: string) => rounds(run, reviewer, { failed: "left a pack's commits conflicting with its integration branch", commit, kept: () => undefined }, () => ({ done: true }));
+const merged = (run: Run, reviewer: Reviewer, commit: string) => rounds(run, reviewer, { failed: "left a pack's commits conflicting with its integration branch", commit }, () => ({ done: true }));
 
 async function treeMade(run: Run, reviewer: Reviewer): Promise<boolean> {
   const { spec, said, trees } = run;
@@ -412,7 +417,7 @@ async function heldAfterRound(run: Run, last: Reviewer, tries: Try[] | { refusal
   if (!Array.isArray(tries)) return tries;
   const missed = paired(run.listed, tries).flatMap(([number, said, one]): [number, string, Try][] => (one?.outcome === "missed" ? [[number, said, one]] : []));
   if (missed.length === 0) return { tries, fixed: [] };
-  let told = false;
+  const handed: Refusal[] = [{ refused: `the done check missed sentence ${missed.map(([number]) => number).join(", ")}`, handBack: missesTold(run.spec, missed) }];
   let fixed: number[] = [];
   const held = await rounds(
     run,
@@ -421,11 +426,7 @@ async function heldAfterRound(run: Run, last: Reviewer, tries: Try[] | { refusal
       fixed = approved.fixed ?? [];
       run.later.push(`After the done check: ${approved.reason}`);
     } },
-    () => {
-      if (told) return { done: true };
-      told = true;
-      return { refused: `the done check missed sentence ${missed.map(([number]) => number).join(", ")}`, told: missesTold(run.spec, missed) };
-    },
+    () => handed.shift() ?? { done: true },
   );
   return held === undefined ? undefined : { tries, fixed: fixed.filter((number) => missed.some(([at]) => at === number)) };
 }
@@ -494,7 +495,7 @@ async function reviews(run: Run, { title, body }: { title: string; body: string 
 
 function landed(run: Run, { last }: Reviewed): Promise<string | undefined> {
   const { spec, said, reasons, later, left } = run;
-  return rounds(run, last, { failed: "did not land", rebuilt: true, commit: `Fix what bin/land refused for #${spec}`, kept: (approved) => later.push(afterRefused(approved.reason)) }, (): Round<string | undefined> => {
+  return rounds(run, last, { failed: "did not land", rebuilt: true, commit: `Fix what bin/land refused for #${spec}`, kept: (approved) => later.push(afterRefused(approved.reason)) }, (): Ahead<string | undefined> => {
     const stood = stoodDown(standingOn(spec, gh));
     if (stood !== undefined) {
       console.log(`${said} ${stood}, so its reviewed branch does not land`);
@@ -502,7 +503,7 @@ function landed(run: Run, { last }: Reviewed): Promise<string | undefined> {
     }
     const attempt = landing(["--spec", spec], approvedOn([...reasons.values(), ...later], followUpsOf(left)));
     if ("pr" in attempt) return { done: attempt.pr };
-    return { refused: attempt.refused, told: last.branch === undefined ? landRefused(attempt.refused) : [WHOLE_BRANCH, landRefused(attempt.refused)].join("\n\n") };
+    return { refused: attempt.refused, handBack: last.branch === undefined ? landRefused(attempt.refused) : [WHOLE_BRANCH, landRefused(attempt.refused)].join("\n\n") };
   });
 }
 
