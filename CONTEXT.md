@@ -141,7 +141,7 @@ later run resumes its session or logs why not. It fixes the code, the ticket onl
 answer, or the machine, hands a first step to its owning repo, rewrites one too big for one build as a spec, or closes it, done if main
 holds it, else unbuilt; stopped, it marks `stuck`. A spec's slice gets a **slice builder** instead (`bin/build-slice`): fast check only, its
 own Postgres, port and temp dir, done when its branch fast-forwards the integration branch, or
-`partial`, saying what is left.
+`partial`, saying what is left. Neither waits on an owner step.
 _Avoid_: fixer, mechanic, fresh eyes, repair agent
 
 **Reviewer**:
@@ -151,8 +151,8 @@ and what it lets through as research does. A spec's finish hires one over the wh
 branch, whatever its size: handed each slice's brief, it holds the branch to the spec and the code
 standard and runs each closing line, making true what is not. It works in that branch's tree, readied
 by the contract's setup, with its own port, Postgres and temp dir; what it leaves running is stopped
-once it answers. The full check follows, a red going back to it until green. `stuck` is for a fault in
-the machine alone: an open choice it makes, builds and names in `reason`.
+once it answers. The full check follows, a red going back to it until green. An open choice it
+makes, builds and names in `reason`.
 _Avoid_: review job, judge, second builder
 
 **Closing**:
@@ -296,8 +296,8 @@ paused ticket or spec does not land: its reviewer reads the label before `bin/la
 _Avoid_: on hold, frozen, blocked
 
 **Stuck**:
-An issue the machine labelled `stuck`, its last resort: a stage that cannot go on or rules itself
-stuck marks it at once; a dead run marks it only when its re-run dies too.
+An issue the machine labelled `stuck`, its last resort: a stage that cannot go on or answers it for a
+machine fault marks it at once; a dead run marks it only when its re-run dies too.
 Its comment names the run that stopped, red or out of time, links both runs, and asks the owner
 to read the re-run and take `stuck` off once it is fixed.
 Like `paused` it is `held`; the machine adds it but never removes it.

@@ -9,6 +9,7 @@ import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
 import { capped, LIST_CAP, listedCapped, NO_EM_DASH, onDisk, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
 import { checkedBy, filedInRepo, OWNED_ANSWER, ownedRefusal, type Piece, type Red, spentOn } from "./builder.ts";
 import { FAST_CHECK } from "./checks.ts";
+import { STEP_TRAILER } from "./follow-ups.ts";
 import { LEFT_CAP } from "./scheduler.ts";
 import { SLICE_ID } from "./slicer.ts";
 import { fromLine, gh, git, gitRead, rebuiltOnMain, rebuiltRef, Stopped, unread } from "./post.ts";
@@ -72,11 +73,12 @@ export function handedOn({ brief, onto, commitlint, unset = [] }: { brief: strin
     "Ship the slice's Why whole on every path you touch, in the smallest diff; `## Done when` is its floor. Settle open choices yourself as its senior engineer. Call the Skill tool with `tdd`, to its end. Commit as you go: a why per message, no em dash, no `Fixes #12`. Each commit's check already runs the typecheck, the linters and the related tests: run a test by hand only to see it red then green, and leave the rest to the commit.",
     ...(commitlint ? ["Commitlint runs here: each message is `type: subject`, a conventional type, lower-case."] : []),
     ...(unset.length === 0 ? [] : [`Unset in this run though the contract wants them: ${listedCapped(unset.map((key) => `\`${key}\``))}. Where code needs one, test it through a stand-in and invent no value; list each in \`reason\` for the owner to set.`]),
+    `A step that takes the owner's login, money or identity, with no tool here able to take it, never stops the slice: build the rest, prove that edge through a stand-in, invent no value, and name the step in one line as a commit's \`${STEP_TRAILER}:\` trailer, which the spec's reviewer is handed to file for him.`,
     "## Your answer",
     `- \`built\`: the machine commits the rest, rebases onto \`${onto}\`, runs \`${FAST_CHECK}\` and hands back each red or conflict until it fast-forwards \`${onto}\` green.`,
     "- `partial`: too big for one build; commit what holds, with `left` naming each `## Done when` sentence not yet holding, for the slicer to cut again. Same check.",
     `- \`done\`: \`${onto}\` already does it; nothing lands.`,
-    "- `stuck`: no rewrite unblocks it, only the owner; `reason` says why.",
+    "- `stuck`: a fault of the machine stops the slice, a brief cut on what this branch lacks among them; `reason` says why.",
     "- `owned`: only another repo can fix its first step, as with a missing kit pattern: name it as `repo` and file that step as `tickets`; it builds once they close.",
     "`reason`: why, in one paragraph.",
     "",

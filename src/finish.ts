@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { capped, diffOverCap, LIST_CAP, listedCapped, NO_EM_DASH, onDisk, TAIL_CAP, tailOf } from "./brief.ts";
 import { checkedBy, type Red, machineFault } from "./builder.ts";
 import { PUBLISHED_CHECK } from "./checks.ts";
-import { type Answered, approvedOn, filed, type FollowUps, gathered, MOST_FIXES, OWNER_STEPS, ROUTED, ROUTED_REQUIRED, stepsUnfileable } from "./follow-ups.ts";
+import { type Answered, approvedOn, filed, type FollowUps, gathered, MOST_FIXES, OWNER_STEPS, ROUTED, ROUTED_REQUIRED, STEP_TRAILER, stepsUnfileable } from "./follow-ups.ts";
 import { postedUnderOrigin } from "./issue-links.ts";
 import { askedOn, calledOwner, commentOnTicket, endedRed, followUpBody, fromHere, fromLine, gh, gitRead, standingOn, stoodDown, mark, readOrStop, STUCK } from "./post.ts";
 import { afterRefused, landing } from "./reviewer.ts";
@@ -16,6 +16,7 @@ import { closingLines, quoted, SPEC_CAP } from "./ticket-shape.ts";
 const PAST_MAIN = "origin/main..HEAD";
 const FROM_MAIN = "origin/main...HEAD";
 const COMMITS = "--format=- %h %s%n%n%b";
+const STEPS_NAMED = `--format=%(trailers:key=${STEP_TRAILER},valueonly,unfold)`;
 const UNREAD = "the commits past main could not be read, so nothing was reviewed";
 export const BRIEFS_CAP = 16 * 1024;
 export const ONE_REVIEWER_CAP = 200 * 1024;
@@ -45,6 +46,7 @@ const ANSWER = {
 
 export interface Changes {
   commits: string;
+  ownerSteps: string;
   diff: string;
   stat: string;
 }
@@ -71,6 +73,7 @@ export function onTheBranch(changes: Changes, { spec, title, body, closing, comm
     "## Commits",
     "Its commits are listed newest first, each with its id: `git show <id>` reads one, and `git log origin/main..HEAD` reads any the list cuts.",
     capped(changes.commits, LIST_CAP),
+    ...(changes.ownerSteps === "" ? [] : ["## Owner steps its builders named", "A slice's builder built around each of these and left it to you: put every one that still stands in `steps`.", capped(changes.ownerSteps, LIST_CAP)]),
     "## Diff from main",
     diffHanded(changes),
     ...(commitlint ? ["commitlint checks each commit here: a message reads `type: subject`, with a conventional type such as `fix` or `feat` and a lower-case subject."] : []),
@@ -114,7 +117,14 @@ const briefsOf = (progress: Progress) =>
     .map(({ id, title, why, done }) => `- \`${id}\`: ${title.trim()}\n  Why: ${why.trim()}\n  Done when: ${done.map((sentence) => sentence.trim()).join(" ")}`)
     .join("\n");
 
-const wholeBranch = (): Changes => ({ commits: gitRead(["log", COMMITS, PAST_MAIN], UNREAD), diff: gitRead(["diff", FROM_MAIN], UNREAD), stat: gitRead(["diff", "--stat", FROM_MAIN], UNREAD) });
+const stepsNamed = () =>
+  gitRead(["log", STEPS_NAMED, PAST_MAIN], UNREAD)
+    .split("\n")
+    .filter((step) => step.trim() !== "")
+    .map((step) => `- ${step.trim()}`)
+    .join("\n");
+
+const wholeBranch = (): Changes => ({ commits: gitRead(["log", COMMITS, PAST_MAIN], UNREAD), ownerSteps: stepsNamed(), diff: gitRead(["diff", FROM_MAIN], UNREAD), stat: gitRead(["diff", "--stat", FROM_MAIN], UNREAD) });
 
 interface Reviewer {
   spend: (input: string, resume?: string) => Promise<Spent>;

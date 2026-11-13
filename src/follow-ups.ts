@@ -28,6 +28,8 @@ const CLICK = {
   additionalProperties: false,
 };
 
+export const STEP_TRAILER = "Owner-step";
+
 export const OWNER_STEPS = {
   type: "array",
   items: {

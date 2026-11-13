@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { LIST_CAP, onDisk } from "./brief.ts";
 import { BRIEFS_CAP, ONE_REVIEWER_CAP, onTheBranch, OUT_OF_TIME } from "./finish.ts";
+import { STEP_TRAILER } from "./follow-ups.ts";
 import { authored, BIN, execute, labelsJson, linesIn, ghArgv, git, key, nulSplit, plant, type Said, scratch, script, wellFormedSpec } from "./scenarios.ts";
 import { PAUSED } from "./spelled.ts";
 import { declarePart, HANDED_ON } from "./part-files.ts";
@@ -24,6 +25,7 @@ export interface Slice {
   id?: string;
   files: Record<string, string>;
   message?: string;
+  ownerStep?: string;
 }
 
 export function finishing({
@@ -70,10 +72,10 @@ export function finishing({
   git(session, "remote", "add", "origin", origin);
   git(session, "update-ref", "refs/remotes/origin/main", "HEAD");
   git(session, "checkout", "--quiet", "-b", "spec/974");
-  for (const { id, files, message } of slices) {
+  for (const { id, files, message, ownerStep } of slices) {
     for (const [path, text] of Object.entries(files)) plant(session, path, text);
     git(session, "add", ".");
-    git(session, "commit", "--quiet", "-m", id === undefined ? "Build what no slice names" : `${message ?? `Build slice ${id}`}\n\nSlice: ${id}`);
+    git(session, "commit", "--quiet", "-m", id === undefined ? "Build what no slice names" : `${message ?? `Build slice ${id}`}\n\n${ownerStep === undefined ? "" : `${STEP_TRAILER}: ${ownerStep}\n`}Slice: ${id}`);
   }
   plant(root, "issue.json", JSON.stringify({ title: "A spec worth finishing", body: specWith(closing), labels: labels.map((name) => ({ name })), state }));
   plant(root, "labels-at-land", (labelsAtLand ?? labels).map((label) => `${label}\n`).join(""));
@@ -157,11 +159,11 @@ declarePart({
     {
       name: "spec's reviewer",
       file: "src/finish.ts",
-      cap: 2 * SPEC_CAP + 2 * LIST_CAP + ONE_REVIEWER_CAP + BRIEFS_CAP + 2 * HANDED_ON,
-      slots: ["commits", "diff", "stat", "title", "body", "closing", "briefs", "unset"],
+      cap: 2 * SPEC_CAP + 3 * LIST_CAP + ONE_REVIEWER_CAP + BRIEFS_CAP + 2 * HANDED_ON,
+      slots: ["commits", "ownerSteps", "diff", "stat", "title", "body", "closing", "briefs", "unset"],
       build: (filled) =>
         onTheBranch(
-          { commits: filled.commits ?? "", diff: filled.diff ?? "", stat: filled.stat ?? "" },
+          { commits: filled.commits ?? "", ownerSteps: filled.ownerSteps ?? "", diff: filled.diff ?? "", stat: filled.stat ?? "" },
           { spec: "", title: filled.title ?? "", body: filled.body ?? "", closing: [filled.closing ?? ""], commitlint: true, briefs: filled.briefs ?? "", unset: [filled.unset ?? "KEY"] },
         ),
     },
