@@ -1,10 +1,10 @@
 {
- "source": "collod873/agent-hooks@487904525a714cdad5087b1a168274836414efd8",
+ "source": "collod873/agent-hooks@5f3b5307451f8aebaf2ade8fb52128961ef83aea",
  "layer": "typescript",
  "files": {
-  "ci.yml": "bea63aa685617bc3f40983c8bc26ebd5795f6bb8afe5945f0828623736b3fa1b",
+  "ci.yml": "a1fbd82d1a7e34bd3c076bb0de1eec2db56f160df5b080ddad26e8919710904e",
   "run": "3fd3fb152e55d1e47bc3c401c866ac9fa7763a1f20afef4cf4b3a5a4459bf68e",
-  "security/leaks": "c19e73b93a08dcdf4ebc5005301fb1a5052e9f7ef8cbc5b697f6816e4eaec669",
+  "security/leaks": "415e2fcf7ff28fbe088ec725b5a566d545179faf02fcf826383f15deb5ed1377",
   "security/tools.py": "3cf205dc74550decbd04f9d35f9ceda812d50bcee14400cc642b1817049e6de0",
   "security/vulns": "39541ea74fbc9ce44c964a0ba826a4abfa2873267895b906bbbb56d0692c9b66",
   "typescript/closure.mjs": "f21c6bf0c5c2869af1e7bcf49097ad7e06a3aa75788e32fa4a86d3abe030c275",

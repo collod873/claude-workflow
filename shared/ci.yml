@@ -154,8 +154,8 @@ jobs:
           CHECK_CALLER: ${{ github.event_name == 'workflow_dispatch' && 'ship' || '' }}
         run: ~/bin/check --full --publish $([ "$FRESH" = true ] && echo --fresh)
 
-      - name: Keep this run's check row for the transcripts (agent-hooks#258)
-        if: always() && steps.check.outcome != 'skipped'
+      - name: Keep this run's probe and check rows for the transcripts (agent-hooks#258, #554)
+        if: always()
         env:
           HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
@@ -166,13 +166,13 @@ jobs:
           kept.mkdir(parents=True, exist_ok=True)
           for ledger in logs.glob("check-*.jsonl"):
               rows = [line for line in ledger.read_text(errors="replace").splitlines()
-                      if (row := json.loads(line)).get("mode") == "full" and row.get("head") == head]
+                      if (row := json.loads(line)).get("mode") in ("covered", "full") and row.get("head") == head]
               if rows:
                   (kept / ledger.name).write_text("\n".join(rows) + "\n")
           PY
 
       - uses: actions/upload-artifact@v7
-        if: always() && steps.check.outcome != 'skipped'
+        if: always()
         with:
           name: check-logs
           path: ${{ runner.temp }}/check-logs
