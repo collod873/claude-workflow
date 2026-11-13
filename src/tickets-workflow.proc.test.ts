@@ -652,3 +652,29 @@ describe("this repo reaches the machine through the caller file bin/enrol writes
     expect(named.filter((said) => !held.has(said.split(" ")[1] ?? ""))).toEqual([]);
   });
 });
+
+describe("a ticket builder, and only a ticket builder, gets design-kit beside an app's tree (#1754)", () => {
+  const STAGE = join(REPO, ".github", "actions", "stage", "action.yml");
+  const stageUses = (file: string) =>
+    Object.entries(workflowJobs(file)).flatMap(([job, { steps }]) => steps.filter(({ uses }) => uses === "./.github/actions/stage").map((step) => ({ job, given: step.with?.["design-kit"] })));
+  const designKitSteps = () => (parse(readFileSync(STAGE, "utf8")) as { runs: { steps: WorkflowStep[] } }).runs.steps.filter(({ id }) => id?.startsWith("design-kit-") === true);
+
+  it("tickets.yml's build and probe jobs ask the stage action for design-kit, and specs.yml's jobs do not", () => {
+    expect(stageUses("tickets.yml")).toEqual([
+      { job: "build", given: "true" },
+      { job: "probe", given: "true" },
+    ]);
+    expect(stageUses("specs.yml").map(({ given }) => given)).toEqual([undefined, undefined]);
+  });
+
+  it("runs the design-kit steps for an app that asked, and skips them in design-kit itself or when not asked", () => {
+    const steps = designKitSteps();
+
+    expect(steps.map(({ id }) => id)).toEqual(["design-kit-app", "design-kit-fetch"]);
+    for (const { if: when } of steps) {
+      expect(holds(when ?? "", { inputs: { "design-kit": "true" }, repository: "Mezzanine" })).toBe(true);
+      expect(holds(when ?? "", { inputs: { "design-kit": "true" }, repository: "design-kit" })).toBe(false);
+      expect(holds(when ?? "", { inputs: { "design-kit": "false" }, repository: "Mezzanine" })).toBe(false);
+    }
+  });
+});

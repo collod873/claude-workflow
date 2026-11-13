@@ -8,6 +8,9 @@ inputs:
     required: true
   prod-database-url:
     required: false
+  design-kit:
+    required: false
+    default: "false"
 
 runs:
   using: composite
@@ -57,6 +60,35 @@ runs:
         done
         rm -rf "$skills/.git"
         printf '%s\n' "$skills/bin" >>"$GITHUB_PATH"
+
+    - id: design-kit-app
+      if: inputs.design-kit == 'true' && github.event.repository.name != 'design-kit'
+      uses: actions/create-github-app-token@v3
+      with:
+        client-id: ${{ inputs.client-id }}
+        private-key: ${{ inputs.private-key }}
+        owner: ${{ github.repository_owner }}
+        repositories: design-kit
+        permission-contents: read
+
+    - id: design-kit-fetch
+      if: inputs.design-kit == 'true' && github.event.repository.name != 'design-kit'
+      shell: bash
+      env:
+        DESIGN_KIT_TOKEN: ${{ steps.design-kit-app.outputs.token }}
+      run: |
+        kit="$HOME/Claude Projects/design-kit"
+        attempt=1
+        until git clone --quiet "https://x-access-token:$DESIGN_KIT_TOKEN@github.com/$GITHUB_REPOSITORY_OWNER/design-kit" "$kit"; do
+          rm -rf "$kit"
+          if [ "$attempt" -ge 3 ]; then
+            printf '%s\n' "A ticket builder cannot clone design-kit after 3 tries, and without it kit-land cannot land a kit edit" >&2
+            exit 1
+          fi
+          sleep $((attempt * 5))
+          attempt=$((attempt + 1))
+        done
+        git -C "$kit" remote set-url origin "https://github.com/$GITHUB_REPOSITORY_OWNER/design-kit"
 
     - id: config-app
       uses: actions/create-github-app-token@v3
