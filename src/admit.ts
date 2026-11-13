@@ -110,5 +110,5 @@ function admit(ticket: string): number {
 if (import.meta.main) {
   const [ticket] = process.argv.slice(2);
   if (ticket === undefined) throw new Error("no ticket number in the arguments");
-  process.exit(readOrStop("admit", () => admit(ticket)));
+  process.exit(await readOrStop("admit", () => admit(ticket)));
 }

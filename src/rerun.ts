@@ -107,5 +107,5 @@ if (import.meta.main) {
   const mode = process.argv[2] === "--dispatch" ? handOn : undefined;
   const [run, attempt] = process.argv.slice(mode === undefined ? 2 : 3);
   if (run === undefined || attempt === undefined) throw new Error("no run id and attempt in the arguments");
-  process.exit(readOrStop("rerun", () => (mode ?? rerun)(run, attempt)));
+  process.exit(await readOrStop("rerun", () => (mode ?? rerun)(run, attempt)));
 }

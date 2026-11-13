@@ -996,11 +996,11 @@ describe("the builder builds another repo's checkout from this repo's bin/ (#113
 });
 
 describe("the builder's check still tells hooks it runs on GitHub, without vitest's annotation reporter (#1587)", () => {
-  it("keeps GITHUB_ACTIONS set, but not to the true that turns vitest's annotations on", () => {
+  it("keeps GITHUB_ACTIONS set, but not to the true that turns vitest's annotations on", async () => {
     const was = process.env.GITHUB_ACTIONS;
     process.env.GITHUB_ACTIONS = "true";
     try {
-      const red = checkedBy(`echo "$GITHUB_ACTIONS"`);
+      const red = await checkedBy(`echo "$GITHUB_ACTIONS"`);
       expect(red?.verdict).not.toBe("");
       expect(red?.verdict).not.toBe("true");
     } finally {

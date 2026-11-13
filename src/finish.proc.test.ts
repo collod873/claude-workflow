@@ -1,6 +1,7 @@
 import { fromOf } from "./post.ts";
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { basename, dirname, join } from "node:path";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { finishing, type Slice } from "./finish.part.ts";
 import { bodyIn, createdIssues, git, heard, schemaIn, TAKEN_STEP } from "./scenarios.ts";
@@ -166,6 +167,24 @@ describe("bin/finish tries the spec's sentences on its integration branch before
     expect(database).toBe("postgres://postgres:postgres@localhost:49153/postgres");
     expect(port).toMatch(/^\d+$/);
     expect(temp).not.toBe("");
+    const dockered = finished.dockered();
+    expect(dockered.some((call) => /^run .*postgres:16$/.test(call))).toBe(true);
+    expect(dockered.at(-1)).toMatch(/^rm --force database-/);
+  });
+
+  it("gives the done check run on main after a landing its own Postgres, port and temp dir too, and removes the Postgres after", () => {
+    const finished = finishing({ said: [SLICED([{ id: "tenant-time-zone", title: "Store each tenant's time zone" }], "9974")], contract: '{ "steps": { "integration": { "run": "true", "needs": ["DATABASE_URL"] } } }\n' });
+    git(finished.session, "update-ref", "refs/remotes/origin/main", git(finished.session, "commit-tree", "HEAD^{tree}", "-p", "origin/main", "-p", "HEAD", "-m", "Merge the spec"));
+
+    const ran = heard(finished.run());
+
+    expect(ran.status, ran.stderr).toBe(0);
+    expect(finished.landed()).toEqual([]);
+    const [[, , database, port = "", temp = ""] = []] = finished.triedAt();
+    expect(database).toBe("postgres://postgres:postgres@localhost:49153/postgres");
+    expect(port).toMatch(/^\d+$/);
+    expect(dirname(temp)).toBe(tmpdir());
+    expect(basename(temp)).toMatch(/^slice-\w{6}$/);
     const dockered = finished.dockered();
     expect(dockered.some((call) => /^run .*postgres:16$/.test(call))).toBe(true);
     expect(dockered.at(-1)).toMatch(/^rm --force database-/);

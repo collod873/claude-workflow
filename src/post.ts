@@ -88,9 +88,9 @@ const readOrUnread = (got: ReturnType<Gh>, line: string): string => (got.status 
 export const ghRead = (args: string[], line: string) => readOrUnread(gh(args), line);
 export const gitRead = (args: string[], line: string, input?: string) => readOrUnread(git(args, input), line);
 
-export function readOrStop<Ended>(stage: string, run: () => Ended): Ended | number {
+export async function readOrStop<Ended>(stage: string, run: () => Ended | Promise<Ended>): Promise<Ended | number> {
   try {
-    return run();
+    return await run();
   } catch (error) {
     if (error instanceof Stopped) return endedRed(`${stage}: ${error.message}`);
     throw error;

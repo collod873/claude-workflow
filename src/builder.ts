@@ -1,4 +1,4 @@
-import { execFile, spawnSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -11,7 +11,7 @@ import { type ChecksWait, checkedRuns, checksNamed, waitedLine, withWait } from 
 import { park, postedUnderOrigin } from "./issue-links.ts";
 import { calledOwner, type Caller, commentOnTicket, commentsRead, endedRed, FILED, FOREIGN, fromLine, followUpBody, gh, ghRead, git, gitRead, MACHINE_REPO, mark, NOTHING_MARKED, OWNER, postRefusals, readOrStop, rewriteTicket, FILED_IN, Stopped, ticketBranch, unread } from "./post.ts";
 import { reviewedAndLanded } from "./reviewer.ts";
-import { committed, commitlinted, CONTRACT, opened, setupRefusal, type Spent, treePathed, unsetKeys } from "./stage.ts";
+import { committed, commitlinted, CONTRACT, opened, setupRefusedIn, type Spent, stageLoop, treePathed, unsetKeys } from "./stage.ts";
 import { dedashed } from "./em-dash.ts";
 import { BUILDING, SPEC, TICKET } from "./spelled.ts";
 import { doneWhen, quoted, specProblem, specRefusals, why } from "./ticket-shape.ts";
@@ -93,7 +93,7 @@ interface Handed {
 
 type Round = { red?: string; ended?: number; body?: string };
 
-type Spend = (input: string, resume?: string) => Spent;
+type Spend = (input: string, resume?: string) => Promise<Spent>;
 
 function captureOf(body: string, captures: string | undefined): string | undefined {
   const session = FILED_IN.exec(body)?.[1];
@@ -134,23 +134,12 @@ const ENDED_RERUNS = 3;
 const ENDED_BY_SIGTERM = /^check: ended by SIGTERM\b/;
 const endedBySigterm = (red: Red | undefined) => red !== undefined && ENDED_BY_SIGTERM.test(red.verdict);
 
-function checkedOnceSync(check: string): Red | undefined {
-  const { stdout, stderr } = spawnSync("bash", ["-c", check], { env: checkEnv(), encoding: "utf8" });
-  return redOf(stdout, stderr);
-}
-
-export function checkedBy(check: string): Red | undefined {
-  let red = checkedOnceSync(check);
-  for (let rerun = 0; rerun < ENDED_RERUNS && endedBySigterm(red); rerun++) red = checkedOnceSync(check);
-  return red;
-}
-
 const checkedOnce = (check: string) =>
   new Promise<Red | undefined>((resolved) => {
     execFile("bash", ["-c", check], { env: checkEnv(), encoding: "utf8", maxBuffer: Infinity }, (_error, stdout, stderr) => resolved(redOf(stdout, stderr)));
   });
 
-export async function checkedByAsync(check: string): Promise<Red | undefined> {
+export async function checkedBy(check: string): Promise<Red | undefined> {
   let red = await checkedOnce(check);
   for (let rerun = 0; rerun < ENDED_RERUNS && endedBySigterm(red); rerun++) red = await checkedOnce(check);
   return red;
@@ -415,10 +404,10 @@ function outcomeOf(ticket: string, body: string, answer: Answer | undefined, mai
   return rewritten(ticket, body, answer);
 }
 
-export function spentOn(said: string, spend: Spend, input: string, session: string | undefined, opening: string): Spent {
+export async function spentOn(said: string, spend: Spend, input: string, session: string | undefined, opening: string): Promise<Spent> {
   const fresh = () => spend(input === opening ? input : [opening, input].join("\n\n"));
   if (session === undefined) return fresh();
-  const resumed = spend(input, session);
+  const resumed = await spend(input, session);
   if (resumed.refusal === undefined) return resumed;
   console.error(`${said} could not resume its builder's session ${session}, so it starts fresh: ${resumed.refusal}`);
   return fresh();
@@ -443,11 +432,11 @@ function mergesCarryingWork(): string[] {
         .map(([short = "", , , subject = ""]) => `${short} ${subject}`);
 }
 
-function judged(ticket: string): Round {
+async function judged(ticket: string): Promise<Round> {
   if (gitRead(["rev-list", "--count", "origin/main..HEAD"], PAST_MAIN_UNREAD) === "0") return { red: "You answered `code`, and this branch has no commits past main, so there is nothing to land: build the ticket, or answer `done` if main already does what it asks." };
   const lost = mergesCarryingWork();
   if (lost.length > 0) return { red: `You answered \`code\`, and a rebase drops merge commits, so these past main would land without the work they carry beyond a clean merge of their parents: ${lost.join(", ")}. Leave that work out of merge commits and add its work as plain commits on top of main, such as with \`git reset --soft origin/main\` and a fresh commit.` };
-  const red = checkedBy(PUBLISHED_CHECK);
+  const red = await checkedBy(PUBLISHED_CHECK);
   const fault = machineFault(red);
   if (fault !== undefined) return { ended: calledOwner(ticket, builderCaller(ticket), fault) };
   return red === undefined ? {} : { red: repaired(red) };
@@ -459,7 +448,7 @@ function owned(ticket: string, body: string) {
   return { carrying: { onTicket: commentsRead(ticket, `the comments on #${ticket} could not be read, ${NOTHING_MARKED}`, gh), alongside: onTheSameFiles(ticket, body) } };
 }
 
-function ownTicket(ticket: string, app: AppKey | undefined): number {
+async function ownTicket(ticket: string, app: AppKey | undefined): Promise<number> {
   const owning = opened({
     stage: "fix",
     issue: ticket,
@@ -470,8 +459,7 @@ function ownTicket(ticket: string, app: AppKey | undefined): number {
   if (typeof owning !== "object") return owning;
   const { asked, spend } = owning;
   let body = asked.body;
-  let session = savedSession(ticket);
-  const unready = setupRefusal(onDisk(join(process.cwd(), CONTRACT)) ?? "");
+  const unready = await setupRefusedIn(process.cwd(), onDisk(join(process.cwd(), CONTRACT)) ?? "");
   if (unready !== undefined) return calledOwner(ticket, builderCaller(ticket), `its tree's setup failed: ${quoted(unready)}`);
   const opening = handedOn({
     ticket,
@@ -482,33 +470,41 @@ function ownTicket(ticket: string, app: AppKey | undefined): number {
     capture: captureOf(body, process.env.SESSION_CAPTURES),
     unset: unsetKeys(),
   });
-  let input = opening;
   const said: string[] = [];
-  for (;;) {
-    const mainBefore = fetchedMain();
-    const spent = spentOn(`fix: #${ticket}`, spend, input, session, opening);
-    session = spent.session ?? session;
-    keepSession(ticket, session);
-    if (app !== undefined) freshAppToken(app, gh, `so the build of #${ticket} is not acted on`);
-    if (spent.refusal !== undefined) return calledOwner(ticket, builderCaller(ticket), spent.refusal);
-    const answer = spent.answer as Answer | undefined;
-    if (answer?.outcome === "code") said.push(answer.reason);
-    const round = outcomeOf(ticket, body, answer, mainBefore);
-    if (round.ended !== undefined) return round.ended;
-    body = round.body ?? body;
-    committed(builtBy(ticket), "feat");
-    const judgedRound = round.red === undefined ? judged(ticket) : round;
-    if (judgedRound.ended !== undefined) return judgedRound.ended;
-    const { red } = judgedRound;
-    if (red === undefined) return reviewedAndLanded(ticket, { body, alongside: owning.carried.alongside, said: said.join("\n\n") }, app);
-    input = red;
-  }
+  let mainBefore = "";
+  const looped = await stageLoop<number>({
+    spend: async (handed, carried) => {
+      mainBefore = fetchedMain();
+      const spent = await spentOn(`fix: #${ticket}`, spend, handed, carried, opening);
+      keepSession(ticket, spent.session ?? carried);
+      return spent;
+    },
+    input: opening,
+    session: savedSession(ticket),
+    stops: [],
+    judged: async (spent) => {
+      if (app !== undefined) freshAppToken(app, gh, `so the build of #${ticket} is not acted on`);
+      if (spent.refusal !== undefined) return { done: calledOwner(ticket, builderCaller(ticket), spent.refusal) };
+      const answer = spent.answer as Answer | undefined;
+      if (answer?.outcome === "code") said.push(answer.reason);
+      const round = outcomeOf(ticket, body, answer, mainBefore);
+      if (round.ended !== undefined) return { done: round.ended };
+      body = round.body ?? body;
+      committed(builtBy(ticket), "feat");
+      const judgedRound = round.red === undefined ? await judged(ticket) : round;
+      if (judgedRound.ended !== undefined) return { done: judgedRound.ended };
+      const { red } = judgedRound;
+      if (red === undefined) return { done: await reviewedAndLanded(ticket, { body, alongside: owning.carried.alongside, said: said.join("\n\n") }, app) };
+      return { refused: red, handBack: red };
+    },
+  });
+  return "done" in looped ? looped.done : calledOwner(ticket, builderCaller(ticket), looped.refused);
 }
 
 if (import.meta.main) {
   const [ticket] = process.argv.slice(2);
   if (ticket === undefined) throw new Error("no ticket number in the arguments");
   const app = takenAppKey();
-  const ended = readOrStop("fix", () => ownTicket(ticket, app));
+  const ended = await readOrStop("fix", () => ownTicket(ticket, app));
   process.exit(ended);
 }

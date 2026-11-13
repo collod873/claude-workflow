@@ -12,7 +12,7 @@ import { FAST_CHECK } from "./checks.ts";
 import { LEFT_CAP } from "./scheduler.ts";
 import { SLICE_ID } from "./slicer.ts";
 import { fromLine, gh, git, gitRead, rebuiltOnMain, rebuiltRef, Stopped, unread } from "./post.ts";
-import { commitlinted, committed, CONTRACT, hire, type Hire, setupRefusal, treeNeeds, unsetKeys, WRITE_UP_MINUTES } from "./stage.ts";
+import { commitlinted, committed, CONTRACT, hireIn, type Hire, setupRefusedIn, stageLoop, treeNeeds, unsetKeys, WRITE_UP_MINUTES } from "./stage.ts";
 
 const USAGE = "build-slice: usage: build-slice --spec <N> --slice <id> --brief <file> --onto <ref> [--model sonnet] [--resume <session>] [--told <text> | --out-of-time | --answer <its answer's JSON, to land again>]";
 
@@ -283,7 +283,7 @@ function ontoSeen(onto: string): void {
   if (!rebuiltOnMain(onto, "HEAD")) gitRead(["update-ref", sliceRebuilt(), onto], `the tip of ${onto} its builder sees could not be kept`);
 }
 
-function landableRebuild(slicing: Slicing): string | undefined {
+async function landableRebuild(slicing: Slicing): Promise<string | undefined> {
   const { onto } = slicing;
   const merges = gitRead(["log", "--merges", "--format=%h %s", "origin/main..HEAD"], PAST_ONTO_UNREAD);
   if (merges !== "") return mergesRefused("origin/main", merges);
@@ -294,13 +294,13 @@ function landableRebuild(slicing: Slicing): string | undefined {
     return ontoMovedSinceRebuild(onto, since);
   }
   sliceTrailed("origin/main", [slicing.slice]);
-  const red = checkedBy(FAST_CHECK);
+  const red = await checkedBy(FAST_CHECK);
   return red === undefined ? undefined : repaired(red);
 }
 
 const pastOnto = (onto: string) => gitRead(["rev-list", "--count", `${onto}..HEAD`], PAST_ONTO_UNREAD);
 
-function landable(slicing: Slicing, outcome: "built" | "partial", left: string): string | undefined {
+async function landable(slicing: Slicing, outcome: "built" | "partial", left: string): Promise<string | undefined> {
   const { onto } = slicing;
   if (outcome === "partial" && left === "") return LEFT_UNNAMED;
   if (rebuiltOnMain(onto, "HEAD")) return landableRebuild(slicing);
@@ -311,7 +311,7 @@ function landable(slicing: Slicing, outcome: "built" | "partial", left: string):
     if (conflict !== undefined) return conflict;
     if (pastOnto(onto) === "0") return nothingBuilt(outcome, onto);
     sliceTrailed(slicing.onto, [slicing.slice]);
-    const red = checkedBy(FAST_CHECK);
+    const red = await checkedBy(FAST_CHECK);
     if (red !== undefined) return repaired(red);
     if (fastForwards(onto)) return undefined;
   }
@@ -329,48 +329,57 @@ function handedToItsRepo({ spec }: Slicing, { repo, tickets }: Answer): { red: s
 
 const ended = (outcome: Ending["outcome"], reason: string, session: string | undefined, left = ""): Ending => ({ outcome, left, reason, session: session ?? "" });
 
-function built(slicing: Slicing, app: AppKey | undefined): Ending {
+async function built(slicing: Slicing, app: AppKey | undefined): Promise<Ending> {
   const { spec, slice, onto, model } = slicing;
   const file = sessionFile(slicing);
-  const spend = hire("build-slice", named(spec, slice), { name: "slice builder", model, effort: "medium", answers: ANSWER, writeUp: { minutes: WRITE_UP_MINUTES, told: OUT_OF_TIME } });
+  const spend = hireIn(process.cwd(), "build-slice", named(spec, slice), { name: "slice builder", model, effort: "medium", answers: ANSWER, writeUp: { minutes: WRITE_UP_MINUTES, told: OUT_OF_TIME } });
   const brief = onDisk(slicing.brief) ?? unread(`the brief ${slicing.brief} could not be read, so no builder was hired`);
   const opening = handedOn({ ...slicing, brief, commitlint: commitlinted(), unset: unsetKeys() });
   let session = slicing.resume ?? savedSession(file);
   let input = slicing.told ?? (slicing.outOfTime ? OUT_OF_TIME : session === undefined ? opening : CARRY_ON);
+  let pending = slicing.answer;
   let left = "";
-  for (let answer = slicing.answer; ; answer = undefined) {
-    if (answer === undefined) {
-      ontoSeen(onto);
-      const spent = spentOn(`build-slice: #${spec} ${slice}`, spend, input, session, opening);
-      session = spent.session ?? session;
-      keepSession(file, session);
-      if (app !== undefined) freshAppToken(app, gh, `so slice ${slice} of #${spec} stops`);
-      if (spent.refusal !== undefined) return ended(spent.timedOut === true ? "outOfTime" : "stopped", spent.refusal, session);
-      answer = spent.answer as Answer | undefined;
-    }
-    if (answer === undefined) {
-      input = NO_OUTCOME;
-      continue;
-    }
-    if (answer.outcome === "stuck") return ended("stuck", answer.reason, session);
+  const judgedAnswer = async (answer: Answer): Promise<{ done: Ending } | { handBack: string }> => {
+    if (answer.outcome === "stuck") return { done: ended("stuck", answer.reason, session) };
     if (answer.outcome === "owned") {
       const handed = handedToItsRepo(slicing, answer);
-      if ("filed" in handed) return { ...ended("owned", answer.reason, session), filed: handed.filed };
-      if ("stopped" in handed) return ended("stopped", handed.stopped, session);
-      input = handed.red;
-      continue;
+      if ("filed" in handed) return { done: { ...ended("owned", answer.reason, session), filed: handed.filed } };
+      if ("stopped" in handed) return { done: ended("stopped", handed.stopped, session) };
+      return { handBack: handed.red };
     }
     const leftNow = answer.left?.trim() ?? "";
     if (leftNow !== "") left = leftNow;
     committed(`Build slice ${slice} of #${spec}`, "feat");
     const outcome = answer.outcome === "built" && left !== "" ? "partial" : answer.outcome;
-    const red = outcome === "done" ? (pastOnto(onto) === "0" ? undefined : builtNotDone(onto)) : landable(slicing, outcome, left);
-    if (red === undefined) {
-      rmSync(file, { force: true });
-      return ended(outcome, answer.reason, session, outcome === "partial" ? left : "");
-    }
-    input = red;
-  }
+    const red = outcome === "done" ? (pastOnto(onto) === "0" ? undefined : builtNotDone(onto)) : await landable(slicing, outcome, left);
+    if (red !== undefined) return { handBack: red };
+    rmSync(file, { force: true });
+    return { done: ended(outcome, answer.reason, session, outcome === "partial" ? left : "") };
+  };
+  const looped = await stageLoop<Ending>({
+    spend: (handed, carried) => {
+      ontoSeen(onto);
+      return spentOn(`build-slice: #${spec} ${slice}`, spend, handed, carried, opening);
+    },
+    session,
+    stops: [],
+    ahead: async () => {
+      const answer = pending;
+      pending = undefined;
+      return answer === undefined ? { handBack: input } : judgedAnswer(answer);
+    },
+    judged: (spent): { done: Ending } | { changed?: boolean } => {
+      session = spent.session ?? session;
+      keepSession(file, session);
+      if (app !== undefined) freshAppToken(app, gh, `so slice ${slice} of #${spec} stops`);
+      if (spent.refusal !== undefined) return { done: ended(spent.timedOut === true ? "outOfTime" : "stopped", spent.refusal, session) };
+      pending = spent.answer as Answer | undefined;
+      input = NO_OUTCOME;
+      return {};
+    },
+  });
+  if ("done" in looped) return looped.done;
+  return ended("stopped", looped.refused, session);
 }
 
 async function builtIn(slicing: Slicing, app: AppKey | undefined, port: number): Promise<Ending> {
@@ -379,7 +388,7 @@ async function builtIn(slicing: Slicing, app: AppKey | undefined, port: number):
   const isolation = await isolated(process.cwd(), [slicing.spec, slicing.slice], port);
   if (typeof isolation === "string") return ended("stopped", isolation, undefined);
   Object.assign(process.env, isolation);
-  const unready = setupRefusal(onDisk(CONTRACT) ?? "");
+  const unready = await setupRefusedIn(process.cwd(), onDisk(CONTRACT) ?? "");
   if (unready !== undefined) return ended("stopped", `its tree's setup failed: ${unready}`, undefined);
   return built(slicing, app);
 }

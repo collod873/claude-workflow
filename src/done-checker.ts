@@ -4,7 +4,7 @@ import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
 import { capped, listedCapped, NO_EM_DASH, onDisk, tailOf } from "./brief.ts";
 import { askedOn, authoredOn, calledOwner, commentOnTicket, endedRed, followUpBody, fromHere, fromLine, FOREIGN, gh, OWNER, readOrStop, STUCK, stoodDown, type Asked } from "./post.ts";
 import { freePort, isolated, reapedUnder } from "./slice-builder.ts";
-import { CONTRACT, type Hire, hireIn, opened, setupRefusal, setupRefusedIn, type Spent, unsetKeys, WRITE_UP_MINUTES } from "./stage.ts";
+import { CONTRACT, type Hire, hireIn, opened, setupRefusedIn, type Spent, unsetKeys, WRITE_UP_MINUTES } from "./stage.ts";
 import { CHECKING, SPEC } from "./spelled.ts";
 import { quoted, type Sentence, sentences, SPEC_CAP } from "./ticket-shape.ts";
 
@@ -111,7 +111,7 @@ function repliesOn(issue: string): string {
 
 const setupFailed = (unready: string | undefined) => (unready === undefined ? undefined : `its tree's setup failed: ${quoted(unready)}`);
 
-function read(issue: string): (Read & { spend: (input: string) => Spent }) | number {
+function read(issue: string): Read | number {
   const spec = opened({
     stage: "done-check",
     issue,
@@ -122,9 +122,15 @@ function read(issue: string): (Read & { spend: (input: string) => Spent }) | num
       return Array.isArray(listed) ? { carrying: { listed, replies: repliesOn(issue) } } : endedRed(`${SAID(issue)} ${listed}`);
     },
   });
-  if (typeof spec !== "object") return spec;
-  const unready = setupFailed(setupRefusal(onDisk(join(process.cwd(), CONTRACT)) ?? ""));
-  return unready === undefined ? { asked: spec.asked, ...spec.carried, spend: spec.spend } : doneCheckCalledOwner(issue, unready);
+  return typeof spec === "object" ? { asked: spec.asked, ...spec.carried } : spec;
+}
+
+async function spentIsolated(tree: string, issue: string, input: string, reapedBeside: string[]): Promise<Spent> {
+  const isolation = await isolated(tree, [issue, "done-check"], await freePort());
+  if (typeof isolation === "string") return { stdout: "", refusal: isolation };
+  const unready = setupFailed(await setupRefusedIn(tree, onDisk(join(tree, CONTRACT)) ?? "", { ...isolation }));
+  if (unready !== undefined) return { stdout: "", refusal: unready };
+  return hireIn(tree, "done-check", issue, HIRE, { ...isolation })(input).finally(() => reapedUnder([...reapedBeside, isolation.TMPDIR]));
 }
 
 export const paired = (listed: Sentence[], tries: Try[]): [number, string, Try | undefined][] =>
@@ -185,11 +191,11 @@ export function postedOn(issue: string, listed: Sentence[], tries: Try[], fixed:
   return { missed: missed.map(([number]) => number) };
 }
 
-export function doneCheck(issue: string, app: AppKey | undefined): Checked | number {
+export async function doneCheck(issue: string, app: AppKey | undefined): Promise<Checked | number> {
   const spec = read(issue);
   if (typeof spec !== "object") return spec;
   if (app !== undefined) freshAppToken(app, gh, `so the done check of #${issue} is not tried`);
-  const tries = triesIn(spec.spend(handedFor(spec)), spec.listed);
+  const tries = triesIn(await spentIsolated(process.cwd(), issue, handedFor(spec), []), spec.listed);
   if (app !== undefined) freshAppToken(app, gh, `so the done check of #${issue} is not posted`);
   if (!Array.isArray(tries)) return doneCheckCalledOwner(issue, tries.refusal);
   return postedOn(issue, spec.listed, tries, []);
@@ -201,18 +207,12 @@ export async function triedIn(tree: string, issue: string): Promise<Try[] | { re
   if (stood !== undefined) return { refusal: `#${issue} ${stood}, so nothing was tried` };
   const listed = unlisted(asked);
   if (!Array.isArray(listed)) return { refusal: `#${issue} ${listed}` };
-  const isolation = await isolated(tree, [issue, "done-check"], await freePort());
-  if (typeof isolation === "string") return { refusal: isolation };
-  const unready = setupFailed(await setupRefusedIn(tree, onDisk(join(tree, CONTRACT)) ?? "", { ...isolation }));
-  if (unready !== undefined) return { refusal: unready };
-  const spend = hireIn(tree, "done-check", issue, HIRE, { ...isolation });
-  const spent = await spend(handedFor({ asked, listed, replies: repliesOn(issue) })).finally(() => reapedUnder([tree, isolation.TMPDIR]));
-  return triesIn(spent, listed);
+  return triesIn(await spentIsolated(tree, issue, handedFor({ asked, listed, replies: repliesOn(issue) }), [tree]), listed);
 }
 
 if (import.meta.main) {
   const [issue] = process.argv.slice(2);
   if (issue === undefined) throw new Error("no issue number in the arguments");
-  const ended = readOrStop("done-check", () => doneCheck(issue, takenAppKey()));
+  const ended = await readOrStop("done-check", () => doneCheck(issue, takenAppKey()));
   process.exit(typeof ended === "number" ? ended : 0);
 }

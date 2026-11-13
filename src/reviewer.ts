@@ -4,7 +4,7 @@ import { capped, DIFF_CAP, diffOverCap, LIST_CAP, NO_EM_DASH, TAIL_CAP, tailOf, 
 import { calledOwner, type Caller, commentOnTicket, fromHere, fromLine, gh, gitRead, standingOn, stoodDown, machineBin, mark } from "./post.ts";
 import { CHECKING } from "./spelled.ts";
 import { type Answered, approvedOn, filed, type FollowUps, gathered, MOST_FIXES, OWNER_STEPS, ROUTED, ROUTED_REQUIRED, stepsUnfileable } from "./follow-ups.ts";
-import { committed, commitlinted, head, hire } from "./stage.ts";
+import { committed, commitlinted, head, hireIn, stageLoop } from "./stage.ts";
 import { quoted } from "./ticket-shape.ts";
 
 const ANSWER = {
@@ -96,6 +96,8 @@ export function landing(named: ["--ticket" | "--spec", string], reason: string):
   return { refused: tailOf(`${landed.stdout}${landed.stderr}`.trim(), TAIL_CAP) || `bin/land ended ${landed.status} and said nothing` };
 }
 
+export const idleTwice = (refused: string) => `two rounds in a row changed nothing: ${quoted(refused.split("\n").at(-1) ?? "")}`;
+
 const landRefused = (refused: string) => ["`bin/land` refused to land it. Its output:", refused, "Fix what it names, commit, and answer again."].join("\n\n");
 
 function triedAgainLater(ticket: string, refusal: string): number {
@@ -103,45 +105,48 @@ function triedAgainLater(ticket: string, refusal: string): number {
   return 1;
 }
 
-export function reviewedAndLanded(ticket: string, { body, alongside, said }: { body: string; alongside: string; said: string }, app: AppKey | undefined): number {
+export async function reviewedAndLanded(ticket: string, { body, alongside, said }: { body: string; alongside: string; said: string }, app: AppKey | undefined): Promise<number> {
   mark(ticket, CHECKING);
   const commits = gitRead(["log", "--reverse", "--format=- %s%n%n%b", "origin/main..HEAD"], "the commits past main could not be read, so nothing is reviewed");
   const diff = gitRead(["diff", "origin/main...HEAD"], "the diff from main could not be read, so nothing is reviewed");
   const stat = gitRead(["diff", "--stat", "origin/main...HEAD"], "the diff from main could not be read, so nothing is reviewed");
-  const spend = hire("review", ticket, { name: "reviewer", model: "opus", effort: "medium", answers: ANSWER });
-  let input = handedOn({ ticket, body, commits, diff, stat, alongside, said, commitlint: commitlinted() });
+  const spend = hireIn(process.cwd(), "review", ticket, { name: "reviewer", model: "opus", effort: "medium", answers: ANSWER });
+  const input = handedOn({ ticket, body, commits, diff, stat, alongside, said, commitlint: commitlinted() });
   const reasons: string[] = [];
   let named: FollowUps | undefined;
-  let session: string | undefined;
-  let idle = false;
-  for (;;) {
-    const before = head();
-    const spent = spend(input, session);
-    session = spent.session ?? session;
-    if (spent.refusal !== undefined) return triedAgainLater(ticket, spent.refusal);
-    if (app !== undefined) freshAppToken(app, gh, `so the review of #${ticket} is not acted on`);
-    const answer = spent.answer as Answer | undefined;
-    if (answer?.outcome === "stuck") return calledOwner(ticket, reviewerCaller(ticket), answer.reason);
-    committed(reviewedBy(ticket), "fix");
-    const changed = head() !== before;
-    const stood = stoodDown(standingOn(ticket, gh));
-    if (stood !== undefined) {
-      console.log(`review: #${ticket} ${stood}, so it does not land; its branch is kept for its next run`);
-      return 0;
-    }
-    if (answer !== undefined) {
-      reasons.push(answer.reason);
-      named = gathered(named, answer);
-    }
-    const unfileable = stepsUnfileable(named?.steps ?? []);
-    const landed = named === undefined ? { refused: "You gave no outcome. Answer one." } : unfileable !== undefined ? { refused: unfileable } : landing(["--ticket", ticket], approvedOn([...reasons.slice(0, 1), ...reasons.slice(1).map(afterRefused)], named));
-    if ("pr" in landed) {
-      const filed = named === undefined ? "" : filedOnceLanded(ticket, named);
-      console.log(`review: #${ticket} landed as PR #${landed.pr}${filed}`);
-      return 0;
-    }
-    if (!changed && idle) return calledOwner(ticket, reviewerCaller(ticket), `two rounds in a row changed nothing: ${quoted(landed.refused.split("\n").at(-1) ?? "")}`);
-    idle = !changed;
-    input = answer === undefined || unfileable !== undefined ? landed.refused : landRefused(landed.refused);
-  }
+  let before = "";
+  const looped = await stageLoop<number>({
+    spend: (handed, session) => {
+      before = head();
+      return spend(handed, session);
+    },
+    input,
+    stops: ["unchanged"],
+    judged: (spent) => {
+      if (spent.refusal !== undefined) return { done: triedAgainLater(ticket, spent.refusal) };
+      if (app !== undefined) freshAppToken(app, gh, `so the review of #${ticket} is not acted on`);
+      const answer = spent.answer as Answer | undefined;
+      if (answer?.outcome === "stuck") return { done: calledOwner(ticket, reviewerCaller(ticket), answer.reason) };
+      committed(reviewedBy(ticket), "fix");
+      const changed = head() !== before;
+      const stood = stoodDown(standingOn(ticket, gh));
+      if (stood !== undefined) {
+        console.log(`review: #${ticket} ${stood}, so it does not land; its branch is kept for its next run`);
+        return { done: 0 };
+      }
+      if (answer !== undefined) {
+        reasons.push(answer.reason);
+        named = gathered(named, answer);
+      }
+      const unfileable = stepsUnfileable(named?.steps ?? []);
+      const landed = named === undefined ? { refused: "You gave no outcome. Answer one." } : unfileable !== undefined ? { refused: unfileable } : landing(["--ticket", ticket], approvedOn([...reasons.slice(0, 1), ...reasons.slice(1).map(afterRefused)], named));
+      if ("pr" in landed) {
+        const filed = named === undefined ? "" : filedOnceLanded(ticket, named);
+        console.log(`review: #${ticket} landed as PR #${landed.pr}${filed}`);
+        return { done: 0 };
+      }
+      return { refused: landed.refused, handBack: answer === undefined || unfileable !== undefined ? landed.refused : landRefused(landed.refused), changed };
+    },
+  });
+  return "done" in looped ? looped.done : calledOwner(ticket, reviewerCaller(ticket), idleTwice(looped.refused));
 }
