@@ -207,13 +207,13 @@ describe("the rerun job hands a dispatched red run to bin/rerun, no other workfl
     expect(handed).toBe("4417 2");
   });
 
-  it.each(["tickets.yml", "specs.yml"])("ends %s with a job that needs every stage job but the probe and reconcile, whose 15-minute schedule reruns it (#1251, #1285, #1606), and hands its own run and attempt to bin/rerun --dispatch under the caller file", (file) => {
+  it.each(["tickets.yml", "specs.yml"])("ends %s with a job that needs every stage job but the probe, reconcile, whose 15-minute schedule reruns it, and the repair, which calls the owner itself when it does not finish (#1251, #1285, #1606, #1761), and hands its own run and attempt to bin/rerun --dispatch under the caller file", (file) => {
     const { jobs } = read(file);
     const handing = Object.entries(jobs).filter(([, { steps }]) => (steps ?? []).some(({ run }) => (run ?? "").includes("bin/rerun --dispatch")));
 
     expect(handing.map(([name]) => name)).toEqual(["dispatch-rerun"]);
     const [[, dispatcher] = ["", {}]] = handing;
-    expect(dispatcher.needs?.slice().sort()).toEqual(Object.keys(jobs).filter((name) => !["rerun", "probe", "reconcile", "dispatch-rerun"].includes(name)).sort());
+    expect(dispatcher.needs?.slice().sort()).toEqual(Object.keys(jobs).filter((name) => !["rerun", "probe", "reconcile", "repair", "dispatch-rerun"].includes(name)).sort());
     const ran = dispatcher.steps?.find(({ run }) => (run ?? "").includes("bin/rerun --dispatch"));
     expect(ran?.env).toMatchObject({ RUN: "${{ github.run_id }}", ATTEMPT: "${{ github.run_attempt }}", CALLED_FROM: "${{ github.workflow_ref }}" });
   });

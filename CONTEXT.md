@@ -142,7 +142,7 @@ answer, or the machine, hands a first step to its owning repo, rewrites one too 
 holds it, else unbuilt; stopped, it marks `stuck`. A spec's slice gets a **slice builder** instead (`bin/build-slice`): fast check only, its
 own Postgres, port and temp dir, done when its branch fast-forwards the integration branch, or
 `partial`, saying what is left. Neither waits on an owner step.
-_Avoid_: fixer, mechanic, fresh eyes, repair agent
+_Avoid_: fixer, mechanic, fresh eyes
 
 **Reviewer**:
 A fresh agent with the builder's access, in the builder's run: it reads the ticket, commit messages
@@ -297,10 +297,10 @@ _Avoid_: on hold, frozen, blocked
 
 **Stuck**:
 An issue the machine labelled `stuck`, its last resort: a stage that cannot go on or answers it for a
-machine fault marks it at once; a dead run marks it only when its re-run dies too.
-Its comment names the run that stopped, red or out of time, links both runs, and asks the owner
-to read the re-run and take `stuck` off once it is fixed.
-Like `paused` it is `held`; the machine adds it but never removes it.
+machine fault marks it at once; a dead run marks it only when its re-run dies too. On the PC it first
+hires the **repair agent**, `bin/repair` as the owner, answering `fixed`, the App taking `stuck`
+off, or `asks`, one yes or no question. Only then, or once it resumed the issue, is he called.
+Like `paused` it is `held`.
 _Avoid_: blocked, failed
 
 **Rerun**:

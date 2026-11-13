@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { hostname } from "node:os";
-import { gh as github } from "./post.ts";
+import { homedir, hostname, userInfo } from "node:os";
+import { gh as github, REPAIR_RUNNER } from "./post.ts";
 
 export const VARIABLE = "CI_RUNNER";
 export const LABEL = "pc";
@@ -71,6 +71,8 @@ function gh(args: string[]): string {
 }
 const asRunnerUser = (script: string, input?: string) => run("sudo", ["-u", USER, "bash", "-c", script], input);
 const asRoot = (script: string, input?: string) => run("sudo", ["bash", "-c", script], input);
+const OWNER_USER = userInfo().username;
+const asOwner = (script: string, input?: string) => run("sudo", ["-u", OWNER_USER, "bash", "-c", script], input);
 const quoted = (text: string) => `'${text.replace(/'/g, "'\\''")}'`;
 
 type Runner = { id: number; name: string; status: string; busy: boolean; labels: { name: string }[] };
@@ -125,12 +127,15 @@ const dirOf = (repo: string, name: string) => `${HOME}/runners/${repo.replace("/
 const tempOf = (repo: string, name: string) => `${HOME}/tmp/${createHash("sha256").update(`${repo}/${name}`).digest("hex").slice(0, 8)}`;
 const unitOf = (repo: string, name: string) => `${unitsOf(repo)}${name}.service`;
 
-function install(repo: string, name: string, labels: string): void {
-  const dir = dirOf(repo, name);
+type RunsAs = { as: (script: string, input?: string) => string; user: string; dirOf: (repo: string, name: string) => string };
+const RUNNER_USER: RunsAs = { as: asRunnerUser, user: USER, dirOf };
+
+function install(repo: string, name: string, labels: string, { as, user, dirOf: placed }: RunsAs = RUNNER_USER): void {
+  const dir = placed(repo, name);
   const version = gh(["api", "repos/actions/runner/releases/latest", "--jq", ".tag_name"]).trim().replace(/^v/, "");
   const tarball = `${RUNNER_RELEASES}/v${version}/actions-runner-linux-x64-${version}.tar.gz`;
   const token = gh(["api", "-X", "POST", `repos/${repo}/actions/runners/registration-token`, "--jq", ".token"]).trim();
-  asRunnerUser(
+  as(
     [
       `mkdir -p ${dir}`,
       `cd ${dir}`,
@@ -138,7 +143,7 @@ function install(repo: string, name: string, labels: string): void {
       `./config.sh --unattended --replace --url https://github.com/${repo} --token ${quoted(token)} --name ${quoted(name)} --labels ${labels} >/dev/null`,
     ].join(" && "),
   );
-  asRoot(`cd ${dir} && ./bin/installdependencies.sh >/dev/null && ./svc.sh install ${USER} >/dev/null`);
+  asRoot(`cd ${dir} && ./bin/installdependencies.sh >/dev/null && ./svc.sh install ${user} >/dev/null`);
 }
 
 type Placing = { as: (script: string, input?: string) => string; path: string; text: string; mode: string };
@@ -195,6 +200,32 @@ function settle(repo: string, name: string, busy: boolean): "started" | "running
   return "started";
 }
 
+const repairDirOf = (repo: string, name: string) => `${homedir()}/.local/share/claude-workflow/runners/${repo.replace("/", "-")}/${name}`;
+const AS_OWNER: RunsAs = { as: asOwner, user: OWNER_USER, dirOf: repairDirOf };
+const repairerName = () => `${hostname().toLowerCase()}-repair`;
+const ownersPath = () => [...new Set([`${homedir()}/.agents/skills/bin`, ...(process.env.PATH ?? "").split(":").filter(Boolean)])].join(":");
+
+function settleRepairer(repo: string, name: string, registered: Runner | undefined): void {
+  const dir = repairDirOf(repo, name);
+  if (registered === undefined) install(repo, name, REPAIR_RUNNER, AS_OWNER);
+  const files = [staged({ as: asOwner, path: `${dir}/.env`, text: "LANG=C.UTF-8\n", mode: "644" }), staged({ as: asOwner, path: `${dir}/.path`, text: `${ownersPath()}\n`, mode: "644" })];
+  const changed = files.some((file) => file.changed);
+  for (const file of files) place(file);
+  if (registered?.busy === true) return;
+  if (changed || !running(repo, name)) asRoot(`cd ${dir} && ./svc.sh stop >/dev/null && ./svc.sh start >/dev/null`);
+}
+
+function takeRepairerAway(repo: string, runners: Runner[]): string {
+  const repairer = runners.find(({ name }) => name === repairerName());
+  if (repairer === undefined) return "";
+  if (repairer.busy) return `; its repair runner is mid-repair: run this again once it finishes`;
+  const dir = repairDirOf(repo, repairer.name);
+  asRoot(`cd ${dir} && ./svc.sh stop >/dev/null && ./svc.sh uninstall >/dev/null`);
+  const token = gh(["api", "-X", "POST", `repos/${repo}/actions/runners/remove-token`, "--jq", ".token"]).trim();
+  asOwner(`cd ${dir} && ./config.sh remove --token ${quoted(token)} >/dev/null`);
+  return ", its repair runner taken away";
+}
+
 function turnOff(repo: string, extra: { name: string; busy: boolean }[]): string {
   for (const { name, busy } of extra) asRoot(`systemctl disable --quiet ${busy ? "" : "--now "}${unitOf(repo, name)}`);
   const busy = extra.filter(({ busy }) => busy);
@@ -205,7 +236,7 @@ function turnOff(repo: string, extra: { name: string; busy: boolean }[]): string
 }
 
 function stopIdle(repo: string, runners: Runner[]): string {
-  const ours = runners.filter(({ name, status }) => name.startsWith(`${hostname().toLowerCase()}-`) && status === "online");
+  const ours = runners.filter(({ name, status }) => name.startsWith(`${hostname().toLowerCase()}-`) && name !== repairerName() && status === "online");
   for (const { name } of ours.filter(({ busy }) => !busy)) asRoot(`cd ${dirOf(repo, name)} && ./svc.sh stop >/dev/null`);
   const busy = ours.filter(({ busy }) => busy).length;
   return busy === 0 ? `${ours.length} PC runners stopped` : `${ours.length - busy} PC runners stopped, ${busy} still mid-job: run this again once it finishes`;
@@ -223,6 +254,7 @@ function waitOnline(online: () => number, wanted: number): number {
 
 function toPc(repo: string, asked: number | undefined): string {
   const on = onRepo(repo);
+  if (OWNER_USER === "root") throw new Refused("run bin/runner as yourself, not as root, so the repair runner runs as your own user");
   if (!on.isPrivate()) throw new Refused(`${repo} is public, so a PC runner would run strangers' PRs on this PC; it stays on GitHub's runners`);
   const host = hostname().toLowerCase();
   const all = on.runners();
@@ -233,7 +265,8 @@ function toPc(repo: string, asked: number | undefined): string {
   const missing = names.filter((name) => !registered.has(name));
   const reconcilerName = `${host}-reconcile`;
   const reconciler = all.find(({ name }) => name === reconcilerName);
-  const extra = all.filter(({ name }) => name.startsWith(`${host}-`) && !names.includes(name) && name !== reconcilerName);
+  const repairer = repairerName();
+  const extra = all.filter(({ name }) => name.startsWith(`${host}-`) && !names.includes(name) && name !== reconcilerName && name !== repairer);
   provisionUser();
   provisionNode();
   provisionGh();
@@ -243,6 +276,7 @@ function toPc(repo: string, asked: number | undefined): string {
   if (reconciler === undefined) install(repo, reconcilerName, RECONCILE_LABEL);
   const settled = names.map((name) => ({ name, as: settle(repo, name, registered.get(name) === true && running(repo, name)) }));
   settle(repo, reconcilerName, reconciler?.busy === true && running(repo, reconcilerName));
+  settleRepairer(repo, repairer, all.find(({ name }) => name === repairer));
   const named = (as: string) => settled.filter((runner) => runner.as === as).map(({ name }) => name);
   const atJobEnd = named("at-job-end");
   const midJob = named("mid-job");
@@ -263,7 +297,8 @@ function toGithub(repo: string): string {
   const on = onRepo(repo);
   const already = on.current() === "github";
   if (!already) gh(["variable", "delete", VARIABLE, "-R", repo]);
-  const stopped = stopIdle(repo, on.runners());
+  const runners = on.runners();
+  const stopped = `${stopIdle(repo, runners)}${takeRepairerAway(repo, runners)}`;
   return already ? `${repo} already runs on GitHub's runners, ${stopped}` : `${repo} runs on GitHub's runners from its next job, ${stopped}; a job already queued for the PC waits until it is switched back`;
 }
 

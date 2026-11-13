@@ -115,15 +115,67 @@ export const mark = (issue: string, label: MarkedLabel, ...count: ("--try" | "--
   if (marked.status !== 0) throw new Stopped(`bin/mark #${issue} ${label} ended non-zero, so nothing after it is posted, closed, marked or hired`);
 };
 
+export const REPAIR_HAND_OFF = "<!-- repair hand-off -->";
+const SELF_HOSTED = "self-hosted";
+export const REPAIR_RUNNER = "pc-repair";
+
 export interface Caller {
   who: string;
   said: string;
   stopped?: string;
 }
 
+const runLink = () => {
+  const { GITHUB_SERVER_URL: server, GITHUB_REPOSITORY: repo, GITHUB_RUN_ID: run, GITHUB_RUN_ATTEMPT: attempt } = process.env;
+  return server && repo && run ? `${server}/${repo}/actions/runs/${run}${attempt ? `/attempts/${attempt}` : ""}` : undefined;
+};
+
+const firstLineOf = (got: ReturnType<Gh>) => (got.stderr || got.stdout).trim().split("\n")[0] ?? "";
+
+type Runners = { runners?: { status?: string; labels?: { name?: string }[] }[] };
+type Unlabelled = { event?: string; label?: { name?: string }; actor?: { login?: string } };
+
+function repairRunnerOnline(): string | undefined {
+  const got = gh(["api", "repos/{owner}/{repo}/actions/runners"]);
+  if (got.status !== 0) return `its repair runner could not be read: ${firstLineOf(got)}`;
+  try {
+    const { runners = [] } = JSON.parse(got.stdout) as Runners;
+    return runners.some(({ status, labels = [] }) => status === "online" && labels.some(({ name }) => name === REPAIR_RUNNER)) ? undefined : "no repair runner of this repo is online on the PC";
+  } catch {
+    return "its repair runner could not be read";
+  }
+}
+
+function resumedByRepair(issue: string): string | undefined {
+  const got = gh(["api", "--paginate", "--slurp", `repos/{owner}/{repo}/issues/${issue}/events`]);
+  if (got.status !== 0) return `its events could not be read: ${firstLineOf(got)}`;
+  try {
+    const unstuck = (JSON.parse(got.stdout) as Unlabelled[][]).flat().filter(({ event, label }) => event === "unlabeled" && label?.name === STUCK);
+    return unstuck.at(-1)?.actor?.login === MACHINE ? `the repair agent already took \`${STUCK}\` off it once, so none is hired again until you take \`${STUCK}\` off yourself` : undefined;
+  } catch {
+    return "its events could not be read";
+  }
+}
+
+function repairUnhired(issue: string, story: string): string | undefined {
+  const unhired = repairRunnerOnline() ?? resumedByRepair(issue);
+  if (unhired !== undefined) return unhired;
+  const run = runLink();
+  const handOff = [REPAIR_HAND_OFF, `${story}.`, ...(run === undefined ? [] : [`The run that marked it \`${STUCK}\`: ${run}`]), `A repair agent is hired for it on the owner's PC: it ends the cause and takes \`${STUCK}\` off, or asks the owner one question here.`].join("\n\n");
+  const posted = commentOnTicket(issue, handOff, gh);
+  if (posted.refusals.length > 0) return `its hand-off to the repair agent would not post: ${posted.refusals.join("; ")}`;
+  const hired = gh(["workflow", "run", CALLER_FILE, "-f", `ticket=${issue}`, "-f", `repair=${issue}`]);
+  return hired.status === 0 ? undefined : `its repair agent could not be hired through ${CALLER_FILE}: ${firstLineOf(hired)}`;
+}
+
 export function calledOwner(issue: string, { who, said, stopped = "stopped" }: Caller, why: string, follows?: string): number {
   mark(issue, STUCK);
-  const { refusals } = commentOnTicket(issue, `@${OWNER} ${who} of #${issue} ${stopped} and needs you: ${why}${follows === undefined ? "" : `. ${follows}`}`, gh);
+  const reason = `${why}${follows === undefined ? "" : `. ${follows}`}`;
+  const onPc = process.env.RUNNER_ENVIRONMENT === SELF_HOSTED;
+  const unhired = onPc ? repairUnhired(issue, `${who} of #${issue} ${stopped}: ${reason}`) : undefined;
+  if (onPc && unhired === undefined) return endedRed(`${said}, ${why}, so a repair agent is hired for it`);
+  const unhiredNote = unhired === undefined ? "" : `\n\nNo repair agent was hired: ${unhired}.`;
+  const { refusals } = commentOnTicket(issue, `@${OWNER} ${who} of #${issue} ${stopped} and needs you: ${reason}${unhiredNote}`, gh);
   for (const refusal of refusals) console.error(`${said}, and its call to the owner would not post: ${refusal}`);
   return endedRed(`${said}, ${why}`);
 }
