@@ -47,7 +47,7 @@ export const IDEA_SHAPE = "something Collin floated, kept for him to decide.";
 export const LOOK_INTO_SHAPE = "a question Collin wants answered before deciding; a research agent answers it.";
 export const OWNER_SHAPE = `a step that needs Collin's own login, money or identity, filed once no tool here can do it, since each one waits on him; never a hand test or a look after deploy. Its ## ${NAMED.why} says what to do, where, and what waits on it.`;
 export const SPEC_SHAPE = [
-  "a big job Collin asked for: his own words state its point, you write the spec from them, and the machine cuts it into slices and lands it as one.",
+  "a big job Collin asked for: his own words state its point, you write the spec from them, and the machine cuts it into slices and lands it as one. A job too big for one spec is one spec per area.",
   `  ## ${NAMED.problem} quoting the owner, ## ${NAMED.solution}, ## ${NAMED.stories} numbered, ## ${NAMED.decisions} naming no file paths,`,
   `  ## ${NAMED.testing}, ## ${NAMED.outOfScope}, ## ${NAMED.furtherNotes}, and last ## ${NAMED.doneWhen}, as '- [ ]' items: ${DONE_SENTENCES}, ${MACHINE_RUNS}`,
 ].join("\n");
