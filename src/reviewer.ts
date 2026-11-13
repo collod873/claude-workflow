@@ -1,3 +1,4 @@
+import { waitedForAccounts } from "./account-wait.ts";
 import { spawnSync } from "node:child_process";
 import { type AppKey, freshAppToken } from "./app-token.ts";
 import { capped, DIFF_CAP, diffOverCap, LIST_CAP, NO_EM_DASH, TAIL_CAP, tailOf, TICKET_CAP } from "./brief.ts";
@@ -123,6 +124,7 @@ export async function reviewedAndLanded(ticket: string, { body, alongside, said 
     input,
     stops: ["unchanged"],
     judged: (spent) => {
+      if (spent.accountsBack !== undefined) return { done: waitedForAccounts(ticket, reviewerCaller(ticket), spent.accountsBack) };
       if (spent.refusal !== undefined) return { done: triedAgainLater(ticket, spent.refusal) };
       if (app !== undefined) freshAppToken(app, gh, `so the review of #${ticket} is not acted on`);
       const answer = spent.answer as Answer | undefined;

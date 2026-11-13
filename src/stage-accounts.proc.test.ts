@@ -7,6 +7,13 @@ import { hireIn } from "./stage.ts";
 const SPENT = "sk-spent";
 const FRESH = "sk-fresh";
 
+const REFUSED_BY = `#!/bin/bash
+cat >/dev/null
+printf '%s\\n' "$CLAUDE_CODE_OAUTH_TOKEN" >>"$ACCOUNTS_TRIED"
+printf '%s\\n' "$REFUSAL"
+exit 1
+`;
+
 const CLAUDE = `#!/bin/bash
 cat >/dev/null
 printf '%s\\n' "$CLAUDE_CODE_OAUTH_TOKEN" >>"$ACCOUNTS_TRIED"
@@ -45,6 +52,47 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
+function claudeIn(script: string) {
+  const root = scratch("stage-accounts-");
+  const tree = join(root, "tree");
+  mkdirSync(join(root, "bin"), { recursive: true });
+  mkdirSync(tree);
+  git(tree, "init", "--quiet", "--initial-branch=main");
+  writeFileSync(join(root, "bin", "claude"), script);
+  chmodSync(join(root, "bin", "claude"), 0o755);
+  vi.stubEnv("PATH", `${join(root, "bin")}:${process.env.PATH}`);
+  vi.stubEnv("STAGE_MINUTES", undefined);
+  vi.stubEnv("TREE_PATH", undefined);
+  vi.stubEnv("ACCOUNTS_TRIED", join(root, "accounts"));
+  vi.stubEnv("CLAUDE_CODE_OAUTH_TOKEN", SPENT);
+  vi.stubEnv("CLAUDE_CODE_OAUTH_TOKEN_2", FRESH);
+  return { tree, tried: () => readFileSync(join(root, "accounts"), "utf8").split("\n").filter(Boolean) };
+}
+
+const CLOUDFLARE = { type: "assistant", error: "authentication_failed", message: { content: [{ type: "text", text: "Failed to authenticate. API Error: 403 Attention Required! | Cloudflare" }] } };
+
+describe("a hire every Claude account refuses says when to try again, where it once marked its issue stuck after one 5 s retry (#1765)", () => {
+  it.each([
+    ["a login failure, such as Mezzanine#2929's Cloudflare 403, waits 30 minutes", [CLOUDFLARE, { type: "result", is_error: true, result: "Failed to authenticate. API Error: 403 Attention Required! | Cloudflare" }], true, 30],
+    ["an empty token's 'Not logged in' waits 30 minutes", [{ type: "result", is_error: true, result: "Not logged in · Please run /login" }], true, 30],
+    ["a usage limit naming no reset waits 1 hour", [{ type: "result", is_error: true, result: "Claude AI usage limit reached" }], false, 60],
+  ])("%s, after trying the other account at once", async (_, refusal, login, minutes) => {
+    const { tree, tried } = claudeIn(REFUSED_BY);
+    vi.stubEnv("REFUSAL", refusal.map((event) => JSON.stringify(event)).join("\n"));
+    vi.resetModules();
+    const fresh = await import("./stage.ts");
+    const before = Date.now();
+
+    const spent = await fresh.hireIn(tree, "fix", "2929", { name: "builder", model: "opus", effort: "medium" })("build it");
+
+    expect(tried()).toEqual([SPENT, FRESH]);
+    expect(spent.accountsBack?.login).toBe(login);
+    const waited = ((spent.accountsBack?.until ?? 0) - before) / 60_000;
+    expect(waited).toBeGreaterThanOrEqual(minutes);
+    expect(waited).toBeLessThan(minutes + 1);
+  });
+});
+
 describe("account failover across hires running at once", () => {
   it("moves every hire that ended on a spent account to the fresh one, where a sibling moving first left the others red (#2749)", async () => {
     const { root, tree } = spentThenFresh("rate_limit", "You've hit your weekly limit · resets 5pm (America/New_York)");
@@ -71,5 +119,40 @@ describe("account failover across hires running at once", () => {
 
     expect(spent.refusal).toBeUndefined();
     expect(readFileSync(join(root, "accounts"), "utf8").split("\n").filter(Boolean)).toEqual([SPENT, FRESH]);
+  });
+});
+
+const GH_HOLDS_A_BODY = `#!/bin/bash
+case "$1 $2" in
+  "issue view") cat "$ISSUE_BODY" 2>/dev/null || true ;;
+  "issue edit") printf '%s' "$5" >"$ISSUE_BODY" ;;
+esac
+`;
+
+describe("a login failure on every account waits 30 minutes at a time and calls the owner only after 3 such waits in a row (#1765)", () => {
+  it("parks the issue on the first 3 failures in a row, names the login failure when marking stuck on the 4th, and counts afresh after a gap", async () => {
+    const root = scratch("account-waits-");
+    mkdirSync(join(root, "bin"));
+    writeFileSync(join(root, "bin", "gh"), GH_HOLDS_A_BODY);
+    writeFileSync(join(root, "bin", "mark"), `#!/bin/bash\nprintf '%s\\n' "$2" >>"${join(root, "marks")}"\n`);
+    for (const tool of ["gh", "mark"]) chmodSync(join(root, "bin", tool), 0o755);
+    vi.stubEnv("PATH", `${join(root, "bin")}:${process.env.PATH}`);
+    vi.stubEnv("MACHINE_BIN", join(root, "bin"));
+    vi.stubEnv("ISSUE_BODY", join(root, "body"));
+    vi.resetModules();
+    const { parkedOnAccounts } = await import("./account-wait.ts");
+    const said = "Failed to authenticate. API Error: 403 Attention Required! | Cloudflare";
+    const failedAt = (now: number) => parkedOnAccounts("2929", { until: now + 30 * 60_000, login: true, said }, now);
+    const start = Date.parse("2026-11-13T09:48:00Z");
+    const minutes = (count: number) => start + count * 60_000;
+
+    const waits = [failedAt(minutes(0)), failedAt(minutes(45)), failedAt(minutes(90))];
+    const fourth = failedAt(minutes(135));
+    const afterAGap = failedAt(minutes(600));
+
+    expect(waits.map((wait) => "parked" in wait)).toEqual([true, true, true]);
+    expect(fourth).toEqual({ stuck: expect.stringContaining(said) as string });
+    expect("parked" in afterAGap).toBe(true);
+    expect(readFileSync(join(root, "body"), "utf8")).toBe("Waits for a Claude account until 2026-11-13T20:18Z, login wait 1 of 3.\n");
   });
 });

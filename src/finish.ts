@@ -1,3 +1,4 @@
+import { waitedForAccounts } from "./account-wait.ts";
 import { type AppKey, freshAppToken, takenAppKey } from "./app-token.ts";
 import { join } from "node:path";
 import { capped, diffOverCap, LIST_CAP, listedCapped, NO_EM_DASH, onDisk, TAIL_CAP, tailOf } from "./brief.ts";
@@ -155,6 +156,10 @@ const latestPerLine = (...answers: LineAnswer[][]) => [...new Map(answers.flat()
 
 function reviewed({ spec, said, app }: Run, spent: Spent): Approved | undefined {
   if (app !== undefined) freshAppToken(app, gh, `so the review of #${spec} is not acted on`);
+  if (spent.accountsBack !== undefined) {
+    waitedForAccounts(spec, { who: "a reviewer", said: `${said} marked ${STUCK}` }, spent.accountsBack);
+    return undefined;
+  }
   if (spent.refusal !== undefined) {
     endedRed(`${said} ended red, ${spent.refusal}`);
     return undefined;

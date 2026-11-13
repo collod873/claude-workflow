@@ -59,9 +59,7 @@ _Avoid_: self-checkout, same tree
 **Enrol**:
 Give a repo everything its tickets need to build: in one PR, the caller file,
 the **check-job rule** (`shared/ci.yml`'s `check` job `if` and `name`; enrol's own PR still runs it) on
-that CI's, and no pre-push, since `bin/land` is the gate; the App's reach, client id and keys, every label the machine spells, auto-merge, and main taking changes only by a PR passing `check`. It drops the
-`tickets / review` and `review` checks no job posts, and the `queued`, `resolving` and `landing`
-labels nothing marks (ADR-0012). This repo's `Enrol` workflow re-enrols them on each push to main.
+that CI's, and no pre-push, since `bin/land` is the gate; the App's reach, client id and keys, every label the machine spells, auto-merge, and main taking changes only by a PR passing `check`. This repo's `Enrol` workflow re-enrols them on each push to main.
 `bin/enrol <repo>` sets what is missing and names what it could not.
 _Avoid_: onboard, install, register
 
@@ -70,7 +68,7 @@ _Avoid_: onboard, install, register
 `release` branch its host deploys, once a full check that CI's own dispatch ran has passed on that
 commit; a push or pull request run never counts. A red check, or one still waiting at its deadline,
 holds the ship and files a "Ship held" bug. Each app carries a **ship caller file**: its once-a-day
-cron and `health-url`, calling `ship.yml` here (`.github/ship-caller.yml` is its text). The **ship
+cron and `health-url`, calling `ship.yml` here. The **ship
 clock**, `bin/ship-clock` run once on the PC, turns each caller's cron into a systemd timer that
 dispatches it on time, caught up at boot when the PC was off: GitHub fires this account's schedules
 hours late, so a late GitHub run ships only when no dispatched Ship ran in the last 20 hours. `bin/enrol`
@@ -80,7 +78,7 @@ _Avoid_: deploy script, promote, release job
 **PC runner**:
 A `pc` runner, where a private repo's `CI_RUNNER` sends every job but reconcile's, else GitHub's. Reconcile's
 job takes the repo's one `pc-reconcile` runner, so a wake never queues behind a builder; its concurrency group
-runs one pass at a time and on GitHub's a pass bills a minute per ticket event. It caps neither memory
+runs one pass at a time. It caps neither memory
 nor CPU: its full checks take turns in the machine's one check slot, so each gets every core. While a repo's PC runners are all offline, the runner watch sets its `CI_RUNNER` to
 `ubuntu-latest`, and back to `pc` once one returns; an unset `CI_RUNNER` is a hand switch it leaves.
 _Avoid_: local runner, quick lane
@@ -252,6 +250,12 @@ it rewrites the line as `Waited on ...`, naming the runs and how to download the
 `waiting` off. A builder answers `waits` with `checks` to write it.
 _Avoid_: data wait, delayed ticket
 
+**Account wait**:
+`Waits for a Claude account until <UTC time>.` in an issue's body once every account refused a
+hire: the soonest reset a limit names, or 1 hour; 30 minutes for a login failure. Unlike
+**Stuck**, it calls no one and reconcile ends it then; a fourth login failure in a row is `stuck`.
+_Avoid_: cooldown
+
 **Note**:
 An issue labelled `note`: filed to be kept, never built, with a `## Why`. A research
 note, labelled `research` too, the machine answers and closes; one labelled `owner-step`, a step
@@ -341,14 +345,13 @@ _Avoid_: flake, glitch
 **Sonnet builders trial**:
 The one spec per repo labelled `sonnet-builders`: the first spec filed after the trial began, which
 `file-issue` labels while no issue in the repo carries it. The scheduler hires its slice builders
-on Sonnet; every other stage stays on the model and effort its hire names. It is judged against
-Opus builders on red checks, holds' fixes and cost per slice (#1647).
+on Sonnet; every other stage stays on the model and effort its hire names. Judged in #1647.
 _Avoid_: experiment, A/B, canary
 
 **Account failover**:
-The owner's two Claude subscriptions, one token each in `CLAUDE_CODE_OAUTH_TOKEN` and `_2`. A hire whose model ends on a usage limit is launched again at once on
-the other account, as is every later hire in that run, and a hire already running on
-the spent one when another moved first; it ends red only when both are spent. `claude-token-to-gh --second` fills the second slot, `bin/enrol` sets both.
+The owner's two Claude subscriptions, tokens in `CLAUDE_CODE_OAUTH_TOKEN` and `_2`. A hire ending on a usage limit or login failure is launched again at once on
+the other account, as is every later hire in that run and one still running on
+the spent one when another moved first; both refusing is an **Account wait**. `claude-token-to-gh --second` fills the second slot, `bin/enrol` sets both.
 _Avoid_: backup token, second key
 
 **Resume**:

@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout } from "node:timers/promises";
+import { type AccountWait, LOGIN_WAIT, resetOf, UNREAD_RESET_WAIT } from "./account-wait.ts";
 import { onDisk } from "./brief.ts";
 import { type Asked, askedOn, commandRefusedIn, git, gitRead, stoodDown, mark, type MarkedLabel, treePathed } from "./post.ts";
 import { quoted } from "./ticket-shape.ts";
@@ -12,6 +13,7 @@ const GRACE_SECONDS = "30";
 const RETRY_WAIT_MS = 5_000;
 const ACCOUNT_SECRETS = ["CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN_2"] as const;
 const OUT_OF_USAGE = /usage limit reached|hit your ([\w-]+ )?limit|limit reached|out of extra usage/i;
+const LOGIN_FAILED = /failed to authenticate|not logged in/i;
 
 const accounts = () => [...new Set(ACCOUNT_SECRETS.map((name) => process.env[name] ?? "").filter((token) => token !== ""))];
 let account = 0;
@@ -20,12 +22,20 @@ const accountEnv = (on: number): Record<string, string> => {
   return token === undefined ? {} : { CLAUDE_CODE_OAUTH_TOKEN: token };
 };
 const SPENT_ACCOUNT_ERRORS = new Set(["rate_limit", "billing_error"]);
-const accountSpentIn = (stdout: string) =>
-  events(stdout).some((event) => {
-    const { type, error } = (event ?? {}) as { type?: unknown; error?: unknown };
-    return type === "assistant" && typeof error === "string" && SPENT_ACCOUNT_ERRORS.has(error);
+const outOfUsage = ({ status, stderr, stdout }: Exited & { stdout: string }) => status !== 0 && (refusalsIn(stdout).some(({ error }) => SPENT_ACCOUNT_ERRORS.has(error)) || OUT_OF_USAGE.test(`${stderr}\n${resultIn(stdout)}`));
+const loginFailed = ({ status, stderr, stdout }: Got) => status !== 0 && (refusalsIn(stdout).some(({ error }) => error === "authentication_failed") || LOGIN_FAILED.test(`${stderr}\n${resultIn(stdout)}`));
+const refusedByAccount = (got: Got) => outOfUsage(got) || loginFailed(got);
+
+function accountsRefused(launches: Got[], now: number): AccountWait | undefined {
+  const last = launches.at(-1);
+  if (last === undefined || !refusedByAccount(last)) return undefined;
+  const backAt = launches.filter(refusedByAccount).map((got) => {
+    if (!outOfUsage(got)) return now + LOGIN_WAIT;
+    const refusedAt = Date.parse(refusalsIn(got.stdout).at(-1)?.timestamp ?? "");
+    return resetOf(`${got.stderr}\n${resultIn(got.stdout)}`, Number.isNaN(refusedAt) ? now : refusedAt) ?? now + UNREAD_RESET_WAIT;
   });
-const outOfUsage = ({ status, stderr, stdout }: Exited & { stdout: string }) => status !== 0 && (accountSpentIn(stdout) || OUT_OF_USAGE.test(`${stderr}\n${resultIn(stdout)}`));
+  return { until: Math.min(...backAt), login: launches.some(loginFailed), said: firstLine(last.stderr) || firstLine(resultIn(last.stdout)) };
+}
 
 const FOREGROUND_ONLY = {
   env: { CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1", BASH_DEFAULT_TIMEOUT_MS: "600000", BASH_MAX_TIMEOUT_MS: "1200000" },
@@ -54,6 +64,13 @@ function answerIn(stdout: string): unknown {
     if (type === "result" && structured_output !== undefined) answer = structured_output;
   }
   return answer;
+}
+
+function refusalsIn(stdout: string): { error: string; timestamp?: string }[] {
+  return events(stdout).flatMap((event) => {
+    const { type, error, timestamp } = (event ?? {}) as { type?: unknown; error?: unknown; timestamp?: unknown };
+    return type === "assistant" && typeof error === "string" ? [{ error, ...(typeof timestamp === "string" ? { timestamp } : {}) }] : [];
+  });
 }
 
 function resultIn(stdout: string): string {
@@ -116,6 +133,7 @@ export interface Spent {
   timedOut?: boolean;
   session?: string | undefined;
   answer?: unknown;
+  accountsBack?: AccountWait;
 }
 
 export const CONTRACT = join(".claude", "contract.json");
@@ -177,13 +195,16 @@ export function hired(hire: Hire, { tree = process.cwd(), env = {} }: { tree?: s
     closeSync(streamed);
     return { ...exited, stdout: readFileSync(hire.transcript).subarray(from).toString("utf8") };
   }
+  let launches: Got[] = [];
   async function attempt(input: string, resume?: string, kept = writeUpKept, waitFirst = false): Promise<Got> {
     let on = account;
     let got = await launch(input, resume, kept, waitFirst, on);
-    while (outOfUsage(got) && Math.max(account, on + 1) < accounts().length) {
+    launches = [got];
+    while (refusedByAccount(got) && Math.max(account, on + 1) < accounts().length) {
       account = Math.max(account, on + 1);
       on = account;
       got = await launch(input, resume, kept, false, on);
+      launches.push(got);
     }
     return got;
   }
@@ -195,7 +216,7 @@ export function hired(hire: Hire, { tree = process.cwd(), env = {} }: { tree?: s
   return async (input, resume) => {
     let got = await attempt(input, resume);
     let refusal = refusalFor(got);
-    if (refusal !== undefined && got.status !== TIMED_OUT && !outOfUsage(got)) {
+    if (refusal !== undefined && got.status !== TIMED_OUT && !refusedByAccount(got)) {
       got = await attempt(input, resume, writeUpKept, true);
       refusal = refusalFor(got);
     }
@@ -205,6 +226,8 @@ export function hired(hire: Hire, { tree = process.cwd(), env = {} }: { tree?: s
       refusal = refusalFor(got);
     }
     if (refusal === undefined) return { stdout: got.stdout, session: sessionOf(got.stdout), answer: answerIn(got.stdout) };
+    const accountsBack = accountsRefused(launches, Date.now());
+    if (accountsBack !== undefined) return { stdout: got.stdout, refusal, accountsBack };
     return got.status === TIMED_OUT && minutes > 0 ? { stdout: got.stdout, refusal, timedOut: true, session: sessionOf(got.stdout) ?? reading } : { stdout: got.stdout, refusal };
   };
 }

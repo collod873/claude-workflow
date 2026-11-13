@@ -1,3 +1,4 @@
+import { accountWaitOf } from "./account-wait.ts";
 import { admission } from "./admit.ts";
 import { DISPATCH_COVERS_MINUTES, dispatchedSince, onGitHubSchedule } from "./dispatched.ts";
 import { type ChecksWait, checkedRuns, checksWaitOf, waitedLine, waitedOf, waitsLine } from "./checks-wait.ts";
@@ -12,6 +13,7 @@ export interface IssueState {
   blockers: Blocker[];
   checks?: { wait: ChecksWait; runs: number[] } | undefined;
   waited?: boolean;
+  accountsBack?: number | undefined;
   buildingSince?: number | undefined;
   liveRun?: boolean;
   restarted?: boolean;
@@ -33,11 +35,11 @@ const RESTARTED = "<!-- reconcile: restarted -->";
 const READMITTED = "<!-- reconcile: readmitted -->";
 const refusalOf = (number: number) => `#${number} does not build, since `;
 
-function waitRule({ repo, number, labels, blockers, checks, waited }: IssueState): Action[] {
-  if (blockers.length === 0 && checks === undefined && waited !== true) return [];
+function waitRule({ repo, number, labels, blockers, checks, waited, accountsBack }: IssueState, now: number): Action[] {
+  if (blockers.length === 0 && checks === undefined && waited !== true && accountsBack === undefined) return [];
   const met: Action[] = checks === undefined || checks.runs.length < checks.wait.count ? [] : [{ kind: "waited", repo, number, wait: checks.wait, runs: checks.runs.slice(0, checks.wait.count) }];
   const parked = labels.includes(WAITING);
-  const blocked = blockers.some(({ open }) => open) || (checks !== undefined && met.length === 0);
+  const blocked = blockers.some(({ open }) => open) || (checks !== undefined && met.length === 0) || (accountsBack !== undefined && now < accountsBack);
   if (parked && !blocked) return [...met, { kind: "remove-label", repo, number, label: WAITING }];
   if (!parked && blocked) return [{ kind: "add-label", repo, number, label: WAITING }];
   return met;
@@ -58,7 +60,7 @@ function mergedRule({ repo, number, merged }: IssueState): Action[] {
   return merged === undefined ? [] : [{ kind: "close", repo, number, pr: merged }];
 }
 
-export const reconcile = (states: IssueState[], now = Date.now()): Action[] => states.flatMap((state) => [...waitRule(state), ...staleRule(state, now), ...admitRule(state), ...mergedRule(state)]);
+export const reconcile = (states: IssueState[], now = Date.now()): Action[] => states.flatMap((state) => [...waitRule(state, now), ...staleRule(state, now), ...admitRule(state), ...mergedRule(state)]);
 
 interface Listed {
   number: number;
@@ -76,9 +78,10 @@ function runsOf(wait: ChecksWait): number[] {
   }
 }
 
-function waitOf(body: string): Pick<IssueState, "checks" | "waited"> {
+function waitOf(body: string): Pick<IssueState, "checks" | "waited" | "accountsBack"> {
   const wait = checksWaitOf(body);
-  return wait === undefined ? { waited: waitedOf(body) } : { checks: { wait, runs: runsOf(wait) } };
+  const accountsBack = accountWaitOf(body)?.until;
+  return wait === undefined ? { waited: waitedOf(body), accountsBack } : { checks: { wait, runs: runsOf(wait) }, accountsBack };
 }
 
 const labelsNow = (repo: string, number: number): string[] =>

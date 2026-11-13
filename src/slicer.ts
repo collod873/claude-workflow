@@ -1,3 +1,4 @@
+import { waitedForAccounts } from "./account-wait.ts";
 import { capped, LIST_CAP, NO_EM_DASH, TICKET_CAP } from "./brief.ts";
 import { calledOwner, type Caller, endedRed, gitRead, readOrStop, STUCK } from "./post.ts";
 import { briefOf, MOST_BUILDERS, type Progress, progressOn, specBranch } from "./scheduler.ts";
@@ -194,6 +195,7 @@ async function sliced(spec: string): Promise<number> {
     stops: [],
     roundsBack: ROUNDS_BACK,
     judged: (spent) => {
+      if (spent.accountsBack !== undefined) return { done: waitedForAccounts(spec, slicerOf(spec), spent.accountsBack) };
       if (spent.refusal !== undefined) return { done: endedRed(`${said} ended red, ${spent.refusal}`) };
       if (!isAnswer(spent.answer)) return { done: endedRed(`${said} ended red, the slicer gave no slices`) };
       const { slices } = spent.answer;
