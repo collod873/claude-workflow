@@ -1,4 +1,4 @@
-import { execFile, spawnSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -134,23 +134,12 @@ const ENDED_RERUNS = 3;
 const ENDED_BY_SIGTERM = /^check: ended by SIGTERM\b/;
 const endedBySigterm = (red: Red | undefined) => red !== undefined && ENDED_BY_SIGTERM.test(red.verdict);
 
-function checkedOnceSync(check: string): Red | undefined {
-  const { stdout, stderr } = spawnSync("bash", ["-c", check], { env: checkEnv(), encoding: "utf8" });
-  return redOf(stdout, stderr);
-}
-
-export function checkedBy(check: string): Red | undefined {
-  let red = checkedOnceSync(check);
-  for (let rerun = 0; rerun < ENDED_RERUNS && endedBySigterm(red); rerun++) red = checkedOnceSync(check);
-  return red;
-}
-
 const checkedOnce = (check: string) =>
   new Promise<Red | undefined>((resolved) => {
     execFile("bash", ["-c", check], { env: checkEnv(), encoding: "utf8", maxBuffer: Infinity }, (_error, stdout, stderr) => resolved(redOf(stdout, stderr)));
   });
 
-export async function checkedByAsync(check: string): Promise<Red | undefined> {
+export async function checkedBy(check: string): Promise<Red | undefined> {
   let red = await checkedOnce(check);
   for (let rerun = 0; rerun < ENDED_RERUNS && endedBySigterm(red); rerun++) red = await checkedOnce(check);
   return red;
@@ -443,11 +432,11 @@ function mergesCarryingWork(): string[] {
         .map(([short = "", , , subject = ""]) => `${short} ${subject}`);
 }
 
-function judged(ticket: string): Round {
+async function judged(ticket: string): Promise<Round> {
   if (gitRead(["rev-list", "--count", "origin/main..HEAD"], PAST_MAIN_UNREAD) === "0") return { red: "You answered `code`, and this branch has no commits past main, so there is nothing to land: build the ticket, or answer `done` if main already does what it asks." };
   const lost = mergesCarryingWork();
   if (lost.length > 0) return { red: `You answered \`code\`, and a rebase drops merge commits, so these past main would land without the work they carry beyond a clean merge of their parents: ${lost.join(", ")}. Leave that work out of merge commits and add its work as plain commits on top of main, such as with \`git reset --soft origin/main\` and a fresh commit.` };
-  const red = checkedBy(PUBLISHED_CHECK);
+  const red = await checkedBy(PUBLISHED_CHECK);
   const fault = machineFault(red);
   if (fault !== undefined) return { ended: calledOwner(ticket, builderCaller(ticket), fault) };
   return red === undefined ? {} : { red: repaired(red) };
@@ -497,7 +486,7 @@ async function ownTicket(ticket: string, app: AppKey | undefined): Promise<numbe
     if (round.ended !== undefined) return round.ended;
     body = round.body ?? body;
     committed(builtBy(ticket), "feat");
-    const judgedRound = round.red === undefined ? judged(ticket) : round;
+    const judgedRound = round.red === undefined ? await judged(ticket) : round;
     if (judgedRound.ended !== undefined) return judgedRound.ended;
     const { red } = judgedRound;
     if (red === undefined) return reviewedAndLanded(ticket, { body, alongside: owning.carried.alongside, said: said.join("\n\n") }, app);

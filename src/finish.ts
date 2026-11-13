@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { capped, DIFF_CAP, diffOverCap, LIST_CAP, listedCapped, NO_EM_DASH, onDisk, TAIL_CAP, tailOf } from "./brief.ts";
-import { checkedByAsync, type Red, machineFault } from "./builder.ts";
+import { checkedBy, type Red, machineFault } from "./builder.ts";
 import { PUBLISHED_CHECK } from "./checks.ts";
 import { type Checked, doneCheck, doneCheckCalledOwner, paired, postedOn, triedIn, type Try } from "./done-checker.ts";
 import { askedOn, calledOwner, commentOnTicket, endedRed, fromHere, fromLine, gh, git, gitRead, standingOn, stoodDown, mark, readOrStop, STUCK, Stopped, unread } from "./post.ts";
@@ -349,7 +349,7 @@ function stoppedByMachine({ spec, said }: Run, red: Red | undefined): boolean {
 
 const greened = (run: Run, reviewer: Reviewer, commit: string) =>
   rounds(run, reviewer, { failed: "stayed red on its full check", commit, kept: (approved) => run.later.push(`After its full check went red: ${approved.reason}`) }, async () => {
-    const red = await checkedByAsync(PUBLISHED_CHECK);
+    const red = await checkedBy(PUBLISHED_CHECK);
     if (stoppedByMachine(run, red)) return { done: undefined };
     return red === undefined ? { done: true } : { refused: red.verdict, told: stillRedOnReview(red) };
   });
@@ -481,7 +481,7 @@ async function reviews(run: Run, { title, body }: { title: string; body: string 
   if (onSpec === undefined) return undefined;
   for (const { ofPack, answer } of onSpec) run.reasons.set(ofPack.seat, `${ofPack.on}: ${answer.reason}`);
   run.trying = triedOnBranch(run);
-  const red = await checkedByAsync(PUBLISHED_CHECK);
+  const red = await checkedBy(PUBLISHED_CHECK);
   if (stoppedByMachine(run, red)) return undefined;
   const [first, ...rest] = (await reviewedInPacks("code standard", red)) ?? [];
   if (first === undefined) return undefined;

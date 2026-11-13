@@ -283,7 +283,7 @@ function ontoSeen(onto: string): void {
   if (!rebuiltOnMain(onto, "HEAD")) gitRead(["update-ref", sliceRebuilt(), onto], `the tip of ${onto} its builder sees could not be kept`);
 }
 
-function landableRebuild(slicing: Slicing): string | undefined {
+async function landableRebuild(slicing: Slicing): Promise<string | undefined> {
   const { onto } = slicing;
   const merges = gitRead(["log", "--merges", "--format=%h %s", "origin/main..HEAD"], PAST_ONTO_UNREAD);
   if (merges !== "") return mergesRefused("origin/main", merges);
@@ -294,13 +294,13 @@ function landableRebuild(slicing: Slicing): string | undefined {
     return ontoMovedSinceRebuild(onto, since);
   }
   sliceTrailed("origin/main", [slicing.slice]);
-  const red = checkedBy(FAST_CHECK);
+  const red = await checkedBy(FAST_CHECK);
   return red === undefined ? undefined : repaired(red);
 }
 
 const pastOnto = (onto: string) => gitRead(["rev-list", "--count", `${onto}..HEAD`], PAST_ONTO_UNREAD);
 
-function landable(slicing: Slicing, outcome: "built" | "partial", left: string): string | undefined {
+async function landable(slicing: Slicing, outcome: "built" | "partial", left: string): Promise<string | undefined> {
   const { onto } = slicing;
   if (outcome === "partial" && left === "") return LEFT_UNNAMED;
   if (rebuiltOnMain(onto, "HEAD")) return landableRebuild(slicing);
@@ -311,7 +311,7 @@ function landable(slicing: Slicing, outcome: "built" | "partial", left: string):
     if (conflict !== undefined) return conflict;
     if (pastOnto(onto) === "0") return nothingBuilt(outcome, onto);
     sliceTrailed(slicing.onto, [slicing.slice]);
-    const red = checkedBy(FAST_CHECK);
+    const red = await checkedBy(FAST_CHECK);
     if (red !== undefined) return repaired(red);
     if (fastForwards(onto)) return undefined;
   }
@@ -364,7 +364,7 @@ async function built(slicing: Slicing, app: AppKey | undefined): Promise<Ending>
     if (leftNow !== "") left = leftNow;
     committed(`Build slice ${slice} of #${spec}`, "feat");
     const outcome = answer.outcome === "built" && left !== "" ? "partial" : answer.outcome;
-    const red = outcome === "done" ? (pastOnto(onto) === "0" ? undefined : builtNotDone(onto)) : landable(slicing, outcome, left);
+    const red = outcome === "done" ? (pastOnto(onto) === "0" ? undefined : builtNotDone(onto)) : await landable(slicing, outcome, left);
     if (red === undefined) {
       rmSync(file, { force: true });
       return ended(outcome, answer.reason, session, outcome === "partial" ? left : "");
