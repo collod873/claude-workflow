@@ -65,7 +65,7 @@ export function servingProduction(build: string | null = null) {
   });
 }
 
-export function shipping() {
+export function shipping({ releaseBranch = true } = {}) {
   const root = scratch("ship-");
   const { remote, session } = clonedOn(root, "main", ["base"]);
   const state = join(root, "gh-state");
@@ -74,6 +74,8 @@ export function shipping() {
   writeFileSync(join(state, "open-issues"), "");
   mkdirSync(join(root, "bin"));
   writeFileSync(join(root, "bin", "gh"), SHIP_GH, { mode: 0o755 });
+  const railwayDeploys = join(state, "railway-deploys");
+  script(join(root, "bin", "railway"), `[ -f ${JSON.stringify(railwayDeploys)} ] || { echo "No linked project found" >&2; exit 1; }\ncat ${JSON.stringify(railwayDeploys)}\n`);
   script(join(root, "bin", "deploy-wait"), `printf %s "$1" >${JSON.stringify(waited)}\n`);
   const shipEnv = (extra: Record<string, string>) => ({ PATH: `${join(root, "bin")}:${process.env.PATH}`, SHIP_GH_STATE: state, SHIP_DEPLOY_DEADLINE_SECONDS: "0", GITHUB_REPOSITORY_OWNER: "owner-login", GITHUB_RUN_ID: "", GITHUB_EVENT_NAME: "", ...extra });
   const recorded = (name: string) => (existsSync(join(state, name)) ? readFileSync(join(state, name), "utf8").trim().split("\n") : []);
@@ -87,11 +89,13 @@ export function shipping() {
     return sha;
   };
   const live = land("live", FULL_CHECK_PASSED);
-  git(session, "push", "--quiet", "origin", "HEAD:refs/heads/release");
+  if (releaseBranch) git(session, "push", "--quiet", "origin", "HEAD:refs/heads/release");
   return {
     live,
     land,
     fullCheckWillBe: (sha: string, ...conclusions: (string | null)[]) => writeFileSync(join(state, "plans", sha), JSON.stringify(conclusions.map((conclusion) => ({ conclusion })))),
+    railwayDeployed: (...deploys: { status: string; commitHash: string }[]) =>
+      writeFileSync(railwayDeploys, JSON.stringify(deploys.map(({ status, commitHash }) => ({ status, meta: { commitHash } })))),
     openIssue: (number: number) => writeFileSync(join(state, "open-issues"), `${number}\n`),
     shipDispatchedAt: (createdAt: string) => writeFileSync(join(state, "ship-dispatches"), JSON.stringify([{ created_at: createdAt, event: "workflow_dispatch" }])),
     run: (args: string[] = [], extra: Record<string, string> = {}) => execute(join(BIN, "ship"), session, shipEnv(extra), args),

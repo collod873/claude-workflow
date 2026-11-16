@@ -388,3 +388,43 @@ describe("bin/ship --daily on GitHub's schedule is the backstop for the PC's shi
     expect(release()).toBe(tip);
   });
 });
+
+describe("bin/ship starts the release branch at the commit production serves when an app moves onto it from deploy-on-merge", () => {
+  it("starts release at the build production's health reports, then ships main forward from it", async () => {
+    const app = shipping({ releaseBranch: false });
+    const production = await servingProduction(app.live);
+    const newest = app.land("newest", FULL_CHECK_PASSED);
+
+    const shipped = await app.runAsync([], { SHIP_HEALTH_URL: production.healthUrl });
+
+    expect(shipped.status, shipped.stderr).toBe(0);
+    expect(shipped.stdout).toContain(`Starting the release branch at ${app.live.slice(0, 7)}`);
+    expect(shipped.stdout).toContain("newest");
+    expect(app.release()).toBe(newest);
+    expect(app.waitedOn()).toBe(newest);
+  });
+
+  it("starts release at Railway's newest successful deploy when no health URL is given", async () => {
+    const app = shipping({ releaseBranch: false });
+    const newest = app.land("newest", null);
+    app.railwayDeployed({ status: "FAILED", commitHash: newest }, { status: "SUCCESS", commitHash: app.live });
+
+    const held = await app.runAsync([], { SHIP_CHECK_DEADLINE_SECONDS: "0" });
+
+    expect(held.status).toBe(1);
+    expect(held.stdout).toContain(`Starting the release branch at ${app.live.slice(0, 7)}`);
+    expect(app.release()).toBe(app.live);
+  });
+
+  it("refuses and starts nothing when neither health nor Railway names a commit on main", async () => {
+    const app = shipping({ releaseBranch: false });
+    app.land("newest", FULL_CHECK_PASSED);
+
+    const refused = await app.runAsync([]);
+
+    expect(refused.status).toBe(1);
+    expect(refused.stderr).toContain("No linked project found");
+    expect(() => app.release()).toThrow();
+    expect(app.waitedOn()).toBeUndefined();
+  });
+});

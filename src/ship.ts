@@ -15,6 +15,8 @@ const SHIP_WORKFLOW = "ship.yml";
 const DISPATCH_COVERS_HOURS = 20;
 
 const USAGE = `ship: put main's newest green commit on production by moving the release branch Railway deploys.
+When origin has no release branch yet, ship starts it at the commit production serves (from
+SHIP_HEALTH_URL's build, else Railway's newest successful deploy of SHIP_SERVICE), then ships forward.
 
   ship                 ship main's newest commit once the full check, integration suite included, has
                        passed on it (only a hand-started CI run counts, never a pull-request or push run; one is started when none has), then wait for its deploy; a red
@@ -235,9 +237,40 @@ function reportFailedDeploy(expected: string, serving: string): never {
   return die(`✗ ship: ${title}: production reports ${serving}. Filed: ${fileOrComment(title, body)}`);
 }
 
+function commitOnMain(candidate: string | undefined): string | undefined {
+  if (!candidate || !/^[0-9a-f]{7,40}$/.test(candidate)) return undefined;
+  const found = run("git", ["rev-parse", "--verify", "--quiet", `${candidate}^{commit}`]);
+  const sha = found.stdout.trim();
+  return found.status === 0 && isAncestor(sha, "origin/main") ? sha : undefined;
+}
+
+function newestRailwayDeploy(): { commit: string | undefined; said: string } {
+  const listed = run("railway", ["deployment", "list", "--service", SERVICE, "--limit", "30", "--json"]);
+  if (listed.status !== 0) return { commit: undefined, said: (listed.error?.message ?? `${listed.stderr}${listed.stdout}`).trim() || "railway deployment list failed" };
+  const deploys = JSON.parse(listed.stdout) as { status: string; meta?: { commitHash?: string } }[];
+  const commit = deploys.find((deploy) => deploy.status === "SUCCESS")?.meta?.commitHash;
+  return { commit, said: commit ? `its newest successful deploy is ${commit.slice(0, 7)}` : "it lists no successful deploy" };
+}
+
+async function startRelease(): Promise<string> {
+  const reported = HEALTH ? await productionBuild() : undefined;
+  const healthServes = commitOnMain(reported);
+  const railway = healthServes ? undefined : newestRailwayDeploy();
+  const serving = healthServes ?? commitOnMain(railway?.commit);
+  if (!serving) {
+    die(
+      `✗ ship: origin has no release branch, and ship could not tell which commit on main production serves, so it starts none. ${HEALTH ? `${HEALTH} reports ${reported}` : "No SHIP_HEALTH_URL is set"}; for Railway's ${SERVICE} service, ${railway?.said}.`,
+    );
+  }
+  console.log(`Starting the release branch at ${serving.slice(0, 7)}, the commit production serves.`);
+  git("push", "--quiet", "origin", `${serving}:refs/heads/release`);
+  return serving;
+}
+
 async function moveRelease(): Promise<{ release: string; moved: boolean }> {
-  git("fetch", "--quiet", "origin", "+refs/heads/main:refs/remotes/origin/main", "+refs/heads/release:refs/remotes/origin/release");
-  const live = git("rev-parse", "origin/release");
+  const listedRelease = git("ls-remote", "origin", "refs/heads/release").split(/\s/)[0] ?? "";
+  git("fetch", "--quiet", "origin", "+refs/heads/main:refs/remotes/origin/main", ...(listedRelease ? ["+refs/heads/release:refs/remotes/origin/release"] : []));
+  const live = listedRelease ? git("rev-parse", "origin/release") : await startRelease();
   const held = git("ls-remote", "origin", HOLD) !== "";
   if (daily && held) {
     console.log("Production was rolled back, so the daily run leaves it there. Run ship to go forward.");
