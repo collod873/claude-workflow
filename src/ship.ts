@@ -246,7 +246,7 @@ function commitOnMain(candidate: string | undefined): string | undefined {
 
 function newestRailwayDeploy(): { commit: string | undefined; said: string } {
   const listed = run("railway", ["deployment", "list", "--service", SERVICE, "--limit", "30", "--json"]);
-  if (listed.status !== 0) return { commit: undefined, said: (listed.stderr || listed.stdout).trim() || "railway deployment list failed" };
+  if (listed.status !== 0) return { commit: undefined, said: (listed.error?.message ?? `${listed.stderr}${listed.stdout}`).trim() || "railway deployment list failed" };
   const deploys = JSON.parse(listed.stdout) as { status: string; meta?: { commitHash?: string } }[];
   const commit = deploys.find((deploy) => deploy.status === "SUCCESS")?.meta?.commitHash;
   return { commit, said: commit ? `its newest successful deploy is ${commit.slice(0, 7)}` : "it lists no successful deploy" };

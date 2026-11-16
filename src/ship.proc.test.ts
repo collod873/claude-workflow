@@ -424,6 +424,7 @@ describe("bin/ship starts the release branch at the commit production serves whe
 
     expect(refused.status).toBe(1);
     expect(refused.stderr).toContain("No linked project found");
+    expect(() => app.release()).toThrow();
     expect(app.waitedOn()).toBeUndefined();
   });
 });
