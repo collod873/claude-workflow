@@ -549,6 +549,15 @@ describe("the builder owns its ticket from build to land in one run (#898, ADR-0
     expect(none.handed()[1]).toContain("names the repo that owns its first step as `repo`");
   });
 
+  it("hands back a first step named for an archived repo, filing nothing, where #501 of agent-skills stopped on the owner with filed 0 of 1 tickets in the archived dotfiles", () => {
+    const { run, filed, handed, ticketComments } = fixing({ calledFrom: CALLER, answer: { outcome: "owned", repo: "collod873/dotfiles", reason: "the alias lives in dotfiles", tickets: [KIT_STEP] }, claude: SPENT_BY_THE_THIRD_ROUND, stageMinutes: "1", archived: ["collod873/dotfiles"] });
+
+    expect(run().status).toBe(1);
+    expect(filed()).toEqual([]);
+    expect(handed()[1]).toContain("collod873/dotfiles is archived");
+    expect(ticketComments().join("\n")).not.toContain("to wait on");
+  });
+
   it("tells a builder in a foreign tree to file a machine fault here, not to land it on the tree's main (#1143)", () => {
     const { run, handed } = fixing({ calledFrom: CALLER, claude: FIXES });
 

@@ -342,6 +342,7 @@ export function ownedRefusal(repo: string | undefined, own: string | undefined, 
 export function filedInRepo(repo: string, origin: string, outcome: string, unfiled: string, pieces: Piece[] | undefined): { red: string } | { filed: string[]; all: boolean } {
   const postings = (pieces ?? []).map(({ title, why: step, done }) => ({ title, text: followUpBody([origin, "", `> ${step}`], done) }));
   const refused = postings.length === 0 ? [unfiled] : postings.flatMap((posting) => postRefusals({ kind: "ticket", ...posting }).map((refusal) => `${posting.title}: ${refusal}`));
+  if (gh(["repo", "view", repo, "--json", "isArchived", "--jq", ".isArchived"]).stdout.trim() === "true") refused.push(`${repo} is archived, so it takes no ticket: file it where that code lives now, or build it here`);
   if (refused.length > 0) return { red: [`Your \`${outcome}\` answer was refused, and nothing was filed:`, ...refused.map((refusal) => `- ${refusal}`)].join("\n") };
   const inRepo = (args: string[]) => gh([...args, "--repo", repo]);
   const said = postings.map((posting) => postedUnderOrigin({ kind: "ticket", ...posting }, inRepo).said.trim());
