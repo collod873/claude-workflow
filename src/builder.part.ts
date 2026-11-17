@@ -97,6 +97,7 @@ export function fixing({
   openTickets = [] as { number: number; title: string; body: string }[],
   appKeyFile = undefined as string | undefined,
   filedState = "OPEN",
+  archived = [] as string[],
   unsetKeys = "",
   checksRan = [] as number[],
 } = {}) {
@@ -143,6 +144,7 @@ export function fixing({
       `printf 'gh %s\\n' "$PWD" >>"${ranIn}"`,
       'case "$*" in',
       ...(unreadable === undefined ? [] : [`  ${unreadable}) printf 'gh: Bad credentials (HTTP 401)\\n' >&2; exit 1 ;;`]),
+      ...archived.map((archivedRepo) => `  *"repo view ${archivedRepo} --json isArchived"*) printf 'true\\n' ;;`),
       `  *"api"*"/commits/"*) printf '2026-11-04T04:53:38Z\\n' ;;`,
       `  *"api"*"/actions/runs?created=<"*) printf '0\\n' ;;`,
       `  *"api"*"/actions/"*) printf '${checksRan.map((run) => `${run}\\n`).join("")}' ;;`,
