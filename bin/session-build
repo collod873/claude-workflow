@@ -2,7 +2,7 @@
 set -uo pipefail
 
 usage="session-build: usage: GH_REPO=<owner/repo> session-build <issue number>
-Clones the repo, runs its contract's setup, and builds the issue in one Claude session on the owner's own login, as if he typed /tdd in a terminal. Ends red when the issue is still open after."
+Builds the issue in a background Claude session in a worktree of the owner's own checkout under ~/Claude Projects, as if he typed /tdd there, and opens a terminal window on it. Ends red, naming the session for him to pick up, when the issue is still open after."
 
 if [[ ${1:-} == --help ]]; then
   printf '%s\n' "$usage"
@@ -23,29 +23,49 @@ if [[ $(gh issue view "$issue" --json state --jq .state) == CLOSED ]]; then
   exit 0
 fi
 
-tree="${RUNNER_TEMP:-$(mktemp -d)}/tree"
-rm -rf "$tree"
-
-if ! gh repo clone "$GH_REPO" "$tree" -- --quiet; then
-  printf 'session-build: %s could not be cloned\n' "$GH_REPO" >&2
+checkout=""
+for folder in "$HOME/Claude Projects"/*/; do
+  origin=$(git -C "$folder" remote get-url origin 2>/dev/null) || continue
+  origin=${origin%.git}
+  if [[ ${origin,,} == *github.com[:/]"${GH_REPO,,}" ]]; then
+    checkout=${folder%/}
+    break
+  fi
+done
+if [[ -z $checkout ]]; then
+  printf 'session-build: no checkout of %s under ~/Claude Projects, so #%s was not built\n' "$GH_REPO" "$issue" >&2
   exit 1
 fi
+
+tree=$(cd "$checkout" && claude-session new "build-$issue") || exit 1
 cd "$tree" || exit 1
 
-setup=""
-if [[ -f .claude/contract.json ]] && ! setup=$(jq -r '.setup // empty' .claude/contract.json); then
-  printf 'session-build: the contract of %s could not be read, so #%s was not built\n' "$GH_REPO" "$issue" >&2
-  exit 1
-fi
-if [[ -n $setup ]] && ! bash -c "$setup"; then
-  printf 'session-build: the setup of %s failed, so #%s was not built\n' "$GH_REPO" "$issue" >&2
+earlier=$(claude agents --json --all | jq -r --arg cwd "$tree" 'map(select(.kind == "background" and .cwd == $cwd)) | first | .id // empty') || exit 1
+if [[ -n $earlier ]]; then
+  printf 'session-build: a session already worked on %s#%s, so no second one starts; claude attach %s picks it up\n' "$GH_REPO" "$issue" "$earlier" >&2
   exit 1
 fi
 
-claude --print --permission-mode bypassPermissions "/tdd build $url. Nobody is watching this session: decide anything the issue leaves open as a senior engineer and name your pick. Once it is built, land it the way this repo's CLAUDE.md says, then close $url with a comment saying what landed and what you picked."
-session=$?
+started=$(env -i HOME="$HOME" USER="$USER" LOGNAME="${LOGNAME:-$USER}" SHELL="${SHELL:-/bin/bash}" LANG="${LANG:-C.UTF-8}" PATH="$PATH" \
+  claude --bg -n "$GH_REPO#$issue" --permission-mode bypassPermissions "/tdd build $url. Nobody is watching this session: decide anything the issue leaves open as a senior engineer and name your pick. Once it is built, land it the way this repo's CLAUDE.md says, then close $url with a comment saying what landed and what you picked.")
+id=$(sed -n 's/^backgrounded · \([0-9a-f]*\) ·.*/\1/p' <<<"$started")
+if [[ -z $id ]]; then
+  printf 'session-build: the background session for %s#%s did not start:\n%s\n' "$GH_REPO" "$issue" "$started" >&2
+  exit 1
+fi
+
+wt.exe --title "$GH_REPO#$issue" wsl.exe -e "$(command -v claude)" attach "$id" ||
+  printf 'session-build: no window opened; claude attach %s opens the session\n' "$id"
+
+while :; do
+  if ended=$(claude agents --json --all | jq -er --arg id "$id" '.[] | select(.id == $id) | .state'); then
+    [[ $ended == starting || $ended == queued || $ended == working ]] || break
+  fi
+  sleep 30
+done
 
 if [[ $(gh issue view "$issue" --json state --jq .state) != CLOSED ]]; then
-  printf 'session-build: %s#%s is still open after its session, and its session exited %s\n' "$GH_REPO" "$issue" "$session" >&2
+  printf 'session-build: %s#%s is still open, and its session is %s; claude attach %s picks it up\n' "$GH_REPO" "$issue" "$ended" "$id" >&2
   exit 1
 fi
+claude stop "$id"

@@ -138,8 +138,8 @@ own Postgres, port and temp dir, done when its branch fast-forwards the integrat
 _Avoid_: fixer, mechanic, fresh eyes
 
 **Session build**:
-With `SESSION_BUILDS` true, a repo builds a woken ticket or spec in one session as the owner,
-`bin/session-build` on `/tdd build <issue>`, on `pc-repair`. No other stage runs.
+With `SESSION_BUILDS` true, `bin/session-build` on `pc-repair` builds a woken ticket or spec
+as a background `/tdd build <issue>` in the owner's checkout. No stage runs.
 _Avoid_: new runner, terminal mode
 
 **Reviewer**:
