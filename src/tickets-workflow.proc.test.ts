@@ -7,7 +7,7 @@ import { fixing } from "./builder.part.ts";
 import { rerunning } from "./rerun.part.ts";
 import { execute, holds, scratch, script, skippedAll, wakeOutputs, workflowJobs, type WorkflowStep } from "./scenarios.ts";
 import { MACHINE, OWNER } from "./spelled.ts";
-import { ENROLLED_CALLER } from "./post.ts";
+import { ENROLLED_CALLER, REPAIR_RUNNER } from "./post.ts";
 
 function onPath(tool: string): string {
   const dir = (process.env.PATH ?? "").split(":").find((folder) => existsSync(join(folder, tool)));
@@ -89,6 +89,11 @@ describe("a repo's tickets build through one caller file that holds only trigger
     expect(jobsRun({ event: "issues", action: "opened", sender: MACHINE })).toEqual(["reconcile"]);
     expect(jobsRun({ event: "issues", action: "labeled", sender: "stranger" })).toEqual(["reconcile"]);
     expect(jobsRun({ event: "issues", action: "closed" })).toEqual(["strip", "reconcile"]);
+  });
+
+  it("builds a woken ticket or spec of a repo on session builds in one session on the owner's own PC runner, and nothing of the old stages", () => {
+    expect(jobsRun({ event: "issues", action: "labeled", outputs: { wake: { session: "true", build: "false" } } })).toEqual(["wake", "session", "reconcile"]);
+    expect(workflowJobs("tickets.yml").session?.["runs-on"]).toBe(REPAIR_RUNNER);
   });
 
   it("reconciles a pull request closing, merged or not, so what it blocked wakes, where Mezzanine#1710 sat waiting on kit-sync PR #1711 after it merged", () => {

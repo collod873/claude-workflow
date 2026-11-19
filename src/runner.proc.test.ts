@@ -370,9 +370,9 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
 });
 
 describe("the machine's jobs run where the repo's switch says", () => {
-  it("runs every job of the machine's workflows on the repo's runners, the PC's when it is switched there, with reconcile on its own PC runner, since on GitHub's its seconds on every ticket event each bill a minute and among the builders it queued behind them, and a repair on the owner's own (#1659, #1626, #1761)", () => {
+  it("runs every job of the machine's workflows on the repo's runners, the PC's when it is switched there, with reconcile on its own PC runner, since on GitHub's its seconds on every ticket event each bill a minute and among the builders it queued behind them, and a repair or a session build on the owner's own (#1659, #1626, #1761)", () => {
     for (const file of ["tickets.yml", "specs.yml", "enrol.yml"]) {
-      for (const [name, job] of Object.entries(workflowJobs(file))) expect(job["runs-on"], `${file} ${name}`).toBe(file === "tickets.yml" && name === "reconcile" ? "${{ vars.CI_RUNNER == 'pc' && 'pc-reconcile' || 'ubuntu-latest' }}" : file === "tickets.yml" && name === "repair" ? REPAIR_RUNNER : PC_RUNS_ON);
+      for (const [name, job] of Object.entries(workflowJobs(file))) expect(job["runs-on"], `${file} ${name}`).toBe(file === "tickets.yml" && name === "reconcile" ? "${{ vars.CI_RUNNER == 'pc' && 'pc-reconcile' || 'ubuntu-latest' }}" : file === "tickets.yml" && (name === "repair" || name === "session") ? REPAIR_RUNNER : PC_RUNS_ON);
     }
   });
 });
