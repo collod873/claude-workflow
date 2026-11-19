@@ -11,11 +11,12 @@ export const PC_RUNNER_COUNT = 4;
 const runnerId = (name: string) => [...name].reduce((sum, char) => sum + char.charCodeAt(0), 0);
 export const pcRunner = (name: string, status = "online", busy = false, labels = ["pc"]) => ({ id: runnerId(name), name, status, busy, labels: ["self-hosted", ...labels].map((label) => ({ name: label })) });
 
-export function switching({ isPrivate = true, runners = [] as object[], variable = "", startsOnline = true, slowToStart = [] as string[], stoppedByHand = [] as string[], manyJobs = [] as string[], userExists = true } = {}) {
+export function switching({ isPrivate = true, runners = [] as object[], variable = "", startsOnline = true, slowToStart = [] as string[], stoppedByHand = [] as string[], manyJobs = [] as string[], userExists = true, unitless = [] as string[] } = {}) {
   const root = scratch("runner-");
   const at = (name: string) => join(root, name);
   writeFileSync(at("runners.json"), JSON.stringify({ runners }));
   if (variable !== "") writeFileSync(at("variable-CI_RUNNER"), variable);
+  writeFileSync(at("unitless"), unitless.map((name) => `${name}\n`).join(""));
   script(
     at("bin/gh"),
     [
@@ -30,6 +31,7 @@ export function switching({ isPrivate = true, runners = [] as object[], variable
       `  "variable delete"*) rm "${at("variable-")}$3" ;;`,
       '  *cli/cli/releases/latest*) printf "v2.96.0\\n" ;;',
       '  *releases/latest*) printf "v2.330.0\\n" ;;',
+      `  "api -X DELETE repos/${PC_REPO}/actions/runners/"*) id=\${4#repos/${PC_REPO}/actions/runners/}; jq -c --argjson id "$id" '.runners |= map(select(.id != $id))' "${at("runners.json")}" >"${at("runners.next")}" && mv "${at("runners.next")}" "${at("runners.json")}" ;;`,
       '  *registration-token*) printf "TOKEN\\n" ;;',
       '  *remove-token*) printf "GONE\\n" ;;',
       "esac",
@@ -50,6 +52,13 @@ export function switching({ isPrivate = true, runners = [] as object[], variable
       '  mv "$kept.next" "$kept"',
       "fi",
       `[[ $* == *"${at("proc")}/"* ]] && exec "$@"`,
+      "unitless='runners/[^/ ]+/([^ /]+) && .*svc\\.sh (install|stop)'",
+      `if [[ $* =~ $unitless ]] && grep -qxF "\${BASH_REMATCH[1]}" "${at("unitless")}"; then`,
+      `  [[ \${BASH_REMATCH[2]} == stop ]] && { printf 'Failed to stop %s: Unit not loaded.\\n' "\${BASH_REMATCH[1]}" >&2; exit 5; }`,
+      `  grep -vxF "\${BASH_REMATCH[1]}" "${at("unitless")}" >"${at("unitless.next")}"; mv "${at("unitless.next")}" "${at("unitless")}"`,
+      "fi",
+      "disabled='systemctl disable .*\\.([^ .]+)\\.service'",
+      `if [[ $* =~ $disabled ]] && grep -qxF "\${BASH_REMATCH[1]}" "${at("unitless")}"; then printf 'Failed to disable unit: Unit does not exist\\n' >&2; exit 1; fi`,
       "started='runners/[^/ ]+/([^ /]+) && .*svc\\.sh start'",
       `if ${startsOnline} && [[ $* =~ $started ]] && [[ " ${slowToStart.join(" ")} " != *" \${BASH_REMATCH[1]} "* ]]; then`,
       `  jq -c --arg name "\${BASH_REMATCH[1]}" '.runners |= (map(select(.name != $name)) + [{id: ($name | explode | add), name: $name, status: "online", busy: false, labels: [{name: "self-hosted"}, {name: (if ($name | endswith("-reconcile")) then "pc-reconcile" elif ($name | endswith("-repair")) then "pc-repair" else "pc" end)}]}])' "${at("runners.json")}" >"${at("runners.next")}"`,
@@ -64,7 +73,7 @@ export function switching({ isPrivate = true, runners = [] as object[], variable
     writeFileSync(at(`proc/${pid}/environ`), `HOME=/home/ghrunner\0${environ}\0`);
   }
   const manyJobsUnits = manyJobs.map((name) => `actions.runner.${PC_REPO.replace("/", "-")}.${name}.service`).join(" ");
-  script(at("bin/systemctl"), `if [[ $1 == show ]]; then [[ " ${manyJobsUnits} " == *" \${@: -1} "* ]] && echo 2 || echo 1; exit 0; fi\nfor name in ${stoppedByHand.join(" ")}; do [[ \${@: -1} == *".$name.service" ]] && exit 3; done\nexit 0\n`);
+  script(at("bin/systemctl"), `if [[ $1 == cat ]]; then name=\${@: -1}; name=\${name%.service}; ! grep -qxF "\${name##*.}" "${at("unitless")}"; exit; fi\nif [[ $1 == show ]]; then [[ " ${manyJobsUnits} " == *" \${@: -1} "* ]] && echo 2 || echo 1; exit 0; fi\nfor name in ${stoppedByHand.join(" ")}; do [[ \${@: -1} == *".$name.service" ]] && exit 3; done\nexit 0\n`);
   script(at("bin/curl"), "printf '%s\\n' '[{\"version\":\"v25.1.0\",\"lts\":false},{\"version\":\"v24.11.0\",\"lts\":\"Krypton\"}]'\n");
   script(at("bin/sleep"), "");
   const lines = (name: string) => (existsSync(at(name)) ? readFileSync(at(name), "utf8").trim().split("\n") : []);
