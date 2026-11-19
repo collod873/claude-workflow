@@ -61,6 +61,16 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
     expect(sudo()).toContain(`-u ${OWNER_USER} bash -c cd ${REPAIR_DIR} && ./config.sh remove --token 'GONE' >/dev/null`);
   });
 
+  it("takes away a repair runner whose service is gone from this PC by removing its registration, since there is nothing here to stop (#1794)", () => {
+    const { run, runners } = switching({ variable: "pc", runners: [pcRunner(`${HOST}-1`), pcRunner(`${HOST}-repair`, "offline", false, [REPAIR_RUNNER])], unitless: [`${HOST}-repair`] });
+
+    const result = run("github");
+
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toContain(", its repair runner taken away");
+    expect(runners().map(({ name }) => name)).not.toContain(`${HOST}-repair`);
+  });
+
   it("says so when the reconcile runner has not come online yet, since its jobs wait for it", () => {
     const { run } = switching({ runners: [pcRunner(`${HOST}-1`)], slowToStart: [`${HOST}-reconcile`] });
 

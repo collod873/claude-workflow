@@ -222,6 +222,10 @@ function takeRepairerAway(repo: string, runners: Runner[]): string {
   const repairer = runners.find(({ name }) => name === repairerName());
   if (repairer === undefined) return "";
   if (repairer.busy) return `; its repair runner is mid-repair: run this again once it finishes`;
+  if (!hasUnit(repo, repairer.name)) {
+    gh(["api", "-X", "DELETE", `repos/${repo}/actions/runners/${repairer.id}`]);
+    return ", its repair runner taken away";
+  }
   const dir = repairDirOf(repo, repairer.name);
   asRoot(`cd ${dir} && ./svc.sh stop >/dev/null && ./svc.sh uninstall >/dev/null`);
   const token = gh(["api", "-X", "POST", `repos/${repo}/actions/runners/remove-token`, "--jq", ".token"]).trim();
