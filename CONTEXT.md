@@ -95,8 +95,8 @@ _Avoid_: rail, safety net, guardrail
 ### Mechanisms
 
 **Gate**:
-Something that refuses an action at the moment it is attempted. Unlike a meter, it needs no
-reader, only a trigger. A step the check runs is one; call it a step.
+Something that refuses an action at the moment it is attempted. A step the check runs is one;
+call it a step.
 _Avoid_: validator, guardrail, lint
 
 **Check**, **step**, **receipt**:
@@ -124,11 +124,6 @@ conflicts only in them takes main's side, runs main's entries and commits the re
 and the scheduler; any other conflict leaves the branch as it was.
 _Avoid_: conflict resolver, merge driver
 
-**Meter**:
-A rule that reports in the PR body what it would have refused, and refuses nothing. None runs now
-(ADR-0006, ADR-0012).
-_Avoid_: soft gate, warning, advisory check
-
 **Refusal**:
 A gate that fires before a run spends model time, so it is free when it fires.
 _Avoid_: precondition, validation, check
@@ -141,6 +136,11 @@ holds it, else unbuilt; stopped, it marks `stuck`. A spec's slice gets a **slice
 own Postgres, port and temp dir, done when its branch fast-forwards the integration branch, or
 `partial`, saying what is left. Neither waits on an owner step.
 _Avoid_: fixer, mechanic, fresh eyes
+
+**Session build**:
+With `SESSION_BUILDS` true, a repo builds a woken ticket or spec in one session as the owner,
+`bin/session-build` on `/tdd build <issue>`, on `pc-repair`. No other stage runs.
+_Avoid_: new runner, terminal mode
 
 **Reviewer**:
 A fresh agent with the builder's access, in the builder's run: it reads the ticket, commit messages

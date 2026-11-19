@@ -12,8 +12,10 @@ jobs:
     timeout-minutes: 5
     env:
       GH_REPO: ${{ github.repository }}
+      SESSION_BUILDS: ${{ vars.SESSION_BUILDS }}
     outputs:
       build: ${{ steps.wake.outputs.build }}
+      session: ${{ steps.wake.outputs.session }}
     steps:
       - id: app
         uses: actions/create-github-app-token@v3
@@ -221,6 +223,49 @@ jobs:
         with:
           client-id: ${{ vars.CORE_APP_CLIENT_ID }}
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+
+  session:
+    needs: wake
+    if: ${{ needs.wake.outputs.session == 'true' }}
+    concurrency:
+      group: build-${{ github.event.issue.number }}
+    runs-on: pc-repair
+    timeout-minutes: 360
+    env:
+      GH_REPO: ${{ github.repository }}
+      ISSUE: ${{ github.event.issue.number }}
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - id: machine
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/claude-workflow
+          ref: main
+          token: ${{ steps.app.outputs.token }}
+          persist-credentials: false
+
+      - run: bin/session-build "$ISSUE"
+
+      - id: after-session-app
+        if: failure() || cancelled()
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CORE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - if: failure() || cancelled()
+        env:
+          TOKEN: ${{ steps.after-session-app.outputs.token || steps.app.outputs.token }}
+          RAN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          OWNER: ${{ github.repository_owner }}
+        run: GH_TOKEN=$TOKEN gh issue comment "$ISSUE" --body "@$OWNER the session build of #$ISSUE stopped before it closed the issue: $RAN"
 
   rerun:
     if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.rerun }}

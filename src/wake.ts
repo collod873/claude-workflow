@@ -37,11 +37,12 @@ function starts({ startedBy, is, standsDown, freedBy }: Kind, { action, label, s
   return false;
 }
 
-export const woken = (event: IssuePayload): Record<Stage, boolean> => ({
-  build: starts(KINDS.build, event),
-  spec: starts(KINDS.spec, event),
-  research: starts(KINDS.research, event),
-});
+export function woken(event: IssuePayload, sessionBuilds = false): Record<Stage | "session", boolean> {
+  const build = starts(KINDS.build, event);
+  const spec = starts(KINDS.spec, event);
+  const research = starts(KINDS.research, event);
+  return sessionBuilds ? { build: false, spec: false, research, session: build || spec } : { build, spec, research, session: false };
+}
 
 if (import.meta.main) {
   const { GITHUB_EVENT_PATH: eventPath, GITHUB_OUTPUT: outputPath } = process.env;
@@ -56,7 +57,7 @@ if (import.meta.main) {
     process.stderr.write(`wake: the event could not be read, so nothing starts: ${((error as Error).message.split("\n")[0] ?? "").slice(0, 120)}\n`);
     process.exit(1);
   }
-  const answer = Object.entries(woken(event)).map(([stage, starting]) => `${stage}=${String(starting)}\n`).join("");
+  const answer = Object.entries(woken(event, process.env.SESSION_BUILDS === "true")).map(([stage, starting]) => `${stage}=${String(starting)}\n`).join("");
   appendFileSync(outputPath, answer);
   process.stdout.write(answer);
 }

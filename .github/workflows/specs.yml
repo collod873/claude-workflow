@@ -12,6 +12,7 @@ jobs:
     timeout-minutes: 5
     env:
       GH_REPO: ${{ github.repository }}
+      SESSION_BUILDS: ${{ vars.SESSION_BUILDS }}
     outputs:
       spec: ${{ steps.wake.outputs.spec }}
       research: ${{ steps.wake.outputs.research }}

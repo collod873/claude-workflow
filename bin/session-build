@@ -1,0 +1,51 @@
+#!/bin/bash
+set -uo pipefail
+
+usage="session-build: usage: GH_REPO=<owner/repo> session-build <issue number>
+Clones the repo, runs its contract's setup, and builds the issue in one Claude session on the owner's own login, as if he typed /tdd in a terminal. Ends red when the issue is still open after."
+
+if [[ ${1:-} == --help ]]; then
+  printf '%s\n' "$usage"
+  exit 0
+fi
+
+if ! [[ $# -eq 1 && $1 =~ ^[0-9]+$ && -n ${GH_REPO:-} ]]; then
+  printf '%s\n' "$usage" >&2
+  exit 2
+fi
+
+issue=$1
+url="https://github.com/$GH_REPO/issues/$issue"
+unset GH_TOKEN
+
+if [[ $(gh issue view "$issue" --json state --jq .state) == CLOSED ]]; then
+  printf 'session-build: %s#%s is closed, so no session starts\n' "$GH_REPO" "$issue"
+  exit 0
+fi
+
+tree="${RUNNER_TEMP:-$(mktemp -d)}/tree"
+rm -rf "$tree"
+
+if ! gh repo clone "$GH_REPO" "$tree" -- --quiet; then
+  printf 'session-build: %s could not be cloned\n' "$GH_REPO" >&2
+  exit 1
+fi
+cd "$tree" || exit 1
+
+setup=""
+if [[ -f .claude/contract.json ]] && ! setup=$(jq -r '.setup // empty' .claude/contract.json); then
+  printf 'session-build: the contract of %s could not be read, so #%s was not built\n' "$GH_REPO" "$issue" >&2
+  exit 1
+fi
+if [[ -n $setup ]] && ! bash -c "$setup"; then
+  printf 'session-build: the setup of %s failed, so #%s was not built\n' "$GH_REPO" "$issue" >&2
+  exit 1
+fi
+
+claude --print --permission-mode bypassPermissions "/tdd build $url. Nobody is watching this session: decide anything the issue leaves open as a senior engineer and name your pick. Once it is built, land it the way this repo's CLAUDE.md says, then close $url with a comment saying what landed and what you picked."
+session=$?
+
+if [[ $(gh issue view "$issue" --json state --jq .state) != CLOSED ]]; then
+  printf 'session-build: %s#%s is still open after its session, and its session exited %s\n' "$GH_REPO" "$issue" "$session" >&2
+  exit 1
+fi

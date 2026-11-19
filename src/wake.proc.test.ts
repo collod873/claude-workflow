@@ -49,7 +49,7 @@ describe("both workflows wake through bin/wake, so a ticket, a spec and a resear
     writeFileSync(broken, "{");
     const woke = execute(join(BIN, "wake"), root, { GITHUB_EVENT_PATH: event, GITHUB_OUTPUT: output });
 
-    expect({ status: woke.status, written: readFileSync(output, "utf8") }).toEqual({ status: 0, written: "build=false\nspec=true\nresearch=false\n" });
+    expect({ status: woke.status, written: readFileSync(output, "utf8") }).toEqual({ status: 0, written: "build=false\nspec=true\nresearch=false\nsession=false\n" });
     expect(execute(join(BIN, "wake"), root, { GITHUB_EVENT_PATH: broken, GITHUB_OUTPUT: join(root, "unwritten") }).status).toBe(1);
     expect(readdirSync(root)).not.toContain("unwritten");
   });
@@ -110,4 +110,19 @@ describe("bin/wake starts no ticket or spec that carries waiting, paused or stuc
       }
     });
   }
+});
+
+describe("a repo whose SESSION_BUILDS is true has each ticket and spec built by one session as the owner, so the old stages stand aside", () => {
+  const answered = (labels: string[], label: string) => {
+    const root = scratch("wake-");
+    writeFileSync(join(root, "event.json"), JSON.stringify(payloadOf({ action: "labeled", label, labels })));
+    execute(join(BIN, "wake"), root, { GITHUB_EVENT_PATH: join(root, "event.json"), GITHUB_OUTPUT: join(root, "output"), SESSION_BUILDS: "true" });
+    return readFileSync(join(root, "output"), "utf8");
+  };
+
+  it("answers session for a ticket or a spec, and build, spec and research as before for a research note", () => {
+    expect(answered([TICKET], TICKET)).toBe("build=false\nspec=false\nresearch=false\nsession=true\n");
+    expect(answered([SPEC], SPEC)).toBe("build=false\nspec=false\nresearch=false\nsession=true\n");
+    expect(answered(["note", "research"], "research")).toBe("build=false\nspec=false\nresearch=true\nsession=false\n");
+  });
 });
