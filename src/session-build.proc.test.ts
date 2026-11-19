@@ -14,6 +14,7 @@ describe("bin/session-build builds an issue in a background Claude session in th
     expect(actions).toBe("unset");
     expect(argv).toContain("--bg");
     expect(argv).toContain("bypassPermissions");
+    expect(argv.join(" ")).toContain("--model opus --effort medium");
     expect(argv.find((arg) => arg.startsWith("/tdd"))).toMatch(/^\/tdd build https:\/\/github\.com\/collod873\/Mezzanine\/issues\/902\b/);
   });
 
