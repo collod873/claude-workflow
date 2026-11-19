@@ -140,6 +140,7 @@ function install(repo: string, name: string, labels: string, { as, user, dirOf: 
       `mkdir -p ${dir}`,
       `cd ${dir}`,
       `{ [ -x ./config.sh ] || curl -fsSL ${tarball} | tar -xz; }`,
+      "rm -f .runner .credentials .credentials_rsaparams",
       `./config.sh --unattended --replace --url https://github.com/${repo} --token ${quoted(token)} --name ${quoted(name)} --labels ${labels} >/dev/null`,
     ].join(" && "),
   );
@@ -158,6 +159,8 @@ function provisionEarlyoom(): void {
   place(file);
   if (file.changed) asRoot("systemctl enable --quiet earlyoom && systemctl restart earlyoom");
 }
+
+const hasUnit = (repo: string, name: string) => spawnSync("systemctl", ["cat", "--quiet", unitOf(repo, name)], { stdio: "ignore" }).status === 0;
 
 const running = (repo: string, name: string) => spawnSync("systemctl", ["is-active", "--quiet", unitOf(repo, name)]).status === 0;
 
@@ -207,7 +210,7 @@ const ownersPath = () => [...new Set([`${homedir()}/.agents/skills/bin`, ...(pro
 
 function settleRepairer(repo: string, name: string, registered: Runner | undefined): void {
   const dir = repairDirOf(repo, name);
-  if (registered === undefined) install(repo, name, REPAIR_RUNNER, AS_OWNER);
+  if (registered === undefined || !hasUnit(repo, name)) install(repo, name, REPAIR_RUNNER, AS_OWNER);
   const files = [staged({ as: asOwner, path: `${dir}/.env`, text: "LANG=C.UTF-8\n", mode: "644" }), staged({ as: asOwner, path: `${dir}/.path`, text: `${ownersPath()}\n`, mode: "644" })];
   const changed = files.some((file) => file.changed);
   for (const file of files) place(file);
@@ -219,6 +222,10 @@ function takeRepairerAway(repo: string, runners: Runner[]): string {
   const repairer = runners.find(({ name }) => name === repairerName());
   if (repairer === undefined) return "";
   if (repairer.busy) return `; its repair runner is mid-repair: run this again once it finishes`;
+  if (!hasUnit(repo, repairer.name)) {
+    gh(["api", "-X", "DELETE", `repos/${repo}/actions/runners/${repairer.id}`]);
+    return ", its repair runner taken away";
+  }
   const dir = repairDirOf(repo, repairer.name);
   asRoot(`cd ${dir} && ./svc.sh stop >/dev/null && ./svc.sh uninstall >/dev/null`);
   const token = gh(["api", "-X", "POST", `repos/${repo}/actions/runners/remove-token`, "--jq", ".token"]).trim();
@@ -226,9 +233,12 @@ function takeRepairerAway(repo: string, runners: Runner[]): string {
   return ", its repair runner taken away";
 }
 
-function turnOff(repo: string, extra: { name: string; busy: boolean }[]): string {
-  for (const { name, busy } of extra) asRoot(`systemctl disable --quiet ${busy ? "" : "--now "}${unitOf(repo, name)}`);
-  const busy = extra.filter(({ busy }) => busy);
+function turnOff(repo: string, extra: Runner[]): string {
+  const unitless = extra.filter(({ name }) => !hasUnit(repo, name));
+  const installed = extra.filter((runner) => !unitless.includes(runner));
+  for (const { id } of unitless) gh(["api", "-X", "DELETE", `repos/${repo}/actions/runners/${id}`]);
+  for (const { name, busy } of installed) asRoot(`systemctl disable --quiet ${busy ? "" : "--now "}${unitOf(repo, name)}`);
+  const busy = installed.filter(({ busy }) => busy);
   const untilStopped = busy.filter(({ name }) => running(repo, name) && !takesOneJob(repo, name)).map(({ name }) => name);
   if (extra.length === 0) return "";
   const atJobEnd = busy.length - untilStopped.length;
@@ -262,7 +272,7 @@ function toPc(repo: string, asked: number | undefined): string {
   const wanted = asked ?? (runners.filter(({ name, status }) => name.startsWith(`${host}-`) && status === "online").length || PC_RUNNERS);
   const registered = new Map(runners.map(({ name, busy }) => [name, busy]));
   const names = Array.from({ length: wanted }, (_, at) => `${host}-${at + 1}`);
-  const missing = names.filter((name) => !registered.has(name));
+  const missing = names.filter((name) => !registered.has(name) || !hasUnit(repo, name));
   const reconcilerName = `${host}-reconcile`;
   const reconciler = all.find(({ name }) => name === reconcilerName);
   const repairer = repairerName();
@@ -273,7 +283,7 @@ function toPc(repo: string, asked: number | undefined): string {
   provisionUv();
   provisionEarlyoom();
   for (const name of missing) install(repo, name, LABEL);
-  if (reconciler === undefined) install(repo, reconcilerName, RECONCILE_LABEL);
+  if (reconciler === undefined || !hasUnit(repo, reconcilerName)) install(repo, reconcilerName, RECONCILE_LABEL);
   const settled = names.map((name) => ({ name, as: settle(repo, name, registered.get(name) === true && running(repo, name)) }));
   settle(repo, reconcilerName, reconciler?.busy === true && running(repo, reconcilerName));
   settleRepairer(repo, repairer, all.find(({ name }) => name === repairer));

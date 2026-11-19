@@ -61,6 +61,16 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
     expect(sudo()).toContain(`-u ${OWNER_USER} bash -c cd ${REPAIR_DIR} && ./config.sh remove --token 'GONE' >/dev/null`);
   });
 
+  it("takes away a repair runner whose service is gone from this PC by removing its registration, since there is nothing here to stop (#1794)", () => {
+    const { run, runners } = switching({ variable: "pc", runners: [pcRunner(`${HOST}-1`), pcRunner(`${HOST}-repair`, "offline", false, [REPAIR_RUNNER])], unitless: [`${HOST}-repair`] });
+
+    const result = run("github");
+
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toContain(", its repair runner taken away");
+    expect(runners().map(({ name }) => name)).not.toContain(`${HOST}-repair`);
+  });
+
   it("says so when the reconcile runner has not come online yet, since its jobs wait for it", () => {
     const { run } = switching({ runners: [pcRunner(`${HOST}-1`)], slowToStart: [`${HOST}-reconcile`] });
 
@@ -113,6 +123,29 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
 
     expect(run("pc", "4").stdout).toContain(", 2 installed");
     expect(sudo().filter((call) => call.includes("config.sh")).map((call) => /--name '([^']+)'/.exec(call)?.[1])).toEqual([...[3, 4].map((n) => `${HOST}-${n}`), `${HOST}-reconcile`, `${HOST}-repair`]);
+  });
+
+  it("installs again a PC runner GitHub lists whose service is gone from this PC, so a setup cut short leaves no runner the next run cannot start (#1794)", () => {
+    const { run, sudo, variable } = switching({ runners: [pcRunner(`${HOST}-1`), pcRunner(`${HOST}-2`, "offline"), pcRunner(`${HOST}-3`), pcRunner(`${HOST}-4`), pcRunner(`${HOST}-reconcile`, "online", false, ["pc-reconcile"]), pcRunner(`${HOST}-repair`, "online", false, [REPAIR_RUNNER])], unitless: [`${HOST}-2`] });
+
+    const result = run("pc", "4");
+
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toBe(`runner: ${REPO} runs on this PC from its next job, 4 PC runners online, 1 installed\n`);
+    expect(variable()).toBe("pc");
+    const installs = sudo().filter((call) => call.includes("config.sh"));
+    expect(installs.map((call) => /--name '([^']+)'/.exec(call)?.[1])).toEqual([`${HOST}-2`]);
+    expect(installs[0]).toContain("rm -f .runner .credentials .credentials_rsaparams && ./config.sh");
+  });
+
+  it("removes the registration of a PC runner no longer asked for whose service is gone from this PC, since there is nothing here to turn off (#1794)", () => {
+    const { run, runners } = switching({ runners: [pcRunner(`${HOST}-1`), pcRunner(`${HOST}-2`, "offline"), pcRunner(`${HOST}-reconcile`, "online", false, ["pc-reconcile"]), pcRunner(`${HOST}-repair`, "online", false, [REPAIR_RUNNER])], unitless: [`${HOST}-2`] });
+
+    const result = run("pc", "1");
+
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toBe(`runner: ${REPO} runs on this PC from its next job, 1 PC runners online, 1 turned off\n`);
+    expect(runners().map(({ name }) => name)).not.toContain(`${HOST}-2`);
   });
 
   it("keeps only as many PC runners as asked, turning the rest off for good and letting a mid-job one finish first", () => {
