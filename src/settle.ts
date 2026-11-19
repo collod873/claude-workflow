@@ -64,6 +64,14 @@ async function stoppedSettlingOnto(onto: string, untracked: Set<string>, setupRe
   return undefined;
 }
 
+function mergedOnto(onto: string): boolean {
+  const base = gitRead(["rev-parse", "--short=7", onto], `${onto} could not be read`);
+  const merge = git(["merge", "--quiet", "--no-edit", "-m", `chore: merge ${onto} at ${base}, since this branch's commits replay into a conflict its merge does not have`, onto]);
+  if (merge.status === 0) return true;
+  git(["merge", "--abort"]);
+  return false;
+}
+
 export async function rebaseRefusedOnto(onto: string, setupRefused?: () => Promise<string | undefined>): Promise<{ refusal: string; said: string } | undefined> {
   const began = gitRead(["rev-parse", "HEAD"], "the head of this branch could not be read");
   const untracked = new Set(untrackedPaths());
@@ -72,6 +80,7 @@ export async function rebaseRefusedOnto(onto: string, setupRefused?: () => Promi
   git(["rebase", "--abort"]);
   if (git(["rev-parse", "HEAD"]).stdout.trim() !== began) gitRead(["reset", "--quiet", "--hard", began], `this branch could not be put back at ${began}`);
   for (const path of untrackedPaths()) if (!untracked.has(path)) rmSync(path, { force: true });
+  if (mergedOnto(onto)) return undefined;
   return { refusal: `does not rebase cleanly onto ${onto}${stop.why}`, said: stop.said };
 }
 

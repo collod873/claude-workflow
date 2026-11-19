@@ -219,8 +219,8 @@ for (( round = 1; ; round++ )); do
   fi
   if [[ -z $url ]]; then
     call "gh pr create" "$github" pr create --base "$default_branch" --head "$branch" \
-      --title "${title:-$(git log -1 --format=%s HEAD)}" \
-      --body "$body$(git log --reverse --format='- %s' "origin/$default_branch..HEAD")"
+      --title "${title:-$(git log -1 --no-merges --format=%s HEAD)}" \
+      --body "$body$(git log --reverse --no-merges --format='- %s' "origin/$default_branch..HEAD")"
     url=$said
   fi
   if [[ -n $approved ]]; then
