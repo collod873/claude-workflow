@@ -2,7 +2,7 @@
 set -uo pipefail
 
 usage="session-build: usage: GH_REPO=<owner/repo> session-build <issue number>
-Builds the issue in a background Claude session in a worktree of the owner's own checkout under ~/Claude Projects, as if he typed /tdd there, and opens a terminal window on it. Ends red, naming the session for him to pick up, when the issue is still open after."
+Builds the issue in a background Claude session in a worktree of the owner's own checkout under ~/Claude Projects or ~/.agents, as if he typed /tdd there, and opens a terminal window on it. Ends red, naming the session for him to pick up, when the issue is still open after."
 
 if [[ ${1:-} == --help ]]; then
   printf '%s\n' "$usage"
@@ -24,7 +24,7 @@ if [[ $(gh issue view "$issue" --json state --jq .state) == CLOSED ]]; then
 fi
 
 checkout=""
-for folder in "$HOME/Claude Projects"/*/; do
+for folder in "$HOME/Claude Projects"/*/ "$HOME/.agents"/*/; do
   origin=$(git -C "$folder" remote get-url origin 2>/dev/null) || continue
   origin=${origin%.git}
   if [[ ${origin,,} == *github.com[:/]"${GH_REPO,,}" ]]; then
@@ -33,7 +33,7 @@ for folder in "$HOME/Claude Projects"/*/; do
   fi
 done
 if [[ -z $checkout ]]; then
-  printf 'session-build: no checkout of %s under ~/Claude Projects, so #%s was not built\n' "$GH_REPO" "$issue" >&2
+  printf 'session-build: no checkout of %s under ~/Claude Projects or ~/.agents, so #%s was not built\n' "$GH_REPO" "$issue" >&2
   exit 1
 fi
 

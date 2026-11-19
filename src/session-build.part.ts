@@ -6,16 +6,15 @@ import { declarePart } from "./part-files.ts";
 export const SESSION_ID = "ab12cd34";
 export const EARLIER_ID = "ee11ee11";
 
-export function sessionBuilding({ stateBefore = "OPEN", stateAfter = "CLOSED", answers = ["working", "done"], checkedOut = true, earlier = false }: { stateBefore?: string; stateAfter?: string; answers?: string[]; checkedOut?: boolean; earlier?: boolean } = {}) {
+export function sessionBuilding({ stateBefore = "OPEN", stateAfter = "CLOSED", answers = ["working", "done"], checkedOut = true, under = "Claude Projects", earlier = false }: { stateBefore?: string; stateAfter?: string; answers?: string[]; checkedOut?: boolean; under?: "Claude Projects" | ".agents"; earlier?: boolean } = {}) {
   const root = scratch("session-build-");
   const home = join(root, "home");
-  const checkout = join(home, "Claude Projects", "mezz-checkout");
+  const checkout = join(home, under, "mezz-checkout");
   const state = join(root, "state");
   const tree = join(checkout, ".claude", "worktrees", "build-902");
   const earlierList = earlier ? JSON.stringify([{ id: EARLIER_ID, kind: "background", cwd: tree, state: "done" }]) : "[]";
   plant(root, "state", `${stateBefore}\n`);
-  for (const [folder, origin] of [["Mezzanine", "https://github.com/collod873/Lumaria.git"], ...(checkedOut ? [["mezz-checkout", "https://github.com/collod873/Mezzanine.git"]] : [])] as const) {
-    const dir = join(home, "Claude Projects", folder);
+  for (const [dir, origin] of [[join(home, "Claude Projects", "Mezzanine"), "https://github.com/collod873/Lumaria.git"], [join(home, ".agents", "hooks"), "https://github.com/collod873/agent-hooks.git"], ...(checkedOut ? [[checkout, "https://github.com/collod873/Mezzanine.git"]] : [])] as const) {
     mkdirSync(dir, { recursive: true });
     git(dir, "init", "--quiet");
     git(dir, "remote", "add", "origin", origin);
@@ -54,6 +53,7 @@ declarePart({
     { label: "building an issue that closes", run: () => sessionBuilding().run() },
     { label: "with the issue still open after", run: () => sessionBuilding({ stateAfter: "OPEN" }).run() },
     { label: "with the session blocked on a question", run: () => sessionBuilding({ stateAfter: "OPEN", answers: ["working", "blocked"] }).run() },
+    { label: "with its only checkout under ~/.agents", run: () => sessionBuilding({ under: ".agents" }).run() },
     { label: "with no checkout of the repo", run: () => sessionBuilding({ checkedOut: false }).run() },
     { label: "with a status read failing mid-build", run: () => sessionBuilding({ answers: ["fail", "working", "done"] }).run() },
     { label: "with a session from before in its worktree", run: () => sessionBuilding({ earlier: true }).run() },
