@@ -59,7 +59,14 @@ describe("bin/session-build builds an issue in a background Claude session in th
     expect(building.claudeRan()).toBe(false);
   });
 
-  it("ends red before any session when no folder under ~/Claude Projects is a checkout of the repo", () => {
+  it("builds in the checkout under ~/.agents when that is the repo's only one, as agent-hooks and agent-skills are", () => {
+    const building = sessionBuilding({ under: ".agents" });
+
+    expect(building.run().status).toBe(0);
+    expect(building.worktreeFrom()).toEqual([building.checkout]);
+  });
+
+  it("ends red before any session when no folder under ~/Claude Projects or ~/.agents is a checkout of the repo", () => {
     const building = sessionBuilding({ checkedOut: false });
     const built = building.run();
 
