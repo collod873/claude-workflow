@@ -119,9 +119,9 @@ reviewer answers a closing line resting on one `unrun`, naming the key.
 _Avoid_: env, credentials, test keys
 
 **Settle map**:
-A contract's `settle` entries, each the derived `files` its `run` rebuilds: a rebase onto main that
-conflicts only in them takes main's side, runs main's entries and commits the rebuild, in `bin/land`
-and the scheduler; any other conflict leaves the branch as it was.
+A contract's `settle` entries, the derived `files` its `run` rebuilds: a rebase onto main conflicting
+only there takes main's side, runs main's entries and commits the rebuild, in `bin/land` and the
+scheduler; past them, a clean merge of main stands in, else nothing moves.
 _Avoid_: conflict resolver, merge driver
 
 **Refusal**:

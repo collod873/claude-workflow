@@ -319,6 +319,29 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
     expect(calls()).toEqual([]);
   });
 
+  it("merges origin/main in and lands every commit it merged, when HEAD's own merges of helper branches replay into a conflict but its merge with main is clean (design-kit PR 651)", () => {
+    const { root, remote, session, run } = sessionAheadOfMain(0);
+    committedBy(session, "generate the rules", { "RULES.md": "generated\n" });
+    git(session, "checkout", "--quiet", "-b", "helper-a");
+    committedBy(session, "piece a, tested by a.test", { "a.txt": "a\n", "RULES.md": "generated a\n" });
+    git(session, "checkout", "--quiet", "-b", "helper-b", "main");
+    committedBy(session, "piece b, tested by b.test", { "b.txt": "b\n", "RULES.md": "generated b\n" });
+    git(session, "checkout", "--quiet", "main");
+    git(session, "merge", "--quiet", "--no-ff", "--no-edit", "helper-a");
+    git(session, "merge", "--quiet", "--no-ff", "--no-edit", "helper-b", "-X", "theirs");
+    committedBy(session, "regenerate the rules", { "RULES.md": "generated a b\n" });
+    const moved = landedElsewhere(root, remote, "CONTEXT.md", "a new term\n");
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toBe(`Landed ${PR}\n`);
+    expect(git(remote, "show", "main:RULES.md")).toBe("generated a b");
+    expect(git(remote, "show", "main:CONTEXT.md")).toBe("a new term");
+    expect(git(remote, "merge-base", "--is-ancestor", moved, "main^2")).toBe("");
+    expect(git(remote, "log", "--format=%s", "main").split("\n")).toEqual(expect.arrayContaining(["piece a, tested by a.test", "piece b, tested by b.test", "regenerate the rules"]));
+  });
+
   it("lands nothing, and leaves it be, while the session is partway through a rebase of its own (#869)", () => {
     const { root, remote, session, run, calls } = sessionAheadOfMain(1);
     landedElsewhere(root, remote, "theirs.txt", "theirs\n");
