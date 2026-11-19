@@ -47,7 +47,7 @@ if [[ -n $earlier ]]; then
 fi
 
 started=$(env -i HOME="$HOME" USER="$USER" LOGNAME="${LOGNAME:-$USER}" SHELL="${SHELL:-/bin/bash}" LANG="${LANG:-C.UTF-8}" PATH="$PATH" \
-  claude --bg -n "$GH_REPO#$issue" --permission-mode bypassPermissions "/tdd build $url. Nobody is watching this session: decide anything the issue leaves open as a senior engineer and name your pick. Once it is built, land it the way this repo's CLAUDE.md says, then close $url with a comment saying what landed and what you picked.")
+  claude --bg -n "$GH_REPO#$issue" --model opus --effort medium --permission-mode bypassPermissions "/tdd build $url. Nobody is watching this session: decide anything the issue leaves open as a senior engineer and name your pick. Once it is built, land it the way this repo's CLAUDE.md says, then close $url with a comment saying what landed and what you picked.")
 id=$(sed -n 's/^backgrounded · \([0-9a-f]*\) ·.*/\1/p' <<<"$started")
 if [[ -z $id ]]; then
   printf 'session-build: the background session for %s#%s did not start:\n%s\n' "$GH_REPO" "$issue" "$started" >&2
