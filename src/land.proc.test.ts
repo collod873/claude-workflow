@@ -12,9 +12,12 @@ const sessionAheadOfMain = (commits: number, options: Omit<Parameters<typeof lan
 
 function mainGained(root: string, remote: string, files: Record<string, string>): string {
   const other = join(root, "other");
-  git(root, "clone", "--quiet", remote, other);
-  git(other, "config", "user.email", "other@test");
-  git(other, "config", "user.name", "other");
+  if (existsSync(other)) git(other, "pull", "--quiet");
+  else {
+    git(root, "clone", "--quiet", remote, other);
+    git(other, "config", "user.email", "other@test");
+    git(other, "config", "user.name", "other");
+  }
   for (const [file, content] of Object.entries(files)) plant(other, file, content);
   git(other, "add", "-A");
   git(other, "commit", "--quiet", "-m", "another session's change");
@@ -25,6 +28,7 @@ function mainGained(root: string, remote: string, files: Record<string, string>)
 const landedElsewhere = (root: string, remote: string, file: string, content: string) => mainGained(root, remote, { [file]: content });
 
 const APPENDS_PARTS = "ls parts >>derived/index";
+const REGENERATES_BELOW_RULE = "{ sed '/^generated$/q' derived/index; cat parts/*; } >derived/next && mv derived/next derived/index";
 
 function committedBy(session: string, message: string, files: Record<string, string>): string {
   for (const [file, content] of Object.entries(files)) plant(session, file, content);
@@ -278,7 +282,7 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
 
     expect(result.status).toBe(1);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toBe(`land: HEAD does not rebase cleanly onto origin/main, conflicting in shared.txt, so nothing landed; ${PR} is left open and this checkout is left on ticket/811 as it was: run git rebase origin/main and resolve them\n`);
+    expect(result.stderr).toBe(`land: HEAD does not merge cleanly with origin/main, conflicting in shared.txt, so nothing landed; ${PR} is left open and this checkout is left on ticket/811 as it was: run git merge origin/main and resolve them\n`);
     expect(calls().some((call) => call[1] === "close")).toBe(false);
     expect(git(remote, "rev-parse", "ticket/811")).toBe(head);
     expect(git(session, "symbolic-ref", "--short", "HEAD")).toBe("ticket/811");
@@ -292,14 +296,14 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
     const result = run();
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toBe(`land: HEAD does not rebase cleanly onto origin/main, conflicting in shared.txt, so nothing landed; ${PR} is closed, since the next landing opens its own, and this checkout is left on main as it was: run git rebase origin/main and resolve them\n`);
+    expect(result.stderr).toBe(`land: HEAD does not merge cleanly with origin/main, conflicting in shared.txt, so nothing landed; ${PR} is closed, since the next landing opens its own, and this checkout is left on main as it was: run git merge origin/main and resolve them\n`);
     expect(calls().filter((call) => call[1] === "close")).toEqual([["pr", "close", PR]]);
     expect(git(remote, "for-each-ref", "--format=%(refname)", `refs/heads/${branch}`)).toBe("");
     expect(git(session, "symbolic-ref", "--short", "HEAD")).toBe("main");
     expect(git(session, "rev-parse", "HEAD")).toBe(head);
   });
 
-  it("lands nothing and says to rebase by hand when the session's commits conflict with a main that moved (#869)", () => {
+  it("lands nothing and says to merge main in by hand when the session's commits conflict with a main that moved (#869)", () => {
     const { root, remote, session, run, calls } = sessionAheadOfMain(0);
     writeFileSync(join(session, "shared.txt"), "mine\n");
     git(session, "add", "shared.txt");
@@ -311,7 +315,7 @@ describe("bin/land turns a session's commits into a PR it merges at once, postin
 
     expect(result.status).toBe(1);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toBe("land: HEAD does not rebase cleanly onto origin/main, conflicting in shared.txt, so nothing landed; this checkout is left on main as it was: run git rebase origin/main and resolve them\n");
+    expect(result.stderr).toBe("land: HEAD does not merge cleanly with origin/main, conflicting in shared.txt, so nothing landed; this checkout is left on main as it was: run git merge origin/main and resolve them\n");
     expect(git(session, "rev-parse", "HEAD")).toBe(head);
     expect(git(session, "status", "--porcelain")).toBe("");
     expect(existsSync(join(session, ".git", "rebase-merge"))).toBe(false);
@@ -427,7 +431,7 @@ describe("bin/land settles a rebase that conflicts only in files origin/main's s
     const result = run();
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toBe("land: HEAD does not rebase cleanly onto origin/main, conflicting in derived/index, shared.txt, so nothing landed; this checkout is left on main as it was: run git rebase origin/main and resolve them\n");
+    expect(result.stderr).toBe("land: HEAD does not merge cleanly with origin/main, conflicting in derived/index, shared.txt, so nothing landed; this checkout is left on main as it was: run git merge origin/main and resolve them\n");
     expect(leftAt(session)).toEqual({ head, branch: "main", changed: "", rebasing: false });
     expect(calls()).toEqual([]);
   });
@@ -440,7 +444,7 @@ describe("bin/land settles a rebase that conflicts only in files origin/main's s
 
     expect(result.status).toBe(1);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toBe("land: HEAD does not rebase cleanly onto origin/main, conflicting in derived/index, which the settle map's index could not rebuild: index: parts/mine has no number, so nothing landed; this checkout is left on main as it was: run git rebase origin/main and resolve them\n");
+    expect(result.stderr).toBe("land: HEAD does not merge cleanly with origin/main, conflicting in derived/index, which the settle map's index could not rebuild: index: parts/mine has no number, so nothing landed; this checkout is left on main as it was: run git merge origin/main and resolve them\n");
     expect(leftAt(session)).toEqual({ head, branch: "main", changed: "", rebasing: false });
     expect(git(remote, "for-each-ref", "--format=%(refname)")).toBe("refs/heads/main");
     expect(calls()).toEqual([]);
@@ -453,7 +457,7 @@ describe("bin/land settles a rebase that conflicts only in files origin/main's s
     const result = run();
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toBe("land: HEAD does not rebase cleanly onto origin/main, conflicting in derived/index, which the settle map's index rebuilt while changing built-at.txt outside its files, so nothing landed; this checkout is left on main as it was: run git rebase origin/main and resolve them\n");
+    expect(result.stderr).toBe("land: HEAD does not merge cleanly with origin/main, conflicting in derived/index, which the settle map's index rebuilt while changing built-at.txt outside its files, so nothing landed; this checkout is left on main as it was: run git merge origin/main and resolve them\n");
     expect(leftAt(session)).toEqual({ head, branch: "main", changed: "", rebasing: false });
     expect(calls()).toEqual([]);
   });
@@ -467,6 +471,29 @@ describe("bin/land settles a rebase that conflicts only in files origin/main's s
     expect(stopped.status).toBe(143);
     expect(stopped.stderr).toBe("land: stopped by TERM at the rebase, so main is untouched, no PR is open yet and no check status is posted; run land again and it resumes from there\n");
     expect(leftAt(session)).toEqual({ head, branch: "main", changed: "", rebasing: false });
+  });
+
+  it("merges origin/main in, settling the entry's file with the branch's own lines kept, when HEAD's merges of helper branches replay into a conflict and main moved a line beside the branch's in a partly derived file (#1799)", () => {
+    const { root, remote, session, run } = sessionAheadOfMain(0);
+    const rule = "generated\n";
+    mainGained(root, remote, { [CONTRACT]: settleMapOf(REGENERATES_BELOW_RULE), "parts/tile": "tile 1\n", "parts/viewer": "viewer 1\n", "derived/index": `calls\n${rule}tile 1\nviewer 1\n` });
+    git(session, "pull", "--quiet");
+    git(session, "checkout", "--quiet", "-b", "helper-a");
+    committedBy(session, "piece a", { "page.tsx": "a\n" });
+    git(session, "checkout", "--quiet", "-b", "helper-b", "main");
+    committedBy(session, "piece b", { "page.tsx": "b\n" });
+    git(session, "checkout", "--quiet", "main");
+    git(session, "merge", "--quiet", "--no-ff", "--no-edit", "helper-a");
+    git(session, "merge", "--quiet", "--no-ff", "--no-edit", "helper-b", "-X", "theirs");
+    committedBy(session, "a new call, and viewer 2", { "parts/viewer": "viewer 2\n", "derived/index": `calls\na new call\n${rule}tile 1\nviewer 2\n` });
+    mainGained(root, remote, { "parts/tile": "tile 2\n", "derived/index": `calls\n${rule}tile 2\nviewer 1\n` });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(git(remote, "show", "main:derived/index")).toBe(`calls\na new call\n${rule}tile 2\nviewer 2`);
+    expect(git(remote, "show", "main:page.tsx")).toBe("b");
+    expect(git(remote, "log", "--format=%s", "main").split("\n")).toEqual(expect.arrayContaining(["piece a", "piece b", "a new call, and viewer 2"]));
   });
 
   it("puts the branch head, index and worktree back and lands nothing when the rebase's own process dies while the entry's command is rebuilding", () => {
