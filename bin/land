@@ -118,7 +118,7 @@ onto_default_branch() {
         call "git push --delete" git push --quiet origin --delete "$branch"
         pr_left="$url is closed, since the next landing opens its own, and "
       fi
-      printf 'land: HEAD %s, so nothing landed; %sthis checkout is left on %s as it was: run git rebase origin/%s and resolve them\n' \
+      printf 'land: HEAD %s, so nothing landed; %sthis checkout is left on %s as it was: run git merge origin/%s and resolve them\n' \
         "$unrebased" "$pr_left" "$checkout" "$default_branch" >&2
       exit 1
     fi
