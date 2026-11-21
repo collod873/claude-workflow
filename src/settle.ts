@@ -39,7 +39,7 @@ function ontoHunksTaken(path: string, ontoStage: OntoStage): boolean {
   try {
     if (ontoSide === "." || branchSide === ".") return false;
     const merged = git(["merge-file", "-p", "--ours", ontoSide, base === "." ? "/dev/null" : base, branchSide]);
-    if (merged.status !== 0) throw new Error(`${path}'s conflicting hunks could not be settled on the onto side: ${merged.stderr}`);
+    if (merged.status !== 0) return false;
     writeFileSync(path, merged.stdout);
     gitRead(["--literal-pathspecs", "add", "--", path], `${path}, settled on the onto side, could not be staged`);
     return true;

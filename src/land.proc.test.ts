@@ -496,6 +496,16 @@ describe("bin/land settles a rebase that conflicts only in files origin/main's s
     expect(git(remote, "log", "--format=%s", "main").split("\n")).toEqual(expect.arrayContaining(["piece a", "piece b", "a new call, and viewer 2"]));
   });
 
+  it("takes origin/main's whole file when the entry's conflicted file is binary, which git cannot settle hunk by hunk", () => {
+    const { root, remote, run } = sessionAheadOfMain(1, { changes: { "parts/mine": "a part\n", "derived/index": "mine\0\n" } });
+    mainGained(root, remote, { [CONTRACT]: settleMapOf(APPENDS_PARTS), "derived/index": "theirs\0\n" });
+
+    const result = run();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(git(remote, "show", "main:derived/index")).toBe("theirs\0\nmine");
+  });
+
   it("puts the branch head, index and worktree back and lands nothing when the rebase's own process dies while the entry's command is rebuilding", () => {
     const { root, remote, session, head, run, calls } = sessionAheadOfMain(1, { changes: { "parts/mine": "a part\n", "derived/index": "mine\n" } });
     mainGained(root, remote, { [CONTRACT]: settleMapOf("printf 'half\\n' >derived/index; printf 'half\\n' >derived/snapshot; kill -KILL $PPID; sleep 1"), "derived/index": "theirs\n" });
