@@ -152,6 +152,7 @@ jobs:
         env:
           FRESH: ${{ inputs.fresh }}
           CHECK_CALLER: ${{ github.event_name == 'workflow_dispatch' && 'ship' || '' }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
         run: ~/bin/check --full --publish $([ "$FRESH" = true ] && echo --fresh)
 
       - name: Keep this run's probe and check rows for the transcripts (agent-hooks#258, #554)
