@@ -13,7 +13,7 @@ const REFUSES = `${LOOKS}printf 'nothing filed\\n' >&2\nexit 1\n`;
 const LACKS_TRIAL = (created: string) =>
   `case "$*" in\n  *"issue list"*"sonnet-builders"*) printf '0\\n'; exit 0 ;;\n  "label create sonnet-builders "*) ${created}; exit 0 ;;\n  "label create "*) exit 0 ;;\n  *"issue create"*"--label sonnet-builders"*) [ -e "$PWD/trial-label" ] || { printf "could not add label: 'sonnet-builders' not found\\n" >&2; exit 1; } ;;\nesac\n${RECORDS}`;
 const UNSTAMPED = "file-issue: CLAUDE_CODE_SESSION_ID is empty, so the filing names no session\n";
-const USAGE = "file-issue: usage: file-issue idea|look-into|build|bug|spec|owner --title <title> --body-file <path> [--new] [--repo <owner/name>] [--blocked-by <[owner/name]#number>]...\n       file-issue add <number> --body-file <path> [--repo <owner/name>]";
+const USAGE = "file-issue: usage: file-issue idea|look-into|build|bug|spec|owner --title <title> --body-file <path> [--new] [--repo <owner/name>] [--paused] [--blocked-by <[owner/name]#number>]...\n       file-issue add <number> --body-file <path> [--repo <owner/name>]";
 const WAITS = "this repo is not enrolled: a build, bug or spec waits for a session to take it.\n";
 const NOTE_CALL = ["idea", "--title", "What the audit found", "--body-file", "body.md"];
 const BUG_CALL = ["bug", "--title", "check-gate crashes on a contract with no steps", "--body-file", "body.md"];
@@ -384,5 +384,32 @@ describe("bin/file-issue build and bug --blocked-by file a ticket that waits in 
     const { labels, then } = filedAs(ghSaw(repo));
     expect(labels).toEqual(["ticket"]);
     expect(then.slice(1)).toEqual([blockedBy("902")]);
+  });
+});
+
+describe("bin/file-issue --paused files a build, bug or spec already paused, so no wake queued by its opening starts it", () => {
+  it("files a spec labelled spec and paused in the one create, labelling nothing after", () => {
+    const { repo, run } = filing({ gh: BLOCKERS, body: wellFormedSpec, origin: CLAUDE_WORKFLOW });
+
+    expect(run([...SPEC_CALL, "--paused"])).toMatchObject({ status: 0, stdout: `${URL}\n` });
+    const { labels, then } = filedAs(ghSaw(repo));
+    expect(labels).toEqual(["spec", "paused"]);
+    expect(then.slice(1)).toEqual([]);
+  });
+
+  it("files a parked build labelled waiting and paused, still labelling it ticket once linked", () => {
+    const { repo, run } = filing({ gh: BLOCKERS, body: wellFormedTicket, origin: CLAUDE_WORKFLOW });
+
+    expect(run(["build", "--title", "A ticket", "--body-file", "body.md", "--paused", "--blocked-by", "collod873/Mezzanine#2419"])).toMatchObject({ status: 0, stdout: `${URL}\n` });
+    const { labels, then } = filedAs(ghSaw(repo));
+    expect(labels).toEqual(["waiting", "paused"]);
+    expect(then.slice(1)).toEqual([blockedBy("901"), ["issue", "edit", "700", "--add-label", "ticket"]]);
+  });
+
+  it("refuses --paused on an idea, filing nothing", () => {
+    const { repo, run } = filing({ gh: RECORDS, body: wellFormedNote });
+
+    expect(run([...NOTE_CALL, "--paused"])).toMatchObject({ status: 1, stderr: "--paused holds only a build, bug or spec, so this note is not filed\n" });
+    expect(ghSaw(repo)).toEqual([]);
   });
 });
