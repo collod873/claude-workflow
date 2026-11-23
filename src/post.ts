@@ -21,7 +21,7 @@ import {
   specRefusals,
   ticketRefusals,
 } from "./ticket-shape.ts";
-import { BUG, HELD, LABELS, MACHINE, NOTE, OWNER, OWNER_STEP, RESEARCH, SONNET_BUILDERS, SPEC, STUCK, TICKET, TICKET_PREFIX, WAITING, type LabelName, type MarkedLabel } from "./spelled.ts";
+import { BUG, HELD, LABELS, MACHINE, NOTE, OWNER, OWNER_STEP, PAUSED, RESEARCH, SONNET_BUILDERS, SPEC, STUCK, TICKET, TICKET_PREFIX, WAITING, type LabelName, type MarkedLabel } from "./spelled.ts";
 import { addBlocker, blockingOf, FILED_ISSUE } from "./issue-links.ts";
 
 export interface Posting {
@@ -276,7 +276,8 @@ const DOOR: Record<string, DoorKind> = {
 
 const REPO = "--repo <owner/name>";
 const BLOCKED_BY = "--blocked-by <[owner/name]#number>";
-const DOOR_USAGE = `file-issue: usage: file-issue ${Object.keys(DOOR).join("|")} --title <title> --body-file <path> [${NEW}] [${REPO}] [${BLOCKED_BY}]...\n       file-issue add <number> --body-file <path> [${REPO}]`;
+const PAUSED_FLAG = "--paused";
+const DOOR_USAGE = `file-issue: usage: file-issue ${Object.keys(DOOR).join("|")} --title <title> --body-file <path> [${NEW}] [${REPO}] [${PAUSED_FLAG}] [${BLOCKED_BY}]...\n       file-issue add <number> --body-file <path> [${REPO}]`;
 
 const doorHelp = (): string[] => [
   `file-issue: file a GitHub issue of one kind (${Object.keys(DOOR).join(", ")}) on the repo you're in.`,
@@ -287,6 +288,7 @@ const doorHelp = (): string[] => [
   "add: your new evidence goes onto an open issue as a comment, for a match that is the same job.",
   `${NEW}: files anyway, for a match that is a different job.`,
   `${REPO}: files on that repo instead of the one this clone's origin names, whatever GH_REPO says.`,
+  `${PAUSED_FLAG}: a build, bug or spec, filed already \`${PAUSED}\`, so nothing starts it until Collin takes \`${PAUSED}\` off.`,
   `${BLOCKED_BY}: a build, bug or spec, once per blocker, any repo, a bare #number meaning the filing's own: links it blocked by each and, while any is open, files it \`${WAITING}\` so it starts only once reconcile sees every one closed.`,
   ...Object.entries(DOOR).map(([kind, { says }]) => `${kind}: ${says}`),
 ];
@@ -453,8 +455,9 @@ const BLOCKER_REF = /^(?:([\w.-]+\/[\w.-]+)?#)?(\d+)$/;
 const sonnetTrial = (door: DoorKind, poster: Gh): LabelName[] =>
   door.trialled === undefined || poster(["issue", "list", "--state", "all", "--label", SONNET_BUILDERS, "--limit", "1", "--json", "number", "--jq", "length"]).stdout.trim() !== "0" ? [] : [SONNET_BUILDERS];
 
-function postBehind(posting: Posting, refs: string[], door: DoorKind, poster: Gh): { refusals: string[]; said: string } {
+function postBehind(posting: Posting, refs: string[], door: DoorKind, poster: Gh, paused: boolean): { refusals: string[]; said: string } {
   const { starts } = door;
+  if (paused && starts === undefined) return { refusals: [`${PAUSED_FLAG} holds only a build, bug or spec, so this ${posting.kind} is not filed`], said: "" };
   if (refs.length > 0 && starts === undefined) return { refusals: [`${BLOCKED_BY} holds only a build, bug or spec, so this ${posting.kind} is not filed`], said: "" };
   let blockers: ReturnType<typeof blockingOf>[];
   try {
@@ -467,7 +470,7 @@ function postBehind(posting: Posting, refs: string[], door: DoorKind, poster: Gh
     return { refusals: [error.message], said: "" };
   }
   const parked = blockers.some(({ open }) => open);
-  const posted = post({ ...posting, withheld: parked ? starts : undefined, labels: [...(posting.labels ?? []), ...sonnetTrial(door, poster)] }, poster);
+  const posted = post({ ...posting, withheld: parked ? starts : undefined, labels: [...(posting.labels ?? []), ...(paused ? [PAUSED] : []), ...sonnetTrial(door, poster)] }, poster);
   const [, repo, , number = ""] = FILED_ISSUE.exec(posted.said) ?? [];
   if (posted.refusals.length > 0 || blockers.length === 0) return posted;
   if (repo === undefined) return { refusals: [`${posted.said} names no issue, so it is linked to no blocker`], said: posted.said };
@@ -506,7 +509,7 @@ if (import.meta.main) {
       process.exit(1);
     }
   }
-  const { refusals, said } = postBehind({ kind: door.files, text, title, sessionId }, process.argv.slice(6), door, gh);
+  const { refusals, said } = postBehind({ kind: door.files, text, title, sessionId }, process.argv.slice(7), door, gh, process.argv[6] === PAUSED_FLAG);
   for (const refusal of refusals) console.error(refusal);
   if (said !== "") console.log(said);
   const line = refusals.length > 0 ? undefined : filedLine(kind, gh);
