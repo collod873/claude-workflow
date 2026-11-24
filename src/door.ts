@@ -24,7 +24,15 @@ function enrolmentLine(gh: Gh): string {
   return is ? `${here} is enrolled: a build, bug or spec starts the moment it is filed.` : `${here} is not enrolled: a build, bug or spec waits for a session to take it.`;
 }
 
-export const filedLine = (kind: string, gh: Gh): string | undefined => (BUILDING_KINDS.has(kind) ? enrolmentLine(gh) : undefined);
+const HELD_LINE = {
+  [PAUSED]: `filed \`${PAUSED}\`, so it waits until \`${PAUSED}\` is taken off.`,
+  [WAITING]: `filed \`${WAITING}\`, so it waits for its blockers to close.`,
+};
+
+export const filedLine = (kind: string, gh: Gh, held?: keyof typeof HELD_LINE): string | undefined => {
+  if (!BUILDING_KINDS.has(kind)) return undefined;
+  return held === undefined ? enrolmentLine(gh) : `${repoName()}: ${HELD_LINE[held]}`;
+};
 
 const words = (title: string): Set<string> => new Set(title.toLowerCase().split(/[^a-z0-9]+/).filter((word) => word.length >= 4 && !COMMON.has(word)));
 
