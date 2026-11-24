@@ -239,10 +239,17 @@ function startedUnder(pid: number, roots: string[]): boolean {
   return under(roots, unlessGone(() => readlinkSync(`${proc}/cwd`))) || under(roots, temp);
 }
 
+const REAP_WAIT_MS = 5000;
+const REAP_POLL_MS = 10;
+const pausedFor = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+const stillRunning = (pid: number) => (unlessGone(() => /^\d+ \(.*\) (\S)/s.exec(readFileSync(`/proc/${pid}/stat`, "utf8"))?.[1]) ?? "Z") !== "Z";
+
 export function reapedUnder(roots: string[]): void {
   const lineage = ancestry();
   const pids = readdirSync("/proc").filter((name) => /^\d+$/.test(name)).map(Number);
-  for (const pid of pids) if (!lineage.has(pid) && startedUnder(pid, roots)) unlessGone(() => process.kill(pid, "SIGKILL"));
+  const killed = pids.filter((pid) => !lineage.has(pid) && startedUnder(pid, roots));
+  for (const pid of killed) unlessGone(() => process.kill(pid, "SIGKILL"));
+  for (let waited = 0; waited < REAP_WAIT_MS && killed.some(stillRunning); waited += REAP_POLL_MS) pausedFor(REAP_POLL_MS);
 }
 
 export async function isolated(tree: string, names: string[], port: number): Promise<Isolation | string> {

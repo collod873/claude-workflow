@@ -455,7 +455,7 @@ const BLOCKER_REF = /^(?:([\w.-]+\/[\w.-]+)?#)?(\d+)$/;
 const sonnetTrial = (door: DoorKind, poster: Gh): LabelName[] =>
   door.trialled === undefined || poster(["issue", "list", "--state", "all", "--label", SONNET_BUILDERS, "--limit", "1", "--json", "number", "--jq", "length"]).stdout.trim() !== "0" ? [] : [SONNET_BUILDERS];
 
-function postBehind(posting: Posting, refs: string[], door: DoorKind, poster: Gh, paused: boolean): { refusals: string[]; said: string } {
+function postBehind(posting: Posting, refs: string[], door: DoorKind, poster: Gh, paused: boolean): { refusals: string[]; said: string; parked?: boolean } {
   const { starts } = door;
   if (paused && starts === undefined) return { refusals: [`${PAUSED_FLAG} holds only a build, bug or spec, so this ${posting.kind} is not filed`], said: "" };
   if (refs.length > 0 && starts === undefined) return { refusals: [`${BLOCKED_BY} holds only a build, bug or spec, so this ${posting.kind} is not filed`], said: "" };
@@ -482,7 +482,7 @@ function postBehind(posting: Posting, refs: string[], door: DoorKind, poster: Gh
   }
   if (!parked || starts === undefined) return posted;
   const started = createdLabelled(["issue", "edit", number, "--add-label", starts], poster);
-  return started.refusals.length > 0 ? { refusals: started.refusals.map((refusal) => `${posted.said} was filed \`${WAITING}\` and linked, but ${refusal}, so label it \`${starts}\` by hand`), said: posted.said } : posted;
+  return started.refusals.length > 0 ? { refusals: started.refusals.map((refusal) => `${posted.said} was filed \`${WAITING}\` and linked, but ${refusal}, so label it \`${starts}\` by hand`), said: posted.said } : { ...posted, parked };
 }
 
 if (import.meta.main) {
@@ -509,10 +509,11 @@ if (import.meta.main) {
       process.exit(1);
     }
   }
-  const { refusals, said } = postBehind({ kind: door.files, text, title, sessionId }, process.argv.slice(7), door, gh, process.argv[6] === PAUSED_FLAG);
+  const paused = process.argv[6] === PAUSED_FLAG;
+  const { refusals, said, parked } = postBehind({ kind: door.files, text, title, sessionId }, process.argv.slice(7), door, gh, paused);
   for (const refusal of refusals) console.error(refusal);
   if (said !== "") console.log(said);
-  const line = refusals.length > 0 ? undefined : filedLine(kind, gh);
+  const line = refusals.length > 0 ? undefined : filedLine(kind, gh, paused ? PAUSED : parked ? WAITING : undefined);
   if (line !== undefined) console.error(line);
   process.exit(refusals.length > 0 ? 1 : 0);
 }

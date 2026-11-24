@@ -387,6 +387,8 @@ describe("bin/file-issue build and bug --blocked-by file a ticket that waits in 
   });
 });
 
+const ENROLLED_BLOCKERS = `case "$*" in\n  *contents/*) printf 'machine.yml\\n'; exit 0 ;;\nesac\n${BLOCKERS}`;
+
 describe("bin/file-issue --paused files a build, bug or spec already paused, so no wake queued by its opening starts it", () => {
   it("files a spec labelled spec and paused in the one create, labelling nothing after", () => {
     const { repo, run } = filing({ gh: BLOCKERS, body: wellFormedSpec, origin: CLAUDE_WORKFLOW });
@@ -404,6 +406,22 @@ describe("bin/file-issue --paused files a build, bug or spec already paused, so 
     const { labels, then } = filedAs(ghSaw(repo));
     expect(labels).toEqual(["waiting", "paused"]);
     expect(then.slice(1)).toEqual([blockedBy("901"), ["issue", "edit", "700", "--add-label", "ticket"]]);
+  });
+
+  it("says a paused filing in an enrolled repo waits until paused is taken off, never that it starts now (#1808)", () => {
+    const { run } = filing({ gh: ENROLLED_BLOCKERS, body: wellFormedSpec, origin: CLAUDE_WORKFLOW });
+
+    const { stderr } = run([...SPEC_CALL, "--paused"]);
+
+    expect(stderr).toContain("claude-workflow: filed `paused`, so it waits until `paused` is taken off.\n");
+    expect(stderr).not.toContain("starts the moment");
+  });
+
+  it("says a filing behind an open blocker waits for its blockers, and one behind only closed blockers starts now (#1808)", () => {
+    const { run } = filing({ gh: ENROLLED_BLOCKERS, body: wellFormedTicket, origin: CLAUDE_WORKFLOW });
+
+    expect(run(["build", "--title", "A ticket", "--body-file", "body.md", "--blocked-by", "collod873/Mezzanine#2419"]).stderr).toContain("claude-workflow: filed `waiting`, so it waits for its blockers to close.\n");
+    expect(run(["build", "--title", "A ticket", "--body-file", "body.md", "--blocked-by", "#12"]).stderr).toContain("claude-workflow is enrolled: a build, bug or spec starts the moment it is filed.\n");
   });
 
   it("refuses --paused on an idea, filing nothing", () => {
