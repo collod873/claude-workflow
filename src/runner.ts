@@ -13,10 +13,13 @@ const NODE = `${HOME}/node`;
 const GH = `${HOME}/gh`;
 const UV = `${HOME}/uv`;
 const UV_VERSION = "0.11.32";
-const PATH = `${NODE}/bin:${GH}/bin:${UV}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`;
+const RAILWAY = `${HOME}/railway`;
+const RAILWAY_VERSION = "5.77.0";
+const PATH = `${NODE}/bin:${GH}/bin:${UV}/bin:${RAILWAY}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`;
 const NODE_RELEASES = "https://nodejs.org/dist";
 const GH_RELEASES = "https://github.com/cli/cli/releases/download";
 const UV_RELEASES = "https://github.com/astral-sh/uv/releases/download";
+const RAILWAY_RELEASES = "https://github.com/railwayapp/cli/releases/download";
 const RUNNER_RELEASES = "https://github.com/actions/runner/releases/download";
 const WAIT_SECONDS = Number(process.env.RUNNER_WAIT_SECONDS ?? "60");
 const PROC = process.env.RUNNER_PROC ?? "/proc";
@@ -112,15 +115,25 @@ function provisionNode(): void {
   asRunnerUser(`[ -x ${NODE}/bin/node ] || { mkdir -p ${NODE} && curl -fsSL ${tarball} | tar -xJ --strip-components 1 -C ${NODE}; }`);
 }
 
+type Unpacking = { home: string; current: string; tarball: string; into: "" | "/bin"; strip: boolean };
+
+const unpackUnlessCurrent = ({ home, current, tarball, into, strip }: Unpacking) =>
+  asRunnerUser(`${current} || { rm -rf ${home}.next && mkdir -p ${home}.next${into} && curl -fsSL ${tarball} | tar -xz${strip ? " --strip-components 1" : ""} -C ${home}.next${into} && rm -rf ${home} && mv ${home}.next ${home}; }`);
+
 function provisionGh(): void {
   const version = gh(["api", "repos/cli/cli/releases/latest", "--jq", ".tag_name"]).trim().replace(/^v/, "");
   const tarball = `${GH_RELEASES}/v${version}/gh_${version}_linux_amd64.tar.gz`;
-  asRunnerUser(`${GH}/bin/gh --version 2>/dev/null | grep -qF 'gh version ${version} ' || { rm -rf ${GH}.next && mkdir -p ${GH}.next && curl -fsSL ${tarball} | tar -xz --strip-components 1 -C ${GH}.next && rm -rf ${GH} && mv ${GH}.next ${GH}; }`);
+  unpackUnlessCurrent({ home: GH, current: `${GH}/bin/gh --version 2>/dev/null | grep -qF 'gh version ${version} '`, tarball, into: "", strip: true });
 }
 
 function provisionUv(): void {
   const tarball = `${UV_RELEASES}/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz`;
-  asRunnerUser(`[ "$(${UV}/bin/uv --version 2>/dev/null | cut -d' ' -f2)" = ${UV_VERSION} ] || { rm -rf ${UV}.next && mkdir -p ${UV}.next/bin && curl -fsSL ${tarball} | tar -xz --strip-components 1 -C ${UV}.next/bin && rm -rf ${UV} && mv ${UV}.next ${UV}; }`);
+  unpackUnlessCurrent({ home: UV, current: `[ "$(${UV}/bin/uv --version 2>/dev/null | cut -d' ' -f2)" = ${UV_VERSION} ]`, tarball, into: "/bin", strip: true });
+}
+
+function provisionRailway(): void {
+  const tarball = `${RAILWAY_RELEASES}/v${RAILWAY_VERSION}/railway-v${RAILWAY_VERSION}-x86_64-unknown-linux-musl.tar.gz`;
+  unpackUnlessCurrent({ home: RAILWAY, current: `${RAILWAY}/bin/railway --version 2>/dev/null | grep -qxF 'railway ${RAILWAY_VERSION}'`, tarball, into: "/bin", strip: false });
 }
 
 const dirOf = (repo: string, name: string) => `${HOME}/runners/${repo.replace("/", "-")}/${name}`;
@@ -281,6 +294,7 @@ function toPc(repo: string, asked: number | undefined): string {
   provisionNode();
   provisionGh();
   provisionUv();
+  provisionRailway();
   provisionEarlyoom();
   for (const name of missing) install(repo, name, LABEL);
   if (reconciler === undefined || !hasUnit(repo, reconcilerName)) install(repo, reconcilerName, RECONCILE_LABEL);
