@@ -8,6 +8,8 @@ inputs:
     required: true
   prod-database-url:
     required: false
+  railway-token:
+    required: false
   design-kit:
     required: false
     default: "false"
@@ -27,11 +29,15 @@ runs:
       shell: bash
       env:
         PROD_DATABASE_URL: ${{ inputs.prod-database-url }}
+        RAILWAY_TOKEN: ${{ inputs.railway-token }}
       run: |
         printf 'FEED=%s\n' "$GITHUB_ACTION_PATH/feed.jq" >>"$GITHUB_ENV"
         printf 'HOOK_LOG_DIR=%s\n' "$RUNNER_TEMP/hook-logs" >>"$GITHUB_ENV"
         if [[ -n $PROD_DATABASE_URL ]]; then
           printf 'PROD_DATABASE_URL=%s\n' "$PROD_DATABASE_URL" >>"$GITHUB_ENV"
+        fi
+        if [[ -n $RAILWAY_TOKEN ]]; then
+          printf 'RAILWAY_TOKEN=%s\n' "$RAILWAY_TOKEN" >>"$GITHUB_ENV"
         fi
 
     - id: skills-app

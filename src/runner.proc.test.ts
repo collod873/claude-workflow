@@ -319,6 +319,17 @@ describe("bin/runner moves a private repo's jobs between this PC and GitHub's ru
     expect(path.indexOf("/home/ghrunner/uv/bin")).toBeLessThan(path.indexOf("/usr/local/bin"));
   });
 
+  it("gives every PC runner the pinned Railway CLI ahead of /usr/local/bin, since railway-vars, prod-logs and deploy-wait run bare railway (workout-tracker#867)", () => {
+    const { run, sudo, placed } = switching();
+
+    run("pc");
+
+    expect(sudo().join("\n")).toContain("https://github.com/railwayapp/cli/releases/download/v5.77.0/railway-v5.77.0-x86_64-unknown-linux-musl.tar.gz");
+    const path = placed(`/home/ghrunner/runners/collod873-Lumaria/${HOST}-1/.path`).trim().split(":");
+    expect(path.indexOf("/home/ghrunner/railway/bin")).toBeGreaterThanOrEqual(0);
+    expect(path.indexOf("/home/ghrunner/railway/bin")).toBeLessThan(path.indexOf("/usr/local/bin"));
+  });
+
   it("sets earlyoom and each runner's jobs so the process using the most memory is killed when memory runs out, whether or not it is a runner's job, never the PC's own services, so a rebuilt PC gets the same order", () => {
     const { run, sudo, placed } = switching();
 

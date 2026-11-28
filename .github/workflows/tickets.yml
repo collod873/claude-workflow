@@ -108,6 +108,7 @@ jobs:
           client-id: ${{ vars.CORE_APP_CLIENT_ID }}
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
           prod-database-url: ${{ secrets.PROD_DATABASE_URL }}
+          railway-token: ${{ secrets.RAILWAY_TOKEN }}
           design-kit: "true"
 
       - id: admit
@@ -420,6 +421,7 @@ jobs:
           client-id: ${{ vars.CORE_APP_CLIENT_ID }}
           private-key: ${{ secrets.CORE_APP_PRIVATE_KEY }}
           prod-database-url: ${{ secrets.PROD_DATABASE_URL }}
+          railway-token: ${{ secrets.RAILWAY_TOKEN }}
           design-kit: "true"
 
       - id: probe-script
